@@ -13,6 +13,18 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is not set — the pg-sync-worker cannot connect to Supabase without it.');
 }
 
+// Diagnostic only — logs the host/port Vercel actually injected at runtime,
+// with the username and password redacted, so a stale/incorrect
+// DATABASE_URL value shows up unambiguously in the Vercel logs instead of
+// being inferred from a downstream ENOTFOUND error. Safe to leave in
+// permanently; it never logs the password.
+try {
+  const u = new URL(connectionString);
+  console.log(`[pg-sync-worker] DATABASE_URL resolved to host="${u.hostname}" port="${u.port}" db="${u.pathname}"`);
+} catch (e) {
+  console.error('[pg-sync-worker] DATABASE_URL is not a valid URL:', e.message);
+}
+
 const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
