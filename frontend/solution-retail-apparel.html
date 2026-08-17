@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — CX Diagnostic for Retail Apparel Brands</title>
+<meta name="description" content="Getting discovered before a competitor's ad does — the Awareness stage for lifestyle and retail apparel brands.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Shared site design system (2026-07-20 blended-concept rollout) —
+     same tokens and .visual-block placeholder pattern as index.html and
+     the other solution-*.html pages: white base, soft gradient-fade
+     backgrounds (never a flat/solid fill), light bordered cards, color
+     as a sparing accent rather than a background fill. */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  --accent:var(--cx);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 8% 0%, rgba(8,145,178,0.10) 0%, rgba(8,145,178,0) 60%),
+      radial-gradient(ellipse 700px 500px at 96% 12%, rgba(37,99,235,0.12) 0%, rgba(37,99,235,0) 62%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:56px 28px 100px;}
+
+  /* Unified site header/nav (round 94) — same markup, tokens, and
+     behavior as index.html/philosophy.html/framework.html/
+     accelerated-marketing.html/human-journey.html, so every public page
+     shares one navigation instead of this page's older standalone
+     back-nav (which is now removed). */
+  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+    /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
+     max-width:1140px — the SAME width as .wrap (page content). That meant
+     logo+navlinks only ever had ~3px of real slack on any desktop viewport
+     above the hamburger breakpoint, since widening the browser window past
+     ~1204px added zero extra room (the 1140px cap absorbed it all). Any
+     minor font-metric difference between environments was enough to tip
+     that into a real overlap — this is why raising the hamburger breakpoint
+     alone (700px then 980px then 1180px) never fully fixed it. Fix: the
+     header row is allowed to be wider than the page content column
+     (max-width:1320px vs .wrap'''s 1140px) — same visual left/right
+     alignment via the shared 32px padding, but real margin at every width. */
+.nav{display:flex;align-items:center;justify-content:space-between;max-width:1320px;margin:0 auto;padding:0 32px;position:relative;}
+  .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
+  .logo b{color:var(--media);}
+  .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
+  .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
+  .navlinks a:hover{color:var(--ink);}
+  .navlinks a.active{color:var(--ink);border-bottom:2px solid var(--media);padding-bottom:2px;}
+  .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
+  @media (max-width:1180px){
+    .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
+    /* Padding lives on .open, not the base rule — box-sizing:border-box can't shrink a box below its own padding, so a fixed vertical padding on the collapsed state left ~46px of the menu visibly peeking out beneath the header even at max-height:0. */
+    .navlinks.open{padding:20px 28px 26px;}
+    .nav-toggle{display:block;}
+  }
+  .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:18px;}
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(32px,5vw,50px);line-height:1.08;margin:0 0 22px;letter-spacing:-0.01em;max-width:760px;}
+  .lede{font-size:18px;line-height:1.65;max-width:680px;color:#3A3428;margin-bottom:32px;}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;}
+  .btn-primary{background:var(--ink);color:var(--white);font-family:'Inter';font-weight:700;font-size:15.5px;padding:15px 28px;border-radius:40px;text-decoration:none;display:inline-block;}
+  .btn-primary:hover{background:#1c2d54;}
+  .btn-ghost{font-family:'Inter';font-weight:600;font-size:15px;color:var(--ink);text-decoration:none;padding:15px 4px;border-bottom:2px solid var(--line);}
+  .section-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin:56px 0 14px;}
+  .insight-panel{background:var(--white);border-left:4px solid var(--accent);border-radius:0 6px 6px 0;padding:26px 28px;margin:0 0 8px;}
+  .insight-panel p{font-size:16px;line-height:1.7;color:#3A3428;margin:0 0 14px;}
+  .insight-panel p:last-child{margin-bottom:0;}
+  .insight-panel .illustrative-tag{display:inline-block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;color:#8a8067;font-style:normal;}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:20px 0 8px;}
+  .stat-tile{background:var(--white);border:1px solid var(--line);border-radius:6px;padding:20px 22px;}
+  .stat-tile .stat-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:#8a8067;display:block;margin-bottom:8px;}
+  .stat-tile .stat-value{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:28px;color:var(--ink);}
+  .stat-tile .stat-note{font-size:12.5px;color:#8a8067;margin-top:6px;}
+  .gen-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:8px;}
+  .gen-card{background:var(--white);border:1px solid var(--line);border-radius:6px;padding:20px 22px;}
+  .gen-card h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:18px;margin:0 0 8px;color:var(--ink);}
+  .gen-card p{font-size:14.5px;line-height:1.55;color:#4A4438;margin:0;}
+  .testimonial-slot{background:var(--paper-dim);border:1px dashed var(--line);border-radius:6px;padding:24px 26px;margin-top:8px;}
+  .testimonial-slot p{font-size:15px;line-height:1.6;color:#6B6350;font-style:normal;margin:0;}
+  .cta-band{display:flex;justify-content:space-between;align-items:center;gap:24px;background:
+      radial-gradient(ellipse 360px 260px at 6% 15%, rgba(8,145,178,0.16) 0%, rgba(8,145,178,0) 65%),
+      radial-gradient(ellipse 360px 260px at 94% 85%, rgba(37,99,235,0.18) 0%, rgba(37,99,235,0) 65%),
+      var(--paper-dim);
+    border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:30px 32px;margin:56px 0 8px;flex-wrap:wrap;}
+  .cta-band h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:22px;margin:0 0 6px;color:var(--ink);}
+  .cta-band p{font-size:14.5px;color:var(--muted);margin:0;max-width:440px;}
+  .cta-band .btn-primary{background:var(--accent);color:var(--ink);}
+  .disclaimer{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:#8a8067;line-height:1.6;margin-top:48px;padding-top:20px;border-top:1px dashed var(--line);}
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:#8a8067;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  @media (max-width:640px){.cta-band{flex-direction:column;align-items:flex-start;}}
+  /* Image/video placeholder — same honest-placeholder pattern used on
+     index.html: never a stand-in stock photo. Imagery sourcing is still
+     an open decision, see cxmedia-design-review.md section D. */
+  .visual-block{border-radius:12px;background:linear-gradient(155deg, rgba(8,145,178,0.08), rgba(37,99,235,0.10));border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#6B6350;text-align:center;padding:40px 24px;margin:28px 0 8px;}
+  .visual-block .vb-icon{width:38px;height:38px;border-radius:50%;border:1.5px solid #6B6350;display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;opacity:0.6;background:rgba(255,255,255,0.5);}
+  .visual-block .vb-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;opacity:0.75;}
+  .visual-block .vb-desc{font-size:13px;max-width:380px;opacity:0.75;}
+
+  .faq-mini{margin:40px 0 8px;}
+  .faq-mini .faq-item{border-top:1px solid var(--line);padding:18px 0;}
+  .faq-mini .faq-item:last-child{border-bottom:1px solid var(--line);}
+  .faq-mini h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:17px;margin:0;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;}
+  .faq-mini h4 .faq-chevron{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;color:var(--muted);transition:transform 0.15s ease;flex-shrink:0;}
+  .faq-mini .faq-item.open h4 .faq-chevron{transform:rotate(90deg);}
+  .faq-mini .faq-item .faq-body{display:none;margin-top:8px;}
+  .faq-mini .faq-item.open .faq-body{display:block;}
+  .faq-mini p{font-size:14.5px;line-height:1.6;color:#4A4438;margin:0;}
+
+  .footer-nav{display:flex;flex-wrap:wrap;gap:16px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .footer-nav a{color:#8a8067;text-decoration:none;}
+  .footer-nav a:hover{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<header id="siteHeader">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="index.html">Veri<b>lume</b></a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    <div class="navlinks" id="navLinks">
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a class="nav-cta" href="assessment.html?industry=retail-apparel">Start free assessment</a>
+    </div>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <div class="eyebrow">Solution — Retail Apparel · National · Awareness</div>
+  <h1>Getting Discovered Before a Competitor's Ad Does</h1>
+  <p class="lede">Lifestyle apparel brands live or die on discovery — a scroll-stopping visual, a search result, an AI answer engine citation, all competing for the same few seconds of attention before a shopper moves on to the next brand in the feed.</p>
+  <div class="hero-cta">
+    <a class="btn-primary" href="assessment.html?industry=retail-apparel">Get your free apparel assessment →</a>
+    <a class="btn-ghost" href="assessment-framework.html">See the full framework</a>
+  </div>
+
+  <div class="visual-block">
+    <div class="vb-icon">▶</div>
+    <div class="vb-label">Image / video placeholder</div>
+    <div class="vb-desc">A real moment from this category — sourcing (stock / custom shoot / AI-generated) is still an open decision, see cxmedia-design-review.md section D.</div>
+  </div>
+
+  <div class="section-tag">Where this breaks</div>
+  <div class="insight-panel">
+    
+    <p>For a national, multi-market apparel brand, <strong>Awareness</strong> is where the category is won or lost first — visual consistency across every placement, and increasingly, findability across traditional search, AI answer engines, and generative-engine citations (Verilume's combined "Search Everywhere" function) all compete for a shopper's first impression before Consideration ever begins.</p>
+    <p>For example, a brand like <strong>Tommy Bahama</strong> competes in a segment defined by strong lifestyle visual identity and resort/destination positioning — a structural feature of the premium lifestyle apparel category, not a claim about that brand's specific marketing performance.</p>
+
+    <span class="illustrative-tag">Illustrative category framing — not a claim about any named company's actual performance.</span>
+  </div>
+
+  <div class="section-tag">Category snapshot</div>
+  <div class="stat-grid">
+    <div class="stat-tile">
+      <span class="stat-label">U.S. estimated industry revenue</span>
+      <span class="stat-value">$300B</span>
+      <div class="stat-note">Illustrative — not a live data feed. Same figure used in the free assessment's recap step.</div>
+    </div>
+    <div class="stat-tile">
+      <span class="stat-label">Footprint modeled</span>
+      <span class="stat-value" style="font-size:19px;">National</span>
+      <div class="stat-note">Multi-market, company-operated retail and wholesale — the benchmark is visual consistency across every market and channel.</div>
+    </div>
+    <div class="stat-tile">
+      <span class="stat-label">Funnel stage in focus</span>
+      <span class="stat-value" style="font-size:19px;">Awareness</span>
+      <div class="stat-note">Earned media, PR, and findability across search, AI answer engines, and generative engines all compete for first discovery.</div>
+    </div>
+  </div>
+
+  <div class="section-tag">Who this shows up for</div>
+  <div class="gen-grid">
+        <div class="gen-card"><h4>Millennials</h4><p>Born ~1981–1996. Research-heavy, values-driven — reviews and social proof matter most.</p></div>
+    <div class="gen-card"><h4>Gen X</h4><p>Born ~1965–1980. Balances digital research with trust in a real person or phone call.</p></div>
+    <div class="gen-card"><h4>Gen Z</h4><p>Born ~1997–2012. Discovery-first, video-native, expects instant self-serve answers.</p></div>
+    <div class="gen-card"><h4>Wealthy</h4><p>Above-average discretionary income. Responsive to quality and status signals.</p></div>
+    <div class="gen-card"><h4>Middle Income</h4><p>Value-conscious, mainstream spend. Responsive to consistency and perceived value.</p></div>
+  </div>
+
+  <div class="section-tag">Client results</div>
+  <div class="testimonial-slot">
+    <p>Client results are added here as engagements complete. In the meantime, see a live example of the diagnostic in our own free assessment — the same instrument this page's CTA leads to.</p>
+  </div>
+
+  <div class="section-tag">Questions we get</div>
+  <div class="faq-mini">
+    <div class="faq-item">
+      <h4 onclick="toggleFaqItem(this)">Does the assessment account for AI answer engines, not just search and social? <span class="faq-chevron">▸</span></h4>
+      <div class="faq-body"><p>Yes — Awareness-stage scoring looks at whether your brand shows up in AI answer engines and search results, not only paid social reach.</p></div>
+    </div>
+    <div class="faq-item">
+      <h4 onclick="toggleFaqItem(this)">Is this only for large national retailers? <span class="faq-chevron">▸</span></h4>
+      <div class="faq-body"><p>No. The free assessment works for any size apparel brand — this page is an illustrative deep dive on the Awareness stage, not a limit on who can run the diagnostic.</p></div>
+    </div>
+  </div>
+  <script>
+    // Round 21 (2026-08-05), per direct instruction — each FAQ item starts
+    // collapsed; clicking its heading toggles it open/closed independently
+    // (not an exclusive accordion — more than one can be open at once).
+    function toggleFaqItem(heading){
+      heading.parentElement.classList.toggle('open');
+    }
+  </script>
+
+  <div class="cta-band">
+    <div>
+      <h3>See where apparel brands are actually losing guests</h3>
+      <p>Free, no NDA, no upfront contact info — the assessment is scoped to your industry the moment you start it from here.</p>
+    </div>
+    <a class="btn-primary" href="assessment.html?industry=retail-apparel">Start free assessment →</a>
+  </div>
+
+  <div class="disclaimer">
+    Prototype note — this is a pilot content page (Deliverable: solution/funnel-stage content pilot, see cxmedia-content-strategy.md) built to test the solution × funnel-stage page template, reachable from the home page's Solutions section and the site footer. Named brands above (Tommy Bahama) are used solely as real-world illustrations of this category's positioning — none are clients, partners, or endorsers of Verilume, and no claim is made about their actual internal performance or practices. Revenue figures are illustrative ballparks, not sourced from a live data feed. The "Client results" section above is an honest placeholder, not a fabricated quote — see cxmedia-content-strategy.md Section 3 for the plan to populate it as real engagements complete.
+  </div>
+
+  <footer>
+    <span>Verilume · Solution guide — content pilot</span>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a href="index.html#faq">FAQ</a>
+
+    </nav>
+    <span>Verilume</span>
+  </footer>
+
+</div>
+
+<script>
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  function setNavOpen(open){
+    navToggle.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navLinks.classList.toggle('open', open);
+    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
+  }
+  function closeNav(){ setNavOpen(false); }
+  navToggle.addEventListener('click', () => setNavOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', closeNav));
+  window.addEventListener('resize', () => {
+    if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+  });
+</script>
+</body>
+</html>

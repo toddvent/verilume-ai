@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Primary SEO -->
+<title>Verilume — Free Brand & Customer Experience (CX) Audit</title>
+<meta name="description" content="Verilume — truth that illuminates. Human Experience Optimization: your team and AI working the day-to-day moments together, from the ad that reached your guest to the person who answered the phone, so the human connection behind every one gets a little better, every day. Free, instant results, no gate.">
+<meta name="keywords" content="customer experience audit, CX audit tool, brand experience assessment, brand health assessment, marketing and CX gap, free brand assessment, CX scorecard, white label CX diagnostic for agencies">
+<link rel="canonical" href="https://www.verilume.ai/">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilume">
+<meta property="og:title" content="Verilume — Free Brand & Customer Experience (CX) Audit">
+<meta property="og:description" content="Score every touchpoint your guest has with you — from the ad that reached them to the person who answered the phone — and see exactly where your brand's promise breaks. Free, instant, no gate.">
+<meta property="og:url" content="https://www.verilume.ai/">
+<meta property="og:image" content="https://www.verilume.ai/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Verilume — Free Brand & Customer Experience (CX) Audit">
+<meta name="twitter:description" content="Score every touchpoint your guest has with you and see exactly where your brand's promise breaks. Free, instant, no gate.">
+<meta name="twitter:image" content="https://www.verilume.ai/og-image.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Structured data: Organization + SoftwareApplication + FAQPage, linked via @graph -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://www.verilume.ai/#organization",
+      "name": "Verilume",
+      "url": "https://www.verilume.ai/",
+      "logo": "https://www.verilume.ai/logo.png",
+      "description": "Verilume is a diagnostic that scores brands across the full Media Loop (Awareness, Consideration, Purchase, Loyalty, Advocacy) against four CX delivery layers (Creative Visuals, Call Center, POS/Team, Product Delivery), showing exactly where a brand's marketing promise and its customer experience stop matching."
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://www.verilume.ai/#software",
+      "name": "Verilume",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "url": "https://www.verilume.ai/",
+      "description": "A free customer experience and brand audit tool. Scores 17 cells across 5 Media stages and 5 CX layers/marketing functions (including a combined Search Everywhere function for SEO, AEO, and GEO), places a brand on the CX Quadrant, and delivers an instant headline insight, with the full scorecard unlocking once a lightweight profile is complete — no NDA or upfront contact info required.",
+      "publisher": { "@id": "https://www.verilume.ai/#organization" },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "Free instant quadrant placement and headline insight; full scorecard unlocks with email."
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Verilume?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A full marketing organization, not just a report: real org-chart roles across every function group, each with AI built into every seat, all calibrated against one instrument: the Media Loop (Awareness, Consideration, Purchase, Loyalty, Advocacy) scored against the customer experience layers." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is the assessment really free?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Your quadrant placement and one headline insight are shown instantly, with no email gate. The full stage-by-stage scorecard unlocks after you enter your email." }
+        },
+        {
+          "@type": "Question",
+          "name": "How is this different from typical marketing analytics tools?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Most marketing analytics tools measure the signal alone — reach, clicks, channel performance — in isolation from what happens after. Verilume scores the full loop, including the customer experience layers marketing tools don't usually touch, so it shows whether that promise actually held up." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can an agency license Verilume for its own clients?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Agencies can license the same instrument — the Media Loop, the CX Quadrant, the scoring rubric — to run under their own name for their own clients." }
+        },
+        {
+          "@type": "Question",
+          "name": "How does Verilume keep client data isolated?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Every account gets a clean, isolated workbook, provisioned fresh with no reuse of another client's structure. No account's data, scorecards, or usage history is ever visible to, or used to inform, another account's results." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does AI replace my marketing team?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Every seat across every function group gets a standing AI assistant for the always-on, first-draft work. Your team keeps the judgment calls, the relationships, and the final word." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<style>
+  /*
+    DESIGN SYSTEM — as of 2026-07-20, this page runs the "blended concept"
+    visual direction (benchmarked against Publicis Sapient's Bodhi, WPP
+    Media, and Zimmerman; see cxmedia-design-review.md and the follow-up
+    blended-concept round in cxmedia-build-status.md): crisp white/light
+    base instead of a full-bleed dark hero, color pulled back to sparing
+    accents and soft multi-tone GRADIENT FADES (never a flat solid fill —
+    per direct feedback) rather than gradient-filled cards or dark section
+    backgrounds, and every major section following the same beat: bold
+    statement -> a spaced image/video placeholder -> an explicit H3 value
+    prop -> supporting content. This same token set and component pattern
+    (--ink/--paper/--paper-dim/--media/--cx/--advocacy/--line/--muted,
+    .visual-block/.visual-block-sm/.signature-video, .band/.band-value-prop)
+    is now shared across every marketing/task-flow page in the site —
+    the 5 solution-*.html pages and onboarding.html — so the site reads as
+    one system rather than per-page one-offs. The two dense diagnostic-
+    instrument tools (assessment.html, framework.html) intentionally do
+    NOT adopt the full component system (no signature video, no card
+    restructuring) — only the shared fonts and the soft background-fade
+    language, since a fast, functional self-assessment flow has different
+    needs than a persuasion page. See each file's own style comment for
+    specifics.
+
+    Imagery honesty note, unchanged from the blended-concept round: Verilume
+    has no sourced imagery yet (stock/custom/AI-generated is still an open
+    decision, per cxmedia-design-review.md section D). Every image/video slot
+    below is a clearly labeled placeholder, never a stand-in stock photo.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  a{color:inherit;}
+  /* Content column standardized to 1040px 2026-08-07, matching
+     portal.html/assessment.html — was 1140px, the last page on the site
+     still on the old marketing-only width. */
+  .wrap{max-width:1040px;margin:0 auto;padding:0 32px;}
+  img,svg{max-width:100%;}
+
+  /* Nav — crisp white/sticky, with the mobile collapse behavior carried
+     over from the prior dark-hero version */
+  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+    /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
+     the same max-width as .wrap (page content). That meant logo+navlinks
+     only ever had a few px of real slack on any desktop viewport above the
+     hamburger breakpoint, since widening the browser window past that cap
+     added zero extra room. Any minor font-metric difference between
+     environments was enough to tip that into a real overlap — this is why
+     raising the hamburger breakpoint alone (700px then 980px then 1180px)
+     never fully fixed it. Fix: the header row is allowed to be wider than
+     the page content column (max-width:1320px vs .wrap's 1040px) — same
+     visual left/right alignment via the shared 32px padding, but real
+     margin at every width. */
+.nav{display:flex;align-items:center;justify-content:space-between;max-width:1320px;margin:0 auto;padding:0 32px;}
+  .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
+  .logo b{color:var(--media);}
+  .nav{position:relative;}
+  .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
+  .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
+  .navlinks a:hover{color:var(--ink);}
+  .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  /* Pop-out menu toggle — canonical site-wide pattern (see also portal.html):
+     44x44 tap target, aria-expanded kept in sync, panel animates via
+     max-height rather than an instant display:none/flex snap. */
+  .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
+
+  /* HERO — soft light-blue/teal-gold gradient fade (never a flat/solid
+     fill), bold statement, then the signature circular video placement */
+  .hero{padding:56px 0 0;background:
+      radial-gradient(ellipse 820px 520px at 14% 6%, rgba(8,145,178,0.13) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 900px 700px at 88% 26%, rgba(37,99,235,0.16) 0%, rgba(37,99,235,0) 65%),
+      var(--paper);
+  }
+  .hero-eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--advocacy);margin-bottom:26px;display:flex;align-items:center;gap:10px;}
+  .hero-eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--advocacy);animation:pulse 2.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(38px,5.6vw,68px);line-height:1.08;margin:0 0 22px;letter-spacing:-0.02em;color:var(--ink);max-width:none;}
+  h1 .accent{color:var(--media);}
+  .lede{font-size:19px;line-height:1.6;max-width:none;color:var(--muted);margin-bottom:28px;}
+  /* Brand intro "glue" line — the Veri/Lume two-liner, deliberately smaller
+     and quieter than the lede so it reads as a footnote a curious reader
+     can pick up, not a second headline competing with the statement above
+     it. Finalized 2026-08-04, replacing the old H2 hero-subhead. */
+  .hero-glue{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:italic;font-size:15.5px;line-height:1.55;color:var(--muted);max-width:640px;margin-bottom:36px;}
+  .h1-sub{display:block;font-size:0.4em;font-style:italic;font-weight:400;color:var(--muted);margin-top:10px;letter-spacing:normal;}
+  .lede b{color:var(--ink);font-weight:600;}
+  .hero-ctas{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:40px;}
+  .btn-primary{background:var(--ink);color:#fff;font-family:'Inter';font-weight:700;font-size:16px;padding:18px 32px;border-radius:var(--radius-pill);text-decoration:none;display:inline-block;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .btn-primary:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+  .btn-ghost{font-family:'Inter';font-weight:600;font-size:15px;color:var(--ink);text-decoration:none;padding:18px 8px;border-bottom:2px solid var(--line);transition:border-color 0.2s ease;}
+  .btn-ghost:hover{border-color:var(--media);}
+
+  /* Image/video placeholder block — the "bold statement, then visual" beat,
+     used consistently across every section below and on every other page
+     that shares this system. Deliberately plain and labeled, not a
+     stand-in stock photo — see the head-comment above. Backgrounds are
+     always soft gradient fades, never a flat solid fill. */
+  .visual-block{border-radius:20px;background:linear-gradient(155deg, rgba(8,145,178,0.08), rgba(37,99,235,0.10));border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted);text-align:center;padding:52px 30px;}
+  .visual-block .vb-icon{width:46px;height:46px;border-radius:50%;border:1.5px solid var(--muted);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;opacity:0.6;background:rgba(255,255,255,0.5);}
+  .visual-block .vb-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;opacity:0.75;}
+  .visual-block .vb-desc{font-size:14.5px;max-width:420px;opacity:0.75;}
+
+  /* .visual-block-sm (smaller secondary placement variant) removed from
+     this page's stylesheet — no longer used on the home page after the
+     round-3 section trim; still used on other pages that share this
+     component system. */
+
+  /* Circular video placeholder and the "scored cells" stats row were
+     removed from the hero per the approved home-page copy doc — replaced
+     below by the stat-flip-section directly under the hero. .hero-subhead
+     (the old "Customer Journey Orchestration..." H2) was removed 2026-08-04
+     when the hero copy was replaced by the finalized brand intro — no
+     remaining usages, CSS rule removed rather than left dead. */
+
+  /* IMPROVEMENT METRICS — flip cards. 3D flip on hover/focus; a .flipped
+     class (toggled via JS on click/Enter) covers touch, where hover never
+     fires. Front = headline number; back = sourced quote + caveat. */
+  .stat-flip-section{padding:8px 0 40px;}
+  .stat-flip-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
+  .stat-flip{perspective:1200px;height:236px;cursor:pointer;}
+  .stat-flip:focus{outline:none;}
+  .stat-flip-inner{position:relative;width:100%;height:100%;transition:transform 0.6s cubic-bezier(0.4,0.2,0.2,1);transform-style:preserve-3d;}
+  .stat-flip:hover .stat-flip-inner,.stat-flip:focus-visible .stat-flip-inner,.stat-flip.flipped .stat-flip-inner{transform:rotateY(180deg);}
+  .stat-flip-front,.stat-flip-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:16px;padding:26px 24px;display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-start;text-align:left;gap:10px;border:1px solid var(--line);}
+  .stat-flip-front{background:linear-gradient(155deg, rgba(8,145,178,0.06), rgba(37,99,235,0.08));}
+  .stat-flip-front.tint-cx{background:linear-gradient(155deg, rgba(8,145,178,0.12), rgba(8,145,178,0.03));}
+  .stat-flip-front.tint-media{background:linear-gradient(155deg, rgba(37,99,235,0.14), rgba(37,99,235,0.03));}
+  .stat-flip-front.tint-advocacy{background:linear-gradient(155deg, rgba(79,70,229,0.12), rgba(79,70,229,0.03));}
+  .stat-flip-front .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:19px;line-height:1.25;letter-spacing:0;text-transform:none;color:var(--ink);display:flex;align-items:flex-end;min-height:72px;margin-bottom:0;}
+  .stat-flip-front .stat-num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:38px;color:var(--ink);line-height:1;}
+  .stat-flip-front .unit-note{font-size:11.5px;color:var(--muted);font-style:italic;margin-top:-6px;}
+  .stat-flip-front .src{font-size:14.5px;font-weight:600;color:var(--ink);margin-top:auto;}
+  .stat-flip-back{background:var(--paper);transform:rotateY(180deg);box-shadow:0 12px 30px -14px rgba(29,29,31,0.2);}
+  .stat-flip-back p{font-size:14px;line-height:1.55;color:var(--ink);margin:0;text-align:left;}
+  .stat-flip-back .stat-caveat{font-size:11.5px;color:var(--muted);font-style:italic;text-align:left;}
+  @media (max-width:1080px){.stat-flip-grid{grid-template-columns:1fr 1fr;}}
+  @media (max-width:560px){.stat-flip-grid{grid-template-columns:1fr;}.stat-flip{height:200px;}}
+
+  /* Section shell — H2 statement + H3 sectional value prop, THEN a spaced
+     visual block, THEN supporting content. Generous top/bottom pacing. */
+  .band{padding:88px 0;}
+  .band.alt{background:var(--paper-dim);}
+  .band-label{margin-bottom:20px;}
+  .band-label h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(28px,3.6vw,44px);margin:0;}
+  .band-value-prop{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:22px;color:var(--ink);margin:0 0 20px;max-width:640px;}
+  .band-intro{font-size:16.5px;line-height:1.65;max-width:640px;color:var(--muted);margin-bottom:36px;}
+  .section-visual{margin-bottom:36px;}
+  .section-visual .visual-block{height:280px;}
+
+  /* Compact Human/AI seat comparison — replaces the old 6-card
+     .role-map-grid (round 9), which duplicated the Symphony section's
+     full content at much greater length. Finalized 2026-08-04, per direct
+     instruction to shrink this to "brief 1-2 rows that impress and create
+     desire for more info" — sized deliberately no larger than the Media
+     Loop diagram above it, with Human and AI running as side-by-side
+     columns for fast scanning rather than one full-bullet card per
+     function. The full, interactive version of this same comparison
+     lives on human-ai-agents.html's Symphony section — this is the
+     teaser, not a duplicate. */
+  .seat-card{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:22px 26px 18px;margin-bottom:20px;}
+  .seat-conductor{display:flex;align-items:center;gap:14px;padding-bottom:16px;margin-bottom:10px;border-bottom:1px solid var(--line);}
+  .seat-avatar{width:52px;height:52px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--advocacy);background:radial-gradient(circle at 32% 28%, rgba(79,70,229,0.16), rgba(79,70,229,0.04));display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;color:var(--advocacy);}
+  .seat-conductor-text .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--advocacy);font-weight:600;display:block;margin-bottom:3px;}
+  .seat-conductor-text p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.4;}
+  .seat-grid-head,.seat-row{display:grid;grid-template-columns:1fr 1.6fr 1.6fr;column-gap:16px;}
+  .seat-grid-head div{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);padding:0 0 6px;}
+  .seat-grid-head .col-h{color:var(--cx);}
+  .seat-grid-head .col-a{color:var(--media);}
+  .seat-row{padding:7px 0;border-top:1px solid var(--line);}
+  .seat-row:first-of-type{border-top:none;}
+  .seat-row .fn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:14px;color:var(--ink);display:flex;align-items:center;}
+  .seat-row .col-h,.seat-row .col-a{font-size:12.5px;line-height:1.35;color:var(--muted);display:flex;align-items:center;}
+  .seat-foot{display:flex;justify-content:flex-end;padding-top:14px;margin-top:6px;}
+  .seat-foot a{background:none;border:1px solid var(--line);border-radius:999px;padding:9px 18px;font-family:'Inter';font-weight:600;font-size:12.5px;color:var(--ink);text-decoration:none;transition:border-color 0.2s ease,transform 0.15s ease;display:inline-block;}
+  .seat-foot a:hover{border-color:var(--cx);transform:translateY(-1px);}
+
+  /* Value-case stat cards — used by the flip-card fronts/backs above. */
+  .stat-num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:34px;color:var(--ink);margin-bottom:10px;line-height:1;}
+  .stat-caveat{font-size:12.5px;font-style:italic;color:var(--muted);opacity:0.8;margin-top:10px;}
+
+  /* Media Loop diagram — moved here temporarily (round 8, 2026-08-03) per
+     direct instruction, replacing the generic "Loop image placeholder"
+     block that stood in for it. This is the same live SVG diagram built
+     on assessment-framework.html (its own section 01), duplicated here
+     rather than re-imagined, so the two stay visually identical. Markup,
+     class names, and the animateMotion path are copied verbatim from
+     that file — see its own style block if this ever needs updating,
+     since right now the two copies have to be kept in sync by hand. */
+  .diagram-card{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:36px 20px 20px;}
+  .diagram-card svg{display:block;width:100%;height:auto;}
+  .diagram-card .node-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;fill:var(--ink);}
+  .diagram-card .node-sub{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;fill:var(--muted);}
+  .diagram-card .flow-line{fill:none;stroke:var(--line);stroke-width:2;}
+  .diagram-card .traveler{fill:var(--advocacy);}
+  .diagram-card .purchase-ring{fill:none;stroke:var(--advocacy);stroke-width:2;stroke-dasharray:3 4;}
+  .diagram-caption{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);text-align:center;padding:14px 0 4px;letter-spacing:0.02em;}
+  .diagram-caption .k{color:var(--advocacy);}
+
+  footer{padding:56px 0 36px;background:var(--paper-dim);border-top:1px solid var(--line);}
+  .footer-faq{max-width:1040px;margin:0 auto;padding:0 32px 40px;border-bottom:1px solid var(--line);margin-bottom:28px;}
+  .footer-faq h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:24px;margin:0 0 20px;color:var(--ink);}
+  .footer-faq .faq-list{display:flex;flex-direction:column;}
+  .footer-faq .faq-item{padding:16px 0;border-top:1px solid var(--line);}
+  .footer-faq .faq-item:first-child{border-top:none;padding-top:0;}
+  .footer-faq .faq-item h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:16.5px;margin:0;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;}
+  .footer-faq .faq-item h3 .faq-chevron{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;color:var(--muted);transition:transform 0.15s ease;flex-shrink:0;}
+  .footer-faq .faq-item.open h3 .faq-chevron{transform:rotate(90deg);}
+  .footer-faq .faq-item .faq-body{display:none;margin-top:6px;}
+  .footer-faq .faq-item.open .faq-body{display:block;}
+  .footer-faq .faq-item p{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13.5px;line-height:1.6;color:var(--muted);margin:0;max-width:760px;}
+  .footer-faq .faq-item a{color:var(--cx);}
+  .footer-inner{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;max-width:1040px;margin:0 auto;padding:0 32px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);}
+  .footer-nav{display:flex;flex-wrap:wrap;gap:18px;}
+  .footer-nav a{color:var(--muted);text-decoration:none;}
+  .footer-nav a:hover{color:var(--ink);}
+
+  @media (max-width:820px){
+    .hero{padding:24px 0 0;}
+    .band{padding:56px 0;}
+    .seat-grid-head{display:none;}
+    .seat-row{display:block;padding:12px 0;}
+    .seat-row .fn{font-size:15px;margin-bottom:6px;}
+    .seat-row .col-h,.seat-row .col-a{display:block;margin-bottom:6px;}
+    .seat-row .col-h:before{content:"Human ";font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--cx);font-weight:600;}
+    .seat-row .col-a:before{content:"AI ";font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);font-weight:600;}
+  }
+  /* Pop-out nav breakpoint — kept in its own query, matching portal.html's
+     700px exactly, so the mobile menu behaves identically site-wide
+     regardless of each page's other layout breakpoints. */
+  @media (max-width:1180px){
+    .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
+    /* Padding lives on .open, not the base rule — box-sizing:border-box can't shrink a box below its own padding, so a fixed vertical padding on the collapsed state left ~46px of the menu visibly peeking out beneath the header even at max-height:0. */
+    .navlinks.open{padding:20px 28px 26px;}
+    .nav-toggle{display:block;}
+  }
+</style>
+</head>
+<body>
+
+<header id="siteHeader">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="index.html">Veri<b>lume</b></a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    <div class="navlinks" id="navLinks">
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- HERO -->
+<!-- Brand intro updated round 16 (2026-08-04) — see cxmedia-homepage-copy-restructure-round96.md.
+     Two changes from the round-15 version: (1) H1 now leads with "The Art of
+     Experience" — Verilume is an experience product with analytics and
+     process enhancements underneath, not an analytics product, so "Science"
+     no longer opens the page; it's demoted to a smaller supporting line
+     (.h1-sub) proving the experience claim, not competing with it for the
+     lead. (2) The lede is now a fused problem+solution statement, not a
+     customer-only aspiration: it names the real obstacle (understaffed,
+     overloaded, mixed skill levels, moving too fast) that hits the team
+     first and the client's customers next, then answers it in the same
+     breath with Human + AI Agents — naming "Human" first is deliberate,
+     it defuses the unspoken AI-replacement fear at the exact moment the
+     obstacle language would otherwise raise it. Veri/Lume stays demoted to
+     the small italic footnote (.hero-glue), not a second competing headline. -->
+<section class="hero" aria-labelledby="hero-heading">
+  <div class="wrap">
+    <div class="hero-eyebrow"><span class="dot"></span>Truth &amp; Light</div>
+    <h1 id="hero-heading">The Art of <span class="accent">Experience.</span><span class="h1-sub">Proven by the Science of Truth.</span></h1>
+    <p class="lede">Not enough people. Too many projects. A team spanning every skill level, moving faster than any of them can keep pace. That's where it breaks — for your team first, then for the customers who feel every gap they couldn't cover. Verilume's Human + AI Agents close it: <b>the same people, doing the work that matters, with an AI Agent covering the rest.</b></p>
+    <p class="hero-glue">Veri, Latin for truth. Lume, light. Together: the clarity to see exactly where that experience is working, and where it isn't yet.</p>
+    <div class="hero-ctas">
+      <a class="btn-primary" href="assessment.html">Start your free assessment →</a>
+      <a class="btn-ghost" href="assessment-framework.html">See how the scoring works</a>
+    </div>
+  </div>
+</section>
+
+<!-- IMPROVEMENT METRICS — flip cards. Each card fronts a single headline
+     number; hover/focus (or tap, for touch) flips it to the sourced quote
+     and caveat. Full attribution lives in the footer's "Sources for
+     Improvement Metrics cards" block per the approved home-page copy doc. -->
+<section class="stat-flip-section" aria-label="Improvement metrics">
+  <div class="wrap">
+    <div class="stat-flip-grid">
+      <div class="stat-flip" tabindex="0" role="button" aria-label="Marketing ROAS improvements — show source">
+        <div class="stat-flip-inner">
+          <div class="stat-flip-front tint-advocacy">
+            <span class="tag">Marketing ROAS Improvement</span>
+            <div class="stat-num">&lt;25%</div>
+            <span class="src">Bain &amp; Company · 2024</span>
+          </div>
+          <div class="stat-flip-back">
+            <p>"Retailers experimenting with AI-powered targeted ad campaigns see a 10-25% increase in return on ad spend."</p>
+            <div class="stat-caveat">Industry benchmark, not a measured Verilume result.</div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-flip" tabindex="0" role="button" aria-label="Customer Experience Improvement — show source">
+        <div class="stat-flip-inner">
+          <div class="stat-flip-front tint-cx">
+            <span class="tag">Customer Experience Improvement</span>
+            <div class="stat-num">+10</div>
+            <div class="unit-note">percentage points (not 10%)</div>
+            <span class="src">BCG · 2024</span>
+          </div>
+          <div class="stat-flip-back">
+            <p>"AI-driven personalization leaders grow revenue 10 percentage points faster annually than laggards."</p>
+            <div class="stat-caveat">Industry benchmark, not a measured Verilume result.</div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-flip" tabindex="0" role="button" aria-label="Productivity Improvement — show source">
+        <div class="stat-flip-inner">
+          <div class="stat-flip-front tint-media">
+            <span class="tag">Productivity Improvement</span>
+            <div class="stat-num">+40%</div>
+            <span class="src">McKinsey · 2024</span>
+          </div>
+          <div class="stat-flip-back">
+            <p>Marketing teams running 3+ generative-AI workflows report a 40% productivity improvement, and 60-70% less time-to-publish on content specifically.</p>
+            <div class="stat-caveat">Industry benchmark, not a measured Verilume result.</div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-flip" tabindex="0" role="button" aria-label="Speed to Value Improvement — show source">
+        <div class="stat-flip-inner">
+          <div class="stat-flip-front">
+            <span class="tag">Speed to Value Improvement</span>
+            <div class="stat-num">1&ndash;3 wks</div>
+            <span class="src">Pedowitz Group · 2025</span>
+          </div>
+          <div class="stat-flip-back">
+            <p>41% of marketers report campaign cycles of 30+ days. Our best estimate: agents compress the ideation-to-first-draft window by 1-3 weeks.</p>
+            <div class="stat-caveat">Verilume's own working estimate, not yet tested against a live account.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTINUOUS CUSTOMER JOURNEY -->
+<!-- Media Loop diagram moved here temporarily, round 8 (2026-08-03) — see
+     the .diagram-card CSS comment above. Todd's instruction: "The media
+     loop diagram will be moving to the home page temporarily." The full
+     framework (this same loop, plus the Brand Quadrant and the 17-cell
+     scoring grid) still lives at assessment-framework.html — the ghost
+     link below points there. -->
+<section class="band" id="continuous-journey">
+  <div class="wrap">
+    <div class="band-label"><h2>One continuous customer journey, always-on marketing optimization</h2></div>
+    <p class="band-value-prop">Human inputs and AI agents partner to maximize incremental performance.</p>
+    <div class="section-visual">
+      <div class="diagram-card">
+        <svg viewBox="-70 0 940 400" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="250" cy="200" r="150" class="flow-line"/>
+          <circle cx="550" cy="200" r="150" class="flow-line"/>
+          <circle cx="400" cy="200" r="34" class="purchase-ring"/>
+          <circle r="5" class="traveler">
+            <animateMotion dur="8s" repeatCount="indefinite"
+              path="M 400,50 A150,150 0 1,0 400,350 A150,150 0 1,1 400,50 A150,150 0 1,0 400,350 A150,150 0 1,1 400,50 Z" />
+          </circle>
+          <circle cx="250" cy="50" r="6" fill="#1D1D1F"/>
+          <text x="250" y="30" text-anchor="middle" class="node-label">AWARENESS</text>
+          <text x="250" y="72" text-anchor="middle" class="node-sub">earned media / PR</text>
+          <circle cx="100" cy="200" r="6" fill="#1D1D1F"/>
+          <text x="60" y="196" text-anchor="end" class="node-label">CONSIDERATION</text>
+          <text x="60" y="212" text-anchor="end" class="node-sub">personalization, remarketing</text>
+          <circle cx="400" cy="200" r="7" fill="#4F46E5"/>
+          <text x="400" y="182" text-anchor="middle" class="node-label" style="fill:#4F46E5">PURCHASE</text>
+          <text x="400" y="228" text-anchor="middle" class="node-sub">Media hands off to CX here</text>
+          <circle cx="700" cy="200" r="6" fill="#1D1D1F"/>
+          <text x="740" y="196" text-anchor="start" class="node-label">LOYALTY</text>
+          <text x="740" y="212" text-anchor="start" class="node-sub">CRM, retention, upsell</text>
+          <circle cx="550" cy="50" r="6" fill="#1D1D1F"/>
+          <text x="550" y="30" text-anchor="middle" class="node-label">ADVOCACY</text>
+          <text x="550" y="72" text-anchor="middle" class="node-sub">referral, UGC, reviews</text>
+          <text x="400" y="392" text-anchor="middle" class="node-sub" style="font-style:normal">advocacy feeds the next cycle of awareness — the loop never ends</text>
+        </svg>
+        <div class="diagram-caption">The waist of the loop is <span class="k">PURCHASE</span> — the one stage where Media's promise and CX's delivery physically meet.</div>
+      </div>
+    </div>
+    <div class="hero-ctas" style="margin-top:32px;margin-bottom:0;">
+      <a class="btn-primary" href="marketing-performance.html">See Accelerated Marketing →</a>
+      <a class="btn-ghost" href="assessment-framework.html">See the full framework →</a>
+    </div>
+  </div>
+</section>
+
+<!-- HUMAN + AI PARTNERSHIP -->
+<!-- Rebuilt 2026-08-04, per direct instruction: the old 6-card
+     .role-map-grid (round 9) duplicated the Symphony section's full
+     content at much greater length ("replace duplicate card template with
+     a quick human + ai role comparison... brief 1-2 rows that impress and
+     create a desire for more info. We don't need all of the details").
+     Sized against the Media Loop diagram above it (roughly 384px vs. the
+     loop's ~594px) — Human and AI run as side-by-side columns, one line
+     each, function by function. The CMO/Conductor framing moved from a
+     separate .solutions-note sentence into its own row inside the card,
+     with a circular image slot next to the title (real image TBD). Full
+     detail — the interactive Symphony diagram, tier badges, honesty
+     caveats — lives on human-ai-agents.html; this is the teaser, and the
+     single footer CTA below is this section's only link there (the old
+     mismatched "See the Human + AI model →" button, which actually linked
+     to assessment-framework.html, is retired rather than kept as a second,
+     redundant CTA to the same destination). -->
+<section class="band" id="human-ai">
+  <div class="wrap">
+    <div class="band-label"><h2>AI, built into every seat</h2></div>
+    <p class="band-value-prop">Partnership, not replacement — for every seat in every function group.</p>
+    <p class="band-intro" style="max-width:none;">Each function group keeps its human judgment calls and relationships — the AI layer takes the always-on drafting underneath.</p>
+
+    <div class="seat-card">
+      <div class="seat-conductor">
+        <div class="seat-avatar" title="Circular conductor image — placeholder">♫</div>
+        <div class="seat-conductor-text">
+          <span class="tag">CMO — the conductor</span>
+          <p>One synthesized view of every seat below — not a seventh one.</p>
+        </div>
+      </div>
+      <div class="seat-grid-head">
+        <div>Function</div>
+        <div class="col-h">Human keeps</div>
+        <div class="col-a">AI drafts</div>
+      </div>
+      <div class="seat-row"><div class="fn">PR</div><div class="col-h">The relationships</div><div class="col-a">The release &amp; pitch angle</div></div>
+      <div class="seat-row"><div class="fn">Brand</div><div class="col-h">Final creative direction</div><div class="col-a">The voice, enforced everywhere</div></div>
+      <div class="seat-row"><div class="fn">Omni-Channel Creative</div><div class="col-h">Final asset direction</div><div class="col-a">Channel-ready copy &amp; specs</div></div>
+      <div class="seat-row"><div class="fn">Media Planning &amp; Ops</div><div class="col-h">Campaign Creation &amp; Trafficking</div><div class="col-a">KPI framework &amp; calendar</div></div>
+      <div class="seat-row"><div class="fn">Performance Marketing</div><div class="col-h">The actual buy</div><div class="col-a">Channel plan &amp; creative angle</div></div>
+      <div class="seat-row"><div class="fn">Advanced Analytics</div><div class="col-h">The final call on a number</div><div class="col-a">Interprets data, designs tests</div></div>
+      <div class="seat-foot"><a href="human-ai-agents.html">See the full split, every function →</a></div>
+    </div>
+    <!-- Round 18: the "never auto-published, never replaces the seat" line
+         that used to sit here was cut — it repeated the footer FAQ's "Does
+         AI replace my marketing team?" answer almost word-for-word a few
+         hundred pixels below. The FAQ is now the one place that trust point
+         gets stated, per the content-module audit (cxmedia-content-module-
+         audit-round1.md). -->
+  </div>
+</section>
+
+</main>
+
+<footer id="faq">
+  <div class="footer-faq">
+    <h2>Questions we get</h2>
+    <div class="faq-list">
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">What is Verilume? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>A full marketing organization, not just a report: real org-chart roles across every function group, each with AI built into every seat, all calibrated against one instrument: the Media Loop (Awareness, Consideration, Purchase, Loyalty, Advocacy) scored against the customer experience layers. It shows exactly where a brand's marketing promise and its actual customer experience stop matching, and gives every function a place to act on it.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Is the assessment really free? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Yes. Your quadrant placement and one headline insight are shown instantly, with no email gate. The full stage-by-stage scorecard unlocks after you enter your email.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">How is this different from typical marketing analytics tools? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Most marketing analytics tools measure the signal alone — reach, clicks, channel performance — in isolation from what happens after. Verilume scores the full loop, including the customer experience layers marketing tools don't usually touch, like the call center and in-person delivery, so it shows whether that promise actually held up — not just how the click performed.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Can an agency license Verilume for its own clients? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Yes. Agencies can license the same instrument — the Media Loop, the CX Quadrant, the scoring rubric — to run under their own name for their own clients.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">How does Verilume keep client data isolated? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Every account gets a clean, isolated workbook, provisioned fresh with no reuse of another client's structure. No account's data, scorecards, or usage history is ever visible to, or used to inform, another account's results.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Does AI replace my marketing team? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>No. Every seat across every function group — an employee, a fractional hire, or a role you haven't filled yet — gets a standing AI assistant for the always-on, first-draft work. Your team keeps the judgment calls, the relationships, and the final word. See <a href="#human-ai">Human + AI, built into every seat</a> above for the engagement models you can choose from, function by function.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Round 21 (2026-08-05), per direct instruction — each FAQ item starts
+    // collapsed; clicking its heading toggles it open/closed independently
+    // (not an exclusive accordion — more than one can be open at once).
+    function toggleFaqItem(heading){
+      heading.parentElement.classList.toggle('open');
+    }
+  </script>
+  <div class="footer-inner">
+    <span>Verilume — the truth between promise and experience, measured.</span>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a href="licensing.html">Licensing</a>
+
+    </nav>
+    <span>Website prototype — Deliverable 2 · static, no backend</span>
+  </div>
+</footer>
+
+<script>
+  // Pop-out nav menu — canonical site-wide pattern (see also portal.html):
+  // aria-expanded stays in sync, panel animates open/closed via max-height,
+  // and picking a link auto-closes the menu.
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  function setNavOpen(open){
+    navToggle.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navLinks.classList.toggle('open', open);
+    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
+  }
+  function closeNav(){ setNavOpen(false); }
+  navToggle.addEventListener('click', () => setNavOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', closeNav));
+  window.addEventListener('resize', () => {
+    if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+  });
+
+  // Improvement-metric flip cards — hover/focus flips on desktop for free,
+  // but touch devices have no hover, so click/tap toggles a .flipped class;
+  // Enter/Space does the same for keyboard users landing via tabindex.
+  document.querySelectorAll('.stat-flip').forEach(card => {
+    card.addEventListener('click', () => card.classList.toggle('flipped'));
+    card.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' || e.key === ' '){
+        e.preventDefault();
+        card.classList.toggle('flipped');
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

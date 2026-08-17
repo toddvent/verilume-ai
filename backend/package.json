@@ -1,0 +1,16 @@
+{
+  "name": "cxmedia-demo-backend",
+  "version": "1.0.0",
+  "description": "CXMedia.AI local demo backend — real account records + score history, replacing assessment.html's link-carried scorecard handoff. Local demonstration only, not a production deployment. See ../cxmedia-backend-production-scope.md for what a real deployment needs (auth, hosting, a managed database).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  },
+  "license": "UNLICENSED"
+}

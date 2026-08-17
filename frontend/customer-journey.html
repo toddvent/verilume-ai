@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Primary SEO -->
+<title>Customer Journey — Verilume</title>
+<meta name="description" content="How Verilume QAs a full cross-department campaign against its own objective: the Campaign Relevance Score, scoring marketing function completion and Brand Groundwork against the media promise and the CX delivery it's measured beside.">
+<meta name="keywords" content="campaign alignment score, campaign QA, cross-department campaign, brand groundwork, campaign scoring, customer experience journey">
+<link rel="canonical" href="https://www.verilume.ai/customer-journey.html">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilume">
+<meta property="og:title" content="Customer Journey — Verilume">
+<meta property="og:description" content="QA a full cross-department campaign against its own objective — the built, live Campaign Relevance Score.">
+<meta property="og:url" content="https://www.verilume.ai/customer-journey.html">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /*
+    Shares the exact site-wide design system defined in index.html. Built
+    around the real, live Campaign Relevance Score in portal.html
+    (computeCampaignRelevanceScore / renderCampaignQaPanel) — a labeled
+    breakdown, never a black-box number, per the standing "no black-box
+    scores" convention (cxmedia-ux-audit-round28.md). Reflects the current
+    round-36 model: marketing function completion + account Brand
+    Groundwork, with Campaign URL audit shown as a separate optional
+    signal, plus a synthesis sentence naming the weakest input.
+
+    Round 8 (2026-08-03 nav rebuild): sharpened the hero to foreground
+    Todd's exact framing — "QA a full cross-department campaign against
+    the campaign objective" — and absorbed the round-2 "baseline"
+    Media/CX promise-split content that was slated for this page but never
+    landed (see cxmedia-homepage-content-relocation.md). Its heading was
+    rewritten from "The baseline every function group starts from" to
+    "The two promises every campaign makes," since "function group" is
+    org-structure/home-page language, not this page's voice. New CSS this
+    round: .promise-split/.promise-card/.stages (the two-promise compare
+    grid) and .visual-block-sm/.tint-media/.tint-cx (its small paired image
+    placeholders) — none of this existed on the page before.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  a{color:inherit;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 32px;}
+  img,svg{max-width:100%;}
+
+  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+    /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
+     the same max-width as .wrap (page content). That meant logo+navlinks
+     only ever had a few px of real slack on any desktop viewport above the
+     hamburger breakpoint, since widening the browser window past that cap
+     added zero extra room. Any
+     minor font-metric difference between environments was enough to tip
+     that into a real overlap — this is why raising the hamburger breakpoint
+     alone (700px then 980px then 1180px) never fully fixed it. Fix: the
+     header row is allowed to be wider than the page content column
+     (max-width:1320px vs .wrap's 1040px) — same visual left/right
+     alignment via the shared 32px padding, but real margin at every width. */
+.nav{display:flex;align-items:center;justify-content:space-between;max-width:1320px;margin:0 auto;padding:0 32px;position:relative;}
+  .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
+  .logo b{color:var(--media);}
+  .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
+  .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
+  .navlinks a:hover{color:var(--ink);}
+  .navlinks a.active{color:var(--ink);border-bottom:2px solid var(--media);padding-bottom:2px;}
+  .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
+
+  .hero{padding:56px 0 0;background:
+      radial-gradient(ellipse 820px 520px at 14% 6%, rgba(8,145,178,0.13) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 900px 700px at 88% 26%, rgba(37,99,235,0.16) 0%, rgba(37,99,235,0) 65%),
+      var(--paper);
+  }
+  .hero-eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--advocacy);margin-bottom:26px;display:flex;align-items:center;gap:10px;}
+  /* Hero full-width fix (round 7, 2026-08-03): matches index.html's
+     unconstrained hero — see human-ai-agents.html for the full rationale.
+     Applied identically across every rebuilt page for consistency. */
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(38px,5.6vw,64px);line-height:1.08;margin:0 0 30px;letter-spacing:-0.02em;color:var(--ink);max-width:none;}
+  h1 .accent{color:var(--media);}
+  .h1-sub{display:block;font-size:0.4em;font-style:italic;font-weight:400;color:var(--muted);margin-top:10px;letter-spacing:normal;}
+  .lede{font-size:19px;line-height:1.6;max-width:none;color:var(--muted);margin-bottom:56px;}
+  .btn-primary{background:var(--ink);color:#fff;font-family:'Inter';font-weight:700;font-size:16px;padding:18px 32px;border-radius:var(--radius-pill);text-decoration:none;display:inline-block;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .btn-primary:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+  .btn-ghost{font-family:'Inter';font-weight:600;font-size:15px;color:var(--ink);text-decoration:none;padding:18px 8px;border-bottom:2px solid var(--line);}
+  .hero-ctas{display:flex;gap:26px;flex-wrap:wrap;align-items:center;padding-bottom:56px;}
+
+  .band{padding:120px 0;}
+  .band.alt{background:var(--paper-dim);}
+  .band-label{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;}
+  .band-label .num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;color:var(--advocacy);}
+  .band-label h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(28px,3.6vw,44px);margin:0;}
+  .band-value-prop{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:22px;color:var(--ink);margin:0 0 20px;max-width:680px;}
+  .band-intro{font-size:16.5px;line-height:1.7;max-width:680px;color:var(--muted);margin-bottom:56px;}
+
+  /* Score-breakdown panel — mirrors the labeled progress-bar pattern in
+     portal.html's renderCampaignQaPanel(), so this page reads as an
+     honest preview of the real screen, not an invented visual. */
+  .score-panel{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:40px 44px;}
+  .score-row{margin-bottom:22px;}
+  .score-row:last-child{margin-bottom:0;}
+  .score-row-head{display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px;}
+  .score-row-head .lbl{color:var(--ink);font-weight:600;}
+  .score-row-head .pct{font-weight:700;color:var(--cx);}
+  .score-bar{background:var(--paper-dim);border-radius:5px;height:10px;overflow:hidden;}
+  .score-bar > div{background:var(--cx);height:100%;}
+  .score-note{font-size:13px;color:var(--muted);margin-top:6px;}
+  .synthesis{margin-top:28px;padding-top:24px;border-top:1px dashed var(--line);font-size:15px;line-height:1.6;color:var(--ink);}
+  .synthesis b{color:var(--advocacy);}
+
+  .pillars-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:var(--line);border-radius:20px;overflow:hidden;}
+  .pillar{background:var(--paper);padding:36px 32px;}
+  .pillar .n{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:40px;color:var(--advocacy);opacity:0.45;line-height:1;}
+  .pillar h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:19px;margin:14px 0 10px;color:var(--ink);}
+  .pillar p{font-size:15px;line-height:1.6;color:var(--muted);margin:0;}
+
+  /* Two-promise compare grid — Media (the promise made) vs. CX (the
+     promise delivered), scored separately then compared. Paired small
+     image placeholders sit above it, same honest-labeled-placeholder
+     convention used site-wide. */
+  .promise-visuals{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+  .visual-block-sm{height:150px;border-radius:16px;border:1px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);text-align:center;padding:20px;}
+  .visual-block-sm.tint-media{background:linear-gradient(155deg, rgba(37,99,235,0.10), rgba(37,99,235,0.02));}
+  .visual-block-sm.tint-cx{background:linear-gradient(155deg, rgba(8,145,178,0.10), rgba(8,145,178,0.02));}
+  .visual-block-sm .vb-icon{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--muted);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;opacity:0.6;background:rgba(255,255,255,0.5);}
+  .visual-block-sm .vb-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;opacity:0.75;}
+
+  .promise-split{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--line);border-radius:20px;overflow:hidden;}
+  .promise-card{background:var(--paper);padding:40px 36px;}
+  .promise-card .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:16px;display:inline-block;font-weight:600;}
+  .promise-card.media .tag{color:var(--media);}
+  .promise-card.cx .tag{color:var(--cx);}
+  .promise-card h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:24px;margin:0 0 14px;color:var(--ink);}
+  .promise-card p{font-size:15.5px;line-height:1.65;color:var(--muted);margin:0;}
+  .promise-card .stages{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.03em;color:var(--muted);margin-top:18px;padding-top:16px;border-top:1px dashed var(--line);}
+  .loop-caption{font-size:14.5px;line-height:1.6;color:var(--muted);margin-top:24px;max-width:680px;}
+  .loop-caption .k{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;color:var(--advocacy);}
+
+  .cta-band{background:
+      radial-gradient(ellipse 640px 460px at 12% 15%, rgba(8,145,178,0.20) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 640px 460px at 88% 85%, rgba(37,99,235,0.24) 0%, rgba(37,99,235,0) 62%),
+      var(--paper-dim);
+    border:1px solid var(--line);border-radius:28px;padding:80px 40px;text-align:center;position:relative;overflow:hidden;
+  }
+  .cta-band h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:clamp(28px,4.2vw,44px);margin:0 0 18px;position:relative;color:var(--ink);}
+  .cta-band p{color:var(--muted);font-size:16px;max-width:480px;margin:0 auto 32px;line-height:1.6;position:relative;}
+  .cta-band .btn-primary{position:relative;background:var(--ink);color:#fff;}
+
+  .footer-faq{background:var(--paper-dim);padding:80px 0 40px;border-top:1px solid var(--line);}
+  .footer-faq .wrap{max-width:1040px;}
+  .footer-faq h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:28px;margin:0 0 28px;color:var(--ink);}
+  .footer-faq .faq-list{display:flex;flex-direction:column;}
+  .footer-faq .faq-item{padding:20px 0;border-top:1px solid var(--line);}
+  .footer-faq .faq-item:first-child{border-top:none;padding-top:0;}
+  .footer-faq .faq-item > h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:17.5px;margin:0;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;}
+  .footer-faq .faq-item > h3 .faq-chevron{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;color:var(--muted);transition:transform 0.15s ease;flex-shrink:0;}
+  .footer-faq .faq-item.open > h3 .faq-chevron{transform:rotate(90deg);}
+  .footer-faq .faq-item > .faq-body{display:none;margin-top:8px;}
+  .footer-faq .faq-item.open > .faq-body{display:block;}
+  .footer-faq .faq-item p{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;line-height:1.65;color:var(--muted);margin:0 0 12px;max-width:760px;}
+  .footer-faq .faq-item p:last-child{margin-bottom:0;}
+  .footer-faq .promise-split{margin:16px 0 10px;}
+  .footer-faq .promise-card{padding:24px 22px;}
+  .footer-faq .promise-card h3{font-size:20px;}
+  .footer-faq .pillars-grid{margin-top:6px;}
+  .footer-faq .pillar{padding:24px 22px;}
+
+  footer{padding:36px 0;background:var(--paper-dim);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);}
+  .footer-inner{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;max-width:1040px;margin:0 auto;padding:0 32px;}
+  .footer-nav{display:flex;flex-wrap:wrap;gap:18px;}
+  .footer-nav a{color:var(--muted);text-decoration:none;}
+  .footer-nav a:hover{color:var(--ink);}
+
+  @media (max-width:820px){
+    .pillars-grid{grid-template-columns:1fr;}
+    .promise-visuals{grid-template-columns:1fr;}
+    .promise-split{grid-template-columns:1fr;}
+    .band{padding:72px 0;}
+    .score-panel{padding:32px 26px;}
+  }
+  @media (max-width:1180px){
+    .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
+    /* Padding lives on .open, not the base rule — box-sizing:border-box can't shrink a box below its own padding, so a fixed vertical padding on the collapsed state left ~46px of the menu visibly peeking out beneath the header even at max-height:0. */
+    .navlinks.open{padding:20px 28px 26px;}
+    .nav-toggle{display:block;}
+  }
+</style>
+</head>
+<body>
+
+<header id="siteHeader">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="index.html">Veri<b>lume</b></a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    <div class="navlinks" id="navLinks">
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html" class="active">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" aria-labelledby="hero-heading">
+  <div class="wrap">
+    <div class="hero-eyebrow"><span class="dot"></span>QA a cross-department campaign against its own objective</div>
+    <h1 id="hero-heading">One campaign. One objective. <span class="accent">No department left guessing.</span><span class="h1-sub">The Campaign Relevance Score checks every function's omni-channel work against it.</span></h1>
+    <p class="lede">A single campaign touches PR, Brand, Omni-Channel Creative, Media Planning &amp; Ops, Performance Marketing, and Advanced Analytics — six of the seven function groups, one objective (the CMO seat sets strategy above the campaign rather than executing inside it). The Campaign Relevance Score is the proprietary system that checks what each of those functions actually delivered against what the campaign was built to do, and against your account's own brand groundwork — one place, not four disconnected reports each claiming the campaign is fine.</p>
+    <div class="hero-ctas">
+      <a class="btn-primary" href="assessment.html">Start your free assessment →</a>
+      <a class="btn-ghost" href="assessment-framework.html">See the full framework →</a>
+    </div>
+  </div>
+</section>
+
+<!-- Round 18: the "Two promises every campaign makes" section moved to
+     the footer FAQ below. Its core distinction (what media promises vs.
+     what CX delivers) is the same Media Loop concept the hero already
+     names and Assessment Framework already owns as its signature diagram
+     — per the content-module audit, this was a second full pass at that
+     idea before the page gets to its own actual product (the Campaign
+     Alignment Score below). The promise-split two-column contrast is
+     preserved inside the FAQ answer rather than collapsed to prose. -->
+
+<!-- WHAT IT MEASURES -->
+<section class="band alt">
+  <div class="wrap">
+    <div class="band-label"><span class="num">01</span><h2>The Campaign Relevance Score — built and live</h2></div>
+    <p class="band-value-prop">A labeled breakdown, never a black-box number.</p>
+    <p class="band-intro">Every input feeding this score is named and shown on its own — no single figure you have to just trust. This is a preview of the real screen inside the client portal, not a mockup invented for this page.</p>
+
+    <!-- Round 13 — Campaign URL audit filled in with a completed example
+         (was "Optional — shown separately" / 0%) and a Campaign Messaging
+         Score row added, mirroring the same change on human-ai-agents.html
+         (which links back here as "the full breakdown" — kept in sync by
+         hand, same convention as the rest of this shared component).
+         Messaging Score is NOT yet a real computed input in portal.html's
+         live Campaign Relevance Score (today: Marketing function
+         completion + Brand Groundwork only, URL audit informational) —
+         its own note says so rather than presenting it as already live. -->
+    <div class="score-panel">
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Marketing function completion</span><span class="pct">72%</span></div>
+        <div class="score-bar"><div style="width:72%;"></div></div>
+        <div class="score-note">Every marketing function activated on this campaign, complete and QA'd — not just started.</div>
+      </div>
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Account Brand Groundwork (Voice / Style Assets / Positioning)</span><span class="pct">67%</span></div>
+        <div class="score-bar"><div style="width:67%;"></div></div>
+        <div class="score-note">The account-level approvals this campaign inherits — real approvals, not a per-project content score.</div>
+      </div>
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Campaign Messaging Score</span><span class="pct">91%</span></div>
+        <div class="score-bar"><div style="width:91%;"></div></div>
+        <div class="score-note">How closely this campaign's actual messaging — copy, CTA, and channel angle — matches the objective it was originally briefed against, checked line by line rather than assumed from the plan. Newest input; not yet folded into the composite score above while we validate the scoring model.</div>
+      </div>
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Campaign URL audit</span><span class="pct">84%</span></div>
+        <div class="score-bar"><div style="width:84%;"></div></div>
+        <div class="score-note">18 of 22 live campaign URLs pass UTM tagging, canonical, and landing-page-match checks — kept separate so an unrelated hygiene check can't swing the overall score.</div>
+      </div>
+      <div class="synthesis">The weakest input right now is <b>Account Brand Groundwork (67%)</b> — that's the highest-leverage place to focus before this campaign is genuinely aligned, not just "done."</div>
+    </div>
+  </div>
+</section>
+
+<!-- Round 18: the "Why campaign transparency in one place matters" 3-pillar
+     section moved to the footer FAQ below — per the content-module audit,
+     these are plain-paragraph elaborations that collapse to Q&A with no
+     visual loss (unlike the promise-split above, which kept its two-column
+     structure). -->
+
+<!-- CTA -->
+<section class="band">
+  <div class="wrap">
+    <div class="cta-band">
+      <h2>See your own campaign's alignment score.</h2>
+      <p>Free, instant quadrant placement — no email required to see it.</p>
+      <a class="btn-primary" href="assessment.html">Start your free assessment →</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<section class="footer-faq" id="faq">
+  <div class="wrap">
+    <h2>Customer Journey FAQ</h2>
+    <div class="faq-list">
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">What are the "two promises" every campaign makes? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Before a campaign gets QA'd against its objective, it's already making two promises at once: what the media says, and what the experience actually delivers when someone shows up. We score both independently, then show exactly where they stop matching — the baseline every campaign gets checked against before its cross-department alignment score even runs. The waist of the loop is <b>PURCHASE</b> — the one stage where what you promised and what you deliver physically meet, usually in the form of a person. <a href="assessment-framework.html">See the full Media Loop →</a></p>
+        <div class="promise-split">
+          <div class="promise-card media">
+            <span class="tag">Media — the promise made</span>
+            <h3>Where attention is earned and kept</h3>
+            <p>Every ad, post, and press mention that gets someone to notice you — and to keep noticing, cycle after cycle.</p>
+            <div class="stages">Awareness → Consideration → Purchase → Loyalty → Advocacy</div>
+          </div>
+          <div class="promise-card cx">
+            <span class="tag">CX — the promise delivered</span>
+            <h3>Where the promise is kept, or broken</h3>
+            <p>The four places a customer actually meets you — the call, the counter, the room, the delivery — no matter what the ad said.</p>
+            <div class="stages">Creative Visuals · Call Center · POS/Team · Product Delivery</div>
+          </div>
+        </div>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Why does campaign transparency in one place matter? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p><b>One place, not four reports.</b> Function status, brand approvals, and (when available) URL health all live on the same campaign — no reconciling three separate dashboards to know where things stand.</p>
+        <p><b>Named, not hidden.</b> Every component of the score is labeled and shown at its own percentage — so "why is this campaign not aligned yet" always has a specific, checkable answer.</p>
+        <p><b>One weakest link, named.</b> Rather than eyeballing several bars, the synthesis line tells you exactly which input to fix first — the same "synthesize, don't just display" approach used across the portal's dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Round 21 (2026-08-05), per direct instruction — each FAQ item starts
+    // collapsed; clicking its heading toggles it open/closed independently
+    // (not an exclusive accordion — more than one can be open at once).
+    function toggleFaqItem(heading){
+      heading.parentElement.classList.toggle('open');
+    }
+  </script>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <span>Verilume — the truth between promise and experience, measured.</span>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a href="licensing.html">Licensing</a>
+      <a href="#faq">FAQ</a>
+
+    </nav>
+    <span>Website prototype — Deliverable 2 · static, no backend</span>
+  </div>
+</footer>
+
+<script>
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  function setNavOpen(open){
+    navToggle.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navLinks.classList.toggle('open', open);
+    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
+  }
+  function closeNav(){ setNavOpen(false); }
+  navToggle.addEventListener('click', () => setNavOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', closeNav));
+  window.addEventListener('resize', () => {
+    if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+  });
+</script>
+
+</body>
+</html>

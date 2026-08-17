@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Ops Console (Staff Only)</title>
+<style>
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+    --warn:#B45309; --warn-tint:#FEF3E2; --danger:#B42318; --danger-tint:#FEF1F0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.05) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.06) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 28px 80px;}
+  a{color:inherit;}
+
+  /* ---- Top bar ---- */
+  .staffbar{background:var(--ink);color:#fff;}
+  .staffbar-inner{max-width:1140px;margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.75rem;letter-spacing:0.04em;}
+  .staffbar-inner b{color:var(--media-tint);}
+  .staffbar .op{color:#B9BEDB;}
+
+  .topnav{border-bottom:1px solid var(--line);}
+  .topnav-inner{max-width:1140px;margin:0 auto;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .wordmark{font-size:1.25rem;font-weight:500;}
+  .wordmark b{color:var(--media);font-weight:600;}
+  .wordmark .sub{font-size:0.72rem;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-left:10px;padding-left:10px;border-left:1px solid var(--line);}
+  .nav-actions{display:flex;gap:10px;align-items:center;}
+  .single-admin-note{font-size:0.7rem;color:var(--muted);background:var(--paper-dim);border:1px solid var(--line-hairline);padding:6px 12px;border-radius:var(--radius-pill);}
+
+  h1{font-size:1.9rem;margin:0 0 4px;letter-spacing:-0.01em;}
+  h2{font-size:1.15rem;margin:0 0 4px;}
+  .lede{color:var(--muted);font-size:0.92rem;max-width:640px;line-height:1.5;margin:0 0 24px;}
+  .eyebrow{font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--media);font-weight:600;margin-bottom:8px;}
+
+  /* ---- Badges ---- */
+  .badge{font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;padding:3px 9px;border-radius:10px;white-space:nowrap;background:var(--paper-dim);color:var(--muted);font-weight:600;display:inline-block;}
+  .badge.tier-growth{background:var(--advocacy-tint);color:var(--advocacy);}
+  .badge.tier-starter{background:var(--cx-tint);color:var(--cx);}
+  .badge.tier-enterprise{background:#111827;color:#fff;}
+  .badge.status-pending{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-active{background:#E7F6EC;color:#15803D;}
+  .badge.status-none{background:var(--paper-dim);color:var(--muted);}
+  .badge.status-signed{background:#E7F6EC;color:#15803D;}
+  .badge.status-sent{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-draft{background:var(--paper-dim);color:var(--muted);}
+  .badge.status-overdue{background:var(--danger-tint);color:var(--danger);}
+  .badge.status-paid{background:#E7F6EC;color:#15803D;}
+  .badge.status-due{background:var(--warn-tint);color:var(--warn);}
+
+  /* ---- Directory ---- */
+  .directory-grid{display:grid;gap:16px;}
+  .acct-card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-md);padding:22px 24px;cursor:pointer;transition:box-shadow var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;}
+  .acct-card:hover{box-shadow:var(--shadow-md);border-color:var(--line-strong);}
+  .acct-card .acct-name{font-size:1.15rem;font-weight:600;margin-bottom:6px;}
+  .acct-card .acct-meta{font-size:0.82rem;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .acct-card .acct-badges{display:flex;gap:6px;flex-wrap:wrap;}
+  .acct-card .acct-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+  .acct-card .next-step{font-size:0.78rem;color:var(--warn);font-weight:600;}
+
+  .safeguard{background:var(--danger-tint);border:1px solid #F3C6C2;border-radius:var(--radius-sm);padding:14px 18px;font-size:0.82rem;color:#7A241C;margin:18px 0 28px;line-height:1.5;}
+  .safeguard b{color:var(--danger);}
+
+  /* ---- Workspace ---- */
+  .back-link{display:inline-block;font-size:0.8rem;color:var(--media);text-decoration:none;margin-bottom:16px;cursor:pointer;}
+  .back-link:hover{text-decoration:underline;}
+  .workspace-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:22px;padding-bottom:20px;border-bottom:1px solid var(--line-hairline);}
+  .workspace-head .acct-badges{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+
+  .tab-row{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px;flex-wrap:wrap;}
+  .tab{padding:10px 16px;font-size:0.85rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--media);border-bottom-color:var(--media);}
+
+  .module{background:var(--white);border:1px solid var(--line);border-top-width:2px;border-top-color:var(--media-tint);border-radius:14px;margin-bottom:18px;padding:22px 24px;}
+  .module h3{font-size:0.95rem;margin:0 0 4px;}
+  .module .desc{font-size:0.82rem;color:var(--muted);margin:0 0 16px;line-height:1.5;}
+
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  .field-row.three{grid-template-columns:1fr 1fr 1fr;}
+  label{font-size:0.75rem;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;}
+  select,input[type=text],input[type=number],input[type=date],textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);}
+  textarea{resize:vertical;min-height:60px;}
+  .btn{font-size:0.8rem;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;}
+  .btn:hover{border-color:var(--line-strong);}
+  .btn.primary{background:var(--media);border-color:var(--media);color:#fff;}
+  .btn.primary:hover{background:#1D4ED8;}
+  .btn.small{padding:5px 11px;font-size:0.72rem;}
+  .btn.danger{color:var(--danger);border-color:#F3C6C2;}
+
+  table{width:100%;border-collapse:collapse;font-size:0.82rem;}
+  th{text-align:left;font-size:0.68rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);}
+  td{padding:10px 10px;border-bottom:1px solid var(--line-hairline);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .row-actions{display:flex;gap:6px;}
+
+  .empty-note{font-size:0.82rem;color:var(--muted);font-style:italic;padding:10px 0;}
+  .proto-note{font-size:0.72rem;color:var(--muted);background:var(--paper-dim);border:1px dashed var(--line-strong);border-radius:8px;padding:8px 12px;margin-top:10px;line-height:1.5;}
+
+  .toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
+  .toggle .switch{width:34px;height:18px;border-radius:10px;background:var(--line-strong);position:relative;transition:background var(--dur-fast) var(--ease);flex-shrink:0;}
+  .toggle .switch::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left var(--dur-fast) var(--ease);}
+  .toggle.on .switch{background:#15803D;}
+  .toggle.on .switch::after{left:18px;}
+
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<div class="staffbar">
+  <div class="staffbar-inner">
+    <span><b>VERILUME OPS CONSOLE</b> — internal staff tool, not reachable from the client Portal or account pages</span>
+    <span class="op">Signed in as: Todd (single-admin)</span>
+  </div>
+</div>
+
+<div class="topnav">
+  <div class="topnav-inner">
+    <div class="wordmark"><b>Verilume</b><span class="sub">Ops Console</span></div>
+    <div class="nav-actions">
+      <span class="single-admin-note">Single-admin mode — multi-staff roles &amp; audit log are future work</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ==================== DIRECTORY VIEW ==================== -->
+  <div id="view-directory">
+    <div style="padding-top:28px;">
+      <div class="eyebrow">Accounts</div>
+      <h1>Accounts Directory</h1>
+      <p class="lede">Every real account CX Experiences operates. Click an account to open its workspace — data &amp; connections, team access, plan &amp; billing, and legal documents.</p>
+    </div>
+
+    <div class="safeguard">
+      <b>Naming safeguard —</b> the offline demo package also has a fully-seeded account under the name "Atlas Ocean Voyages" (account ID <code>CXM-NAT-2026-700</code>), built from public facts but with entirely fictional campaigns, invoices, and org chart. The real Atlas Ocean Voyages account below is a separate, brand-new account — never seeded from, or sharing data with, the demo account. See <code>cxmedia-first-client-beta-launch-plan-2026-08-08.md</code> Section 1.2.
+    </div>
+
+    <div class="directory-grid" id="directoryGrid"></div>
+
+    <div class="proto-note" style="margin-top:22px;">
+      Prototype note: account data below is illustrative, matching the decisions already recorded in the beta launch plan (tier, footprint, friend-rate pricing) — connection status, team roster, invoices, and legal documents are shown in their honest current state (not yet provisioned), not filled in with placeholder activity.
+    </div>
+  </div>
+
+  <!-- ==================== WORKSPACE VIEW ==================== -->
+  <div id="view-workspace" class="hidden">
+    <div style="padding-top:28px;">
+      <span class="back-link" onclick="showDirectory()">← Back to Accounts Directory</span>
+      <div class="workspace-head">
+        <div>
+          <div class="eyebrow" id="wsEyebrow">Account Workspace</div>
+          <h1 id="wsName">—</h1>
+          <div class="acct-badges" id="wsBadges"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-row" id="tabRow">
+      <div class="tab active" data-tab="data">Data &amp; Connections</div>
+      <div class="tab" data-tab="team">Team Access</div>
+      <div class="tab" data-tab="billing">Plan &amp; Billing</div>
+      <div class="tab" data-tab="legal">Legal &amp; Documents</div>
+    </div>
+
+    <!-- ---- Tab: Data & Connections ---- -->
+    <div class="tab-pane" id="pane-data">
+      <div class="module">
+        <h3>Media &amp; analytics connections</h3>
+        <p class="desc">The staff-side half of the GA4 / SA360 / Meta setup split — enter what Verilume needs to record once the client's own account grants access. Mirrors the client-facing Analytics Integrations card, reached here instead so staff can complete setup on a client's behalf.</p>
+        <div class="field-row three">
+          <div>
+            <label>Pathway</label>
+            <select id="connPathway">
+              <option value="">Not yet selected</option>
+              <option value="ga4">GA4</option>
+              <option value="sa360">SA360</option>
+              <option value="meta">Meta</option>
+              <option value="snowflake">Snowflake (client warehouse)</option>
+              <option value="fallback">Fallback / manual notes</option>
+            </select>
+          </div>
+          <div>
+            <label>Account / Property ID</label>
+            <input type="text" id="connAccountId" placeholder="Not yet provided">
+          </div>
+          <div>
+            <label>Status</label>
+            <select id="connStatus">
+              <option value="none">Not connected</option>
+              <option value="pending">Pending client grant</option>
+              <option value="connected">Connected</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn primary" onclick="saveConnection()">Save connection status</button>
+        <div class="proto-note">Writes to the same <code>analyticsPathway</code> / <code>analyticsGa4AccountId</code> / <code>analyticsStatus</code> fields the client Portal already reads — this screen is the missing staff-side editor for them, not a new data model.</div>
+      </div>
+
+      <div class="module">
+        <h3>Bulk data upload on the client's behalf</h3>
+        <p class="desc">The same import mechanisms already live in the client Portal — exposed here for setup work when a client hands off a spreadsheet rather than entering it themselves.</p>
+        <div class="field-row">
+          <div>
+            <label>Marketing Calendar (bulk campaign rows)</label>
+            <button class="btn" onclick="alert('Prototype: would open the same bulk-upload flow as the client Portal\'s Marketing Calendar Bulk Upload.')">Upload CSV…</button>
+          </div>
+          <div>
+            <label>MMM data inputs (historical spend/period rows)</label>
+            <button class="btn" onclick="alert('Prototype: would open the same row-entry flow as the client Portal\'s MMM Data Inputs.')">Add rows…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Tab: Team Access ---- -->
+    <div class="tab-pane hidden" id="pane-team">
+      <div class="module">
+        <h3>Team member access</h3>
+        <p class="desc">Staff override, on top of the client's own self-service roster in <code>account.html</code> — use this when a client asks CX Experiences directly to deactivate access, or when troubleshooting.</p>
+        <table id="teamTable">
+          <thead><tr><th>Name</th><th>Role</th><th>Access</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-note" id="teamEmptyNote"></div>
+      </div>
+    </div>
+
+    <!-- ---- Tab: Plan & Billing ---- -->
+    <div class="tab-pane hidden" id="pane-billing">
+      <div class="module">
+        <h3>Account level</h3>
+        <p class="desc">Changing tier or footprint here does not automatically resend an invoice — check the next invoice amount below after a change.</p>
+        <div class="field-row">
+          <div>
+            <label>Tier</label>
+            <select id="planTier">
+              <option value="starter">Starter</option>
+              <option value="growth">Growth</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div>
+            <label>Footprint</label>
+            <select id="planFootprint">
+              <option value="local">Local</option>
+              <option value="national">National</option>
+              <option value="franchise">Franchise</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn primary" onclick="savePlan()">Save account level</button>
+      </div>
+
+      <div class="module">
+        <h3>Premium Capability — external research &amp; quant/multi-dimensional asks</h3>
+        <p class="desc">Gates the two ask-shapes portal.html's conversational front door treats as Enterprise-only (live external research, quant/multi-dimensional modeling) — a non-Enterprise account gets a warm decline with an upgrade link, never a hard block. Enterprise's baseline allotment (30 asks/mo) is folded into the base fee, not tracked here. This module is only for an <b>a la carte commitment tier bought on top of that baseline</b> — staff-recorded after a sales conversation, not a client self-serve purchase, same quote-gated motion as every other Enterprise plan change on this tab. See <code>cxmedia-pnl-model.xlsx</code>, Active Participation Addendum tab, Section 9.</p>
+        <div class="field-row">
+          <div>
+            <label>A la carte commitment tier</label>
+            <select id="premiumCapTier">
+              <option value="none">None — Enterprise baseline only</option>
+              <option value="flex">Flex — month-to-month (+25 asks/mo, $150/mo)</option>
+              <option value="quarterly">Quarterly commit (+75 asks/mo, $360/mo)</option>
+              <option value="annual">Annual commit (+200 asks/mo, $800/mo)</option>
+            </select>
+          </div>
+          <div>
+            <label>Commitment start date</label>
+            <input type="text" id="premiumCapStart" placeholder="e.g. 2026-08-12">
+          </div>
+        </div>
+        <div id="premiumCapNote" class="empty-note"></div>
+        <button class="btn primary" onclick="savePremiumCap()">Save premium capability</button>
+      </div>
+
+      <div class="module">
+        <h3>Invoices — manual billing</h3>
+        <p class="desc">No payment processor involved — bank transfer, marked here by hand as status changes. Matches the Phase 3 decision in <code>cxmedia-release-schedule.md</code>.</p>
+        <table id="invoiceTable">
+          <thead><tr><th>Period</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-note" id="invoiceEmptyNote"></div>
+        <div class="module" style="background:var(--paper-dim);border:1px dashed var(--line-strong);margin-top:14px;">
+          <h3 style="font-size:0.85rem;">Create a new invoice</h3>
+          <div class="field-row three">
+            <div><label>Period</label><input type="text" id="newInvPeriod" placeholder="e.g. August 2026"></div>
+            <div><label>Description</label><input type="text" id="newInvDesc" placeholder="e.g. Growth / National, friend rate"></div>
+            <div><label>Amount ($)</label><input type="number" id="newInvAmount" placeholder="6300"></div>
+          </div>
+          <button class="btn primary" onclick="createInvoice()">Create invoice — status: Due</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Tab: Legal & Documents ---- -->
+    <div class="tab-pane hidden" id="pane-legal">
+      <div class="module">
+        <h3>Signed legal documents</h3>
+        <p class="desc">Where a signed document lives once it exists — independent of which e-signature vendor eventually gets chosen (still open, see <code>cxmedia-deliverable-4-notes.md</code>). Usable today as a manual upload spot for anything signed and sent back.</p>
+        <table id="legalTable">
+          <thead><tr><th>Document</th><th>Status</th><th>Signed date</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---- Illustrative account state (client-side only, matches the real, decided
+// facts from cxmedia-first-client-beta-launch-plan-2026-08-08.md; everything
+// else is honestly shown as not-yet-provisioned, not filled with fake activity) ----
+const ACCOUNTS = {
+  'silver-trident': {
+    name: 'Silver Trident',
+    tier: 'growth', footprint: 'national',
+    friendRate: 6300,
+    status: 'pending',
+    connection: { pathway: '', accountId: '', status: 'none' },
+    team: [
+      { name: 'Todd (CMO/Admin)', role: 'Admin', active: true }
+    ],
+    invoices: [],
+    legal: [
+      { doc: 'Mutual NDA', status: 'draft', signedDate: '' },
+      { doc: 'Contract / SOW', status: 'draft', signedDate: '' },
+      { doc: 'Terms of Service', status: 'draft', signedDate: '' },
+      { doc: 'IP Ownership & Assignment Addendum', status: 'draft', signedDate: '' },
+    ],
+    // Premium Capability = the gated external-research / quant-modeling asks (portal.html's
+    // cfdPremiumGateReply()). Enterprise's included baseline is folded into the base fee, not
+    // shown as its own toggle here — this field only tracks whether the account has an active
+    // a la carte commitment tier bought ON TOP of that baseline. 'none' is the honest default;
+    // neither real account is Enterprise yet, per the beta launch plan.
+    premiumCapability: { commitmentTier: 'none', commitmentStart: '' },
+  },
+  'atlas-ocean-voyages': {
+    name: 'Atlas Ocean Voyages (real client account)',
+    tier: 'growth', footprint: 'national',
+    friendRate: 6300,
+    status: 'pending',
+    connection: { pathway: '', accountId: '', status: 'none' },
+    team: [
+      { name: 'Todd (CMO/Admin)', role: 'Admin', active: true }
+    ],
+    invoices: [],
+    legal: [
+      { doc: 'Mutual NDA', status: 'draft', signedDate: '' },
+      { doc: 'Contract / SOW', status: 'draft', signedDate: '' },
+      { doc: 'Terms of Service', status: 'draft', signedDate: '' },
+      { doc: 'IP Ownership & Assignment Addendum', status: 'draft', signedDate: '' },
+    ],
+    premiumCapability: { commitmentTier: 'none', commitmentStart: '' },
+  },
+};
+
+// Pricing shape for the a la carte extension — mirrors cxmedia-pnl-model.xlsx's
+// "Active Participation Addendum" tab, Section 9b (2026-08-12). Placeholder figures,
+// same discipline as every other dollar figure in that workbook — not market-tested.
+const PREMIUM_CAP_TIERS = {
+  none:      { label: 'None — Enterprise baseline only', extraAsks: 0,   price: 0,   perAsk: 0 },
+  flex:      { label: 'Flex — month-to-month',            extraAsks: 25,  price: 150, perAsk: 6.00 },
+  quarterly: { label: 'Quarterly commit — 3-mo minimum',  extraAsks: 75,  price: 360, perAsk: 4.80 },
+  annual:    { label: 'Annual commit — 12-mo minimum',    extraAsks: 200, price: 800, perAsk: 4.00 },
+};
+
+let currentAcctKey = null;
+
+function tierBadge(tier){
+  const label = tier.charAt(0).toUpperCase() + tier.slice(1);
+  return `<span class="badge tier-${tier}">${label}</span>`;
+}
+function statusBadge(status){
+  const map = {
+    pending: ['status-pending','Pending provisioning'],
+    active: ['status-active','Active'],
+  };
+  const [cls,label] = map[status] || ['status-none', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function renderDirectory(){
+  const grid = document.getElementById('directoryGrid');
+  grid.innerHTML = Object.entries(ACCOUNTS).map(([key, a]) => `
+    <div class="acct-card" onclick="openAccount('${key}')">
+      <div>
+        <div class="acct-name">${a.name}</div>
+        <div class="acct-meta">
+          <span class="acct-badges">
+            ${tierBadge(a.tier)}
+            <span class="badge">${a.footprint.charAt(0).toUpperCase()+a.footprint.slice(1)}</span>
+            ${statusBadge(a.status)}
+          </span>
+          <span>·</span>
+          <span>$${a.friendRate.toLocaleString()}/mo (friend rate)</span>
+        </div>
+      </div>
+      <div class="acct-right">
+        <div class="next-step">Next: hosting + legal review before provisioning</div>
+        <span class="btn small">Open workspace →</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showDirectory(){
+  document.getElementById('view-directory').classList.remove('hidden');
+  document.getElementById('view-workspace').classList.add('hidden');
+  currentAcctKey = null;
+}
+
+function openAccount(key){
+  currentAcctKey = key;
+  const a = ACCOUNTS[key];
+  document.getElementById('view-directory').classList.add('hidden');
+  document.getElementById('view-workspace').classList.remove('hidden');
+  document.getElementById('wsName').textContent = a.name;
+  document.getElementById('wsBadges').innerHTML = `${tierBadge(a.tier)} <span class="badge">${a.footprint.charAt(0).toUpperCase()+a.footprint.slice(1)}</span> ${statusBadge(a.status)}`;
+
+  document.getElementById('connPathway').value = a.connection.pathway;
+  document.getElementById('connAccountId').value = a.connection.accountId;
+  document.getElementById('connStatus').value = a.connection.status;
+
+  document.getElementById('planTier').value = a.tier;
+  document.getElementById('planFootprint').value = a.footprint;
+
+  document.getElementById('premiumCapTier').value = a.premiumCapability.commitmentTier;
+  document.getElementById('premiumCapStart').value = a.premiumCapability.commitmentStart;
+  renderPremiumCapNote();
+
+  renderTeam();
+  renderInvoices();
+  renderLegal();
+  selectTab('data');
+}
+
+function renderPremiumCapNote(){
+  const a = ACCOUNTS[currentAcctKey];
+  const note = document.getElementById('premiumCapNote');
+  if (a.tier !== 'enterprise'){
+    note.textContent = a.premiumCapability.commitmentTier === 'none'
+      ? `${a.name} is on ${a.tier.charAt(0).toUpperCase()+a.tier.slice(1)} tier today — the gate in portal.html already routes this account's research/quant asks to the soft-decline + upgrade link. A commitment tier can still be recorded ahead of an Enterprise upgrade, but won't take effect until the account moves to Enterprise.`
+      : `Recorded ahead of an Enterprise upgrade — this account is still ${a.tier.charAt(0).toUpperCase()+a.tier.slice(1)} tier today, so the commitment isn't active yet. It'll take effect once the tier change above is saved.`;
+  } else {
+    const t = PREMIUM_CAP_TIERS[a.premiumCapability.commitmentTier];
+    note.textContent = a.premiumCapability.commitmentTier === 'none'
+      ? 'Enterprise baseline only (30 premium asks/mo, included in the base fee) — no a la carte commitment on file.'
+      : `Active: ${t.label} — +${t.extraAsks} asks/mo on top of the Enterprise baseline, $${t.price}/mo ($${t.perAsk.toFixed(2)}/ask)${a.premiumCapability.commitmentStart ? ', started ' + a.premiumCapability.commitmentStart : ''}.`;
+  }
+}
+
+function savePremiumCap(){
+  const a = ACCOUNTS[currentAcctKey];
+  a.premiumCapability.commitmentTier = document.getElementById('premiumCapTier').value;
+  a.premiumCapability.commitmentStart = document.getElementById('premiumCapStart').value;
+  renderPremiumCapNote();
+}
+
+function renderTeam(){
+  const a = ACCOUNTS[currentAcctKey];
+  const tbody = document.querySelector('#teamTable tbody');
+  tbody.innerHTML = a.team.map((m, i) => `
+    <tr>
+      <td>${m.name}</td>
+      <td>${m.role}</td>
+      <td><span class="toggle ${m.active ? 'on':''}" onclick="toggleTeamAccess(${i})"><span class="switch"></span>${m.active ? 'Active' : 'Deactivated'}</span></td>
+      <td></td>
+    </tr>
+  `).join('');
+  document.getElementById('teamEmptyNote').textContent = a.team.length <= 1
+    ? 'Only the account Admin exists today — this is where a client\'s other team members would appear once invited.'
+    : '';
+}
+function toggleTeamAccess(i){
+  const a = ACCOUNTS[currentAcctKey];
+  a.team[i].active = !a.team[i].active;
+  renderTeam();
+}
+
+function saveConnection(){
+  const a = ACCOUNTS[currentAcctKey];
+  a.connection.pathway = document.getElementById('connPathway').value;
+  a.connection.accountId = document.getElementById('connAccountId').value;
+  a.connection.status = document.getElementById('connStatus').value;
+  alert('Saved (prototype — client-side state only, not yet wired to a real backend field).');
+}
+
+function savePlan(){
+  const a = ACCOUNTS[currentAcctKey];
+  const oldTier = a.tier;
+  a.tier = document.getElementById('planTier').value;
+  a.footprint = document.getElementById('planFootprint').value;
+  document.getElementById('wsBadges').innerHTML = `${tierBadge(a.tier)} <span class="badge">${a.footprint.charAt(0).toUpperCase()+a.footprint.slice(1)}</span> ${statusBadge(a.status)}`;
+  renderPremiumCapNote();
+  if (oldTier !== a.tier) {
+    alert('Tier changed from ' + oldTier + ' to ' + a.tier + ' — remember to reflect this in the next invoice amount below, and note that Premium Capability status above just changed too.');
+  }
+}
+
+function renderInvoices(){
+  const a = ACCOUNTS[currentAcctKey];
+  const tbody = document.querySelector('#invoiceTable tbody');
+  tbody.innerHTML = a.invoices.map((inv, i) => `
+    <tr>
+      <td>${inv.period}</td>
+      <td>${inv.desc}</td>
+      <td>$${Number(inv.amount).toLocaleString()}</td>
+      <td><span class="badge status-${inv.status}">${inv.status}</span></td>
+      <td class="row-actions">
+        ${inv.status === 'due' ? `<button class="btn small" onclick="markInvoicePaid(${i})">Mark Paid</button>` : ''}
+        ${inv.status === 'due' ? `<button class="btn small danger" onclick="markInvoiceOverdue(${i})">Mark Overdue</button>` : ''}
+      </td>
+    </tr>
+  `).join('');
+  document.getElementById('invoiceEmptyNote').textContent = a.invoices.length === 0
+    ? 'No invoices yet — this account hasn\'t been provisioned or billed.'
+    : '';
+}
+function createInvoice(){
+  const a = ACCOUNTS[currentAcctKey];
+  const period = document.getElementById('newInvPeriod').value || 'Unlabeled period';
+  const desc = document.getElementById('newInvDesc').value || '—';
+  const amount = document.getElementById('newInvAmount').value || a.friendRate;
+  a.invoices.push({ period, desc, amount, status: 'due' });
+  document.getElementById('newInvPeriod').value = '';
+  document.getElementById('newInvDesc').value = '';
+  document.getElementById('newInvAmount').value = '';
+  renderInvoices();
+}
+function markInvoicePaid(i){ ACCOUNTS[currentAcctKey].invoices[i].status = 'paid'; renderInvoices(); }
+function markInvoiceOverdue(i){ ACCOUNTS[currentAcctKey].invoices[i].status = 'overdue'; renderInvoices(); }
+
+function renderLegal(){
+  const a = ACCOUNTS[currentAcctKey];
+  const tbody = document.querySelector('#legalTable tbody');
+  tbody.innerHTML = a.legal.map((doc, i) => `
+    <tr>
+      <td>${doc.doc}</td>
+      <td><span class="badge status-${doc.status}">${doc.status}</span></td>
+      <td>${doc.signedDate || '—'}</td>
+      <td class="row-actions">
+        ${doc.status !== 'sent' && doc.status !== 'signed' ? `<button class="btn small" onclick="markLegalSent(${i})">Mark Sent</button>` : ''}
+        ${doc.status === 'sent' ? `<button class="btn small primary" onclick="markLegalSigned(${i})">Upload signed / Mark Signed</button>` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+function markLegalSent(i){ ACCOUNTS[currentAcctKey].legal[i].status = 'sent'; renderLegal(); }
+function markLegalSigned(i){
+  const a = ACCOUNTS[currentAcctKey];
+  a.legal[i].status = 'signed';
+  a.legal[i].signedDate = new Date().toISOString().slice(0,10);
+  renderLegal();
+}
+
+function selectTab(tab){
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+  document.getElementById('pane-' + tab).classList.remove('hidden');
+}
+document.getElementById('tabRow').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (tab) selectTab(tab.dataset.tab);
+});
+
+renderDirectory();
+</script>
+
+</body>
+</html>

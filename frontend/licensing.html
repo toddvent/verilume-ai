@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Primary SEO -->
+<title>Licensing — Verilume</title>
+<meta name="description" content="License the Verilume instrument — the Media Loop, the CX Quadrant, the scoring rubric — to run under your own agency's name for your own clients.">
+<meta name="keywords" content="white label marketing assessment, agency licensing, marketing diagnostic licensing">
+<link rel="canonical" href="https://www.verilume.ai/licensing.html">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilume">
+<meta property="og:title" content="Licensing — Verilume">
+<meta property="og:description" content="Agencies license the same instrument we use to run under their own name, for their own clients.">
+<meta property="og:url" content="https://www.verilume.ai/licensing.html">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /*
+    Shares the site-wide design system defined in index.html. New standalone
+    page (round 6 of the 2026-08-03 nav rebuild) — Licensing was removed
+    from the home page in round 3 with no destination; per Todd's decision
+    it now gets its own page, linked from the footer of every page rather
+    than the top-level nav.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  a{color:inherit;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 32px;}
+  img,svg{max-width:100%;}
+
+  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+    /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
+     the same max-width as .wrap (page content). That meant logo+navlinks
+     only ever had a few px of real slack on any desktop viewport above the
+     hamburger breakpoint, since widening the browser window past that cap
+     added zero extra room. Any
+     minor font-metric difference between environments was enough to tip
+     that into a real overlap — this is why raising the hamburger breakpoint
+     alone (700px then 980px then 1180px) never fully fixed it. Fix: the
+     header row is allowed to be wider than the page content column
+     (max-width:1320px vs .wrap's 1040px) — same visual left/right
+     alignment via the shared 32px padding, but real margin at every width. */
+.nav{display:flex;align-items:center;justify-content:space-between;max-width:1320px;margin:0 auto;padding:0 32px;position:relative;}
+  .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
+  .logo b{color:var(--media);}
+  .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
+  .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
+  .navlinks a:hover{color:var(--ink);}
+  .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
+
+  .hero{padding:56px 0;background:
+      radial-gradient(ellipse 820px 520px at 14% 6%, rgba(8,145,178,0.13) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 900px 700px at 88% 26%, rgba(37,99,235,0.16) 0%, rgba(37,99,235,0) 65%),
+      var(--paper);
+  }
+  .hero-eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--advocacy);margin-bottom:26px;display:flex;align-items:center;gap:10px;}
+  /* Hero full-width fix (round 7, 2026-08-03): matches index.html's
+     unconstrained hero — see human-ai-agents.html for the full rationale.
+     Applied identically across every rebuilt page for consistency. */
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(38px,5.6vw,60px);line-height:1.1;margin:0 0 24px;letter-spacing:-0.02em;color:var(--ink);max-width:none;}
+  .lede{font-size:19px;line-height:1.6;max-width:none;color:var(--muted);}
+
+  .band{padding:80px 0;}
+  .band-intro{font-size:16.5px;line-height:1.7;max-width:640px;color:var(--muted);margin-bottom:36px;}
+  .license-list{font-size:15.5px;line-height:1.8;max-width:640px;color:var(--muted);padding-left:20px;margin:0 0 40px;}
+  .license-list li{margin-bottom:8px;}
+
+  .contact-panel{background:var(--paper-dim);border:1px solid var(--line);border-radius:20px;padding:44px 40px;max-width:640px;}
+  .contact-panel h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:22px;margin:0 0 12px;color:var(--ink);}
+  .contact-panel p{font-size:15px;line-height:1.6;color:var(--muted);margin:0 0 24px;}
+  .btn-primary{background:var(--ink);color:#fff;font-family:'Inter';font-weight:700;font-size:16px;padding:18px 32px;border-radius:var(--radius-pill);text-decoration:none;display:inline-block;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .btn-primary:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+  .contact-panel .note{font-size:12.5px;color:var(--muted);opacity:0.8;margin-top:16px;}
+
+  footer{padding:36px 0;background:var(--paper-dim);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);}
+  .footer-inner{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;max-width:1040px;margin:0 auto;padding:0 32px;}
+  .footer-nav{display:flex;flex-wrap:wrap;gap:18px;}
+  .footer-nav a{color:var(--muted);text-decoration:none;}
+  .footer-nav a:hover{color:var(--ink);}
+
+  @media (max-width:820px){
+    .band{padding:56px 0;}
+  }
+  @media (max-width:1180px){
+    .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
+    .navlinks.open{padding:20px 28px 26px;}
+    .nav-toggle{display:block;}
+  }
+</style>
+</head>
+<body>
+
+<header id="siteHeader">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="index.html">Veri<b>lume</b></a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    <div class="navlinks" id="navLinks">
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" aria-labelledby="hero-heading">
+  <div class="wrap">
+    <div class="hero-eyebrow"><span class="dot"></span>For agencies</div>
+    <h1 id="hero-heading">License this for your agency.</h1>
+    <p class="lede">Put your name on the instrument, not just the results.</p>
+  </div>
+</section>
+
+<!-- LICENSING DETAIL -->
+<section class="band">
+  <div class="wrap">
+    <p class="band-intro">Agencies license the same instrument we use — the Media Loop, the CX Quadrant, and the scoring rubric — and run it under their own name, for their own clients. Every one of your clients gets the same guarantee ours do: a clean account and a clean workbook that never touches anyone else's — yours included.</p>
+    <ul class="license-list">
+      <li>Your branding on the client-facing report</li>
+      <li>The same role-by-role toolkit we use, scoped strictly to your accounts</li>
+      <li>NDA and licensing SOW before any deeper access — standard for anything touching client data</li>
+    </ul>
+    <div class="contact-panel">
+      <h3>Interested in licensing?</h3>
+      <p>Tell us about your agency and how many clients you'd want to run this against — we'll follow up to scope an NDA and licensing agreement.</p>
+      <a class="btn-primary" href="mailto:licensing@verilume.ai?subject=Agency%20licensing%20inquiry">Start a licensing conversation →</a>
+      <div class="note">Static prototype: this links to a mailto — no form submission or backend wiring yet.</div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>Verilume — the truth between promise and experience, measured.</span>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a href="index.html#faq">FAQ</a>
+    </nav>
+    <span>Website prototype — Deliverable 2 · static, no backend</span>
+  </div>
+</footer>
+
+<script>
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  function setNavOpen(open){
+    navToggle.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navLinks.classList.toggle('open', open);
+    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
+  }
+  function closeNav(){ setNavOpen(false); }
+  navToggle.addEventListener('click', () => setNavOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', closeNav));
+  window.addEventListener('resize', () => {
+    if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+  });
+</script>
+
+</body>
+</html>

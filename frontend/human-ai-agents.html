@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Primary SEO -->
+<title>Human &amp; AI Agents — Verilume</title>
+<meta name="description" content="Verilume measures your marketing and your customer experience together, in real time — not a post-experience feedback survey. Here's the philosophy behind why, and how it's different from Voice-of-Customer tools.">
+<meta name="keywords" content="marketing and CX alignment, customer experience philosophy, kaizen marketing, continuous improvement marketing, media and CX diagnostic, not a feedback survey tool">
+<link rel="canonical" href="https://www.verilume.ai/human-ai-agents.html">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilume">
+<meta property="og:title" content="Human & AI Agents — Verilume">
+<meta property="og:description" content="Why Verilume measures marketing and customer experience together, continuously — not a post-experience feedback survey.">
+<meta property="og:url" content="https://www.verilume.ai/human-ai-agents.html">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /*
+    Shares the exact site-wide design system defined in index.html (see that
+    file's own head-comment for the full rationale) — same token set
+    (--ink/--paper/--paper-dim/--media/--cx/--advocacy/--line/--muted) and
+    component pattern (.band/.band-value-prop, .visual-block, .promise-split,
+    .model-grid), so this page reads as part of the same site, not a
+    one-off. One addition specific to this page: .pillars-grid (a restyled
+    .model-grid used for the "Where the name comes from" and CMO/philosophy
+    pillars) — reuses the existing bordered-card visual language rather
+    than inventing a new one.
+
+    Round 40 — new page, split out of index.html's section 04 per direct
+    instruction: keep the home page focused on punchy hooks, move the fuller
+    philosophy/positioning explanation here instead.
+
+    Round 14 — .compare-split/.compare-card/.pull-quote (used by the old
+    "Marketing and CX, measured together" section) removed along with that
+    section, which moved to assessment-framework.html per Todd's note that
+    it fits better defending the framework it's actually about. See that
+    page's own comment for the restyled (more restrained) version.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  a{color:inherit;}
+  /* Content column standardized to 1040px 2026-08-07, matching
+     portal.html/assessment.html — was 1140px. */
+  .wrap{max-width:1040px;margin:0 auto;padding:0 32px;}
+  img,svg{max-width:100%;}
+
+  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+    /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
+     the same max-width as .wrap (page content). That meant logo+navlinks
+     only ever had a few px of real slack on any desktop viewport above the
+     hamburger breakpoint, since widening the browser window past that cap
+     added zero extra room. Any minor font-metric difference between
+     environments was enough to tip that into a real overlap — this is why
+     raising the hamburger breakpoint alone (700px then 980px then 1180px)
+     never fully fixed it. Fix: the header row is allowed to be wider than
+     the page content column (max-width:1320px vs .wrap's 1040px) — same
+     visual left/right alignment via the shared 32px padding, but real
+     margin at every width. */
+.nav{display:flex;align-items:center;justify-content:space-between;max-width:1320px;margin:0 auto;padding:0 32px;position:relative;}
+  .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
+  .logo b{color:var(--media);}
+  .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
+  .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
+  .navlinks a:hover{color:var(--ink);}
+  .navlinks a.active{color:var(--ink);border-bottom:2px solid var(--media);padding-bottom:2px;}
+  .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
+
+  .hero{padding:56px 0 0;background:
+      radial-gradient(ellipse 820px 520px at 14% 6%, rgba(8,145,178,0.13) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 900px 700px at 88% 26%, rgba(37,99,235,0.16) 0%, rgba(37,99,235,0) 65%),
+      var(--paper);
+  }
+  .hero-eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--advocacy);margin-bottom:26px;display:flex;align-items:center;gap:10px;}
+  /* Hero full-width fix (round 7, 2026-08-03): h1/.lede were capped at
+     820px/640px, leaving a wide dead margin next to the copy on desktop —
+     inconsistent with index.html's hero, which never constrains these.
+     Matched to max-width:none here and across every other rebuilt page so
+     the hero reads full-width site-wide; re-verified at mobile widths. */
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(38px,5.6vw,64px);line-height:1.08;margin:0 0 30px;letter-spacing:-0.02em;color:var(--ink);max-width:none;}
+  h1 .accent{color:var(--media);}
+  .h1-sub{display:block;font-size:0.4em;font-style:italic;font-weight:400;color:var(--muted);margin-top:10px;letter-spacing:normal;}
+  .lede{font-size:19px;line-height:1.6;max-width:none;color:var(--muted);margin-bottom:56px;}
+  .lede b{color:var(--ink);font-weight:600;}
+  .btn-primary{background:var(--ink);color:#fff;font-family:'Inter';font-weight:700;font-size:16px;padding:18px 32px;border-radius:var(--radius-pill);text-decoration:none;display:inline-block;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .btn-primary:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+
+  .band{padding:120px 0;}
+  .band.alt{background:var(--paper-dim);}
+  .band-label{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;}
+  .band-label .num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;color:var(--advocacy);}
+  .band-label h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(28px,3.6vw,44px);margin:0;}
+  .band-value-prop{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:22px;color:var(--ink);margin:0 0 20px;max-width:680px;}
+  .band-intro{font-size:16.5px;line-height:1.7;max-width:680px;color:var(--muted);margin-bottom:56px;}
+  .band-intro + .band-intro{margin-top:-36px;}
+  /* Full-width variant — used where a section's own layout (e.g. the
+     symphony diagram below) already controls the reading width, so the
+     680px cap meant for a plain text column isn't needed. */
+  .band-value-prop.full-width,.band-intro.full-width{max-width:none;}
+
+  /* Philosophy pillars — reuses .model-grid's numbered bordered-card
+     language from the home page's "How the scoring works" section. */
+  .pillars-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:var(--line);border-radius:20px;overflow:hidden;}
+  .pillar{background:var(--paper);padding:36px 32px;}
+  .pillar .n{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:40px;color:var(--advocacy);opacity:0.45;line-height:1;}
+  .pillar h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:19px;margin:14px 0 10px;color:var(--ink);}
+  .pillar p{font-size:15px;line-height:1.6;color:var(--muted);margin:0;}
+
+  /* Round 18: .org-grid/.org-card* and .includes/.include-card removed —
+     Org Structure and Team Kaizen (the only sections that used them) both
+     moved into the footer FAQ; zero remaining HTML usages confirmed via
+     grep. */
+  .solutions-note{font-size:14.5px;color:var(--muted);margin-top:24px;max-width:680px;}
+
+  /* Image/video placeholder block — honest, labeled, never a stand-in
+     stock photo. Same pattern used site-wide. */
+  .section-visual{margin-bottom:36px;}
+  .section-visual .visual-block{height:280px;border-radius:20px;background:linear-gradient(155deg, rgba(8,145,178,0.08), rgba(37,99,235,0.10));border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted);text-align:center;padding:52px 30px;}
+  .section-visual .vb-icon{width:46px;height:46px;border-radius:50%;border:1.5px solid var(--muted);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;opacity:0.6;background:rgba(255,255,255,0.5);}
+  .section-visual .vb-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;opacity:0.75;}
+  .section-visual .vb-desc{font-size:14.5px;max-width:420px;opacity:0.75;}
+
+  /* Role-to-AI function mapping — the rm-* card components below (head,
+     tier badge, human/AI blocks) were originally built as a 6-card grid
+     (round 9) for the "AI, built into every seat" section. Round 10
+     (HUMANAICOPY.docx) replaced that grid with a single circular diagram
+     + one-card-at-a-time viewer (.symphony-*, below) per Todd's brief —
+     the rm-* component styles are kept as-is since .symphony-card reuses
+     them directly, just no longer inside a 6-up grid. Content is still
+     pulled directly from the real Client Portal function taxonomy and the
+     Agent/Human split documented in cxmedia-revenue-pricing-strategy-
+     addendum.md — every "AI supporting function" line matches that doc's
+     honest prompt-ready/hybrid/integration-required tiering, never a
+     uniform or overclaimed capability across function groups. */
+  /* Round 12 (portal-style audit follow-up) — sizes bumped up across the
+     board. These were originally tuned for a dense 6-up grid (round 9);
+     now that this page shows exactly one card at a time at full width,
+     the old sizes (10-13.5px) read as too small/quiet next to the rest of
+     the page's 15-16.5px body copy. Tier badge and level-range line
+     removed from display per Todd's direction — see the symphony-card
+     markup below and SYM_DATA's comment. */
+  .rm-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .rm-head h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:26px;margin:0;color:var(--ink);}
+  .rm-block{margin-bottom:18px;}
+  .rm-block:last-child{margin-bottom:0;}
+  .rm-label{display:flex;align-items:center;gap:8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink);margin-bottom:10px;font-weight:600;}
+  .rm-label .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .rm-human .dot{background:var(--ink);}
+  .rm-ai .dot{background:var(--cx);}
+  .rm-block ul{margin:0;padding-left:20px;font-size:16px;line-height:1.65;color:var(--muted);}
+  .rm-block li{margin-bottom:6px;}
+  .rm-divider{border:none;border-top:1px dashed var(--line);margin:0 0 18px;}
+  .rm-note{font-size:13.5px;font-style:italic;color:var(--muted);opacity:0.85;margin-top:14px;}
+
+  /* Marketing symphony — circular diagram + one-card viewer (round 10,
+     HUMANAICOPY.docx). Per brief: a single circle (one customer-journey
+     stage, not the full 5-stage loop), 6 function-group nodes placed at
+     equal distance around it (no hierarchy), image left-justified, a card
+     to its right showing that function's Human/AI split on hover or via
+     Prev/Next. The dashed pulsing ring stands in for "show movement
+     similar to the loop gif" without inventing a fake animated asset. */
+  .symphony-wrap{display:grid;grid-template-columns:minmax(280px,400px) 1fr;gap:48px;align-items:center;margin-top:12px;}
+  .symphony-circle{position:relative;width:100%;max-width:380px;aspect-ratio:1/1;border-radius:50%;border:1.5px dashed var(--line);background:radial-gradient(circle at 50% 50%, rgba(8,145,178,0.05), rgba(37,99,235,0.06));margin:0;}
+  .symphony-circle::before{content:'';position:absolute;inset:15%;border-radius:50%;border:1.5px solid var(--advocacy);opacity:0.3;animation:symPulse 3.2s ease-in-out infinite;}
+  @keyframes symPulse{0%,100%{transform:scale(0.93);opacity:0.22;}50%{transform:scale(1.03);opacity:0.5;}}
+  .symphony-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;display:flex;flex-direction:column;gap:2px;}
+  .symphony-center .sc-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:18px;color:var(--ink);}
+  .symphony-center .sc-sub{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:9.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
+  .symphony-node{position:absolute;top:50%;left:50%;transform:rotate(var(--angle)) translate(0,-168px) rotate(calc(-1 * var(--angle)));width:100px;margin-left:-50px;margin-top:-28px;background:var(--paper);border:1.5px solid var(--line);border-radius:14px;padding:9px 8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;line-height:1.3;text-align:center;color:var(--muted);cursor:pointer;transition:border-color 0.2s ease,color 0.2s ease,background 0.2s ease;}
+  .symphony-node:hover,.symphony-node:focus-visible,.symphony-node.active{border-color:var(--cx);color:var(--ink);background:var(--paper-dim);outline:none;}
+  .symphony-card{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:32px 30px;}
+  .symphony-nav{display:flex;align-items:center;justify-content:space-between;margin-top:20px;padding-top:16px;border-top:1px dashed var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:var(--muted);}
+  /* Prev/Next brought onto the site's real CTA language (Inter, 600 weight,
+     full pill radius) instead of the small mono-badge style it launched
+     with — still sized as an in-component control, not a full-size
+     .btn-primary/.btn-ghost, since it's step navigation inside one card,
+     not a page-level call to action. */
+  .symphony-nav button{background:none;border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-family:'Inter';font-weight:600;font-size:13px;color:var(--ink);cursor:pointer;transition:border-color 0.2s ease,transform 0.15s ease;}
+  .symphony-nav button:hover{border-color:var(--cx);transform:translateY(-1px);}
+  @media (max-width:820px){
+    .symphony-wrap{grid-template-columns:1fr;}
+    .symphony-circle{max-width:300px;margin:0 auto;}
+    .symphony-node{transform:rotate(var(--angle)) translate(0,-130px) rotate(calc(-1 * var(--angle)));width:84px;font-size:9.5px;margin-left:-42px;margin-top:-24px;}
+  }
+
+  /* Campaign Relevance Score preview — copied verbatim (component + CSS)
+     from customer-journey.html's real, live score-panel, not an invented
+     mockup, per Todd's "[Image: Show a screengrab that includes the
+     campaign messaging alignment rating.]" instruction. */
+  .score-panel{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:40px 44px;margin-bottom:28px;}
+  .score-row{margin-bottom:22px;}
+  .score-row:last-child{margin-bottom:0;}
+  .score-row-head{display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px;}
+  .score-row-head .lbl{color:var(--ink);font-weight:600;}
+  .score-row-head .pct{font-weight:700;color:var(--cx);}
+  .score-bar{background:var(--paper-dim);border-radius:5px;height:10px;overflow:hidden;}
+  .score-bar > div{background:var(--cx);height:100%;}
+  .score-note{font-size:12.5px;color:var(--muted);margin-top:6px;}
+  .synthesis{margin-top:28px;padding-top:24px;border-top:1px dashed var(--line);font-size:15px;line-height:1.6;color:var(--ink);}
+  @media (max-width:820px){.score-panel{padding:32px 26px;}}
+
+  /* Footer FAQ (round 18) — same pattern as index.html's footer-faq, so
+     the accordion-style Q&A convention reads consistently sitewide. This
+     page's FAQ absorbs three sections that the content-module audit
+     (cxmedia-content-module-audit-round1.md) flagged as support/elaboration
+     rather than core sell content: "Where the name comes from," Team
+     Kaizen, and Org Structure — each removed from the main scroll below
+     and condensed into one FAQ answer apiece. Org Structure's per-role
+     detail is kept as a real table inside its answer (.faq-table) rather
+     than collapsing to prose, per the audit's recommendation that
+     reference-style detail reads better as a table even inside an FAQ. */
+  .footer-faq{max-width:1040px;margin:0 auto;padding:0 32px 40px;border-bottom:1px solid var(--line);margin-bottom:28px;}
+  .footer-faq h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:24px;margin:0 0 20px;color:var(--ink);}
+  .footer-faq .faq-list{display:flex;flex-direction:column;}
+  .footer-faq .faq-item{padding:16px 0;border-top:1px solid var(--line);}
+  .footer-faq .faq-item:first-child{border-top:none;padding-top:0;}
+  .footer-faq .faq-item h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:16.5px;margin:0;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;}
+  .footer-faq .faq-item h3 .faq-chevron{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;color:var(--muted);transition:transform 0.15s ease;flex-shrink:0;}
+  .footer-faq .faq-item.open h3 .faq-chevron{transform:rotate(90deg);}
+  .footer-faq .faq-item .faq-body{display:none;margin-top:6px;}
+  .footer-faq .faq-item.open .faq-body{display:block;}
+  .footer-faq .faq-item p{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13.5px;line-height:1.6;color:var(--muted);margin:0 0 10px;max-width:760px;}
+  .footer-faq .faq-item p:last-child{margin-bottom:0;}
+  .footer-faq .faq-item a{color:var(--cx);}
+  .faq-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+  .faq-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);padding:6px 10px 6px 0;border-bottom:1px solid var(--line);}
+  .faq-table td{padding:8px 10px 8px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--muted);}
+  .faq-table td:first-child{color:var(--ink);font-weight:600;white-space:nowrap;}
+  .faq-table tr:last-child td{border-bottom:none;}
+
+  .cta-band{background:
+      radial-gradient(ellipse 640px 460px at 12% 15%, rgba(8,145,178,0.20) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 640px 460px at 88% 85%, rgba(37,99,235,0.24) 0%, rgba(37,99,235,0) 62%),
+      var(--paper-dim);
+    border:1px solid var(--line);border-radius:28px;padding:80px 40px;text-align:center;position:relative;overflow:hidden;
+  }
+  .cta-band h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:500;font-size:clamp(28px,4.2vw,44px);margin:0 0 18px;position:relative;color:var(--ink);}
+  .cta-band p{color:var(--muted);font-size:16px;max-width:480px;margin:0 auto 32px;line-height:1.6;position:relative;}
+  .cta-band .btn-primary{position:relative;background:var(--ink);color:#fff;}
+
+  footer{padding:36px 0;background:var(--paper-dim);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);}
+  .footer-inner{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;max-width:1040px;margin:0 auto;padding:0 32px;}
+  .footer-nav{display:flex;flex-wrap:wrap;gap:18px;}
+  .footer-nav a{color:var(--muted);text-decoration:none;}
+  .footer-nav a:hover{color:var(--ink);}
+
+  @media (max-width:820px){
+    .pillars-grid{grid-template-columns:1fr;}
+    .faq-table{display:block;overflow-x:auto;font-size:12px;white-space:nowrap;}
+    .band{padding:72px 0;}
+  }
+  @media (max-width:1180px){
+    .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
+    /* Padding lives on .open, not the base rule — box-sizing:border-box can't shrink a box below its own padding, so a fixed vertical padding on the collapsed state left ~46px of the menu visibly peeking out beneath the header even at max-height:0. */
+    .navlinks.open{padding:20px 28px 26px;}
+    .nav-toggle{display:block;}
+  }
+</style>
+</head>
+<body>
+
+<header id="siteHeader">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="index.html">Veri<b>lume</b></a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    <div class="navlinks" id="navLinks">
+      <a href="human-ai-agents.html" class="active">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" aria-labelledby="hero-heading">
+  <div class="wrap">
+    <div class="hero-eyebrow"><span class="dot"></span>Kaizen 2.0 — human and AI, in the same loop</div>
+    <h1 id="hero-heading">The people stay. <span class="accent">The pressure doesn't have to.</span><span class="h1-sub">An AI Agent built into every seat of your real org chart.</span></h1>
+    <p class="lede">Every Verilume account is a real marketing organization: seven function groups, real org-chart roles, and an AI agent built into every seat. You decide how much of each seat AI runs versus a person — the structure, the scoring, and the continuous-improvement loop underneath are the same either way. This is Kaizen 2.0: the same small-step, measured-improvement discipline kaizen has always described, now with a standing AI agent doing the always-on work inside it.</p>
+  </div>
+</section>
+
+<!-- WHERE THE NAME COMES FROM, TEAM KAIZEN, and ORG STRUCTURE all moved into
+     the footer FAQ (round 18) — the content-module audit flagged all three
+     as support/elaboration a convinced reader wants, not core sell content
+     that needs main-scroll prominence, and flagged the "seven function
+     groups" framing as already stated in the hero and restated a third time
+     in Org Structure's own heading. See cxmedia-content-module-audit-
+     round1.md and the footer FAQ below for where this content lives now. -->
+
+<!-- CMO CONDUCTOR (round 10, HUMANAICOPY.docx) -->
+<section class="band">
+  <div class="wrap">
+    <div class="band-label"><h2>The modern CMO is the conductor, not every instrument</h2></div>
+    <p class="band-value-prop">One synthesized view across every function group, so the CMO's job is direction, not data-gathering.</p>
+    <p class="band-intro">A CMO today is expected to hold the whole organization's performance in their head — a dozen live campaigns, and whatever each team's own dashboard happens to say this week. The CMO Dashboard replaces that with one computed view: every weak spot across every function group, routed automatically to the seat that owns it, plus a live trend on anything already being worked. The CMO still sets strategy and makes the calls only a CMO can make — the always-on reading of where the organization is actually behind is the AI's job now, not a Tuesday-morning status-collection exercise.</p>
+    <div class="pillars-grid">
+      <div class="pillar">
+        <span class="n">01</span>
+        <h4>One score, not seven reports</h4>
+        <p>The CMO Dashboard's task list is computed live from every function group's weak cells, routed to the seat that owns each one — not seven separate dashboards a CMO has to reconcile by hand.</p>
+      </div>
+      <div class="pillar">
+        <span class="n">02</span>
+        <h4>Directs, doesn't execute</h4>
+        <p>The CMO seat sets strategy above the campaign layer — every function group below runs its own AI-supported work and rolls status up automatically, instead of needing to be asked for it.</p>
+      </div>
+      <div class="pillar">
+        <span class="n">03</span>
+        <h4>A trend line, not a snapshot</h4>
+        <p>Continuous Monitoring re-scores previously weak areas over time, so the CMO sees whether last quarter's fix actually held — not just a point-in-time grade.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MARKETING SYMPHONY — replaces the old "AI, built into every seat" 6-card
+     grid per HUMANAICOPY.docx: a single circle (one customer-journey stage,
+     not the full 5-stage loop), six function groups placed at equal
+     distance around it with no hierarchy, image left-justified, a card to
+     its right showing that function's Human/AI split on hover, click, or
+     Prev/Next. Order around the circle per Todd's brief: Brand (top),
+     Performance Marketing, Omni-Channel Creative, PR, Advanced Analytics,
+     Media Ops. Round 14 — flipped plain→alt to keep alternation correct
+     after "Where the name comes from" moved to lead the page. -->
+<section class="band alt">
+  <div class="wrap">
+    <div class="band-label"><h2>One always-on marketing symphony, surrounding the customer's journey</h2></div>
+    <p class="band-value-prop full-width">Six function groups, equal distance from the customer — precision and speed, with no one function ahead of another.</p>
+    <p class="band-intro full-width">Each function group keeps its human judgment calls and relationships exactly where they are today. The AI layer takes on the continuous iteration, repetitive execution, and analysis groundwork — always grounded in that seat's own strategy and campaign input, and always a draft the team reviews before it ships. Hover or step through each function below to see the split.</p>
+
+    <div class="symphony-wrap">
+      <div class="symphony-circle" id="symphonyCircle">
+        <div class="symphony-center"><span class="sc-label">Customer</span><span class="sc-sub">journey stage</span></div>
+        <button type="button" class="symphony-node active" data-i="0" style="--angle:0deg">Brand</button>
+        <button type="button" class="symphony-node" data-i="1" style="--angle:60deg">Performance<br>Marketing</button>
+        <button type="button" class="symphony-node" data-i="2" style="--angle:120deg">Omni-Channel<br>Creative</button>
+        <button type="button" class="symphony-node" data-i="3" style="--angle:180deg">PR</button>
+        <button type="button" class="symphony-node" data-i="4" style="--angle:240deg">Advanced<br>Analytics</button>
+        <button type="button" class="symphony-node" data-i="5" style="--angle:300deg">Media Ops</button>
+      </div>
+
+      <div class="symphony-card" id="symphonyCard">
+        <div class="rm-head"><h4 id="symTitle">Brand</h4></div>
+        <div class="rm-block rm-human">
+          <div class="rm-label"><span class="dot"></span>Human functions</div>
+          <ul id="symHuman"></ul>
+        </div>
+        <hr class="rm-divider">
+        <div class="rm-block rm-ai">
+          <div class="rm-label"><span class="dot"></span>AI supporting functions</div>
+          <ul id="symAI"></ul>
+        </div>
+        <p class="rm-note" id="symNote"></p>
+        <div class="symphony-nav">
+          <button type="button" id="symPrev" aria-label="Previous function">← Prev</button>
+          <span id="symCounter">1 / 6</span>
+          <button type="button" id="symNext" aria-label="Next function">Next →</button>
+        </div>
+      </div>
+    </div>
+    <p class="solutions-note">The CMO seat runs above this layer, not inside it — Continuous Monitoring is its own synthesis view of every function group at once, not a seventh node here.</p>
+  </div>
+</section>
+
+<!-- TEAM DEVELOPMENT (round 10, HUMANAICOPY.docx). Round 14 — flipped
+     alt→plain, same alternation-parity reason as Symphony above. -->
+<section class="band">
+  <div class="wrap">
+    <div class="band-label"><h2>Every team member and campaign gets better over time</h2></div>
+    <p class="band-value-prop full-width">The team member isn't a side feature — it's how the organization compounds, campaign after campaign, through a continuous feedback loop.</p>
+
+    <!-- [Image: Show a screengrab that includes the campaign messaging
+         alignment rating.] — reused verbatim from customer-journey.html's
+         real, live Campaign Relevance Score screen (built in portal.html),
+         not an invented mockup, per house convention. Round 13 — Campaign
+         URL audit filled in with a completed example (was "Optional —
+         shown separately" / 0%, per Todd's note that it should read as a
+         real completed run) and a new Campaign Messaging Score row added
+         per Todd's direct request. Same two changes were mirrored onto
+         customer-journey.html's copy of this exact panel, since that page
+         is what this one's caption links to as "the full breakdown" —
+         they'd otherwise contradict each other. Messaging Score is NOT yet
+         a real computed input in portal.html's live Campaign Alignment
+         Score (which today only weighs Marketing function completion +
+         Brand Groundwork, with URL audit informational) — flagged in its
+         own note below rather than presented as already live. -->
+    <div class="score-panel">
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Marketing function completion</span><span class="pct">72%</span></div>
+        <div class="score-bar"><div style="width:72%;"></div></div>
+        <div class="score-note">Every marketing function activated on this campaign, complete and QA'd — not just started.</div>
+      </div>
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Account Brand Groundwork (Voice / Style Assets / Positioning)</span><span class="pct">67%</span></div>
+        <div class="score-bar"><div style="width:67%;"></div></div>
+        <div class="score-note">The account-level approvals this campaign inherits — real approvals, not a per-project content score.</div>
+      </div>
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Campaign Messaging Score</span><span class="pct">91%</span></div>
+        <div class="score-bar"><div style="width:91%;"></div></div>
+        <div class="score-note">How closely this campaign's actual messaging — copy, CTA, and channel angle — matches the objective it was originally briefed against, checked line by line rather than assumed from the plan. Newest input; not yet folded into the composite score above while we validate the scoring model.</div>
+      </div>
+      <div class="score-row">
+        <div class="score-row-head"><span class="lbl">Campaign URL audit</span><span class="pct">84%</span></div>
+        <div class="score-bar"><div style="width:84%;"></div></div>
+        <div class="score-note">18 of 22 live campaign URLs pass UTM tagging, canonical, and landing-page-match checks — kept separate so an unrelated hygiene check can't swing the overall score.</div>
+      </div>
+      <div class="synthesis">This is a preview of the real Campaign Relevance Score screen inside the client portal, not a mockup invented for this page — see <a href="customer-journey.html">Customer Journey</a> for the full breakdown of what feeds it.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="band alt">
+  <div class="wrap">
+    <div class="cta-band">
+      <h2>See where the promise stops being true.</h2>
+      <p>Free, instant quadrant placement — no email required to see it.</p>
+      <a class="btn-primary" href="assessment.html">Start your free assessment →</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer id="faq">
+  <div class="footer-faq">
+    <h2>Questions we get</h2>
+    <div class="faq-list">
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Where does the name "Verilume" come from? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p><i>Veri</i> — Latin for truth. Radical accuracy, un-siloed data, honest attribution: cutting through vanity metrics (clicks, impressions) to see actual business impact (LTV, retention, conversion). <i>Lume</i> — light, illumination: truth is useless sitting unread in a dashboard, so illumination is what turns it into where to invest next and what to do about it. Most brands aren't short on data — they're short on clarity, in three places specifically: media optimization (real-time reallocation instead of black-box attribution), customer experience (an honest map of the friction, not another dashboard), and strategy &amp; ops (one shared source of truth instead of marketing and CX each defending their own number).</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Does Kaizen 2.0 apply to my team, or just the AI agents? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Both — every human seat runs the same discipline as the AI layer: a real skill baseline scored against that seat's own bar, a gap named specifically rather than a vague development plan, and the next campaign shaped by what actually improved. Three pieces of this are built and live in every client portal today: self-rating against the role's own skill bar, a skill-set library by level and function, and a career development checklist that exports as a branded PDF.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">What's Verilume's full organizational structure? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>Every account is structured like a real marketing organization, not a single tool — seven function groups, each with real org-chart roles from CMO down to Specialist. You decide how much of each seat AI runs versus a person; the structure underneath is the same either way.</p>
+        <table class="faq-table">
+          <tr><th>Function</th><th>Levels</th><th>What it owns</th></tr>
+          <tr><td>CMO</td><td>Executive</td><td>Sets strategy and owns overall performance — the one seat every other function reports into.</td></tr>
+          <tr><td>PR</td><td>Director · Manager · Specialist</td><td>Reputation monitoring, press release development, editorial outreach.</td></tr>
+          <tr><td>Brand</td><td>Director · Manager · Specialist</td><td>Voice, visual identity, competitive positioning, creative production.</td></tr>
+          <tr><td>Omni-Channel Creative</td><td>Director · Manager · Specialist</td><td>Adapts one creative concept across every channel it needs to run in.</td></tr>
+          <tr><td>Media Planning &amp; Ops</td><td>Director · Manager · Specialist</td><td>KPI tracking, marketing calendar, vendor management, creative delivery. <i>Budget recommendations and campaign-level allocation are roadmap, not yet live.</i></td></tr>
+          <tr><td>Performance Marketing</td><td>Director · Manager · Specialist</td><td>Plans and scopes paid reach — social, search, programmatic display, TV, partnerships.</td></tr>
+          <tr><td>Advanced Analytics</td><td>Director · Manager · Specialist</td><td>Tagging, segmentation, attribution, media mix modeling, dashboards. <i>Real GA4 &amp; HubSpot connectors are built; live in production as accounts come online.</i></td></tr>
+        </table>
+        </div>
+      </div>
+      <div class="faq-item">
+        <h3 onclick="toggleFaqItem(this)">Does AI replace my marketing team? <span class="faq-chevron">▸</span></h3>
+        <div class="faq-body">
+        <p>No. Every seat gets a standing AI Agent for the always-on, first-draft work — your team keeps the judgment calls, the relationships, and the final word. See the Symphony diagram above for the human/AI split, function by function.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Round 21 (2026-08-05), per direct instruction — each FAQ item starts
+    // collapsed; clicking its heading toggles it open/closed independently
+    // (not an exclusive accordion — more than one can be open at once).
+    function toggleFaqItem(heading){
+      heading.parentElement.classList.toggle('open');
+    }
+  </script>
+  <div class="footer-inner">
+    <span>Verilume — the truth between promise and experience, measured.</span>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a href="licensing.html">Licensing</a>
+      <a href="#faq">FAQ</a>
+
+    </nav>
+    <span>Website prototype — Deliverable 2 · static, no backend</span>
+  </div>
+</footer>
+
+<script>
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  function setNavOpen(open){
+    navToggle.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navLinks.classList.toggle('open', open);
+    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
+  }
+  function closeNav(){ setNavOpen(false); }
+  navToggle.addEventListener('click', () => setNavOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', closeNav));
+  window.addEventListener('resize', () => {
+    if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+  });
+
+  // Marketing symphony diagram (round 10, HUMANAICOPY.docx) — content is
+  // the same real Human/AI split from the round-9 role-map-grid, just
+  // rendered one function at a time via a circular node picker instead of
+  // a 6-up grid. Order matches the doc's brief exactly: Brand (top),
+  // Performance Marketing, Omni-Channel Creative, PR, Advanced Analytics,
+  // Media Ops.
+  // Round 12 — tier/levels fields below are kept as inert reference data
+  // (build-status tiering, seat-level range) even though neither renders
+  // on this card anymore per Todd's direction to drop the job-function
+  // levels and "Brief-ready"-style badge from this view. Left in place
+  // rather than deleted in case an internal/admin view wants the same
+  // tiering later — every list item's own wording is what carries the
+  // "how real is this" honesty now, not the badge.
+  const SYM_DATA = [
+    {
+      title: 'Brand', tier: 'Partly built', hybrid: true,
+      levels: 'Director · Manager · Specialist',
+      human: [
+        'Final creative direction — whether a concept actually feels right, not just whether it\'s on-voice',
+        'Outside vendor relationships for finished video, print, or music production'
+      ],
+      ai: [
+        'Drafts and holds the approved brand voice, then enforces it across every other draft',
+        'Drafts ad copy, email copy, brochures, and SEO/GEO/AEO copy',
+        'Tracks competitive positioning and industry trends'
+      ],
+      note: ''
+    },
+    {
+      title: 'Performance Marketing', tier: 'Brief-ready', hybrid: true,
+      levels: 'Director · Manager · Specialist',
+      human: [
+        'The actual buy — every real ad platform still needs a person (or the platform\'s own tools) spending real money'
+      ],
+      ai: [
+        'Drafts the channel plan and creative angle for social, search, programmatic display, TV, and partnerships',
+        'A real strategic starting point per channel, not a blank page — the agent\'s job stops at the brief by design'
+      ],
+      note: ''
+    },
+    {
+      title: 'Omni-Channel Creative', tier: 'Brief-ready', hybrid: true,
+      levels: 'Director · Manager · Specialist',
+      human: [
+        'Creative review and final direction on every adapted asset',
+        'The handoff to an outside creative tool (Adobe, Canva, Figma) for finished production'
+      ],
+      ai: [
+        'Drafts on-brand copy per channel from the approved brand voice',
+        'Drafts best-practice specs per channel — copy length, headline/CTA pattern, layout — so the brief a vendor or designer receives is already structured'
+      ],
+      note: ''
+    },
+    {
+      title: 'PR', tier: 'Draft-ready today', hybrid: false,
+      levels: 'Director · Manager · Specialist',
+      human: [
+        'Media and editorial relationships — pitching is still a person reaching a person',
+        'Judgment on anything sensitive or crisis-adjacent',
+        'The final approved word before anything goes out'
+      ],
+      ai: [
+        'Drafts full press releases from the facts and quote direction supplied — ready to edit, never invented',
+        'Drafts editorial pitch angles and pitch emails',
+        'Turns reputation and media-monitoring signal into a narrative and a ranked action list'
+      ],
+      note: ''
+    },
+    {
+      title: 'Advanced Analytics', tier: 'Partly built', hybrid: true,
+      levels: 'Director · Manager · Specialist',
+      human: [
+        'The underlying data engineering — tagging, dashboards, media mix modeling',
+        'Live warehouse and list-pull work',
+        'The final call on what a first-read number means for the business'
+      ],
+      ai: [
+        'Interprets connected data — website traffic is live today via GA4',
+        'Designs test frameworks: hypothesis, structure, and success metric, up front',
+        'Flags macro/news events worth reading against a performance dip'
+      ],
+      note: 'Real GA4 &amp; HubSpot connectors are built; live in production as accounts come online.'
+    },
+    {
+      title: 'Media Planning &amp; Ops', tier: 'Partly built', hybrid: true,
+      levels: 'Director · Manager · Specialist',
+      human: [
+        'Vendor relationships and contracts',
+        'Live calendar syncing and real delivery/trafficking logistics'
+      ],
+      ai: [
+        'Drafts a KPI framework — which metrics, and why, for this account\'s industry',
+        'Drafts a structured marketing calendar from a campaign brief'
+      ],
+      note: 'Budget recommendations and campaign-level allocation are roadmap, not live yet.'
+    }
+  ];
+
+  const symNodes = document.querySelectorAll('.symphony-node');
+  const symTitle = document.getElementById('symTitle');
+  const symHuman = document.getElementById('symHuman');
+  const symAI = document.getElementById('symAI');
+  const symNote = document.getElementById('symNote');
+  const symCounter = document.getElementById('symCounter');
+  let symIndex = 0;
+
+  function renderSym(i){
+    const d = SYM_DATA[i];
+    symTitle.innerHTML = d.title;
+    symHuman.innerHTML = d.human.map(x => `<li>${x}</li>`).join('');
+    symAI.innerHTML = d.ai.map(x => `<li>${x}</li>`).join('');
+    symNote.innerHTML = d.note;
+    symCounter.textContent = (i + 1) + ' / ' + SYM_DATA.length;
+    symNodes.forEach((n, ni) => n.classList.toggle('active', ni === i));
+    symIndex = i;
+  }
+
+  symNodes.forEach(n => {
+    const i = parseInt(n.dataset.i, 10);
+    n.addEventListener('mouseenter', () => renderSym(i));
+    n.addEventListener('click', () => renderSym(i));
+    n.addEventListener('focus', () => renderSym(i));
+  });
+  document.getElementById('symPrev').addEventListener('click', () => renderSym((symIndex - 1 + SYM_DATA.length) % SYM_DATA.length));
+  document.getElementById('symNext').addEventListener('click', () => renderSym((symIndex + 1) % SYM_DATA.length));
+  renderSym(0);
+</script>
+
+</body>
+</html>

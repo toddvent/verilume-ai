@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/[...path].js": {
+      "maxDuration": 30
+    }
+  },
+  "redirects": [
+    { "source": "/", "destination": "/frontend/index.html", "permanent": false }
+  ]
+}

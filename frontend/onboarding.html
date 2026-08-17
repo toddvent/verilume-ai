@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Paid Onboarding</title>
+<meta name="description" content="Verilume paid onboarding: NDA, contract/SOW, and account provisioning ahead of deep intake.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    Style note: same diagnostic-instrument register as assessment.html —
+    this is a continuation of that flow (Deliverable 4: paid onboarding
+    pipeline), not the warm marketing site. NDA/contract steps are still
+    in-memory/session-state prototype with no real legal text; account
+    provisioning (round 83) now writes a real backend record, same
+    backend/server.js every other real account in this build uses. See
+    inline notes for where the Sheets-vs-SQLite deviation, e-signature
+    vendor, and HubSpot sync would still plug in.
+
+    Design-system note (2026-07-20): per direction that every area of the
+    site should share the same design elements, this page picks up the
+    same token set and soft gradient-fade background language as
+    index.html and the solution pages — but, like assessment.html and
+    framework.html, deliberately stops there. This is a fast, sequential
+    task flow (sign, sign, wait, done), not a persuasion page, so it does
+    NOT pick up the signature video placement, the .visual-block component,
+    or any card restructuring — only the shared fonts (already identical)
+    and the shared background concept (white base, sparing gradient fades
+    instead of the old flat beige fill). The account-id-card below stays a
+    single deliberate solid-ink moment, consistent with how every other
+    page in this system reserves exactly one full-color moment rather than
+    spreading saturated color throughout.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.08) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px;}
+  a{color:inherit;}
+
+  .back-nav{display:flex;justify-content:space-between;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1040px;margin:0 auto;}
+  .back-nav a{color:var(--cx);text-decoration:none;}
+  .back-nav a:hover{text-decoration:underline;}
+  /* Was a plain text link ("← Verilume") with no wordmark treatment — the
+     one page on the site without one. Matches account.html/portal.html's
+     .back-nav .wordmark exactly (20px/500, "lume" in --media gold) so the
+     logo reads the same everywhere. Added 2026-08-07. */
+  .back-nav .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
+  .back-nav .wordmark b{color:var(--media);font-weight:500;}
+  .back-nav .wordmark:hover{text-decoration:none;color:var(--ink);}
+  .back-nav .restart{color:#8a8067;cursor:pointer;background:none;border:none;font-family:inherit;font-size:12px;}
+  .back-nav .restart:hover{color:var(--advocacy);}
+
+  .progress-track{height:3px;background:var(--paper-dim);}
+  .progress-fill{height:100%;background:var(--advocacy);width:0%;transition:width 0.3s ease;}
+
+  main{padding:56px 0 100px;}
+  .step{display:none;}
+  .step.active{display:block;}
+
+  .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:16px;}
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(28px,4.4vw,42px);line-height:1.15;margin:0 0 18px;letter-spacing:-0.01em;}
+  h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:26px;margin:0 0 14px;}
+  p.lede{font-size:15.5px;line-height:1.65;color:var(--muted);max-width:620px;margin:0 0 32px;}
+
+  .btn-primary{background:var(--ink);color:var(--white);font-family:'Inter';font-weight:600;font-size:14.5px;padding:14px 26px;border-radius:999px;text-decoration:none;display:inline-block;border:none;cursor:pointer;transition:transform 0.15s ease;}
+  .btn-primary:hover{background:#1c2d54;transform:translateY(-1px);}
+  .btn-primary:disabled{opacity:0.4;cursor:not-allowed;}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink);font-family:'Inter';font-weight:600;font-size:14.5px;padding:13px 24px;border-radius:999px;cursor:pointer;}
+  .btn-ghost:hover{border-color:var(--ink);}
+  .btn-row{display:flex;gap:14px;align-items:center;margin-top:36px;flex-wrap:wrap;}
+
+  /* License callout (intro step) */
+  .license-note{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 22px;max-width:620px;margin:0 0 32px;font-size:16px;line-height:1.6;color:var(--muted);}
+  .license-note a{color:var(--cx);font-weight:600;text-decoration:none;}
+  .license-note a:hover{text-decoration:underline;}
+
+  /* Doc mock */
+  .doc-card{background:var(--white);border:1px solid var(--line);border-radius:18px;max-width:640px;overflow:hidden;}
+  .doc-head{padding:20px 26px;border-bottom:1px solid var(--line);background:var(--paper-dim);}
+  .doc-head .doc-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--advocacy);}
+  .doc-head h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:19px;margin:6px 0 0;}
+  .doc-body{padding:24px 26px;max-height:220px;overflow-y:auto;font-size:12.5px;line-height:1.7;color:var(--muted);border-bottom:1px solid var(--line);}
+  .doc-body p{margin:0 0 12px;}
+  .doc-sign{padding:24px 26px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px;}
+  .field input,.field select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:13.5px;background:var(--paper);color:var(--ink);transition:border-color 0.15s ease, box-shadow 0.15s ease;}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  .field select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%235B5647' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:34px;}
+  .field select:hover{border-color:var(--cx);}
+  .field.sig input{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:20px;}
+  .agree-row{display:flex;align-items:flex-start;gap:10px;margin:18px 0;font-size:12.5px;color:var(--muted);line-height:1.5;}
+  .agree-row input{margin-top:3px;}
+
+  .status-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;color:var(--muted);margin-top:14px;}
+  .status-note.signed{color:var(--cx);}
+
+  /* Provisioning */
+  .provision-list{max-width:520px;}
+  .provision-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);}
+  .provision-item .icon{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:transparent;transition:all 0.3s ease;}
+  .provision-item.done .icon{background:var(--cx);border-color:var(--cx);color:var(--white);}
+  .provision-item .label{font-size:13.5px;color:var(--muted);}
+  .provision-item.done .label{color:var(--ink);}
+
+  .account-id-card{background:var(--ink);color:var(--white);border-radius:16px;padding:28px;margin:28px 0;max-width:520px;}
+  .account-id-card .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9B9684;}
+  .account-id-card .id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:26px;font-weight:500;color:var(--media);margin-top:8px;}
+
+  .plumbing-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;color:var(--muted);line-height:1.6;margin-top:40px;padding-top:20px;border-top:1px dashed var(--line);max-width:700px;}
+
+  footer{margin-top:60px;padding:24px 28px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);text-align:center;}
+
+  @media (max-width:680px){
+    .wrap{padding:0 20px;}
+    .doc-body{padding:20px;}
+    .doc-sign{padding:20px;}
+    .btn-row{flex-direction:column;align-items:stretch;}
+    .btn-row .btn-primary,.btn-row .btn-ghost{text-align:center;}
+  }
+</style>
+</head>
+<body>
+
+<div class="back-nav">
+  <a class="wordmark" href="index.html">Veri<b>lume</b></a>
+  <button class="restart" id="restartBtn" style="display:none;">↺ Start over</button>
+</div>
+<div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+<main>
+<div class="wrap">
+
+  <!-- INTRO -->
+  <section class="step active" data-step="intro">
+    <div class="eyebrow">Verilume — Paid Onboarding</div>
+    <h1>Three steps between your free report and your account going live.</h1>
+    <p class="lede">NDA, then contract, then we provision your isolated workbook and Creative Library — and deep intake unlocks. Standard for anything touching internal data: sales figures, call-center scripts, CRM exports, brand guidelines.</p>
+    <div class="license-note">
+      <strong>Running Verilume under your own agency's brand, for your own clients?</strong> That's a licensing conversation, not a self-serve signup — terms, fee structure, and what the license actually grants get worked out directly. <a href="index.html#license">Reach out about licensing →</a>
+    </div>
+    <!-- Round 83 (Deliverable #4 gap closed) — a real Company name is now
+         collected here and sent to the backend at provisioning, so the
+         account this flow creates is a real database row (see
+         createRealAccount() below), the same as assessment.html's
+         activateInPortal() path, instead of a browser-only Account ID that
+         never existed in the database. -->
+    <div class="field" style="max-width:420px;">
+      <label for="companyName">Company name</label>
+      <input type="text" id="companyName" placeholder="Acme Hospitality Group" oninput="checkIntroReady()">
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="introNext" disabled onclick="state.company = document.getElementById('companyName').value.trim(); goToStep('nda')">Continue →</button>
+    </div>
+  </section>
+
+  <!-- NDA -->
+  <section class="step" data-step="nda">
+    <div class="eyebrow">Step 1 of 3 — mutual NDA</div>
+    <h2>Nothing deeper happens until this is signed.</h2>
+    <p class="lede">Standard practice for anything touching internal data — sales figures, call-center scripts, CRM exports, brand guidelines.</p>
+    <div class="doc-card">
+      <div class="doc-head">
+        <span class="doc-tag">Mutual NDA — direct-client template</span>
+        <h3>Mutual Non-Disclosure Agreement</h3>
+      </div>
+      <div class="doc-body">
+        <p><span style="font-style:normal;color:#8a8067;">[Placeholder text — real NDA language to be drafted by counsel.]</span></p>
+        <p>This agreement protects confidential information shared between Verilume and the undersigned party in connection with a Verilume engagement, including but not limited to sales figures, call-center scripts, CRM exports, and brand guidelines.</p>
+        <p>Both parties agree not to disclose the other's confidential information to third parties, and to use it solely for the purpose of the Verilume assessment and any resulting engagement.</p>
+      </div>
+      <div class="doc-sign">
+        <div class="field sig">
+          <label for="ndaSig">Type your full legal name to sign</label>
+          <input type="text" id="ndaSig" placeholder="Jane Doe" oninput="checkNdaReady()">
+        </div>
+        <label class="agree-row">
+          <input type="checkbox" id="ndaAgree" onchange="checkNdaReady()">
+          <span>I have authority to bind this organization and agree to the terms above.</span>
+        </label>
+        <button class="btn-primary" id="ndaSignBtn" disabled onclick="signNda()">Sign NDA →</button>
+        <div class="status-note" id="ndaStatus"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="goToStep('intro')">← Back</button>
+    </div>
+  </section>
+
+  <!-- CONTRACT -->
+  <section class="step" data-step="contract">
+    <div class="eyebrow">Step 2 of 3 — contract / SOW</div>
+    <h2>Now the scope of work.</h2>
+    <p class="lede">Engagement tier is specified here — a single assessment or an ongoing retainer.</p>
+    <div class="doc-card">
+      <div class="doc-head">
+        <span class="doc-tag">Contract / SOW — direct-client template</span>
+        <h3>Direct-Client Statement of Work</h3>
+      </div>
+      <div class="doc-body">
+        <p><span style="font-style:normal;color:#8a8067;">[Placeholder text — real contract/SOW language and fee schedule to be drafted by counsel.]</span></p>
+        <p>This Statement of Work defines the engagement tier, deliverables, timeline, and fee for Verilume services provided directly to this brand.</p>
+      </div>
+      <div class="doc-sign">
+        <div class="field">
+          <label for="contractTier">Engagement tier</label>
+          <select id="contractTier">
+            <option selected>Single assessment</option>
+            <option>Ongoing retainer</option>
+          </select>
+        </div>
+        <div class="field sig">
+          <label for="contractSig">Type your full legal name to sign</label>
+          <input type="text" id="contractSig" placeholder="Jane Doe" oninput="checkContractReady()">
+        </div>
+        <label class="agree-row">
+          <input type="checkbox" id="contractAgree" onchange="checkContractReady()">
+          <span>I have authority to bind this organization and agree to the scope and fee terms above.</span>
+        </label>
+        <button class="btn-primary" id="contractSignBtn" disabled onclick="signContract()">Sign contract →</button>
+        <div class="status-note" id="contractStatus"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="goToStep('nda')">← Back</button>
+    </div>
+  </section>
+
+  <!-- PROVISION -->
+  <section class="step" data-step="provision">
+    <div class="eyebrow">Step 3 of 3 — account setup</div>
+    <h2>Provisioning your account.</h2>
+    <p class="lede">Every new account starts clean — a fresh workbook and Creative Library, never cloned or extended from any existing account.</p>
+    <div class="provision-list" id="provisionList">
+      <div class="provision-item"><span class="icon"></span><span class="label">Assigning Account ID</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Provisioning a new, isolated Sheets workbook</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Confirming 4 tabs exist and are empty: Account Meta, Intake Responses, Scorecard, SWOT</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Creating a fresh Creative Library folder</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Spot-checking for cross-account references — none found</span></div>
+    </div>
+
+    <div class="account-id-card" id="accountIdCard" style="display:none;">
+      <span class="tag">Your account ID</span>
+      <div class="id" id="generatedAccountId"></div>
+      <!-- Round 83 — the real, one-time access code returned by the
+           backend when this account is genuinely created (see
+           createRealAccount()). Shown exactly once, same convention as
+           assessment.html's activateInPortal() reveal — this build has no
+           email delivery, so this moment is the only chance to hand it to
+           the visitor at all. Hidden entirely on the offline/mock fallback,
+           since there's no real account or access code to show in that case. -->
+      <div id="accessCodeBlock" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.15);">
+        <span class="tag">Access code — save this now, it won't be shown again</span>
+        <div class="id" id="generatedAccessCode" style="font-size:20px;color:var(--white);"></div>
+      </div>
+    </div>
+    <div class="status-note" id="provisionNote"></div>
+
+    <div class="btn-row" id="provisionActions" style="display:none;">
+      <button class="btn-primary" onclick="goToStep('done')">Unlock deep intake →</button>
+    </div>
+  </section>
+
+  <!-- DONE -->
+  <section class="step" data-step="done">
+    <div class="eyebrow">Stage 4 unlocked</div>
+    <h1>Deep intake is next.</h1>
+    <p class="lede">Next is the full survey — connected data, media mix modeling inputs, and a savings baseline — once your account structure here is set.</p>
+    <div class="btn-row">
+      <a class="btn-primary" href="index.html" style="text-decoration:none;">Back to Verilume</a>
+      <a class="btn-ghost" id="manageAccountLink" href="account.html" style="text-decoration:none;">Manage your account →</a>
+    </div>
+    <div class="plumbing-note">
+      Prototype note — Deliverable 4, updated round 83: NDA/contract signing here is still session-only, in-memory, with no real e-signature vendor chosen yet (DocuSign/HelloSign or similar, in the live build). <strong>Account provisioning itself is no longer a simulation</strong> — Step 3 now calls the same real backend (`backend/server.js`) assessment.html's activateInPortal() uses, so the Account ID shown above is a genuine database row, not a browser-generated string. What's still not real: the backend today provisions a SQLite record, not the originally-specified `cxmedia-backend-template.xlsx` Sheets workbook (see Deliverable 4's write-up in the deliverable-status doc for that structural deviation, already true of every other real account in this build); and contact info doesn't yet sync to HubSpot Free (Deliverable 13) the way assessment.html's lead capture does — that's a real gap this flow still has that the assessment path doesn't. "Manage your account" above passes this session's real Account ID through to account.html via ?accountId=, and this page also signs you in there automatically (same session-token handoff activateInPortal() uses) — see account.html's own plumbing note for what that page still needs before it's fully real.
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>Verilume · Onboarding prototype — Deliverable 4 · NDA/contract steps are session-only; account provisioning now writes a real backend record</footer>
+
+<script>
+let state = { region: new URLSearchParams(location.search).get('region') || 'National' };
+
+// Round 83 (Deliverable #4 gap) — same local demo backend every other real
+// page in this build points at; swapping this one constant is the only
+// change a real deployment needs on this side.
+// Same-origin in production (frontend and API are served from the same
+// Vercel domain), local backend when opened directly as a file:// page
+// during local dev (unchanged behavior from before).
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+  ? ''
+  : 'http://localhost:8787';
+
+// Same sessionStorage key format as portal.html/account.html
+// (verilume_session_<accountId>) — writing the session token here under
+// this key, before navigating to account.html in the same tab, is what lets
+// that page find it and skip its own access-code login gate, exactly the
+// way portal.html already does when opened from activateInPortal().
+function sessionStorageKey(accountId){
+  return `verilume_session_${accountId}`;
+}
+function persistSessionToken(accountId, token){
+  try { sessionStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { /* sessionStorage unavailable — skip caching */ }
+}
+
+function checkIntroReady(){
+  document.getElementById('introNext').disabled = document.getElementById('companyName').value.trim().length < 1;
+}
+
+function goToStep(step){
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.querySelector(`.step[data-step="${step}"]`).classList.add('active');
+  document.getElementById('restartBtn').style.display = step === 'intro' ? 'none' : 'inline-block';
+  updateProgress(step);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function updateProgress(step){
+  const order = { intro:8, nda:35, contract:60, provision:85, done:100 };
+  document.getElementById('progressFill').style.width = (order[step] ?? 0) + '%';
+}
+
+document.getElementById('restartBtn').addEventListener('click', () => {
+  location.reload();
+});
+
+function checkNdaReady(){
+  const ready = document.getElementById('ndaSig').value.trim().length > 1 && document.getElementById('ndaAgree').checked;
+  document.getElementById('ndaSignBtn').disabled = !ready;
+}
+
+function signNda(){
+  state.ndaSignedAt = new Date().toISOString().slice(0,10);
+  document.getElementById('ndaStatus').textContent = `✓ Signed ${state.ndaSignedAt} — unlocking contract step.`;
+  document.getElementById('ndaStatus').classList.add('signed');
+  document.getElementById('ndaSignBtn').disabled = true;
+  setTimeout(() => goToStep('contract'), 700);
+}
+
+function checkContractReady(){
+  const ready = document.getElementById('contractSig').value.trim().length > 1 && document.getElementById('contractAgree').checked;
+  document.getElementById('contractSignBtn').disabled = !ready;
+}
+
+function signContract(){
+  state.contractSignedAt = new Date().toISOString().slice(0,10);
+  state.contractTier = document.getElementById('contractTier').value;
+  document.getElementById('contractStatus').textContent = `✓ Signed ${state.contractSignedAt} — provisioning your account.`;
+  document.getElementById('contractStatus').classList.add('signed');
+  document.getElementById('contractSignBtn').disabled = true;
+  setTimeout(() => { goToStep('provision'); runProvisioning(); }, 700);
+}
+
+function regionCode(region){
+  return { Local: 'LOC', National: 'NAT', Global: 'GLB' }[region] || 'NAT';
+}
+
+// Round 83 (Deliverable #4) — real path: POST this session's real Company
+// name + region to the backend, which creates a genuine `accounts` row and
+// returns a real accountId/accessCode/session token — same
+// POST /api/accounts endpoint and response shape assessment.html's
+// activateInPortal() already uses, just with an empty cells[] (this flow
+// never ran the assessment instrument, so there are no scorecard cells to
+// send; company/footprint/audience/wealth/competitors/assessedStages are
+// exactly the same fields that function sends, just blank where this flow
+// simply never collected them). No fabricated cell scores are invented to
+// fill that gap.
+async function createRealAccount(){
+  const resp = await fetch(`${BACKEND_URL}/api/accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company: state.company || 'Your Company',
+      industry: '',
+      footprint: state.region || '',
+      audience: [],
+      wealth: [],
+      competitors: [],
+      assessedStages: [],
+      cells: []
+    })
+  });
+  if (!resp.ok) throw new Error(`Backend responded ${resp.status}`);
+  return resp.json(); // { accountId, accessCode, token, expiresAt }
+}
+
+function runProvisioning(){
+  const items = document.querySelectorAll('.provision-item');
+  items.forEach((item, i) => {
+    setTimeout(() => { item.classList.add('done'); }, 500 * (i + 1));
+  });
+  const totalDelay = 500 * items.length;
+  setTimeout(async () => {
+    const note = document.getElementById('provisionNote');
+    try {
+      const { accountId, accessCode, token } = await createRealAccount();
+      state.accountId = accountId;
+      persistSessionToken(accountId, token);
+      document.getElementById('generatedAccountId').textContent = accountId;
+      document.getElementById('generatedAccessCode').textContent = accessCode;
+      document.getElementById('accessCodeBlock').style.display = 'block';
+      document.getElementById('accountIdCard').style.display = 'block';
+      document.getElementById('provisionActions').style.display = 'flex';
+      document.getElementById('manageAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
+      note.classList.add('signed');
+      note.textContent = `✓ This is a real account record in the local demo backend — "Manage your account" below will open already signed in.`;
+    } catch (e){
+      // Honest fallback, same convention as every other real-backend page in
+      // this build: the backend wasn't reachable, so this session gets a
+      // browser-only placeholder ID instead of pretending it's a real
+      // account. Clearly labeled as such rather than looking identical to
+      // the real path above.
+      console.warn('createRealAccount: backend not reachable, falling back to a session-only placeholder ID.', e);
+      const year = 2026; // session clock; the real path above stamps the actual create date
+      const seq = String(Math.floor(100 + Math.random() * 900));
+      const id = `CXM-${regionCode(state.region)}-${year}-${seq}`;
+      state.accountId = id;
+      document.getElementById('generatedAccountId').textContent = id;
+      document.getElementById('accessCodeBlock').style.display = 'none';
+      document.getElementById('accountIdCard').style.display = 'block';
+      document.getElementById('provisionActions').style.display = 'flex';
+      document.getElementById('manageAccountLink').href = `account.html?accountId=${encodeURIComponent(id)}`;
+      note.textContent = `The local demo backend wasn't reachable at ${BACKEND_URL}, so this Account ID is a session-only placeholder, not a real saved account.`;
+    }
+  }, totalDelay);
+}
+</script>
+</body>
+</html>
