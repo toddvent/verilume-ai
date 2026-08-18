@@ -26,7 +26,8 @@
     { "source": "/solution-mass-market-cruises.html", "destination": "/frontend/solution-mass-market-cruises.html" },
     { "source": "/solution-retail-apparel.html", "destination": "/frontend/solution-retail-apparel.html" },
     { "source": "/solution-sporting-goods.html", "destination": "/frontend/solution-sporting-goods.html" },
-    { "source": "/solution-wine-spirits.html", "destination": "/frontend/solution-wine-spirits.html" }
+    { "source": "/solution-wine-spirits.html", "destination": "/frontend/solution-wine-spirits.html" },
+    { "source": "/terms.html", "destination": "/frontend/terms.html" }
   ],
   "headers": [
     {
