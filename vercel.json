@@ -1,10 +1,39 @@
 {
   "functions": {
     "api/[...path].js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "backend/**"
     }
   },
   "redirects": [
     { "source": "/", "destination": "/frontend/index.html", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/account.html", "destination": "/frontend/account.html" },
+    { "source": "/assessment-framework.html", "destination": "/frontend/assessment-framework.html" },
+    { "source": "/assessment.html", "destination": "/frontend/assessment.html" },
+    { "source": "/customer-journey.html", "destination": "/frontend/customer-journey.html" },
+    { "source": "/human-ai-agents.html", "destination": "/frontend/human-ai-agents.html" },
+    { "source": "/industry-solutions.html", "destination": "/frontend/industry-solutions.html" },
+    { "source": "/licensing.html", "destination": "/frontend/licensing.html" },
+    { "source": "/marketing-performance.html", "destination": "/frontend/marketing-performance.html" },
+    { "source": "/onboarding.html", "destination": "/frontend/onboarding.html" },
+    { "source": "/ooh-specs.html", "destination": "/frontend/ooh-specs.html" },
+    { "source": "/ops-console.html", "destination": "/frontend/ops-console.html" },
+    { "source": "/portal.html", "destination": "/frontend/portal.html" },
+    { "source": "/print-specs.html", "destination": "/frontend/print-specs.html" },
+    { "source": "/solution-luxury-cruises.html", "destination": "/frontend/solution-luxury-cruises.html" },
+    { "source": "/solution-mass-market-cruises.html", "destination": "/frontend/solution-mass-market-cruises.html" },
+    { "source": "/solution-retail-apparel.html", "destination": "/frontend/solution-retail-apparel.html" },
+    { "source": "/solution-sporting-goods.html", "destination": "/frontend/solution-sporting-goods.html" },
+    { "source": "/solution-wine-spirits.html", "destination": "/frontend/solution-wine-spirits.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }
+      ]
+    }
   ]
 }
