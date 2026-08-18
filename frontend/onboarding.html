@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Verilume — Paid Onboarding</title>
-<meta name="description" content="Verilume paid onboarding: NDA, contract/SOW, and account provisioning ahead of deep intake.">
+<title>Verilume — Account Setup</title>
+<meta name="description" content="Create your free Verilume account — no paperwork required, with an optional NDA if you want extra confidentiality assurance.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -147,9 +147,9 @@
 
   <!-- INTRO -->
   <section class="step active" data-step="intro">
-    <div class="eyebrow">Verilume — Paid Onboarding</div>
-    <h1>Three steps between your free report and your account going live.</h1>
-    <p class="lede">NDA, then contract, then we provision your isolated workbook and Creative Library — and deep intake unlocks. Standard for anything touching internal data: sales figures, call-center scripts, CRM exports, brand guidelines.</p>
+    <div class="eyebrow">Verilume — Account Setup</div>
+    <h1>Create your Verilume account.</h1>
+    <p class="lede">No paperwork required — just your company info and you're in. We provision your isolated workbook and Creative Library, and deep intake unlocks right after.</p>
     <div class="license-note">
       <strong>Running Verilume under your own agency's brand, for your own clients?</strong> That's a licensing conversation, not a self-serve signup — terms, fee structure, and what the license actually grants get worked out directly. <a href="index.html#license">Reach out about licensing →</a>
     </div>
@@ -163,16 +163,56 @@
       <label for="companyName">Company name</label>
       <input type="text" id="companyName" placeholder="Acme Hospitality Group" oninput="checkIntroReady()">
     </div>
+    <!-- Added 2026-08-18 (registration rebuild) — the account's first real
+         person, the admin/CMO user, per direct instruction: real,
+         individually memorable username (email) + a system-issued temp
+         password, not the old one-per-account access code. Collected here
+         because this is the earliest point in the flow a real name/email
+         exists — registerAdmin() (below) uses these once Step 3 provisions
+         the account itself. -->
+    <div class="field" style="max-width:420px;">
+      <label for="adminName">Your name</label>
+      <input type="text" id="adminName" placeholder="Jane Doe" oninput="checkIntroReady()">
+    </div>
+    <div class="field" style="max-width:420px;">
+      <label for="adminEmail">Work email</label>
+      <input type="email" id="adminEmail" placeholder="jane@yourcompany.com" oninput="checkIntroReady()">
+    </div>
+    <!-- Added 2026-08-18 (registration rebuild) — NDA is now an optional
+         add-on, not a mandatory gate, per direct instruction. Checking this
+         routes through the existing NDA step before provisioning; leaving
+         it unchecked skips straight to account setup. The old mandatory
+         "contract/SOW" step (engagement tier + fee terms) is no longer
+         part of this self-serve flow at all — a real paid engagement is
+         the licensing conversation linked above, not an in-page signature
+         step, so signContract()/checkContractReady() and the CONTRACT
+         section below are left in the file but no longer reachable from
+         here. -->
+    <label class="agree-row" style="margin:4px 0 8px;">
+      <input type="checkbox" id="wantNda">
+      <span>Add a mutual NDA for extra confidentiality assurance (optional)</span>
+    </label>
+    <!-- Added 2026-08-18 — per direct instruction: registration requires no
+         signature on these, just a visible reference. Completing
+         registration (the "Continue" click below, which provisions the
+         account) is the acceptance — see recordLegalAcceptance() in
+         backend/server.js, called from POST /api/auth/register-admin,
+         for the audit-trail write this produces. -->
+    <p style="font-size:12.5px;color:var(--muted);max-width:480px;line-height:1.6;margin:0 0 22px;">
+      By continuing, you agree to Verilume's <a href="terms.html" target="_blank" style="color:var(--cx);">Terms &amp; Conditions</a> and <a href="terms.html#pricing" target="_blank" style="color:var(--cx);">Pricing Disclosures</a>. No signature needed — creating your account is your acceptance.
+    </p>
     <div class="btn-row">
-      <button class="btn-primary" id="introNext" disabled onclick="state.company = document.getElementById('companyName').value.trim(); goToStep('nda')">Continue →</button>
+      <button class="btn-primary" id="introNext" disabled onclick="handleIntroContinue()">Continue →</button>
     </div>
   </section>
 
-  <!-- NDA -->
+  <!-- NDA — optional, per direct instruction (2026-08-18): reached only if
+       "Add a mutual NDA" was checked on the intro step. Not a gate — the
+       account can be created without ever visiting this step. -->
   <section class="step" data-step="nda">
-    <div class="eyebrow">Step 1 of 3 — mutual NDA</div>
-    <h2>Nothing deeper happens until this is signed.</h2>
-    <p class="lede">Standard practice for anything touching internal data — sales figures, call-center scripts, CRM exports, brand guidelines.</p>
+    <div class="eyebrow">Optional — mutual NDA</div>
+    <h2>Sign your NDA.</h2>
+    <p class="lede">You opted in for extra confidentiality assurance. Standard practice for anything touching internal data — sales figures, call-center scripts, CRM exports, brand guidelines.</p>
     <div class="doc-card">
       <div class="doc-head">
         <span class="doc-tag">Mutual NDA — direct-client template</span>
@@ -201,7 +241,8 @@
     </div>
   </section>
 
-  <!-- CONTRACT -->
+  <!-- CONTRACT — no longer part of the self-serve flow (2026-08-18); left
+       in place, unreachable, in case paid-tier work resumes it later. -->
   <section class="step" data-step="contract">
     <div class="eyebrow">Step 2 of 3 — contract / SOW</div>
     <h2>Now the scope of work.</h2>
@@ -242,7 +283,7 @@
 
   <!-- PROVISION -->
   <section class="step" data-step="provision">
-    <div class="eyebrow">Step 3 of 3 — account setup</div>
+    <div class="eyebrow">Account setup</div>
     <h2>Provisioning your account.</h2>
     <p class="lede">Every new account starts clean — a fresh workbook and Creative Library, never cloned or extended from any existing account.</p>
     <div class="provision-list" id="provisionList">
@@ -264,8 +305,11 @@
            the visitor at all. Hidden entirely on the offline/mock fallback,
            since there's no real account or access code to show in that case. -->
       <div id="accessCodeBlock" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.15);">
-        <span class="tag">Access code — save this now, it won't be shown again</span>
+        <span class="tag">Temporary password — save this now, it won't be shown again</span>
         <div class="id" id="generatedAccessCode" style="font-size:20px;color:var(--white);"></div>
+        <div style="font-size:12.5px;color:rgba(255,255,255,0.75);margin-top:8px;max-width:520px;">
+          Sign in with <span id="generatedAdminEmail" style="color:#fff;"></span> and this temporary password — you'll be required to set your own password on first login.
+        </div>
       </div>
     </div>
     <div class="status-note" id="provisionNote"></div>
@@ -285,14 +329,14 @@
       <a class="btn-ghost" id="manageAccountLink" href="account.html" style="text-decoration:none;">Manage your account →</a>
     </div>
     <div class="plumbing-note">
-      Prototype note — Deliverable 4, updated round 83: NDA/contract signing here is still session-only, in-memory, with no real e-signature vendor chosen yet (DocuSign/HelloSign or similar, in the live build). <strong>Account provisioning itself is no longer a simulation</strong> — Step 3 now calls the same real backend (`backend/server.js`) assessment.html's activateInPortal() uses, so the Account ID shown above is a genuine database row, not a browser-generated string. What's still not real: the backend today provisions a SQLite record, not the originally-specified `cxmedia-backend-template.xlsx` Sheets workbook (see Deliverable 4's write-up in the deliverable-status doc for that structural deviation, already true of every other real account in this build); and contact info doesn't yet sync to HubSpot Free (Deliverable 13) the way assessment.html's lead capture does — that's a real gap this flow still has that the assessment path doesn't. "Manage your account" above passes this session's real Account ID through to account.html via ?accountId=, and this page also signs you in there automatically (same session-token handoff activateInPortal() uses) — see account.html's own plumbing note for what that page still needs before it's fully real.
+      Prototype note — updated 2026-08-18 (registration rebuild): the NDA (now optional) is still session-only, in-memory, with no real e-signature vendor chosen yet (DocuSign/HelloSign or similar, in the live build) — the old mandatory contract/SOW step is gone from this flow entirely (a real paid engagement is the licensing conversation linked at the top, not an in-page signature step). <strong>Account provisioning, the real admin/CMO login, and the legal-acceptance audit trail are not simulations</strong> — this calls the same real backend (`backend/server.js`) assessment.html's activateInPortal() uses to create the account, then POST /api/auth/register-admin to create a real, individually-owned username+password login (a system-issued temp password, forced to change on first login) and to log the T&Cs/pricing-disclosure acceptance (and NDA acceptance, if signed) with a timestamp and identifying info. What's still not real: the backend today provisions a SQLite record, not the originally-specified `cxmedia-backend-template.xlsx` Sheets workbook (see Deliverable 4's write-up in the deliverable-status doc for that structural deviation, already true of every other real account in this build); contact info doesn't yet sync to HubSpot Free (Deliverable 13) the way assessment.html's lead capture does; and phone verification (planned as this flow's anti-bot control) isn't built yet — no SMS provider account exists to build it against. "Manage your account" above passes this session's real Account ID through to account.html via ?accountId=, and this page also signs you in there automatically (same session-token handoff activateInPortal() uses) — see account.html's own plumbing note for what that page still needs before it's fully real.
     </div>
   </section>
 
 </div>
 </main>
 
-<footer>Verilume · Onboarding prototype — Deliverable 4 · NDA/contract steps are session-only; account provisioning now writes a real backend record</footer>
+<footer>Verilume · Account setup · NDA is optional and still session-only (no real e-signature vendor chosen yet); account provisioning and registration write real backend records, including the legal-acceptance audit trail</footer>
 
 <script>
 let state = { region: new URLSearchParams(location.search).get('region') || 'National' };
@@ -320,7 +364,11 @@ function persistSessionToken(accountId, token){
 }
 
 function checkIntroReady(){
-  document.getElementById('introNext').disabled = document.getElementById('companyName').value.trim().length < 1;
+  const hasCompany = document.getElementById('companyName').value.trim().length > 0;
+  const hasName = document.getElementById('adminName').value.trim().length > 0;
+  const email = document.getElementById('adminEmail').value.trim();
+  const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  document.getElementById('introNext').disabled = !(hasCompany && hasName && hasEmail);
 }
 
 function goToStep(step){
@@ -347,10 +395,31 @@ function checkNdaReady(){
 
 function signNda(){
   state.ndaSignedAt = new Date().toISOString().slice(0,10);
-  document.getElementById('ndaStatus').textContent = `✓ Signed ${state.ndaSignedAt} — unlocking contract step.`;
+  state.ndaSignatureName = document.getElementById('ndaSig').value.trim();
+  document.getElementById('ndaStatus').textContent = `✓ Signed ${state.ndaSignedAt} — provisioning your account.`;
   document.getElementById('ndaStatus').classList.add('signed');
   document.getElementById('ndaSignBtn').disabled = true;
-  setTimeout(() => goToStep('contract'), 700);
+  // NDA is no longer followed by the contract/SOW step (2026-08-18) — it
+  // was the last optional add-on before account setup, so this goes
+  // straight to provisioning, same as the no-NDA path from the intro step.
+  setTimeout(() => { goToStep('provision'); runProvisioning(); }, 700);
+}
+
+// Added 2026-08-18 (registration rebuild) — the intro step's single
+// Continue button now branches instead of always going to 'nda': NDA is
+// optional (per direct instruction), so only visitors who checked "Add a
+// mutual NDA" see that step at all; everyone else goes straight to account
+// provisioning.
+function handleIntroContinue(){
+  state.company = document.getElementById('companyName').value.trim();
+  state.adminName = document.getElementById('adminName').value.trim();
+  state.adminEmail = document.getElementById('adminEmail').value.trim();
+  if (document.getElementById('wantNda').checked){
+    goToStep('nda');
+  } else {
+    goToStep('provision');
+    runProvisioning();
+  }
 }
 
 function checkContractReady(){
@@ -400,6 +469,32 @@ async function createRealAccount(){
   return resp.json(); // { accountId, accessCode, token, expiresAt }
 }
 
+// Added 2026-08-18 (registration rebuild) — creates this account's real
+// admin/CMO user right after the account itself exists, per direct
+// instruction: a real, individually memorable username (email) + a
+// system-issued temp password, not the account-level access code above.
+// Called from runProvisioning() below, right after createRealAccount()
+// succeeds — this account's accountId has to exist first since
+// register-admin 404s on an unknown one.
+async function registerAdmin(accountId){
+  const resp = await fetch(`${BACKEND_URL}/api/auth/register-admin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      accountId,
+      name: state.adminName || 'Account Admin',
+      email: state.adminEmail,
+      // Only present if the optional NDA step was actually visited and
+      // signed — server logs this as a separate 'nda' legal-acceptance
+      // row (method 'signature') alongside the always-present T&Cs/pricing
+      // disclosure rows (method 'assumed-on-save') it writes regardless.
+      nda: state.ndaSignedAt ? { signedAt: state.ndaSignedAt, signatureName: state.ndaSignatureName } : undefined
+    })
+  });
+  if (!resp.ok) throw new Error(`register-admin responded ${resp.status}`);
+  return resp.json(); // { memberId, email, tempPassword, mustChangePassword, token, expiresAt }
+}
+
 function runProvisioning(){
   const items = document.querySelectorAll('.provision-item');
   items.forEach((item, i) => {
@@ -409,17 +504,35 @@ function runProvisioning(){
   setTimeout(async () => {
     const note = document.getElementById('provisionNote');
     try {
-      const { accountId, accessCode, token } = await createRealAccount();
+      const { accountId, token } = await createRealAccount();
       state.accountId = accountId;
       persistSessionToken(accountId, token);
       document.getElementById('generatedAccountId').textContent = accountId;
-      document.getElementById('generatedAccessCode').textContent = accessCode;
-      document.getElementById('accessCodeBlock').style.display = 'block';
       document.getElementById('accountIdCard').style.display = 'block';
       document.getElementById('provisionActions').style.display = 'flex';
       document.getElementById('manageAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
-      note.classList.add('signed');
-      note.textContent = `✓ This is a real account record in the local demo backend — "Manage your account" below will open already signed in.`;
+      // Registration rebuild (2026-08-18): the account-level access code
+      // above is no longer what a real person signs in with — register
+      // the real admin/CMO user (name/email collected at Step 1) and show
+      // their temp password instead. If this call fails for any reason
+      // (duplicate email, adminEmail missing from an old/resumed session,
+      // etc.), account creation itself still succeeded above — this just
+      // falls back to noting that the admin login couldn't be set up, so
+      // the person isn't left thinking the whole step failed.
+      try {
+        const admin = await registerAdmin(accountId);
+        persistSessionToken(accountId, admin.token);
+        document.getElementById('generatedAccessCode').textContent = admin.tempPassword;
+        document.getElementById('generatedAdminEmail').textContent = admin.email;
+        document.getElementById('accessCodeBlock').style.display = 'block';
+        note.classList.add('signed');
+        note.textContent = `✓ This is a real account record in the local demo backend — "Manage your account" below will open already signed in as ${admin.email}.`;
+      } catch (adminErr){
+        console.warn('registerAdmin failed — account exists, but no admin login was created.', adminErr);
+        document.getElementById('accessCodeBlock').style.display = 'none';
+        note.classList.add('signed');
+        note.textContent = `✓ Account created. Couldn't set up your admin login automatically (${state.adminEmail ? 'that email may already be registered' : 'no email was captured'}) — contact Verilume support to get access.`;
+      }
     } catch (e){
       // Honest fallback, same convention as every other real-backend page in
       // this build: the backend wasn't reachable, so this session gets a
