@@ -186,20 +186,49 @@
      Team Members is a session-only UI mockup anyway (see this file's own
      plumbing note further down), so gating only blocks the one section
      that's actually real data worth protecting. -->
+<!-- Updated 2026-08-18 (registration rebuild) — real per-person email +
+     password login (POST /api/auth/login-user), replacing the account-
+     level access code. Two internal "screens" in one card: the login
+     fields (default) and a forced password-change screen that swaps in
+     when the backend reports mustChangePassword — same card, same
+     onkeydown-submit convention, just a different set of inputs/handler
+     shown at a time via display toggles rather than two separate modals. -->
 <div class="login-gate" id="loginGate" style="display:none;">
   <div class="login-gate-card">
     <div class="wordmark" style="margin-bottom:18px;">Veri<b>lume</b></div>
-    <h2 id="loginGateTitle">Enter your access code</h2>
-    <p class="lede" id="loginGateLede">This account (<code id="loginGateAccountId"></code>) is protected. Enter the access code you were given when this account was created.</p>
-    <div class="field">
-      <label for="loginGateCode">Access code</label>
-      <input type="text" id="loginGateCode" placeholder="XXXXX-XXXXX" autocomplete="off" onkeydown="if(event.key==='Enter')submitLoginGate();">
+    <div id="loginGateStep">
+      <h2>Sign in to your account</h2>
+      <p class="lede">This account (<code id="loginGateAccountId"></code>) is protected. Sign in with your Verilume email and password.</p>
+      <div class="field">
+        <label for="loginGateEmail">Email</label>
+        <input type="email" id="loginGateEmail" autocomplete="username" onkeydown="if(event.key==='Enter')submitLoginGate();">
+      </div>
+      <div class="field">
+        <label for="loginGatePassword">Password</label>
+        <input type="password" id="loginGatePassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLoginGate();">
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="submitLoginGate()">Sign in →</button>
+      </div>
+      <div id="loginGateError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
+      <a class="flink" style="display:inline-block;margin-top:14px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:var(--cx);cursor:pointer;" onclick="skipLoginGate()">Continue without logging in — Team Members will show the local sample roster only →</a>
     </div>
-    <div class="btn-row">
-      <button class="btn-primary" onclick="submitLoginGate()">Continue →</button>
+    <div id="passwordChangeStep" style="display:none;">
+      <h2>Set your password</h2>
+      <p class="lede">You signed in with a temporary password. Set a real one now (at least 8 characters) — this only happens once.</p>
+      <div class="field">
+        <label for="newPassword">New password</label>
+        <input type="password" id="newPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
+      </div>
+      <div class="field">
+        <label for="newPasswordConfirm">Confirm new password</label>
+        <input type="password" id="newPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="submitPasswordChange()">Set password →</button>
+      </div>
+      <div id="passwordChangeError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
     </div>
-    <div id="loginGateError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
-    <a class="flink" style="display:inline-block;margin-top:14px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:var(--cx);cursor:pointer;" onclick="skipLoginGate()">Continue without logging in — Team Members will show the local sample roster only →</a>
   </div>
 </div>
 
@@ -619,50 +648,81 @@ function persistSessionToken(token){
 }
 
 let loginGateResolve = null;
-let loginGateMode = 'login';
 
 function requireLogin(){
   document.getElementById('loginGateAccountId').textContent = state.companyId;
   document.getElementById('loginGateError').textContent = '';
-  document.getElementById('loginGateCode').value = '';
-  loginGateMode = 'login';
-  document.getElementById('loginGateTitle').textContent = 'Enter your access code';
-  document.getElementById('loginGateLede').innerHTML = `This account (<code>${state.companyId}</code>) is protected. Enter the access code you were given when this account was created.`;
+  document.getElementById('loginGateEmail').value = '';
+  document.getElementById('loginGatePassword').value = '';
+  document.getElementById('loginGateStep').style.display = 'block';
+  document.getElementById('passwordChangeStep').style.display = 'none';
   document.getElementById('loginGate').style.display = 'flex';
-  document.getElementById('loginGateCode').focus();
+  document.getElementById('loginGateEmail').focus();
   return new Promise(resolve => { loginGateResolve = resolve; });
 }
 
+// Rewritten 2026-08-18 (registration rebuild) — real per-person email +
+// password login via POST /api/auth/login-user, replacing the old
+// account-level access-code claim/login pair. On a still-temp password
+// (mustChangePassword), this swaps the card to the password-change screen
+// instead of resolving the gate yet — submitPasswordChange() (below) is
+// what actually closes the gate in that case.
 async function submitLoginGate(){
-  const code = document.getElementById('loginGateCode').value.trim();
+  const email = document.getElementById('loginGateEmail').value.trim();
+  const password = document.getElementById('loginGatePassword').value;
   const errEl = document.getElementById('loginGateError');
-  if (!code){ errEl.textContent = 'Enter an access code to continue.'; return; }
+  if (!email || !password){ errEl.textContent = 'Enter your email and password to continue.'; return; }
   errEl.textContent = 'Checking…';
   try {
-    const endpoint = loginGateMode === 'claim' ? 'claim' : 'login';
-    const resp = await fetch(`${BACKEND_URL}/api/auth/${endpoint}`, {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId: state.companyId, accessCode: code })
+      body: JSON.stringify({ email, password })
     });
     const data = await resp.json().catch(() => ({}));
-    if (resp.status === 409 && loginGateMode === 'login' && /no access code yet/.test(data.error || '')){
-      loginGateMode = 'claim';
-      document.getElementById('loginGateTitle').textContent = 'Set an access code for this account';
-      document.getElementById('loginGateLede').innerHTML = `This account (<code>${state.companyId}</code>) doesn't have an access code yet — pick one now (whatever you just typed becomes it) to secure it going forward. This only happens once.`;
-      errEl.textContent = '';
-      return;
-    }
     if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't verify that code (${resp.status}).`;
+      errEl.textContent = data.error || `Couldn't sign in (${resp.status}).`;
       return;
     }
     persistSessionToken(data.token);
+    if (data.mustChangePassword){
+      document.getElementById('loginGateStep').style.display = 'none';
+      document.getElementById('passwordChangeStep').style.display = 'block';
+      document.getElementById('passwordChangeError').textContent = '';
+      document.getElementById('newPassword').focus();
+      return; // gate stays open — submitPasswordChange() resolves it
+    }
     document.getElementById('loginGate').style.display = 'none';
     if (loginGateResolve) loginGateResolve(true);
     loginGateResolve = null;
   } catch (e){
-    errEl.textContent = 'Could not reach the backend to verify this code — try again.';
+    errEl.textContent = 'Could not reach the backend to sign in — try again.';
+  }
+}
+
+async function submitPasswordChange(){
+  const pw = document.getElementById('newPassword').value;
+  const pwConfirm = document.getElementById('newPasswordConfirm').value;
+  const errEl = document.getElementById('passwordChangeError');
+  if (pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; return; }
+  if (pw !== pwConfirm){ errEl.textContent = "Passwords don't match."; return; }
+  errEl.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword: pw })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't set your password (${resp.status}).`;
+      return;
+    }
+    document.getElementById('loginGate').style.display = 'none';
+    if (loginGateResolve) loginGateResolve(true);
+    loginGateResolve = null;
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to save your password — try again.';
   }
 }
 
@@ -775,7 +835,15 @@ async function loadTeamData(){
     }
     if (resp.ok){
       const { team } = await resp.json();
-      if (team && team.length){
+      // Fixed 2026-08-18: this used to be `if (team && team.length)`, which
+      // treated a real, successful, genuinely-empty roster (any brand-new
+      // account with nobody invited yet) the same as "backend unreachable"
+      // and silently kept showing the hardcoded Acme Hospitality Group
+      // fallback names — a real client's account displaying a fictitious
+      // team with no indication it wasn't real. `Array.isArray(team)` is
+      // true for a successful response either way, empty or not, so a
+      // genuinely empty account now correctly renders as an empty roster.
+      if (Array.isArray(team)){
         state.team = team.map(m => ({ ...m, isAdmin: !!m.isAdmin }));
       }
       dataSourceLabel = 'backend';
@@ -1077,6 +1145,10 @@ let editingTeamMemberId = null;
 
 function renderTeam(){
   const body = document.getElementById('teamRows');
+  if (!state.team.length){
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);">No team members yet — invite your first one below.</td></tr>`;
+    return;
+  }
   body.innerHTML = state.team.map(m => {
     const manager = resolveManager(m.id);
     const roleText = `${m.isAdmin ? '<span style="font-family:-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:999px;padding:2px 8px;margin-right:6px;">Admin</span>' : ''}${m.level ? `${m.level} · ${functionLabel(m.functionGroup)}` : ''}`;
@@ -1295,3 +1367,4 @@ init();
 </script>
 </body>
 </html>
+
