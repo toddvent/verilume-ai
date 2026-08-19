@@ -22,6 +22,7 @@
     { "source": "/ops-console.html", "destination": "/frontend/ops-console.html" },
     { "source": "/portal.html", "destination": "/frontend/portal.html" },
     { "source": "/print-specs.html", "destination": "/frontend/print-specs.html" },
+    { "source": "/select-tier.html", "destination": "/frontend/select-tier.html" },
     { "source": "/solution-luxury-cruises.html", "destination": "/frontend/solution-luxury-cruises.html" },
     { "source": "/solution-mass-market-cruises.html", "destination": "/frontend/solution-mass-market-cruises.html" },
     { "source": "/solution-retail-apparel.html", "destination": "/frontend/solution-retail-apparel.html" },
