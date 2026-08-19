@@ -164,11 +164,26 @@
   .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
   .logo b{color:var(--media);}
   .nav{position:relative;}
+  .nav-group{display:flex;align-items:center;gap:20px;}
   .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
   .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
   .navlinks a:hover{color:var(--ink);}
   .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
   .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  /* 2026-08-19 — utility nav. "Log in" used to live inside .navlinks,
+     styled identically to content links (Human & AI Agents, Assessment
+     Framework, etc.) and hidden behind the mobile hamburger along with
+     them. Login is a high-frequency, low-friction action for returning
+     users, not page-discovery content — it now sits in its own group
+     (.nav-right), visually distinct (a bordered pill, not a plain text
+     link) and always visible, even on mobile with the content menu
+     collapsed. Deliberately NOT paired with a "Create account" CTA here —
+     per direct instruction, "Start free assessment" stays the one
+     account-creation path pushed on visitors, so a second, competing CTA
+     doesn't cannibalize assessment completions. */
+  .nav-right{display:flex;align-items:center;gap:12px;}
+  .nav-login{font-size:12.5px;font-weight:600;color:var(--ink)!important;text-decoration:none;padding:8px 16px;border:1px solid var(--line);border-radius:var(--radius-pill);white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .nav-login:hover{border-color:var(--ink);background:var(--paper-dim);}
   /* Pop-out menu toggle — canonical site-wide pattern (see also portal.html):
      44x44 tap target, aria-expanded kept in sync, panel animates via
      max-height rather than an instant display:none/flex snap. */
@@ -350,14 +365,23 @@
 <header id="siteHeader">
   <nav class="nav" aria-label="Primary">
     <a class="logo" href="index.html">Veri<b>lume</b></a>
-    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
-    <div class="navlinks" id="navLinks">
-      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
-      <a href="assessment-framework.html">Assessment Framework</a>
-      <a href="marketing-performance.html">Marketing Performance</a>
-      <a href="customer-journey.html">Customer Journey</a>
-      <a href="industry-solutions.html">Industry Solutions</a>
-      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+    <div class="nav-group">
+      <div class="navlinks" id="navLinks">
+        <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+        <a href="assessment-framework.html">Assessment Framework</a>
+        <a href="marketing-performance.html">Marketing Performance</a>
+        <a href="customer-journey.html">Customer Journey</a>
+        <a href="industry-solutions.html">Industry Solutions</a>
+        <a class="nav-cta" href="assessment.html">Start free assessment</a>
+      </div>
+      <!-- 2026-08-19 — utility nav (see the .nav-right/.nav-login CSS
+           comment for why this is separate from .navlinks): "Log in" now
+           lives here, always visible, next to the mobile menu toggle
+           rather than hidden inside it. -->
+      <div class="nav-right">
+        <a class="nav-login" href="account.html">Log in</a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+      </div>
     </div>
   </nav>
 </header>
