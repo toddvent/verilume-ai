@@ -153,6 +153,11 @@
     <div class="license-note">
       <strong>Running Verilume under your own agency's brand, for your own clients?</strong> That's a licensing conversation, not a self-serve signup — terms, fee structure, and what the license actually grants get worked out directly. <a href="index.html#license">Reach out about licensing →</a>
     </div>
+    <!-- 2026-08-19 (Path 4 build) — confirms the level picked on
+         select-tier.html actually carried through, rather than silently
+         disappearing into a query param nobody sees. Only shows when
+         ?tier= is present. -->
+    <div class="license-note" id="tierConfirmNote" style="display:none;background:#EAF6F8;border-color:#BFE3EA;"></div>
     <!-- Round 83 (Deliverable #4 gap closed) — a real Company name is now
          collected here and sent to the backend at provisioning, so the
          account this flow creates is a real database row (see
@@ -339,7 +344,45 @@
 <footer>Verilume · Account setup · NDA is optional and still session-only (no real e-signature vendor chosen yet); account provisioning and registration write real backend records, including the legal-acceptance audit trail</footer>
 
 <script>
-let state = { region: new URLSearchParams(location.search).get('region') || 'National' };
+let state = {
+  region: new URLSearchParams(location.search).get('region') || 'National',
+  // 2026-08-19 (Path 4 build) — select-tier.html's "create a new account
+  // with this level" link carries the chosen placeholder tier key
+  // through here; createRealAccount() below sends it straight through to
+  // POST /api/accounts. Absent entirely for every other entry into this
+  // page (Paths 2/3), same as region.
+  tier: new URLSearchParams(location.search).get('tier') || null
+};
+
+// 2026-08-19 fix — assessment.html's "See the paid program" / "Start
+// onboarding" / "Continue to onboarding" links used to drop everything the
+// free assessment had already collected, so this page's intro step always
+// started from a blank company name. They now carry a base64 "handoff"
+// query param (same JSON shape as buildScorecardPayload() in
+// assessment.html, plus adminName/adminEmail lifted from that session's
+// contact step, if it ran). Decode it here and prefill the intro fields —
+// still fully editable, this is a starting point, not a lock. Anyone who
+// arrives without a handoff (e.g. "Log in" from the homepage, a bookmark)
+// sees the same blank form as before; a malformed/unparseable handoff is
+// swallowed rather than blocking the page.
+function readAssessmentHandoff(){
+  try {
+    const raw = new URLSearchParams(location.search).get('handoff');
+    if (!raw) return null;
+    return JSON.parse(decodeURIComponent(escape(atob(raw))));
+  } catch (e) {
+    console.warn('readAssessmentHandoff: could not decode handoff param', e);
+    return null;
+  }
+}
+const assessmentHandoff = readAssessmentHandoff();
+if (assessmentHandoff) {
+  state.assessmentHandoff = assessmentHandoff;
+  if (assessmentHandoff.company) document.getElementById('companyName').value = assessmentHandoff.company;
+  if (assessmentHandoff.adminName) document.getElementById('adminName').value = assessmentHandoff.adminName;
+  if (assessmentHandoff.adminEmail) document.getElementById('adminEmail').value = assessmentHandoff.adminEmail;
+  checkIntroReady();
+}
 
 // Round 83 (Deliverable #4 gap) — same local demo backend every other real
 // page in this build points at; swapping this one constant is the only
@@ -350,6 +393,24 @@ let state = { region: new URLSearchParams(location.search).get('region') || 'Nat
 const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
   ? ''
   : 'http://localhost:8787';
+
+// 2026-08-19 (Path 4 build) — confirms the tier picked on select-tier.html
+// actually carried through to this page (see the tierConfirmNote element
+// above). Fetches the live placeholder-tier list rather than hardcoding
+// tier names a second time here.
+if (state.tier){
+  fetch(`${BACKEND_URL}/api/paid-tiers`)
+    .then(r => r.ok ? r.json() : { tiers: [] })
+    .then(data => {
+      const tier = (data.tiers || []).find(t => t.key === state.tier);
+      const note = document.getElementById('tierConfirmNote');
+      if (tier && note){
+        note.style.display = 'block';
+        note.innerHTML = `<strong>Level selected: ${tier.name}.</strong> This account will be created at that level.`;
+      }
+    })
+    .catch(() => { /* non-critical — the tier still gets sent to createRealAccount() either way */ });
+}
 
 // Same sessionStorage key format as portal.html/account.html
 // (verilume_session_<accountId>) — writing the session token here under
@@ -450,19 +511,29 @@ function regionCode(region){
 // exactly the same fields that function sends, just blank where this flow
 // simply never collected them). No fabricated cell scores are invented to
 // fill that gap.
+// 2026-08-19 fix — when this session arrived via assessment.html's handoff
+// link (state.assessmentHandoff), send what the assessment actually
+// learned instead of the blanks this used to send unconditionally, so an
+// account that just came from a completed free assessment isn't
+// provisioned as if none of that happened.
 async function createRealAccount(){
+  const h = state.assessmentHandoff;
   const resp = await fetch(`${BACKEND_URL}/api/accounts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       company: state.company || 'Your Company',
-      industry: '',
+      industry: (h && h.industry) || '',
       footprint: state.region || '',
-      audience: [],
-      wealth: [],
-      competitors: [],
-      assessedStages: [],
-      cells: []
+      url: (h && h.url) || '',
+      description: (h && h.description) || '',
+      productThemes: (h && h.productThemes) || '',
+      audience: (h && h.audience) || [],
+      wealth: (h && h.wealth) || [],
+      competitors: (h && h.competitors) || [],
+      assessedStages: (h && h.assessedStages) || [],
+      cells: (h && h.cells) || [],
+      tier: state.tier || undefined
     })
   });
   if (!resp.ok) throw new Error(`Backend responded ${resp.status}`);
