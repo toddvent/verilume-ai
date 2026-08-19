@@ -809,7 +809,7 @@
       <a class="nav-cta" href="assessment.html">Start free assessment</a>
       </div>
       <div class="nav-right">
-        <a class="nav-login" href="login.html">Log in</a>
+        <a class="nav-login" href="login.html" id="navLoginLink">Log in</a>
         <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
       </div>
     </div>
@@ -851,6 +851,26 @@
         <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Work email</label>
         <input type="email" id="saveModalEmail" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
       </div>
+      <!-- 2026-08-19 (login redesign, round 2), per direct instruction: "We
+           only need the password when saving the free assessment" —
+           saving is the one moment this flow creates a real, sign-in-able
+           account, so it's the one moment a password belongs. Chosen here
+           rather than a system-issued temp password shown once: submit
+           still calls the existing POST /api/auth/register-admin (which
+           always issues a temp password + mustChangePassword=true, no
+           backend change needed), then immediately calls the existing
+           POST /api/auth/change-password with this password using that
+           same session token — so the visitor never sees or has to relay
+           a temp password at all. -->
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Password</label>
+        <input type="password" id="saveModalPassword" autocomplete="new-password" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
+        <div style="font-size:0.75rem;color:#6E6E73;margin-top:4px;">At least 8 characters.</div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Confirm password</label>
+        <input type="password" id="saveModalPasswordConfirm" autocomplete="new-password" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
+      </div>
       <p style="font-size:0.75rem;color:#8a8067;line-height:1.5;margin:0 0 18px;">By saving, you agree to Verilume's <a href="terms.html" target="_blank">Terms &amp; Conditions and pricing disclosures</a>. No signature needed — completing this step is the acceptance.</p>
       <div id="saveModalError" style="display:none;font-size:0.82rem;color:#B3261E;margin-bottom:14px;"></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -861,10 +881,6 @@
     <div id="saveModalSuccessView" style="display:none;">
       <h3 style="margin:0 0 10px;font-size:1.15rem;">Saved ✓</h3>
       <p style="font-size:0.875rem;line-height:1.6;margin:0 0 14px;" id="saveModalSuccessNote"></p>
-      <div style="background:var(--paper-dim);border-radius:6px;padding:14px;margin-bottom:16px;">
-        <div style="font-size:0.75rem;color:#6E6E73;margin-bottom:4px;">Temporary password — shown once, you'll set your own on first login</div>
-        <code id="saveModalTempPassword" style="font-size:1rem;font-family:'SF Mono',Consolas,monospace;"></code>
-      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Keep going with the assessment</button>
         <a class="btn-primary" id="saveModalAccountLink" href="#" target="_blank">Go to your account →</a>
@@ -2920,6 +2936,8 @@ function openSaveAccountModal(){
   document.getElementById('saveModalError').style.display = 'none';
   document.getElementById('saveModalName').value = (state.firstName || state.lastName) ? `${state.firstName || ''} ${state.lastName || ''}`.trim() : '';
   document.getElementById('saveModalEmail').value = state.email || '';
+  document.getElementById('saveModalPassword').value = '';
+  document.getElementById('saveModalPasswordConfirm').value = '';
   document.getElementById('saveAccountModal').style.display = 'flex';
 }
 function closeSaveAccountModal(){
@@ -2929,10 +2947,14 @@ function closeSaveAccountModal(){
 async function submitSaveAccountModal(){
   const name = document.getElementById('saveModalName').value.trim();
   const email = document.getElementById('saveModalEmail').value.trim();
+  const password = document.getElementById('saveModalPassword').value;
+  const passwordConfirm = document.getElementById('saveModalPasswordConfirm').value;
   const errEl = document.getElementById('saveModalError');
   errEl.style.display = 'none';
   if (!name){ errEl.textContent = 'Enter your name.'; errEl.style.display = 'block'; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ errEl.textContent = 'Enter a valid email address.'; errEl.style.display = 'block'; return; }
+  if (password.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+  if (password !== passwordConfirm){ errEl.textContent = "Passwords don't match."; errEl.style.display = 'block'; return; }
 
   const btn = document.getElementById('saveModalSubmitBtn');
   const original = btn.textContent;
@@ -2965,6 +2987,20 @@ async function submitSaveAccountModal(){
       throw new Error(`register-admin responded ${adminResp.status}`);
     }
     const admin = await adminResp.json();
+
+    // register-admin always issues a system temp password + mustChangePassword
+    // (no backend change needed) — immediately swap it for the password this
+    // person just chose, using the same session token, so they never see or
+    // have to relay a temp password.
+    const pwResp = await fetch(`${BACKEND_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${admin.token}` },
+      body: JSON.stringify({ newPassword: password })
+    });
+    if (!pwResp.ok){
+      throw new Error("Your account was created, but couldn't set your password — sign in with the temporary credentials sent to your email, or try Forgot Password.");
+    }
+
     persistSessionToken(accountId, admin.token);
 
     const openedPortal = saveModalThenOpenPortal;
@@ -2973,9 +3009,8 @@ async function submitSaveAccountModal(){
       saveModalThenOpenPortal = false;
     }
     document.getElementById('saveModalSuccessNote').textContent = openedPortal
-      ? `This is a real Verilume account (${accountId}) — you'll sign in with ${admin.email}. The Portal tab that just opened is already signed in.`
-      : `This is a real Verilume account (${accountId}) — you'll sign in with ${admin.email}. Someone from Verilume will also reach out about scheduling a consultation.`;
-    document.getElementById('saveModalTempPassword').textContent = admin.tempPassword;
+      ? `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. The Portal tab that just opened is already signed in.`
+      : `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. Someone from Verilume will also reach out about scheduling a consultation.`;
     document.getElementById('saveModalAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
     document.getElementById('saveModalFormView').style.display = 'none';
     document.getElementById('saveModalSuccessView').style.display = 'block';
@@ -3868,6 +3903,15 @@ function startRecapStep(){
   renderRecapProductThemes();
   renderRecapIndustry(); // renders with whatever's cached (fallback on first visit)
   renderRecapCensus();
+  // 2026-08-19 (login redesign, round 2), per direct instruction: "We only
+  // need to show the local map when user selects the local option" — the
+  // address input/lookup and the county-grounded revenue figures below it
+  // still apply at every footprint (National/Global still ground their
+  // market-size read in a real place), but the visual pin-drop map itself
+  // is only meaningful for a single-market (Local) brand, so it's hidden
+  // for National/Global.
+  const mapEl = document.getElementById('recapMap');
+  if (mapEl) mapEl.style.display = state.region === 'Local' ? 'block' : 'none';
   // Kick off national Census data in the background the first time this step
   // is reached, regardless of address/lookup — powers the National/Global
   // read even if the visitor never runs an address lookup.
@@ -5395,5 +5439,132 @@ function copyReport(){
     if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
   });
 </script>
+<!-- 2026-08-19 (login redesign, round 2) — lightweight login modal for the
+     main nav's "Log in" link, per direct instruction: a returning visitor
+     shouldn't have to leave the page they're on just to sign in. Handles
+     the ordinary case (valid email+password) entirely in-page; anything
+     that needs its own screen — a first-login forced password change, or
+     Forgot Password's phone-recovery flow — still hands off to
+     login.html/forgot-password.html (both already built), via a redirect
+     rather than as the default path. Same sessionStorage key convention as
+     those pages, so a modal-driven login is picked up immediately by
+     account.html/portal.html. Injected identically on every public page by
+     patch_login_modal.py — see MANIFEST.md for the file list. -->
+<div class="vl-lm-overlay" id="vlLoginOverlay" style="display:none;">
+  <div class="vl-lm-card">
+    <button type="button" class="vl-lm-close" onclick="vlCloseLoginModal()" aria-label="Close">&times;</button>
+    <h2>Sign in to Verilume</h2>
+    <p class="vl-lm-lede">Use the email and password for your Verilume account.</p>
+    <div class="vl-lm-field">
+      <label for="vlLoginEmail">Email</label>
+      <input type="email" id="vlLoginEmail" autocomplete="username" onkeydown="if(event.key==='Enter')vlSubmitLogin();">
+    </div>
+    <div class="vl-lm-field">
+      <label for="vlLoginPassword">Password</label>
+      <input type="password" id="vlLoginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')vlSubmitLogin();">
+    </div>
+    <button type="button" class="vl-lm-btn" id="vlLoginBtn" onclick="vlSubmitLogin()">Log in</button>
+    <div class="vl-lm-error" id="vlLoginError"></div>
+    <div class="vl-lm-links">
+      <a href="assessment.html">Create New Registration &rarr;</a>
+      <a href="#" id="vlForgotPasswordLink">Forgot Password?</a>
+    </div>
+  </div>
+</div>
+
+<style>
+.vl-lm-overlay{position:fixed;inset:0;z-index:999;background:rgba(29,29,31,0.55);display:flex;align-items:center;justify-content:center;padding:24px;}
+.vl-lm-card{position:relative;background:var(--paper,#fff);border:1px solid var(--line,#D2D2D7);border-radius:12px;padding:36px 32px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.30);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;box-sizing:border-box;}
+.vl-lm-card *{box-sizing:border-box;}
+.vl-lm-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;line-height:1;color:var(--muted,#6E6E73);cursor:pointer;padding:6px;}
+.vl-lm-card h2{margin:0 0 6px;font-size:1.375rem;font-weight:600;color:var(--ink,#1D1D1F);}
+.vl-lm-lede{margin:0 0 20px;font-size:0.8125rem;line-height:1.5;color:var(--muted,#6E6E73);}
+.vl-lm-field{margin-bottom:14px;}
+.vl-lm-field label{display:block;font-weight:700;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted,#6E6E73);margin-bottom:5px;}
+.vl-lm-field input{width:100%;padding:10px 12px;border:1px solid var(--line,#D2D2D7);border-radius:9px;font-family:inherit;font-size:0.9rem;background:var(--paper,#fff);color:var(--ink,#1D1D1F);}
+.vl-lm-field input:focus{outline:none;border-color:var(--cx,#0891B2);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+.vl-lm-btn{background:var(--ink,#1D1D1F);color:#fff;font-weight:600;font-size:0.875rem;padding:11px 18px;border-radius:999px;border:none;cursor:pointer;width:100%;}
+.vl-lm-btn:hover{background:#1c2d54;}
+.vl-lm-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.vl-lm-error{color:var(--advocacy,#4F46E5);font-size:0.75rem;margin-top:10px;min-height:1em;}
+.vl-lm-links{display:flex;justify-content:space-between;align-items:center;margin-top:18px;flex-wrap:wrap;gap:8px 14px;}
+.vl-lm-links a{font-size:0.75rem;color:var(--cx,#0891B2);text-decoration:none;font-weight:600;}
+.vl-lm-links a:hover{text-decoration:underline;}
+</style>
+
+<script>
+(function(){
+  var VL_BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+    ? '' : 'http://localhost:8787';
+  function vlSessionKey(accountId){ return 'verilume_session_' + accountId; }
+  function vlMemberKey(accountId){ return 'verilume_member_' + accountId; }
+  function vlPersistSession(accountId, token, memberId){
+    try {
+      sessionStorage.setItem(vlSessionKey(accountId), token);
+      if (memberId) sessionStorage.setItem(vlMemberKey(accountId), memberId);
+    } catch (e) {}
+  }
+  window.vlOpenLoginModal = function(){
+    document.getElementById('vlLoginOverlay').style.display = 'flex';
+    document.getElementById('vlLoginError').textContent = '';
+    document.getElementById('vlLoginEmail').focus();
+  };
+  window.vlCloseLoginModal = function(){
+    document.getElementById('vlLoginOverlay').style.display = 'none';
+  };
+  var forgotLink = document.getElementById('vlForgotPasswordLink');
+  if (forgotLink){
+    forgotLink.addEventListener('click', function(e){
+      e.preventDefault();
+      var email = document.getElementById('vlLoginEmail').value.trim();
+      var qs = new URLSearchParams();
+      if (email) qs.set('email', email);
+      var suffix = qs.toString();
+      location.href = 'forgot-password.html' + (suffix ? ('?' + suffix) : '');
+    });
+  }
+  window.vlSubmitLogin = async function(){
+    var email = document.getElementById('vlLoginEmail').value.trim();
+    var password = document.getElementById('vlLoginPassword').value;
+    var errEl = document.getElementById('vlLoginError');
+    var btn = document.getElementById('vlLoginBtn');
+    if (!email || !password){ errEl.textContent = 'Enter your email and password to continue.'; return; }
+    btn.disabled = true;
+    errEl.textContent = '';
+    try {
+      var resp = await fetch(VL_BACKEND_URL + '/api/auth/login-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password })
+      });
+      var data = await resp.json().catch(function(){ return {}; });
+      if (!resp.ok){
+        errEl.textContent = data.error || ("Couldn't sign in (" + resp.status + ").");
+        btn.disabled = false;
+        return;
+      }
+      if (data.mustChangePassword){
+        // First-login password change needs its own screen — hand off to
+        // login.html rather than replicate that flow in this modal.
+        location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search);
+        return;
+      }
+      vlPersistSession(data.accountId, data.token, data.memberId);
+      location.href = 'portal.html?accountId=' + encodeURIComponent(data.accountId);
+    } catch (e){
+      errEl.textContent = 'Could not reach the backend to sign in — try again.';
+      btn.disabled = false;
+    }
+  };
+  var navLink = document.getElementById('navLoginLink');
+  if (navLink){
+    navLink.addEventListener('click', function(e){
+      e.preventDefault();
+      vlOpenLoginModal();
+    });
+  }
+})();
+</script>
+
 </body>
 </html>

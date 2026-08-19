@@ -2841,7 +2841,7 @@
          Services field. -->
     <div class="field">
       <label>Brand &amp; Product Keywords</label>
-      <p class="lede" style="margin:2px 0 12px;">A first draft, not a finished list — edit it directly (add or remove any chip), then Save. Brand keywords are emotional, voice, and style words drafted from the Tone Anchors picked above; Product keywords are drafted from Company Profile's Products &amp; Services field. Deliberately not based on Industry.</p>
+      <p class="lede" style="margin:2px 0 12px;">A first draft, not a finished list — edit it directly (add or remove any chip), then Save. Brand keywords are emotional, voice, and style words drafted from the Tone Anchors picked above; Product keywords are drafted from the Products &amp; Services you gave in the free assessment. Deliberately not based on Industry.</p>
 
       <div class="module open accent-media" id="brandKeywordsModule">
         <div class="module-head" onclick="toggleModule('brandKeywordsModule')">
@@ -2937,7 +2937,7 @@
     </div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Company Profile</a>
+      <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('styleAssets')">Next: Style Guide — Colors &amp; Fonts →</a>
     </div>
@@ -3018,55 +3018,24 @@
 
   <!-- ================= COMPANY PROFILE (Brand Foundations) ================= -->
   <div class="step" id="step-companyProfile">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Company Profile</div>
-    <div class="eyebrow">Brand Groundwork · Company Profile</div>
-    <h1>Company Profile</h1>
-    <p class="lede">Industry, footprint, target audience, and wealth tier — carried over from the free assessment's Step 1. Correct anything here rather than re-running the assessment; every Campaign/Project already reads these values from this account, so an edit here applies everywhere at once.</p>
-
-    <!-- Round 33 (2026-08-05) — per direct instruction: bring over all of
-         the assessment's data, not just the structured fields above.
-         Read-only reference (not an editable field — there's nowhere for
-         edited prose to write back to): the Company URL and brand
-         description the assessment captured, shown here so a human filling
-         in Products & Services/Brand Voice/Tone Anchors has the original
-         context in view instead of re-researching or re-typing it. Only
-         renders when this account actually has one (accounts not created
-         through the assessment flow, or created before this round, show
-         nothing here). -->
-    <div class="dash-tile" id="cpAssessmentContextTile" style="display:none;margin-bottom:18px;">
-      <div class="hint" style="margin:0 0 6px;text-transform:uppercase;letter-spacing:0.05em;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;color:var(--muted);">From your assessment</div>
-      <div id="cpAssessmentUrl" style="margin-bottom:6px;"></div>
-      <div id="cpAssessmentDescription" style="color:var(--ink);"></div>
-      <!-- Round 132bf (2026-08-13), reworked round 132bg per direct
-           correction: "I'm not sure why we're fetching that information at
-           all for humans. They don't need it. The only purpose... is to
-           help our AI copywriter write better drafts... full brand context
-           beyond the marketing product groups and creative groups
-           selected." Round 132bh (2026-08-13) direct correction: "we
-           shouldn't be using anything from the website specifically beyond
-           understanding the brand better. Media copy drafted inside the
-           tool is not website copy." This is a real, live fetch (POST
-           /api/accounts/:id/website-scan) that PERSISTS as brand
-           UNDERSTANDING (see cmpBrandUnderstandingSummary() in the JS) --
-           never a literal copy source. This button just refreshes that
-           context; the confirmation below is a status line, not a review
-           surface. -->
-      <div style="margin-top:10px;">
-        <button type="button" class="btn-ghost" id="cpWebsiteScanBtn" style="padding:7px 14px;font-size:0.8125rem;" onclick="cpRunWebsiteScan()">Refresh brand context from website</button>
-        <div class="hint" style="margin-top:6px;">Feeds the AI Copywriter with real brand context from this site (beyond the Product Group/Creative Focus Group selections, which are for analytics) -- not a report to read.</div>
-      </div>
-      <div id="cpWebsiteScanResult" style="margin-top:8px;"></div>
-    </div>
-
-    <div class="field">
-      <label>Industry</label>
-      <select id="cpIndustry" onchange="pickCompanyIndustry(this.value)"></select>
-      <!-- Round 132c11 (2026-08-17) — see computeHipaaTrackingFlag()'s
-           comment for the full sourcing; this is the earlier, lighter
-           heads-up (industry alone, before any coverage is configured),
-           the sharper one lives on Measurement Coverage & Confidence. -->
-      <div id="cpIndustryHipaaNote"></div>
-    </div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Account Setup</div>
+    <div class="eyebrow">Brand Groundwork · Account Setup</div>
+    <h1>Account Setup</h1>
+    <!-- 2026-08-19 (login redesign, round 2), per direct instruction: "I
+         believe that we did remove the company profile and product theme
+         page actually. It duplicated the final assessment functions so it
+         wasn't needed. We should just eliminate that page and focus on the
+         assessment after registration." Industry, footprint, target
+         audience, wealth tier, products/services, and brand description are
+         now ONLY captured in the free assessment (assessment.html's Step 4
+         "Company profile — confirm the details") — editing them here would
+         just be a second, easy-to-drift-out-of-sync copy of that same data.
+         This step now only holds the three fields that have no home
+         anywhere else in the app: Partner Code (Campaign ID generation has
+         no other source for it), Active Channels, and the Partners list
+         (Creative Asset Selection's dropdown) — none of these are assessment
+         questions, so they still need a place to be set. -->
+    <p class="lede">Industry, footprint, audience, wealth tier, products &amp; services, and brand description now live only in the free assessment — edit those there, not here, so there's one source of truth. This page is just for account-level settings the assessment doesn't ask about.</p>
 
     <!-- Round 132c17 (2026-08-17), per direct instruction: "the campaign id
          includes a 3 letter code for each partner defined during setup" —
@@ -3079,32 +3048,6 @@
       <label>Partner Code <span style="font-weight:400;text-transform:none;color:var(--muted);">(3 letters — this account's code in every Campaign ID, e.g. AOV)</span></label>
       <input type="text" id="cpPartnerCode" maxlength="3" style="text-transform:uppercase;width:120px;" placeholder="AOV" oninput="updateCompanyPartnerCode(this.value)">
       <div class="hint">Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
-    </div>
-
-    <!-- Round 32, follow-on (2026-08-05), per direct instruction — the
-         concrete "what this brand actually sells" input, used by Brand &
-         Product Keywords (Brand Voice page) to draft Product keyword chips
-         from, since Industry is a category, not this brand's specific
-         offerings. -->
-    <div class="field">
-      <label>Products &amp; services <span style="font-weight:400;text-transform:none;color:var(--muted);">(comma or line-separated — what this brand actually sells)</span></label>
-      <textarea id="cpProductsServices" rows="3" placeholder="e.g. 7-night Mediterranean cruises, private balcony suites, onboard excursions" oninput="updateCompanyProductsServices(this.value)"></textarea>
-      <div class="hint">Feeds Brand &amp; Product Keywords' Product draft (see the Brand Voice page) — the more specific, the better the draft.</div>
-    </div>
-
-    <div class="field">
-      <label>Footprint</label>
-      <div class="stage-row" id="cpFootprintRow"></div>
-    </div>
-
-    <div class="field">
-      <label>Target audience <span style="font-weight:400;text-transform:none;color:var(--muted);">(pick as many generations as apply)</span> <span class="ai-thought-mount" data-topic="H"></span></label>
-      <div class="select-tile-row" id="cpAudienceRow"></div>
-    </div>
-
-    <div class="field">
-      <label>Wealth tier</label>
-      <div class="select-tile-row" id="cpWealthRow"></div>
     </div>
 
     <!-- Round 32, follow-on (2026-08-05), per direct instruction: "Companies
@@ -12700,8 +12643,8 @@ function renderBrandFoundationsModule(){
             : 'Voice, Style Assets, and/or Competitive Positioning aren\'t fully approved yet. Not required to create another campaign at this point, but every Campaign and Ad Hoc project inherits this context automatically once it is — worth finishing when you have a moment.')}</p>
       <div class="bf-row done">
         <div class="bf-dot">✓</div>
-        <div class="bf-name">Company Profile<div style="font-weight:400;color:var(--muted);font-size:0.8125rem;margin-top:2px;">${companyProfileSummary() || 'Industry, footprint, target audience, and wealth tier from the assessment.'}</div></div>
-        <a class="flink" onclick="goToStep('companyProfile')">Edit →</a>
+        <div class="bf-name">Company Profile<div style="font-weight:400;color:var(--muted);font-size:0.8125rem;margin-top:2px;">${companyProfileSummary() || 'Industry, footprint, target audience, and wealth tier from the assessment.'} <span style="font-style:italic;">— set in the free assessment, not editable here.</span></div></div>
+        <a class="flink" onclick="goToStep('companyProfile')">Account Setup →</a>
       </div>
       ${rows.map(r => `
         <div class="bf-row${r.done ? ' done' : ''}">
@@ -15186,9 +15129,15 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
       {
         title: 'Company Profile',
         category: 'manual',
-        source: 'Brand Groundwork',
+        source: 'Free Assessment',
         route: 'companyProfile',
-        desc: 'Industry, footprint, target audience, and wealth tier — the account-level context every seat reads before anything campaign-specific.',
+        // 2026-08-19 (login redesign, round 2) — set only in assessment.html
+        // now (see step-companyProfile's own comment); this card is a
+        // read-only status check, not an editable one. route still points
+        // at step-companyProfile since that's where companyProfileSummary()
+        // and the account-level fields it doesn't cover (Partner Code,
+        // Active Channels, Partners) both live.
+        desc: 'Industry, footprint, target audience, and wealth tier — the account-level context every seat reads before anything campaign-specific. Set in the free assessment, not editable here.',
         status(){
           const summary = companyProfileSummary();
           return summary ? { text: summary, tone: 'ok' } : { text: 'Not started', tone: 'pending' };
@@ -36564,48 +36513,22 @@ function renderVoiceStep(){
   }
 }
 
-// Round 19 — Company Profile (Brand Foundations) edit page. Renders the
-// current values (from the assessment handoff or a real backend record)
-// into an Industry select, a single-select Footprint row (reuses the
-// .stage-tile look), and multi-select Target Audience / Wealth Tier rows
-// (reuses the .select-tile look already used for Segments) — same
-// components, not new ones, so this page reads as consistent with the rest
-// of the Portal rather than a one-off form.
+// Round 19 — Company Profile (Brand Foundations) edit page. Reworked
+// 2026-08-19 (login redesign, round 2), per direct instruction, to drop
+// everything the free assessment already owns (Industry, Footprint, Target
+// Audience, Wealth Tier, Products & Services, the "from your assessment"
+// context tile) — those fields still live in state (read elsewhere, e.g.
+// companyProfileSummary()) but are no longer editable here, only in
+// assessment.html. This function now only renders the three fields that
+// have no other home in the app: Partner Code, Active Channels, Partners.
 function renderCompanyProfileStep(){
-  const sel = document.getElementById('cpIndustry');
-  sel.innerHTML = INDUSTRY_LABELS.map(label => `<option value="${label}"${state.industry === label ? ' selected' : ''}>${label}</option>`).join('');
-  if (!INDUSTRY_LABELS.includes(state.industry)){
-    sel.innerHTML = `<option value="${state.industry}" selected>${state.industry}</option>` + sel.innerHTML;
-  }
-  const hipaaNoteEl = document.getElementById('cpIndustryHipaaNote');
-  if (hipaaNoteEl){
-    hipaaNoteEl.innerHTML = HIPAA_RISK_INDUSTRIES.includes(state.industry)
-      ? `<div class="hint" style="margin-top:6px;color:var(--advocacy);">⚠ HHS OCR guidance treats ad-platform tracking pixels on patient-facing pages as a potential HIPAA issue without a BAA — see <a onclick="goToStep('measurementCoverage')" style="cursor:pointer;">Measurement Coverage</a> once tracking mechanisms are on file, for the specific channels this applies to.</div>`
-      : '';
-  }
   const partnerCodeEl = document.getElementById('cpPartnerCode');
   if (partnerCodeEl) partnerCodeEl.value = state.partnerCode || '';
-
-  document.getElementById('cpFootprintRow').innerHTML = FOOTPRINTS.map(f => `
-    <button type="button" class="stage-tile${state.footprint === f ? ' selected' : ''}" onclick="pickCompanyFootprint('${f}')">${f}</button>
-  `).join('');
-
-  document.getElementById('cpAudienceRow').innerHTML = GENERATIONS.map(g => `
-    <button type="button" class="select-tile${state.audience.has(g.key) ? ' selected' : ''}" onclick="toggleCompanyAudience('${g.key}')">
-      <span class="indicator">✓</span><span class="label">${g.label}</span>
-    </button>`).join('');
-
-  document.getElementById('cpWealthRow').innerHTML = WEALTH_TIERS.map(w => `
-    <button type="button" class="select-tile${state.wealth.has(w.key) ? ' selected' : ''}" onclick="toggleCompanyWealth('${w.key}')">
-      <span class="indicator">✓</span><span class="label">${w.label}</span>
-    </button>`).join('');
 
   document.getElementById('cpActiveChannelsRow').innerHTML = MMM_CATEGORIES.map(ch => `
     <button type="button" class="select-tile${state.activeChannels.has(ch) ? ' selected' : ''}" onclick="toggleCompanyActiveChannel('${ch}')">
       <span class="indicator">✓</span><span class="label">${ch}</span>
     </button>`).join('');
-
-  document.getElementById('cpProductsServices').value = state.productsServices || '';
 
   // Round 132zz (2026-08-11) — Partners list (see the field's own comment).
   const partnersListEl = document.getElementById('cpPartnersList');
@@ -36619,80 +36542,7 @@ function renderCompanyProfileStep(){
       : '<p class="hint">No partners added yet.</p>';
   }
 
-  // Round 33 — "From your assessment" reference tile; only shows when
-  // there's actually something to show.
-  const contextTile = document.getElementById('cpAssessmentContextTile');
-  if (contextTile){
-    const hasUrl = !!(state.websiteUrl && state.websiteUrl.trim());
-    const hasDesc = !!(state.assessmentDescription && state.assessmentDescription.trim());
-    contextTile.style.display = (hasUrl || hasDesc) ? 'block' : 'none';
-    document.getElementById('cpAssessmentUrl').innerHTML = hasUrl
-      ? `<a href="${escapeHtml(state.websiteUrl)}" target="_blank" rel="noopener">${escapeHtml(state.websiteUrl)}</a>`
-      : '';
-    document.getElementById('cpAssessmentDescription').textContent = hasDesc ? state.assessmentDescription : '';
-    const scanBtn = document.getElementById('cpWebsiteScanBtn');
-    if (scanBtn) scanBtn.style.display = hasUrl ? 'inline-block' : 'none';
-    if (!hasUrl){
-      const resultEl = document.getElementById('cpWebsiteScanResult');
-      if (resultEl) resultEl.innerHTML = '';
-    }
-  }
-
   document.getElementById('companyProfileSaveFlag').textContent = '';
-}
-// Round 132bf (2026-08-13) -- see the button's own comment above for the
-// full rationale. Calls the real backend fetch, shows an honest loading
-// state, and renders whatever came back (or the real failure reason) --
-// never fabricates a result on error.
-// Round 132bg (2026-08-13) rework -- context refresh for the copywriter,
-// not a human report: success is a one-line status, never a content dump.
-// Round 132bh (2026-08-13) direct correction -- the real extracted content
-// in state.websiteContext now only ever feeds understanding
-// (cmpBrandUnderstandingSummary()), never the drafted line itself; this
-// function's confirmation copy reflects that distinction plainly rather
-// than implying the scan changes drafted copy.
-async function cpRunWebsiteScan(){
-  const btn = document.getElementById('cpWebsiteScanBtn');
-  const resultEl = document.getElementById('cpWebsiteScanResult');
-  if (!resultEl) return;
-  if (!state.companyId){
-    resultEl.innerHTML = '<p class="hint">Create this account first before refreshing its brand context.</p>';
-    return;
-  }
-  if (btn) btn.disabled = true;
-  resultEl.innerHTML = '<p class="hint">Fetching the site now…</p>';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-scan`, { method: 'POST' });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      resultEl.innerHTML = `<p class="hint" style="color:var(--danger, #b3261e);">${escapeHtml(data.error || `Couldn't refresh brand context (${resp.status}).`)}</p>`;
-      return;
-    }
-    state.websiteContext = data;
-    const parts = [];
-    if (data.title) parts.push('a title');
-    if (data.metaDescription) parts.push('a meta description');
-    if (data.headings && data.headings.length) parts.push(`${data.headings.length} heading${data.headings.length === 1 ? '' : 's'}`);
-    const captured = parts.length ? parts.join(', ') : 'no usable text';
-    resultEl.innerHTML = captured === 'no usable text'
-      ? `<p class="hint">Fetched ${escapeHtml(data.url)} just now, but found no usable text -- likely a single-page app that renders its content in the browser, which a plain fetch can't see.</p>`
-      : `<p class="hint">Brand understanding updated from ${escapeHtml(data.url)} -- captured ${captured}. This informs brand context only; it's never inserted into drafted campaign copy.</p>`;
-  } catch (e){
-    resultEl.innerHTML = '<p class="hint" style="color:var(--danger, #b3261e);">Could not reach the backend to refresh this -- try again.</p>';
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-function pickCompanyIndustry(label){
-  state.industry = label;
-  renderCompanyProfileStep();
-  // Round 127 — the Media Plan page's Marketing Loop Mix pie is keyed off
-  // state.industry; no-ops safely (renderMediaLoopMixChart() returns early
-  // if its card isn't in the DOM) when Company Profile isn't the active step.
-  renderMediaLoopMixChart();
-}
-function updateCompanyProductsServices(value){
-  state.productsServices = value;
 }
 // Round 132c17 (2026-08-17) — see the field's own comment above. Letters
 // only, capped at 3, uppercased live (matches how it's used inside every
@@ -36701,20 +36551,6 @@ function updateCompanyPartnerCode(value){
   state.partnerCode = (value || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
   const el = document.getElementById('cpPartnerCode');
   if (el && el.value !== state.partnerCode) el.value = state.partnerCode;
-}
-function pickCompanyFootprint(f){
-  state.footprint = f;
-  renderCompanyProfileStep();
-}
-function toggleCompanyAudience(key){
-  if (state.audience.has(key)) state.audience.delete(key); else state.audience.add(key);
-  renderCompanyProfileStep();
-  if (typeof renderFaqH === 'function') renderFaqH(); // Round 132vv — keep the account baseline thought live with the generation pick
-}
-function toggleCompanyWealth(key){
-  if (state.wealth.has(key)) state.wealth.delete(key); else state.wealth.add(key);
-  renderCompanyProfileStep();
-  if (typeof renderFaqH === 'function') renderFaqH(); // Round 132vv — keep the account baseline thought live with the wealth-tier pick
 }
 function toggleCompanyActiveChannel(ch){
   if (state.activeChannels.has(ch)) state.activeChannels.delete(ch); else state.activeChannels.add(ch);
@@ -36740,11 +36576,11 @@ function removePartner(i){
 }
 
 async function saveCompanyProfile(){
-  // state.industry/footprint/audience/wealth are already current — each
-  // control updates state immediately on interaction (pickCompanyIndustry/
-  // pickCompanyFootprint/toggleCompanyAudience/toggleCompanyWealth), same
-  // convention as the rest of this file's tile/select rows, rather than
-  // this function reading the DOM directly.
+  // 2026-08-19 (login redesign, round 2) — industry/footprint/productsServices/
+  // audience/wealth are no longer editable on this step (see
+  // renderCompanyProfileStep()'s comment); they're still sent here unchanged
+  // from state, straight through from whatever the assessment/account record
+  // last set, so a Save here never overwrites them with something stale.
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
