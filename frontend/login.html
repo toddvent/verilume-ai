@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Sign In</title>
+<meta name="description" content="Sign in to your Verilume account.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    2026-08-19 (login redesign) — the single, dedicated front door for
+    signing in, replacing the in-page modal gate that used to live on top
+    of account.html (and the separate, older access-code gate on
+    portal.html — see the note by requireLogin() below). Per direct
+    instruction: a real login page (email, password, Log in button, plus
+    "Create New Registration" and "Forgot Password" text links) that lands
+    on the Portal after a successful sign-in, not on the account page —
+    signing in should feel like walking through a front door into the
+    product, not stumbling into a settings page that happens to be locked.
+
+    Same token set / gradient-fade background / card language as
+    account.html's own login-gate-card, so this reads as the same product,
+    just promoted from an overlay to its own page.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+    --radius-sm:12px; --radius-pill:980px;
+    --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.08) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  a{color:inherit;}
+
+  .back-nav{font-size:12px;letter-spacing:0.04em;padding:20px 28px;}
+  .back-nav a.wordmark{font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
+  .back-nav a.wordmark b{color:var(--media);font-weight:500;}
+
+  .center-wrap{min-height:calc(100vh - 90px);display:flex;align-items:center;justify-content:center;padding:24px;}
+  .login-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:40px 36px;max-width:420px;width:100%;box-shadow:var(--shadow-lg);}
+  .login-card h1{margin:0 0 8px;font-size:24px;font-weight:600;}
+  .login-card .lede{margin:0 0 24px;font-size:14px;line-height:1.55;color:var(--muted);}
+
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px;}
+  .field input{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14.5px;background:var(--paper);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+  .field input:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+
+  .btn-primary{background:var(--ink);color:var(--white);font-weight:600;font-size:14px;padding:12px 20px;border-radius:999px;border:none;cursor:pointer;width:100%;transition:transform 0.15s ease,background 0.15s ease;}
+  .btn-primary:hover{background:#1c2d54;transform:translateY(-1px);}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+
+  .error-note{color:var(--advocacy);font-size:12.5px;margin-top:10px;min-height:1em;}
+
+  .link-row{display:flex;justify-content:space-between;align-items:center;margin-top:20px;flex-wrap:wrap;gap:8px 16px;}
+  .link-row a{font-size:12.5px;color:var(--cx);text-decoration:none;font-weight:600;}
+  .link-row a:hover{text-decoration:underline;}
+
+  #passwordChangeStep{display:none;}
+</style>
+</head>
+<body>
+
+<div class="back-nav"><a class="wordmark" href="index.html">Veri<b>lume</b></a></div>
+
+<div class="center-wrap">
+  <div class="login-card">
+
+    <div id="loginStep">
+      <h1>Sign in to Verilume</h1>
+      <p class="lede">Use the email and password for your Verilume account.</p>
+      <div class="field">
+        <label for="loginEmail">Email</label>
+        <input type="email" id="loginEmail" autocomplete="username" onkeydown="if(event.key==='Enter')submitLogin();">
+      </div>
+      <div class="field">
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin();">
+      </div>
+      <button class="btn-primary" id="loginBtn" onclick="submitLogin()">Log in</button>
+      <div class="error-note" id="loginError"></div>
+      <div class="link-row">
+        <a href="onboarding.html">Create New Registration →</a>
+        <a href="#" id="forgotPasswordLink">Forgot Password?</a>
+      </div>
+    </div>
+
+    <div id="passwordChangeStep">
+      <h1>Set your password</h1>
+      <p class="lede">You signed in with a temporary password. Set a real one now (at least 8 characters) — this only happens once.</p>
+      <div class="field">
+        <label for="newPassword">New password</label>
+        <input type="password" id="newPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
+      </div>
+      <div class="field">
+        <label for="newPasswordConfirm">Confirm new password</label>
+        <input type="password" id="newPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
+      </div>
+      <button class="btn-primary" id="passwordChangeBtn" onclick="submitPasswordChange()">Set password and continue</button>
+      <div class="error-note" id="passwordChangeError"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+  ? ''
+  : 'http://localhost:8787';
+
+const params = new URLSearchParams(location.search);
+// Optional — set when a protected page (account.html/portal.html) redirects
+// here because its session was missing/expired, so a successful sign-in can
+// send the visitor back to where they actually meant to go. Absent this,
+// the default per direct instruction is the Portal.
+const nextUrl = params.get('next');
+
+function sessionStorageKey(accountId){
+  return `verilume_session_${accountId}`;
+}
+function memberStorageKey(accountId){
+  return `verilume_member_${accountId}`;
+}
+function persistSessionFor(accountId, token, memberId){
+  try {
+    sessionStorage.setItem(sessionStorageKey(accountId), token);
+    if (memberId) sessionStorage.setItem(memberStorageKey(accountId), memberId);
+  } catch (e) { /* sessionStorage unavailable — session still works for this page load via the in-memory token below */ }
+}
+
+function destinationFor(accountId){
+  if (nextUrl) return nextUrl;
+  return `portal.html?accountId=${encodeURIComponent(accountId)}`;
+}
+
+// Carries state between submitLogin() (on a still-temp password) and
+// submitPasswordChange() below — same pattern account.html used to use
+// inline, just promoted to this page.
+let pendingAccountId = null;
+let pendingToken = null;
+
+document.getElementById('forgotPasswordLink').addEventListener('click', function(e){
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const qs = new URLSearchParams();
+  if (email) qs.set('email', email);
+  if (nextUrl) qs.set('next', nextUrl);
+  const suffix = qs.toString();
+  location.href = 'forgot-password.html' + (suffix ? `?${suffix}` : '');
+});
+
+async function submitLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  if (!email || !password){ errEl.textContent = 'Enter your email and password to continue.'; return; }
+  btn.disabled = true;
+  errEl.textContent = '';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't sign in (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    if (data.mustChangePassword){
+      pendingAccountId = data.accountId;
+      pendingToken = data.token;
+      document.getElementById('loginStep').style.display = 'none';
+      document.getElementById('passwordChangeStep').style.display = 'block';
+      document.getElementById('passwordChangeError').textContent = '';
+      document.getElementById('newPassword').focus();
+      return;
+    }
+    persistSessionFor(data.accountId, data.token, data.memberId);
+    location.href = destinationFor(data.accountId);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to sign in — try again.';
+    btn.disabled = false;
+  }
+}
+
+async function submitPasswordChange(){
+  const pw = document.getElementById('newPassword').value;
+  const pwConfirm = document.getElementById('newPasswordConfirm').value;
+  const errEl = document.getElementById('passwordChangeError');
+  const btn = document.getElementById('passwordChangeBtn');
+  if (pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; return; }
+  if (pw !== pwConfirm){ errEl.textContent = "Passwords don't match."; return; }
+  btn.disabled = true;
+  errEl.textContent = '';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${pendingToken}` },
+      body: JSON.stringify({ newPassword: pw })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't set your password (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    persistSessionFor(pendingAccountId, pendingToken);
+    location.href = destinationFor(pendingAccountId);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend — try again.';
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

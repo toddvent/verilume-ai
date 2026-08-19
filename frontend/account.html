@@ -180,111 +180,6 @@
 </head>
 <body>
 
-<!-- Round 60 — login gate (Deliverable 14/auth), same shape as
-     portal.html's — shown only when loadTeamData() gets a 401 from a real
-     backend record for this ?accountId=. Everything on this page besides
-     Team Members is a session-only UI mockup anyway (see this file's own
-     plumbing note further down), so gating only blocks the one section
-     that's actually real data worth protecting. -->
-<!-- Updated 2026-08-18 (registration rebuild) — real per-person email +
-     password login (POST /api/auth/login-user), replacing the account-
-     level access code. Two internal "screens" in one card: the login
-     fields (default) and a forced password-change screen that swaps in
-     when the backend reports mustChangePassword — same card, same
-     onkeydown-submit convention, just a different set of inputs/handler
-     shown at a time via display toggles rather than two separate modals. -->
-<div class="login-gate" id="loginGate" style="display:none;">
-  <div class="login-gate-card">
-    <div class="wordmark" style="margin-bottom:18px;">Veri<b>lume</b></div>
-    <div id="loginGateStep">
-      <h2>Sign in to your account</h2>
-      <p class="lede">This account (<code id="loginGateAccountId"></code>) is protected. Sign in with your Verilume email and password.</p>
-      <div class="field">
-        <label for="loginGateEmail">Email</label>
-        <input type="email" id="loginGateEmail" autocomplete="username" onkeydown="if(event.key==='Enter')submitLoginGate();">
-      </div>
-      <div class="field">
-        <label for="loginGatePassword">Password</label>
-        <input type="password" id="loginGatePassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLoginGate();">
-      </div>
-      <div class="btn-row">
-        <button class="btn-primary" onclick="submitLoginGate()">Sign in →</button>
-      </div>
-      <div id="loginGateError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
-      <a class="flink" style="display:inline-block;margin-top:14px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:var(--cx);cursor:pointer;" onclick="openRecoveryStep()">Forgot your password? →</a>
-      <br>
-      <a class="flink" style="display:inline-block;margin-top:8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:var(--cx);cursor:pointer;" onclick="skipLoginGate()">Continue without logging in — Team Members will show the local sample roster only →</a>
-    </div>
-    <div id="passwordChangeStep" style="display:none;">
-      <h2>Set your password</h2>
-      <p class="lede">You signed in with a temporary password. Set a real one now (at least 8 characters) — this only happens once.</p>
-      <div class="field">
-        <label for="newPassword">New password</label>
-        <input type="password" id="newPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
-      </div>
-      <div class="field">
-        <label for="newPasswordConfirm">Confirm new password</label>
-        <input type="password" id="newPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
-      </div>
-      <div class="btn-row">
-        <button class="btn-primary" onclick="submitPasswordChange()">Set password →</button>
-      </div>
-      <div id="passwordChangeError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
-    </div>
-    <!-- 2026-08-19 — real phone-based account recovery. Three steps in one
-         panel: email -> phone code -> new password. Uses the real
-         POST /api/auth/request-password-reset / verify-phone-code /
-         reset-password endpoints (see server.js) — Twilio Verify sends the
-         code for real once TWILIO_* env vars are set; until then the
-         "interim" code is shown right in this panel, same one-time-reveal
-         convention as every other secret in this build with no real
-         delivery channel wired up yet. -->
-    <div id="recoveryStep" style="display:none;">
-      <div id="recoveryEmailView">
-        <h2>Reset your password</h2>
-        <p class="lede">Enter the email on your Verilume account — if it has a phone number on file, we'll text a verification code to it.</p>
-        <div class="field">
-          <label for="recoveryEmail">Email</label>
-          <input type="email" id="recoveryEmail" onkeydown="if(event.key==='Enter')submitRecoveryEmail();">
-        </div>
-        <div class="btn-row">
-          <button class="btn-primary" onclick="submitRecoveryEmail()">Send code →</button>
-        </div>
-        <div id="recoveryEmailError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
-      </div>
-      <div id="recoveryCodeView" style="display:none;">
-        <h2>Enter your code</h2>
-        <p class="lede" id="recoveryCodeLede"></p>
-        <div class="field">
-          <label for="recoveryCode">6-digit code</label>
-          <input type="text" id="recoveryCode" inputmode="numeric" maxlength="6" onkeydown="if(event.key==='Enter')submitRecoveryCode();">
-        </div>
-        <div class="btn-row">
-          <button class="btn-primary" onclick="submitRecoveryCode()">Verify →</button>
-        </div>
-        <div id="recoveryCodeError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
-      </div>
-      <div id="recoveryPasswordView" style="display:none;">
-        <h2>Choose a new password</h2>
-        <p class="lede">At least 8 characters.</p>
-        <div class="field">
-          <label for="recoveryNewPassword">New password</label>
-          <input type="password" id="recoveryNewPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitRecoveryPassword();">
-        </div>
-        <div class="field">
-          <label for="recoveryNewPasswordConfirm">Confirm new password</label>
-          <input type="password" id="recoveryNewPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitRecoveryPassword();">
-        </div>
-        <div class="btn-row">
-          <button class="btn-primary" onclick="submitRecoveryPassword()">Set password and sign in →</button>
-        </div>
-        <div id="recoveryPasswordError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;margin-top:10px;min-height:1em;"></div>
-      </div>
-      <a class="flink" style="display:inline-block;margin-top:14px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;color:var(--cx);cursor:pointer;" onclick="cancelRecovery()">← Back to sign in</a>
-    </div>
-  </div>
-</div>
-
 <div class="back-nav">
   <a class="wordmark" href="index.html">Veri<b>lume</b></a>
   <a href="onboarding.html">← Onboarding</a>
@@ -752,252 +647,23 @@ function persistSessionToken(token){
   try { sessionStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
 }
 
-// 2026-08-19 fix — for a redirect-to-the-right-account case (see
-// submitLoginGate() below): writes the token under a specific accountId's
-// key without touching state.companyId or the in-memory sessionToken,
-// since this page is about to navigate away to that account's own URL.
-function persistSessionTokenFor(accountId, token){
-  try { sessionStorage.setItem(sessionStorageKey(accountId), token); } catch (e) {}
-}
-
-let loginGateResolve = null;
-
+// 2026-08-19 (login redesign) — replaced the in-page login-gate modal (plus
+// its own copies of the forced-password-change and phone-recovery flows)
+// with a straight redirect to the new, single, dedicated login.html per
+// direct instruction: signing in should require actually landing on a
+// front-door login page, not opening an overlay on top of a page you're
+// already "on." login.html owns login + forced-password-change now, and
+// forgot-password.html owns recovery (both outside the portal). ?next=
+// carries this page's own URL along so a session that expires mid-edit on
+// account.html returns here afterward rather than defaulting to the Portal.
+// Since this navigates away, the returned Promise deliberately never
+// resolves — the three call sites below (loadAccountRecord/loadTeamData/
+// loadInvoices) just stop at the `await` as the page unloads, which is the
+// correct behavior here.
 function requireLogin(){
-  document.getElementById('loginGateAccountId').textContent = state.companyId;
-  document.getElementById('loginGateError').textContent = '';
-  document.getElementById('loginGateEmail').value = '';
-  document.getElementById('loginGatePassword').value = '';
-  document.getElementById('loginGateStep').style.display = 'block';
-  document.getElementById('passwordChangeStep').style.display = 'none';
-  document.getElementById('recoveryStep').style.display = 'none';
-  document.getElementById('loginGate').style.display = 'flex';
-  document.getElementById('loginGateEmail').focus();
-  return new Promise(resolve => { loginGateResolve = resolve; });
-}
-
-// Rewritten 2026-08-18 (registration rebuild) — real per-person email +
-// password login via POST /api/auth/login-user, replacing the old
-// account-level access-code claim/login pair. On a still-temp password
-// (mustChangePassword), this swaps the card to the password-change screen
-// instead of resolving the gate yet — submitPasswordChange() (below) is
-// what actually closes the gate in that case.
-async function submitLoginGate(){
-  const email = document.getElementById('loginGateEmail').value.trim();
-  const password = document.getElementById('loginGatePassword').value;
-  const errEl = document.getElementById('loginGateError');
-  if (!email || !password){ errEl.textContent = 'Enter your email and password to continue.'; return; }
-  errEl.textContent = 'Checking…';
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't sign in (${resp.status}).`;
-      return;
-    }
-    // 2026-08-19 fix — this page used to keep operating on whatever
-    // accountId happened to already be in the URL (a sample fallback, most
-    // of the time — there's no "Log in" entry point anywhere on the
-    // marketing site that already knows a visitor's accountId), even after
-    // a real, successful login. The backend's login-user response is the
-    // actual source of truth for which account this email belongs to —
-    // reload straight to that account's own URL when it doesn't match.
-    if (data.accountId && data.accountId !== state.companyId){
-      persistSessionTokenFor(data.accountId, data.token);
-      persistMemberId(data.accountId, data.memberId);
-      location.href = `account.html?accountId=${encodeURIComponent(data.accountId)}`;
-      return;
-    }
-    persistSessionToken(data.token);
-    persistMemberId(state.companyId, data.memberId);
-    if (data.mustChangePassword){
-      document.getElementById('loginGateStep').style.display = 'none';
-      document.getElementById('passwordChangeStep').style.display = 'block';
-      document.getElementById('passwordChangeError').textContent = '';
-      document.getElementById('newPassword').focus();
-      return; // gate stays open — submitPasswordChange() resolves it
-    }
-    document.getElementById('loginGate').style.display = 'none';
-    if (loginGateResolve) loginGateResolve(true);
-    loginGateResolve = null;
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend to sign in — try again.';
-  }
-}
-
-async function submitPasswordChange(){
-  const pw = document.getElementById('newPassword').value;
-  const pwConfirm = document.getElementById('newPasswordConfirm').value;
-  const errEl = document.getElementById('passwordChangeError');
-  if (pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; return; }
-  if (pw !== pwConfirm){ errEl.textContent = "Passwords don't match."; return; }
-  errEl.textContent = 'Saving…';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/auth/change-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newPassword: pw })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't set your password (${resp.status}).`;
-      return;
-    }
-    document.getElementById('loginGate').style.display = 'none';
-    if (loginGateResolve) loginGateResolve(true);
-    loginGateResolve = null;
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend to save your password — try again.';
-  }
-}
-
-// 2026-08-19 — phone-based account recovery, three real steps against
-// three real endpoints. recoveryVerificationId carries state between the
-// email step and the code step; recoveryResetToken carries state between
-// the code step and the password step. Both are cleared on cancel/success
-// so a stale value from an earlier attempt can't leak into a new one.
-let recoveryVerificationId = null;
-let recoveryResetToken = null;
-
-function openRecoveryStep(){
-  document.getElementById('loginGateStep').style.display = 'none';
-  document.getElementById('passwordChangeStep').style.display = 'none';
-  document.getElementById('recoveryStep').style.display = 'block';
-  document.getElementById('recoveryEmailView').style.display = 'block';
-  document.getElementById('recoveryCodeView').style.display = 'none';
-  document.getElementById('recoveryPasswordView').style.display = 'none';
-  document.getElementById('recoveryEmail').value = '';
-  document.getElementById('recoveryEmailError').textContent = '';
-  recoveryVerificationId = null;
-  recoveryResetToken = null;
-}
-
-function cancelRecovery(){
-  document.getElementById('recoveryStep').style.display = 'none';
-  document.getElementById('loginGateStep').style.display = 'block';
-  recoveryVerificationId = null;
-  recoveryResetToken = null;
-}
-
-async function submitRecoveryEmail(){
-  const email = document.getElementById('recoveryEmail').value.trim();
-  const errEl = document.getElementById('recoveryEmailError');
-  if (!email.includes('@')){ errEl.textContent = 'Enter a valid email address.'; return; }
-  errEl.textContent = 'Sending…';
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/auth/request-password-reset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't request a reset (${resp.status}).`;
-      return;
-    }
-    errEl.textContent = '';
-    if (!data.verificationId){
-      // Generic response — either the email doesn't exist here, or it has
-      // no phone on file. Deliberately worded the same either way (see
-      // the endpoint's own comment) so this page never confirms/denies
-      // whether an email is registered.
-      errEl.style.color = 'var(--cx)';
-      errEl.textContent = data.message || 'If that email has a phone number on file, a code was sent to it.';
-      return;
-    }
-    recoveryVerificationId = data.verificationId;
-    document.getElementById('recoveryEmailView').style.display = 'none';
-    document.getElementById('recoveryCodeView').style.display = 'block';
-    document.getElementById('recoveryCode').value = '';
-    const codeErrEl = document.getElementById('recoveryCodeError');
-    codeErrEl.style.color = 'var(--advocacy)';
-    codeErrEl.textContent = '';
-    document.getElementById('recoveryCodeLede').textContent =
-      `We sent a 6-digit code to the phone on file ending in ${data.phoneLast4}.`
-      + (data.provider === 'interim' ? ` No SMS provider is connected yet, so here it is instead: ${data.interimCode}` : '');
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend — try again.';
-  }
-}
-
-async function submitRecoveryCode(){
-  const code = document.getElementById('recoveryCode').value.trim();
-  const errEl = document.getElementById('recoveryCodeError');
-  if (!code){ errEl.textContent = 'Enter the code.'; return; }
-  errEl.textContent = 'Checking…';
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/auth/verify-phone-code`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ verificationId: recoveryVerificationId, code })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't verify that code (${resp.status}).`;
-      return;
-    }
-    if (!data.resetToken){
-      errEl.textContent = 'Verified, but no reset link came back — try starting over.';
-      return;
-    }
-    recoveryResetToken = data.resetToken;
-    errEl.textContent = '';
-    document.getElementById('recoveryCodeView').style.display = 'none';
-    document.getElementById('recoveryPasswordView').style.display = 'block';
-    document.getElementById('recoveryNewPassword').value = '';
-    document.getElementById('recoveryNewPasswordConfirm').value = '';
-    document.getElementById('recoveryPasswordError').textContent = '';
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend — try again.';
-  }
-}
-
-async function submitRecoveryPassword(){
-  const pw = document.getElementById('recoveryNewPassword').value;
-  const pwConfirm = document.getElementById('recoveryNewPasswordConfirm').value;
-  const errEl = document.getElementById('recoveryPasswordError');
-  if (pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; return; }
-  if (pw !== pwConfirm){ errEl.textContent = "Passwords don't match."; return; }
-  errEl.textContent = 'Saving…';
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/auth/reset-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resetToken: recoveryResetToken, newPassword: pw })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't reset your password (${resp.status}).`;
-      return;
-    }
-    // Resets always succeed against a real accountId/token — same
-    // "signed in automatically after this succeeds" convention as every
-    // other real-account-creating/authenticating flow in this build.
-    recoveryVerificationId = null;
-    recoveryResetToken = null;
-    if (data.accountId && data.accountId !== state.companyId){
-      persistSessionTokenFor(data.accountId, data.token);
-      persistMemberId(data.accountId, data.memberId);
-      location.href = `account.html?accountId=${encodeURIComponent(data.accountId)}`;
-      return;
-    }
-    persistSessionToken(data.token);
-    persistMemberId(state.companyId, data.memberId);
-    document.getElementById('loginGate').style.display = 'none';
-    if (loginGateResolve) loginGateResolve(true);
-    loginGateResolve = null;
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend — try again.';
-  }
-}
-
-function skipLoginGate(){
-  document.getElementById('loginGate').style.display = 'none';
-  if (loginGateResolve) loginGateResolve(false);
-  loginGateResolve = null;
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.href = `login.html?next=${next}`;
+  return new Promise(() => {});
 }
 
 // Hand-kept-in-sync copies of portal.html's ORG_LEVELS/TEAM_FUNCTIONS —
@@ -1134,11 +800,11 @@ function findTeamMember(id){
 }
 
 /* ---------- Recovery phone number (round 2026-08-19) ----------
-   The self-service half of the password-recovery flow already built into
-   the login gate (openRecoveryStep()/submitRecoveryEmail() etc. above) —
-   that flow texts a code to whatever's in team_members.phone for the
-   matching email, but until now the only way to SET that field was a raw
-   admin API call. This reads/writes the currently-logged-in member's own
+   The self-service half of the password-recovery flow now on its own
+   standalone page (forgot-password.html) — that flow texts a code to
+   whatever's in team_members.phone for the matching email, but until now
+   the only way to SET that field was a raw admin API call. This reads/writes
+   the currently-logged-in member's own
    row via the same GET .../team (already loaded into state.team by
    loadTeamData()) and PATCH /api/team/:id endpoints Team Members uses. */
 function renderMyProfile(){
@@ -1782,5 +1448,3 @@ init();
 </script>
 </body>
 </html>
-
-

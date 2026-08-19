@@ -10,6 +10,8 @@
   ],
   "rewrites": [
     { "source": "/account.html", "destination": "/frontend/account.html" },
+    { "source": "/login.html", "destination": "/frontend/login.html" },
+    { "source": "/forgot-password.html", "destination": "/frontend/forgot-password.html" },
     { "source": "/assessment-framework.html", "destination": "/frontend/assessment-framework.html" },
     { "source": "/assessment.html", "destination": "/frontend/assessment.html" },
     { "source": "/customer-journey.html", "destination": "/frontend/customer-journey.html" },

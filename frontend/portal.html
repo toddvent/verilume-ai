@@ -2018,27 +2018,13 @@
 </head>
 <body>
 
-<!-- Round 60 — login gate (Deliverable 14/auth). Hidden by default; shown
-     only when loadAccountData() gets a 401 from a real backend record for
-     this ?accountId= (i.e. the account exists and is protected, but this
-     browser has no valid session for it yet). Sits above everything else
-     via z-index so nothing behind it is interactive while it's up. -->
-<div class="login-gate" id="loginGate" style="display:none;">
-  <div class="login-gate-card">
-    <div class="wordmark" style="margin-bottom:18px;">Veri<b>lume</b></div>
-    <h2 id="loginGateTitle">Enter your access code</h2>
-    <p class="lede" id="loginGateLede">This account (<code id="loginGateAccountId"></code>) is protected. Enter the access code you were given when this account was created.</p>
-    <div class="field">
-      <label for="loginGateCode">Access code</label>
-      <input type="text" id="loginGateCode" placeholder="XXXXX-XXXXX" autocomplete="off" onkeydown="if(event.key==='Enter')submitLoginGate();">
-    </div>
-    <div class="btn-row">
-      <button class="btn-primary" onclick="submitLoginGate()">Continue →</button>
-    </div>
-    <div id="loginGateError" style="color:var(--advocacy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:10px;min-height:1em;"></div>
-    <a class="flink" style="display:inline-block;margin-top:14px;" onclick="skipLoginGate()">Continue without logging in — illustrative preview only, no real account data →</a>
-  </div>
-</div>
+<!-- 2026-08-19 (login redesign) — the old in-page access-code gate (Round 60)
+     was removed. It was a separate, account-level, single-shared-code system
+     that predated the newer per-person email+password login built in
+     account.html/login.html — arriving here without a valid session now
+     redirects straight to the single, dedicated login.html front door
+     instead, so there's only one login experience across the app. See
+     requireLogin() below. -->
 
 <!-- Round 65 — per direct instruction: the top bar should have nothing
      beside the logo. Every destination that used to live in a persistent
@@ -11930,73 +11916,23 @@ function persistSessionToken(token){
   try { sessionStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
 }
 
-// Set while the gate is open; called by submitLoginGate()/skipLoginGate().
-let loginGateResolve = null;
-// 'login' | 'claim' — which endpoint submit hits, driven entirely by the
-// backend's own response (a 409 on /login flips this to 'claim'), not
-// guessed client-side.
-let loginGateMode = 'login';
-
-// Shows the gate and returns a Promise that resolves true once login/claim
-// succeeds, or false if the visitor picks the "illustrative preview only"
-// escape hatch. loadAccountData() awaits this ONLY when the backend has
-// actually confirmed this account is real and protected (a 401 from a real
-// record) — never shown when the backend is unreachable or this account
-// has no real record at all, so the existing handoff/mock fallback still
-// works exactly as it did before this round in both of those cases.
+// 2026-08-19 (login redesign) — replaced the in-page account-level
+// access-code gate (Round 60: submitLoginGate()/skipLoginGate(), a
+// completely separate system from account.html's newer per-person
+// email+password login) with a straight redirect to the same, single,
+// dedicated login.html used everywhere else. ?next= carries this page's
+// own URL along so a successful sign-in returns here (rather than
+// defaulting to a bare Portal link with no accountId), and login.html
+// writes the session under the exact same verilume_session_<accountId>
+// key this page's restoreSessionToken()/authedFetch() already read from —
+// so a fresh login.html session is picked up here with no other changes.
+// Since this navigates away, the returned Promise deliberately never
+// resolves — the loadAccountData() call site below just stops at the
+// `await` as the page unloads, which is the correct behavior here.
 function requireLogin(){
-  document.getElementById('loginGateAccountId').textContent = state.companyId;
-  document.getElementById('loginGateError').textContent = '';
-  document.getElementById('loginGateCode').value = '';
-  loginGateMode = 'login';
-  document.getElementById('loginGateTitle').textContent = 'Enter your access code';
-  document.getElementById('loginGateLede').innerHTML = `This account (<code>${state.companyId}</code>) is protected. Enter the access code you were given when this account was created.`;
-  document.getElementById('loginGate').style.display = 'flex';
-  document.getElementById('loginGateCode').focus();
-  return new Promise(resolve => { loginGateResolve = resolve; });
-}
-
-async function submitLoginGate(){
-  const code = document.getElementById('loginGateCode').value.trim();
-  const errEl = document.getElementById('loginGateError');
-  if (!code){ errEl.textContent = 'Enter an access code to continue.'; return; }
-  errEl.textContent = 'Checking…';
-  try {
-    const endpoint = loginGateMode === 'claim' ? 'claim' : 'login';
-    const resp = await fetch(`${BACKEND_URL}/api/auth/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId: state.companyId, accessCode: code })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (resp.status === 409 && loginGateMode === 'login' && /no access code yet/.test(data.error || '')){
-      // This account predates the auth system (e.g. the seeded demo
-      // account) and has never had a code set. Switch the same form to the
-      // one-time "set your own code" flow rather than erroring — see
-      // POST /api/auth/claim's own comment in backend/server.js.
-      loginGateMode = 'claim';
-      document.getElementById('loginGateTitle').textContent = 'Set an access code for this account';
-      document.getElementById('loginGateLede').innerHTML = `This account (<code>${state.companyId}</code>) doesn't have an access code yet — pick one now (whatever you just typed becomes it) to secure it going forward. This only happens once.`;
-      errEl.textContent = '';
-      return;
-    }
-    if (!resp.ok){
-      errEl.textContent = data.error || `Couldn't verify that code (${resp.status}).`;
-      return;
-    }
-    persistSessionToken(data.token);
-    document.getElementById('loginGate').style.display = 'none';
-    if (loginGateResolve) loginGateResolve(true);
-    loginGateResolve = null;
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend to verify this code — try again.';
-  }
-}
-
-function skipLoginGate(){
-  document.getElementById('loginGate').style.display = 'none';
-  if (loginGateResolve) loginGateResolve(false);
-  loginGateResolve = null;
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.href = `login.html?next=${next}`;
+  return new Promise(() => {});
 }
 
 // scoreHistory[cellKey] = [{ date, score, source }, ...] and trackedCellKeys
