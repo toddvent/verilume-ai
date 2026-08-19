@@ -83,6 +83,16 @@
   .navlinks a.active{color:var(--ink);border-bottom:2px solid var(--media);padding-bottom:2px;}
   .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
   .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  /* 2026-08-19 -- utility nav, same pattern as index.html's fix: "Log in"
+     lives in its own group outside the collapsible .navlinks panel, so it
+     stays visible on mobile instead of hiding behind the hamburger with
+     the content links. Deliberately not paired with a "Create account"
+     CTA -- "Start free assessment" stays the one account-creation path
+     pushed on visitors. */
+  .nav-group{display:flex;align-items:center;gap:20px;}
+  .nav-right{display:flex;align-items:center;gap:12px;}
+  .nav-login{font-size:12.5px;font-weight:600;color:var(--ink)!important;text-decoration:none;padding:8px 16px;border:1px solid var(--line);border-radius:var(--radius-pill);white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .nav-login:hover{border-color:var(--ink);background:var(--paper-dim,#F5F5F7);}
   .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
 
   .hero{padding:56px 0 0;background:
@@ -208,14 +218,19 @@
 <header id="siteHeader">
   <nav class="nav" aria-label="Primary">
     <a class="logo" href="index.html">Veri<b>lume</b></a>
-    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
-    <div class="navlinks" id="navLinks">
+    <div class="nav-group">
+      <div class="navlinks" id="navLinks">
       <a href="human-ai-agents.html">Human &amp; AI Agents</a>
       <a href="assessment-framework.html">Assessment Framework</a>
       <a href="marketing-performance.html" class="active">Marketing Performance</a>
       <a href="customer-journey.html">Customer Journey</a>
       <a href="industry-solutions.html">Industry Solutions</a>
       <a class="nav-cta" href="assessment.html">Start free assessment</a>
+      </div>
+      <div class="nav-right">
+        <a class="nav-login" href="account.html">Log in</a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+      </div>
     </div>
   </nav>
 </header>
