@@ -102,6 +102,16 @@
   .navlinks a.active{color:var(--ink);border-bottom:2px solid var(--media);padding-bottom:2px;}
   .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
   .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  /* 2026-08-19 -- utility nav, same pattern as index.html's fix: "Log in"
+     lives in its own group outside the collapsible .navlinks panel, so it
+     stays visible on mobile instead of hiding behind the hamburger with
+     the content links. Deliberately not paired with a "Create account"
+     CTA -- "Start free assessment" stays the one account-creation path
+     pushed on visitors. */
+  .nav-group{display:flex;align-items:center;gap:20px;}
+  .nav-right{display:flex;align-items:center;gap:12px;}
+  .nav-login{font-size:12.5px;font-weight:600;color:var(--ink)!important;text-decoration:none;padding:8px 16px;border:1px solid var(--line);border-radius:var(--radius-pill);white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .nav-login:hover{border-color:var(--ink);background:var(--paper-dim,#F5F5F7);}
   .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
   @media (max-width:1180px){
     .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
@@ -789,29 +799,80 @@
 <header id="siteHeader">
   <nav class="nav" aria-label="Primary">
     <a class="logo" href="index.html">Veri<b>lume</b></a>
-    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
-    <div class="navlinks" id="navLinks">
+    <div class="nav-group">
+      <div class="navlinks" id="navLinks">
       <a href="human-ai-agents.html">Human &amp; AI Agents</a>
       <a href="assessment-framework.html">Assessment Framework</a>
       <a href="marketing-performance.html">Marketing Performance</a>
       <a href="customer-journey.html">Customer Journey</a>
       <a href="industry-solutions.html">Industry Solutions</a>
       <a class="nav-cta" href="assessment.html">Start free assessment</a>
+      </div>
+      <div class="nav-right">
+        <a class="nav-login" href="account.html">Log in</a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+      </div>
     </div>
   </nav>
 </header>
 
 <div class="back-nav" id="assessBackNav" style="display:none;">
   <a href="index.html" class="wordmark">Veri<b>lume</b></a>
-  <!-- Save/Schedule CTA — visual teaser only per direction, not wired to a
-       real save yet (this prototype has no backend/account to save
-       against). Clicking it swaps its own label to an honest "coming
-       soon" note rather than silently doing nothing. -->
+  <!-- Save/Schedule CTA — 2026-08-19 fix: this used to be a visual-only
+       tease ("Coming soon — saves to your account") from before the real
+       registration/auth system existed. It now opens #saveAccountModal,
+       which collects name+email and actually calls POST /api/accounts +
+       POST /api/auth/register-admin (same real endpoints onboarding.html
+       uses), per the standing policy: the free assessment stays
+       account-free, and registration only triggers when someone chooses
+       to save. "Schedule consultation" itself still has no real backend
+       (see teaseProductCta's scheduleCtaBtn a few lines down) — the modal
+       says so honestly rather than pretending it books anything. -->
   <div class="nav-actions">
-    <button class="restart" id="saveCtaBtn" style="display:none;" onclick="teaseSaveCta()">Save &amp; schedule consultation</button>
+    <button class="restart" id="saveCtaBtn" style="display:none;" onclick="openSaveAccountModal()">Save &amp; schedule consultation</button>
     <button class="restart" id="restartBtn" style="display:none;">Start over</button>
   </div>
 </div>
+
+<!-- 2026-08-19 — Save & Schedule modal. Minimal, self-contained (no
+     dependency on a step's own fields) since this button is visible on
+     every non-landing step, including ones reached long before the
+     "contact" step would otherwise collect a name/email. -->
+<div id="saveAccountModal" style="display:none;position:fixed;inset:0;background:rgba(29,29,31,0.55);z-index:100;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--paper);border-radius:10px;max-width:440px;width:100%;padding:28px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div id="saveModalFormView">
+      <h3 style="margin:0 0 6px;font-size:1.15rem;">Save this assessment</h3>
+      <p style="margin:0 0 18px;font-size:0.875rem;color:#6E6E73;line-height:1.5;">Creates a real Verilume account with a system-issued temporary password (you'll be asked to set your own on first login). We'll also use this to reach out about scheduling a consultation — that part isn't automated yet, a real person will follow up.</p>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Your name</label>
+        <input type="text" id="saveModalName" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Work email</label>
+        <input type="email" id="saveModalEmail" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
+      </div>
+      <p style="font-size:0.75rem;color:#8a8067;line-height:1.5;margin:0 0 18px;">By saving, you agree to Verilume's <a href="terms.html" target="_blank">Terms &amp; Conditions and pricing disclosures</a>. No signature needed — completing this step is the acceptance.</p>
+      <div id="saveModalError" style="display:none;font-size:0.82rem;color:#B3261E;margin-bottom:14px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Cancel</button>
+        <button type="button" class="btn-primary" id="saveModalSubmitBtn" onclick="submitSaveAccountModal()">Save my assessment →</button>
+      </div>
+    </div>
+    <div id="saveModalSuccessView" style="display:none;">
+      <h3 style="margin:0 0 10px;font-size:1.15rem;">Saved ✓</h3>
+      <p style="font-size:0.875rem;line-height:1.6;margin:0 0 14px;" id="saveModalSuccessNote"></p>
+      <div style="background:var(--paper-dim);border-radius:6px;padding:14px;margin-bottom:16px;">
+        <div style="font-size:0.75rem;color:#6E6E73;margin-bottom:4px;">Temporary password — shown once, you'll set your own on first login</div>
+        <code id="saveModalTempPassword" style="font-size:1rem;font-family:'SF Mono',Consolas,monospace;"></code>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Keep going with the assessment</button>
+        <a class="btn-primary" id="saveModalAccountLink" href="#" target="_blank">Go to your account →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
 
 <main>
@@ -1553,16 +1614,18 @@
       </div>
       <p style="font-size:0.75rem;color:#6E6E73;font-style:italic;margin:0 0 22px;">Cost and relevance figures are published third-party industry benchmarks for AI-augmented marketing generally, not measured results from a Verilume account. Speed-to-market is Verilume's own working estimate — both cited for context, not as a guarantee.</p>
       <div class="paid-interstitial-actions">
-        <a class="btn-primary" href="onboarding.html">See the paid program →</a>
+        <a class="btn-primary" id="paidCtaLinkInterstitial" href="onboarding.html">See the paid program →</a>
       </div>
 
       <!-- Round 104, module (f) — thank-you / product-page CTAs. Explicit,
            multiple paths into the paid service rather than the single
            link above standing alone — schedule time, self-serve explore,
-           or go straight to onboarding. The "Talk to a person" card uses
-           the same honest tease pattern as the header's Save & Schedule
-           button (teaseSaveCta) since this prototype has no real
-           scheduling backend to hand off to yet. -->
+           or go straight to onboarding. The "Talk to a person" card still
+           uses the honest teaseProductCta() tease — real scheduling has no
+           backend yet — unlike the header's Save & Schedule button, which
+           as of 2026-08-19 is wired to a real save (see
+           openSaveAccountModal()); only the "schedule" half of that button
+           is still a tease, and the modal it opens says so honestly. -->
       <div class="product-cta-grid">
         <div class="product-cta-card">
           <h3>Talk to a person</h3>
@@ -1577,7 +1640,7 @@
         <div class="product-cta-card">
           <h3>Go straight to onboarding</h3>
           <p>Ready now? Skip ahead to setting up the paid account.</p>
-          <a href="onboarding.html">Start onboarding →</a>
+          <a id="paidCtaLinkStartOnboarding" href="onboarding.html">Start onboarding →</a>
         </div>
       </div>
     </div>
@@ -1704,7 +1767,12 @@
       <button class="btn-ghost" onclick="copyReport()">Copy summary</button>
       <button class="btn-ghost" id="portalHandoffBtn" onclick="activateInPortal()">See this scorecard activate in the Portal →</button>
     </div>
-    <p class="recap-note" id="portalHandoffNote" style="margin-top:8px;">This sends this session's real scorecard to a real backend (see <code>backend/server.js</code>), which creates an actual account record and opens the Client Portal (see <code>portal.html</code>) reading it back by account ID — a genuine account-record lookup, not a mocked one. The backend is a local demo running in this sandbox only, not a public deployment; if it isn't reachable, this falls back to the previous round's link-carried handoff instead of failing outright. See <code>cxmedia-backend-production-scope.md</code> for what a real production deployment of this same mechanism requires.</p>
+    <!-- 2026-08-19 fix — this note used to describe the old access-code-only
+         path, which created an account but no real per-person login and no
+         legal-acceptance record. It now opens the same real Save & Schedule
+         modal the header CTA uses (name+email → real register-admin login),
+         then opens the Portal signed in on success — see activateInPortal(). -->
+    <p class="recap-note" id="portalHandoffNote" style="margin-top:8px;">This opens the same real save flow as "Save &amp; schedule consultation" above — creates a real Verilume account and admin login (see <code>backend/server.js</code>'s <code>register-admin</code> endpoint), then opens the Client Portal (see <code>portal.html</code>) already signed in with that account's real session. The backend is a local demo running in this sandbox only, not a public deployment.</p>
 
     <div class="paid-cta-band">
       <div class="paid-cta-copy">
@@ -2834,13 +2902,93 @@ function goToStep(step){
 // save progress against, so clicking this swaps the button's own label to
 // an honest "coming soon" note (same pattern as copyReport()'s "Copied ✓"
 // swap) rather than doing nothing or faking a save that didn't happen.
-function teaseSaveCta(){
-  const btn = document.getElementById('saveCtaBtn');
-  if (btn.dataset.teasing) return;
-  btn.dataset.teasing = '1';
-  const original = btn.innerHTML;
-  btn.innerHTML = 'Coming soon — saves to your account →';
-  setTimeout(() => { btn.innerHTML = original; delete btn.dataset.teasing; }, 2200);
+// 2026-08-19 — real Save & Schedule flow, replacing the old visual-only
+// teaseSaveCta() tease. Same session-storage convention as onboarding.html/
+// account.html (verilume_session_<accountId>) so a user who follows
+// "Go to your account" lands there already signed in.
+function sessionStorageKey(accountId){
+  return `verilume_session_${accountId}`;
+}
+function persistSessionToken(accountId, token){
+  try { sessionStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { /* sessionStorage unavailable — skip caching */ }
+}
+
+function openSaveAccountModal(){
+  saveModalThenOpenPortal = false; // reset here; activateInPortal() sets it true right after calling this
+  document.getElementById('saveModalFormView').style.display = 'block';
+  document.getElementById('saveModalSuccessView').style.display = 'none';
+  document.getElementById('saveModalError').style.display = 'none';
+  document.getElementById('saveModalName').value = (state.firstName || state.lastName) ? `${state.firstName || ''} ${state.lastName || ''}`.trim() : '';
+  document.getElementById('saveModalEmail').value = state.email || '';
+  document.getElementById('saveAccountModal').style.display = 'flex';
+}
+function closeSaveAccountModal(){
+  document.getElementById('saveAccountModal').style.display = 'none';
+}
+
+async function submitSaveAccountModal(){
+  const name = document.getElementById('saveModalName').value.trim();
+  const email = document.getElementById('saveModalEmail').value.trim();
+  const errEl = document.getElementById('saveModalError');
+  errEl.style.display = 'none';
+  if (!name){ errEl.textContent = 'Enter your name.'; errEl.style.display = 'block'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ errEl.textContent = 'Enter a valid email address.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('saveModalSubmitBtn');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    // Reuses buildScorecardPayload() — the same payload activateInPortal()
+    // sends, carrying every real field the assessment has collected so
+    // far (company, industry, description, productThemes, audience,
+    // wealth, competitors, cells) rather than the thin, mostly-empty
+    // object onboarding.html's own createRealAccount() sends when someone
+    // arrives with no assessment behind them at all.
+    const accResp = await fetch(`${BACKEND_URL}/api/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildScorecardPayload())
+    });
+    if (!accResp.ok) throw new Error(`Backend responded ${accResp.status}`);
+    const { accountId } = await accResp.json();
+
+    const adminResp = await fetch(`${BACKEND_URL}/api/auth/register-admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId, name, email })
+    });
+    if (!adminResp.ok){
+      if (adminResp.status === 409){
+        throw new Error('That email is already registered — sign in on your account page instead of saving again.');
+      }
+      throw new Error(`register-admin responded ${adminResp.status}`);
+    }
+    const admin = await adminResp.json();
+    persistSessionToken(accountId, admin.token);
+
+    const openedPortal = saveModalThenOpenPortal;
+    if (openedPortal){
+      window.open(`portal.html?accountId=${encodeURIComponent(accountId)}&token=${encodeURIComponent(admin.token)}`, '_blank');
+      saveModalThenOpenPortal = false;
+    }
+    document.getElementById('saveModalSuccessNote').textContent = openedPortal
+      ? `This is a real Verilume account (${accountId}) — you'll sign in with ${admin.email}. The Portal tab that just opened is already signed in.`
+      : `This is a real Verilume account (${accountId}) — you'll sign in with ${admin.email}. Someone from Verilume will also reach out about scheduling a consultation.`;
+    document.getElementById('saveModalTempPassword').textContent = admin.tempPassword;
+    document.getElementById('saveModalAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
+    document.getElementById('saveModalFormView').style.display = 'none';
+    document.getElementById('saveModalSuccessView').style.display = 'block';
+  } catch (e){
+    console.warn('submitSaveAccountModal failed', e);
+    errEl.textContent = e.message && e.message.includes('already registered')
+      ? e.message
+      : `Couldn't reach the Verilume backend right now, so nothing was saved. Try again in a moment.`;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 // Round 104, module (f) — generic version of the tease-swap pattern above,
@@ -4902,51 +5050,45 @@ const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.
 // carried in the link itself, used ONLY when the real backend below isn't
 // reachable — so a demo of this page still works even with the backend
 // server not running, rather than silently breaking.
-function buildPortalHandoffUrl(){
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(buildScorecardPayload()))));
-  return `portal.html?handoff=${encoded}`;
+// 2026-08-19 fix — "See the paid program" / "Start onboarding" / "Continue
+// to onboarding" used to link to a bare onboarding.html (or, for the
+// report-step link, onboarding.html?region=... only), so someone who just
+// finished the free assessment landed back at an empty company-name field
+// as if none of this had happened. Carries a base64 "handoff" query param
+// (same shape buildScorecardPayload() already produces, the "activate in
+// the Portal" flow used to hand to portal.html before that button was
+// rewired to real registration above) so onboarding.html can prefill
+// company/industry/description/productThemes/audience/wealth/competitors
+// and (when available) the visitor's own name/email from the contact step
+// — see onboarding.html's own handoff-reading code for the other half of
+// this fix.
+function buildOnboardingHandoffUrl(){
+  const payload = Object.assign({}, buildScorecardPayload(), {
+    adminName: (state.firstName || state.lastName) ? `${state.firstName || ''} ${state.lastName || ''}`.trim() : '',
+    adminEmail: state.email || ''
+  });
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  return `onboarding.html?region=${encodeURIComponent(state.region)}&handoff=${encoded}`;
 }
 
-// Real path: POST this session's actual scorecard to the backend, which
-// creates a real account record and returns a real accountId, then opens
-// the Portal reading that record back by ID — a genuine account-record
-// lookup, not a link-carried simulation of one. Falls back to the
-// link-based handoff (unchanged from the prior round) if the backend
-// isn't running or errors, so this button always does something useful.
-async function activateInPortal(){
-  const btn = document.getElementById('portalHandoffBtn');
-  const note = document.getElementById('portalHandoffNote');
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Sending to backend…';
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/accounts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildScorecardPayload())
-    });
-    if (!resp.ok) throw new Error(`Backend responded ${resp.status}`);
-    // Round 60 — the backend now also returns a one-time access code and an
-    // already-issued session token for this brand-new account (real auth,
-    // Deliverable 14). The token rides along in the Portal URL so the new
-    // tab opens already logged in, same as any real "account created,
-    // signed in automatically" flow — but the access code itself is never
-    // put in a URL or stored anywhere; it's shown here, once, exactly like
-    // a real API key or recovery code, since this is the only moment this
-    // prototype (no email delivery) can hand it to the visitor at all.
-    const { accountId, accessCode, token } = await resp.json();
-    window.open(`portal.html?accountId=${encodeURIComponent(accountId)}&token=${encodeURIComponent(token)}`, '_blank');
-    note.innerHTML = `Sent — this scorecard is now a real account record (${accountId}) in the local demo backend, and the Portal tab that just opened is already signed in. `
-      + `<strong>Save this access code — it's the only way back in, and it won't be shown again:</strong> <code style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${accessCode}</code>`;
-  } catch (e){
-    console.warn('activateInPortal: backend not reachable, falling back to the link-carried handoff.', e);
-    window.open(buildPortalHandoffUrl(), '_blank');
-    note.textContent = `The local demo backend wasn't reachable at ${BACKEND_URL}, so this used the prior round's link-carried handoff instead (still a real scorecard, just not persisted to an account record this time).`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = original;
-  }
+// 2026-08-19 fix — this used to create an account through the old
+// account-level access-code path (POST /api/accounts only, no
+// register-admin call) and open the Portal already signed in on that
+// access code, with no name/email ever captured and no real per-person
+// login created. That completely bypassed the registration/auth system
+// built on 2026-08-18 — an account could exist in the database with no
+// identity attached to it, and no legal-acceptance record, no way to log
+// back in with an email later. This button now opens the exact same real
+// Save & Schedule modal (name+email → POST /api/accounts →
+// POST /api/auth/register-admin) as the header CTA, so every account this
+// page can create goes through the one real registration path — it just
+// also opens the Portal in a new tab on success, since "see it in the
+// Portal" is what this specific button promises.
+function activateInPortal(){
+  openSaveAccountModal();
+  saveModalThenOpenPortal = true;
 }
+let saveModalThenOpenPortal = false;
 
 function quadrantFor(mediaPct, cxPct){
   const mediaStrong = mediaPct >= 50;
@@ -5002,7 +5144,12 @@ function renderFullReport(){
   document.getElementById('reportQuadrantDesc').textContent = q.desc;
   document.getElementById('mediaScoreVal').textContent = s.mediaPct + '%';
   document.getElementById('cxScoreVal').textContent = s.cxPct + '%';
-  document.getElementById('paidCtaLink').href = `onboarding.html?region=${encodeURIComponent(state.region)}`;
+  const onboardingUrl = buildOnboardingHandoffUrl();
+  document.getElementById('paidCtaLink').href = onboardingUrl;
+  const interstitialLink = document.getElementById('paidCtaLinkInterstitial');
+  if (interstitialLink) interstitialLink.href = onboardingUrl;
+  const startOnboardingLink = document.getElementById('paidCtaLinkStartOnboarding');
+  if (startOnboardingLink) startOnboardingLink.href = onboardingUrl;
 
   const basisNote = document.getElementById('quadrantBasisNote');
   if (basisNote){
