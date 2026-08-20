@@ -3037,6 +3037,27 @@
          questions, so they still need a place to be set. -->
     <p class="lede">Industry, footprint, audience, wealth tier, products &amp; services, and brand description now live only in the free assessment — edit those there, not here, so there's one source of truth. This page is just for account-level settings the assessment doesn't ask about.</p>
 
+    <!-- 2026-08-20 fix, per direct QA feedback: "Your Company Profile and
+         Product themes are not part of the final assessment." The round
+         above (2026-08-19) correctly stopped these fields from being
+         *editable* here — they're the free assessment's data now — but it
+         also removed the only place that *displayed* them, and nothing
+         replaced it: companyProfileSummary() (the one-line summary used in
+         the Brand Groundwork checklist) only ever showed
+         industry/footprint/audience/wealth, never brand description or
+         product themes. Net effect: a visitor could fill those two fields
+         out in the assessment and then never see them again anywhere in
+         the real account. Read-only by design (per the lede above — edit
+         in the assessment, not here), sourced from the same state fields
+         the backend already returns (state.industry/footprint/audience/
+         wealth/assessmentDescription/productsServices — see the account
+         load a few hundred lines up), populated by
+         renderCompanyProfileStep() below. -->
+    <div class="field" id="cpAssessmentSummaryCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:22px;">
+      <label style="margin-bottom:8px;">From your free assessment <span style="font-weight:400;text-transform:none;color:var(--muted);">— read-only here, edit in a new assessment pass</span></label>
+      <div id="cpAssessmentSummaryBody" style="font-size:0.875rem;color:var(--ink);line-height:1.6;"></div>
+    </div>
+
     <!-- Round 132c17 (2026-08-17), per direct instruction: "the campaign id
          includes a 3 letter code for each partner defined during setup" —
          a one-time-per-account code (e.g. AOV for Atlas Ocean Voyages),
@@ -36522,6 +36543,30 @@ function renderVoiceStep(){
 // assessment.html. This function now only renders the three fields that
 // have no other home in the app: Partner Code, Active Channels, Partners.
 function renderCompanyProfileStep(){
+  // 2026-08-20 fix — see cpAssessmentSummaryCard's own comment in the HTML
+  // above: brand description and product themes were being collected in
+  // the free assessment and saved to the account, but never shown anywhere
+  // in the real Portal. This renders them read-only, alongside the same
+  // industry/footprint/audience/wealth fields companyProfileSummary()
+  // already surfaces in the Brand Groundwork checklist, so nothing the
+  // visitor typed in the assessment disappears once they're a real account.
+  const summaryBodyEl = document.getElementById('cpAssessmentSummaryBody');
+  if (summaryBodyEl){
+    const audienceLabels = GENERATIONS.filter(g => state.audience.has(g.key)).map(g => g.label);
+    const wealthLabels = WEALTH_TIERS.filter(w => state.wealth.has(w.key)).map(w => w.label);
+    const rows = [
+      ['Industry', state.industry],
+      ['Footprint', state.footprint],
+      ['Target audience', audienceLabels.length ? audienceLabels.join(', ') : ''],
+      ['Wealth tier', wealthLabels.length ? wealthLabels.join(', ') : ''],
+      ['Product themes', state.productsServices],
+      ['Brand description', state.assessmentDescription]
+    ].filter(([, val]) => val);
+    summaryBodyEl.innerHTML = rows.length
+      ? rows.map(([label, val]) => `<div style="margin-bottom:6px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>`).join('')
+      : '<p class="hint" style="margin:0;">Nothing on file yet — this fills in once the free assessment collects it.</p>';
+  }
+
   const partnerCodeEl = document.getElementById('cpPartnerCode');
   if (partnerCodeEl) partnerCodeEl.value = state.partnerCode || '';
 

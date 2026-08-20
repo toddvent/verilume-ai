@@ -37,8 +37,42 @@ function createSyncDb(connectionString) {
 
   let closed = false;
 
+  // 2026-08-20 fix — this Worker had no 'error' listener. Node's rule for
+  // any EventEmitter (Worker included) is: an 'error' event with zero
+  // listeners is rethrown as an uncaught exception, which crashes the whole
+  // Node process — not just the request that triggered it. That's exactly
+  // what Vercel's logs showed as intermittent "500
+  // INTERNAL_FUNCTION_INVOCATION_FAILED" on POST /api/accounts: a transient
+  // worker-thread failure (most likely the first Supabase pooler connection
+  // on a cold start) was taking down the entire serverless function
+  // invocation instead of surfacing as a normal, catchable error that
+  // handleRequest()'s existing try/catch in server.js turns into a clean
+  // JSON 500. Recording the error here (rather than leaving the listener
+  // absent) is what stops the crash — the error is now just data.
+  let workerFailure = null;
+  worker.on('error', (err) => {
+    console.error('[pg-sync-bridge] worker thread error:', err);
+    workerFailure = err;
+  });
+  worker.on('exit', (code) => {
+    if (code !== 0 && !closed) {
+      console.error(`[pg-sync-bridge] worker thread exited unexpectedly with code ${code}`);
+      if (!workerFailure) {
+        workerFailure = new Error(`pg-sync-bridge: worker thread exited unexpectedly with code ${code}`);
+      }
+    }
+  });
+
   function callWorker(sql, params, mode) {
     if (closed) throw new Error('pg-sync-bridge: database already closed');
+    // A worker that already died (see the 'error'/'exit' listeners above)
+    // would otherwise hang every subsequent call for the full
+    // WAIT_TIMEOUT_MS before timing out — fail fast instead with the real
+    // reason, so one bad connection doesn't turn into a string of slow
+    // 500s on the same warm container.
+    if (workerFailure) {
+      throw new Error(`pg-sync-bridge: worker thread is dead (${workerFailure.message}) — this container needs a fresh invocation`);
+    }
     const { port1, port2 } = new MessageChannel();
     const signal = new Int32Array(new SharedArrayBuffer(4));
     worker.postMessage({ sql, params, mode, signal, port: port2 }, [port2]);

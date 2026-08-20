@@ -1202,6 +1202,14 @@
         </ul>
       </aside>
     </div>
+    <!-- 2026-08-20 fix, per direct instruction after a live bug report: a
+         visitor could click Continue with some or all of the 6 Loop
+         questions unanswered, land on the report, and see the quadrant
+         marker sitting at the unrated (0%/0%) corner — reading as "scoring
+         is broken" when it was actually just unrated. New requirement:
+         these questions must be answered before advancing — see
+         finishLoopStep()'s validation below. -->
+    <div id="loopValidationError" style="display:none;font-size:0.82rem;color:#B3261E;margin-bottom:14px;"></div>
     <div class="btn-row">
       <button class="btn-ghost" onclick="goToStep('orgstyle')">← Back</button>
       <button class="btn-primary" onclick="finishLoopStep()">Continue →</button>
@@ -3052,7 +3060,34 @@ function finishOrgStyleStep(){
 // to run after the maturity carousel's last slide, then registration —
 // same hand-off startQuickReveal() always did, just reached one step
 // sooner.
+// 2026-08-20 fix, per direct instruction: "Questions must be answered
+// before moving to the next step." A visitor who skipped some or all of
+// the 6 Marketing Loop questions (the 5 stage-effectiveness rows plus the
+// new Customer Experience row) could previously click straight through to
+// the report and see the quadrant marker sitting at the unrated 0%/0%
+// corner — a real, working default, but one that reads as "the scoring is
+// broken" rather than "you haven't answered yet." Blocking here, rather
+// than only at the report, catches the actual moment the visitor would
+// otherwise skip past unrated questions.
+function loopStepMissingAnswers(){
+  const missing = RUBRIC.filter(r => !state.stageEffectiveness[r.stage]).map(r => r.stage);
+  if (!(state.cxConsistencyRating > 0)) missing.push('Customer Experience');
+  return missing;
+}
 function finishLoopStep(){
+  const missing = loopStepMissingAnswers();
+  const errEl = document.getElementById('loopValidationError');
+  if (missing.length){
+    if (errEl){
+      errEl.textContent = missing.length === 1
+        ? `Rate "${missing[0]}" before continuing.`
+        : `Rate every question before continuing — still missing: ${missing.join(', ')}.`;
+      errEl.style.display = 'block';
+      errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    return;
+  }
+  if (errEl) errEl.style.display = 'none';
   startQuickReveal();
 }
 
@@ -3485,6 +3520,13 @@ function loopDiagramSvg(stageNames){
 }
 
 function renderLoopStep(){
+  // Clear a prior "answer everything before continuing" error as soon as
+  // every question has a rating, rather than making the visitor click
+  // Continue again just to dismiss it.
+  const errEl = document.getElementById('loopValidationError');
+  if (errEl && errEl.style.display !== 'none' && loopStepMissingAnswers().length === 0){
+    errEl.style.display = 'none';
+  }
   document.getElementById('loopVisual').innerHTML = loopDiagramSvg(RUBRIC.map(r => r.stage));
   document.getElementById('loopStageRows').innerHTML = RUBRIC.map(r => {
     const idealPct = loopStageIdealPct(r.stage);
@@ -3504,12 +3546,22 @@ function renderLoopStep(){
   // 2026-08-20 — the one real, independent CX Strength input. Same
   // loop-stage-row markup/loop-rank buttons as the 5 rows above, so it
   // reads as one more row in the same list, not a bolted-on extra module.
+  // 2026-08-20 (direct QA feedback) — aligned to match the 5 stage rows
+  // exactly: an "Importance" badge (same loop-metric style as Importance/
+  // Ideal Budget above) and the self-report ranking relabeled
+  // "Effectiveness today" instead of "Consistency today", since that's the
+  // term the other 5 rows use for the same kind of self-rating. Importance
+  // is fixed at 5/5, non-self-reported like the stage rows' own Importance
+  // badge — CX consistency touches every stage of the loop, so it's never
+  // "less important" than any one stage. No Ideal Budget badge — that
+  // concept (media spend allocation) doesn't apply to CX.
   const cxCurrent = state.cxConsistencyRating || 0;
   const cxRanks = [1,2,3,4,5].map(n => `<button type="button" class="${n === cxCurrent ? 'active' : ''}" onclick="rateLoopCx(${n})">${n}</button>`).join('');
   document.getElementById('loopCxRow').innerHTML = `<div class="loop-stage-row">
-      <div><div class="stage-name">Customer Experience</div><div class="stage-sub">How consistent is the experience across every channel a customer touches — email, site, call center, in-person?</div></div>
+      <div><div class="stage-name">Customer Experience</div><div class="stage-sub">How consistent is the customer experience across every channel.</div></div>
       <div class="loop-stage-metrics">
-        <div><div class="stage-sub" style="margin-bottom:4px;">Consistency today</div><div class="loop-rank">${cxRanks}</div></div>
+        <div class="loop-metric"><div class="num">5/5</div><div class="lbl">Importance</div></div>
+        <div><div class="stage-sub" style="margin-bottom:4px;">Effectiveness today</div><div class="loop-rank">${cxRanks}</div></div>
       </div>
     </div>`;
 }
