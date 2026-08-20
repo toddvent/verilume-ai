@@ -58,6 +58,17 @@
   .badge.status-overdue{background:var(--danger-tint);color:var(--danger);}
   .badge.status-paid{background:#E7F6EC;color:#15803D;}
   .badge.status-due{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-configured{background:#E7F6EC;color:#15803D;}
+  .badge.status-not-configured{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-not-built{background:var(--paper-dim);color:var(--muted);}
+
+  /* ---- Integration Status ---- */
+  .integ-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:12px 0;border-bottom:1px solid var(--line-hairline);}
+  .integ-row:last-child{border-bottom:none;}
+  .integ-row .integ-label{font-size:0.86rem;font-weight:600;margin-bottom:3px;}
+  .integ-row .integ-detail{font-size:0.78rem;color:var(--muted);line-height:1.5;max-width:640px;}
+  .integ-row .integ-envvars{font-size:0.68rem;color:var(--line-strong);font-family:ui-monospace,Menlo,Consolas,monospace;margin-top:3px;}
+  .integ-right{flex-shrink:0;}
 
   /* ---- Directory ---- */
   .directory-grid{display:grid;gap:16px;}
@@ -115,14 +126,111 @@
   .toggle.on .switch::after{left:18px;}
 
   .hidden{display:none !important;}
+
+  /* ---- Login gate ---- */
+  /* 2026-08-20 — per direct instruction to password-protect this page
+     "using the same username and password that I use accessing the
+     public pages": this gate calls the exact same backend endpoints as
+     login.html (POST /api/auth/login-user, /request-login-mfa,
+     /verify-login-code) — same credentials, same step-up MFA on a new
+     device — just rendered inline here instead of redirecting out to the
+     public login page, so this stays a single, self-contained internal
+     tool. Access additionally requires isAdmin — a valid client login
+     that isn't an admin gets a clear decline, not entry. */
+  #opsLoginGate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  #opsLoginGate .gate-card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-md);padding:36px 32px;max-width:400px;width:100%;box-shadow:var(--shadow-lg);}
+  #opsLoginGate h1{font-size:1.3rem;margin:0 0 6px;}
+  #opsLoginGate .lede{margin:0 0 20px;font-size:0.85rem;line-height:1.5;color:var(--muted);}
+  #opsLoginGate .field{margin-bottom:14px;}
+  #opsLoginGate input[type=email],#opsLoginGate input[type=password],#opsLoginGate input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.88rem;font-family:inherit;}
+  #opsLoginGate .btn.primary{width:100%;padding:11px;font-size:0.85rem;}
+  #opsLoginGate .gate-error{color:var(--danger);font-size:0.78rem;margin-top:10px;min-height:1em;}
+  #opsLoginGate .gate-note{font-size:0.72rem;color:var(--cx);margin-top:10px;}
+  #opsLoginGate .gate-links{display:flex;justify-content:space-between;margin-top:16px;font-size:0.78rem;}
+  #opsLoginGate .gate-links a{color:var(--media);cursor:pointer;text-decoration:none;font-weight:600;}
+  #opsLoginGate .gate-links a:hover{text-decoration:underline;}
+  #opsLoginGate .gate-step{display:none;}
+  #opsLoginGate .gate-step.active{display:block;}
+  #opsLoginGate label{margin-bottom:6px;}
 </style>
 </head>
 <body>
 
+<!-- ==================== LOGIN GATE ==================== -->
+<div id="opsLoginGate">
+  <div class="gate-card">
+
+    <div class="gate-step active" id="opsGateLoginStep">
+      <h1>Verilume Ops Console</h1>
+      <p class="lede">Staff only. Sign in with the same email and password you use on the public Verilume login.</p>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="opsLoginEmail" autocomplete="username" onkeydown="if(event.key==='Enter')submitOpsLogin();">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="opsLoginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitOpsLogin();">
+      </div>
+      <button class="btn primary" id="opsLoginBtn" onclick="submitOpsLogin()">Log in</button>
+      <div class="gate-error" id="opsLoginError"></div>
+    </div>
+
+    <div class="gate-step" id="opsGatePasswordChangeStep">
+      <h1>Set your password</h1>
+      <p class="lede">You signed in with a temporary password. Set a real one now (at least 8 characters) — this only happens once.</p>
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="opsNewPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitOpsPasswordChange();">
+      </div>
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="opsNewPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitOpsPasswordChange();">
+      </div>
+      <button class="btn primary" id="opsPasswordChangeBtn" onclick="submitOpsPasswordChange()">Set password and continue</button>
+      <div class="gate-error" id="opsPasswordChangeError"></div>
+    </div>
+
+    <div class="gate-step" id="opsGateMfaStep">
+      <h1>Verify it's you</h1>
+      <p class="lede" id="opsMfaIntro">We sent a 6-digit code.</p>
+      <div class="field">
+        <label>Verification code</label>
+        <input type="text" id="opsMfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" onkeydown="if(event.key==='Enter')submitOpsMfaCode();">
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;font-size:13px;">
+          <input type="checkbox" id="opsMfaRemember" checked style="width:auto;">
+          Trust this device for 30 days
+        </label>
+      </div>
+      <button class="btn primary" id="opsMfaBtn" onclick="submitOpsMfaCode()">Verify and continue</button>
+      <div class="gate-error" id="opsMfaError"></div>
+      <div class="gate-note" id="opsMfaInterimNote" style="display:none;"></div>
+      <div class="gate-links">
+        <a onclick="resendOpsMfa()">Resend code</a>
+        <a onclick="switchOpsMfaChannel()" id="opsMfaSwitchLink">Verify by email instead</a>
+      </div>
+      <div class="gate-links">
+        <a onclick="backToOpsLogin()">← Back to sign in</a>
+      </div>
+    </div>
+
+    <div class="gate-step" id="opsGateDeniedStep">
+      <h1>Not authorized</h1>
+      <p class="lede">That's a real Verilume login, but this account isn't set up as an admin, so it can't open the Ops Console. Ask an existing admin to grant admin access on Team Access, then try again.</p>
+      <button class="btn" onclick="backToOpsLogin()">← Back to sign in</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== MAIN APP (hidden until an admin session is verified) ==================== -->
+<div id="opsAppRoot" class="hidden">
+
 <div class="staffbar">
   <div class="staffbar-inner">
     <span><b>VERILUME OPS CONSOLE</b> — internal staff tool, not reachable from the client Portal or account pages</span>
-    <span class="op">Signed in as: Todd (single-admin)</span>
+    <span class="op">Signed in as: <span id="opsSignedInAs">—</span> · <a onclick="opsLogout()" style="color:#B9BEDB;cursor:pointer;text-decoration:underline;">Log out</a></span>
   </div>
 </div>
 
@@ -143,6 +251,41 @@
       <div class="eyebrow">Accounts</div>
       <h1>Accounts Directory</h1>
       <p class="lede">Every real account CX Experiences operates. Click an account to open its workspace — data &amp; connections, team access, plan &amp; billing, and legal documents.</p>
+    </div>
+
+    <!-- 2026-08-20 — Platform Integration Status, per direct instruction to
+         add this to the client-management portal experience rather than
+         it living only as an answer in chat. Platform-wide, not scoped to
+         any one account, so it lives here in the Directory view rather
+         than inside a per-account workspace tab. Calls the new GET
+         /api/ops/integration-status (same admin-token gate as GET
+         /api/leads) — reports, per vendor, whether the required
+         environment variable(s) are set on THIS deployment (never the
+         secret values themselves), so "did we turn X on" is something
+         this screen answers directly instead of requiring a Vercel
+         dashboard check or a codebase read. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Platform Integration Status</h3>
+      <p class="desc">Whether each vendor-backed capability is actually live on this deployment — generative copywriting, SMS/email verification (including the new login MFA), HubSpot, GA4, and more — plus the Portal's Enterprise-gated capabilities that aren't a credential away at all. Nothing below ever shows a secret value, only whether one is set.</p>
+      <div class="field-row" id="integAuthRow">
+        <div>
+          <label>Admin token</label>
+          <input type="text" id="integAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn primary" onclick="checkIntegrationStatus()">Check status</button>
+          <label class="toggle" id="integRememberToggle" onclick="toggleIntegRemember()" style="margin-bottom:9px;">
+            <span class="switch"></span> Remember for this browser session
+          </label>
+        </div>
+      </div>
+      <div id="integStatusError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="integStatusResult" style="display:none;">
+        <div id="integList"></div>
+        <h3 style="margin-top:22px;font-size:0.85rem;">Not built yet — no credential turns these on</h3>
+        <div id="integNotBuiltList"></div>
+        <div class="proto-note" id="integCheckedNote" style="margin-top:14px;"></div>
+      </div>
     </div>
 
     <div class="safeguard">
@@ -322,7 +465,17 @@
 
 </div>
 
+</div><!-- /#opsAppRoot -->
+
 <script>
+// 2026-08-20 — this file's first real backend call (Platform Integration
+// Status below). Same BACKEND_URL convention as every other frontend page
+// in this build — same-origin in production, localhost:8787 when opened
+// directly as a file:// page during dev.
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+  ? ''
+  : 'http://localhost:8787';
+
 // ---- Illustrative account state (client-side only, matches the real, decided
 // facts from cxmedia-first-client-beta-launch-plan-2026-08-08.md; everything
 // else is honestly shown as not-yet-provisioned, not filled with fake activity) ----
@@ -579,7 +732,342 @@ document.getElementById('tabRow').addEventListener('click', (e) => {
   if (tab) selectTab(tab.dataset.tab);
 });
 
+// 2026-08-20 — Platform Integration Status. sessionStorage (not
+// localStorage) for the "remember" opt-in, same convention as every other
+// real secret this build handles (session tokens elsewhere) — a token
+// this powerful over platform config shouldn't outlive the tab/session by
+// default, and the toggle is off by default (opt-IN to remembering, not
+// opt-out).
+const INTEG_TOKEN_STORAGE_KEY = 'verilume_ops_admin_token';
+let integRemember = false;
+
+function toggleIntegRemember(){
+  integRemember = !integRemember;
+  document.getElementById('integRememberToggle').classList.toggle('on', integRemember);
+  if (integRemember){
+    const token = document.getElementById('integAdminToken').value.trim();
+    if (token){ try { sessionStorage.setItem(INTEG_TOKEN_STORAGE_KEY, token); } catch (e) {} }
+  } else {
+    try { sessionStorage.removeItem(INTEG_TOKEN_STORAGE_KEY); } catch (e) {}
+  }
+}
+
+function integStatusBadge(configured){
+  return configured
+    ? '<span class="badge status-configured">Configured</span>'
+    : '<span class="badge status-not-configured">Not configured</span>';
+}
+
+async function checkIntegrationStatus(){
+  const token = document.getElementById('integAdminToken').value.trim();
+  const errEl = document.getElementById('integStatusError');
+  const resultEl = document.getElementById('integStatusResult');
+  errEl.style.display = 'none';
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment to check integration status.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/ops/integration-status`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't check integration status (${resp.status}).`;
+      errEl.style.display = 'block';
+      resultEl.style.display = 'none';
+      return;
+    }
+    if (integRemember){ try { sessionStorage.setItem(INTEG_TOKEN_STORAGE_KEY, token); } catch (e) {} }
+    document.getElementById('integList').innerHTML = (data.integrations || []).map(i => `
+      <div class="integ-row">
+        <div>
+          <div class="integ-label">${i.label}</div>
+          <div class="integ-detail">${i.detail}</div>
+          <div class="integ-envvars">${(i.envVars || []).join(', ')}</div>
+        </div>
+        <div class="integ-right">${integStatusBadge(i.configured)}</div>
+      </div>
+    `).join('');
+    document.getElementById('integNotBuiltList').innerHTML = (data.notBuilt || []).map(i => `
+      <div class="integ-row">
+        <div>
+          <div class="integ-label">${i.label}</div>
+          <div class="integ-detail">${i.detail}</div>
+        </div>
+        <div class="integ-right"><span class="badge status-not-built">Not built</span></div>
+      </div>
+    `).join('');
+    document.getElementById('integCheckedNote').textContent =
+      `Checked just now against buildStamp ${data.buildStamp || 'unknown'} — this reflects THIS deployment's actual environment variables, not the codebase.`;
+    resultEl.style.display = 'block';
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to check integration status.';
+    errEl.style.display = 'block';
+    resultEl.style.display = 'none';
+  }
+}
+
+// On load: if a token was remembered for this browser session, restore it
+// (and flip the toggle on) but don't auto-fire the check — staff should
+// still deliberately click "Check status" each visit, same "no silent
+// background admin calls" posture as the rest of this console.
+(function initIntegrationStatusPanel(){
+  let stored = '';
+  try { stored = sessionStorage.getItem(INTEG_TOKEN_STORAGE_KEY) || ''; } catch (e) {}
+  if (stored){
+    document.getElementById('integAdminToken').value = stored;
+    integRemember = true;
+    document.getElementById('integRememberToggle').classList.add('on');
+  }
+})();
+
 renderDirectory();
+
+// ==================== LOGIN GATE ====================
+// 2026-08-20 — per direct instruction: "we need to password protect it
+// using the same user name and password that I use accessing the public
+// pages." Calls the exact same POST /api/auth/login-user /
+// /request-login-mfa / /verify-login-code endpoints login.html uses (same
+// credentials, same step-up MFA), plus GET /api/auth/me to re-verify the
+// session and its isAdmin flag server-side on every load — this file
+// never trusts a client-side "I'm an admin" claim on its own.
+const OPS_TOKEN_STORAGE_KEY = 'verilume_ops_token';
+function opsDeviceTrustKey(email){ return `verilume_device_trust_${(email || '').trim().toLowerCase()}`; }
+function getOpsStoredDeviceToken(email){ try { return localStorage.getItem(opsDeviceTrustKey(email)) || ''; } catch (e) { return ''; } }
+function storeOpsDeviceToken(email, token){ try { localStorage.setItem(opsDeviceTrustKey(email), token); } catch (e) {} }
+
+let opsPendingEmail = null;
+let opsPendingToken = null;   // temp-password session token, mid password-change
+let opsPendingAccountId = null;
+let opsPendingMfaVerificationId = null;
+let opsPendingMfaMemberId = null;
+let opsPendingMfaChannel = null;
+
+function showOpsGateStep(id){
+  document.querySelectorAll('.gate-step').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showOpsApp(name){
+  document.getElementById('opsLoginGate').classList.add('hidden');
+  document.getElementById('opsAppRoot').classList.remove('hidden');
+  document.getElementById('opsSignedInAs').textContent = name || 'Admin';
+}
+
+async function opsLogout(){
+  try {
+    const token = sessionStorage.getItem(OPS_TOKEN_STORAGE_KEY);
+    if (token) await fetch(`${BACKEND_URL}/api/auth/logout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+  } catch (e) { /* best-effort — clear locally regardless */ }
+  try { sessionStorage.removeItem(OPS_TOKEN_STORAGE_KEY); } catch (e) {}
+  location.reload();
+}
+
+function backToOpsLogin(){
+  document.getElementById('opsLoginPassword').value = '';
+  document.getElementById('opsLoginError').textContent = '';
+  showOpsGateStep('opsGateLoginStep');
+}
+
+async function submitOpsLogin(){
+  const email = document.getElementById('opsLoginEmail').value.trim();
+  const password = document.getElementById('opsLoginPassword').value;
+  const errEl = document.getElementById('opsLoginError');
+  const btn = document.getElementById('opsLoginBtn');
+  errEl.textContent = '';
+  if (!email || !password){ errEl.textContent = 'Enter your email and password.'; return; }
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, deviceToken: getOpsStoredDeviceToken(email) })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't sign in (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    opsPendingEmail = email;
+    if (data.mfaRequired){
+      opsPendingMfaVerificationId = data.verificationId;
+      opsPendingMfaMemberId = data.memberId;
+      opsPendingMfaChannel = data.channel;
+      renderOpsMfaStep(data);
+      btn.disabled = false;
+      return;
+    }
+    if (data.mustChangePassword){
+      opsPendingAccountId = data.accountId;
+      opsPendingToken = data.token;
+      showOpsGateStep('opsGatePasswordChangeStep');
+      document.getElementById('opsNewPassword').focus();
+      btn.disabled = false;
+      return;
+    }
+    await finishOpsLogin(data);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to sign in — try again.';
+    btn.disabled = false;
+  }
+}
+
+function renderOpsMfaStep(data){
+  showOpsGateStep('opsGateMfaStep');
+  document.getElementById('opsMfaIntro').textContent = data.channel === 'sms'
+    ? `We texted a 6-digit code to ${data.target}.`
+    : `We emailed a 6-digit code to ${data.target}.`;
+  document.getElementById('opsMfaSwitchLink').textContent = data.channel === 'sms' ? 'Verify by email instead' : 'Verify by text instead';
+  const note = document.getElementById('opsMfaInterimNote');
+  if (data.interimCode){
+    note.style.display = 'block';
+    note.textContent = `No live ${data.channel === 'sms' ? 'SMS' : 'email'} provider configured yet — your code is ${data.interimCode}.`;
+  } else {
+    note.style.display = 'none';
+  }
+  document.getElementById('opsMfaCode').value = '';
+  document.getElementById('opsMfaError').textContent = '';
+  document.getElementById('opsMfaCode').focus();
+}
+
+async function submitOpsMfaCode(){
+  const code = document.getElementById('opsMfaCode').value.trim();
+  const errEl = document.getElementById('opsMfaError');
+  const btn = document.getElementById('opsMfaBtn');
+  errEl.textContent = '';
+  if (!/^\d{6}$/.test(code)){ errEl.textContent = 'Enter the 6-digit code.'; return; }
+  btn.disabled = true;
+  try {
+    const rememberDevice = document.getElementById('opsMfaRemember').checked;
+    const resp = await fetch(`${BACKEND_URL}/api/auth/verify-login-code`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationId: opsPendingMfaVerificationId, code, rememberDevice })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't verify that code (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    if (data.deviceToken) storeOpsDeviceToken(opsPendingEmail, data.deviceToken);
+    if (data.mustChangePassword){
+      opsPendingAccountId = data.accountId;
+      opsPendingToken = data.token;
+      showOpsGateStep('opsGatePasswordChangeStep');
+      document.getElementById('opsNewPassword').focus();
+      btn.disabled = false;
+      return;
+    }
+    await finishOpsLogin(data);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to verify — try again.';
+    btn.disabled = false;
+  }
+}
+
+async function resendOpsMfa(){
+  if (!opsPendingMfaMemberId || !opsPendingMfaChannel) return;
+  const errEl = document.getElementById('opsMfaError');
+  errEl.textContent = '';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/request-login-mfa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: opsPendingMfaMemberId, channel: opsPendingMfaChannel })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ errEl.textContent = data.error || 'Could not resend a code.'; return; }
+    opsPendingMfaVerificationId = data.verificationId;
+    renderOpsMfaStep(data);
+  } catch (e){ errEl.textContent = 'Could not reach the backend to resend a code.'; }
+}
+
+async function switchOpsMfaChannel(){
+  if (!opsPendingMfaMemberId || !opsPendingMfaChannel) return;
+  const nextChannel = opsPendingMfaChannel === 'sms' ? 'email' : 'sms';
+  const errEl = document.getElementById('opsMfaError');
+  errEl.textContent = '';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/request-login-mfa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: opsPendingMfaMemberId, channel: nextChannel })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ errEl.textContent = data.error || 'Could not send a code that way.'; return; }
+    opsPendingMfaVerificationId = data.verificationId;
+    opsPendingMfaChannel = nextChannel;
+    renderOpsMfaStep(data);
+  } catch (e){ errEl.textContent = 'Could not reach the backend to send a code that way.'; }
+}
+
+async function submitOpsPasswordChange(){
+  const pw = document.getElementById('opsNewPassword').value;
+  const pwConfirm = document.getElementById('opsNewPasswordConfirm').value;
+  const errEl = document.getElementById('opsPasswordChangeError');
+  const btn = document.getElementById('opsPasswordChangeBtn');
+  errEl.textContent = '';
+  if (pw.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; return; }
+  if (pw !== pwConfirm){ errEl.textContent = "Passwords don't match."; return; }
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${opsPendingToken}` },
+      body: JSON.stringify({ newPassword: pw })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't set your password (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    await finishOpsLogin({ token: opsPendingToken, accountId: opsPendingAccountId });
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend — try again.';
+    btn.disabled = false;
+  }
+}
+
+// Common landing point for every successful auth path (plain login, MFA
+// verify, or post-password-change) — always re-checks isAdmin via GET
+// /api/auth/me rather than trusting the login/verify response alone, so
+// there's exactly one source of truth for "does this session get in."
+async function finishOpsLogin(data){
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/me`, {
+      headers: { 'Authorization': `Bearer ${data.token}` }
+    });
+    const me = await resp.json().catch(() => ({}));
+    if (!resp.ok || !me.isAdmin){
+      try { await fetch(`${BACKEND_URL}/api/auth/logout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: data.token }) }); } catch (e) {}
+      showOpsGateStep('opsGateDeniedStep');
+      return;
+    }
+    try { sessionStorage.setItem(OPS_TOKEN_STORAGE_KEY, data.token); } catch (e) {}
+    showOpsApp(me.name || me.email);
+  } catch (e){
+    document.getElementById('opsLoginError').textContent = 'Could not reach the backend to verify access — try again.';
+    showOpsGateStep('opsGateLoginStep');
+  }
+}
+
+// On load: if a session token is already stashed for this tab, re-verify
+// it server-side (never trust it blindly) before showing the console.
+(async function initOpsLoginGate(){
+  let token = '';
+  try { token = sessionStorage.getItem(OPS_TOKEN_STORAGE_KEY) || ''; } catch (e) {}
+  if (!token) return; // gate stays up, showing the login form
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const me = await resp.json().catch(() => ({}));
+    if (resp.ok && me.isAdmin){
+      showOpsApp(me.name || me.email);
+    } else {
+      try { sessionStorage.removeItem(OPS_TOKEN_STORAGE_KEY); } catch (e) {}
+    }
+  } catch (e){ /* backend unreachable — leave the gate up, don't fail open */ }
+})();
 </script>
 
 </body>

@@ -4893,6 +4893,100 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { ok: true, db: DB_PATH, buildStamp: '132c17-2026-08-17-campaign-job-id-mailclass' });
     }
 
+    // GET /api/ops/integration-status — 2026-08-20, per direct instruction
+    // to surface this in the Ops Console (the staff-facing client-
+    // management portal) rather than something only Claude can answer by
+    // reading the codebase. Reports, per third-party integration, whether
+    // its required environment variable(s) are set on THIS deployment —
+    // never the values themselves, only presence — so staff can see at a
+    // glance which vendor-backed features (generative copywriting/AI
+    // scoring, SMS verification incl. the new login MFA, transactional
+    // email, HubSpot sync, GA4, malware-scan fallback) are actually live
+    // vs. still falling back to their honest not-configured behavior.
+    // Same admin-token gate as GET /api/leads — this is platform-wide
+    // config, not scoped to any one account, so the per-account session
+    // check doesn't apply. Also reports the Portal's Enterprise-gated
+    // capabilities (live external research, quant/scenario modeling,
+    // Search Optimization/PR monitoring, the Collaboration router) as a
+    // separate, always-"not built" list — those aren't behind an env var
+    // at all, they're wireframe/demo-only in the current build (see
+    // cmpSimulateEnterpriseDemo() in portal.html), so no credential would
+    // turn them on; that distinction is exactly what prompted this panel.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'integration-status'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const integrations = [
+        {
+          key: 'anthropic',
+          label: 'Generative copywriting & AI relevance scoring',
+          envVars: ['ANTHROPIC_API_KEY'],
+          configured: !!process.env.ANTHROPIC_API_KEY,
+          detail: 'AI-drafted Long Form Copy plus content/imagery/business-outcome relevance scoring. Falls back to the deterministic template draft and honest null scores when not configured.'
+        },
+        {
+          key: 'twilio',
+          label: 'SMS verification (signup, password reset, login MFA)',
+          envVars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_VERIFY_SERVICE_SID'],
+          configured: TWILIO_CONFIGURED,
+          detail: 'Real texted codes via Twilio Verify. Falls back to an interim on-screen code (shown once in the API response) when not configured — every verification flow, including the new login MFA, still works end to end either way.'
+        },
+        {
+          key: 'postmark',
+          label: 'Transactional email (signup/login verification codes, notifications)',
+          envVars: ['POSTMARK_SERVER_TOKEN', 'POSTMARK_FROM_EMAIL'],
+          configured: !!(process.env.POSTMARK_SERVER_TOKEN && process.env.POSTMARK_FROM_EMAIL),
+          detail: 'Falls back to the same interim on-screen-code convention as SMS when not configured.'
+        },
+        {
+          key: 'hubspot',
+          label: 'HubSpot lead sync',
+          envVars: ['HUBSPOT_ACCESS_TOKEN'],
+          configured: !!HUBSPOT_ACCESS_TOKEN,
+          detail: 'Captured leads sync to HubSpot when configured; always persisted locally either way (see GET /api/leads).'
+        },
+        {
+          key: 'ga4',
+          label: 'GA4 analytics data pull',
+          envVars: ['GA4_SERVICE_ACCOUNT_KEY_JSON'],
+          configured: !!GA4_SERVICE_ACCOUNT_KEY_JSON,
+          detail: 'Live GA4 Data API reporting for connected accounts.'
+        },
+        {
+          key: 'cloudmersive',
+          label: 'Cloud malware scanning (upload fallback)',
+          envVars: ['CLOUDMERSIVE_API_KEY'],
+          configured: !!process.env.CLOUDMERSIVE_API_KEY,
+          detail: 'Only used when no local clamscan binary is available in this environment.'
+        },
+        {
+          key: 'database',
+          label: 'Database backend',
+          envVars: ['DATABASE_URL'],
+          configured: !!process.env.DATABASE_URL,
+          detail: process.env.DATABASE_URL ? 'Supabase/Postgres (production-shaped).' : 'Local SQLite file — fine for a single dev/demo instance, not for multiple concurrent serverless instances.'
+        }
+      ];
+      const notBuilt = [
+        {
+          key: 'enterprise-live-research',
+          label: 'Portal Enterprise — live external research & quant/scenario modeling',
+          detail: 'Gated to the Enterprise tier in portal.html, but not wired to any real research/modeling vendor — the upgrade prompt is a demo toggle (cmpSimulateEnterpriseDemo()), not a live capability. No environment variable would turn this on; it needs real build work.'
+        },
+        {
+          key: 'enterprise-collaboration-router',
+          label: 'Portal Enterprise — Collaboration multi-skill conversational router',
+          detail: 'Same demo-only gate as above — the request-building UI is real, the actual cross-function routing is not.'
+        },
+        {
+          key: 'enterprise-search-pr-monitoring',
+          label: 'Portal Enterprise — Search Optimization / PR & Corp Comm continuous monitoring',
+          detail: 'Same demo-only gate — no live SEO/AEO/GEO or press-monitoring vendor is connected yet.'
+        }
+      ];
+      return sendJson(res, 200, { integrations, notBuilt, buildStamp: '132c17-2026-08-17-campaign-job-id-mailclass' });
+    }
+
     // POST /api/accounts — create a new account from an assessment submission
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'accounts'){
       const body = await readBody(req);
@@ -5204,7 +5298,7 @@ async function handleRequest(req, res) {
       if (!body.email || !body.password){
         return sendJson(res, 400, { error: 'email and password are required' });
       }
-      const member = db.prepare('SELECT id, accountId, passwordHash, passwordSalt, mustChangePassword, status, phone, email FROM team_members WHERE lower(email) = lower(?)').get(body.email);
+      const member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin FROM team_members WHERE lower(email) = lower(?)').get(body.email);
       if (!member || !member.passwordHash || !verifyAccessCode(body.password, member.passwordHash, member.passwordSalt)){
         return sendJson(res, 401, { error: 'incorrect email or password' });
       }
@@ -5218,6 +5312,8 @@ async function handleRequest(req, res) {
           expiresAt: session.expiresAt,
           accountId: member.accountId,
           memberId: member.id,
+          name: member.name,
+          isAdmin: !!member.isAdmin,
           mustChangePassword: !!member.mustChangePassword
         });
       }
@@ -5336,7 +5432,7 @@ async function handleRequest(req, res) {
         return sendJson(res, 401, { error: 'incorrect code' });
       }
       db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
-      const member = db.prepare('SELECT id, accountId, mustChangePassword, status FROM team_members WHERE id = ?').get(row.memberId);
+      const member = db.prepare('SELECT id, accountId, name, mustChangePassword, status, isAdmin FROM team_members WHERE id = ?').get(row.memberId);
       if (!member) return sendJson(res, 404, { error: 'user not found' });
       if (member.status === 'inactive'){
         return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
@@ -5347,6 +5443,8 @@ async function handleRequest(req, res) {
         expiresAt: session.expiresAt,
         accountId: member.accountId,
         memberId: member.id,
+        name: member.name,
+        isAdmin: !!member.isAdmin,
         mustChangePassword: !!member.mustChangePassword
       };
       if (body.rememberDevice !== false){
@@ -5355,6 +5453,36 @@ async function handleRequest(req, res) {
         response.deviceTrustExpiresAt = device.expiresAt;
       }
       return sendJson(res, 200, response);
+    }
+
+    // GET /api/auth/me — requires a valid member-scoped session (Bearer
+    // token from /register-admin, /login-user, or /verify-login-code).
+    // Added 2026-08-20 for the Ops Console login gate, per direct
+    // instruction to password-protect it "using the same username and
+    // password that I use accessing the public pages" — this is what lets
+    // ops-console.html verify a real, server-checked session and its
+    // isAdmin flag on load, rather than trusting anything the client
+    // could just set in sessionStorage itself. Deliberately re-reads
+    // isAdmin/status from team_members on every call instead of trusting
+    // whatever the original login response said — an admin flag revoked
+    // (or a member deactivated) after a session was issued takes effect
+    // immediately, not just at next login.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'me'){
+      const session = authenticate(req);
+      if (!session || !session.memberId){
+        return sendJson(res, 401, { error: 'unauthorized — a valid per-person session token is required' });
+      }
+      const member = db.prepare('SELECT id, accountId, name, email, isAdmin, status FROM team_members WHERE id = ?').get(session.memberId);
+      if (!member || member.status === 'inactive'){
+        return sendJson(res, 401, { error: 'unauthorized — this user no longer has access' });
+      }
+      return sendJson(res, 200, {
+        accountId: member.accountId,
+        memberId: member.id,
+        name: member.name,
+        email: member.email,
+        isAdmin: !!member.isAdmin
+      });
     }
 
     // POST /api/auth/change-password — { newPassword, currentPassword? } ->
