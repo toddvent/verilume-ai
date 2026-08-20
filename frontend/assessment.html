@@ -557,6 +557,14 @@
   .score-pill{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px 20px;flex:1;}
   .score-pill .lbl{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#6B6350;}
   .score-pill .val{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:1.75rem;margin-top:4px;}
+  /* Round 133 — the Verilume Media CX Index headline stat, deliberately
+     more prominent than the two score-pills below it (larger, accent
+     border) since this is the single marketable number; mediaScoreVal/
+     cxScoreVal stay as the supporting breakdown. */
+  .vmcx-index-card{background:var(--white);border:1.5px solid var(--advocacy);border-radius:12px;padding:18px 20px;margin-bottom:14px;text-align:center;}
+  .vmcx-index-card .lbl{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--advocacy);}
+  .vmcx-index-card .val{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:2.375rem;margin-top:2px;color:var(--ink);}
+  .vmcx-index-card .vmcx-index-note{font-size:0.8125rem;color:var(--muted);margin-top:4px;}
 
   /* Full report */
   .stage-block{margin-bottom:6px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--white);}
@@ -1298,7 +1306,7 @@
     <h2>The Marketing Loop, stage by stage</h2>
     <div class="mat-slide-grid">
       <div>
-        <p class="lede">Importance and ideal budget share reflect general best-practice weighting by stage, not self-reported — a gut-check on where the loop says weight should go. Rank how effective each stage is today.</p>
+        <p class="lede">Importance reflects Verilume's best-practice weighting by stage, not self-reported — a gut-check on where the loop says weight should go. The full budget-allocation model behind it, down to the ideal spend % per stage, unlocks with a Verilume engagement. Rank how effective each stage is today.</p>
         <div id="loopStageRows"></div>
         <!-- 2026-08-20 (strategic scoring round, follow-up), per direct
              instruction: a real, independently-measured second axis for the
@@ -1537,6 +1545,17 @@
         <div id="quadStageMarkers"></div>
       </div>
       <div class="quad-axis-x"><span>Weak Media</span><span>Strong Media →</span></div>
+
+      <!-- Round 133, per direct instruction — the blended headline metric,
+           marketed as the Verilume Media CX Index: one number, built from
+           the same stage-weighted Media/CX Strength axes below it, not a
+           separate invented score. See computeQuickScores()/computeScores()
+           for the math and vmcxIndexNote's confidence copy below. -->
+      <div class="vmcx-index-card">
+        <div class="lbl">Verilume Media CX Index</div>
+        <div class="val" id="vmcxIndexVal"></div>
+        <div class="vmcx-index-note" id="vmcxIndexNote"></div>
+      </div>
 
       <div class="score-pair">
         <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
@@ -3899,7 +3918,13 @@ function renderLoopStep(){
   // above; loopDiagramSvg() is kept (used nowhere else currently) in case
   // it's wanted again, but no longer called here.
   document.getElementById('loopStageRows').innerHTML = RUBRIC.map(r => {
-    const idealPct = loopStageIdealPct(r.stage);
+    // Round 133, per direct instruction — the "Ideal Budget" % (idealPct/
+    // LOOP_STAGE_BASE) is no longer shown here: "remove the media mix %
+    // publicly presented from the loop stage. This will keep us out of
+    // trouble before the user creates an account." loopStageIdealPct()/
+    // LOOP_STAGE_BASE are left intact (still used by loopStageImportance()
+    // below, and available for a future account-gated/portal display) —
+    // only the public, pre-account free-assessment display is removed.
     const importance = loopStageImportance(r.stage);
     const current = state.stageEffectiveness[r.stage] || 0;
     const ranks = [1,2,3,4,5].map(n => `<button type="button" class="${n === current ? 'active' : ''}" onclick="rateLoopStage('${r.stage}',${n})">${n}</button>`).join('');
@@ -3907,7 +3932,6 @@ function renderLoopStep(){
       <div><div class="stage-name">${r.stage}</div><div class="stage-sub">${r.sub}</div></div>
       <div class="loop-stage-metrics">
         <div class="loop-metric"><div class="num">${importance}/5</div><div class="lbl">Importance</div></div>
-        <div class="loop-metric"><div class="num">${idealPct}%</div><div class="lbl">Ideal Budget</div></div>
         <div><div class="stage-sub" style="margin-bottom:4px;">Effectiveness today</div><div class="loop-rank">${ranks}</div></div>
       </div>
     </div>`;
@@ -4916,6 +4940,43 @@ async function submitContact(){
 // evaluation eventually produces (hence isQuick stays true — refines,
 // doesn't replace), but both are real answers from the one page that
 // matters, nothing invented.
+// Round 133 (2026-08-20), per direct instruction — replaces the flat,
+// unweighted average that used to feed BOTH axes identically (the exact
+// gap flagged in QA: rating every stage 5,4,3,2,1 produced an identical
+// 60%/60% on Media and CX, regardless of WHERE the weakness actually was).
+// CX_PRIORITY_BY_STAGE is Verilume's own strategic weighting — how much of
+// each stage's outcome is driven by customer experience (product, service,
+// website, personalization) versus media selects (targeting, reach,
+// creative delivery) — not a third-party research citation, disclosed as
+// such in the report/UI copy. Awareness includes the AI Max/Andromeda-era
+// nuance discussed directly: creative-response-driven delivery functions
+// as a personalization signal even at Awareness, nudging it up from a
+// pure-media ~5-10% to ~17.5%. MEDIA_PRIORITY_BY_STAGE is each stage's
+// complement (1 - CX priority) — the two are two views of the same
+// per-stage split, not independently invented numbers.
+const CX_PRIORITY_BY_STAGE = {
+  Awareness: 0.175,      // creative-response/AI Max-Andromeda-era targeting nudges this up from pure media selects
+  Consideration: 0.325,  // CRM + personalization enter here
+  Purchase: 0.50,        // eCommerce/checkout + Call Center experience now weigh equal to media
+  Loyalty: 0.875,        // "completely driven by CX" per direct instruction — not 1.0, since email/CRM cadence design keeps a small media-ops sliver
+  Advocacy: 0.675        // loyalty-rooted, but buzz/PR/earned-media amplification keeps a real media component
+};
+const MEDIA_PRIORITY_BY_STAGE = Object.fromEntries(
+  Object.entries(CX_PRIORITY_BY_STAGE).map(([stage, cx]) => [stage, 1 - cx])
+);
+
+// Round 133 — every stage's confidence in the free assessment is
+// 'estimated': a single 1-5 self-rating, nothing else behind it. Portal.html
+// has the matching gap-closing fields (creative cadence, CRM maturity,
+// cart/call-center, CSAT/retention, referral/UGC) that flip a stage to
+// 'measured' once an account exists — this file has no such fields by
+// design (pre-account), so it always returns 'estimated' for a rated
+// stage, or 'unrated' if the visitor hasn't answered it yet.
+function loopStageConfidence(stage){
+  const rated = Number(state.stageEffectiveness?.[stage]) > 0;
+  return rated ? 'estimated' : 'unrated';
+}
+
 function computeQuickScores(){
   // 2026-08-20 fix, per direct QA report: rating every question the worst
   // possible score (1) still produced 0% on both axes — visually
@@ -4928,13 +4989,51 @@ function computeQuickScores(){
   // answer," never for a real rating, however low.
   const toPct = avg => Math.round(avg / 5 * 100);
 
-  const stageVals = Object.values(state.stageEffectiveness || {}).map(Number).filter(n => n > 0);
-  const mediaPct = stageVals.length ? toPct(stageVals.reduce((a, b) => a + b, 0) / stageVals.length) : 0;
+  // Weighted by MEDIA_PRIORITY_BY_STAGE — a stage counts toward Media
+  // Strength in proportion to how much that stage's outcome is actually
+  // driven by media selects (Awareness/Consideration lead; Loyalty barely
+  // registers). Only rated stages count, renormalized by their own weight
+  // sum, so a partially-completed Loop step doesn't silently zero out.
+  let mediaWeightedSum = 0, mediaWeightTotal = 0;
+  RUBRIC.forEach(r => {
+    const v = Number(state.stageEffectiveness?.[r.stage]);
+    if (!(v > 0)) return;
+    const w = MEDIA_PRIORITY_BY_STAGE[r.stage] ?? 0.5;
+    mediaWeightedSum += w * (v / 5);
+    mediaWeightTotal += w;
+  });
+  const mediaPct = mediaWeightTotal ? Math.round((mediaWeightedSum / mediaWeightTotal) * 100) : 0;
 
+  // Weighted by CX_PRIORITY_BY_STAGE, PLUS the standalone CX consistency
+  // question — that question is the one input with no stage-specific
+  // media-selects component at all (touches every stage per its own
+  // Importance 5/5 framing), so it's folded in at a fixed weight of 1.0,
+  // comparable in magnitude to Loyalty's 0.875, rather than left as the
+  // sole driver of this axis the way it was before this round.
+  let cxWeightedSum = 0, cxWeightTotal = 0;
+  RUBRIC.forEach(r => {
+    const v = Number(state.stageEffectiveness?.[r.stage]);
+    if (!(v > 0)) return;
+    const w = CX_PRIORITY_BY_STAGE[r.stage] ?? 0.5;
+    cxWeightedSum += w * (v / 5);
+    cxWeightTotal += w;
+  });
   const cxRating = Number(state.cxConsistencyRating);
-  const cxPct = cxRating > 0 ? toPct(cxRating) : 0;
+  if (cxRating > 0){
+    cxWeightedSum += 1.0 * (cxRating / 5);
+    cxWeightTotal += 1.0;
+  }
+  const cxPct = cxWeightTotal ? Math.round((cxWeightedSum / cxWeightTotal) * 100) : 0;
 
-  return { mediaPct, cxPct, isQuick: true };
+  // The Verilume Media CX Index — the single, marketable headline number:
+  // a straight blend of the two axes above. Deliberately NOT a third,
+  // independently-invented weighting — mediaPct/cxPct are already
+  // stage-weighted per CX_PRIORITY_BY_STAGE, so blending them 50/50 here
+  // avoids double-weighting the same judgment call twice. 0 (not blended)
+  // until at least one of the two axes has a real rating behind it.
+  const index = (mediaWeightTotal || cxWeightTotal) ? Math.round((mediaPct + cxPct) / 2) : 0;
+
+  return { mediaPct, cxPct, index, isQuick: true };
 }
 // Whichever score set is currently authoritative — the real, function-by-
 // function scores once Assess has run (window.scores), falling back to the
@@ -5360,7 +5459,19 @@ function computeScores(){
     pct: s.assessed ? toPct(s.avg) : null
   }));
 
-  scores = { stageAverages, layerAverages, mediaPct, cxPct, worst, best, stagePoints };
+  // Round 133 — Verilume Media CX Index, same 50/50 blend of the two axes
+  // as computeQuickScores() uses (see that function's comment for why it's
+  // a straight blend rather than a third weighting scheme). mediaPct/cxPct
+  // here come from the measured stage/layer averages above, NOT re-weighted
+  // by CX_PRIORITY_BY_STAGE — that weighting is specific to the free
+  // assessment's simpler 5-rating+1-question model; this function's
+  // per-layer granularity (Creative Visuals/Search Everywhere/Call Center/
+  // POS-Team/Product Delivery) already captures CX-vs-media nuance a
+  // different, more granular way. Revisit if/when these two scoring paths
+  // get unified.
+  const index = (mediaPct || cxPct) ? Math.round((mediaPct + cxPct) / 2) : 0;
+
+  scores = { stageAverages, layerAverages, mediaPct, cxPct, index, worst, best, stagePoints };
 }
 
 // Real handoff to portal.html — rebuilt 2026-07-22 to go through the real
@@ -5523,6 +5634,17 @@ function renderFullReport(){
   document.getElementById('reportQuadrantDesc').textContent = q.desc;
   document.getElementById('mediaScoreVal').textContent = s.mediaPct + '%';
   document.getElementById('cxScoreVal').textContent = s.cxPct + '%';
+  // Round 133 — Verilume Media CX Index headline stat + confidence note.
+  // Same estimate/measured language convention as quadrantBasisNote just
+  // below, so the two notes never contradict each other.
+  const indexValEl = document.getElementById('vmcxIndexVal');
+  const indexNoteEl = document.getElementById('vmcxIndexNote');
+  if (indexValEl) indexValEl.textContent = (typeof s.index === 'number' ? s.index : Math.round((s.mediaPct + s.cxPct) / 2)) + '%';
+  if (indexNoteEl){
+    indexNoteEl.textContent = s.isQuick
+      ? 'Estimated from your self-ratings above — create an account to refine each stage with real data and sharpen this number.'
+      : 'Measured from your function-by-function ratings — this is your real Index, not an estimate.';
+  }
   const onboardingUrl = buildOnboardingHandoffUrl();
   document.getElementById('paidCtaLink').href = onboardingUrl;
   const interstitialLink = document.getElementById('paidCtaLinkInterstitial');

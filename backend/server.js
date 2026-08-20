@@ -525,6 +525,33 @@ db.exec(`CREATE TABLE IF NOT EXISTS password_resets (
   usedAt TEXT
 )`);
 
+// Added 2026-08-20 — login step-up MFA ("new device" verification), per
+// direct instruction after discussing that budgets/strategy data behind
+// login deserve more than password-only protection. Design: password-only
+// login stays instant on a device that's already proven itself once;
+// a device signing in for the first time (or after its trust expires)
+// must also enter a 6-digit code sent to the member's phone (falling back
+// to email if no phone is on file — every member always has an email, so
+// there's always a channel, unlike request-password-reset's silent no-op
+// when a phone is missing). See POST /api/auth/login-user,
+// /request-login-mfa, and /verify-login-code below. This table holds the
+// resulting long-lived device tokens — 30 days, distinct from the 7-day
+// session token in `sessions` above, and only ever created by a
+// successful /verify-login-code call. The token itself is opaque and
+// random (same convention as `sessions.token`), stored by the frontend in
+// localStorage (not sessionStorage — it must outlive the tab/session by
+// design, a deliberate, narrow exception to this app's usual
+// sessionStorage-for-security-tokens convention) keyed by the login
+// email, so it can be sent back on the next login attempt from the same
+// browser before a session even exists.
+db.exec(`CREATE TABLE IF NOT EXISTS trusted_devices (
+  token TEXT PRIMARY KEY,
+  memberId TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL,
+  lastUsedAt TEXT
+)`);
+
 // Added 2026-07-25 (round 46) — HEO function 1 of 3, self-rating. One row
 // per skill per rating event (not one row per member) so a trend over time
 // is just "every row for this memberId+skill, ordered by ratedAt" — same
@@ -1282,6 +1309,20 @@ ensureColumn('accounts', 'onboardingIndustryCode', 'TEXT');
 ensureColumn('accounts', 'onboardingIndustryAnswersJson', 'TEXT');
 ensureColumn('accounts', 'stageBudgetWeightsOverrideJson', 'TEXT');
 ensureColumn('accounts', 'minViableSpendCalibrationEnabled', 'INTEGER DEFAULT 0');
+
+// Round 133 (2026-08-20) — Verilume Media CX Index gap-closing fields, per
+// direct instruction: "leaving uncomfortable gaps as a client specific
+// update in the portal based on quantitative or qualitative." The free
+// assessment (assessment.html) computes the Index from self-ratings alone
+// (always 'estimated' confidence, per that file's loopStageConfidence()).
+// This JSON blob holds the richer per-stage data an account can add here to
+// flip a stage from 'estimated' to 'measured' — one entry per Media Loop
+// stage, each accepting EITHER a quantitative number or a qualitative
+// 1-5 self-rating (never both required), same "quantitative OR qualitative"
+// convention named in the instruction. Same editable-any-time,
+// merge-update convention as measurementCoverageJson/onboardingSurveyJson
+// above — see POST /api/accounts/:id/media-cx-index below.
+ensureColumn('accounts', 'mediaCxIndexGapDataJson', 'TEXT');
 
 const ONBOARDING_CORE_QUESTIONS = [
   { key: 'primaryTransactionPath', label: 'Primary path to transaction', type: 'select',
@@ -3712,6 +3753,39 @@ function createSession(accountId, memberId){
   return { token, expiresAt };
 }
 
+// Added 2026-08-20 — see trusted_devices' own comment above. 30 days,
+// intentionally longer than a session (7 days) — the device trust and the
+// session it's paired with expire independently; a returning visitor with
+// an expired session but a still-trusted device gets a fresh session
+// without a new MFA code, but does still need to re-enter their password
+// (this only skips the SECOND factor, never the first).
+const DEVICE_TRUST_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function createTrustedDevice(memberId){
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + DEVICE_TRUST_LIFETIME_MS).toISOString();
+  db.prepare('INSERT INTO trusted_devices (token, memberId, createdAt, expiresAt, lastUsedAt) VALUES (?,?,?,?,?)')
+    .run(token, memberId, now.toISOString(), expiresAt, now.toISOString());
+  return { token, expiresAt };
+}
+
+// Returns true (and refreshes lastUsedAt) only for a token that exists,
+// hasn't expired, and belongs to THIS member — a device trusted for one
+// person's login doesn't let it skip MFA for a different person's,
+// including a different member on a shared account.
+function checkTrustedDevice(memberId, token){
+  if (!token) return false;
+  const row = db.prepare('SELECT * FROM trusted_devices WHERE token = ? AND memberId = ?').get(token, memberId);
+  if (!row) return false;
+  if (new Date(row.expiresAt).getTime() < Date.now()){
+    db.prepare('DELETE FROM trusted_devices WHERE token = ?').run(token);
+    return false;
+  }
+  db.prepare('UPDATE trusted_devices SET lastUsedAt = ? WHERE token = ?').run(new Date().toISOString(), token);
+  return true;
+}
+
 // Added 2026-08-18 — a system-issued temporary password for a freshly
 // registered admin/CMO user, per direct instruction: real, memorable
 // username+password rather than the access-code model, with a temp
@@ -4222,6 +4296,37 @@ async function sendSignupEmailCode(email){
   // just handed back in the response instead of actually emailed.
   const delivered = emailResult.emailStatus === 'sent';
   return { provider: delivered ? 'postmark' : 'interim', code };
+}
+
+// Added 2026-08-20 — login step-up MFA, shared by login-user (first send)
+// and request-login-mfa (resend / channel switch). Thin wrapper choosing
+// sendVerificationCode() (phone, Twilio-aware) vs sendSignupEmailCode()
+// (email, always locally-checked) — same dispatch request-signup-verification
+// does, just factored out so both call sites stay in sync.
+async function sendLoginMfaCode(member, channel){
+  return channel === 'sms' ? await sendVerificationCode(member.phone) : await sendSignupEmailCode(member.email);
+}
+
+// Added 2026-08-20 — inserts the phone_verifications row for a login-MFA
+// send, purpose='login-mfa', memberId set (unlike signup, where no member
+// exists yet). Same "hash whenever it's checked locally" rule as the
+// request-signup-verification fix above: interim phone codes AND every
+// email code (regardless of delivery provider) get a local hash, since
+// only real Twilio-configured SMS is ever checked against Twilio itself.
+function insertLoginMfaVerification(member, channel, target, sendResult){
+  const verificationId = generateId('VERIFY');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 min
+  let codeHash = null, codeSalt = null;
+  if (sendResult.provider === 'interim' || channel === 'email'){
+    const hashed = hashAccessCode(sendResult.code);
+    codeHash = hashed.hash; codeSalt = hashed.salt;
+  }
+  db.prepare(`INSERT INTO phone_verifications
+    (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(verificationId, member.id, target, 'login-mfa', codeHash, codeSalt, sendResult.provider, channel, now.toISOString(), expiresAt);
+  return verificationId;
 }
 
 // In-memory access-token cache — Google's tokens last 1 hour; refreshed a
@@ -5071,34 +5176,185 @@ async function handleRequest(req, res) {
       });
     }
 
-    // POST /api/auth/login-user — { email, password } -> real per-person
-    // login, distinct from the account-level access-code /login above.
-    // Looked up by email across all accounts (email is this system's
-    // username) rather than requiring accountId up front, same as any real
-    // login form — the person shouldn't need to already know their
-    // accountId just to sign in. Returns mustChangePassword so the front
-    // end can route straight to the forced-change screen instead of the
-    // account page on a still-temp password.
+    // POST /api/auth/login-user — { email, password, deviceToken? } -> real
+    // per-person login, distinct from the account-level access-code /login
+    // above. Looked up by email across all accounts (email is this
+    // system's username) rather than requiring accountId up front, same as
+    // any real login form — the person shouldn't need to already know
+    // their accountId just to sign in. Returns mustChangePassword so the
+    // front end can route straight to the forced-change screen instead of
+    // the account page on a still-temp password.
+    //
+    // 2026-08-20 — step-up MFA on a new device, per direct instruction
+    // ("is there value adding to login for security purposes as we will
+    // have company budgets and strategies inside?"). A correct password
+    // alone is no longer enough to finish logging in UNLESS `deviceToken`
+    // matches a still-valid trusted_devices row for this exact member (see
+    // checkTrustedDevice()) — i.e. this browser already completed MFA here
+    // within the last 30 days. Otherwise this endpoint does NOT create a
+    // session yet; it sends a 6-digit code (phone if the member has one on
+    // file, otherwise email — every member has an email) and returns
+    // `mfaRequired: true` plus enough to complete the challenge via
+    // /request-login-mfa (resend/switch-channel) and /verify-login-code
+    // (the endpoint that actually issues the session + a new device
+    // token). This mirrors the signup-verification UX (same "verify by
+    // email/text instead" idea) rather than inventing a new pattern.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'login-user'){
       const body = await readBody(req);
       if (!body.email || !body.password){
         return sendJson(res, 400, { error: 'email and password are required' });
       }
-      const member = db.prepare('SELECT id, accountId, passwordHash, passwordSalt, mustChangePassword, status FROM team_members WHERE lower(email) = lower(?)').get(body.email);
+      const member = db.prepare('SELECT id, accountId, passwordHash, passwordSalt, mustChangePassword, status, phone, email FROM team_members WHERE lower(email) = lower(?)').get(body.email);
       if (!member || !member.passwordHash || !verifyAccessCode(body.password, member.passwordHash, member.passwordSalt)){
         return sendJson(res, 401, { error: 'incorrect email or password' });
       }
       if (member.status === 'inactive'){
         return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
       }
+      if (checkTrustedDevice(member.id, body.deviceToken)){
+        const session = createSession(member.accountId, member.id);
+        return sendJson(res, 200, {
+          token: session.token,
+          expiresAt: session.expiresAt,
+          accountId: member.accountId,
+          memberId: member.id,
+          mustChangePassword: !!member.mustChangePassword
+        });
+      }
+      let sendResult;
+      const channel = member.phone ? 'sms' : 'email';
+      const target = member.phone || member.email;
+      try {
+        sendResult = await sendLoginMfaCode(member, channel);
+      } catch (e){
+        console.warn('login-user: sendLoginMfaCode failed', e.message);
+        return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+      }
+      const verificationId = insertLoginMfaVerification(member, channel, target, sendResult);
+      const response = {
+        mfaRequired: true,
+        verificationId,
+        memberId: member.id,
+        channel,
+        target: channel === 'sms' ? ('•••• ' + target.slice(-4)) : target,
+        provider: sendResult.provider
+      };
+      if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
+      return sendJson(res, 200, response);
+    }
+
+    // POST /api/auth/request-login-mfa — { memberId, channel } -> (re)sends
+    // a login-MFA code for an in-progress login challenge. Used for both
+    // "Resend code" and "Verify by email/text instead" on the login MFA
+    // screen — same target-rate-limit convention as
+    // request-signup-verification (5/hour per target). Does not require a
+    // session (there isn't one yet at this point in the flow) — memberId
+    // alone is not a secret (it's not usable for anything without also
+    // knowing the account password, which was already proven to
+    // login-user before this challenge existed).
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'request-login-mfa'){
+      const body = await readBody(req);
+      if (!body.memberId || (body.channel !== 'sms' && body.channel !== 'email')){
+        return sendJson(res, 400, { error: 'memberId and channel ("sms" or "email") are required' });
+      }
+      const member = db.prepare('SELECT id, phone, email, status FROM team_members WHERE id = ?').get(body.memberId);
+      if (!member) return sendJson(res, 404, { error: 'user not found' });
+      if (member.status === 'inactive'){
+        return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
+      }
+      const target = body.channel === 'sms' ? member.phone : member.email;
+      if (!target){
+        return sendJson(res, 400, { error: body.channel === 'sms' ? 'no phone number is on file for this user' : 'no email is on file for this user' });
+      }
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+      const recentCount = db.prepare(
+        `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = ? AND purpose = 'login-mfa' AND createdAt > ?`
+      ).get(target, oneHourAgo);
+      if (recentCount && recentCount.c >= 5){
+        return sendJson(res, 429, { error: 'too many verification requests for this ' + (body.channel === 'sms' ? 'phone number' : 'email address') + ' — try again in an hour' });
+      }
+      let sendResult;
+      try {
+        sendResult = await sendLoginMfaCode(member, body.channel);
+      } catch (e){
+        console.warn('request-login-mfa: send failed', e.message);
+        return sendJson(res, 502, {
+          error: body.channel === 'sms'
+            ? 'Could not send a text verification code right now — you can try email verification instead.'
+            : 'Could not send an email verification code right now — try again shortly.'
+        });
+      }
+      const verificationId = insertLoginMfaVerification(member, body.channel, target, sendResult);
+      const response = {
+        ok: true,
+        verificationId,
+        memberId: member.id,
+        channel: body.channel,
+        target: body.channel === 'sms' ? ('•••• ' + target.slice(-4)) : target,
+        provider: sendResult.provider
+      };
+      if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
+      return sendJson(res, 200, response);
+    }
+
+    // POST /api/auth/verify-login-code — { verificationId, code,
+    // rememberDevice? } -> checks a code from login-user/request-login-mfa
+    // above (purpose='login-mfa'). Same expiry/attempt-limit rules as
+    // verify-signup-code. On success this is what actually issues the
+    // session — login-user itself never did, once MFA was required — and,
+    // unless rememberDevice is explicitly false, also issues a new 30-day
+    // trusted_devices token so this same browser skips MFA next time.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'verify-login-code'){
+      const body = await readBody(req);
+      if (!body.verificationId || !body.code){
+        return sendJson(res, 400, { error: 'verificationId and code are required' });
+      }
+      const row = db.prepare(`SELECT * FROM phone_verifications WHERE id = ? AND purpose = 'login-mfa'`).get(body.verificationId);
+      if (!row) return sendJson(res, 404, { error: 'verification not found or already used' });
+      if (row.verified) return sendJson(res, 409, { error: 'this verification was already completed' });
+      if (new Date(row.expiresAt).getTime() < Date.now()){
+        return sendJson(res, 410, { error: 'this code has expired — request a new one' });
+      }
+      if (row.attempts >= 5){
+        return sendJson(res, 429, { error: 'too many incorrect attempts — request a new code' });
+      }
+      let ok;
+      try {
+        // Same channel-aware check as verify-signup-code: email codes are
+        // always checked locally, phone codes go through Twilio when
+        // configured.
+        ok = row.channel === 'email'
+          ? verifyAccessCode(body.code, row.codeHash, row.codeSalt)
+          : await checkVerificationCode(row.phone, body.code, row.codeHash, row.codeSalt);
+      } catch (e){
+        console.warn('verify-login-code: check failed', e.message);
+        return sendJson(res, 502, { error: 'Could not verify that code right now — try again shortly.' });
+      }
+      if (!ok){
+        db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id);
+        return sendJson(res, 401, { error: 'incorrect code' });
+      }
+      db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
+      const member = db.prepare('SELECT id, accountId, mustChangePassword, status FROM team_members WHERE id = ?').get(row.memberId);
+      if (!member) return sendJson(res, 404, { error: 'user not found' });
+      if (member.status === 'inactive'){
+        return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
+      }
       const session = createSession(member.accountId, member.id);
-      return sendJson(res, 200, {
+      const response = {
         token: session.token,
         expiresAt: session.expiresAt,
         accountId: member.accountId,
         memberId: member.id,
         mustChangePassword: !!member.mustChangePassword
-      });
+      };
+      if (body.rememberDevice !== false){
+        const device = createTrustedDevice(member.id);
+        response.deviceToken = device.token;
+        response.deviceTrustExpiresAt = device.expiresAt;
+      }
+      return sendJson(res, 200, response);
     }
 
     // POST /api/auth/change-password — { newPassword, currentPassword? } ->
@@ -5272,8 +5528,17 @@ async function handleRequest(req, res) {
       }
       const verificationId = generateId('VERIFY');
       const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 min
+      // 2026-08-20 fix, found while building login MFA on top of this same
+      // sendSignupEmailCode() path: codeHash was only ever set for the
+      // 'interim' provider, but verify-signup-code's email branch ALWAYS
+      // checks locally via verifyAccessCode(), never through Twilio — so a
+      // real Postmark-delivered email code (provider:'postmark') had no
+      // hash to check against and could never verify. Email codes are
+      // locally-checked regardless of delivery provider (see
+      // sendSignupEmailCode()'s own comment), so they must always be
+      // hashed here, not just on the interim/no-vendor path.
       let codeHash = null, codeSalt = null;
-      if (sendResult.provider === 'interim'){
+      if (sendResult.provider === 'interim' || channel === 'email'){
         const hashed = hashAccessCode(sendResult.code);
         codeHash = hashed.hash; codeSalt = hashed.salt;
       }
@@ -5522,6 +5787,33 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE accounts SET contentLibraryJson = ? WHERE accountId = ?')
         .run(JSON.stringify(body.contentLibrary || {}), accountId);
       return sendJson(res, 200, { saved: true });
+    }
+
+    // POST /api/accounts/:id/media-cx-index — round 133, Verilume Media CX
+    // Index gap-closing fields. Body shape: { gaps: { Awareness: {...},
+    // Consideration: {...}, Purchase: {...}, Loyalty: {...}, Advocacy: {...} } },
+    // each stage's object holding whichever of its quantitative/qualitative
+    // fields the account has provided (see MEDIA_CX_INDEX_GAP_FIELDS below
+    // for the shape per stage) — partial/incremental saves are fine, this
+    // merges into whatever's already stored rather than requiring the whole
+    // object every time, same convention as PATCH-style merge-updates
+    // elsewhere in this file.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-cx-index'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT mediaCxIndexGapDataJson FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      let existing = {};
+      try { existing = account.mediaCxIndexGapDataJson ? JSON.parse(account.mediaCxIndexGapDataJson) : {}; } catch (e) { existing = {}; }
+      const incoming = (body && typeof body.gaps === 'object' && body.gaps) || {};
+      const merged = { ...existing };
+      Object.keys(incoming).forEach(stage => {
+        merged[stage] = { ...(merged[stage] || {}), ...incoming[stage] };
+      });
+      db.prepare('UPDATE accounts SET mediaCxIndexGapDataJson = ? WHERE accountId = ?')
+        .run(JSON.stringify(merged), accountId);
+      return sendJson(res, 200, { saved: true, gaps: merged });
     }
 
     // POST /api/accounts/:id/voice — round 18, Brand Foundations (Voice).

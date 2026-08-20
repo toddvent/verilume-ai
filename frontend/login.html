@@ -106,6 +106,38 @@
       <div class="error-note" id="passwordChangeError"></div>
     </div>
 
+    <!-- 2026-08-20 — login step-up MFA, per direct instruction ("is there
+         value adding to login for security purposes as we will have
+         company budgets and strategies inside?"). Shown only when
+         login-user reports mfaRequired: true, i.e. this browser hasn't
+         completed MFA for this member within the last 30 days. Same
+         "verify by email/text instead" pattern as the assessment.html
+         signup-verification modal, promoted to this page. -->
+    <div id="loginMfaStep" style="display:none;">
+      <h1>Verify it's you</h1>
+      <p class="lede" id="loginMfaIntro">We sent a 6-digit code.</p>
+      <div class="field">
+        <label for="loginMfaCode">Verification code</label>
+        <input type="text" id="loginMfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" onkeydown="if(event.key==='Enter')submitLoginMfaCode();">
+      </div>
+      <div class="field" style="margin-bottom:8px;">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;font-size:13px;color:var(--ink);">
+          <input type="checkbox" id="loginMfaRemember" checked style="width:auto;">
+          Trust this device for 30 days
+        </label>
+      </div>
+      <button class="btn-primary" id="loginMfaBtn" onclick="submitLoginMfaCode()">Verify and continue</button>
+      <div class="error-note" id="loginMfaError"></div>
+      <div class="error-note" id="loginMfaInterimNote" style="color:var(--cx);display:none;"></div>
+      <div class="link-row">
+        <a href="#" id="loginMfaResendLink">Resend code</a>
+        <a href="#" id="loginMfaSwitchLink">Verify by email instead</a>
+      </div>
+      <div class="link-row">
+        <a href="#" id="loginMfaBackLink">← Back to sign in</a>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -139,11 +171,35 @@ function destinationFor(accountId){
   return `portal.html?accountId=${encodeURIComponent(accountId)}`;
 }
 
-// Carries state between submitLogin() (on a still-temp password) and
-// submitPasswordChange() below — same pattern account.html used to use
+// 2026-08-20 — login step-up MFA device trust. Deliberately localStorage,
+// not sessionStorage (see trusted_devices' own comment in server.js): it
+// must survive across browser sessions/tabs for up to 30 days, which is
+// exactly what sessionStorage is designed NOT to do. Keyed by the login
+// email (lowercased) rather than accountId/memberId, since neither of
+// those is known yet at the point this needs to be read — the email is
+// the only thing available before login-user responds.
+function deviceTrustStorageKey(email){
+  return `verilume_device_trust_${(email || '').trim().toLowerCase()}`;
+}
+function getStoredDeviceToken(email){
+  try { return localStorage.getItem(deviceTrustStorageKey(email)) || ''; }
+  catch (e) { return ''; }
+}
+function storeDeviceToken(email, token){
+  try { localStorage.setItem(deviceTrustStorageKey(email), token); }
+  catch (e) { /* localStorage unavailable — MFA will just be asked for again next time, no hard failure */ }
+}
+
+// Carries state between submitLogin() (on a still-temp password, or a
+// still-pending MFA challenge) and submitPasswordChange()/
+// submitLoginMfaCode() below — same pattern account.html used to use
 // inline, just promoted to this page.
 let pendingAccountId = null;
 let pendingToken = null;
+let pendingMfaEmail = null;
+let pendingMfaVerificationId = null;
+let pendingMfaMemberId = null;
+let pendingMfaChannel = null;
 
 document.getElementById('forgotPasswordLink').addEventListener('click', function(e){
   e.preventDefault();
@@ -167,11 +223,20 @@ async function submitLogin(){
     const resp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, deviceToken: getStoredDeviceToken(email) })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){
       errEl.textContent = data.error || `Couldn't sign in (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    if (data.mfaRequired){
+      pendingMfaEmail = email;
+      pendingMfaVerificationId = data.verificationId;
+      pendingMfaMemberId = data.memberId;
+      pendingMfaChannel = data.channel;
+      showLoginMfaStep(data);
       btn.disabled = false;
       return;
     }
@@ -191,6 +256,120 @@ async function submitLogin(){
     btn.disabled = false;
   }
 }
+
+// 2026-08-20 — login step-up MFA. showLoginMfaStep() renders whatever
+// login-user or request-login-mfa most recently returned (both share the
+// same response shape: verificationId/channel/target/provider/
+// interimCode?), so it's reused for the initial send, Resend, and the
+// "verify by email/text instead" toggle.
+function showLoginMfaStep(data){
+  document.getElementById('loginStep').style.display = 'none';
+  document.getElementById('passwordChangeStep').style.display = 'none';
+  document.getElementById('loginMfaStep').style.display = 'block';
+  document.getElementById('loginMfaIntro').textContent = data.channel === 'sms'
+    ? `We texted a 6-digit code to ${data.target}. Enter it below to finish signing in on this device.`
+    : `We emailed a 6-digit code to ${data.target}. Enter it below to finish signing in on this device.`;
+  document.getElementById('loginMfaSwitchLink').textContent = data.channel === 'sms' ? 'Verify by email instead' : 'Verify by text instead';
+  const interimNote = document.getElementById('loginMfaInterimNote');
+  if (data.interimCode){
+    interimNote.style.display = 'block';
+    interimNote.textContent = `No live ${data.channel === 'sms' ? 'SMS' : 'email'} provider configured yet in this environment — your code is ${data.interimCode} (shown here only because there's nowhere else to deliver it right now).`;
+  } else {
+    interimNote.style.display = 'none';
+  }
+  document.getElementById('loginMfaCode').value = '';
+  document.getElementById('loginMfaError').textContent = '';
+  document.getElementById('loginMfaCode').focus();
+}
+
+async function submitLoginMfaCode(){
+  const code = document.getElementById('loginMfaCode').value.trim();
+  const errEl = document.getElementById('loginMfaError');
+  const btn = document.getElementById('loginMfaBtn');
+  errEl.textContent = '';
+  if (!/^\d{6}$/.test(code)){ errEl.textContent = 'Enter the 6-digit code.'; return; }
+  btn.disabled = true;
+  try {
+    const rememberDevice = document.getElementById('loginMfaRemember').checked;
+    const resp = await fetch(`${BACKEND_URL}/api/auth/verify-login-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationId: pendingMfaVerificationId, code, rememberDevice })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't verify that code (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    if (data.deviceToken) storeDeviceToken(pendingMfaEmail, data.deviceToken);
+    if (data.mustChangePassword){
+      pendingAccountId = data.accountId;
+      pendingToken = data.token;
+      document.getElementById('loginMfaStep').style.display = 'none';
+      document.getElementById('passwordChangeStep').style.display = 'block';
+      document.getElementById('passwordChangeError').textContent = '';
+      document.getElementById('newPassword').focus();
+      return;
+    }
+    persistSessionFor(data.accountId, data.token, data.memberId);
+    location.href = destinationFor(data.accountId);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to verify — try again.';
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('loginMfaResendLink').addEventListener('click', async function(e){
+  e.preventDefault();
+  if (!pendingMfaMemberId || !pendingMfaChannel) return;
+  const errEl = document.getElementById('loginMfaError');
+  errEl.textContent = '';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/request-login-mfa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: pendingMfaMemberId, channel: pendingMfaChannel })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ errEl.textContent = data.error || 'Could not resend a code.'; return; }
+    pendingMfaVerificationId = data.verificationId;
+    showLoginMfaStep(data);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to resend a code.';
+  }
+});
+
+document.getElementById('loginMfaSwitchLink').addEventListener('click', async function(e){
+  e.preventDefault();
+  if (!pendingMfaMemberId || !pendingMfaChannel) return;
+  const nextChannel = pendingMfaChannel === 'sms' ? 'email' : 'sms';
+  const errEl = document.getElementById('loginMfaError');
+  errEl.textContent = '';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/request-login-mfa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: pendingMfaMemberId, channel: nextChannel })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ errEl.textContent = data.error || 'Could not send a code that way.'; return; }
+    pendingMfaVerificationId = data.verificationId;
+    pendingMfaChannel = nextChannel;
+    showLoginMfaStep(data);
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to send a code that way.';
+  }
+});
+
+document.getElementById('loginMfaBackLink').addEventListener('click', function(e){
+  e.preventDefault();
+  document.getElementById('loginMfaStep').style.display = 'none';
+  document.getElementById('loginStep').style.display = 'block';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').textContent = '';
+  pendingMfaEmail = null; pendingMfaVerificationId = null; pendingMfaMemberId = null; pendingMfaChannel = null;
+});
 
 async function submitPasswordChange(){
   const pw = document.getElementById('newPassword').value;

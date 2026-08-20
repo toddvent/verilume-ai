@@ -3103,6 +3103,28 @@
     </div>
     <div id="companyProfileSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
 
+    <!-- Verilume Media CX Index — per-stage "gap-closing" fields. The free
+         assessment's Index is an ESTIMATE from self-ratings; filling any
+         field for a stage here flips that stage to MEASURED. Each stage
+         offers a quantitative field and a qualitative field — either one is
+         enough, per direct instruction that these are quantitative OR
+         qualitative, never both required. Saved independently of the rest
+         of Company Profile via saveMediaCxIndexGaps(), its own endpoint. -->
+    <div class="field" id="mcxIndexCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-top:22px;margin-bottom:22px;">
+      <label style="margin-bottom:4px;">Refine your Verilume Media CX Index</label>
+      <div class="hint" style="margin-bottom:12px;">The free assessment estimates each stage from self-ratings. Add real numbers or a confident self-rating below — quantitative or qualitative, not both required — and that stage's contribution to the Index becomes measured instead of estimated.</div>
+      <div style="text-align:center;margin-bottom:14px;">
+        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Verilume Media CX Index</div>
+        <div id="mcxIndexVal" style="font-size:2.375rem;font-weight:700;color:var(--ink);">—</div>
+        <div id="mcxIndexNote" class="hint" style="margin-top:2px;"></div>
+      </div>
+      <div id="mcxStageRows"></div>
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn-primary" onclick="saveMediaCxIndexGaps()">Save refinements →</button>
+      </div>
+      <div id="mcxSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
+    </div>
+
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('dashboard')">← Back to Dashboard</a>
       <span class="seq-spacer"></span>
@@ -7258,7 +7280,16 @@ const state = {
   // onboarding-hub card's status() reads this defensively (see
   // onboardingSurveyCoreAnsweredCount() below) so a not-yet-loaded state
   // never throws.
-  onboardingSurvey: null
+  onboardingSurvey: null,
+  // Verilume Media CX Index — per-stage "gap-closing" fields collected in
+  // the portal to move a stage's confidence from "estimated" (free
+  // assessment self-rating) to "measured" (real client data). Per direct
+  // instruction, each stage accepts EITHER a quantitative value OR a
+  // qualitative self-rating — never requires both. Shape:
+  // { Awareness: {...}, Consideration: {...}, Purchase: {...}, Loyalty: {...}, Advocacy: {...} }
+  // Persisted via POST /api/accounts/:id/media-cx-index, read back in
+  // loadAccountData() from mediaCxIndexGapDataJson.
+  mediaCxIndexGapData: {}
 };
 let currentCampaignId = null;
 let currentProjectId = null;
@@ -10157,6 +10188,61 @@ const STAGE_CHANNEL_WEIGHTS = {
 // heuristic-not-MMM disclosure as above.
 const STAGE_BUDGET_WEIGHTS = { 'Awareness': 0.30, 'Consideration': 0.25, 'Purchase': 0.25, 'Loyalty': 0.12, 'Advocacy': 0.08 };
 
+// Verilume Media CX Index — how much of each stage's health is a CX
+// question vs. a media-selects question. Verilume's own proprietary
+// judgment (market this as such, never as independent research), mirrored
+// exactly from assessment.html's CX_PRIORITY_BY_STAGE/MEDIA_PRIORITY_BY_STAGE
+// so the free assessment's "estimated" Index and the portal's "measured"
+// Index are computed on the same scale. Loyalty and Advocacy skew CX-heavy
+// (loyalty is driven by the experience itself, advocacy is loyalty plus
+// buzz); Awareness includes a "creative-relevance CX" bump for
+// Meta Andromeda/Google AI Max-style individual creative+frequency
+// targeting, per direct instruction.
+const CX_PRIORITY_BY_STAGE = {
+  Awareness: 0.175, Consideration: 0.325, Purchase: 0.50, Loyalty: 0.875, Advocacy: 0.675
+};
+const MEDIA_PRIORITY_BY_STAGE = Object.fromEntries(
+  Object.entries(CX_PRIORITY_BY_STAGE).map(([stage, cx]) => [stage, 1 - cx])
+);
+
+// Verilume Media CX Index — per-stage "gap-closing" field definitions for
+// the portal. Each stage offers ONE quantitative field and ONE qualitative
+// (1-5 self-rating) field; a stage counts as "measured" once either is
+// filled in, per direct instruction that these are quantitative OR
+// qualitative, never both required.
+const MEDIA_CX_INDEX_GAP_FIELDS = {
+  Awareness: {
+    quantLabel: 'Active creative concepts in market (count)', quantKey: 'creativeConceptCount', quantType: 'number',
+    quantHelp: 'How many distinct creative concepts are currently live across paid channels.',
+    qualLabel: 'Creative relevance & refresh cadence', qualKey: 'creativeRelevanceRating',
+    qualHelp: 'How well creative is tailored per audience/channel and how often it is refreshed — including any use of Meta Andromeda / Google AI Max-style individual targeting.'
+  },
+  Consideration: {
+    quantLabel: 'CRM/CDP contact match rate (%)', quantKey: 'crmMatchRatePct', quantType: 'number',
+    quantHelp: 'Share of consideration-stage traffic that resolves to a known CRM/CDP profile for personalization.',
+    qualLabel: 'CRM & personalization maturity', qualKey: 'crmMaturityRating',
+    qualHelp: 'How consistently CRM data drives personalized messaging at this stage.'
+  },
+  Purchase: {
+    quantLabel: 'Cart/inquiry abandonment rate (%)', quantKey: 'abandonmentRatePct', quantType: 'number',
+    quantHelp: 'Share of started purchases/inquiries that do not convert.',
+    qualLabel: 'eCommerce & call center experience', qualKey: 'purchaseExperienceRating',
+    qualHelp: 'How smooth the purchase path is end to end, including call center handling.'
+  },
+  Loyalty: {
+    quantLabel: 'CSAT or NPS score', quantKey: 'csatNpsScore', quantType: 'number',
+    quantHelp: 'Most recent CSAT (0-100) or NPS (-100 to 100) score.',
+    qualLabel: 'Service responsiveness & product delivery', qualKey: 'serviceResponsivenessRating',
+    qualHelp: 'How reliably the brand delivers on its promise post-purchase and how it handles service issues.'
+  },
+  Advocacy: {
+    quantLabel: 'Referral / UGC rate (%)', quantKey: 'referralRatePct', quantType: 'number',
+    quantHelp: 'Share of customers who refer, review, or generate UGC.',
+    qualLabel: 'Word-of-mouth & PR presence', qualKey: 'advocacyPresenceRating',
+    qualHelp: 'How visible and positive the brand’s organic buzz is right now.'
+  }
+};
+
 // Round 132c[10] (2026-08-17), per direct instruction following the media-
 // mix benchmark research (cxmedia-media-mix-benchmark-research-2026-08-17.md)
 // and its follow-on decisions: "leverage the data but don't change the
@@ -12100,6 +12186,19 @@ async function loadAccountData(){
             negative: Array.isArray(parsed.negative) ? parsed.negative : []
           };
         } catch (e){ console.warn('loadAccountData: brandKeywordsJson failed to parse.', e); }
+      }
+      // Verilume Media CX Index — client-specific "gap-closing" fields
+      // collected per stage in the portal (quantitative OR qualitative, per
+      // the instruction that drove this build). Read back the same way
+      // brandKeywordsJson is above; missing/unparsable leaves it as {}, i.e.
+      // "no stage has been refined yet."
+      if (record.account.mediaCxIndexGapDataJson){
+        try {
+          const parsed = JSON.parse(record.account.mediaCxIndexGapDataJson);
+          state.mediaCxIndexGapData = (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e){ console.warn('loadAccountData: could not parse mediaCxIndexGapDataJson', e); state.mediaCxIndexGapData = {}; }
+      } else {
+        state.mediaCxIndexGapData = state.mediaCxIndexGapData || {};
       }
       RUBRIC_CELLS.forEach(c => {
         const key = cellKey(c.stage, c.layer);
@@ -36623,6 +36722,118 @@ function renderCompanyProfileStep(){
   }
 
   document.getElementById('companyProfileSaveFlag').textContent = '';
+
+  renderMediaCxIndexPanel();
+}
+
+// Verilume Media CX Index — portal panel. The headline value reuses
+// computeQuadrantScores(), the same real RUBRIC-based mediaPct/cxPct the
+// Dashboard's own quadrant already computes from assessed account data —
+// deliberately NOT re-derived from a second, independently-invented
+// formula (same restraint applied to assessment.html's computeScores()).
+// The gap-closing fields below add client-specific CX evidence per stage;
+// filling any field for a stage flips its badge from "Estimated" (the
+// free assessment's self-rating) to "Refined" (this account has supplied
+// real data Verilume can use as supporting evidence for that stage).
+function computeMediaCxIndex(){
+  const { mediaPct, cxPct } = computeQuadrantScores();
+  const index = (mediaPct || cxPct) ? Math.round((mediaPct + cxPct) / 2) : 0;
+  return { mediaPct, cxPct, index };
+}
+
+function mcxStageIsRefined(stage){
+  const g = state.mediaCxIndexGapData && state.mediaCxIndexGapData[stage];
+  if (!g) return false;
+  const def = MEDIA_CX_INDEX_GAP_FIELDS[stage];
+  const quant = g[def.quantKey];
+  const qual = g[def.qualKey];
+  return (quant !== undefined && quant !== null && quant !== '') || (qual !== undefined && qual !== null && qual !== '');
+}
+
+function renderMediaCxIndexPanel(){
+  const valEl = document.getElementById('mcxIndexVal');
+  const noteEl = document.getElementById('mcxIndexNote');
+  const rowsEl = document.getElementById('mcxStageRows');
+  if (!valEl || !rowsEl) return;
+
+  const { mediaPct, cxPct, index } = computeMediaCxIndex();
+  valEl.textContent = (mediaPct || cxPct) ? index + '%' : '—';
+  if (noteEl){
+    noteEl.textContent = (mediaPct || cxPct)
+      ? `Media Strength ${mediaPct}% / CX Strength ${cxPct}% — from this account's assessed data. Verilume's own proprietary weighting, not third-party research.`
+      : 'Assess at least one stage on the Dashboard quadrant to see this account\'s real Index.';
+  }
+
+  rowsEl.innerHTML = Object.keys(MEDIA_CX_INDEX_GAP_FIELDS).map(stage => {
+    const def = MEDIA_CX_INDEX_GAP_FIELDS[stage];
+    const g = (state.mediaCxIndexGapData && state.mediaCxIndexGapData[stage]) || {};
+    const refined = mcxStageIsRefined(stage);
+    const badge = refined
+      ? `<span style="font-size:0.6875rem;font-weight:600;color:var(--cx);border:1px solid var(--cx);border-radius:4px;padding:1px 6px;">Refined</span>`
+      : `<span style="font-size:0.6875rem;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 6px;">Estimated only</span>`;
+    return `
+      <div style="border-top:1px solid var(--line);padding:12px 0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <strong style="font-size:0.9062rem;">${escapeHtml(stage)}</strong>
+          ${badge}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">${escapeHtml(def.quantLabel)}</label>
+            <input type="number" step="any" id="mcxQuant_${stage}" value="${g[def.quantKey] !== undefined && g[def.quantKey] !== null ? escapeHtml(String(g[def.quantKey])) : ''}" placeholder="e.g. 12" style="width:100%;">
+            <div class="hint" style="margin-top:2px;">${escapeHtml(def.quantHelp)}</div>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">${escapeHtml(def.qualLabel)} <span style="font-weight:400;color:var(--muted);">(1-5)</span></label>
+            <select id="mcxQual_${stage}" style="width:100%;">
+              <option value="">— Not rated —</option>
+              ${[1,2,3,4,5].map(n => `<option value="${n}"${String(g[def.qualKey]) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+            </select>
+            <div class="hint" style="margin-top:2px;">${escapeHtml(def.qualHelp)}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const flag = document.getElementById('mcxSaveFlag');
+  if (flag) flag.textContent = '';
+}
+
+async function saveMediaCxIndexGaps(){
+  const gaps = {};
+  Object.keys(MEDIA_CX_INDEX_GAP_FIELDS).forEach(stage => {
+    const def = MEDIA_CX_INDEX_GAP_FIELDS[stage];
+    const quantEl = document.getElementById(`mcxQuant_${stage}`);
+    const qualEl = document.getElementById(`mcxQual_${stage}`);
+    const quantVal = quantEl && quantEl.value !== '' ? Number(quantEl.value) : null;
+    const qualVal = qualEl && qualEl.value !== '' ? Number(qualEl.value) : null;
+    gaps[stage] = {};
+    if (quantVal !== null && !Number.isNaN(quantVal)) gaps[stage][def.quantKey] = quantVal;
+    if (qualVal !== null && !Number.isNaN(qualVal)) gaps[stage][def.qualKey] = qualVal;
+  });
+
+  state.mediaCxIndexGapData = { ...(state.mediaCxIndexGapData || {}) };
+  Object.keys(gaps).forEach(stage => {
+    state.mediaCxIndexGapData[stage] = { ...(state.mediaCxIndexGapData[stage] || {}), ...gaps[stage] };
+  });
+
+  const flag = document.getElementById('mcxSaveFlag');
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-cx-index`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gaps })
+      });
+      persisted = resp.ok;
+    } catch (e){ /* falls through to local-only flag below */ }
+  }
+  if (flag){
+    flag.textContent = persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
+  }
+  renderMediaCxIndexPanel();
 }
 // Round 132c17 (2026-08-17) — see the field's own comment above. Letters
 // only, capped at 3, uppercased live (matches how it's used inside every
