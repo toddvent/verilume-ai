@@ -437,16 +437,13 @@
   .landing-teaser-bullets li{font-size:0.8125rem;line-height:1.45;color:var(--ink);padding-left:16px;position:relative;}
   .landing-teaser-bullets li::before{content:'';position:absolute;left:0;top:0.5em;width:6px;height:6px;border-radius:50%;background:var(--cx);}
 
-  /* Round 104, module 2 — the "maturity" step: three self-placement
-     sliders (Media Science, CX, Team) presented as one step that slides
-     forward/backward internally, per direct instruction — NOT three
-     separate top-level steps. .mat-carousel clips a flex .mat-track of
-     three full-width .mat-slide panels; advancing/retreating just
-     transform: translateX()s the track, so the visitor never leaves this
-     one step or sees a full-page swap. The outer step counter (goToStep's
-     `order` map, the "Step N of 7" eyebrows) counts this whole carousel as
-     ONE step — sub-navigation is internal, tracked by matSubIndex, not by
-     goToStep(). */
+  /* 2026-08-19 (strategic scoring round): the "maturity" step (CX/Media
+     Science/Team/Voice self-placement carousel) these .mat-carousel/
+     .mat-track/.mat-slide/.mat-level-* rules supported is gone — removed
+     per direct instruction ("eliminate [it] from the free assessment
+     because [it isn't] used for scoring"). Left in place as dead CSS
+     (harmless) rather than risk touching .mat-slide-grid/.mat-visual,
+     which the Marketing Loop step still uses and share the "mat-" prefix. */
   .mat-carousel{overflow:hidden;border-radius:16px;}
   .mat-track{display:flex;width:400%;transition:transform 0.4s cubic-bezier(0.65,0,0.35,1);}
   /* Round 120 (2026-08-08) — fixes a real clipping bug, per direct
@@ -959,7 +956,7 @@
        this brings Step 1 in line with the rest of the flow instead of being
        the one step that reads differently. -->
   <section class="step" data-step="company">
-    <div class="eyebrow">Step 1 of 10</div>
+    <div class="eyebrow">Step 1 of 5</div>
     <div class="mat-slide-grid">
       <div>
         <h2>Begin Your Human Experience Optimization.</h2>
@@ -1000,8 +997,7 @@
         <div class="teaser-label">What this assessment covers</div>
         <div class="mod-visual-frame"><div class="placeholder">Visual — TBD</div></div>
         <ul class="landing-teaser-bullets">
-          <li>Where you stand today — Media Science, Customer Experience, and Team maturity, self-rated stage by stage.</li>
-          <li>The full Media Loop, Awareness through Advocacy, scored channel by channel against best practice.</li>
+          <li>The full Marketing Loop, Awareness through Advocacy, self-rated stage by stage against best practice.</li>
           <li>Your organization's structure and how work actually gets done.</li>
           <li>A market snapshot — population, income, and competitive context grounded in your real footprint.</li>
           <li>A final position on the CX Quadrant — your strongest and weakest areas, named plainly.</li>
@@ -1053,7 +1049,7 @@
        describing what this step's inputs (industry, audience, wealth tier)
        feed into later in the assessment. -->
   <section class="step" data-step="profile-guess">
-    <div class="eyebrow">Step 2 of 10</div>
+    <div class="eyebrow">Step 2 of 5</div>
     <div class="mat-slide-grid">
       <div>
         <h2>Here's our first read on <span id="guessCompanyName">the brand</span>.</h2>
@@ -1073,7 +1069,7 @@
               <select id="inIndustry" onchange="markUserEdited(this); syncProfileGuessState(); renderIndustryDesc();">
                 <option value="">Select an industry…</option>
               </select>
-              <div class="hint" id="industryDescBody"></div>
+              <div class="field-hint" id="industryDescBody"></div>
             </div>
           </div>
           <!-- Round 119, per direct instruction: Audience and Wealth Tier
@@ -1110,141 +1106,6 @@
     </div>
   </section>
 
-  <!-- MATURITY — Round 104, module 2. Three self-placement sliders (Media
-       Science, CX, Team), one step that slides forward/
-       backward internally between its three slides — see the .mat-carousel
-       CSS comment above for why this is one step, not three. Each slide is
-       independent: a stepped 1-4 slider on the left (self-evaluation) and
-       a new supporting visual + product-feature bullets on the right,
-       matching the landing teaser's "image + bullets" pattern from module 1. -->
-  <!-- Round 121 (2026-08-08), per direct instruction ("Every unique visual
-       is a unique step for numbering"): Media Science / Customer Experience
-       / Team are still one .mat-carousel visually (same slide transition as
-       before), but each now gets its own step number — #maturityEyebrow is
-       updated by matGoToSlide()/matInitSlides(), not a static "Step 3 of 10"
-       shared by all three. -->
-  <section class="step" data-step="maturity">
-    <div class="eyebrow" id="maturityEyebrow">Step 6 of 10</div>
-    <div class="mat-dots" id="matDots">
-      <div class="mat-dot active" data-dot="0"></div>
-      <div class="mat-dot" data-dot="1"></div>
-      <div class="mat-dot" data-dot="2"></div>
-      <div class="mat-dot" data-dot="3"></div>
-    </div>
-    <div class="mat-carousel">
-      <div class="mat-track" id="matTrack">
-
-        <!-- Slide 1 — Customer Experience. Round 125 (2026-08-08), per direct
-             instruction ("who are you, strategy, CX, Media Science, Team
-             flow before registration"): CX now precedes Media Science in
-             the maturity carousel — was the reverse order under Round
-             104/121. -->
-        <div class="mat-slide">
-          <div class="mat-slide-grid">
-            <div>
-              <div class="mat-slide-eyebrow">Art</div>
-              <h2>How advanced is your Customer Experience?</h2>
-              <p class="lede">Where the brand's promise actually holds together across every channel a customer touches — not just the one you built most recently. Pick the level that's actually true today.</p>
-              <div class="mat-level-grid" id="matCxLevelGrid"></div>
-            </div>
-            <aside class="mat-visual">
-              <div class="teaser-label">Where Verilume takes you</div>
-              <div class="mod-visual-frame" id="matCxVisual"></div>
-              <ul class="landing-teaser-bullets">
-                <li>One campaign, every channel — Creative Messaging Collections keep every asset on the same brief.</li>
-                <li>A Media Loop-mapped Customer Journey, so Awareness through Advocacy stays one continuous story.</li>
-                <li>Style Guide inheritance — every campaign draws from one approved voice automatically.</li>
-                <li>Personalization-ready audience targets, handed straight to Omni-Channel Creative.</li>
-              </ul>
-            </aside>
-          </div>
-        </div>
-
-        <!-- Slide 2 — Media Science -->
-        <div class="mat-slide">
-          <div class="mat-slide-grid">
-            <div>
-              <div class="mat-slide-eyebrow">Science</div>
-              <h2>How advanced is your Media Science?</h2>
-              <p class="lede">Where the account currently sits on turning media spend into a measured, defensible decision — not a guess dressed up as a strategy. Pick the level that's actually true today.</p>
-              <div class="mat-level-grid" id="matMediaLevelGrid"></div>
-            </div>
-            <aside class="mat-visual">
-              <div class="teaser-label">Where Verilume takes you</div>
-              <div class="mod-visual-frame" id="matMediaVisual"></div>
-              <ul class="landing-teaser-bullets">
-                <li>Media Mix Modeling across 18 spend categories, DMA by DMA — not one blended number.</li>
-                <li>Comparative channel performance, side-by-side, so the next dollar goes where it's already working.</li>
-                <li>A/B test tracking built into every campaign, not a separate tool to reconcile after the fact.</li>
-                <li>Full KPI grid with monthly trendlines — the same measurement this self-eval is asking about.</li>
-              </ul>
-            </aside>
-          </div>
-        </div>
-
-        <!-- Slide 3 — Team -->
-        <div class="mat-slide">
-          <div class="mat-slide-grid">
-            <div>
-              <div class="mat-slide-eyebrow">Team</div>
-              <h2>How does your team operate?</h2>
-              <p class="lede">Where the people behind the work sit today — reactive and scattered, or set up to work with AI rather than around it. Pick the level that's actually true today.</p>
-              <div class="mat-level-grid" id="matTeamLevelGrid"></div>
-            </div>
-            <aside class="mat-visual">
-              <div class="teaser-label">Where Verilume takes you</div>
-              <div class="mod-visual-frame" id="matTeamVisual"></div>
-              <ul class="landing-teaser-bullets">
-                <li>Marketing Ops Task Queue — prioritized by due date, so the team always knows what's next.</li>
-                <li>AI drafts every function; a human approves before anything ships — never fully automated.</li>
-                <li>Team &amp; Org Chart built into the account, matched to how your team actually operates.</li>
-                <li>Solo or full team — the whole product scales down or up with your org model.</li>
-              </ul>
-            </aside>
-          </div>
-        </div>
-
-        <!-- Slide 4 — Voice / Copywriting. Added per direct instruction
-             ("we don't have a Voice or Copywriting rating. This is very
-             important category for CX before registration") — a 4th
-             self-rated maturity ladder, pre-registration like the other
-             three. -->
-        <div class="mat-slide">
-          <div class="mat-slide-grid">
-            <div>
-              <div class="mat-slide-eyebrow">Voice</div>
-              <h2>How advanced is your Voice &amp; Copywriting?</h2>
-              <p class="lede">Where the words themselves land today — improvised in the moment, or built into a system that holds up across every channel. Pick the level that's actually true today.</p>
-              <div class="mat-level-grid" id="matVoiceLevelGrid"></div>
-            </div>
-            <aside class="mat-visual">
-              <div class="teaser-label">Where Verilume takes you</div>
-              <div class="mod-visual-frame" id="matVoiceVisual"></div>
-              <ul class="landing-teaser-bullets">
-                <li>Copywriting and presentation outputs drafted to your Brand Brief and style guide automatically.</li>
-                <li>One consistent voice across every channel — no reconciling five different writers' tone.</li>
-                <li>A human approves every draft before it ships — never fully automated.</li>
-              </ul>
-            </aside>
-          </div>
-        </div>
-
-      </div>
-    </div>
-    <div class="btn-row">
-      <button class="btn-ghost" onclick="matBack()">← Back</button>
-      <button class="btn-primary" id="matNextBtn" onclick="matNext()">Next →</button>
-    </div>
-  </section>
-
-  <!-- Round 125 (2026-08-08), per direct instruction ("who are you,
-       strategy, CX, Media Science, Team flow before registration"): the
-       "who are you" identity steps (Org Style, Company Profile) and
-       "strategy" (Marketing Loop) now come BEFORE the CX/Media
-       Science/Team/Voice maturity carousel above, not after — matNext()'s
-       hand-off and matBack()'s hand-off (below, in the script) point at
-       the interstitial and at "loop" respectively to reflect that. -->
-
   <!-- Round 124 (2026-08-08), per direct instruction ("we should be
        including all survey question slides except for the channel
        functional views before registration" / "sections 1,2,3 should be
@@ -1258,7 +1119,7 @@
        after these three plus the quick-reveal interstitial. -->
 
   <section class="step" data-step="orgstyle">
-    <div class="eyebrow">Step 3 of 10</div>
+    <div class="eyebrow">Step 3 of 5</div>
     <h2>How is marketing staffed today?</h2>
     <div class="mat-slide-grid">
       <div>
@@ -1299,55 +1160,37 @@
     </div>
   </section>
 
-  <section class="step" data-step="recap">
-    <div class="eyebrow">Step 4 of 10</div>
-    <h2>Company profile — confirm the details</h2>
-    <p class="lede">Confirm the address and industry are right, and see the market context we're framing your self-assessment against.</p>
-    <div class="recap-card">
-      <span class="recap-tag">Brand description — pulled from your website, or add your own</span>
-      <div class="field-hint">Update this any time. If you left Step 2's description blank, this starts as a placeholder built from your company URL — replace it with your own copy whenever you're ready.</div>
-      <textarea id="recapDescInput" oninput="updateRecapDescription()"></textarea>
-    </div>
-    <div class="recap-card">
-      <span class="recap-tag">Product themes — grouped, not every SKU</span>
-      <div class="field-hint">Comma-separated. Think categories a customer would recognize (e.g. "Polar Expeditions, Epicurean Expeditions, Cultural Expeditions"), not a line-by-line catalog — this carries forward to the Portal and seeds the Product half of your Brand &amp; Product Keywords draft.</div>
-      <textarea id="recapProductThemesInput" oninput="updateRecapProductThemes()"></textarea>
-    </div>
-    <div class="recap-card">
-      <span class="recap-tag">Location — enter your primary business address</span>
-      <div class="map-mock" id="recapMap"><span class="pin">📍</span><span class="pin-dot"></span></div>
-      <div class="address-edit-row" id="addressEditRow">
-        <input type="text" id="addressEditInput" placeholder="Street, City, State ZIP">
-        <button type="button" onclick="lookupAddress()">Look up →</button>
-      </div>
-      <div id="recapAddressStatus" class="recap-note"></div>
-      <div class="recap-note">Address is geocoded live via the U.S. Census Bureau's public Geocoder — resolves to a county (and metro area, where one exists), which grounds the local population and revenue figures below in a real place instead of a flat assumption.</div>
-    </div>
-    <div class="recap-card">
-      <span class="recap-tag">Industry &amp; U.S. estimated revenue</span>
-      <div id="recapIndustryBody"></div>
-    </div>
-    <div class="recap-card" id="recapLocalCard" style="display:none;">
-      <span class="recap-tag">Estimated local market revenue</span>
-      <div id="recapLocalBody"></div>
-    </div>
-    <div class="recap-card">
-      <span class="recap-tag">Census snapshot — population &amp; generations (live), income (live), wealth tier (illustrative)</span>
-      <div id="recapCensusBody"></div>
-    </div>
-    <div class="btn-row">
-      <button class="btn-ghost" onclick="goToStep('orgstyle')">← Back</button>
-      <button class="btn-primary" onclick="finishRecapStep()">Looks right, continue →</button>
-    </div>
-  </section>
+  <!-- 2026-08-19 (QA round), per direct instruction: "Step 4 of 10 Company
+       Profile should be completely removed from the assessment until we
+       reveal the free information... Don't break the data sources." The
+       data-step="recap" section that used to live here (brand description,
+       product themes, address/map, industry & revenue, local market
+       revenue, census snapshot) is gone as a numbered pre-registration
+       step. Its cards now live in data-step="report" below the "Opportunity
+       size" stats, under the same element IDs — startRecapStep(),
+       renderRecapIndustry(), renderRecapCensus(), lookupAddress(), etc. are
+       all unchanged and still populate them there. finishOrgStyleStep()
+       below now runs startRecapStep() headlessly and goes straight to
+       'loop'. -->
 
   <section class="step" data-step="loop">
-    <div class="eyebrow">Step 5 of 10</div>
+    <div class="eyebrow">Step 4 of 5</div>
     <h2>The Marketing Loop, stage by stage</h2>
     <div class="mat-slide-grid">
       <div>
         <p class="lede">Importance and ideal budget share reflect general best-practice weighting by stage, not self-reported — a gut-check on where the loop says weight should go. Rank how effective each stage is today.</p>
         <div id="loopStageRows"></div>
+        <!-- 2026-08-20 (strategic scoring round, follow-up), per direct
+             instruction: a real, independently-measured second axis for the
+             free assessment's quadrant. The 5 stage rows above measure
+             funnel execution (Media Strength) — a company can run that well
+             and still deliver an inconsistent experience across channels,
+             or vice versa, so Customer Experience Strength needs its own
+             question rather than being mathematically derived from the
+             stage ratings (which would just make the two axes echo each
+             other). One question, same 1-5 scale, same page/step — see
+             rateLoopCx()/computeQuickScores(). -->
+        <div id="loopCxRow"></div>
       </div>
       <aside class="mat-visual">
         <div class="teaser-label">Where Verilume takes you</div>
@@ -1360,20 +1203,23 @@
       </aside>
     </div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="goToStep('recap')">← Back</button>
+      <button class="btn-ghost" onclick="goToStep('orgstyle')">← Back</button>
       <button class="btn-primary" onclick="finishLoopStep()">Continue →</button>
     </div>
   </section>
 
   <!-- CONTACT / registration. Round 121 (2026-08-08), per direct
        instruction ("Registration appears after Team"): moved from the end
-       of the flow to right after the maturity carousel's Team slide —
-       matNext() now lands here instead of on orgstyle. Lead capture
-       (syncLeadToBackend()) still fires here, before the quadrant/scores
-       exist yet (those aren't computed until the assess step, now much
-       later) — see submitContact()'s comment for how that's handled. -->
+       of the flow to right after Team. 2026-08-19 (strategic scoring
+       round): the CX/Media Science/Team/Voice maturity carousel that used
+       to sit between Loop and here is gone (see finishLoopStep()'s
+       comment) — this is now reached straight from the Loop step via the
+       quick-reveal interstitial. Lead capture (syncLeadToBackend()) still
+       fires here, before the quadrant/scores exist yet (those aren't
+       computed until the assess step, now much later) — see
+       submitContact()'s comment for how that's handled. -->
   <section class="step" data-step="contact">
-    <div class="eyebrow">Step 10 of 10</div>
+    <div class="eyebrow">Step 5 of 5</div>
     <h2>Register to receive your Free Assessment.</h2>
     <p class="lede">This is the only place this flow asks for contact info — no NDA, no contract, just how to reach you. This creates a real lead record in the local demo backend, and syncs to HubSpot automatically once a Verilume HubSpot account is connected — you'll see exactly which of those two happened on the results page.</p>
     <div class="contact-grid">
@@ -1465,7 +1311,7 @@
     </aside>
     </div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="enterMaturityModule(3)">← Back</button>
+      <button class="btn-ghost" onclick="goToStep('loop')">← Back</button>
       <button class="btn-primary" id="contactNext" disabled onclick="submitContact()">Continue →</button>
     </div>
   </section>
@@ -1561,6 +1407,51 @@
 
       <h2 style="font-size:1.25rem;margin-top:32px;">Opportunity size</h2>
       <div class="stat-grid" id="reportOpportunityStats"></div>
+
+      <!-- 2026-08-19 (QA round), per direct instruction: relocated from the
+           old numbered data-step="recap" step, which is gone. Same element
+           IDs as before, so startRecapStep()/renderRecapDescription()/
+           renderRecapProductThemes()/renderRecapIndustry()/renderRecapCensus()/
+           lookupAddress() all still populate these unchanged — "don't break
+           the data sources." -->
+      <h2 style="font-size:1.25rem;margin-top:32px;">Your company profile</h2>
+      <div class="recap-card">
+        <span class="recap-tag">Brand description — pulled from your website, or add your own</span>
+        <div class="field-hint">Update this any time. If you left Step 2's description blank, this starts as a placeholder built from your company URL — replace it with your own copy whenever you're ready.</div>
+        <textarea id="recapDescInput" oninput="updateRecapDescription()"></textarea>
+      </div>
+      <div class="recap-card">
+        <span class="recap-tag">Product themes — grouped, not every SKU</span>
+        <div class="field-hint">Comma-separated. Think categories a customer would recognize (e.g. "Polar Expeditions, Epicurean Expeditions, Cultural Expeditions"), not a line-by-line catalog — this carries forward to the Portal and seeds the Product half of your Brand &amp; Product Keywords draft.</div>
+        <textarea id="recapProductThemesInput" oninput="updateRecapProductThemes()"></textarea>
+      </div>
+      <!-- Address/map/local-market-revenue: Local footprint only, per direct
+           instruction ("We only need the address to support the local
+           path through the site"). display toggled in JS below —
+           #recapMap's own visibility is still separately handled inside
+           startRecapStep() as before. -->
+      <div class="recap-card" id="recapAddressCard" style="display:none;">
+        <span class="recap-tag">Location — enter your primary business address</span>
+        <div class="map-mock" id="recapMap"><span class="pin">📍</span><span class="pin-dot"></span></div>
+        <div class="address-edit-row" id="addressEditRow">
+          <input type="text" id="addressEditInput" placeholder="Street, City, State ZIP">
+          <button type="button" onclick="lookupAddress()">Look up →</button>
+        </div>
+        <div id="recapAddressStatus" class="recap-note"></div>
+        <div class="recap-note">Address is geocoded live via the U.S. Census Bureau's public Geocoder — resolves to a county (and metro area, where one exists), which grounds the local population and revenue figures below in a real place instead of a flat assumption.</div>
+      </div>
+      <div class="recap-card">
+        <span class="recap-tag">Industry &amp; U.S. estimated revenue</span>
+        <div id="recapIndustryBody"></div>
+      </div>
+      <div class="recap-card" id="recapLocalCard" style="display:none;">
+        <span class="recap-tag">Estimated local market revenue</span>
+        <div id="recapLocalBody"></div>
+      </div>
+      <div class="recap-card">
+        <span class="recap-tag">Census snapshot — population &amp; generations (live), income (live), wealth tier (illustrative)</span>
+        <div id="recapCensusBody"></div>
+      </div>
 
       <div class="audience-recap-grid">
         <div class="recap-card">
@@ -1673,7 +1564,7 @@
          evaluation. -->
     <div class="enhance-section" id="enhanceSection">
       <h2 style="font-size:1.25rem;">Extended evaluation</h2>
-      <p class="lede">The read above is a starting estimate, based on how you rated your own maturity across Media Science, Customer Experience, Team, and Voice. Work through the sections below — the same function-by-function depth as a full audit — and we'll refine it into your exact quadrant position.</p>
+      <p class="lede">The read above is a starting estimate, based on how you rated each Marketing Loop stage. Work through the sections below — the same function-by-function depth as a full audit — and we'll refine it into your exact, fully measured quadrant position.</p>
       <div class="enh-list" id="enhanceAccordion">
 
         <div class="enh-item open" data-enh="channels">
@@ -2815,15 +2706,14 @@ let state = {
                // function's comment for how a product's stage+layer tags resolve to a cell).
                // weakStages/weakLayers (the old stage-level collapse this replaced) were
                // retired — nothing else in the file reads them anymore.
-  // Round 104, module 2 — three coarse self-placement sliders (Media
-  // Science, CX, Team), one Step 2-of-7 (new "maturity" step) between
-  // Company and Recap. Each is a 1-4 level, independent of the 17-cell
-  // rubric — a quick "where do you sit today" placement the visitor makes
-  // before the detailed per-channel rating in Step 5 (assess). Not yet
-  // wired into buildScorecardPayload()/computeScores() — front-end capture
-  // only this round; scoring/backend integration is a deliberate next step,
-  // not an oversight.
-  mediaScienceLevel: 1, cxMaturityLevel: 1, teamMaturityLevel: 1, voiceMaturityLevel: 1,
+  // Round 104, module 2's CX/Media Science/Team/Voice self-placement
+  // sliders (mediaScienceLevel/cxMaturityLevel/teamMaturityLevel/
+  // voiceMaturityLevel) lived here. Removed 2026-08-19 (strategic scoring
+  // round), per direct instruction ("eliminate [them] from the free
+  // assessment because they aren't used for scoring") — confirmed via code
+  // audit that computeScores() (the real, authoritative score) never read
+  // them; only the pre-Assess estimate and some report copy did, both
+  // rewritten to use the Loop step's real stageEffectiveness data instead.
   // Round 107 — revenue (and the estimated-marketing-budget math it fed)
   // was removed from the assessment entirely, per direct instruction: it
   // now belongs in the portal's budget planning section, not a one-time
@@ -2849,6 +2739,12 @@ let state = {
   // fixed neutral value contributes no skew — see the comment on
   // revenueLevel above).
   stageEffectiveness: {},
+  // 2026-08-20 (strategic scoring round, follow-up) — the Marketing Loop
+  // step's 6th question, a 1-5 self-rating of cross-channel customer
+  // experience consistency. Real, independent input for the free
+  // assessment's CX Strength axis (see computeQuickScores()'s comment) —
+  // not derived from stageEffectiveness above.
+  cxConsistencyRating: 0,
   // Round 104, module (d) — Channel Reviews function-group ratings, new
   // Step 6 of 9 ("channels"). Keyed by function-group key -> 1-4 rating.
   fnGroupRatings: {},
@@ -3120,164 +3016,6 @@ function renderSurveyRail(step){
   rail.classList.add('show');
 }
 
-/* ---------- Round 104, module 2 — Maturity carousel (Media Science, CX,
-   Team). One step, three internally-sliding sub-slides — see the
-   .mat-carousel CSS comment for why. matSubIndex (0-2) is the only piece of
-   navigation state this needs; goToStep()'s `order` map treats "maturity"
-   as a single destination throughout. ---------- */
-let matSubIndex = 0;
-
-// Round 104 — `quick` is the short, equal-length phrase shown in the
-// comparison-table column (per direct instruction: "Budget Shifts by Gut
-// Feel... others should be same copy length"). `desc` is the fuller
-// sentence, kept for anywhere a longer read is still useful (e.g. a title
-// attribute) but no longer the primary on-screen copy for this step.
-const MAT_LEVELS = {
-  media: [
-    { name: 'Guessing', quick: 'Budget Shifts by Gut Feel', desc: "Budget shifts by gut feel and last year's plan — nothing tells you which channel actually moved a sale, so the loudest opinion in the room usually wins." },
-    { name: 'Last-Touch Attribution', quick: 'Final Click Gets All Credit', desc: 'Every conversion is credited to the final click before it — useful for basic reporting, but it overvalues bottom-funnel channels and hides what upper-funnel work actually did.' },
-    { name: 'Comparative Channel Views & A/B Testing', quick: 'Channels Tested Head to Head', desc: "Channels get compared side by side and tested head-to-head — you can see what's outperforming and prove a change works before rolling it out everywhere." },
-    { name: 'Advanced Analytics', quick: 'Every Dollar Fully Measured', desc: "Full media mix modeling, neuroscience-informed measurement, multi-variant testing, and DMA-level analysis — every dollar's real contribution is measured, not assumed." }
-  ],
-  cx: [
-    { name: 'One Asset at a Time', quick: 'Creative Built Piece by Piece', desc: 'Creative gets built one piece at a time, on request, with no shared system — the brand can look different from one asset to the next depending on who made it.' },
-    { name: 'One Channel at a Time', quick: 'Each Channel Plans Alone', desc: 'Each channel plans and executes on its own — email, social, and print rarely reference the same campaign, so the experience resets at every handoff.' },
-    { name: 'Omni-Channel', quick: 'One Message, Every Channel', desc: 'Channels are coordinated around one campaign and one message, so a customer recognizes the brand whether they see an email, an ad, or a store visit.' },
-    { name: 'Personalized Omni-Channel', quick: 'Coordinated and Personalized', desc: "Every channel is coordinated AND personalized to what that specific customer already showed interest in — the experience adapts, it doesn't just repeat." }
-  ],
-  team: [
-    { name: 'Always Scrambling', quick: 'Reactive, Putting Out Fires', desc: "Everyone's reactive — the team is putting out whatever fire is loudest today, with no capacity left to plan more than a week ahead." },
-    { name: 'Focus on a Specific Lane', quick: 'Each Owns a Lane, Solo', desc: 'Each person owns a lane — social, email, creative — and does it well, but the lanes rarely talk to each other or plan together.' },
-    { name: 'Omni-Channel Collaboration', quick: 'Team Plans Together, Always', desc: 'The team plans and executes together across every channel, so campaigns launch as one coordinated effort instead of separate departmental releases.' },
-    { name: 'AI + Humans Best Practices', quick: 'AI Drafts, Humans Judge', desc: 'AI handles the heavy lifting — drafts, variants, first-pass analysis — while the team focuses on the judgment calls only a human should make, and says so before it ships.' }
-  ],
-  // Round 124, per direct instruction ("we don't have a Voice or
-  // Copywriting rating. This is very important category for CX before
-  // registration") — exact level names as given.
-  voice: [
-    { name: 'Depends on Our Mood', quick: 'Improvised, No System', desc: "Copy gets written fresh each time, in whatever tone whoever's drafting it happens to be in — there's no house voice to check it against." },
-    { name: 'Outsourced & Disorganized', quick: 'Scattered Across Vendors', desc: "Copywriting is farmed out piecemeal — a freelancer here, an agency there — with no shared brief, so tone drifts from project to project." },
-    { name: 'Good at the Function Level', quick: 'Consistent Within a Channel', desc: 'Each function (email, social, ads) has its own consistent voice, but those voices aren\'t necessarily consistent with each other.' },
-    { name: 'Omni-Channel Perfection', quick: 'One Voice, Every Channel', desc: 'One voice, drafted from a single style guide, holds up identically across every channel and every piece of copy the brand puts out.' }
-  ]
-};
-
-// Shared 4-step "maturity ladder" visual — same shape for all three
-// sliders (ascending bars, current level highlighted) so the three slides
-// read as one system rather than three unrelated graphics, while each still
-// gets its own accent color per direct instruction that each needs "a new
-// image." Purely inline SVG (no raster asset) so it never goes stale and
-// matches the rest of this file's existing quadrant/icon treatment.
-function matLadderSvg(level, color){
-  const heights = [22, 40, 58, 76];
-  const barW = 46, gap = 22, baseY = 96;
-  let bars = '';
-  for (let i = 0; i < 4; i++){
-    const h = heights[i];
-    const x = 14 + i * (barW + gap);
-    const active = (i + 1) === Number(level);
-    bars += `<rect x="${x}" y="${baseY - h}" width="${barW}" height="${h}" rx="3" fill="${active ? color : '#D2D2D7'}" />`;
-    if (active){
-      bars += `<circle cx="${x + barW / 2}" cy="${baseY - h - 12}" r="5" fill="${color}" />`;
-    }
-  }
-  return `<svg viewBox="0 0 300 110" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="${baseY}" x2="290" y2="${baseY}" stroke="#D2D2D7" stroke-width="1"/>${bars}</svg>`;
-}
-
-const MAT_TOPIC_STATE_KEY = { media: 'mediaScienceLevel', cx: 'cxMaturityLevel', team: 'teamMaturityLevel', voice: 'voiceMaturityLevel' };
-const MAT_TOPIC_COLOR = { media: '#2563EB', cx: '#0891B2', team: '#4F46E5', voice: '#6B4A9C' };
-
-// Round 104 — renders the 4-column comparison table for one topic ('media'
-// | 'cx' | 'team') into #mat{Topic}LevelGrid, highlighting whichever level
-// is currently selected in state. Called on first render (matInitSlides)
-// and again after every pick (matSelectLevel) so the selected column's
-// highlight and button label update immediately.
-function renderMatLevelGrid(topic){
-  const levels = MAT_LEVELS[topic];
-  const current = state[MAT_TOPIC_STATE_KEY[topic]] || 0;
-  const elId = `mat${topic[0].toUpperCase()}${topic.slice(1)}LevelGrid`;
-  const grid = document.getElementById(elId);
-  if (!grid) return;
-  grid.innerHTML = levels.map((lvl, i) => {
-    const n = i + 1;
-    const selected = n === current;
-    return `<div class="mat-level-col${selected ? ' selected' : ''}">
-      <div class="lvl-tag">Level ${n}</div>
-      <div class="lvl-title" title="${lvl.desc.replace(/"/g, '&quot;')}">${lvl.name}</div>
-      <div class="lvl-quick">${lvl.quick}</div>
-      <button type="button" onclick="matSelectLevel('${topic}', ${n})">${selected ? 'This Is My Org ✓' : 'This Is My Org'}</button>
-    </div>`;
-  }).join('');
-}
-
-// matSelectLevel is the single entry point the comparison-table buttons
-// call — 'media'|'cx'|'team' plus the 1-4 level picked. Saves straight to
-// state (same fields the old slider wrote, so this reaches the profile
-// and final assessment exactly as before — see the state.mediaScienceLevel
-// etc. comment) and re-renders both the table (for the highlight) and the
-// maturity-ladder visual on the right.
-function matSelectLevel(topic, level){
-  state[MAT_TOPIC_STATE_KEY[topic]] = level;
-  renderMatLevelGrid(topic);
-  const visualEl = document.getElementById(`mat${topic[0].toUpperCase()}${topic.slice(1)}Visual`);
-  if (visualEl) visualEl.innerHTML = matLadderSvg(level, MAT_TOPIC_COLOR[topic]);
-}
-
-function matInitSlides(){
-  ['cx', 'media', 'team', 'voice'].forEach(topic => {
-    renderMatLevelGrid(topic);
-    const level = state[MAT_TOPIC_STATE_KEY[topic]] || 1;
-    const visualEl = document.getElementById(`mat${topic[0].toUpperCase()}${topic.slice(1)}Visual`);
-    if (visualEl) visualEl.innerHTML = matLadderSvg(level, MAT_TOPIC_COLOR[topic]);
-  });
-}
-
-// Round 125 — one eyebrow string per sub-slide (CX = Step 6, Media Science
-// = Step 7, Team = Step 8, Voice = Step 9), since each is now its own
-// numbered step even though they still share one sliding carousel visual.
-// Order matches the Round 125 slide order (CX, Media, Team, Voice), per
-// direct instruction ("who are you, strategy, CX, Media Science, Team
-// flow before registration").
-const MAT_SLIDE_STEP_LABEL = ['Step 6 of 10', 'Step 7 of 10', 'Step 8 of 10', 'Step 9 of 10'];
-function matGoToSlide(i){
-  matSubIndex = Math.max(0, Math.min(3, i));
-  document.getElementById('matTrack').style.transform = `translateX(-${matSubIndex * 25}%)`;
-  document.querySelectorAll('#matDots .mat-dot').forEach((d, idx) => d.classList.toggle('active', idx === matSubIndex));
-  document.getElementById('matNextBtn').textContent = matSubIndex === 3 ? 'Continue →' : 'Next →';
-  const eyebrow = document.getElementById('maturityEyebrow');
-  if (eyebrow) eyebrow.textContent = MAT_SLIDE_STEP_LABEL[matSubIndex];
-}
-
-// Round 125, per direct instruction ("who are you, strategy, CX, Media
-// Science, Team flow before registration"): the maturity carousel now runs
-// LAST among the pre-registration steps — Org Style ("who are you"),
-// Company Profile ("who are you"), and the Marketing Loop ("strategy")
-// all come before it (see loop's finishLoopStep(), which is what hands off
-// into this carousel). Finishing the last slide (Voice) now leads into the
-// quick-reveal interstitial, then registration — not straight to contact.
-function matNext(){
-  if (matSubIndex < 3){ matGoToSlide(matSubIndex + 1); }
-  else {
-    startQuickReveal();
-  }
-}
-
-function matBack(){
-  if (matSubIndex > 0){ matGoToSlide(matSubIndex - 1); }
-  else { goToStep('loop'); }
-}
-
-// Entry point from the Marketing Loop's Continue hand-off (finishLoopStep())
-// and from registration's Back button (passes startIndex:3 to land on the
-// last slide, Voice, rather than restarting the carousel from the top).
-// Slide values reflect whatever the visitor already picked (state persists
-// across re-entry, same convention as every other step in this file).
-function enterMaturityModule(startIndex){
-  matInitSlides();
-  matGoToSlide(startIndex || 0);
-  goToStep('maturity');
-}
-
 // Round 125 — profile-guess's Continue hand-off. syncProfileGuessState()
 // used to run inside enterMaturityModule() (which profile-guess used to
 // call directly); now that profile-guess leads to Org Style instead, the
@@ -3288,27 +3026,38 @@ function finishProfileGuessStep(){
   goToStep('orgstyle');
 }
 
-// Round 125 — "who are you" step 1 of 2 (staffing). Advances to Company
-// Profile; see that step's finishRecapStep() for the next hand-off.
+// Round 125 — "who are you" step (staffing). Advances to the Marketing
+// Loop ("strategy"). 2026-08-19 (QA round): the old intermediate Company
+// Profile/recap step is gone as a numbered step — startRecapStep() still
+// runs here headlessly (seeds state.opportunity + the relocated
+// report-page cards' data sources), then this goes straight to 'loop'
+// (folding in what finishRecapStep() used to do). See the comment where
+// the data-step="recap" section used to live.
 function finishOrgStyleStep(){
-  goToStep('recap');
   startRecapStep();
-}
-// Round 125 — "who are you" step 2 of 2 (company profile/recap). Advances
-// to the Marketing Loop ("strategy").
-function finishRecapStep(){
   goToStep('loop');
   startLoopStep();
 }
-// Round 125 — "strategy" step. Advances into the CX/Media Science/Team/
-// Voice maturity carousel.
+// Round 125 — "strategy" step. 2026-08-19 (strategic scoring round), per
+// direct instruction: "keep Marketing Loop and eliminate How advanced is
+// your CX, Media Science, Team Operate, Voice and Copywriting from the
+// free assessment because they aren't used for scoring" — the CX/Media
+// Science/Team/Voice maturity carousel that used to run here is gone.
+// Confirmed via code audit that the real, authoritative score
+// (computeScores(), the one that takes over once the post-registration
+// "Extended evaluation" survey is done) never read those 4 fields at all —
+// only the pre-registration coarse *estimate* (computeQuickScores()) did,
+// and that's been rewritten below to use real Loop-stage data instead. So
+// this now hands off straight into the quick-reveal interstitial that used
+// to run after the maturity carousel's last slide, then registration —
+// same hand-off startQuickReveal() always did, just reached one step
+// sooner.
 function finishLoopStep(){
-  enterMaturityModule(0);
+  startQuickReveal();
 }
 
 document.getElementById('restartBtn').addEventListener('click', () => {
-  state = { company:'', url:'', industryIdx:'', description:'', productThemes:'', competitors:[], buyerType:'B2C', audience:new Set(), wealth:new Set(), region:null, address:'', geo:null, censusNational:null, censusLocal:null, cbpNational:null, cbpLocal:null, firstName:'', lastName:'', email:'', phoneCountry:'+1', phone:'', consent:false, assessStages:new Set(), assessProducts:new Set(), productRatings:{}, answers:{}, opportunity:null, mediaScienceLevel:1, cxMaturityLevel:1, teamMaturityLevel:1, voiceMaturityLevel:1, revenueLevel:2, orgStyle:null, orgChartId:null, stageEffectiveness:{}, fnGroupRatings:{} };
-  matSubIndex = 0;
+  state = { company:'', url:'', industryIdx:'', description:'', productThemes:'', competitors:[], buyerType:'B2C', audience:new Set(), wealth:new Set(), region:null, address:'', geo:null, censusNational:null, censusLocal:null, cbpNational:null, cbpLocal:null, firstName:'', lastName:'', email:'', phoneCountry:'+1', phone:'', consent:false, assessStages:new Set(), assessProducts:new Set(), productRatings:{}, answers:{}, opportunity:null, revenueLevel:2, orgStyle:null, orgChartId:null, stageEffectiveness:{}, cxConsistencyRating:0, fnGroupRatings:{} };
   document.querySelectorAll('#orgStyleChips .select-tile').forEach(c => c.classList.remove('selected'));
   document.getElementById('orgChartGrid').innerHTML = '';
   document.getElementById('orgChartSection').style.display = 'none';
@@ -3616,12 +3365,22 @@ function orgChartSvg(topLabel, children, color){
   const childW = Math.min(84, Math.floor((w - 20) / n) - 8);
   const gap = (w - n * childW) / (n + 1);
   const childY = 96, childH = 30;
+  // 2026-08-19 QA fix — a 3-child shape (e.g. "Embedded Agency Pod") gets a
+  // noticeably narrower childW (58) than a 2-child shape (84), but the
+  // label font-size/truncation length used to be fixed regardless of n —
+  // "In-House Strategy" truncated to "In-House Strat…" still didn't fit
+  // inside a 58-wide box at 7.6px, so the text visually ran past the box's
+  // own border ("falls outside the org lines"). Both now scale down with
+  // childW so text always fits inside its box, at any n.
+  const fontSize = Math.max(6, Math.min(7.6, childW / 9));
+  const maxChars = Math.max(8, Math.floor(childW / (fontSize * 0.62)));
   let lines = '';
   let boxes = `<rect x="${topX}" y="${topY}" width="${topW}" height="${topH}" rx="4" fill="${color}"/><text x="${w/2}" y="${topY + topH/2 + 4}" text-anchor="middle" font-size="10" fill="#fff" font-family="Inter, sans-serif">${topLabel}</text>`;
   children.forEach((c, i) => {
     const cx = gap + i * (childW + gap) + childW / 2;
     lines += `<line x1="${w/2}" y1="${topY + topH}" x2="${cx}" y2="${childY}" stroke="#D2D2D7" stroke-width="1.5"/>`;
-    boxes += `<rect x="${cx - childW/2}" y="${childY}" width="${childW}" height="${childH}" rx="4" fill="#fff" stroke="${color}" stroke-width="1.5"/><text x="${cx}" y="${childY + childH/2 + 4}" text-anchor="middle" font-size="7.6" fill="#2A2618" font-family="Inter, sans-serif">${c.length > 16 ? c.slice(0,14) + '…' : c}</text>`;
+    const label = c.length > maxChars ? c.slice(0, maxChars - 2) + '…' : c;
+    boxes += `<rect x="${cx - childW/2}" y="${childY}" width="${childW}" height="${childH}" rx="4" fill="#fff" stroke="${color}" stroke-width="1.5"/><text x="${cx}" y="${childY + childH/2 + 4}" text-anchor="middle" font-size="${fontSize}" fill="#2A2618" font-family="Inter, sans-serif">${label}</text>`;
   });
   return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${lines}${boxes}</svg>`;
 }
@@ -3741,10 +3500,27 @@ function renderLoopStep(){
       </div>
     </div>`;
   }).join('');
+
+  // 2026-08-20 — the one real, independent CX Strength input. Same
+  // loop-stage-row markup/loop-rank buttons as the 5 rows above, so it
+  // reads as one more row in the same list, not a bolted-on extra module.
+  const cxCurrent = state.cxConsistencyRating || 0;
+  const cxRanks = [1,2,3,4,5].map(n => `<button type="button" class="${n === cxCurrent ? 'active' : ''}" onclick="rateLoopCx(${n})">${n}</button>`).join('');
+  document.getElementById('loopCxRow').innerHTML = `<div class="loop-stage-row">
+      <div><div class="stage-name">Customer Experience</div><div class="stage-sub">How consistent is the experience across every channel a customer touches — email, site, call center, in-person?</div></div>
+      <div class="loop-stage-metrics">
+        <div><div class="stage-sub" style="margin-bottom:4px;">Consistency today</div><div class="loop-rank">${cxRanks}</div></div>
+      </div>
+    </div>`;
 }
 
 function rateLoopStage(stageName, n){
   state.stageEffectiveness[stageName] = n;
+  renderLoopStep();
+}
+
+function rateLoopCx(n){
+  state.cxConsistencyRating = n;
   renderLoopStep();
 }
 
@@ -3893,23 +3669,24 @@ function finishQuickReveal(){
   goToStep('contact');
 }
 
-// Round 125 — Company Profile is a standalone pre-registration step again
-// (see the data-step="recap" section); still called from
-// renderInitialReport() too, since it's what populates state.opportunity
-// for the first-deliverable stats and it's harmless to re-run.
+// 2026-08-19 (QA round) — Company Profile is no longer a standalone
+// pre-registration step; its cards now live on the report page (see the
+// data-step="report" section). Still called headlessly from
+// finishOrgStyleStep() (seeds state.opportunity before the loop step) and
+// from renderInitialReport() (populates the relocated cards for real).
 function startRecapStep(){
   renderRecapAddressStatus('');
   renderRecapDescription();
   renderRecapProductThemes();
   renderRecapIndustry(); // renders with whatever's cached (fallback on first visit)
   renderRecapCensus();
-  // 2026-08-19 (login redesign, round 2), per direct instruction: "We only
-  // need to show the local map when user selects the local option" — the
-  // address input/lookup and the county-grounded revenue figures below it
-  // still apply at every footprint (National/Global still ground their
-  // market-size read in a real place), but the visual pin-drop map itself
-  // is only meaningful for a single-market (Local) brand, so it's hidden
-  // for National/Global.
+  // 2026-08-19 (QA round), per direct instruction: "We only need the
+  // address to support the local path through the site" — the whole
+  // address/map card (entry + lookup, not just the pin-drop visual) is now
+  // Local-only. National/Global skip it entirely and rely on
+  // primeNationalCensus()'s national-level figures below.
+  const addressCardEl = document.getElementById('recapAddressCard');
+  if (addressCardEl) addressCardEl.style.display = state.region === 'Local' ? 'block' : 'none';
   const mapEl = document.getElementById('recapMap');
   if (mapEl) mapEl.style.display = state.region === 'Local' ? 'block' : 'none';
   // Kick off national Census data in the background the first time this step
@@ -4605,22 +4382,34 @@ async function submitContact(){
 /* ---------- Round 122: "first deliverable" (quadrant estimate + synthesis)
    and the "enhance your profile" accordion ---------- */
 
-// Coarse quadrant placement from the maturity ladders that map onto the
-// report's two axes — CX maturity asks close to the same question the CX
-// axis measures (how coordinated/consistent the experience is); Media
-// Science maturity is a measurement-maturity proxy for the Media axis, not
-// a literal restatement of funnel execution, which is why the quadrant is
-// always labeled an estimate until Assess replaces it. Team maturity isn't
-// plotted on either axis — it stays narrative context. Round 125, judgment
-// call per direct instruction ("Voice... very important category for CX
-// before registration"): Voice is blended 50/50 into the CX axis rather
-// than left off the quadrant entirely — disclosed here and in the
-// quadrant's basis note (renderFullReport()) rather than done silently.
+// 2026-08-20 (strategic scoring round, follow-up), per direct instruction:
+// the free assessment's quadrant must come from real, independently-
+// measured data, sourced only from the Marketing Loop step — no derived/
+// inferred numbers, no fabricated placeholders. Media Strength (X) is the
+// average of the visitor's 5 Loop-stage effectiveness ratings
+// (state.stageEffectiveness) — the same signal computeScores() itself uses
+// for the real Media axis once Extended evaluation runs, so this reads
+// accurately from the start. CX Strength (Y) is the visitor's own answer
+// to the Loop step's 6th question ("How consistent is your customer
+// experience across every channel?" — state.cxConsistencyRating,
+// rateLoopCx()) — a real, separately-asked question, not the stage ratings
+// re-sliced a different way (an earlier pass this round tried that; it was
+// wrong because it made the two axes mathematically echo each other rather
+// than measuring genuinely different things, the way a real evaluation
+// would). Both axes are coarser than the fully-measured score Extended
+// evaluation eventually produces (hence isQuick stays true — refines,
+// doesn't replace), but both are real answers from the one page that
+// matters, nothing invented.
 function computeQuickScores(){
-  const lvlPct = lvl => Math.round(((Number(lvl || 1) - 1) / 3) * 100);
-  const cxPct = lvlPct(state.cxMaturityLevel);
-  const voicePct = lvlPct(state.voiceMaturityLevel);
-  return { mediaPct: lvlPct(state.mediaScienceLevel), cxPct: Math.round((cxPct + voicePct) / 2), isQuick: true };
+  const toPct = avg => Math.round((avg - 1) / 4 * 100);
+
+  const stageVals = Object.values(state.stageEffectiveness || {}).map(Number).filter(n => n > 0);
+  const mediaPct = stageVals.length ? toPct(stageVals.reduce((a, b) => a + b, 0) / stageVals.length) : 0;
+
+  const cxRating = Number(state.cxConsistencyRating);
+  const cxPct = cxRating > 0 ? toPct(cxRating) : 0;
+
+  return { mediaPct, cxPct, isQuick: true };
 }
 // Whichever score set is currently authoritative — the real, function-by-
 // function scores once Assess has run (window.scores), falling back to the
@@ -4631,12 +4420,25 @@ function activeScores(){
 
 // Round 125 — redesigned per direct instruction: "Here is what we learned
 // should have some brief intro copy and then broken down into a grid that
-// maps What we learned to one of our product themes: The Brand, The
-// Planner, The Voice, The Analyst, Media Ops and the included product
-// features." Also folds in "Optimizing the journey for [company]"
-// (renderJourneyBP(), formerly at the top of the Scope Picker accordion
-// item) and "How your team stacks up" (the Team maturity self-rating),
-// both per direct instruction that they belong in this section now.
+// maps What we learned to one of our product themes." Also folds in
+// "Optimizing the journey for [company]" (renderJourneyBP(), formerly at
+// the top of the Scope Picker accordion item).
+// 2026-08-19 (strategic scoring round): this used to cite the CX/Media
+// Science/Team/Voice maturity self-ratings, which are gone (see
+// finishLoopStep()'s comment — they weren't used for scoring, only for
+// this copy and the pre-Assess estimate). Rewritten to cite the Loop
+// step's own stage-effectiveness self-ratings instead (state.
+// stageEffectiveness) — real data the visitor already gave us, one card
+// per Loop stage (RUBRIC's 5 stages), rather than inventing new content or
+// falling back to a permanent default.
+const STAGE_EFF_LABEL = { 1: 'Needs attention', 2: 'Inconsistent', 3: 'Getting there', 4: 'Working well', 5: 'A real strength' };
+const STAGE_PRODUCT_DESC = {
+  Awareness: 'Media mix scenarios and DMA-level testing that put the brand in front of the right prospects first.',
+  Consideration: 'Landing pages and remarketing creative that keep the story going once someone starts comparing.',
+  Purchase: 'A consistent handoff from Media’s promise through booking, call center, and POS to the close.',
+  Loyalty: 'CRM and lifecycle programs that keep customers coming back without another acquisition dollar.',
+  Advocacy: 'Referral and review prompts built into the experience, turning customers into the next Awareness channel.'
+};
 function renderReportSynthesis(){
   const introEl = document.getElementById('reportSynthesisText');
   if (!introEl) return;
@@ -4647,24 +4449,20 @@ function renderReportSynthesis(){
   const company = state.company || 'This company';
   let intro = `${company} is a ${footprint} ${industry.label ? industry.label.toLowerCase() : 'business'} `;
   intro += aud.length ? `targeting ${aud.join(', ')}${wealth.length ? ` in the ${wealth.join(', ').toLowerCase()} tier` : ''}. ` : `with its target audience not yet narrowed down. `;
-  intro += `Here's how that self-rated profile maps to what a Verilume account actually delivers, function by function.`;
+  intro += `Here's how your own Marketing Loop ratings map to what a Verilume account actually delivers, stage by stage.`;
   introEl.textContent = intro;
 
   renderJourneyBP();
 
   const gridEl = document.getElementById('reportLearnedGrid');
   if (!gridEl) return;
-  const mediaLvl = MAT_LEVELS.media[(state.mediaScienceLevel || 1) - 1];
-  const cxLvl = MAT_LEVELS.cx[(state.cxMaturityLevel || 1) - 1];
-  const teamLvl = MAT_LEVELS.team[(state.teamMaturityLevel || 1) - 1];
-  const voiceLvl = MAT_LEVELS.voice[(state.voiceMaturityLevel || 1) - 1];
-  const cards = [
-    { num: 1, theme: 'The Brand', finding: `Customer experience: "${cxLvl.name}" — ${cxLvl.quick.toLowerCase()}.`, desc: 'Your Brand Brief and uploaded style guide, plus access to creative resources.' },
-    { num: 2, theme: 'The Planner', finding: `Media science: "${mediaLvl.name}" — ${mediaLvl.quick.toLowerCase()}.`, desc: 'Media mix scenarios and DMA testing options.' },
-    { num: 3, theme: 'The Voice', finding: `Voice &amp; copywriting: "${voiceLvl.name}" — ${voiceLvl.quick.toLowerCase()}.`, desc: 'Copywriting and presentation outputs.' },
-    { num: 4, theme: 'The Analyst', finding: `Media science: "${mediaLvl.name}" — ${mediaLvl.quick.toLowerCase()}.`, desc: 'Dashboards and access to your live accounts for analysis and optimization.' },
-    { num: 5, theme: 'Media Ops', finding: `How your team stacks up: "${teamLvl.name}" — ${teamLvl.quick.toLowerCase()}.`, desc: 'Everything you need to execute.' }
-  ];
+  const cards = RUBRIC.map((stage, i) => {
+    const rating = state.stageEffectiveness[stage.stage];
+    const finding = rating
+      ? `${stage.sub} Self-rated: "${STAGE_EFF_LABEL[rating] || 'Not yet rated'}" (${rating}/5).`
+      : `${stage.sub} Not yet self-rated.`;
+    return { num: i + 1, theme: stage.stage, finding, desc: STAGE_PRODUCT_DESC[stage.stage] || '' };
+  });
   gridEl.innerHTML = cards.map(c => `<div class="learned-card">
       <div class="lc-num">${c.num}</div>
       <h4>${c.theme}</h4>
@@ -4811,15 +4609,21 @@ async function syncLeadToBackend(){
     quadrantBasis: 'Estimate',
     mediaPct: q.mediaPct,
     cxPct: q.cxPct,
-    mediaScienceLevelName: (MAT_LEVELS.media[(state.mediaScienceLevel || 1) - 1] || {}).name || '',
-    cxMaturityLevelName: (MAT_LEVELS.cx[(state.cxMaturityLevel || 1) - 1] || {}).name || '',
-    teamMaturityLevelName: (MAT_LEVELS.team[(state.teamMaturityLevel || 1) - 1] || {}).name || '',
-    voiceMaturityLevelName: (MAT_LEVELS.voice[(state.voiceMaturityLevel || 1) - 1] || {}).name || '',
+    // 2026-08-19 (strategic scoring round): the CX/Media Science/Team/Voice
+    // maturity self-ratings these 4 fields used to summarize are gone (see
+    // finishLoopStep()'s comment) — both mediaPct and cxPct above are now
+    // real, built entirely from the Marketing Loop page (see
+    // computeQuickScores()'s comment): mediaPct from the 5 stage ratings,
+    // cxPct from the page's 6th question (cxConsistencyRating) — so
+    // there's no fabricated "Level" name left to send. loopEffectiveness
+    // and cxConsistencyRating below carry the real answers both
+    // percentages above are built from.
     industryRevenue: state.opportunity ? state.opportunity.industryRevenue : null,
     marketSize: state.opportunity ? state.opportunity.marketSize : null,
     generations: audienceLabels(),
     wealthTier: wealthLabels(),
     loopEffectiveness: Object.assign({}, state.stageEffectiveness),
+    cxConsistencyRating: state.cxConsistencyRating || 0,
     consent: !!state.consent,
     source: 'assessment.html'
   };
@@ -5198,7 +5002,7 @@ function renderFullReport(){
   const basisNote = document.getElementById('quadrantBasisNote');
   if (basisNote){
     basisNote.textContent = s.isQuick
-      ? 'This is a starting estimate, based on how you rated your own Media Science, Customer Experience, and Voice & Copywriting maturity (CX Strength blends the latter two) — work through "Extended evaluation" below to refine it into a measured position.'
+      ? 'This is a starting estimate, based on how you rated each Marketing Loop stage — work through "Extended evaluation" below to refine it into a measured position.'
       : 'Refined from your function-by-function ratings below — this is your measured position, not an estimate.';
   }
 
@@ -5321,24 +5125,24 @@ function renderReportOpportunity(){
     stats += `<div class="stat-tile">
       <span class="stat-label">Total estimated market size</span>
       <span class="stat-value" style="color:var(--advocacy);">${opp.marketSize.toLocaleString()}</span>
-      <div class="stat-note">${opp.popLabel || ''} × selected generation(s) (${opp.genSharePct}% combined) × selected wealth tier(s) (${opp.wealthSharePct}% combined). Same figure shown at the recap step — illustrative approximation, not a licensed audience count.</div>
+      <div class="stat-note">${opp.popLabel || ''} × selected generation(s) (${opp.genSharePct}% combined) × selected wealth tier(s) (${opp.wealthSharePct}% combined). Same figure shown in your company profile below — illustrative approximation, not a licensed audience count.</div>
     </div>`;
   }
   if (opp.industryRevenue != null){
     stats += `<div class="stat-tile">
       <span class="stat-label">U.S. industry revenue (illustrative)</span>
       <span class="stat-value">${fmtB(opp.industryRevenue)}</span>
-      <div class="stat-note">Same figure shown at the recap step — not a live data feed, verify before use.</div>
+      <div class="stat-note">Same figure shown in your company profile below — not a live data feed, verify before use.</div>
     </div>`;
   }
   if (opp.local && opp.local.refined != null){
     stats += `<div class="stat-tile">
       <span class="stat-label">Refined local opportunity (target audience &amp; wealth)</span>
       <span class="stat-value">${fmtB(opp.local.refined)}</span>
-      <div class="stat-note">${opp.local.shareIsLive ? 'Grounded in real Census population share.' : 'Illustrative flat share.'} Same figure shown at the recap step.</div>
+      <div class="stat-note">${opp.local.shareIsLive ? 'Grounded in real Census population share.' : 'Illustrative flat share.'} Same figure shown in your company profile below.</div>
     </div>`;
   }
-  statsEl.innerHTML = stats || `<div class="recap-note">Opportunity size wasn't calculated this session — revisit the recap step to generate it.</div>`;
+  statsEl.innerHTML = stats || `<div class="recap-note">Opportunity size wasn't calculated this session — refresh this page to generate it.</div>`;
 
 }
 

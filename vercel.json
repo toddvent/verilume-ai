@@ -9,6 +9,7 @@
     { "source": "/", "destination": "/frontend/index.html", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/index.html", "destination": "/frontend/index.html" },
     { "source": "/account.html", "destination": "/frontend/account.html" },
     { "source": "/login.html", "destination": "/frontend/login.html" },
     { "source": "/forgot-password.html", "destination": "/frontend/forgot-password.html" },
