@@ -10201,6 +10201,12 @@ const BANKING_STAGE_CHANNEL_WEIGHTS = {
 // read). effectiveStageChannelWeights(stage) is the single lookup point
 // every caller below uses — falls back to the generic STAGE_CHANNEL_WEIGHTS
 // for any industry not in this map, including Insurance.
+// Round 133 note: unchanged by the industryCluster()/INDUSTRY_CLUSTER
+// restructuring above — no cluster (elective-healthcare/travel-cruise/
+// real-estate/home-services/generic) has dedicated channel-mix research,
+// only Auto and Financial Services/Banking do, so every one of those 5
+// clusters correctly falls through to the same generic STAGE_CHANNEL_WEIGHTS
+// either way; there was nothing to consolidate on this side.
 const INDUSTRY_STAGE_CHANNEL_WEIGHTS = {
   'Automotive Sales & Service': AUTO_DEALER_STAGE_CHANNEL_WEIGHTS,
   'Financial Services / Banking': BANKING_STAGE_CHANNEL_WEIGHTS,
@@ -11294,37 +11300,66 @@ const FUNNEL_KPIS = ['Clicks', 'Leads', 'Transactions'];
 // point tied to real published data, always overridable via the funnel-rate
 // fields directly — not a claim of bespoke per-industry research, and the
 // right thing to replace first once an account's own GA4/CRM data is live.
-const INDUSTRY_FUNNEL_MULTIPLIER = {
-  'Quick-Service / Limited-Service Restaurants': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: eCommerce (closest to high-volume/low-consideration)
-  'Full-Service Dining': { visit: 1.0, lead: 1.0, booking: 1.05 }, // booking dampened slightly for reservation/consideration step
-  'Hotels / Hospitality': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: Hotels & Resorts (60%)
-  'Retail — General Merchandise': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: eCommerce
-  'Retail — Specialty / Apparel': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: eCommerce
-  'Grocery / Supermarkets': { visit: 1.0, lead: 1.0, booking: 1.12 }, // no dedicated grocery row in FPS; proxied off eCommerce
-  'Automotive Sales & Service': { visit: 1.0, lead: 1.0, booking: 0.91 }, // FPS: Automotive
-  'Healthcare — Outpatient / Clinics': { visit: 1.0, lead: 1.0, booking: 0.95 }, // FPS: Healthcare
-  'Healthcare — Hospitals & Systems': { visit: 1.0, lead: 1.0, booking: 0.85 }, // FPS: Healthcare, dampened for a longer, multi-stakeholder system-level decision
-  'Financial Services / Banking': { visit: 1.0, lead: 1.0, booking: 0.99 }, // FPS: Financial Services
-  'Insurance': { visit: 1.0, lead: 1.0, booking: 0.97 }, // FPS: Business Insurance
-  'Real Estate': { visit: 1.0, lead: 1.0, booking: 0.99 }, // FPS: Real Estate — matches this file's existing INDUSTRY_CYCLE_MULTIPLIER=6 (longest cycle) with a correspondingly low booking rate
-  'Fitness / Gyms & Studios': { visit: 1.0, lead: 1.0, booking: 1.0 }, // FPS has no close match, left at the 30-industry average
-  'Salons / Spas / Personal Care': { visit: 1.0, lead: 1.0, booking: 1.0 }, // FPS average
-  'Home Services / Contractors': { visit: 1.0, lead: 1.0, booking: 1.01 }, // FPS: Construction
-  'Professional Services (B2B)': { visit: 1.0, lead: 1.0, booking: 0.86 }, // FPS: IT & Managed Services — kept for completeness even though this platform is primarily B2C-focused
-  'Education / Training': { visit: 1.0, lead: 1.0, booking: 1.23 }, // FPS: Higher Education
-  'Entertainment / Attractions': { visit: 1.0, lead: 1.0, booking: 1.14 }, // FPS: Entertainment
-  'Travel / Tourism': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: Hotels & Resorts — the closest available proxy for a booking-driven close rate
-  'Cruise Lines — Luxury': { visit: 1.0, lead: 1.0, booking: 0.78 }, // dampened ~20-30% for the long, highly-considered purchase this file's own INDUSTRY_CYCLE_MULTIPLIER=6 (longest of any industry on file) already implies
-  'Cruise Lines — Mass Market': { visit: 1.0, lead: 1.0, booking: 1.06 }, // dampened less than Luxury (INDUSTRY_CYCLE_MULTIPLIER=2.5, a shorter cycle than Luxury's 6)
-  'Sporting Goods Retail': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: eCommerce
-  'Wine & Spirits / Winery': { visit: 1.0, lead: 1.0, booking: 1.12 }, // no dedicated row in FPS; proxied off eCommerce (specialty/gift retail pattern)
-  'Telecom / Wireless Retail': { visit: 1.0, lead: 1.0, booking: 0.86 }, // FPS: IT & Managed Services for the booking step
-  'E-commerce / DTC Brand': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: eCommerce
-  'Nonprofit / Association': { visit: 1.0, lead: 1.0, booking: 1.0 } // no dedicated row in FPS; kept at the all-industry average rather than guessing
-  // 'Other / Not listed' intentionally has no entry — falls back to 1/1/1 (no adjustment), same convention as INDUSTRY_CYCLE_MULTIPLIER.
+// Round 133 (2026-08-20), per direct instruction — restructured from 26
+// individually-labeled rows (each carrying its own "FPS: X (proxy)"
+// comment) into the 5 real research clusters plus 2 standalone verticals,
+// per Todd's correction: "We established early that the demo sites were
+// for demos and not what we were building. The research that I thought
+// that we included were the five main clusters of company types that we
+// did find research for. We need to group all categories under them
+// except what we found for Auto and Insurance until we have either better
+// research or live company data." The old per-industry structure implied
+// 26 independently-considered industries when the actual commissioned
+// research (cxmedia-media-mix-benchmark-research-2026-08-17.md) only ever
+// covered 6 verticals — Auto Dealers, Financial Services/Insurance, Home
+// Services, Elective Healthcare, Travel/Cruise, Real Estate — and most of
+// the other 20 rows were never part of that brief; they were leftover
+// individual First Page Sage proxy matches from an earlier, separate round
+// (132q), which read as more precision than the research scope supports.
+//
+// Auto Dealers and Financial Services/Insurance (Banking + Insurance) have
+// real, current, dedicated sourced data (NADA; ABA/First Page Sage) and
+// stay standalone, unchanged from before — see
+// STANDALONE_INDUSTRY_FUNNEL_MULTIPLIER below and
+// AUTO_DEALER_STAGE_CHANNEL_WEIGHTS/BANKING_STAGE_CHANNEL_WEIGHTS above,
+// neither touched by this round. Every other industry now maps to one of 4
+// named clusters (the remaining verticals from the same research brief) or
+// falls into a single Generic bucket — see INDUSTRY_CLUSTER below.
+const STANDALONE_INDUSTRY_FUNNEL_MULTIPLIER = {
+  'Automotive Sales & Service': { visit: 1.0, lead: 1.0, booking: 0.91 }, // FPS: Automotive — unchanged
+  'Financial Services / Banking': { visit: 1.0, lead: 1.0, booking: 0.99 }, // FPS: Financial Services — unchanged
+  'Insurance': { visit: 1.0, lead: 1.0, booking: 0.97 } // FPS: Business Insurance — unchanged; still the only source found, still excluded from a channel-mix override per the 2018-data decision above
+};
+
+// Every INDUSTRY_LABELS entry NOT listed here (including 'Other / Not
+// listed') falls through to the 'generic' cluster via industryCluster()'s
+// default below — that's intentional, not an omission: those industries
+// were never part of the commissioned vertical research, so they shouldn't
+// imply a dedicated-research match they don't have.
+const INDUSTRY_CLUSTER = {
+  'Healthcare — Outpatient / Clinics': 'elective-healthcare',
+  'Healthcare — Hospitals & Systems': 'elective-healthcare', // imperfect fit (hospitals/systems care isn't really "elective"), but this is the only healthcare research vertical on file — flagged here rather than silently folded in
+  'Home Services / Contractors': 'home-services',
+  'Hotels / Hospitality': 'travel-cruise',
+  'Travel / Tourism': 'travel-cruise',
+  'Cruise Lines — Luxury': 'travel-cruise',
+  'Cruise Lines — Mass Market': 'travel-cruise',
+  'Real Estate': 'real-estate'
+};
+function industryCluster(industryLabel){
+  return INDUSTRY_CLUSTER[industryLabel] || 'generic';
+}
+
+const CLUSTER_FUNNEL_MULTIPLIER = {
+  'elective-healthcare': { visit: 1.0, lead: 1.0, booking: 0.95 }, // FPS: Healthcare (Outpatient/Clinics figure) — Hospitals & Systems' extra dampening (0.85) dropped in favor of one shared cluster number; edit per-campaign if a hospital-system account needs it
+  'travel-cruise': { visit: 1.0, lead: 1.0, booking: 1.12 }, // FPS: Hotels & Resorts, the actual sourced proxy for this cluster — the old cruise-specific extra dampening (Luxury 0.78 / Mass Market 1.06) is dropped from THIS multiplier; INDUSTRY_CYCLE_MULTIPLIER (Transaction Window) still captures cruise's longer sales cycle through a separate, disclosed mechanism
+  'real-estate': { visit: 1.0, lead: 1.0, booking: 0.99 }, // FPS: Real Estate — unchanged, single industry, matches this file's own INDUSTRY_CYCLE_MULTIPLIER=6
+  'home-services': { visit: 1.0, lead: 1.0, booking: 1.01 }, // FPS: Construction — unchanged, single industry
+  'generic': { visit: 1.0, lead: 1.0, booking: 1.0 } // no dedicated research vertical for this group (Restaurants, Retail, Grocery, Fitness, Salons, Professional Services, Education, Entertainment, Sporting Goods, Wine & Spirits, Telecom, E-commerce, Nonprofit, Other, and anything not listed) — no adjustment, rather than the individually-flavored FPS proxies this group used to carry
 };
 function getIndustryFunnelMultiplier(){
-  return (state.industry && INDUSTRY_FUNNEL_MULTIPLIER[state.industry]) || { visit: 1, lead: 1, booking: 1 };
+  if (state.industry && STANDALONE_INDUSTRY_FUNNEL_MULTIPLIER[state.industry]) return STANDALONE_INDUSTRY_FUNNEL_MULTIPLIER[state.industry];
+  return CLUSTER_FUNNEL_MULTIPLIER[industryCluster(state.industry)] || CLUSTER_FUNNEL_MULTIPLIER.generic;
 }
 
 // Round 132ao (2026-08-12) follow-up requirement, per direct instruction:

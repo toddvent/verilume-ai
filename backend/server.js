@@ -4375,10 +4375,23 @@ function getCampaignsForAccount(accountId){
   });
 }
 
+// 2026-08-20 fix — root-caused from a Vercel Function Log Todd shared: a
+// live POST /api/auth/request-signup-verification returned 404 with the
+// log panel showing Middleware 200, External APIs "no outgoing requests",
+// and Cache "404 Not Found" — meaning this handler never actually ran;
+// Vercel's edge served a *cached* 404 for that exact path (almost
+// certainly cached from before this route existed in an earlier
+// deployment, since Vercel's platform-level 404 for an unmatched route is
+// itself cacheable by path). sendJson() never set Cache-Control, so
+// nothing told the edge these responses are dynamic/per-request. Every
+// API response now explicitly opts out of caching — this API has no
+// endpoint where a stale cached response (a 404, or worse, another
+// account's data) is ever correct to serve.
 function sendJson(res, status, obj){
   const body = JSON.stringify(obj);
   res.writeHead(status, {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-store, must-revalidate',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'

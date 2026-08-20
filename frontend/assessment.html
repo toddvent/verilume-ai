@@ -1113,29 +1113,14 @@
           </div>
         </div>
       </div>
-      <!-- Round 133, direct instruction — Step 1's "Visual — TBD" placeholder
-           replaced with the real quadrant graphic. Reuses .quad-visual.mini/
-           .qcell/.quad-marker/.quad-axis-x verbatim from the landing-page
-           teaser (line ~992) and the same 4 names/definitions quadrantFor()
-           returns on the real report, so this never drifts from the actual
-           scoring logic. Marker seeded in q1 (upper right = strong on both
-           axes) per direct instruction to plot in the right upper corner —
-           illustrative only, nothing's been rated yet at Step 1. -->
       <aside class="mat-visual">
-        <div class="teaser-label">Your free assessment includes</div>
-        <div class="quad-visual mini" aria-hidden="true">
-          <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">The Complete Brand</div>
-          <div class="qcell q3">Invisible &amp; Inconsistent</div>
-          <div class="qcell q4">All Promise, No Delivery</div>
-          <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
-        </div>
-        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Weak Media</span><span>Strong Media →</span></div>
+        <div class="teaser-label">What this assessment covers</div>
+        <div class="mod-visual-frame"><div class="placeholder">Visual — TBD</div></div>
         <ul class="landing-teaser-bullets">
-          <li><b>The Complete Brand</b> — reach and delivery both firing. The target quadrant: loyalty compounds here, and advocacy funds the next cycle for free.</li>
-          <li><b>Hidden Gem</b> — the experience is genuinely true to your promise, but that truth isn't reaching enough people yet.</li>
-          <li><b>All Promise, No Delivery</b> — reach and creative are working, but somewhere in the experience the promise stops being true.</li>
-          <li><b>Invisible &amp; Inconsistent</b> — struggling to get discovered and struggling to deliver once someone shows up. A foundational rebuild, not a quick fix.</li>
+          <li>The full Marketing Loop, Awareness through Advocacy, self-rated stage by stage against best practice.</li>
+          <li>Your organization's structure and how work actually gets done.</li>
+          <li>A market snapshot — population, income, and competitive context grounded in your real footprint.</li>
+          <li>A final position on the CX Quadrant — your strongest and weakest areas, named plainly.</li>
         </ul>
       </aside>
     </div>
@@ -1327,13 +1312,35 @@
              rateLoopCx()/computeQuickScores(). -->
         <div id="loopCxRow"></div>
       </div>
+      <!-- Round 133, direct instruction — the loop-diagram SVG (formerly
+           #loopVisual, loopDiagramSvg()) replaced with the real Magic
+           Quadrant preview, since this is the page whose 6 questions
+           (5 stage ratings + the CX consistency question right above)
+           directly compute the free assessment's quadrant position (see
+           computeQuickScores()). Reuses .quad-visual.mini/.qcell/
+           .quad-marker/.quad-axis-x verbatim from the landing-page teaser
+           (line ~992) and the same 4 names/definitions quadrantFor()
+           returns on the real report, so this can't drift from the actual
+           scoring logic. Marker seeded in q1 (upper right = strong on both
+           axes) per direct instruction to plot in the right upper corner —
+           illustrative only; the visitor's real marker only appears once
+           they've answered and reached the report. Static markup, not
+           JS-rendered — renderLoopStep() no longer touches this aside. -->
       <aside class="mat-visual">
-        <div class="teaser-label">Where Verilume takes you</div>
-        <div class="mod-visual-frame" id="loopVisual"></div>
+        <div class="teaser-label">Your free assessment includes</div>
+        <div class="quad-visual mini" aria-hidden="true">
+          <div class="qcell q2">Hidden Gem</div>
+          <div class="qcell q1">The Complete Brand</div>
+          <div class="qcell q3">Invisible &amp; Inconsistent</div>
+          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
+        </div>
+        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Weak Media</span><span>Strong Media →</span></div>
         <ul class="landing-teaser-bullets">
-          <li>Media mix scenarios that actually hold budget to the ideal-% shown here, stage by stage.</li>
-          <li>DMA-level testing to prove whether real spend matches this loop's recommendation.</li>
-          <li>Your effectiveness ranking becomes a tracked KPI, not a one-time gut-check.</li>
+          <li><b>The Complete Brand</b> — reach and delivery both firing. The target quadrant: loyalty compounds here, and advocacy funds the next cycle for free.</li>
+          <li><b>Hidden Gem</b> — the experience is genuinely true to your promise, but that truth isn't reaching enough people yet.</li>
+          <li><b>All Promise, No Delivery</b> — reach and creative are working, but somewhere in the experience the promise stops being true.</li>
+          <li><b>Invisible &amp; Inconsistent</b> — struggling to get discovered and struggling to deliver once someone shows up. A foundational rebuild, not a quick fix.</li>
         </ul>
       </aside>
     </div>
@@ -2935,6 +2942,41 @@ let state = {
 function industryOf(){
   return INDUSTRIES[state.industryIdx] || INDUSTRIES[INDUSTRIES.length - 1];
 }
+
+// Round 133 (2026-08-20), per direct instruction — same INDUSTRY_CLUSTER/
+// industryCluster() structure as portal.html's, kept in sync there
+// (STANDALONE_INDUSTRY_FUNNEL_MULTIPLIER/CLUSTER_FUNNEL_MULTIPLIER — see
+// that file's Round 133 comment for the full rationale): "group all
+// categories under [the 5 real research clusters] except what we found for
+// Auto and Insurance." Added here for consistency and for any future
+// industry-conditioned logic in the free assessment.
+// IMPORTANT — nothing numeric in THIS file changes as a result: the free
+// assessment's only industry-adjacent constant, LOOP_STAGE_BASE (the
+// Marketing Loop step's per-stage "ideal budget %"), was never
+// industry-conditioned in the first place, and the commissioned research
+// (cxmedia-media-mix-benchmark-research-2026-08-17.md) is about channel
+// mix WITHIN a stage, not the stage-level split itself — there's no real
+// per-cluster data to plug into LOOP_STAGE_BASE without inventing it. This
+// utility exists so a future feature (e.g. cluster-aware messaging or a
+// real per-cluster stage split, once that research exists) has one
+// canonical mapping to build on, matching portal.html exactly.
+const INDUSTRY_CLUSTER = {
+  'Healthcare — Outpatient / Clinics': 'elective-healthcare',
+  'Healthcare — Hospitals & Systems': 'elective-healthcare',
+  'Home Services / Contractors': 'home-services',
+  'Hotels / Hospitality': 'travel-cruise',
+  'Travel / Tourism': 'travel-cruise',
+  'Cruise Lines — Luxury': 'travel-cruise',
+  'Cruise Lines — Mass Market': 'travel-cruise',
+  'Real Estate': 'real-estate'
+  // Automotive Sales & Service and Financial Services / Banking / Insurance
+  // are intentionally absent — standalone verticals, not clustered, per the
+  // same direct instruction. Everything else (including 'Other / Not
+  // listed') falls through to 'generic' below.
+};
+function industryCluster(industryLabel){
+  return INDUSTRY_CLUSTER[industryLabel] || 'generic';
+}
 prefillFromQueryString();
 // Step 2's audience/wealth selection tiles render once up front. The
 // consolidated journey best-practice panel targets a later-step element, so
@@ -3852,7 +3894,10 @@ function renderLoopStep(){
   if (errEl && errEl.style.display !== 'none' && loopStepMissingAnswers().length === 0){
     errEl.style.display = 'none';
   }
-  document.getElementById('loopVisual').innerHTML = loopDiagramSvg(RUBRIC.map(r => r.stage));
+  // Round 133 — #loopVisual (the loop-diagram SVG this line used to render
+  // into) was replaced by a static Magic Quadrant preview in the markup
+  // above; loopDiagramSvg() is kept (used nowhere else currently) in case
+  // it's wanted again, but no longer called here.
   document.getElementById('loopStageRows').innerHTML = RUBRIC.map(r => {
     const idealPct = loopStageIdealPct(r.stage);
     const importance = loopStageImportance(r.stage);
