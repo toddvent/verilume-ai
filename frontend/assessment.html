@@ -918,6 +918,36 @@
         <button type="button" class="btn-primary" id="saveModalSubmitBtn" onclick="submitSaveAccountModal()">Save my assessment →</button>
       </div>
     </div>
+    <!-- 2026-08-20 — signup verification step, per direct instruction
+         ("Actual accounts can't be created without phone verification for
+         now. Email is also acceptable if we run into issues.") and the
+         anti-bot framing that prompted it ("the phone also helps us with
+         bots hacking the site and creating excessive service calls"). Sits
+         between the form above and the success view below: submit no
+         longer creates the account directly — it first calls
+         POST /api/auth/request-signup-verification (phone by default) and
+         shows this view; only a confirmed code (POST /api/auth/
+         verify-signup-code) unlocks finishSaveAccountCreation(), which does
+         what submitSaveAccountModal() used to do on its own. -->
+    <div id="saveModalVerifyView" style="display:none;">
+      <h3 style="margin:0 0 6px;font-size:1.15rem;">Verify it's you</h3>
+      <p style="margin:0 0 18px;font-size:0.875rem;color:#6E6E73;line-height:1.5;" id="saveModalVerifyIntro"></p>
+      <div id="saveModalInterimCodeNote" style="display:none;font-size:0.8rem;background:#FFF8E1;border:1px solid #E8DCA8;border-radius:4px;padding:10px 12px;margin-bottom:14px;color:#6B5D1E;"></div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">6-digit code</label>
+        <input type="text" id="saveModalVerifyCode" inputmode="numeric" maxlength="6" placeholder="123456" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:1.1rem;letter-spacing:0.15em;box-sizing:border-box;">
+      </div>
+      <div style="font-size:0.8rem;color:#6E6E73;margin-bottom:18px;display:flex;gap:14px;flex-wrap:wrap;">
+        <a href="#" onclick="resendSignupVerification();return false;">Resend code</a>
+        <a href="#" id="saveModalSwitchChannelLink" onclick="switchSignupVerificationChannel();return false;">Verify by email instead</a>
+        <a href="#" onclick="backToSaveAccountForm();return false;">Change phone/email</a>
+      </div>
+      <div id="saveModalVerifyError" style="display:none;font-size:0.82rem;color:#B3261E;margin-bottom:14px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Cancel</button>
+        <button type="button" class="btn-primary" id="saveModalVerifyBtn" onclick="confirmSignupVerificationCode()">Verify &amp; save →</button>
+      </div>
+    </div>
     <div id="saveModalSuccessView" style="display:none;">
       <h3 style="margin:0 0 10px;font-size:1.15rem;">Saved ✓</h3>
       <p style="font-size:0.875rem;line-height:1.6;margin:0 0 14px;" id="saveModalSuccessNote"></p>
@@ -2878,7 +2908,9 @@ function persistSessionToken(accountId, token){
 
 function openSaveAccountModal(){
   saveModalThenOpenPortal = false; // reset here; activateInPortal() sets it true right after calling this
+  pendingSignup = null;
   document.getElementById('saveModalFormView').style.display = 'block';
+  document.getElementById('saveModalVerifyView').style.display = 'none';
   document.getElementById('saveModalSuccessView').style.display = 'none';
   document.getElementById('saveModalError').style.display = 'none';
   document.getElementById('saveModalName').value = (state.firstName || state.lastName) ? `${state.firstName || ''} ${state.lastName || ''}`.trim() : '';
@@ -2895,6 +2927,13 @@ function openSaveAccountModal(){
 function closeSaveAccountModal(){
   document.getElementById('saveAccountModal').style.display = 'none';
 }
+
+// 2026-08-20 — holds the validated form fields between the form view and
+// the verify view (submitSaveAccountModal() no longer creates the account
+// directly — see the #saveModalVerifyView HTML comment for why). Cleared
+// on openSaveAccountModal() / closeSaveAccountModal() / a successful
+// finishSaveAccountCreation().
+let pendingSignup = null;
 
 async function submitSaveAccountModal(){
   const name = document.getElementById('saveModalName').value.trim();
@@ -2919,10 +2958,133 @@ async function submitSaveAccountModal(){
   if (password !== passwordConfirm){ errEl.textContent = "Passwords don't match."; errEl.style.display = 'block'; return; }
   const phoneE164 = `${phoneCode}${phoneDigits}`; // E.164 — Twilio Verify's To param requires this exact shape, no spaces/punctuation
 
+  pendingSignup = { name, email, phoneE164, password, verificationId: null, channel: 'sms' };
+
   const btn = document.getElementById('saveModalSubmitBtn');
   const original = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  btn.textContent = 'Sending code…';
+  try {
+    await requestSignupVerification('sms', phoneE164);
+    document.getElementById('saveModalFormView').style.display = 'none';
+    document.getElementById('saveModalVerifyView').style.display = 'block';
+    document.getElementById('saveModalVerifyCode').value = '';
+    document.getElementById('saveModalVerifyCode').focus();
+  } catch (e){
+    console.warn('submitSaveAccountModal: request-signup-verification failed', e);
+    errEl.textContent = `Couldn't send a verification code right now. ${e.message || 'Try again in a moment.'}`;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// Fires POST /api/auth/request-signup-verification and updates the verify
+// view's copy for whichever channel was used. `channel` is 'sms' or
+// 'email'; `target` is the E.164 phone or the email address. Shared by the
+// initial send (from submitSaveAccountModal), Resend, and the "verify by
+// email instead" fallback — per direct instruction ("Email is also
+// acceptable if we run into issues [with phone]").
+async function requestSignupVerification(channel, target){
+  const body = channel === 'sms' ? { phone: target } : { email: target };
+  const resp = await fetch(`${BACKEND_URL}/api/auth/request-signup-verification`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || `responded ${resp.status}`);
+  pendingSignup.verificationId = data.verificationId;
+  pendingSignup.channel = channel;
+  document.getElementById('saveModalVerifyIntro').textContent = channel === 'sms'
+    ? `We texted a 6-digit code to ${data.target}. Enter it below — this confirms you're a real person before your account is created.`
+    : `We emailed a 6-digit code to ${data.target}. Enter it below — this confirms you're a real person before your account is created.`;
+  document.getElementById('saveModalSwitchChannelLink').textContent = channel === 'sms' ? 'Verify by email instead' : 'Verify by text instead';
+  const interimNote = document.getElementById('saveModalInterimCodeNote');
+  if (data.interimCode){
+    interimNote.style.display = 'block';
+    interimNote.textContent = `No live ${channel === 'sms' ? 'SMS' : 'email'} provider configured yet in this environment — your code is ${data.interimCode} (shown here only because there's nowhere else to deliver it right now).`;
+  } else {
+    interimNote.style.display = 'none';
+  }
+  return data;
+}
+
+async function resendSignupVerification(){
+  if (!pendingSignup) return;
+  const target = pendingSignup.channel === 'sms' ? pendingSignup.phoneE164 : pendingSignup.email;
+  const errEl = document.getElementById('saveModalVerifyError');
+  errEl.style.display = 'none';
+  try {
+    await requestSignupVerification(pendingSignup.channel, target);
+  } catch (e){
+    errEl.textContent = `Couldn't resend a code. ${e.message || 'Try again shortly.'}`;
+    errEl.style.display = 'block';
+  }
+}
+
+// "Verify by email instead" / "Verify by text instead" toggle — per direct
+// instruction that email is an acceptable fallback if phone verification
+// runs into issues (a carrier blocking Twilio, a mistyped number, or just
+// a visitor's preference).
+async function switchSignupVerificationChannel(){
+  if (!pendingSignup) return;
+  const nextChannel = pendingSignup.channel === 'sms' ? 'email' : 'sms';
+  const target = nextChannel === 'sms' ? pendingSignup.phoneE164 : pendingSignup.email;
+  const errEl = document.getElementById('saveModalVerifyError');
+  errEl.style.display = 'none';
+  try {
+    await requestSignupVerification(nextChannel, target);
+  } catch (e){
+    errEl.textContent = `Couldn't send a code that way. ${e.message || 'Try again shortly.'}`;
+    errEl.style.display = 'block';
+  }
+}
+
+function backToSaveAccountForm(){
+  document.getElementById('saveModalVerifyView').style.display = 'none';
+  document.getElementById('saveModalFormView').style.display = 'block';
+}
+
+async function confirmSignupVerificationCode(){
+  if (!pendingSignup || !pendingSignup.verificationId) return;
+  const code = document.getElementById('saveModalVerifyCode').value.trim();
+  const errEl = document.getElementById('saveModalVerifyError');
+  errEl.style.display = 'none';
+  if (!/^\d{6}$/.test(code)){ errEl.textContent = 'Enter the 6-digit code.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('saveModalVerifyBtn');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/verify-signup-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationId: pendingSignup.verificationId, code })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `responded ${resp.status}`);
+    await finishSaveAccountCreation();
+  } catch (e){
+    console.warn('confirmSignupVerificationCode failed', e);
+    errEl.textContent = e.message || 'Incorrect code — try again.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// The actual account-creation sequence — split out of submitSaveAccountModal()
+// so it only ever runs after a verified phone/email (see pendingSignup and
+// the verify view above). Everything below is unchanged from the previous,
+// pre-verification submitSaveAccountModal() except that register-admin now
+// also sends verificationId, which server.js requires and consumes.
+async function finishSaveAccountCreation(){
+  const { name, email, phoneE164, password, verificationId } = pendingSignup;
+  const errEl = document.getElementById('saveModalVerifyError');
   try {
     // Reuses buildScorecardPayload() — the same payload activateInPortal()
     // sends, carrying every real field the assessment has collected so
@@ -2941,11 +3103,15 @@ async function submitSaveAccountModal(){
     const adminResp = await fetch(`${BACKEND_URL}/api/auth/register-admin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId, name, email, phone: phoneE164 })
+      body: JSON.stringify({ accountId, name, email, phone: phoneE164, verificationId })
     });
     if (!adminResp.ok){
-      if (adminResp.status === 409){
+      const adminErr = await adminResp.json().catch(() => ({}));
+      if (adminResp.status === 409 && adminErr.error && adminErr.error.includes('already registered')){
         throw new Error('That email is already registered — sign in on your account page instead of saving again.');
+      }
+      if (adminResp.status === 400 || adminResp.status === 409){
+        throw new Error(adminErr.error || 'Verification failed — please request a new code and try again.');
       }
       throw new Error(`register-admin responded ${adminResp.status}`);
     }
@@ -2975,17 +3141,16 @@ async function submitSaveAccountModal(){
       ? `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. The Portal tab that just opened is already signed in.`
       : `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. Someone from Verilume will also reach out about scheduling a consultation.`;
     document.getElementById('saveModalAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
-    document.getElementById('saveModalFormView').style.display = 'none';
+    document.getElementById('saveModalVerifyView').style.display = 'none';
     document.getElementById('saveModalSuccessView').style.display = 'block';
+    pendingSignup = null;
   } catch (e){
-    console.warn('submitSaveAccountModal failed', e);
-    errEl.textContent = e.message && e.message.includes('already registered')
+    console.warn('finishSaveAccountCreation failed', e);
+    errEl.textContent = e.message && (e.message.includes('already registered') || e.message.includes('Verification'))
       ? e.message
       : `Couldn't reach the Verilume backend right now, so nothing was saved. Try again in a moment.`;
     errEl.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = original;
+    throw e;
   }
 }
 

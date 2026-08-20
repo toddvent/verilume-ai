@@ -211,6 +211,34 @@
     </div>
   </section>
 
+  <!-- 2026-08-20 — email verification, per direct instruction ("Actual
+       accounts can't be created without phone verification for now. Email
+       is also acceptable if we run into issues.") — this flow never
+       collects a phone number (assessment.html's Save Assessment modal
+       does; this one doesn't), so email is the channel here, not a
+       fallback of a fallback. Always reached, right after intro — a real
+       admin/CMO login (registerAdmin() below) will not be created without
+       it, same "actual account" gate as assessment.html's now enforces on
+       POST /api/auth/register-admin server-side. -->
+  <section class="step" data-step="verify">
+    <div class="eyebrow">Verify it's you</div>
+    <h2>Check your email.</h2>
+    <p class="lede" id="verifyIntro">Sending a verification code…</p>
+    <div class="license-note" id="verifyInterimNote" style="display:none;background:#FFF8E1;border-color:#E8DCA8;"></div>
+    <div class="field" style="max-width:260px;">
+      <label for="verifyCode">6-digit code</label>
+      <input type="text" id="verifyCode" inputmode="numeric" maxlength="6" placeholder="123456" oninput="checkVerifyReady()">
+    </div>
+    <div class="status-note" id="verifyStatus" style="color:#B3261E;"></div>
+    <div class="btn-row" style="align-items:center;gap:16px;">
+      <button class="btn-primary" id="verifyNext" disabled onclick="handleVerifyContinue()">Verify &amp; continue →</button>
+      <a href="#" onclick="resendOnboardingVerification();return false;" style="font-size:13px;">Resend code</a>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="goToStep('intro')">← Back</button>
+    </div>
+  </section>
+
   <!-- NDA — optional, per direct instruction (2026-08-18): reached only if
        "Add a mutual NDA" was checked on the intro step. Not a gate — the
        account can be created without ever visiting this step. -->
@@ -471,15 +499,94 @@ function signNda(){
 // optional (per direct instruction), so only visitors who checked "Add a
 // mutual NDA" see that step at all; everyone else goes straight to account
 // provisioning.
-function handleIntroContinue(){
+async function handleIntroContinue(){
   state.company = document.getElementById('companyName').value.trim();
   state.adminName = document.getElementById('adminName').value.trim();
   state.adminEmail = document.getElementById('adminEmail').value.trim();
-  if (document.getElementById('wantNda').checked){
-    goToStep('nda');
-  } else {
-    goToStep('provision');
-    runProvisioning();
+  // 2026-08-20 — email verification is now always the next step, before
+  // NDA/provisioning either way (see the 'verify' step's own comment).
+  goToStep('verify');
+  document.getElementById('verifyCode').value = '';
+  document.getElementById('verifyNext').disabled = true;
+  document.getElementById('verifyStatus').textContent = '';
+  await requestOnboardingVerification();
+}
+
+// Fires POST /api/auth/request-signup-verification for this flow's admin
+// email and updates the verify step's copy — same endpoint/table
+// assessment.html's Save Assessment modal uses for its phone/email
+// verification, just always the email channel here since this flow never
+// collects a phone number.
+async function requestOnboardingVerification(){
+  const introEl = document.getElementById('verifyIntro');
+  const statusEl = document.getElementById('verifyStatus');
+  statusEl.textContent = '';
+  introEl.textContent = 'Sending a verification code…';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/request-signup-verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: state.adminEmail })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `responded ${resp.status}`);
+    state.verificationId = data.verificationId;
+    introEl.textContent = `We emailed a 6-digit code to ${data.target}. Enter it below — this confirms you're a real person before your account is created.`;
+    const interimNote = document.getElementById('verifyInterimNote');
+    if (data.interimCode){
+      interimNote.style.display = 'block';
+      interimNote.textContent = `No live email provider configured yet in this environment — your code is ${data.interimCode} (shown here only because there's nowhere else to deliver it right now).`;
+    } else {
+      interimNote.style.display = 'none';
+    }
+  } catch (e){
+    console.warn('requestOnboardingVerification failed', e);
+    introEl.textContent = 'Enter the verification code sent to your email.';
+    statusEl.textContent = `Couldn't send a verification code right now. ${e.message || 'Try Resend in a moment.'}`;
+  }
+}
+
+async function resendOnboardingVerification(){
+  await requestOnboardingVerification();
+}
+
+function checkVerifyReady(){
+  document.getElementById('verifyNext').disabled = !/^\d{6}$/.test(document.getElementById('verifyCode').value.trim());
+}
+
+async function handleVerifyContinue(){
+  const code = document.getElementById('verifyCode').value.trim();
+  const statusEl = document.getElementById('verifyStatus');
+  statusEl.textContent = '';
+  if (!state.verificationId){
+    statusEl.textContent = 'No verification in progress — click Resend code.';
+    return;
+  }
+  const btn = document.getElementById('verifyNext');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/verify-signup-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationId: state.verificationId, code })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `responded ${resp.status}`);
+    if (document.getElementById('wantNda').checked){
+      goToStep('nda');
+    } else {
+      goToStep('provision');
+      runProvisioning();
+    }
+  } catch (e){
+    console.warn('handleVerifyContinue failed', e);
+    statusEl.textContent = e.message || 'Incorrect code — try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+    checkVerifyReady();
   }
 }
 
@@ -555,6 +662,12 @@ async function registerAdmin(accountId){
       accountId,
       name: state.adminName || 'Account Admin',
       email: state.adminEmail,
+      // 2026-08-20 — server.js now requires and consumes this: a verified,
+      // unconsumed signup verification (see the 'verify' step above) is
+      // what makes this an "actual account" per direct instruction. A
+      // missing/expired/reused verificationId 400s here rather than
+      // silently creating an unverified login.
+      verificationId: state.verificationId,
       // Only present if the optional NDA step was actually visited and
       // signed — server logs this as a separate 'nda' legal-acceptance
       // row (method 'signature') alongside the always-present T&Cs/pricing
@@ -562,7 +675,10 @@ async function registerAdmin(accountId){
       nda: state.ndaSignedAt ? { signedAt: state.ndaSignedAt, signatureName: state.ndaSignatureName } : undefined
     })
   });
-  if (!resp.ok) throw new Error(`register-admin responded ${resp.status}`);
+  if (!resp.ok){
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || `register-admin responded ${resp.status}`);
+  }
   return resp.json(); // { memberId, email, tempPassword, mustChangePassword, token, expiresAt }
 }
 
@@ -602,7 +718,7 @@ function runProvisioning(){
         console.warn('registerAdmin failed — account exists, but no admin login was created.', adminErr);
         document.getElementById('accessCodeBlock').style.display = 'none';
         note.classList.add('signed');
-        note.textContent = `✓ Account created. Couldn't set up your admin login automatically (${state.adminEmail ? 'that email may already be registered' : 'no email was captured'}) — contact Verilume support to get access.`;
+        note.textContent = `✓ Account created. Couldn't set up your admin login automatically (${adminErr && adminErr.message ? adminErr.message : (state.adminEmail ? 'that email may already be registered' : 'no email was captured')}) — go back and verify again, or contact Verilume support.`;
       }
     } catch (e){
       // Honest fallback, same convention as every other real-backend page in

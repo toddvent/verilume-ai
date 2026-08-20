@@ -496,6 +496,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS phone_verifications (
   createdAt TEXT NOT NULL,
   expiresAt TEXT NOT NULL
 )`);
+// 2026-08-20 — signup-verification (anti-bot) build. `channel` lets this
+// same table carry email-target rows too, not just phone: the `phone`
+// column holds whichever target address the code was sent to (a real
+// E.164 phone for channel='sms', an email address for channel='email') —
+// per direct instruction ("email is also acceptable if we run into
+// issues [with phone]"), so a visitor whose carrier blocks Twilio SMS, or
+// who simply prefers it, isn't locked out of creating an account.
+// `consumedAt` is what stops one verified code from provisioning more
+// than one account — see POST /api/auth/register-admin below, which is
+// the actual gate now that "actual accounts can't be created without
+// phone verification" is a hard requirement, not just recovery-flow
+// plumbing.
+ensureColumn('phone_verifications', 'channel', "TEXT DEFAULT 'sms'");
+ensureColumn('phone_verifications', 'consumedAt', 'TEXT');
 
 // Added 2026-08-19 — password-reset tokens. One-time-use, short-lived,
 // looked up by a random token (never the memberId itself, so a guessed
@@ -4185,6 +4199,31 @@ async function checkVerificationCode(phone, code, expectedHash, expectedSalt){
   return verifyAccessCode(code, expectedHash, expectedSalt);
 }
 
+// 2026-08-20 — email-channel signup verification. Twilio Verify only does
+// phone; there's no equivalent hosted "verify an email" service already
+// wired into this build, so unlike sendVerificationCode() above this one
+// always generates and hashes the code locally (via hashAccessCode(),
+// same primitive as every other secret this build issues) and just uses
+// sendTransactionalEmail()/Postmark as the delivery channel when
+// configured. Checking an email code is therefore always the local
+// verifyAccessCode() comparison — never a third-party call — so this has
+// no Twilio-style "configured" branch to speak of.
+async function sendSignupEmailCode(email){
+  const code = String(crypto.randomInt(100000, 999999));
+  const emailResult = await sendTransactionalEmail({
+    to: email,
+    subject: 'Your Verilume verification code',
+    textBody: `Your Verilume verification code is ${code}. It expires in 10 minutes. If you didn't request this, you can ignore this email.`,
+    htmlBody: `<p>Your Verilume verification code is <strong>${code}</strong>.</p><p>It expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`
+  });
+  // 'not_configured'/'error' both fall back to the same interim, shown-once
+  // convention every other not-yet-wired-to-a-real-vendor secret in this
+  // build uses — the code is still real and still checked for real, it's
+  // just handed back in the response instead of actually emailed.
+  const delivered = emailResult.emailStatus === 'sent';
+  return { provider: delivered ? 'postmark' : 'interim', code };
+}
+
 // In-memory access-token cache — Google's tokens last 1 hour; refreshed a
 // minute early. Per Section 9 of cxmedia-data-integration-architecture.md
 // ("pull on a schedule, not on-demand"), this also keeps a short report
@@ -4908,10 +4947,46 @@ async function handleRequest(req, res) {
     // when that provider is chosen, but this endpoint doesn't block on it,
     // so the rest of the real-registration flow isn't stuck waiting on a
     // third-party account being set up.
+    //
+    // 2026-08-20 fix — the paragraph above is now out of date: per direct
+    // instruction ("Actual accounts can't be created without phone
+    // verification for now. Email is also acceptable if we run into
+    // issues.") this IS now the enforcement point. Every caller must first
+    // run POST /api/auth/request-signup-verification -> verify-signup-code
+    // (phone or email) and pass the resulting verificationId here. The row
+    // must be verified, unconsumed, and match the phone/email this call is
+    // actually registering — otherwise this is just a verified code from a
+    // different signup attempt being replayed. Consuming it here (not at
+    // verify-signup-code) is what caps one verified code at exactly one
+    // account, which is the actual anti-bot/anti-abuse property being
+    // bought — verification alone doesn't stop a bot from calling
+    // register-admin in a loop with the same proven-verified code.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'register-admin'){
       const body = await readBody(req);
       if (!body.accountId || !body.name || !body.email){
         return sendJson(res, 400, { error: 'accountId, name, and email are required' });
+      }
+      if (!body.verificationId){
+        return sendJson(res, 400, { error: 'phone (or email) verification is required — call POST /api/auth/request-signup-verification first' });
+      }
+      const verification = db.prepare(`SELECT * FROM phone_verifications WHERE id = ? AND purpose = 'signup'`).get(body.verificationId);
+      if (!verification){
+        return sendJson(res, 400, { error: 'unknown verification — request a new code' });
+      }
+      if (!verification.verified){
+        return sendJson(res, 400, { error: 'that verification code has not been confirmed yet' });
+      }
+      if (verification.consumedAt){
+        return sendJson(res, 409, { error: 'that verification was already used to create an account — request a new code' });
+      }
+      const verificationTarget = verification.channel === 'email' ? (body.email || '').trim().toLowerCase() : (body.phone || '').trim();
+      const expectedTarget = verification.channel === 'email' ? verification.phone.trim().toLowerCase() : verification.phone.trim();
+      if (!verificationTarget || verificationTarget !== expectedTarget){
+        return sendJson(res, 400, {
+          error: verification.channel === 'email'
+            ? 'the verified email does not match the email on this registration'
+            : 'the verified phone number does not match the phone number on this registration'
+        });
       }
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(body.accountId);
       if (!account){
@@ -4925,6 +5000,8 @@ async function handleRequest(req, res) {
       if (emailTaken){
         return sendJson(res, 409, { error: 'this email is already registered to a Verilume account' });
       }
+      // Consume now — this is the "one verified code, one account" guarantee.
+      db.prepare('UPDATE phone_verifications SET consumedAt = ? WHERE id = ?').run(new Date().toISOString(), verification.id);
       const tempPassword = generateTempPassword();
       const { hash: passwordHash, salt: passwordSalt } = hashAccessCode(tempPassword);
       const memberId = generateId('TEAM');
@@ -4939,10 +5016,15 @@ async function handleRequest(req, res) {
       // own comment) and there was no way back into the account. Optional
       // at the API level (falls back to '') so other, older callers of
       // this endpoint that don't send phone still work unchanged.
+      // phoneVerifiedAt is only stamped for the sms channel — an
+      // email-channel signup verification proves the email, not the phone
+      // digits typed alongside it (if any), so it shouldn't read as if the
+      // phone itself were confirmed reachable.
+      const phoneVerifiedAt = verification.channel === 'sms' ? now : null;
       db.prepare(`INSERT INTO team_members
-        (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword, phone)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(memberId, body.accountId, body.name, 'Executive', 'CMO', null, now, body.email, 1, 'active', passwordHash, passwordSalt, 1, body.phone || '');
+        (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword, phone, phoneVerifiedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(memberId, body.accountId, body.name, 'Executive', 'CMO', null, now, body.email, 1, 'active', passwordHash, passwordSalt, 1, body.phone || '', phoneVerifiedAt);
       // Legal-acceptance audit trail (registration rebuild) — standard T&Cs
       // and pricing disclosures are referenced-only on the registration
       // page, no signature required; completing registration (this call
@@ -5129,6 +5211,117 @@ async function handleRequest(req, res) {
         response.resetToken = resetToken;
       }
       return sendJson(res, 200, response);
+    }
+
+    // POST /api/auth/request-signup-verification — { phone } or { email } ->
+    // starts the anti-bot verification account creation now requires, per
+    // direct instruction ("Actual accounts can't be created without phone
+    // verification for now. Email is also acceptable if we run into
+    // issues."). Separate from request-password-reset above because there's
+    // no existing team_members row to look up yet — this is what proves a
+    // real, reachable phone or inbox is behind the signup before
+    // register-admin (below) will create the account. Same
+    // phone_verifications table, purpose='signup', memberId left null.
+    // Basic rate limit (5 requests/hour per target) so this can't itself be
+    // used to spam SMS/email sends — a lightweight second line of defense,
+    // separate from the "one verified code = one account" consumption rule
+    // enforced at register-admin.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'request-signup-verification'){
+      const body = await readBody(req);
+      const phoneRaw = (body.phone || '').trim();
+      const emailRaw = (body.email || '').trim();
+      if (!phoneRaw && !emailRaw){
+        return sendJson(res, 400, { error: 'phone or email is required' });
+      }
+      const channel = phoneRaw ? 'sms' : 'email';
+      const target = phoneRaw || emailRaw;
+      if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)){
+        return sendJson(res, 400, { error: 'that does not look like a valid email address' });
+      }
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+      const recentCount = db.prepare(
+        `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = ? AND purpose = 'signup' AND createdAt > ?`
+      ).get(target, oneHourAgo);
+      if (recentCount && recentCount.c >= 5){
+        return sendJson(res, 429, { error: 'too many verification requests for this ' + (channel === 'sms' ? 'phone number' : 'email address') + ' — try again in an hour' });
+      }
+      let sendResult;
+      try {
+        sendResult = channel === 'sms' ? await sendVerificationCode(target) : await sendSignupEmailCode(target);
+      } catch (e){
+        console.warn('request-signup-verification: send failed', e.message);
+        return sendJson(res, 502, {
+          error: channel === 'sms'
+            ? 'Could not send a text verification code right now — you can try email verification instead.'
+            : 'Could not send an email verification code right now — try again shortly.'
+        });
+      }
+      const verificationId = generateId('VERIFY');
+      const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 min
+      let codeHash = null, codeSalt = null;
+      if (sendResult.provider === 'interim'){
+        const hashed = hashAccessCode(sendResult.code);
+        codeHash = hashed.hash; codeSalt = hashed.salt;
+      }
+      db.prepare(`INSERT INTO phone_verifications
+        (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        .run(verificationId, null, target, 'signup', codeHash, codeSalt, sendResult.provider, channel, now.toISOString(), expiresAt);
+      const response = {
+        ok: true,
+        verificationId,
+        channel,
+        target: channel === 'sms' ? ('•••• ' + target.slice(-4)) : target,
+        provider: sendResult.provider
+      };
+      // Interim-only reveal, same one-time-shown convention as every other
+      // not-yet-vendor-configured secret in this build (access codes, temp
+      // passwords, the password-reset interim code above).
+      if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
+      return sendJson(res, 200, response);
+    }
+
+    // POST /api/auth/verify-signup-code — { verificationId, code } -> checks
+    // a code from request-signup-verification above. Mirrors
+    // verify-phone-code's expiry/attempt-limit rules, but purposefully
+    // never issues a resetToken (there's no password to reset here) — a
+    // successful call just flips `verified` on the phone_verifications row.
+    // register-admin (the actual account-creation gate) re-checks that flag
+    // itself and then marks the row consumed, so a single verified code
+    // can provision exactly one account, not an unlimited stream of them.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'verify-signup-code'){
+      const body = await readBody(req);
+      if (!body.verificationId || !body.code){
+        return sendJson(res, 400, { error: 'verificationId and code are required' });
+      }
+      const row = db.prepare(`SELECT * FROM phone_verifications WHERE id = ? AND purpose = 'signup'`).get(body.verificationId);
+      if (!row) return sendJson(res, 404, { error: 'verification not found or already used' });
+      if (row.verified) return sendJson(res, 200, { verified: true }); // idempotent — a double-click shouldn't error
+      if (new Date(row.expiresAt).getTime() < Date.now()){
+        return sendJson(res, 410, { error: 'this code has expired — request a new one' });
+      }
+      if (row.attempts >= 5){
+        return sendJson(res, 429, { error: 'too many incorrect attempts — request a new code' });
+      }
+      let ok;
+      try {
+        // Email-channel codes are always checked locally (see
+        // sendSignupEmailCode()'s comment) — only phone ever has a
+        // Twilio-configured branch to speak of.
+        ok = row.channel === 'email'
+          ? verifyAccessCode(body.code, row.codeHash, row.codeSalt)
+          : await checkVerificationCode(row.phone, body.code, row.codeHash, row.codeSalt);
+      } catch (e){
+        console.warn('verify-signup-code: check failed', e.message);
+        return sendJson(res, 502, { error: 'Could not verify that code right now — try again shortly.' });
+      }
+      if (!ok){
+        db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id);
+        return sendJson(res, 401, { error: 'incorrect code' });
+      }
+      db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
+      return sendJson(res, 200, { verified: true });
     }
 
     // POST /api/auth/reset-password — { resetToken, newPassword } ->
