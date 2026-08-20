@@ -848,6 +848,49 @@
         <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Work email</label>
         <input type="email" id="saveModalEmail" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
       </div>
+      <!-- 2026-08-20 fix, per direct instruction ("we need to think through
+           the Twilio portion — Save Assessment does not ask for phone
+           number to support 2-factor"): this modal is the account-creation
+           entry point reachable from every step (updateProgress() shows
+           #saveCtaBtn on every step but landing), including well before the
+           Contact step ever runs — so state.phone can't be relied on to
+           already exist here. Without a phone on file, POST /api/auth/
+           request-password-reset silently no-ops (see its own comment in
+           server.js) and there is no way back in — a real recovery dead
+           end, not just a missing 2FA nicety. Required here (not optional)
+           so every real account has a working recovery path from the
+           moment it exists. Same country-code convention as the Contact
+           step's #inPhoneCode/#inPhone (see the .phone-row styling
+           there) for a consistent feel. -->
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Phone number <span style="font-weight:400;color:#6E6E73;">(for account recovery)</span></label>
+        <div class="phone-row">
+          <select id="saveModalPhoneCode">
+            <option value="+1" selected>+1 · US/Canada</option>
+            <option value="+44">+44 · UK</option>
+            <option value="+61">+61 · Australia</option>
+            <option value="+64">+64 · New Zealand</option>
+            <option value="+91">+91 · India</option>
+            <option value="+33">+33 · France</option>
+            <option value="+49">+49 · Germany</option>
+            <option value="+34">+34 · Spain</option>
+            <option value="+39">+39 · Italy</option>
+            <option value="+31">+31 · Netherlands</option>
+            <option value="+46">+46 · Sweden</option>
+            <option value="+41">+41 · Switzerland</option>
+            <option value="+81">+81 · Japan</option>
+            <option value="+82">+82 · South Korea</option>
+            <option value="+86">+86 · China</option>
+            <option value="+52">+52 · Mexico</option>
+            <option value="+55">+55 · Brazil</option>
+            <option value="+971">+971 · UAE</option>
+            <option value="+65">+65 · Singapore</option>
+            <option value="+27">+27 · South Africa</option>
+          </select>
+          <input type="tel" id="saveModalPhone" placeholder="(555) 123-4567">
+        </div>
+        <div style="font-size:0.75rem;color:#6E6E73;margin-top:4px;">Used only if you ever need to reset your password — we'll text a verification code here, never call or message you otherwise.</div>
+      </div>
       <!-- 2026-08-19 (login redesign, round 2), per direct instruction: "We
            only need the password when saving the free assessment" —
            saving is the one moment this flow creates a real, sign-in-able
@@ -2840,6 +2883,11 @@ function openSaveAccountModal(){
   document.getElementById('saveModalError').style.display = 'none';
   document.getElementById('saveModalName').value = (state.firstName || state.lastName) ? `${state.firstName || ''} ${state.lastName || ''}`.trim() : '';
   document.getElementById('saveModalEmail').value = state.email || '';
+  // 2026-08-20 — prefill from the Contact step if the visitor already
+  // reached it (same pattern as name/email above); otherwise starts blank
+  // with the same +1 default #inPhoneCode uses.
+  document.getElementById('saveModalPhoneCode').value = state.phoneCountry || '+1';
+  document.getElementById('saveModalPhone').value = state.phone || '';
   document.getElementById('saveModalPassword').value = '';
   document.getElementById('saveModalPasswordConfirm').value = '';
   document.getElementById('saveAccountModal').style.display = 'flex';
@@ -2851,14 +2899,25 @@ function closeSaveAccountModal(){
 async function submitSaveAccountModal(){
   const name = document.getElementById('saveModalName').value.trim();
   const email = document.getElementById('saveModalEmail').value.trim();
+  const phoneCode = document.getElementById('saveModalPhoneCode').value;
+  const phoneRaw = document.getElementById('saveModalPhone').value.trim();
   const password = document.getElementById('saveModalPassword').value;
   const passwordConfirm = document.getElementById('saveModalPasswordConfirm').value;
   const errEl = document.getElementById('saveModalError');
   errEl.style.display = 'none';
   if (!name){ errEl.textContent = 'Enter your name.'; errEl.style.display = 'block'; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ errEl.textContent = 'Enter a valid email address.'; errEl.style.display = 'block'; return; }
+  // 2026-08-20 fix — required, not optional: without a phone on file,
+  // POST /api/auth/request-password-reset silently does nothing (see its
+  // own comment in server.js) and there's no way back into the account.
+  // Same >=7-digit bar as the Contact step's own phone validation
+  // (updateContactNext()) — covers every real numbering plan without
+  // hardcoding a per-country length rule.
+  const phoneDigits = phoneRaw.replace(/\D/g, '');
+  if (phoneDigits.length < 7){ errEl.textContent = 'Enter a phone number — needed to recover your account if you ever forget your password.'; errEl.style.display = 'block'; return; }
   if (password.length < 8){ errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
   if (password !== passwordConfirm){ errEl.textContent = "Passwords don't match."; errEl.style.display = 'block'; return; }
+  const phoneE164 = `${phoneCode}${phoneDigits}`; // E.164 — Twilio Verify's To param requires this exact shape, no spaces/punctuation
 
   const btn = document.getElementById('saveModalSubmitBtn');
   const original = btn.textContent;
@@ -2882,7 +2941,7 @@ async function submitSaveAccountModal(){
     const adminResp = await fetch(`${BACKEND_URL}/api/auth/register-admin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId, name, email })
+      body: JSON.stringify({ accountId, name, email, phone: phoneE164 })
     });
     if (!adminResp.ok){
       if (adminResp.status === 409){
@@ -4453,7 +4512,16 @@ async function submitContact(){
 // doesn't replace), but both are real answers from the one page that
 // matters, nothing invented.
 function computeQuickScores(){
-  const toPct = avg => Math.round((avg - 1) / 4 * 100);
+  // 2026-08-20 fix, per direct QA report: rating every question the worst
+  // possible score (1) still produced 0% on both axes — visually
+  // indistinguishable from the "nothing rated yet" default (also 0%, see
+  // activeScores()/loopStepMissingAnswers() elsewhere in this file), even
+  // though a deliberate "1" is a real, complete answer. The old formula,
+  // (avg-1)/4*100, mapped the bottom of the 1-5 scale to 0% by
+  // construction. Changed to avg/5*100, which maps the scale's actual
+  // range (1-5) onto (20%-100%] — 0% is now reserved exclusively for "no
+  // answer," never for a real rating, however low.
+  const toPct = avg => Math.round(avg / 5 * 100);
 
   const stageVals = Object.values(state.stageEffectiveness || {}).map(Number).filter(n => n > 0);
   const mediaPct = stageVals.length ? toPct(stageVals.reduce((a, b) => a + b, 0) / stageVals.length) : 0;
@@ -4813,7 +4881,13 @@ function computeScores(){
     layer, avg: layerBuckets[layer].reduce((a,b)=>a+b,0) / layerBuckets[layer].length
   }));
 
-  const toPct = v => Math.round(((v - 1) / 3) * 100);
+  // 2026-08-20 fix — same issue as computeQuickScores()'s toPct() (see its
+  // comment): the old formula, ((v-1)/3)*100, mapped a real "Behind"
+  // rating (v=1, the worst but legitimate answer on this 1-4 scale) to 0%,
+  // indistinguishable from "nothing scored." Changed to (v/4)*100, so the
+  // scale's real range (1-4) maps onto (25%-100%] and 0% stays reserved
+  // for genuinely unscored stages/layers (the `: 0` fallbacks just below).
+  const toPct = v => Math.round((v / 4) * 100);
   const mediaPct = assessedStageAverages.length
     ? toPct(assessedStageAverages.reduce((a,b)=>a+b.avg,0) / assessedStageAverages.length)
     : 0;

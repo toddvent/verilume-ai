@@ -3249,8 +3249,30 @@ const REGION_CODE = { Local: 'LOC', National: 'NAT', Franchise: 'FRN' };
 function generateAccountId(footprint){
   const code = REGION_CODE[footprint] || 'NAT';
   const year = new Date().getFullYear();
-  const suffix = String(Math.floor(Math.random() * 900) + 100); // 3 digits
+  // 2026-08-20 fix — this was 3 digits (only 900 possible values per
+  // footprint+year combination), which is exactly the collision risk the
+  // comment on generateId() below already warned about for a different ID
+  // generator. It wasn't hypothetical: a live Vercel log showed
+  // POST /api/accounts failing with a real Postgres "duplicate key value
+  // violates unique constraint" error on the accounts table's primary key,
+  // almost certainly this. Widened to 6 digits (900,000 possible values) to
+  // make a collision far less likely — the actual guarantee against it is
+  // the catch-and-retry loop around the INSERT in POST /api/accounts below,
+  // not the size of this number alone.
+  const suffix = String(Math.floor(Math.random() * 900000) + 100000); // 6 digits
   return `CXM-${code}-${year}-${suffix}`;
+}
+
+// 2026-08-20 — used by POST /api/accounts' retry loop (see below) to tell
+// "this accountId already exists, generate a new one and try again" apart
+// from every other kind of database error, which should still fail the
+// request normally. Postgres reports a unique-violation as error code
+// '23505' (set on pg-sync-bridge.js's thrown Error, sourced from the `pg`
+// driver); local SQLite (node:sqlite's DatabaseSync) has no such code and
+// instead throws a plain Error whose message contains "UNIQUE constraint
+// failed" — checking both keeps this correct in local dev and production.
+function isDuplicateKeyError(e){
+  return (e && e.code === '23505') || /UNIQUE constraint failed/i.test((e && e.message) || '');
 }
 
 // A per-process monotonic counter, not just Date.now() + random, because
@@ -4720,7 +4742,7 @@ async function handleRequest(req, res) {
       if (!body.company || !Array.isArray(body.cells)){
         return sendJson(res, 400, { error: 'company and cells[] are required' });
       }
-      const accountId = generateAccountId(body.footprint);
+      let accountId = generateAccountId(body.footprint); // reassigned inside the retry loop below on a collision
       const now = new Date().toISOString();
       // Round 60 — every new account gets a real access code at creation,
       // generated here (never client-chosen), hashed before it ever
@@ -4766,20 +4788,37 @@ async function handleRequest(req, res) {
       // existing free/unassigned state).
       const paidTier = (body.tier && PAID_TIERS.some(t => t.key === body.tier)) ? body.tier : null;
       const paidTierActivatedAt = paidTier ? now : null;
-      db.prepare('INSERT INTO accounts (accountId, company, industry, footprint, audience, wealth, competitorsJson, assessedStagesJson, websiteUrl, assessmentDescription, productsServices, accessCodeHash, accessCodeSalt, paidTier, paidTierActivatedAt, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(accountId, body.company, body.industry || '', body.footprint || '',
-          Array.isArray(body.audience) ? body.audience.join(', ') : '',
-          Array.isArray(body.wealth) ? body.wealth.join(', ') : '',
-          competitorsJson,
-          assessedStagesJson,
-          body.url || '',
-          body.description || '',
-          body.productThemes || '',
-          accessCodeHash,
-          accessCodeSalt,
-          paidTier,
-          paidTierActivatedAt,
-          now);
+      // 2026-08-20 fix — retry with a freshly generated accountId on a
+      // duplicate-key collision instead of letting the request fail. The
+      // 6-digit widening above (generateAccountId()) makes this rare, but
+      // a hand-rolled random ID can never be *guaranteed* collision-free —
+      // this loop is the actual guarantee. Bounded at 5 attempts so a
+      // genuinely broken database (not just an unlucky roll) still fails
+      // loudly instead of retrying forever.
+      const insertAccount = db.prepare('INSERT INTO accounts (accountId, company, industry, footprint, audience, wealth, competitorsJson, assessedStagesJson, websiteUrl, assessmentDescription, productsServices, accessCodeHash, accessCodeSalt, paidTier, paidTierActivatedAt, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+      const MAX_ACCOUNT_ID_ATTEMPTS = 5;
+      for (let attempt = 1; ; attempt++){
+        accountId = generateAccountId(body.footprint);
+        try {
+          insertAccount.run(accountId, body.company, body.industry || '', body.footprint || '',
+            Array.isArray(body.audience) ? body.audience.join(', ') : '',
+            Array.isArray(body.wealth) ? body.wealth.join(', ') : '',
+            competitorsJson,
+            assessedStagesJson,
+            body.url || '',
+            body.description || '',
+            body.productThemes || '',
+            accessCodeHash,
+            accessCodeSalt,
+            paidTier,
+            paidTierActivatedAt,
+            now);
+          break; // inserted successfully
+        } catch (e){
+          if (isDuplicateKeyError(e) && attempt < MAX_ACCOUNT_ID_ATTEMPTS) continue; // try a new id
+          throw e; // not a collision, or out of attempts — let the outer catch handle it
+        }
+      }
       const insertCell = db.prepare(
         'INSERT INTO score_history (accountId, stage, layer, score, source, recordedAt) VALUES (?,?,?,?,?,?)'
       );
@@ -4890,10 +4929,20 @@ async function handleRequest(req, res) {
       const { hash: passwordHash, salt: passwordSalt } = hashAccessCode(tempPassword);
       const memberId = generateId('TEAM');
       const now = new Date().toISOString();
+      // 2026-08-20 fix, per direct instruction ("we need to think through
+      // the Twilio portion — Save Assessment does not ask for phone number
+      // to support 2-factor"): phone is now collected by the Save
+      // Assessment modal itself (assessment.html) and sent here, so every
+      // admin created through the account-creation path has a recovery
+      // phone on file from the start — without one, POST /api/auth/
+      // request-password-reset silently does nothing (see that endpoint's
+      // own comment) and there was no way back into the account. Optional
+      // at the API level (falls back to '') so other, older callers of
+      // this endpoint that don't send phone still work unchanged.
       db.prepare(`INSERT INTO team_members
-        (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(memberId, body.accountId, body.name, 'Executive', 'CMO', null, now, body.email, 1, 'active', passwordHash, passwordSalt, 1);
+        (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword, phone)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(memberId, body.accountId, body.name, 'Executive', 'CMO', null, now, body.email, 1, 'active', passwordHash, passwordSalt, 1, body.phone || '');
       // Legal-acceptance audit trail (registration rebuild) — standard T&Cs
       // and pricing disclosures are referenced-only on the registration
       // page, no signature required; completing registration (this call
