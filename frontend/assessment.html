@@ -865,7 +865,7 @@
       <div style="margin-bottom:14px;">
         <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:5px;">Phone number <span style="font-weight:400;color:#6E6E73;">(for account recovery)</span></label>
         <div class="phone-row">
-          <select id="saveModalPhoneCode">
+          <select id="saveModalPhoneCode" style="padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;background:var(--white);color:var(--ink);box-sizing:border-box;">
             <option value="+1" selected>+1 · US/Canada</option>
             <option value="+44">+44 · UK</option>
             <option value="+61">+61 · Australia</option>
@@ -887,7 +887,7 @@
             <option value="+65">+65 · Singapore</option>
             <option value="+27">+27 · South Africa</option>
           </select>
-          <input type="tel" id="saveModalPhone" placeholder="(555) 123-4567">
+          <input type="tel" id="saveModalPhone" placeholder="(555) 123-4567" style="padding:10px 12px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:0.95rem;box-sizing:border-box;">
         </div>
         <div style="font-size:0.75rem;color:#6E6E73;margin-top:4px;">Used only if you ever need to reset your password — we'll text a verification code here, never call or message you otherwise.</div>
       </div>
@@ -1064,16 +1064,78 @@
               </button>
             </div>
           </div>
+          <!-- 2026-08-20, per direct instruction: "This is the best place to
+               ask for the local business address" — moved address entry up
+               to Step 1, expanding right under the footprint picker the
+               moment Local is chosen, instead of only surfacing later on the
+               report page's recap card. Structured street/city/state/ZIP
+               fields (not a single free-text line) per direct instruction,
+               looked up via the same real postal-address lookup API this
+               build already uses elsewhere for the recap card's address
+               field: the U.S. Census Bureau's public Geocoder (no account or
+               API key required) — see geocodeAddressStructured() below,
+               which calls its structured `/geocoder/geographies/address`
+               endpoint (street/city/state/zip as separate params) rather
+               than the single-line variant the recap card's free-text input
+               uses. Same state.geo/state.address this app has always used
+               downstream (census population, local revenue estimate,
+               county/metro display) — "don't break the data sources" still
+               holds; the recap card on the report page now just shows this
+               already-confirmed address instead of asking again (see
+               startRecapStep()). -->
+          <div class="field" id="step1AddressBlock" style="display:none;">
+            <label>Primary business address <span style="font-weight:400;color:#6E6E73;">— grounds your local market numbers in a real county</span></label>
+            <div class="field-row">
+              <div class="field">
+                <label for="step1AddrStreet">Street address</label>
+                <input type="text" id="step1AddrStreet" placeholder="123 Main St" oninput="onStep1AddressFieldInput()">
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="step1AddrCity">City</label>
+                <input type="text" id="step1AddrCity" placeholder="Springfield" oninput="onStep1AddressFieldInput()">
+              </div>
+              <div class="field">
+                <label for="step1AddrState">State</label>
+                <input type="text" id="step1AddrState" placeholder="CA" maxlength="2" style="text-transform:uppercase;" oninput="onStep1AddressFieldInput()">
+              </div>
+              <div class="field">
+                <label for="step1AddrZip">ZIP</label>
+                <input type="text" id="step1AddrZip" placeholder="94105" inputmode="numeric" maxlength="10" oninput="onStep1AddressFieldInput()">
+              </div>
+            </div>
+            <div class="address-edit-row">
+              <button type="button" class="btn-ghost" id="step1AddressLookupBtn" onclick="lookupStep1Address()">Look up →</button>
+            </div>
+            <div id="step1AddressStatus" class="field-hint"></div>
+            <div class="field-hint">Address is geocoded live via the U.S. Census Bureau's public Geocoder — resolves to a county (and metro area, where one exists), which grounds the local population and revenue figures shown later in this assessment. Not required to continue — Local footprint still works with illustrative figures if you skip this.</div>
+          </div>
         </div>
       </div>
+      <!-- Round 133, direct instruction — Step 1's "Visual — TBD" placeholder
+           replaced with the real quadrant graphic. Reuses .quad-visual.mini/
+           .qcell/.quad-marker/.quad-axis-x verbatim from the landing-page
+           teaser (line ~992) and the same 4 names/definitions quadrantFor()
+           returns on the real report, so this never drifts from the actual
+           scoring logic. Marker seeded in q1 (upper right = strong on both
+           axes) per direct instruction to plot in the right upper corner —
+           illustrative only, nothing's been rated yet at Step 1. -->
       <aside class="mat-visual">
-        <div class="teaser-label">What this assessment covers</div>
-        <div class="mod-visual-frame"><div class="placeholder">Visual — TBD</div></div>
+        <div class="teaser-label">Your free assessment includes</div>
+        <div class="quad-visual mini" aria-hidden="true">
+          <div class="qcell q2">Hidden Gem</div>
+          <div class="qcell q1">The Complete Brand</div>
+          <div class="qcell q3">Invisible &amp; Inconsistent</div>
+          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
+        </div>
+        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Weak Media</span><span>Strong Media →</span></div>
         <ul class="landing-teaser-bullets">
-          <li>The full Marketing Loop, Awareness through Advocacy, self-rated stage by stage against best practice.</li>
-          <li>Your organization's structure and how work actually gets done.</li>
-          <li>A market snapshot — population, income, and competitive context grounded in your real footprint.</li>
-          <li>A final position on the CX Quadrant — your strongest and weakest areas, named plainly.</li>
+          <li><b>The Complete Brand</b> — reach and delivery both firing. The target quadrant: loyalty compounds here, and advocacy funds the next cycle for free.</li>
+          <li><b>Hidden Gem</b> — the experience is genuinely true to your promise, but that truth isn't reaching enough people yet.</li>
+          <li><b>All Promise, No Delivery</b> — reach and creative are working, but somewhere in the experience the promise stops being true.</li>
+          <li><b>Invisible &amp; Inconsistent</b> — struggling to get discovered and struggling to deliver once someone shows up. A foundational rebuild, not a quick fix.</li>
         </ul>
       </aside>
     </div>
@@ -2624,12 +2686,13 @@ function censusKeyParam(){
   return CENSUS_API_KEY ? `&key=${encodeURIComponent(CENSUS_API_KEY)}` : '';
 }
 
-/* Geocoder — address string -> {ok, county, state, stateFips, countyFips, cbsaName, lat, lon} */
-async function geocodeAddress(address){
-  const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&vintage=Current_Current&layers=Counties,Metropolitan%20Statistical%20Areas&format=json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Geocoder HTTP ${res.status}`);
-  const data = await res.json();
+// 2026-08-20 — factored out of geocodeAddress() so the new structured
+// street/city/state/zip lookup (geocodeAddressStructured(), Step 1) and the
+// original single-line lookup (geocodeAddress(), the recap card's free-text
+// field) share the exact same response parsing — both are the same Census
+// Geocoder API, just two of its endpoint variants (onelineaddress vs.
+// address-components), so there's no reason for two parsing paths to drift.
+function parseGeocodeMatch(data){
   const match = data?.result?.addressMatches?.[0];
   if (!match) return { ok: false, reason: 'no-match' };
   const counties = match.geographies?.['Counties'] || [];
@@ -2646,6 +2709,39 @@ async function geocodeAddress(address){
     lat: match.coordinates?.y,
     lon: match.coordinates?.x
   };
+}
+
+/* Geocoder — address string -> {ok, county, state, stateFips, countyFips, cbsaName, lat, lon} */
+async function geocodeAddress(address){
+  const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&vintage=Current_Current&layers=Counties,Metropolitan%20Statistical%20Areas&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Geocoder HTTP ${res.status}`);
+  const data = await res.json();
+  return parseGeocodeMatch(data);
+}
+
+// 2026-08-20 — structured counterpart to geocodeAddress() above, used by
+// Step 1's street/city/state/ZIP fields. Same Census Geocoder service, its
+// `/geocoder/geographies/address` endpoint (separate street/city/state/zip
+// params) instead of the single free-text line the recap card still uses —
+// no account or API key required, same as the rest of this build's Census
+// integrations.
+async function geocodeAddressStructured({ street, city, state: st, zip }){
+  const params = new URLSearchParams({
+    street: street || '',
+    city: city || '',
+    state: st || '',
+    zip: zip || '',
+    benchmark: 'Public_AR_Current',
+    vintage: 'Current_Current',
+    layers: 'Counties,Metropolitan Statistical Areas',
+    format: 'json'
+  });
+  const url = `https://geocoding.geo.census.gov/geocoder/geographies/address?${params.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Geocoder HTTP ${res.status}`);
+  const data = await res.json();
+  return parseGeocodeMatch(data);
 }
 
 /* ACS 5-year — population + age-bucketed generations + income brackets, for
@@ -3328,6 +3424,11 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.querySelectorAll('#audienceChecks .select-tile, #wealthChecks .select-tile').forEach(c => c.classList.remove('selected'));
   document.getElementById('addressEditInput').value = '';
   document.getElementById('recapAddressStatus').textContent = '';
+  // 2026-08-20 — Step 1's address block
+  document.getElementById('step1AddressBlock').style.display = 'none';
+  ['step1AddrStreet','step1AddrCity','step1AddrState','step1AddrZip'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('step1AddressStatus').textContent = '';
+  delete document.getElementById('step1AddressStatus').dataset.matched;
   document.getElementById('recapDescInput').value = '';
   delete document.getElementById('recapDescInput').dataset.userEdited;
   document.getElementById('recapProductThemesInput').value = '';
@@ -3867,6 +3968,12 @@ function startChannelsStep(){
 function pickRegion(region){
   state.region = region;
   document.querySelectorAll('#regionChips .select-tile').forEach(c => c.classList.toggle('selected', c.dataset.region === region));
+  // 2026-08-20 — reveal the Step 1 address block the moment Local is picked
+  // (it's meaningless for National/Global, which never ask for an address
+  // at all). Doesn't clear anything already typed if the visitor toggles
+  // back and forth between footprints before settling.
+  const addrBlock = document.getElementById('step1AddressBlock');
+  if (addrBlock) addrBlock.style.display = region === 'Local' ? 'block' : 'none';
   checkCompanyReady();
 }
 
@@ -3951,7 +4058,20 @@ function finishQuickReveal(){
 // finishOrgStyleStep() (seeds state.opportunity before the loop step) and
 // from renderInitialReport() (populates the relocated cards for real).
 function startRecapStep(){
-  renderRecapAddressStatus('');
+  // 2026-08-20 — address is now normally already collected and geocoded at
+  // Step 1 (see #step1AddressBlock/lookupStep1Address()). If it resolved
+  // successfully there, show it here as an already-confirmed fact instead
+  // of asking the visitor to type it again — the input row only shows for
+  // a visitor who skipped it at Step 1, or whose Step 1 lookup didn't find
+  // a match, both of which fall back to the same input+status UI as before.
+  const addressInputEl = document.getElementById('addressEditInput');
+  if (state.geo?.ok && state.address){
+    addressInputEl.value = state.address;
+    renderRecapAddressStatus(`Matched: ${state.geo.matchedAddress} — ${state.geo.countyName}${state.geo.cbsaName ? ' · ' + state.geo.cbsaName : ''}`, 'ok');
+  } else {
+    addressInputEl.value = state.address || '';
+    renderRecapAddressStatus('');
+  }
   renderRecapDescription();
   renderRecapProductThemes();
   renderRecapIndustry(); // renders with whatever's cached (fallback on first visit)
@@ -3969,6 +4089,14 @@ function startRecapStep(){
   // is reached, regardless of address/lookup — powers the National/Global
   // read even if the visitor never runs an address lookup.
   if (!state.censusNational) primeNationalCensus();
+  // 2026-08-20 — if Step 1 already resolved an address, its cbpLocal fetch
+  // ran against whatever industryOf() fell back to at that point (the real
+  // industry isn't picked until Step 2). Re-running here, now that the real
+  // industry is known, corrects the local payroll figure shown below
+  // without asking the visitor to click "Look up" a second time.
+  if (state.geo?.ok){
+    refreshLocalCensusAndCbp().then(() => { renderRecapIndustry(); renderRecapCensus(); });
+  }
 }
 
 // Seeds the recap step's editable description field: the visitor's own
@@ -4066,6 +4194,73 @@ async function refreshLocalCensusAndCbp(){
   if (industry.usRevenue != null){
     try { state.cbpLocal = await fetchCbp(industry.naics, fips); }
     catch (e) { state.cbpLocal = null; }
+  }
+}
+
+// 2026-08-20 — Step 1's address block. A field edit after a prior lookup
+// invalidates that lookup's result (the visitor is correcting something) —
+// clear the status line rather than leaving a stale "Matched: ..." message
+// next to fields that no longer match it.
+function onStep1AddressFieldInput(){
+  const statusEl = document.getElementById('step1AddressStatus');
+  if (statusEl && statusEl.dataset.matched){
+    statusEl.textContent = '';
+    statusEl.style.color = '';
+    delete statusEl.dataset.matched;
+  }
+}
+
+function renderStep1AddressStatus(msg, kind){
+  const el = document.getElementById('step1AddressStatus');
+  if (!el) return;
+  const color = kind === 'error' ? 'var(--advocacy)' : kind === 'ok' ? 'var(--cx)' : '#8a8067';
+  el.style.color = color;
+  el.textContent = msg;
+  if (kind === 'ok') el.dataset.matched = '1'; else delete el.dataset.matched;
+}
+
+// Structured counterpart to lookupAddress() (the recap card's free-text
+// version) — same downstream effect on state.geo/state.address/
+// state.censusLocal, just reads street/city/state/zip as separate fields
+// and geocodes via geocodeAddressStructured(). Not required to advance past
+// Step 1 (see the field-hint copy in the HTML) — a visitor can skip this
+// and still continue with illustrative figures, same fallback convention
+// the recap card's version has always had.
+async function lookupStep1Address(){
+  const street = document.getElementById('step1AddrStreet').value.trim();
+  const city = document.getElementById('step1AddrCity').value.trim();
+  const st = document.getElementById('step1AddrState').value.trim();
+  const zip = document.getElementById('step1AddrZip').value.trim();
+  if (!street || !city || !(st || zip)){
+    renderStep1AddressStatus('Enter at least a street address, city, and state or ZIP to look up.', 'error');
+    return;
+  }
+  state.address = [street, city, [st, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  renderStep1AddressStatus('Looking up county and metro area…');
+  const btn = document.getElementById('step1AddressLookupBtn');
+  btn.disabled = true;
+  try {
+    const geo = await geocodeAddressStructured({ street, city, state: st, zip });
+    state.geo = geo;
+    if (!geo.ok){
+      renderStep1AddressStatus('No match found for that address — double-check it and try again, or continue anyway (illustrative figures will be used).', 'error');
+      return;
+    }
+    renderStep1AddressStatus(`Matched: ${geo.matchedAddress} — ${geo.countyName}${geo.cbsaName ? ' · ' + geo.cbsaName : ''}`, 'ok');
+    // Reset cached local data so it re-fetches for the newly resolved
+    // county — same invalidation lookupAddress() does. cbpLocal here uses
+    // whatever industryOf() falls back to this early (Step 1, before the
+    // real industry is picked at Step 2) — startRecapStep() re-runs this
+    // once the real industry is known, so the CBP payroll figure shown
+    // later is never left stuck on the Step-1-time placeholder industry.
+    state.censusLocal = null;
+    state.cbpLocal = null;
+    await refreshLocalCensusAndCbp();
+  } catch (e) {
+    state.geo = { ok: false, reason: 'network' };
+    renderStep1AddressStatus('Couldn\'t reach the Census geocoder right now — continuing with illustrative figures.', 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
 
