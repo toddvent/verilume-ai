@@ -3679,16 +3679,86 @@ const LEGACY_CASING_COLUMNS = [
   ['zip_population_master', 'sourceLabel'],
   ['zip_population_master', 'updatedAt']
 ];
+// 2026-08-21, later same day — this used to run automatically at module
+// load (`fixLegacyColumnCasing();` right here, on every cold start), doing
+// up to 350 sequential blocking ALTER TABLE round-trips through the
+// synchronous worker-thread bridge before the server could handle its
+// first request. That's what was SUPPOSED to only cost a few seconds on a
+// mostly-already-fixed database, but under real network latency to
+// Supabase it was marginal against Vercel's 30s function timeout and
+// started failing outright — every endpoint (`login-user`, `logout`,
+// `GET /api/accounts/:id`) came back `INTERNAL_FUNCTION_INVOCATION_FAILED`
+// because the COLD START itself never finished within 30s, not because of
+// any actual query error. This was a self-inflicted regression: the fix
+// for the casing bug became a worse outage than the casing bug.
+//
+// Fixed by removing the automatic run entirely and turning this into an
+// on-demand admin action instead (`POST /api/admin/fix-legacy-casing`,
+// below), gated by the same ADMIN_API_TOKEN pattern already used for
+// `GET /api/ops/integration-status`. It also does a single bulk
+// information_schema lookup first to find out which columns actually
+// still need renaming, so a re-run after a mostly-successful prior run is
+// fast (near-zero remaining work) instead of repeating all 350 checks
+// every time.
 function fixLegacyColumnCasing(){
+  // 2026-08-21 -- this used to swallow every error identically, which made
+  // it impossible to tell "nothing to fix" apart from "this is silently
+  // failing" from the Vercel logs alone. Now: count real renames, and log
+  // (don't just eat) any error that ISN'T Postgres's normal "column does
+  // not exist" (code 42703, or the equivalent local-SQLite message) --
+  // that's the expected/harmless outcome for a column that's already
+  // correctly cased or doesn't exist on that table; anything else (a
+  // permissions error, a lock, a typo) is worth seeing.
+  //
+  // Bulk pre-check: one query against information_schema.columns for
+  // every table this list touches, instead of finding out column-by-column
+  // via 350 individual failed-ALTER round trips. Anything not present in
+  // this result under its LOWERCASE name has already been fixed (or never
+  // existed) and needs no ALTER at all.
+  const tables = Array.from(new Set(LEGACY_CASING_COLUMNS.map(([t]) => t)));
+  let existing = new Set();
+  try {
+    const placeholders = tables.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN (${placeholders})`
+    ).all(...tables);
+    existing = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
+  } catch (e) {
+    // If the bulk check itself fails for some reason, fall back to
+    // attempting every rename directly below rather than silently doing
+    // nothing — slower, but still correct.
+    console.error('[fixLegacyColumnCasing] bulk information_schema check failed, falling back to per-column attempts:', (e && e.message) || e);
+    existing = null;
+  }
+
+  let renamed = 0, alreadyOk = 0, unexpectedErrors = 0;
   for (const [table, col] of LEGACY_CASING_COLUMNS){
     const lower = col.toLowerCase();
     if (lower === col) continue; // no casing to fix
+    if (existing && !existing.has(`${table}.${lower}`)){
+      alreadyOk++; // confirmed via the bulk check — nothing to do, no round trip spent
+      continue;
+    }
     try {
       db.exec('ALTER TABLE ' + table + ' RENAME COLUMN ' + lower + ' TO ' + col);
-    } catch (e) { /* already correct, or column not on this table -- fine */ }
+      renamed++;
+    } catch (e) {
+      const msg = (e && e.message) || '';
+      const isExpected = e && (e.code === '42703' || /does not exist/i.test(msg) || /no such column/i.test(msg));
+      if (isExpected) {
+        alreadyOk++;
+      } else {
+        unexpectedErrors++;
+        console.error(`[fixLegacyColumnCasing] unexpected error renaming ${table}.${lower} -> ${col}:`, msg);
+      }
+    }
   }
+  const summary = { renamed, alreadyOk, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length };
+  console.log(`[fixLegacyColumnCasing] done: ${renamed} column(s) renamed, ${alreadyOk} already correct/absent, ${unexpectedErrors} unexpected error(s)`);
+  return summary;
 }
-fixLegacyColumnCasing();
+// NOTE: deliberately NOT auto-run at module load anymore — see the comment
+// above. Trigger it on demand via POST /api/admin/fix-legacy-casing.
 
 // Footprint → region code, matching account.html/portal.html's existing
 // sample ID convention (e.g. "CXM-NAT-2026-483").
@@ -5305,6 +5375,22 @@ async function handleRequest(req, res) {
     // at all, they're wireframe/demo-only in the current build (see
     // cmpSimulateEnterpriseDemo() in portal.html), so no credential would
     // turn them on; that distinction is exactly what prompted this panel.
+    // POST /api/admin/fix-legacy-casing — 2026-08-21, later same day. The
+    // on-demand replacement for the auto-run migration removed above (see
+    // that comment for the outage it caused). Safe to call repeatedly —
+    // each call starts with a fast bulk information_schema check, so a
+    // second/third call after a mostly-successful first one only spends a
+    // round trip on whatever's still genuinely outstanding. Same admin-
+    // token gate as GET /api/ops/integration-status, reusing the existing
+    // ADMIN_API_TOKEN env var rather than introducing a new secret.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'fix-legacy-casing'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const summary = fixLegacyColumnCasing();
+      return sendJson(res, 200, summary);
+    }
+
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'integration-status'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
