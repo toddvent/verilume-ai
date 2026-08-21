@@ -5298,7 +5298,17 @@ async function handleRequest(req, res) {
       if (!body.email || !body.password){
         return sendJson(res, 400, { error: 'email and password are required' });
       }
-      const member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin FROM team_members WHERE lower(email) = lower(?)').get(body.email);
+      // 2026-08-21 fix — team_members has no UNIQUE constraint on email, and
+      // this lookup previously had no ORDER BY. If duplicate rows exist for
+      // the same email (legacy/test data), an unordered SELECT can
+      // arbitrarily resolve to a DIFFERENT row than request-password-reset's
+      // lookup below resolves to for the same email — so a password reset
+      // could update one row while login continued reading a stale one,
+      // producing "incorrect email or password" even right after a
+      // successful-looking reset. ORDER BY createdAt DESC LIMIT 1 makes both
+      // lookups deterministically agree on "the most recently created
+      // matching row," regardless of any pre-existing duplicates.
+      const member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
       if (!member || !member.passwordHash || !verifyAccessCode(body.password, member.passwordHash, member.passwordSalt)){
         return sendJson(res, 401, { error: 'incorrect email or password' });
       }
@@ -5530,7 +5540,11 @@ async function handleRequest(req, res) {
         return sendJson(res, 400, { error: 'email is required' });
       }
       const generic = { ok: true, message: 'If that email has a phone number on file, a verification code was sent to it.' };
-      const member = db.prepare('SELECT id, phone FROM team_members WHERE lower(email) = lower(?)').get(body.email);
+      // 2026-08-21 fix — same ORDER BY as login-user above, so this lookup
+      // and login-user's lookup always agree on which row is "the" member
+      // for a given email when duplicate rows exist. See the comment on
+      // login-user's query for the full explanation.
+      const member = db.prepare('SELECT id, phone FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
       if (!member || !member.phone){
         return sendJson(res, 200, generic);
       }
