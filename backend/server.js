@@ -3731,7 +3731,7 @@ function fixLegacyColumnCasing(){
     existing = null;
   }
 
-  let renamed = 0, alreadyOk = 0, unexpectedErrors = 0;
+  let renamed = 0, alreadyOk = 0, unexpectedErrors = 0, droppedDuplicates = 0;
   const errorDetails = [];
   for (const [table, col] of LEGACY_CASING_COLUMNS){
     const lower = col.toLowerCase();
@@ -3746,8 +3746,31 @@ function fixLegacyColumnCasing(){
     } catch (e) {
       const msg = (e && e.message) || '';
       const isExpected = e && (e.code === '42703' || /does not exist/i.test(msg) || /no such column/i.test(msg));
+      // 2026-08-21, later still — Postgres 42701 "column already exists"
+      // means the correctly-cased column was already added separately
+      // (via ensureColumn()'s ADD COLUMN, before this table's rename ever
+      // ran), so BOTH the old lowercase and the new camelCase column now
+      // exist side by side. Confirmed with Todd directly: the app only
+      // reads/writes the camelCase one, this environment's data is test
+      // data expected to be wiped before the next phase anyway, and he
+      // explicitly asked (2026-08-21) to have the leftover lowercase
+      // duplicate dropped rather than left as unused clutter — so a 42701
+      // here drops the old column instead of just being logged.
+      const isDuplicate = e && e.code === '42701';
       if (isExpected) {
         alreadyOk++;
+      } else if (isDuplicate) {
+        try {
+          db.exec('ALTER TABLE ' + table + ' DROP COLUMN ' + lower);
+          droppedDuplicates++;
+        } catch (dropErr) {
+          unexpectedErrors++;
+          const dropMsg = (dropErr && dropErr.message) || '';
+          if (errorDetails.length < 25){
+            errorDetails.push({ table, column: lower, targetColumn: col, code: (dropErr && dropErr.code) || null, message: `rename hit duplicate (42701), then DROP COLUMN also failed: ${dropMsg}` });
+          }
+          console.error(`[fixLegacyColumnCasing] duplicate column ${table}.${lower} — DROP also failed:`, dropMsg);
+        }
       } else {
         unexpectedErrors++;
         // 2026-08-21, later still — return the actual error alongside the
@@ -3762,8 +3785,8 @@ function fixLegacyColumnCasing(){
       }
     }
   }
-  const summary = { renamed, alreadyOk, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length, errorDetails };
-  console.log(`[fixLegacyColumnCasing] done: ${renamed} column(s) renamed, ${alreadyOk} already correct/absent, ${unexpectedErrors} unexpected error(s)`);
+  const summary = { renamed, alreadyOk, droppedDuplicates, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length, errorDetails };
+  console.log(`[fixLegacyColumnCasing] done: ${renamed} column(s) renamed, ${alreadyOk} already correct/absent, ${droppedDuplicates} duplicate(s) dropped, ${unexpectedErrors} unexpected error(s)`);
   return summary;
 }
 // NOTE: deliberately NOT auto-run at module load anymore — see the comment
