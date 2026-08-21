@@ -3732,6 +3732,7 @@ function fixLegacyColumnCasing(){
   }
 
   let renamed = 0, alreadyOk = 0, unexpectedErrors = 0;
+  const errorDetails = [];
   for (const [table, col] of LEGACY_CASING_COLUMNS){
     const lower = col.toLowerCase();
     if (lower === col) continue; // no casing to fix
@@ -3749,11 +3750,19 @@ function fixLegacyColumnCasing(){
         alreadyOk++;
       } else {
         unexpectedErrors++;
+        // 2026-08-21, later still — return the actual error alongside the
+        // counts (not just log it) so diagnosing a nonzero
+        // unexpectedErrors doesn't require a trip to the Vercel log
+        // viewer. Capped at 25 entries — this list is meant to be read by
+        // a person, not machine-parsed in bulk.
+        if (errorDetails.length < 25){
+          errorDetails.push({ table, column: lower, targetColumn: col, code: (e && e.code) || null, message: msg });
+        }
         console.error(`[fixLegacyColumnCasing] unexpected error renaming ${table}.${lower} -> ${col}:`, msg);
       }
     }
   }
-  const summary = { renamed, alreadyOk, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length };
+  const summary = { renamed, alreadyOk, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length, errorDetails };
   console.log(`[fixLegacyColumnCasing] done: ${renamed} column(s) renamed, ${alreadyOk} already correct/absent, ${unexpectedErrors} unexpected error(s)`);
   return summary;
 }
