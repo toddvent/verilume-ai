@@ -5,7 +5,12 @@
 // add-on).
 //
 // Uses standard HTTP Basic Auth: the browser shows its own native
-// username/password popup. No custom login page needed.
+// username/password popup. No custom login page needed. Once entered, the
+// browser caches those credentials for this origin and resends them
+// automatically on every later request in that browser session (including
+// the app's own same-origin fetch() calls to /api/*) — so in practice a
+// visitor is prompted once per browser session, not on every page, even
+// though the server is still technically checking every single request.
 //
 // Configure the credentials via two Vercel Environment Variables (see
 // project Settings -> Environment Variables):
@@ -21,41 +26,45 @@ export const config = {
   matcher: '/:path*',
 };
 
-// 2026-08-21 — flipped this file from an allowlist-of-public-paths model to
-// a denylist-of-private-paths model, per direct instruction ("This site is
-// live and needs to perform like a live site after the initial credentials
-// are added. I can't trust what I see to move forward").
+// 2026-08-21 (reverted same day) — this file briefly flipped from an
+// allowlist-of-public-paths model to a denylist-of-private-paths model
+// (only ops-console.html gated, everything else public), per an earlier
+// direct instruction that the live product's own pages/APIs shouldn't sit
+// behind an unrelated shared password on top of the app's real login
+// system. That reasoning still holds for a genuinely public product — but
+// per direct follow-up the same day ("We ended up removing site
+// credentials from the entire site not the specific pages or API calls
+// alone... We don't want to be public at all"), this site is still in a
+// pre-launch/testing phase, not meant to be reachable by the general public
+// at all yet. Reverted back to an ALLOWLIST model: everything is gated by
+// default, with only the one genuine technical exception below staying
+// open. When this product is actually ready to be public, the fix is to
+// widen PUBLIC_PATHS deliberately (or remove the gate), not to reintroduce
+// this same back-and-forth.
 //
-// Until now, only /api/*, the Twilio verification file, and robots.txt were
-// exempt from the shared site password — every other static page, including
-// the real customer-facing flow (login.html, forgot-password.html,
-// onboarding.html, select-tier.html, portal.html, account.html,
-// print-specs.html, ooh-specs.html, assessment.html, index.html, and every
-// marketing/solution page), still required the shared Basic Auth site
-// password on first load in a given browser. That's backwards for a live
-// product: real customers don't have a separate "site password" to enter —
-// only their own account email/password — so gating the app's own pages
-// behind this on top of the real login system just interrupts genuine
-// customer traffic with an unrelated credential prompt (as seen when
-// clicking "Forgot Password" from login.html — a native browser Basic Auth
-// popup, not the app's own styled login form).
-//
-// PRIVATE_PATHS is now a short DENYLIST of pages that still need to stay
-// gated — genuinely internal/staff-only tooling, not the product itself.
-// Today that's just ops-console.html (see RUNBOOK / project docs: it's a
-// separate internal admin tool with its own independent login already,
-// unrelated to the shared customer session convention). Everything else on
-// the site — every real page and every /api/* route — is public. Add a
-// path here only for something that is genuinely internal-only, never as a
-// way to "soft-launch" a customer-facing page — that's what the app's own
-// login/account system is for.
-const PRIVATE_PATHS = [
-  /^\/ops-console\.html$/,
+// PUBLIC_PATHS is deliberately short — every entry here is something that
+// MUST be reachable by a non-browser caller that can't complete an HTTP
+// Basic Auth prompt (a bot/crawler making a plain GET), not a UX
+// convenience:
+//   - the Twilio domain-verification file: Twilio's own verification
+//     crawler fetches this exact static file directly (no browser, no
+//     credentials) to confirm domain ownership for SMS/Verify. Gating it
+//     breaks that verification outright — this caused a real outage
+//     earlier this same day (see RUNBOOK / project docs: "Twilio domain
+//     verification failing (401)").
+// Nothing else is exempted: every real page (marketing, login, portal,
+// account, everything) and every /api/* route requires the shared site
+// password. robots.txt is intentionally NOT exempted either — the site
+// already ships a disallow-all robots.txt and noindex headers regardless,
+// and per "we don't want to be public at all," there's no reason a crawler
+// should be able to fetch even that file unauthenticated.
+const PUBLIC_PATHS = [
+  /^\/twiliodomainverification183151a4\.txt$/,
 ];
 
 export default function middleware(request) {
   const { pathname } = new URL(request.url);
-  if (!PRIVATE_PATHS.some((re) => re.test(pathname))) {
+  if (PUBLIC_PATHS.some((re) => re.test(pathname))) {
     return;
   }
 
@@ -87,18 +96,15 @@ export default function middleware(request) {
   }
 
   // No credentials, or wrong credentials — prompt the browser's built-in
-  // login dialog.
+  // login dialog. The browser caches a correct answer for this origin for
+  // the rest of that browser session, so this prompt is effectively a
+  // "once per session" gate from the visitor's point of view, even though
+  // the check itself runs on every request.
   //
-  // 2026-08-21 — added explicit no-store Cache-Control here as a defensive
-  // hardening measure. This 401 challenge response previously had no
-  // Cache-Control header at all, which means its cacheability was left to
-  // Vercel/browser defaults rather than being explicitly forced off. A
-  // cached 401 (at any layer — browser back-forward cache, an intermediate
-  // proxy, Vercel's edge) served back on a later request — even one that
-  // legitimately carries valid credentials — would look exactly like a
-  // "keeps asking for site credentials again" bug. This response, and only
-  // this response (the private-path gate), should never be cached by
-  // anything, so it's marked accordingly.
+  // Explicit no-store Cache-Control on this 401 challenge response — a
+  // cached 401 served back on a later request, even one that legitimately
+  // carries valid credentials, would look exactly like a "keeps asking for
+  // site credentials again" bug.
   return new Response('Authentication required.', {
     status: 401,
     headers: {
