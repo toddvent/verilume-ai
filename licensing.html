@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Primary SEO -->
+<title>Licensing — Verilume</title>
+<meta name="description" content="License the Verilume instrument — the Media Loop, the CX Quadrant, the scoring rubric — to run under your own agency's name for your own clients.">
+<meta name="keywords" content="white label marketing assessment, agency licensing, marketing diagnostic licensing">
+<link rel="canonical" href="https://www.verilume.ai/licensing.html">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilume">
+<meta property="og:title" content="Licensing — Verilume">
+<meta property="og:description" content="Agencies license the same instrument we use to run under their own name, for their own clients.">
+<meta property="og:url" content="https://www.verilume.ai/licensing.html">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /*
+    Shares the site-wide design system defined in index.html. New standalone
+    page (round 6 of the 2026-08-03 nav rebuild) — Licensing was removed
+    from the home page in round 3 with no destination; per Todd's decision
+    it now gets its own page, linked from the footer of every page rather
+    than the top-level nav.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  a{color:inherit;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 32px;}
+  img,svg{max-width:100%;}
+
+  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+    /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
+     the same max-width as .wrap (page content). That meant logo+navlinks
+     only ever had a few px of real slack on any desktop viewport above the
+     hamburger breakpoint, since widening the browser window past that cap
+     added zero extra room. Any
+     minor font-metric difference between environments was enough to tip
+     that into a real overlap — this is why raising the hamburger breakpoint
+     alone (700px then 980px then 1180px) never fully fixed it. Fix: the
+     header row is allowed to be wider than the page content column
+     (max-width:1320px vs .wrap's 1040px) — same visual left/right
+     alignment via the shared 32px padding, but real margin at every width. */
+.nav{display:flex;align-items:center;justify-content:space-between;max-width:1320px;margin:0 auto;padding:0 32px;position:relative;}
+  .logo{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:22px;letter-spacing:0.01em;text-decoration:none;color:var(--ink);}
+  .logo b{color:var(--media);}
+  .navlinks{display:flex;align-items:center;gap:20px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-size:13.5px;letter-spacing:0.01em;}
+  .navlinks a{text-decoration:none;color:var(--muted);transition:color 0.2s ease;white-space:nowrap;}
+  .navlinks a:hover{color:var(--ink);}
+  .nav-cta{background:var(--ink);color:#fff!important;padding:11px 20px;border-radius:var(--radius-pill);text-transform:uppercase;letter-spacing:0.06em;font-size:11px;font-weight:600;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .nav-cta:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+  /* 2026-08-19 -- utility nav, same pattern as index.html's fix: "Log in"
+     lives in its own group outside the collapsible .navlinks panel, so it
+     stays visible on mobile instead of hiding behind the hamburger with
+     the content links. Deliberately not paired with a "Create account"
+     CTA -- "Start free assessment" stays the one account-creation path
+     pushed on visitors. */
+  .nav-group{display:flex;align-items:center;gap:20px;}
+  .nav-right{display:flex;align-items:center;gap:12px;}
+  .nav-login{font-size:12.5px;font-weight:600;color:var(--ink)!important;text-decoration:none;padding:8px 16px;border:1px solid var(--line);border-radius:var(--radius-pill);white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .nav-login:hover{border-color:var(--ink);background:var(--paper-dim,#F5F5F7);}
+  .nav-toggle{display:none;background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;color:var(--ink);cursor:pointer;padding:11px 12px;line-height:1;min-width:44px;min-height:44px;}
+
+  .hero{padding:56px 0;background:
+      radial-gradient(ellipse 820px 520px at 14% 6%, rgba(8,145,178,0.13) 0%, rgba(8,145,178,0) 62%),
+      radial-gradient(ellipse 900px 700px at 88% 26%, rgba(37,99,235,0.16) 0%, rgba(37,99,235,0) 65%),
+      var(--paper);
+  }
+  .hero-eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;letter-spacing:0.16em;text-transform:uppercase;color:var(--advocacy);margin-bottom:26px;display:flex;align-items:center;gap:10px;}
+  /* Hero full-width fix (round 7, 2026-08-03): matches index.html's
+     unconstrained hero — see human-ai-agents.html for the full rationale.
+     Applied identically across every rebuilt page for consistency. */
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(38px,5.6vw,60px);line-height:1.1;margin:0 0 24px;letter-spacing:-0.02em;color:var(--ink);max-width:none;}
+  .lede{font-size:19px;line-height:1.6;max-width:none;color:var(--muted);}
+
+  .band{padding:80px 0;}
+  .band-intro{font-size:16.5px;line-height:1.7;max-width:640px;color:var(--muted);margin-bottom:36px;}
+  .license-list{font-size:15.5px;line-height:1.8;max-width:640px;color:var(--muted);padding-left:20px;margin:0 0 40px;}
+  .license-list li{margin-bottom:8px;}
+
+  .contact-panel{background:var(--paper-dim);border:1px solid var(--line);border-radius:20px;padding:44px 40px;max-width:640px;}
+  .contact-panel h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:22px;margin:0 0 12px;color:var(--ink);}
+  .contact-panel p{font-size:15px;line-height:1.6;color:var(--muted);margin:0 0 24px;}
+  .btn-primary{background:var(--ink);color:#fff;font-family:'Inter';font-weight:700;font-size:16px;padding:18px 32px;border-radius:var(--radius-pill);text-decoration:none;display:inline-block;transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);}
+  .btn-primary:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+  .contact-panel .note{font-size:12.5px;color:var(--muted);opacity:0.8;margin-top:16px;}
+
+  footer{padding:36px 0;background:var(--paper-dim);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);}
+  .footer-inner{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;max-width:1040px;margin:0 auto;padding:0 32px;}
+  .footer-nav{display:flex;flex-wrap:wrap;gap:18px;}
+  .footer-nav a{color:var(--muted);text-decoration:none;}
+  .footer-nav a:hover{color:var(--ink);}
+
+  @media (max-width:820px){
+    .band{padding:56px 0;}
+  }
+  @media (max-width:1180px){
+    .navlinks{position:absolute;top:100%;left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height 0.3s ease;}
+    .navlinks.open{padding:20px 28px 26px;}
+    .nav-toggle{display:block;}
+  }
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:7px 28px;display:flex;justify-content:flex-end;align-items:center;gap:20px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .utility-nav-inner a{color:rgba(255,255,255,0.72);text-decoration:none;}
+  .utility-nav-inner a:hover{color:#fff;text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return sessionStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+      portalLink.style.display = '';
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = sessionStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            sessionStorage.removeItem('verilume_session_' + accountId);
+            sessionStorage.removeItem('verilume_member_' + accountId);
+            sessionStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
+
+<header id="siteHeader">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="index.html">Veri<b>lume</b></a>
+    <div class="nav-group">
+      <div class="navlinks" id="navLinks">
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+      </div>
+      <div class="nav-right">
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" aria-labelledby="hero-heading">
+  <div class="wrap">
+    <div class="hero-eyebrow"><span class="dot"></span>For agencies</div>
+    <h1 id="hero-heading">License this for your agency.</h1>
+    <p class="lede">Put your name on the instrument, not just the results.</p>
+  </div>
+</section>
+
+<!-- LICENSING DETAIL -->
+<section class="band">
+  <div class="wrap">
+    <p class="band-intro">Agencies license the same instrument we use — the Media Loop, the CX Quadrant, and the scoring rubric — and run it under their own name, for their own clients. Every one of your clients gets the same guarantee ours do: a clean account and a clean workbook that never touches anyone else's — yours included.</p>
+    <ul class="license-list">
+      <li>Your branding on the client-facing report</li>
+      <li>The same role-by-role toolkit we use, scoped strictly to your accounts</li>
+      <li>NDA and licensing SOW before any deeper access — standard for anything touching client data</li>
+    </ul>
+    <div class="contact-panel">
+      <h3>Interested in licensing?</h3>
+      <p>Tell us about your agency and how many clients you'd want to run this against — we'll follow up to scope an NDA and licensing agreement.</p>
+      <a class="btn-primary" href="mailto:licensing@verilume.ai?subject=Agency%20licensing%20inquiry">Start a licensing conversation →</a>
+      <div class="note">Static prototype: this links to a mailto — no form submission or backend wiring yet.</div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>Verilume — the truth between promise and experience, measured.</span>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
+      <a href="assessment-framework.html">Assessment Framework</a>
+      <a href="marketing-performance.html">Marketing Performance</a>
+      <a href="customer-journey.html">Customer Journey</a>
+      <a href="industry-solutions.html">Industry Solutions</a>
+      <a href="index.html#faq">FAQ</a>
+    </nav>
+    <span>Website prototype — Deliverable 2 · static, no backend</span>
+  </div>
+</footer>
+
+<script>
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  function setNavOpen(open){
+    navToggle.classList.toggle('open', open);
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navLinks.classList.toggle('open', open);
+    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
+  }
+  function closeNav(){ setNavOpen(false); }
+  navToggle.addEventListener('click', () => setNavOpen(!navLinks.classList.contains('open')));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', closeNav));
+  window.addEventListener('resize', () => {
+    if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+  });
+</script>
+
+<!-- 2026-08-19 (login redesign, round 2) — lightweight login modal for the
+     main nav's "Log in" link, per direct instruction: a returning visitor
+     shouldn't have to leave the page they're on just to sign in. Handles
+     the ordinary case (valid email+password) entirely in-page; anything
+     that needs its own screen — a first-login forced password change, or
+     Forgot Password's phone-recovery flow — still hands off to
+     login.html/forgot-password.html (both already built), via a redirect
+     rather than as the default path. Same sessionStorage key convention as
+     those pages, so a modal-driven login is picked up immediately by
+     account.html/portal.html. Injected identically on every public page by
+     patch_login_modal.py — see MANIFEST.md for the file list. -->
+<div class="vl-lm-overlay" id="vlLoginOverlay" style="display:none;">
+  <div class="vl-lm-card">
+    <button type="button" class="vl-lm-close" onclick="vlCloseLoginModal()" aria-label="Close">&times;</button>
+    <h2>Sign in to Verilume</h2>
+    <p class="vl-lm-lede">Use the email and password for your Verilume account.</p>
+    <div class="vl-lm-field">
+      <label for="vlLoginEmail">Email</label>
+      <input type="email" id="vlLoginEmail" autocomplete="username" onkeydown="if(event.key==='Enter')vlSubmitLogin();">
+    </div>
+    <div class="vl-lm-field">
+      <label for="vlLoginPassword">Password</label>
+      <input type="password" id="vlLoginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')vlSubmitLogin();">
+    </div>
+    <button type="button" class="vl-lm-btn" id="vlLoginBtn" onclick="vlSubmitLogin()">Log in</button>
+    <div class="vl-lm-error" id="vlLoginError"></div>
+    <div class="vl-lm-links">
+      <a href="assessment.html">Create New Registration &rarr;</a>
+      <a href="#" id="vlForgotPasswordLink">Forgot Password?</a>
+    </div>
+  </div>
+</div>
+
+<style>
+.vl-lm-overlay{position:fixed;inset:0;z-index:999;background:rgba(29,29,31,0.55);display:flex;align-items:center;justify-content:center;padding:24px;}
+.vl-lm-card{position:relative;background:var(--paper,#fff);border:1px solid var(--line,#D2D2D7);border-radius:12px;padding:36px 32px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.30);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;box-sizing:border-box;}
+.vl-lm-card *{box-sizing:border-box;}
+.vl-lm-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;line-height:1;color:var(--muted,#6E6E73);cursor:pointer;padding:6px;}
+.vl-lm-card h2{margin:0 0 6px;font-size:1.375rem;font-weight:600;color:var(--ink,#1D1D1F);}
+.vl-lm-lede{margin:0 0 20px;font-size:0.8125rem;line-height:1.5;color:var(--muted,#6E6E73);}
+.vl-lm-field{margin-bottom:14px;}
+.vl-lm-field label{display:block;font-weight:700;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted,#6E6E73);margin-bottom:5px;}
+.vl-lm-field input{width:100%;padding:10px 12px;border:1px solid var(--line,#D2D2D7);border-radius:9px;font-family:inherit;font-size:0.9rem;background:var(--paper,#fff);color:var(--ink,#1D1D1F);}
+.vl-lm-field input:focus{outline:none;border-color:var(--cx,#0891B2);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+.vl-lm-btn{background:var(--ink,#1D1D1F);color:#fff;font-weight:600;font-size:0.875rem;padding:11px 18px;border-radius:999px;border:none;cursor:pointer;width:100%;}
+.vl-lm-btn:hover{background:#1c2d54;}
+.vl-lm-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.vl-lm-error{color:var(--advocacy,#4F46E5);font-size:0.75rem;margin-top:10px;min-height:1em;}
+.vl-lm-links{display:flex;justify-content:space-between;align-items:center;margin-top:18px;flex-wrap:wrap;gap:8px 14px;}
+.vl-lm-links a{font-size:0.75rem;color:var(--cx,#0891B2);text-decoration:none;font-weight:600;}
+.vl-lm-links a:hover{text-decoration:underline;}
+</style>
+
+<script>
+(function(){
+  var VL_BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+    ? '' : 'http://localhost:8787';
+  function vlSessionKey(accountId){ return 'verilume_session_' + accountId; }
+  function vlMemberKey(accountId){ return 'verilume_member_' + accountId; }
+  function vlPersistSession(accountId, token, memberId){
+    try {
+      sessionStorage.setItem(vlSessionKey(accountId), token);
+      if (memberId) sessionStorage.setItem(vlMemberKey(accountId), memberId);
+      // 2026-08-21 — also set the sitewide "who's logged in" pointer (see
+      // #utilityNav's script comment) so the utility nav, and
+      // assessment.html's Save & Schedule modal, recognize this session
+      // without needing to know the accountId in advance.
+      sessionStorage.setItem('verilume_active_account', accountId);
+    } catch (e) {}
+  }
+  window.vlOpenLoginModal = function(){
+    document.getElementById('vlLoginOverlay').style.display = 'flex';
+    document.getElementById('vlLoginError').textContent = '';
+    document.getElementById('vlLoginEmail').focus();
+  };
+  window.vlCloseLoginModal = function(){
+    document.getElementById('vlLoginOverlay').style.display = 'none';
+  };
+  var forgotLink = document.getElementById('vlForgotPasswordLink');
+  if (forgotLink){
+    forgotLink.addEventListener('click', function(e){
+      e.preventDefault();
+      var email = document.getElementById('vlLoginEmail').value.trim();
+      var qs = new URLSearchParams();
+      if (email) qs.set('email', email);
+      var suffix = qs.toString();
+      location.href = 'forgot-password.html' + (suffix ? ('?' + suffix) : '');
+    });
+  }
+  window.vlSubmitLogin = async function(){
+    var email = document.getElementById('vlLoginEmail').value.trim();
+    var password = document.getElementById('vlLoginPassword').value;
+    var errEl = document.getElementById('vlLoginError');
+    var btn = document.getElementById('vlLoginBtn');
+    if (!email || !password){ errEl.textContent = 'Enter your email and password to continue.'; return; }
+    btn.disabled = true;
+    errEl.textContent = '';
+    try {
+      var resp = await fetch(VL_BACKEND_URL + '/api/auth/login-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password })
+      });
+      var data = await resp.json().catch(function(){ return {}; });
+      if (!resp.ok){
+        errEl.textContent = data.error || ("Couldn't sign in (" + resp.status + ").");
+        btn.disabled = false;
+        return;
+      }
+      // 2026-08-21 fix, per direct report ("Logging Out and Login from the
+      // assessment.html page does not recognize the user password") — this
+      // modal (injected identically on every public page, including
+      // assessment.html) only ever checked data.mustChangePassword, never
+      // data.mfaRequired. login-user sends a step-up MFA code instead of a
+      // session token for any login that isn't already on a trusted
+      // device (see server.js's checkTrustedDevice) — which is the normal
+      // case, not an edge case. That response has no token/accountId at
+      // all, so the old code fell through to vlPersistSession(undefined,
+      // undefined, ...) and redirected to portal.html?accountId=undefined
+      // — a session that was never actually established. From the visitor's
+      // side that looks exactly like "my password wasn't accepted," even
+      // though login-user had just verified it correctly. Same hand-off
+      // pattern as the mustChangePassword branch below: this modal doesn't
+      // try to replicate the MFA code-entry screen inline, it defers to
+      // login.html, which already handles that flow correctly end to end.
+      if (data.mfaRequired){
+        location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search);
+        return;
+      }
+      if (data.mustChangePassword){
+        // First-login password change needs its own screen — hand off to
+        // login.html rather than replicate that flow in this modal.
+        location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search);
+        return;
+      }
+      vlPersistSession(data.accountId, data.token, data.memberId);
+      location.href = 'portal.html?accountId=' + encodeURIComponent(data.accountId);
+    } catch (e){
+      errEl.textContent = 'Could not reach the backend to sign in — try again.';
+      btn.disabled = false;
+    }
+  };
+  var navLink = document.getElementById('navLoginLink');
+  if (navLink){
+    navLink.addEventListener('click', function(e){
+      e.preventDefault();
+      vlOpenLoginModal();
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

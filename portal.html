@@ -2022,9 +2022,97 @@
   .signal-headline{font-weight:700;font-size:0.9375rem;color:var(--ink);margin-bottom:4px;}
   .signal-body{font-size:0.8438rem;color:var(--muted);line-height:1.55;}
   .signal-empty{font-size:0.8438rem;color:var(--muted);font-style:italic;}
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:7px 28px;display:flex;justify-content:flex-end;align-items:center;gap:20px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .utility-nav-inner a{color:rgba(255,255,255,0.72);text-decoration:none;}
+  .utility-nav-inner a:hover{color:#fff;text-decoration:underline;}
 </style>
 </head>
 <body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return sessionStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+      portalLink.style.display = '';
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = sessionStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            sessionStorage.removeItem('verilume_session_' + accountId);
+            sessionStorage.removeItem('verilume_member_' + accountId);
+            sessionStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
 
 <!-- 2026-08-19 (login redesign) — the old in-page access-code gate (Round 60)
      was removed. It was a separate, account-level, single-shared-code system
@@ -2074,30 +2162,16 @@
     <!-- Round 66 — Account settings link, originally pinned to the card's
          upper-right corner via position:absolute (see the removed
          #dashAccountLink CSS rule above for why that changed).
-         2026-08-21 — regrouped with #dashLogoutLink into one flex wrapper
-         (below) so the gear icon and the logout pill sit side by side as
-         the account-summary's last flex child, instead of the gear
-         floating on top of the pill. This is also what "right justified in
-         the client header" means site-wide now: account.html,
-         print-specs.html, and ooh-specs.html mirror this same grouped,
-         right-aligned placement inside their own .account-summary bar. -->
-    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-      <a href="account.html" class="icon-link" title="Account" aria-label="Account" id="dashAccountLink" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--white);border:1px solid var(--line);color:var(--ink);font-size:14px;text-decoration:none;flex-shrink:0;">⚙</a>
-      <!-- 2026-08-21, per direct instruction ("we need a logout function
-           from the portal") — there was previously no way to end a session
-           from this page at all. Placed beside the existing account-settings
-           icon since that's the only other session-scoped control already
-           living in this header. Uses the same sessionToken /
-           sessionStorageKey(state.companyId) convention as
-           authedFetch()/persistSessionToken() above, so it clears exactly
-           what login.html wrote — see logout() below.
-           2026-08-21 follow-up, per direct instruction ("Logout should be
-           the same style as LogIn with 'Logout' as text") — styled to match
-           the public-page "Log in" pill (.nav-login in index.html/etc.: a
-           bordered pill, not an icon), inlined here rather than depending on
-           a class this page's own stylesheet doesn't define. -->
-      <a href="#" onclick="logout();return false;" id="dashLogoutLink" style="font-size:12.5px;font-weight:600;color:var(--ink);text-decoration:none;padding:8px 16px;border:1px solid var(--line);border-radius:999px;white-space:nowrap;flex-shrink:0;">Logout</a>
-    </div>
+         2026-08-21 — briefly regrouped with a #dashLogoutLink pill right
+         here (Logout living inside the account-summary card). Superseded
+         the same day, per direct instruction ("Logout is in the wrong
+         place... should be consistent in the header to the right of the
+         Verilume logo in the exact place where it is on the public
+         pages... utility nav above the main nav"): Logout now lives
+         exclusively in the sitewide #utilityNav strip (see that div right
+         after <body>), not duplicated here. This icon is back to being the
+         account-summary's only control. -->
+    <a href="account.html" class="icon-link" title="Account" aria-label="Account" id="dashAccountLink" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--white);border:1px solid var(--line);color:var(--ink);font-size:14px;text-decoration:none;flex-shrink:0;">⚙</a>
   </div>
 
   <!-- ================= DASHBOARD ================= -->
@@ -12052,7 +12126,13 @@ async function logout(){
     }
   } catch (e) { /* unreachable backend shouldn't block logging out locally */ }
   sessionToken = null;
-  try { sessionStorage.removeItem(sessionStorageKey(state.companyId)); } catch (e) {}
+  try {
+    sessionStorage.removeItem(sessionStorageKey(state.companyId));
+    // 2026-08-21 — also clear the sitewide "who's logged in" pointer (see
+    // #utilityNav's script comment), so the utility nav and every other
+    // page agree this session is over, not just this page's own storage.
+    sessionStorage.removeItem('verilume_active_account');
+  } catch (e) {}
   // 2026-08-21, per direct instruction ("Redirect users verilume.ai after
   // logout") — was login.html?next=..., which just re-prompted for
   // credentials immediately; the actual ask is the site's public homepage.

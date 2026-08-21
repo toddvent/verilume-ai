@@ -126,9 +126,97 @@
     .specs-grid{grid-template-columns:1fr;}
     .account-summary{flex-direction:column;align-items:flex-start;}
   }
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:7px 28px;display:flex;justify-content:flex-end;align-items:center;gap:20px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .utility-nav-inner a{color:rgba(255,255,255,0.72);text-decoration:none;}
+  .utility-nav-inner a:hover{color:#fff;text-decoration:underline;}
 </style>
 </head>
 <body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return sessionStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+      portalLink.style.display = '';
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = sessionStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            sessionStorage.removeItem('verilume_session_' + accountId);
+            sessionStorage.removeItem('verilume_member_' + accountId);
+            sessionStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
 
 <div class="login-gate" id="loginGate" style="display:none;">
   <div class="login-gate-card">
@@ -164,24 +252,15 @@
       <div class="co-name" id="acctCoName">Acme Hospitality Group</div>
       <div class="co-id"><span class="tag">Client ID</span> &nbsp;<span id="acctCoId">CXM-NAT-2026-483</span></div>
     </div>
-    <div style="display:flex;align-items:center;gap:18px;">
-      <div style="text-align:right;">
-        <div class="tag">Catalog</div>
-        <div class="status" id="catalogStatus">Loading…</div>
-      </div>
-      <!-- 2026-08-21, per direct instruction ("Logout should be in the same
-           header position right justified across the site. The Portal has
-           it included in the client header section.") — moved out of
-           .back-nav (a plain top-of-page link row) and into this dark
-           .account-summary bar, matching where portal.html places its own
-           logout control: inside the client header, right-justified.
-           Colors are inverted from portal's version (white text / light
-           border instead of ink text / --line border) because this page's
-           .account-summary has a dark var(--ink) background, unlike
-           portal's light one — the ink-on-line pill would be unreadable
-           here. -->
-      <a href="#" onclick="logout();return false;" id="logoutLink" style="font-size:12.5px;font-weight:600;color:var(--white);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.35);border-radius:999px;white-space:nowrap;flex-shrink:0;">Logout</a>
+    <div style="text-align:right;">
+      <div class="tag">Catalog</div>
+      <div class="status" id="catalogStatus">Loading…</div>
     </div>
+    <!-- 2026-08-21 — Logout briefly lived here, then in .back-nav before
+         that. Superseded the same day, per direct instruction ("Logout is
+         in the wrong place... utility nav above the main nav"): Logout now
+         lives exclusively in the sitewide #utilityNav strip (see that div
+         right after <body>), consistent across every page. -->
   </div>
 
   <!-- SELECT: Publication -> Ad Format/Unit -->
@@ -419,7 +498,13 @@ async function logout(){
     }
   } catch (e) { /* unreachable backend shouldn't block logging out locally */ }
   sessionToken = null;
-  try { sessionStorage.removeItem(sessionStorageKey(state.companyId)); } catch (e) {}
+  try {
+    sessionStorage.removeItem(sessionStorageKey(state.companyId));
+    // 2026-08-21 — also clear the sitewide "who's logged in" pointer (see
+    // #utilityNav's script comment), so the utility nav and every other
+    // page agree this session is over, not just this page's own storage.
+    sessionStorage.removeItem('verilume_active_account');
+  } catch (e) {}
   location.href = '/'; // per direct instruction: redirect to verilume.ai after logout
 }
 let loginGateResolve = null;

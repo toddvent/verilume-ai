@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Select Your Level</title>
+<meta name="description" content="Choose a Verilume paid level — create a new account with it, or activate it on an account you already have.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    2026-08-19 (Path 4 build) — real tier-selection page. Per direct
+    instruction: final tier names/pricing/inclusions are TBD (see
+    PAID_TIERS in backend/server.js — this page reads that same list live
+    via GET /api/paid-tiers rather than hardcoding a second copy), but the
+    login-facing plumbing has to be real today: pick a level, then either
+    (a) create a brand-new account with that level already set, or
+    (b) log into an account you already have and activate that level on
+    it directly, without redoing the entire registration flow. Both paths
+    land on account.html when done, per direct instruction ("taking them
+    to their account page per level selected").
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --cx:#0891B2; --media:#2563EB; --line:#D2D2D7; --muted:#6E6E73; --advocacy:#4F46E5;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px 100px;}
+  .back-nav{font-size:12px;padding:20px 28px;border-bottom:1px solid var(--line);}
+  .back-nav a{color:var(--cx);text-decoration:none;}
+  .back-nav a:hover{text-decoration:underline;}
+  .wordmark{font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;margin-right:18px;}
+  .wordmark b{color:var(--media);font-weight:500;}
+  h1{font-weight:500;font-size:clamp(28px,4vw,40px);margin:48px 0 10px;letter-spacing:-0.01em;}
+  .lede{font-size:16px;line-height:1.6;color:var(--muted);max-width:640px;margin:0 0 12px;}
+  .tbd-note{font-size:12.5px;color:#8a8067;background:#FBF6ED;border:1px solid #E9DFC7;border-radius:8px;padding:10px 14px;max-width:640px;margin:0 0 36px;}
+  .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;}
+  .tier-card{border:1px solid var(--line);border-radius:12px;padding:26px;display:flex;flex-direction:column;}
+  .tier-name{font-size:19px;font-weight:600;margin:0 0 8px;}
+  .tier-desc{font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 22px;flex:1;}
+  .tier-actions{display:flex;flex-direction:column;gap:10px;}
+  .btn-primary{background:var(--ink);color:#fff;border:none;border-radius:999px;padding:12px 18px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;}
+  .btn-primary:hover{opacity:0.9;}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;}
+  .btn-ghost:hover{border-color:var(--ink);}
+  .status{font-size:12.5px;margin-top:60px;color:var(--muted);}
+  /* Inline "activate on existing account" login panel */
+  .activate-panel{display:none;margin-top:14px;border-top:1px solid var(--line);padding-top:14px;}
+  .activate-panel.open{display:block;}
+  .activate-panel label{display:block;font-size:11.5px;font-weight:600;margin-bottom:4px;}
+  .activate-panel input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;}
+  .activate-error{font-size:12px;color:var(--advocacy);min-height:16px;margin-bottom:6px;}
+  .prototype-note{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);line-height:1.7;}
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:7px 28px;display:flex;justify-content:flex-end;align-items:center;gap:20px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .utility-nav-inner a{color:rgba(255,255,255,0.72);text-decoration:none;}
+  .utility-nav-inner a:hover{color:#fff;text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return sessionStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+      portalLink.style.display = '';
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = sessionStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            sessionStorage.removeItem('verilume_session_' + accountId);
+            sessionStorage.removeItem('verilume_member_' + accountId);
+            sessionStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
+<div class="back-nav"><a class="wordmark" href="index.html">Veri<b>lume</b></a><a href="javascript:history.back()">← Back</a></div>
+<div class="wrap">
+  <h1>Select your level</h1>
+  <p class="lede">Create a new account at this level, or if you already have a Verilume account, log in and activate it directly — no need to go through registration again.</p>
+  <p class="tbd-note">Level names, pricing, and inclusions below are placeholders — not yet finalized. What's real: picking one here creates or updates a real account record.</p>
+
+  <div class="tiers" id="tiersGrid">Loading levels…</div>
+
+  <p class="status" id="pageStatus"></p>
+  <div class="prototype-note">
+    Prototype note — the three levels above (PAID_TIERS in backend/server.js) are placeholders standing in for real, still-undecided pricing tiers. What this page does is real: "Create a new account" runs the same registration (onboarding.html → POST /api/accounts → POST /api/auth/register-admin) as every other account-creation path, just with the chosen level pre-set; "Activate on my existing account" authenticates via the real POST /api/auth/login-user endpoint and then calls POST /api/accounts/:id/tier, a real, persisted update — no simulation either way.
+  </div>
+</div>
+
+<script>
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+  ? ''
+  : 'http://localhost:8787';
+
+function sessionStorageKey(accountId){
+  return `verilume_session_${accountId}`;
+}
+function persistSessionTokenFor(accountId, token){
+  try { sessionStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { /* sessionStorage unavailable — skip caching */ }
+}
+
+let TIERS = [];
+
+async function loadTiers(){
+  const grid = document.getElementById('tiersGrid');
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/paid-tiers`);
+    if (!resp.ok) throw new Error(`Backend responded ${resp.status}`);
+    const data = await resp.json();
+    TIERS = data.tiers || [];
+    renderTiers();
+  } catch (e){
+    grid.innerHTML = `<p style="color:var(--advocacy);">Couldn't reach the Verilume backend to load levels — try again in a moment.</p>`;
+  }
+}
+
+function renderTiers(){
+  const grid = document.getElementById('tiersGrid');
+  grid.innerHTML = TIERS.map(t => `
+    <div class="tier-card">
+      <div>
+        <div class="tier-name">${escapeHtml(t.name)}</div>
+        <p class="tier-desc">${escapeHtml(t.description)}</p>
+      </div>
+      <div class="tier-actions">
+        <a class="btn-primary" href="onboarding.html?tier=${encodeURIComponent(t.key)}">Create a new account with this level →</a>
+        <button type="button" class="btn-ghost" onclick="toggleActivatePanel('${t.key}')">I already have an account</button>
+      </div>
+      <div class="activate-panel" id="activate-${t.key}">
+        <label for="activateEmail-${t.key}">Email</label>
+        <input type="email" id="activateEmail-${t.key}">
+        <label for="activatePassword-${t.key}">Password</label>
+        <input type="password" id="activatePassword-${t.key}">
+        <div class="activate-error" id="activateError-${t.key}"></div>
+        <button type="button" class="btn-primary" style="width:100%;" onclick="activateTierOnExisting('${t.key}')">Log in and activate this level →</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function toggleActivatePanel(key){
+  document.querySelectorAll('.activate-panel').forEach(el => {
+    if (el.id !== `activate-${key}`) el.classList.remove('open');
+  });
+  document.getElementById(`activate-${key}`).classList.toggle('open');
+}
+
+// 2026-08-19 — "activate on an existing account" without redoing
+// registration: authenticate via the same real POST /api/auth/login-user
+// every other login on this site uses, then call the new
+// POST /api/accounts/:id/tier directly against that account, then land on
+// account.html signed in — per direct instruction ("taking them to their
+// account page per level selected").
+async function activateTierOnExisting(key){
+  const email = document.getElementById(`activateEmail-${key}`).value.trim();
+  const password = document.getElementById(`activatePassword-${key}`).value;
+  const errEl = document.getElementById(`activateError-${key}`);
+  errEl.textContent = '';
+  if (!email || !password){ errEl.textContent = 'Enter your email and password.'; return; }
+  try {
+    const loginResp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const loginData = await loginResp.json().catch(() => ({}));
+    if (!loginResp.ok){
+      errEl.textContent = loginData.error || `Couldn't sign in (${loginResp.status}).`;
+      return;
+    }
+    if (loginData.mustChangePassword){
+      // Don't try to also handle the forced-password-change screen here —
+      // send them to account.html, which already has that flow built, and
+      // let them come back to activate the tier once their password is
+      // real. Simpler and doesn't duplicate that screen a second time.
+      persistSessionTokenFor(loginData.accountId, loginData.token);
+      errEl.textContent = '';
+      window.location.href = `account.html?accountId=${encodeURIComponent(loginData.accountId)}`;
+      return;
+    }
+    const tierResp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(loginData.accountId)}/tier`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${loginData.token}` },
+      body: JSON.stringify({ tier: key })
+    });
+    if (!tierResp.ok){
+      const tierData = await tierResp.json().catch(() => ({}));
+      errEl.textContent = tierData.error || `Couldn't activate this level (${tierResp.status}).`;
+      return;
+    }
+    persistSessionTokenFor(loginData.accountId, loginData.token);
+    window.location.href = `account.html?accountId=${encodeURIComponent(loginData.accountId)}`;
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend — try again.';
+  }
+}
+
+loadTiers();
+</script>
+</body>
+</html>
