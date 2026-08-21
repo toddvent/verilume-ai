@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Account Management</title>
+<meta name="description" content="Verilume client account management: contact info, security, communication preferences, payment methods, invoices, and team member roles.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    Style note: same diagnostic-instrument register as assessment.html and
+    onboarding.html, since this is a continuation of that same client
+    journey (post-onboarding, ongoing account management), not the warm
+    marketing site. Prototype only — in-memory/session state, no backend,
+    no real payment processor or auth provider wired up. See inline notes
+    throughout for where a real backend would plug in.
+
+    Design-system note (2026-07-20): per the same three-tier design-system
+    decision already applied to assessment.html/framework.html/onboarding.html
+    (shared fonts + shared gradient-fade background concept only, no
+    .visual-block imagery components or card restructuring, since this is a
+    task/utility page, not a persuasion page) — same token set, same
+    gradient-fade body background, one deliberate solid-ink color moment
+    (the account-summary bar below, matching onboarding.html's
+    .account-id-card convention).
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.08) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px;}
+  a{color:inherit;}
+
+  .back-nav{display:flex;justify-content:space-between;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1040px;margin:0 auto;}
+  .back-nav a{color:var(--cx);text-decoration:none;}
+  .back-nav a:hover{text-decoration:underline;}
+  .back-nav .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
+  .back-nav .wordmark b{color:var(--media);font-weight:500;}
+
+  main{padding:40px 0 100px;}
+  .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:14px;}
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(26px,3.8vw,36px);line-height:1.15;margin:0 0 10px;letter-spacing:-0.01em;}
+  h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-style:normal;font-size:21px;margin:0 0 4px;}
+  p.lede{font-size:15px;line-height:1.6;color:var(--muted);max-width:640px;margin:0 0 28px;}
+
+  /* One deliberate solid-ink color moment, matching onboarding.html's
+     .account-id-card — everywhere else on this page stays white/bordered. */
+  .account-summary{background:var(--ink);color:var(--white);border-radius:16px;padding:26px 28px;margin:0 0 36px;display:flex;flex-wrap:wrap;gap:28px;align-items:center;justify-content:space-between;}
+  .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:22px;font-weight:600;margin:0 0 4px;}
+  .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;color:var(--media);}
+  .account-summary .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);opacity:0.75;}
+
+  /* Quick-nav — anchor jumps down this single scrolling page rather than a
+     multi-step wizard, since an account view is something you come back to
+     and re-visit sections of, not a linear flow like assessment.html. */
+  .quicknav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 40px;}
+  .quicknav a{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.04em;text-transform:uppercase;color:var(--cx);text-decoration:none;border:1px solid var(--line);border-radius:20px;padding:7px 14px;background:var(--white);}
+  .quicknav a:hover{border-color:var(--cx);}
+
+  section.acct-card{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:26px 28px;margin:0 0 24px;scroll-margin-top:20px;}
+  .card-sub{font-size:14px;color:var(--muted);margin:0 0 20px;max-width:600px;}
+
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .field-row.field-row-3{grid-template-columns:1fr 1fr 1fr;}
+  .field-row > .field{min-width:0;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px;}
+  /* Form-field polish (portal audit, round 12): matched to the public
+     site's rounded-card language (was a barely-rounded 3px) and given a
+     real focus ring — previously these controls had zero :focus styling
+     at all, so keyboard/tab navigation was invisible. */
+  .field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:14.5px;background:var(--paper);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  /* Custom select chevron — same appearance:none + inline-SVG-arrow
+     treatment already built in portal.html's .field select; ported here so
+     account.html doesn't fall back to the bare native OS dropdown arrow. */
+  .field select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%235B5647' stroke-width='1.6'%3E%3Cpath d='M5.5 7.5L10 12l4.5-4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:34px;cursor:pointer;}
+  .field select:hover{border-color:var(--cx);}
+  .field .hint{font-size:12.5px;color:var(--muted);opacity:0.85;margin-top:5px;}
+
+  .phone-row{display:flex;gap:10px;}
+  .phone-row select{flex:0 0 140px;min-width:104px;}
+  .phone-row input{flex:1 1 160px;min-width:0;}
+
+  /* Buttons — border-radius:999px always yields a full pill regardless of
+     the control's own height, matching the public site's pill CTAs
+     (previously a barely-rounded 4px, the single most visible gap between
+     this page and the public marketing pages). */
+  .btn-primary{background:var(--ink);color:var(--white);font-family:'Inter';font-weight:600;font-size:14px;padding:11px 20px;border-radius:999px;text-decoration:none;display:inline-block;border:none;cursor:pointer;transition:transform 0.15s ease;}
+  .btn-primary:hover{background:#1c2d54;transform:translateY(-1px);}
+  .btn-primary:disabled{opacity:0.4;cursor:not-allowed;transform:none;}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink);font-family:'Inter';font-weight:600;font-size:14px;padding:10px 18px;border-radius:999px;cursor:pointer;}
+  .btn-ghost:hover{border-color:var(--ink);}
+  .btn-danger{background:none;border:1px solid var(--advocacy);color:var(--advocacy);font-family:'Inter';font-weight:600;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer;}
+  .btn-danger:hover{background:#FBF3EC;}
+  .btn-row{display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+
+  /* Round 60 — login gate (Deliverable 14/auth), same shape as portal.html's. */
+  .login-gate{position:fixed;inset:0;z-index:500;background:rgba(29,29,31,0.92);display:flex;align-items:center;justify-content:center;padding:24px;}
+  .login-gate-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:36px 32px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.35);}
+  .login-gate-card .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:var(--ink);}
+  .login-gate-card .wordmark b{color:var(--media);font-weight:500;}
+  .login-gate-card h2{margin:0 0 8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:24px;}
+  .login-gate-card .lede{margin:0 0 20px;}
+  .login-gate-card code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;background:var(--paper-dim);padding:2px 6px;border-radius:6px;}
+  .login-gate-card input{width:100%;box-sizing:border-box;text-align:center;letter-spacing:0.08em;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;}
+
+  .status-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;color:var(--muted);margin-top:12px;}
+  .status-note.ok{color:var(--cx);}
+
+  /* Communication permissions + consent-style checkbox rows, matching the
+     .agree-row convention already established in onboarding.html and
+     carried into assessment.html Step 5. */
+  .toggle-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);}
+  .toggle-row:last-child{border-bottom:none;}
+  .toggle-row input{margin-top:3px;flex-shrink:0;}
+  .toggle-row .body h4{font-size:14.5px;font-weight:600;margin:0 0 2px;}
+  .toggle-row .body p{font-size:13px;color:var(--muted);margin:0;}
+
+  /* Payment methods */
+  .pay-method{display:flex;justify-content:space-between;align-items:center;gap:16px;border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:14px;flex-wrap:wrap;}
+  .pay-method .pm-info{display:flex;align-items:center;gap:14px;}
+  .pay-method .pm-icon{width:40px;height:28px;border-radius:10px;background:var(--paper-dim);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10px;letter-spacing:0.02em;color:var(--muted);}
+  .pay-method .pm-detail h4{font-size:14.5px;margin:0 0 2px;}
+  .pay-method .pm-detail p{font-size:12.5px;color:var(--muted);margin:0;}
+  .pay-required-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--advocacy);background:#FBF3EC;border-radius:999px;padding:3px 8px;}
+  .pay-empty{border:1px dashed var(--line);border-radius:16px;padding:18px;text-align:center;color:var(--muted);font-size:13.5px;margin-bottom:14px;}
+
+  /* Invoices table — wrapped in .table-scroll so a 5-6 column table can
+     scroll horizontally on a narrow phone instead of compressing columns
+     unreadably or overflowing the page (portal audit, round 12: neither
+     account.html nor portal.html had any overflow-x wrapper anywhere). */
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  table.data-table{width:100%;border-collapse:collapse;font-size:14px;}
+  table.data-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);}
+  table.data-table td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  table.data-table tr:last-child td{border-bottom:none;}
+  .status-chip{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;padding:3px 9px;border-radius:12px;display:inline-block;}
+  .status-chip.paid{background:#EAF3EF;color:var(--cx);}
+  .status-chip.due{background:#FBF6EA;color:var(--media);}
+  .status-chip.sent{background:#FBF6EA;color:var(--media);}
+  .status-chip.draft{background:#F1EFE8;color:var(--muted);}
+  .status-chip.overdue{background:#FBEAEA;color:#4F46E5;}
+  .status-chip.active{background:#EAF3EF;color:var(--cx);}
+  .status-chip.inactive{background:#F1EFE8;color:var(--muted);}
+  .link-btn{background:none;border:none;color:var(--cx);font-family:'Inter';font-weight:600;font-size:13px;cursor:pointer;padding:0;}
+  .link-btn:hover{text-decoration:underline;}
+
+  /* Team members */
+  .role-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink);background:var(--paper-dim);border-radius:999px;padding:3px 8px;display:inline-block;}
+  .invite-form{border:1px dashed var(--line);border-radius:16px;padding:18px;margin-top:16px;}
+  .invite-form .field-row{grid-template-columns:1fr 1fr 1fr auto;align-items:end;}
+  .invite-form .field{margin-bottom:0;}
+
+  footer{margin-top:40px;padding:24px 28px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);text-align:center;}
+
+  @media (max-width:680px){
+    .field-row,.field-row.field-row-3,.invite-form .field-row{grid-template-columns:1fr;}
+    .account-summary{flex-direction:column;align-items:flex-start;}
+    /* Phone-row's fixed 140px country-code select was flex-shrink:0 by
+       default (flex:0 0 140px), which could crowd the phone-number input
+       toward zero width on very narrow phones (<360px) — let it shrink a
+       little on the smallest screens instead of forcing 140px no matter what. */
+    .phone-row select{flex:0 0 112px;min-width:96px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="back-nav">
+  <a class="wordmark" href="index.html">Veri<b>lume</b></a>
+  <a href="onboarding.html">← Onboarding</a>
+  <!-- Round 58 — portal.html's gear icon links here (?accountId=...), but
+       until now this page had no link back, a dead end for anyone arriving
+       from the real Client Portal rather than the onboarding flow. href is
+       set to the sample account by default and overwritten with this
+       page's real ?accountId= below, once params is parsed. -->
+  <a href="portal.html" id="backToPortalLink">← Back to Client Portal</a>
+</div>
+
+<main>
+<div class="wrap">
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <span style="width:28px;height:28px;border-radius:8px;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">⚙</span>
+    <span class="eyebrow" style="margin-bottom:0;" id="acctCoNameEyebrow"></span>
+  </div>
+  <h1>Your Verilume account.</h1>
+  <p class="lede">Contact info, security, communication preferences, payment methods, invoices, and who on your team has access — all in one place. Prototype note: Contact info, communication preferences, payment methods, and invoices still run entirely in-session with sample data. Password &amp; security and Team Members both now read from and write to this build's real local backend (same login/roster the Portal uses).</p>
+
+  <div class="account-summary">
+    <div>
+      <div class="co-name" id="acctCoName">Acme Hospitality Group</div>
+      <div class="co-id"><span class="tag">Client ID</span> &nbsp;<span id="acctCoId">CXM-NAT-2026-700</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:18px;">
+      <div style="text-align:right;">
+        <div class="tag">Plan</div>
+        <div style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;color:var(--media);">Self-Service</div>
+      </div>
+      <!-- 2026-08-21, per direct instruction ("Logout should be in the same
+           header position right justified across the site. The Portal has
+           it included in the client header section.") — moved out of
+           .back-nav and into this dark .account-summary bar, matching
+           where portal.html places its own logout control: inside the
+           client header, right-justified. Colors are inverted from
+           portal's version (white text / light border instead of ink
+           text / --line border) because this page's .account-summary has
+           a dark var(--ink) background, unlike portal's light one. -->
+      <a href="#" onclick="logout();return false;" id="logoutLink" style="font-size:12.5px;font-weight:600;color:var(--white);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.35);border-radius:999px;white-space:nowrap;flex-shrink:0;">Logout</a>
+    </div>
+  </div>
+
+  <div class="quicknav">
+    <a href="#contact">Contact</a>
+    <a href="#security">Security</a>
+    <a href="#comms">Communication</a>
+    <a href="#payment">Payment methods</a>
+    <a href="#invoices">Invoices</a>
+    <a href="#team">Team</a>
+  </div>
+
+  <!-- CONTACT INFORMATION -->
+  <section class="acct-card" id="contact">
+    <h2>Contact information</h2>
+    <p class="card-sub">The primary contact Verilume reaches for account, billing, and support matters.</p>
+    <div class="field-row">
+      <div class="field">
+        <label for="ctFirst">First name</label>
+        <input type="text" id="ctFirst" value="Jane">
+      </div>
+      <div class="field">
+        <label for="ctLast">Last name</label>
+        <input type="text" id="ctLast" value="Doe">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="ctEmail">Work email</label>
+        <input type="email" id="ctEmail" value="jane@acmehospitality.com">
+      </div>
+      <div class="field">
+        <label for="ctCompany">Company name</label>
+        <input type="text" id="ctCompany" value="Acme Hospitality Group">
+      </div>
+    </div>
+    <div class="field">
+      <label for="ctPhone">Phone number</label>
+      <div class="phone-row">
+        <select id="ctPhoneCode">
+          <option value="+1" selected>+1 · US/Canada</option>
+          <option value="+44">+44 · UK</option>
+          <option value="+61">+61 · Australia</option>
+          <option value="+64">+64 · New Zealand</option>
+          <option value="+91">+91 · India</option>
+          <option value="+33">+33 · France</option>
+          <option value="+49">+49 · Germany</option>
+          <option value="+34">+34 · Spain</option>
+          <option value="+39">+39 · Italy</option>
+          <option value="+31">+31 · Netherlands</option>
+          <option value="+46">+46 · Sweden</option>
+          <option value="+41">+41 · Switzerland</option>
+          <option value="+81">+81 · Japan</option>
+          <option value="+82">+82 · South Korea</option>
+          <option value="+86">+86 · China</option>
+          <option value="+52">+52 · Mexico</option>
+          <option value="+55">+55 · Brazil</option>
+          <option value="+971">+971 · UAE</option>
+          <option value="+65">+65 · Singapore</option>
+          <option value="+27">+27 · South Africa</option>
+        </select>
+        <input type="tel" id="ctPhone" value="(555) 123-4567">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="saveContactBtn" onclick="saveContact()">Save contact info</button>
+      <div class="status-note" id="contactStatus"></div>
+    </div>
+  </section>
+
+  <!-- PASSWORD / SECURITY -->
+  <section class="acct-card" id="security">
+    <h2>Password &amp; security</h2>
+    <p class="card-sub">Changes here are real and take effect immediately — you'll sign in with the new password next time.</p>
+    <div class="field-row">
+      <div class="field">
+        <label for="pwCurrent">Current password</label>
+        <input type="password" id="pwCurrent" placeholder="••••••••" oninput="checkPasswordReady()">
+      </div>
+      <div></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="pwNew">New password</label>
+        <input type="password" id="pwNew" placeholder="••••••••" oninput="checkPasswordReady()">
+      </div>
+      <div class="field">
+        <label for="pwConfirm">Confirm new password</label>
+        <input type="password" id="pwConfirm" placeholder="••••••••" oninput="checkPasswordReady()">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="pwSaveBtn" disabled onclick="changePassword()">Update password</button>
+      <div class="status-note" id="pwStatus"></div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:24px 0;">
+
+    <!-- 2026-08-19 — self-service recovery phone number. Real, wired to
+         PATCH /api/team/:id for the currently-logged-in member (currentMemberId,
+         set at login/reset — see persistMemberId() above). This is the field
+         "Forgot your password?" on the login screen actually depends on: that
+         flow texts a code to whatever's saved here. Hidden entirely if this
+         session doesn't carry a memberId (e.g. an older/legacy session) rather
+         than showing a field that would silently fail to save. -->
+    <div id="recoveryPhoneSection" style="display:none;">
+      <h3 style="margin:0 0 6px;font-size:15px;">Recovery phone number</h3>
+      <p class="card-sub" style="margin-top:0;">Used only to text you a code if you ever need to reset your password from the sign-in screen. Not shared with the rest of your team.</p>
+      <div class="field-row">
+        <div class="field">
+          <label for="recoveryPhoneInput">Phone number</label>
+          <input type="tel" id="recoveryPhoneInput" placeholder="+1 555 123 4567" oninput="document.getElementById('recoveryPhoneSaveBtn').disabled = false;">
+        </div>
+        <div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="recoveryPhoneSaveBtn" disabled onclick="saveRecoveryPhone()">Save phone number</button>
+        <div class="status-note" id="recoveryPhoneStatus"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMMUNICATION PERMISSIONS -->
+  <section class="acct-card" id="comms">
+    <h2>Communication permissions</h2>
+    <p class="card-sub">Choose how Verilume can reach you. These apply to this account's primary contact — team members set their own preferences when they accept an invite.</p>
+    <label class="toggle-row">
+      <input type="checkbox" id="commEmail" checked onchange="saveCommPrefs()">
+      <span class="body"><h4>Account &amp; billing email</h4><p>Invoices, payment receipts, and account-status notices. Recommended to keep on.</p></span>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" id="commSms" onchange="saveCommPrefs()">
+      <span class="body"><h4>SMS / text alerts</h4><p>Time-sensitive alerts only — a failed payment or an account action that needs your attention.</p></span>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" id="commPhone" checked onchange="saveCommPrefs()">
+      <span class="body"><h4>Phone calls</h4><p>Your account team can call about strategy, results, or anything that's easier live than in writing.</p></span>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" id="commMarketing" onchange="saveCommPrefs()">
+      <span class="body"><h4>Product &amp; marketing updates</h4><p>New Verilume features, research, and content — not required to use the product.</p></span>
+    </label>
+    <div class="status-note ok" id="commStatus" style="margin-top:14px;"></div>
+  </section>
+
+  <!-- PAYMENT METHODS -->
+  <section class="acct-card" id="payment">
+    <h2>Payment methods</h2>
+    <p class="card-sub">A credit card on file is required to use self-service billing. ACH bank transfer is available as an additional method once a card is on file. Prototype note: no real payment processor (Stripe, Braintree, etc.) is integrated — this only stores the last 4 digits in this session, the same way a real integration would never store a full card or account number client-side.</p>
+
+    <div id="cardMethodDisplay"></div>
+    <div id="achMethodDisplay"></div>
+
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="toggleCardForm()">+ Add / replace credit card</button>
+      <button class="btn-ghost" onclick="toggleAchForm()">+ Add bank account (ACH)</button>
+    </div>
+
+    <div class="invite-form" id="cardForm" style="display:none;">
+      <div class="field-row">
+        <div class="field">
+          <label for="cardNumber">Card number</label>
+          <input type="text" id="cardNumber" placeholder="4242 4242 4242 4242" inputmode="numeric" maxlength="19">
+        </div>
+        <div class="field">
+          <label for="cardName">Name on card</label>
+          <input type="text" id="cardName" placeholder="Jane Doe">
+        </div>
+      </div>
+      <div class="field-row field-row-3">
+        <div class="field">
+          <label for="cardExp">Expiry (MM/YY)</label>
+          <input type="text" id="cardExp" placeholder="08/28" maxlength="5">
+        </div>
+        <div class="field">
+          <label for="cardCvv">CVV</label>
+          <input type="text" id="cardCvv" placeholder="123" inputmode="numeric" maxlength="4">
+        </div>
+        <div class="field">
+          <label for="cardZip">Billing ZIP</label>
+          <input type="text" id="cardZip" placeholder="90210" inputmode="numeric" maxlength="10">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="saveCard()">Save card</button>
+        <button class="btn-ghost" onclick="toggleCardForm()">Cancel</button>
+      </div>
+    </div>
+
+    <div class="invite-form" id="achForm" style="display:none;">
+      <div class="field-row">
+        <div class="field">
+          <label for="achBankName">Bank name</label>
+          <input type="text" id="achBankName" placeholder="First National Bank">
+        </div>
+        <div class="field">
+          <label for="achAcctType">Account type</label>
+          <select id="achAcctType">
+            <option>Checking</option>
+            <option>Savings</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="achRouting">Routing number</label>
+          <input type="text" id="achRouting" placeholder="021000021" inputmode="numeric" maxlength="9">
+        </div>
+        <div class="field">
+          <label for="achAccount">Account number</label>
+          <input type="text" id="achAccount" placeholder="000123456789" inputmode="numeric" maxlength="17">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="saveAch()">Save bank account</button>
+        <button class="btn-ghost" onclick="toggleAchForm()">Cancel</button>
+      </div>
+    </div>
+    <div class="status-note ok" id="paymentStatus"></div>
+  </section>
+
+  <!-- FINANCIAL TRACKING (Deliverable #11) — real, backend-persisted
+       invoice ledger, replacing the previous hardcoded three-row mock.
+       Prototype note, stated plainly: downloads are still mocked (no real
+       PDFs generated) and no real payment processor is wired up — marking
+       an invoice Paid here is a real database record of a real business
+       fact (an invoice got paid), not an instruction to move money. -->
+  <section class="acct-card" id="invoices">
+    <h2>Invoices &amp; financial tracking</h2>
+    <p class="card-sub">Every invoice issued to this account, tracked for real in this build's backend. Prototype note: downloads are still mocked — no real PDFs are generated, and no payment processor is connected — marking an invoice Paid just records that fact, it doesn't move any money.</p>
+    <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>Invoice</th><th>Issued</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody id="invoiceRows"></tbody>
+    </table>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-ghost" onclick="toggleInvoiceForm()">+ Add invoice</button>
+    </div>
+    <div class="invite-form" id="invoiceForm" style="display:none;">
+      <div class="field-row">
+        <div class="field">
+          <label for="invDescription">Description</label>
+          <input type="text" id="invDescription" placeholder="e.g. July retainer">
+        </div>
+        <div class="field">
+          <label for="invAmount">Amount</label>
+          <input type="number" id="invAmount" placeholder="e.g. 2400">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="invDueDate">Due date</label>
+          <input type="date" id="invDueDate">
+        </div>
+        <div class="field">
+          <label for="invStatus">Status</label>
+          <select id="invStatus">
+            <option value="sent">Sent</option>
+            <option value="draft">Draft</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn-primary" onclick="createInvoice()">Save invoice</button>
+        <button type="button" class="btn-ghost" onclick="toggleInvoiceForm()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Financial summary — real rollup of this account's campaign spend
+         (planned budget vs. reported actuals, already-real fields from
+         Media Plan/Campaign Analysis, just never surfaced together before)
+         plus this real invoice ledger. Every number here is a genuine sum
+         over real rows — nothing modeled or estimated. -->
+    <div id="financialSummary" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line, #D2D2D7);"></div>
+
+    <div class="status-note" id="invoiceStatus"></div>
+  </section>
+
+  <!-- TEAM MEMBERS -->
+  <section class="acct-card" id="team">
+    <h2>Team members</h2>
+    <p class="card-sub">Everyone invited to this account shares Client ID <strong id="teamCoIdLabel"></strong>. This is the same roster as the Portal's Team &amp; Org Chart — <strong>Admin</strong> is a separate account-permission flag (billing, payment methods, inviting/removing people) from a person's org-chart <strong>Level</strong> and <strong>Function</strong>, which is what the QA flow uses to resolve their manager.</p>
+    <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody id="teamRows"></tbody>
+    </table>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="toggleInviteForm()">+ Invite team member</button>
+    </div>
+
+    <div class="invite-form" id="inviteForm" style="display:none;">
+      <h4 id="inviteFormHeading" style="margin:0 0 14px;">Invite a team member</h4>
+      <div class="field-row">
+        <div class="field">
+          <label for="inviteName">Name</label>
+          <input type="text" id="inviteName" placeholder="Alex Rivera">
+        </div>
+        <div class="field">
+          <label for="inviteEmail">Email</label>
+          <input type="email" id="inviteEmail" placeholder="alex@acmehospitality.com">
+        </div>
+        <div class="field">
+          <label for="inviteLevel">Level</label>
+          <select id="inviteLevel" onchange="onInviteLevelChange()">
+            <option value="">Select a level…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="inviteFunction">Function</label>
+          <select id="inviteFunction">
+            <option value="">Select a function…</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="inviteReportsTo">Reports to</label>
+          <select id="inviteReportsTo">
+            <option value="">— none (top of this account's chart) —</option>
+          </select>
+        </div>
+        <div class="field" style="display:flex;flex-direction:column;justify-content:flex-end;">
+          <label style="display:flex;align-items:center;gap:8px;font-family:'Inter';font-weight:600;font-size:13.5px;text-transform:none;letter-spacing:normal;color:var(--ink);margin-bottom:0;">
+            <input type="checkbox" id="inviteIsAdmin" style="width:16px;height:16px;">
+            Admin — full account access
+          </label>
+          <div class="hint">Separate from Level/Function — governs billing, payment methods, and inviting/removing team members.</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="inviteSubmitBtn" onclick="submitTeamMemberForm()">Send invite</button>
+        <button class="btn-ghost" id="inviteCancelBtn" style="display:none;" onclick="cancelEditTeamMember()">Cancel edit</button>
+      </div>
+    </div>
+    <div class="status-note ok" id="teamStatus"></div>
+  </section>
+
+  <div class="status-note" style="margin-top:8px;line-height:1.6;">
+    Prototype note — this account view is new (2026-07-20) and wasn't part of the original Deliverable plan, so it isn't reflected in <code>cxmedia-backend-template.xlsx</code> yet. In the live build: contact info, communication preferences, and team member/role records write to a new Sheets tab scoped to this account's Client ID (same isolation model as Deliverable 15); password changes route through a real auth provider (none chosen yet); credit card and ACH details are tokenized by a real payment processor (Stripe/Braintree — not chosen yet) and only a token + last-4 are ever stored, never a full card or account number; and invoices are generated by whatever billing system issues them, not by this page. This page reads an optional <code>?accountId=</code> query parameter (falls back to a sample account) so it can be linked directly from onboarding.html's "Unlock deep intake" step once that's wired up.
+  </div>
+
+</div>
+</main>
+
+<footer>Verilume · Account management prototype — session-only, no backend, no real payment processor</footer>
+
+<script>
+/* ---------- State (in-memory / session only for everything except Team
+   Members — no backend, no persistence, no real payment processor or auth
+   provider — pass ?accountId=CXM-XXX-YYYY-NNN to override the seeded
+   Client ID (e.g. when linked from onboarding.html's generated Account
+   ID). ---------- */
+const params = new URLSearchParams(location.search);
+
+// Round 43 — Team Members now reads from/writes to the same backend
+// team_members table portal.html's Team & Org Chart uses (see
+// cxmedia-brand-naming-decision.md-adjacent build-status notes for why:
+// per direct instruction, the Org Chart is the single source of truth for
+// who's on an account and what their role is, rather than this page
+// keeping its own separate, disconnected flat role list). Same
+// BACKEND_URL/local-fallback convention already used throughout
+// portal.html — a genuine backend call when reachable, an honest
+// "local only, this session" label when it isn't.
+// Same-origin in production (frontend and API are served from the same
+// Vercel domain), local backend when opened directly as a file:// page
+// during local dev (unchanged behavior from before).
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+  ? ''
+  : 'http://localhost:8787';
+let dataSourceLabel = 'mock';
+
+// ---------- Round 60 — authentication (Deliverable 14) ----------
+// Same scheme and same sessionStorage key format as portal.html
+// (verilume_session_<accountId>) — same-tab navigation between the two
+// pages (the gear icon / "Back to Client Portal" link, neither of which
+// opens a new tab) shares sessionStorage for the same origin, so logging
+// in on one page carries over to the other without asking twice.
+let sessionToken = null;
+
+// 2026-08-19 — which team_members.id is actually logged in on this session,
+// not just which account. login-user/reset-password both return memberId
+// alongside the token; this is what lets the new "recovery phone number"
+// field below know whose record to read/write, the same way sessionToken
+// itself carries which account. Same storage-key-per-account convention as
+// sessionStorageKey() below, kept as a fully separate key/variable so a
+// missing/legacy session (no memberId) degrades to "profile field hidden"
+// rather than breaking token handling.
+let currentMemberId = null;
+
+function sessionStorageKey(accountId){
+  return `verilume_session_${accountId}`;
+}
+
+function memberStorageKey(accountId){
+  return `verilume_member_${accountId}`;
+}
+
+function persistMemberId(accountId, memberId){
+  currentMemberId = memberId || null;
+  if (!memberId) return;
+  try { sessionStorage.setItem(memberStorageKey(accountId), memberId); } catch (e) {}
+}
+
+function restoreMemberId(){
+  try {
+    const cached = sessionStorage.getItem(memberStorageKey(state.companyId));
+    if (cached) currentMemberId = cached;
+  } catch (e) { /* sessionStorage unavailable — skip caching */ }
+}
+
+function authedFetch(url, options = {}){
+  const headers = Object.assign({}, options.headers || {});
+  if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+  return fetch(url, Object.assign({}, options, { headers }));
+}
+
+function restoreSessionToken(){
+  try {
+    const cached = sessionStorage.getItem(sessionStorageKey(state.companyId));
+    if (cached) sessionToken = cached;
+  } catch (e) { /* sessionStorage unavailable — skip caching */ }
+}
+
+function persistSessionToken(token){
+  sessionToken = token;
+  try { sessionStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
+}
+
+// 2026-08-21, per direct instruction ("want to make sure login | logout
+// has consistent behavior across the site") — same logout() shape as
+// portal.html, account.html, print-specs.html, and ooh-specs.html now all
+// share this identical session mechanism (sessionToken / sessionStorageKey
+// / authedFetch), so logout needs to behave identically everywhere too,
+// not just clear the one page's own in-memory copy.
+async function logout(){
+  const token = sessionToken;
+  try {
+    if (token){
+      await fetch(`${BACKEND_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+    }
+  } catch (e) { /* unreachable backend shouldn't block logging out locally */ }
+  sessionToken = null;
+  try { sessionStorage.removeItem(sessionStorageKey(state.companyId)); } catch (e) {}
+  location.href = '/'; // per direct instruction: redirect to verilume.ai after logout
+}
+
+// 2026-08-19 (login redesign) — replaced the in-page login-gate modal (plus
+// its own copies of the forced-password-change and phone-recovery flows)
+// with a straight redirect to the new, single, dedicated login.html per
+// direct instruction: signing in should require actually landing on a
+// front-door login page, not opening an overlay on top of a page you're
+// already "on." login.html owns login + forced-password-change now, and
+// forgot-password.html owns recovery (both outside the portal). ?next=
+// carries this page's own URL along so a session that expires mid-edit on
+// account.html returns here afterward rather than defaulting to the Portal.
+// Since this navigates away, the returned Promise deliberately never
+// resolves — the three call sites below (loadAccountRecord/loadTeamData/
+// loadInvoices) just stop at the `await` as the page unloads, which is the
+// correct behavior here.
+function requireLogin(){
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.href = `login.html?next=${next}`;
+  return new Promise(() => {});
+}
+
+// Hand-kept-in-sync copies of portal.html's ORG_LEVELS/TEAM_FUNCTIONS —
+// same convention already used elsewhere in this codebase (e.g.
+// assessment.html's RUBRIC vs. framework.html's own copy) rather than a
+// shared import, since these are two separate static files. If these ever
+// drift from portal.html's own FUNCTION_GROUPS keys, portal.html is the
+// source of truth to resync against.
+const ORG_LEVELS = ['CMO', 'Director', 'Manager', 'Specialist'];
+const TEAM_FUNCTIONS = ['Executive', 'PR', 'Brand', 'Media Planning & Ops', 'Performance Marketing', 'Advanced Analytics'];
+const ORG_LEVEL_INDEX = { CMO: 0, Director: 1, Manager: 2, Specialist: 3 };
+
+// Round 58 — wire the back-nav's "Back to Client Portal" link to this same
+// account, so a user who arrived here from portal.html's gear icon lands
+// back on their own account rather than the seeded demo one.
+document.getElementById('backToPortalLink').href = `portal.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}`;
+
+let state = {
+  companyId: params.get('accountId') || 'CXM-NAT-2026-700',
+  companyName: 'Acme Hospitality Group',
+  contact: { firstName: 'Jane', lastName: 'Doe', email: 'jane@acmehospitality.com', phoneCountry: '+1', phone: '(555) 123-4567' },
+  commPrefs: { email: true, sms: false, phone: true, marketing: false },
+  // Only last4 + display metadata ever live in state — never a full card
+  // or bank account number, mirroring how a real tokenizing processor
+  // would hand back a token instead of the raw number.
+  card: { brand: 'Visa', last4: '4242', exp: '08/28' },
+  ach: null,
+  // Fallback roster, used only if the backend is unreachable (see
+  // loadTeamData() below) — shaped to match the real team_members record
+  // now, not the old flat role list, so the page reads consistently
+  // whether or not a real backend is up.
+  team: [
+    { id: 't1', name: 'Jane Doe', email: 'jane@acmehospitality.com', isAdmin: true, level: 'CMO', functionGroup: 'Executive', reportsToId: null, status: 'active' },
+    { id: 't2', name: 'Priya Shah', email: 'priya@acmehospitality.com', isAdmin: false, level: 'Director', functionGroup: 'Brand', reportsToId: 't1', status: 'active' },
+    { id: 't3', name: 'Marcus Webb', email: 'marcus@acmehospitality.com', isAdmin: false, level: 'Manager', functionGroup: 'Advanced Analytics', reportsToId: 't1', status: 'inactive' }
+  ]
+};
+
+async function init(){
+  document.getElementById('acctCoName').textContent = state.companyName;
+  document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
+  document.getElementById('acctCoId').textContent = state.companyId;
+  document.getElementById('teamCoIdLabel').textContent = state.companyId;
+  document.getElementById('ctCompany').value = state.companyName;
+  renderPaymentMethods();
+  populateInviteFormSelects();
+  await loadAccountRecord();
+  await loadTeamData();
+  renderTeam();
+  renderMyProfile();
+  await loadInvoices();
+  await loadFinancialSummary();
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Round 69 — Company name, per direct instruction: a real, backend-backed
+// field, not the session-only mock it was before. This page never fetched
+// the account's own record at all previously — state.companyName just sat
+// at its hardcoded default regardless of which account was actually open.
+// Same fetch/login-gate pattern as loadTeamData() below.
+async function loadAccountRecord(){
+  restoreSessionToken();
+  try {
+    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
+    if (resp.status === 401){
+      const loggedIn = await requireLogin();
+      if (loggedIn){
+        resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
+      }
+    }
+    if (resp.ok){
+      const record = await resp.json();
+      if (record.account && record.account.company){
+        state.companyName = record.account.company;
+        document.getElementById('acctCoName').textContent = state.companyName;
+        document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
+        document.getElementById('ctCompany').value = state.companyName;
+      }
+      dataSourceLabel = 'backend';
+      return;
+    }
+  } catch (e){
+    console.warn('account.html: backend not reachable, Company name stays at its local default.', e);
+  }
+}
+
+/* ---------- Team Members — real backend read (round 43) ----------
+   Same account+team_members table portal.html's Team & Org Chart reads/
+   writes, so a role set here shows up there and vice versa. Falls back to
+   the seeded local roster above, honestly labeled, if the backend isn't
+   reachable — same convention as every other backend call in this build. */
+async function loadTeamData(){
+  restoreSessionToken();
+  restoreMemberId();
+  try {
+    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`);
+    if (resp.status === 401){
+      const loggedIn = await requireLogin();
+      if (loggedIn){
+        resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`);
+      }
+    }
+    if (resp.ok){
+      const { team } = await resp.json();
+      // Fixed 2026-08-18: this used to be `if (team && team.length)`, which
+      // treated a real, successful, genuinely-empty roster (any brand-new
+      // account with nobody invited yet) the same as "backend unreachable"
+      // and silently kept showing the hardcoded Acme Hospitality Group
+      // fallback names — a real client's account displaying a fictitious
+      // team with no indication it wasn't real. `Array.isArray(team)` is
+      // true for a successful response either way, empty or not, so a
+      // genuinely empty account now correctly renders as an empty roster.
+      if (Array.isArray(team)){
+        state.team = team.map(m => ({ ...m, isAdmin: !!m.isAdmin }));
+      }
+      dataSourceLabel = 'backend';
+      return;
+    }
+  } catch (e){
+    console.warn('account.html: backend not reachable, using the local (session-only) roster.', e);
+  }
+  dataSourceLabel = 'mock';
+}
+
+function functionLabel(key){
+  return key || '';
+}
+
+function findTeamMember(id){
+  return state.team.find(m => m.id === id) || null;
+}
+
+/* ---------- Recovery phone number (round 2026-08-19) ----------
+   The self-service half of the password-recovery flow now on its own
+   standalone page (forgot-password.html) — that flow texts a code to
+   whatever's in team_members.phone for the matching email, but until now
+   the only way to SET that field was a raw admin API call. This reads/writes
+   the currently-logged-in member's own
+   row via the same GET .../team (already loaded into state.team by
+   loadTeamData()) and PATCH /api/team/:id endpoints Team Members uses. */
+function renderMyProfile(){
+  const section = document.getElementById('recoveryPhoneSection');
+  if (!currentMemberId){
+    // No memberId on this session (e.g. a stale pre-2026-08-19 session) —
+    // hide the field rather than show one that can't resolve whose record
+    // to save to. Logging out and back in picks up a memberId-bearing
+    // session and the field reappears.
+    section.style.display = 'none';
+    return;
+  }
+  const me = findTeamMember(currentMemberId);
+  if (!me){
+    // Session has a memberId but the roster fetch didn't include it —
+    // most likely the backend wasn't reachable and state.team is still
+    // the seeded local sample roster. Same "don't show a field that can't
+    // actually save" reasoning as above.
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  document.getElementById('recoveryPhoneInput').value = me.phone || '';
+  document.getElementById('recoveryPhoneSaveBtn').disabled = true;
+}
+
+async function saveRecoveryPhone(){
+  const btn = document.getElementById('recoveryPhoneSaveBtn');
+  const statusEl = document.getElementById('recoveryPhoneStatus');
+  const phone = document.getElementById('recoveryPhoneInput').value.trim();
+  if (!currentMemberId){
+    statusEl.textContent = 'Your session is missing profile info — log out and back in, then try again.';
+    statusEl.classList.remove('ok');
+    return;
+  }
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.classList.remove('ok');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(currentMemberId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      statusEl.textContent = data.error || `Couldn't save your phone number (${resp.status}).`;
+      btn.disabled = false;
+      return;
+    }
+    const me = findTeamMember(currentMemberId);
+    if (me) me.phone = phone;
+    statusEl.textContent = phone ? '✓ Recovery phone number saved.' : '✓ Recovery phone number removed.';
+    statusEl.classList.add('ok');
+  } catch (e){
+    statusEl.textContent = 'Could not reach the backend — try again.';
+    btn.disabled = false;
+  }
+}
+
+function resolveManager(memberId){
+  const m = findTeamMember(memberId);
+  if (!m || !m.reportsToId) return null;
+  return findTeamMember(m.reportsToId);
+}
+
+function reportsToOptionsFor(level){
+  const levelIdx = ORG_LEVEL_INDEX[level];
+  if (levelIdx === undefined || levelIdx === 0) return [];
+  return state.team
+    .filter(m => ORG_LEVEL_INDEX[m.level] < levelIdx)
+    .sort((a, b) => ORG_LEVEL_INDEX[b.level] - ORG_LEVEL_INDEX[a.level]);
+}
+
+/* ---------- Contact information ---------- */
+// Round 69 — Company name now actually persists to the real account
+// record (POST /api/accounts/:id/profile, same merge-update endpoint
+// portal.html's Company Profile screen already uses for industry/
+// footprint/audience/wealth — extended this round to accept `company`
+// too). First/last/email/phone stay session-only, same as before — this
+// build has no real contact-record table to write those to yet, so the
+// status message says exactly that rather than overclaiming.
+async function saveContact(){
+  state.contact.firstName = document.getElementById('ctFirst').value.trim();
+  state.contact.lastName = document.getElementById('ctLast').value.trim();
+  state.contact.email = document.getElementById('ctEmail').value.trim();
+  const companyName = document.getElementById('ctCompany').value.trim() || state.companyName;
+  state.companyName = companyName;
+  state.contact.phoneCountry = document.getElementById('ctPhoneCode').value;
+  state.contact.phone = document.getElementById('ctPhone').value.trim();
+  document.getElementById('acctCoName').textContent = state.companyName;
+  document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
+  const el = document.getElementById('contactStatus');
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: companyName })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('saveContact: backend write failed, Company name saved locally only.', e); }
+  }
+  el.textContent = persisted
+    ? '✓ Company name saved to the backend. First/last name, email, and phone are session-only — this build has no contact record to write those to yet.'
+    : '✓ Company name saved locally only (no backend record for this account, or the backend is unreachable). First/last name, email, and phone are session-only either way.';
+  el.classList.add('ok');
+}
+
+/* ---------- Password / security (UI mockup only — see card-sub note) ---------- */
+function checkPasswordReady(){
+  const cur = document.getElementById('pwCurrent').value;
+  const nw = document.getElementById('pwNew').value;
+  const conf = document.getElementById('pwConfirm').value;
+  const ready = cur.length > 0 && nw.length >= 8 && nw === conf;
+  document.getElementById('pwSaveBtn').disabled = !ready;
+}
+// 2026-08-19 — wired to the real POST /api/auth/change-password endpoint
+// (same one the forced-first-login password-change screen already uses).
+// This form was previously a pure UI mock ("✓ Password updated (mocked...)")
+// sitting right next to the now-real recovery-phone field above, which read
+// as inconsistent — fixed while already in this card for that field.
+async function changePassword(){
+  const btn = document.getElementById('pwSaveBtn');
+  const el = document.getElementById('pwStatus');
+  const currentPassword = document.getElementById('pwCurrent').value;
+  const newPassword = document.getElementById('pwNew').value;
+  btn.disabled = true;
+  el.classList.remove('ok');
+  el.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      el.textContent = data.error || `Couldn't update your password (${resp.status}).`;
+      checkPasswordReady();
+      return;
+    }
+    el.textContent = '✓ Password updated.';
+    el.classList.add('ok');
+    ['pwCurrent','pwNew','pwConfirm'].forEach(id => document.getElementById(id).value = '');
+  } catch (e){
+    el.textContent = 'Could not reach the backend — try again.';
+    checkPasswordReady();
+  }
+}
+
+/* ---------- Communication permissions ---------- */
+function saveCommPrefs(){
+  state.commPrefs.email = document.getElementById('commEmail').checked;
+  state.commPrefs.sms = document.getElementById('commSms').checked;
+  state.commPrefs.phone = document.getElementById('commPhone').checked;
+  state.commPrefs.marketing = document.getElementById('commMarketing').checked;
+  const el = document.getElementById('commStatus');
+  el.textContent = '✓ Preferences saved (this session only).';
+}
+
+/* ---------- Payment methods ---------- */
+function renderPaymentMethods(){
+  const cardEl = document.getElementById('cardMethodDisplay');
+  if (state.card) {
+    cardEl.innerHTML = `<div class="pay-method">
+      <div class="pm-info">
+        <div class="pm-icon">${state.card.brand.slice(0,4).toUpperCase()}</div>
+        <div class="pm-detail"><h4>${state.card.brand} •••• ${state.card.last4}</h4><p>Expires ${state.card.exp} — required for self-service billing</p></div>
+      </div>
+      <span class="pay-required-tag">On file</span>
+    </div>`;
+  } else {
+    cardEl.innerHTML = `<div class="pay-empty">No credit card on file yet. <strong>A card is required to enable self-service billing.</strong></div>`;
+  }
+
+  const achEl = document.getElementById('achMethodDisplay');
+  if (state.ach) {
+    achEl.innerHTML = `<div class="pay-method">
+      <div class="pm-info">
+        <div class="pm-icon">ACH</div>
+        <div class="pm-detail"><h4>${state.ach.bankName} — ${state.ach.acctType} •••• ${state.ach.last4}</h4><p>Additional payment method</p></div>
+      </div>
+      <button class="btn-danger" onclick="removeAch()">Remove</button>
+    </div>`;
+  } else {
+    achEl.innerHTML = '';
+  }
+}
+function toggleCardForm(){
+  const f = document.getElementById('cardForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+function toggleAchForm(){
+  const f = document.getElementById('achForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+function saveCard(){
+  const num = document.getElementById('cardNumber').value.replace(/\s+/g, '');
+  const exp = document.getElementById('cardExp').value.trim();
+  if (num.length < 12 || !exp) return;
+  // Only the last 4 digits and a guessed brand are kept — the full number
+  // is discarded immediately, the same way a real tokenizing processor
+  // would only ever hand this page back a token + last4, never the PAN.
+  state.card = { brand: num.startsWith('4') ? 'Visa' : num.startsWith('5') ? 'Mastercard' : 'Card', last4: num.slice(-4), exp };
+  ['cardNumber','cardName','cardExp','cardCvv','cardZip'].forEach(id => document.getElementById(id).value = '');
+  toggleCardForm();
+  renderPaymentMethods();
+  const el = document.getElementById('paymentStatus');
+  el.textContent = '✓ Card saved (mocked — no real payment processor is integrated yet).';
+}
+function saveAch(){
+  const bankName = document.getElementById('achBankName').value.trim();
+  const acctType = document.getElementById('achAcctType').value;
+  const account = document.getElementById('achAccount').value.replace(/\D/g, '');
+  if (!bankName || account.length < 4) return;
+  state.ach = { bankName, acctType, last4: account.slice(-4) };
+  ['achBankName','achRouting','achAccount'].forEach(id => document.getElementById(id).value = '');
+  toggleAchForm();
+  renderPaymentMethods();
+  const el = document.getElementById('paymentStatus');
+  el.textContent = '✓ Bank account saved (mocked — no real payment processor is integrated yet).';
+}
+function removeAch(){
+  state.ach = null;
+  renderPaymentMethods();
+  const el = document.getElementById('paymentStatus');
+  el.textContent = 'Bank account removed.';
+}
+
+/* ---------- Invoices & financial tracking (Deliverable #11) ----------
+   Real, backend-persisted ledger — invoicesCache holds whatever
+   GET /api/accounts/:id/invoices returns. No local-only mock fallback: if
+   the backend is unreachable, the table says so honestly rather than
+   showing the old hardcoded three rows. */
+let invoicesCache = [];
+const INVOICE_STATUS_LABEL = { draft: 'Draft', sent: 'Sent', paid: 'Paid', overdue: 'Overdue' };
+
+async function loadInvoices(){
+  const body = document.getElementById('invoiceRows');
+  if (!body) return;
+  body.innerHTML = `<tr><td colspan="6">Loading…</td></tr>`;
+  try {
+    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/invoices`);
+    if (resp.status === 401){
+      const loggedIn = await requireLogin();
+      if (loggedIn) resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/invoices`);
+    }
+    if (!resp.ok){ body.innerHTML = `<tr><td colspan="6">Couldn't load invoices right now.</td></tr>`; return; }
+    const data = await resp.json();
+    invoicesCache = data.invoices || [];
+    renderInvoices();
+  } catch (e){
+    body.innerHTML = `<tr><td colspan="6">Backend unreachable — can't load invoices.</td></tr>`;
+  }
+}
+
+function renderInvoices(){
+  const body = document.getElementById('invoiceRows');
+  if (!body) return;
+  body.innerHTML = invoicesCache.length ? invoicesCache.map(inv => `
+    <tr>
+      <td>${escapeHtml(inv.invoiceNumber)}</td>
+      <td>${inv.issuedDate ? escapeHtml(inv.issuedDate) : '—'}</td>
+      <td>${inv.description ? escapeHtml(inv.description) : '—'}</td>
+      <td>$${Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      <td><span class="status-chip ${inv.status}">${INVOICE_STATUS_LABEL[inv.status] || inv.status}</span></td>
+      <td>
+        <select onchange="updateInvoiceStatus('${inv.id}', this.value)" style="font-size:12px;">
+          ${Object.keys(INVOICE_STATUS_LABEL).map(s => `<option value="${s}"${inv.status === s ? ' selected' : ''}>${INVOICE_STATUS_LABEL[s]}</option>`).join('')}
+        </select>
+        <button class="link-btn" onclick="downloadInvoice('${inv.invoiceNumber}')">Download</button>
+        <button class="link-btn" onclick="deleteInvoice('${inv.id}')">Delete</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="6">No invoices on this account yet.</td></tr>`;
+}
+
+function toggleInvoiceForm(){
+  const el = document.getElementById('invoiceForm');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function createInvoice(){
+  const description = document.getElementById('invDescription').value.trim();
+  const amount = document.getElementById('invAmount').value;
+  const dueDate = document.getElementById('invDueDate').value;
+  const status = document.getElementById('invStatus').value;
+  const statusEl = document.getElementById('invoiceStatus');
+  if (!amount || isNaN(Number(amount))){ if (statusEl) statusEl.textContent = 'Enter a valid amount first.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/invoices`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description, amount, dueDate: dueDate || null, status })
+    });
+    if (!resp.ok){ if (statusEl) statusEl.textContent = 'Could not save this invoice.'; return; }
+    document.getElementById('invDescription').value = '';
+    document.getElementById('invAmount').value = '';
+    document.getElementById('invDueDate').value = '';
+    toggleInvoiceForm();
+    await loadInvoices();
+    await loadFinancialSummary();
+    if (statusEl) statusEl.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — not saved.'; }
+}
+
+async function updateInvoiceStatus(id, status){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/invoices/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+    });
+    if (!resp.ok){ alert('Could not update this invoice.'); return; }
+    await loadInvoices();
+    await loadFinancialSummary();
+  } catch (e){ alert('Backend unreachable — could not update this invoice.'); }
+}
+
+async function deleteInvoice(id){
+  if (!confirm('Delete this invoice?')) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/invoices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!resp.ok){ alert('Could not delete this invoice.'); return; }
+    await loadInvoices();
+    await loadFinancialSummary();
+  } catch (e){ alert('Backend unreachable — could not delete this invoice.'); }
+}
+
+function downloadInvoice(invoiceNumber){
+  const el = document.getElementById('invoiceStatus');
+  el.textContent = `${invoiceNumber}: this is a prototype — invoice PDFs aren't generated in this build.`;
+}
+
+/* ---------- Financial summary (Deliverable #11) ----------
+   Real rollup from GET /api/accounts/:id/financial-summary — every figure
+   is a genuine sum over real campaign/invoice rows on the backend, nothing
+   modeled or estimated client-side. */
+async function loadFinancialSummary(){
+  const el = document.getElementById('financialSummary');
+  if (!el) return;
+  el.innerHTML = '<p class="card-sub">Loading…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/financial-summary`);
+    if (!resp.ok){ el.innerHTML = '<p class="card-sub">Couldn\'t load the financial summary right now.</p>'; return; }
+    const s = await resp.json();
+    const fmt = n => '$' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    el.innerHTML = `
+      <h3 style="margin:0 0 10px;font-size:16px;">Financial summary</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:10px;">
+        <div><div class="card-sub" style="margin:0;">Planned budget (${s.campaignCount} campaign${s.campaignCount === 1 ? '' : 's'})</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalPlannedBudget)}</div></div>
+        <div><div class="card-sub" style="margin:0;">Actual media spend</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalActualSpend)}</div></div>
+        <div><div class="card-sub" style="margin:0;">Total invoiced</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalInvoiced)}</div></div>
+        <div><div class="card-sub" style="margin:0;">Total paid</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalPaid)}</div></div>
+        <div><div class="card-sub" style="margin:0;">Outstanding balance</div><div style="font-size:18px;font-weight:600;">${fmt(s.outstandingBalance)}</div></div>
+      </div>
+      <p class="card-sub" style="margin:0;">${s.campaignsWithActualsCount} of ${s.campaignCount} campaign${s.campaignCount === 1 ? '' : 's'} ${s.campaignCount === 1 ? 'has' : 'have'} reported actual media spend so far — actual spend here reflects only what's been entered on those campaigns' Analysis step.${s.totalOverdue ? ` ${fmt(s.totalOverdue)} is currently marked Overdue.` : ''}</p>
+    `;
+  } catch (e){
+    el.innerHTML = '<p class="card-sub">Backend unreachable — can\'t load the financial summary.</p>';
+  }
+}
+
+/* ---------- Team members ---------- */
+// Round 44 — mirrors the Add/Edit toggle just built in portal.html's Team
+// & Org Chart, so an existing member's Level/Function/Reports To/Admin can
+// actually be changed here too, not just Deactivated/Reactivated.
+let editingTeamMemberId = null;
+
+function renderTeam(){
+  const body = document.getElementById('teamRows');
+  if (!state.team.length){
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);">No team members yet — invite your first one below.</td></tr>`;
+    return;
+  }
+  body.innerHTML = state.team.map(m => {
+    const manager = resolveManager(m.id);
+    const roleText = `${m.isAdmin ? '<span style="font-family:-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:999px;padding:2px 8px;margin-right:6px;">Admin</span>' : ''}${m.level ? `${m.level} · ${functionLabel(m.functionGroup)}` : ''}`;
+    return `
+    <tr>
+      <td>${m.name}</td>
+      <td>${m.email || '—'}</td>
+      <td><span class="role-tag" style="background:none;padding:0;">${roleText || '—'}</span>${manager ? `<div class="hint" style="margin-top:3px;">reports to ${manager.name}</div>` : ''}</td>
+      <td><span class="status-chip ${m.status}">${m.status === 'active' ? 'Active' : 'Inactive'}</span></td>
+      <td style="white-space:nowrap;">
+        <button class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
+        &nbsp;·&nbsp;
+        <button class="link-btn" onclick="toggleTeamStatus('${m.id}')">${m.status === 'active' ? 'Deactivate' : 'Reactivate'}</button>
+        ${m.email ? `&nbsp;·&nbsp;<button class="link-btn" onclick="reissueTeamMemberCredentials('${m.id}')" title="Generate a new temp password for this person">Reissue login</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function countActiveAdmins(excludeId){
+  return state.team.filter(m => m.isAdmin && m.status !== 'inactive' && m.id !== excludeId).length;
+}
+
+async function toggleTeamStatus(id){
+  const m = state.team.find(m => m.id === id);
+  if (!m) return;
+  const flag = document.getElementById('teamStatus');
+  if (m.status === 'active' && m.isAdmin && countActiveAdmins(id) === 0){
+    flag.style.color = 'var(--advocacy)';
+    flag.textContent = `${m.name} is this account's only Admin — promote someone else to Admin before deactivating them.`;
+    return;
+  }
+  m.status = m.status === 'active' ? 'inactive' : 'active';
+  renderTeam();
+  if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: m.status })
+      });
+    } catch (e){ /* best-effort — state already reflects the change either way */ }
+  }
+}
+
+function toggleInviteForm(){
+  const f = document.getElementById('inviteForm');
+  const opening = f.style.display === 'none';
+  f.style.display = opening ? 'block' : 'none';
+  if (opening) populateInviteFormSelects();
+  else if (editingTeamMemberId) cancelEditTeamMember();
+}
+
+function populateInviteFormSelects(){
+  const levelSel = document.getElementById('inviteLevel');
+  const fnSel = document.getElementById('inviteFunction');
+  if (!levelSel || !fnSel) return;
+  levelSel.innerHTML = `<option value="">Select a level…</option>` + ORG_LEVELS.map(l => `<option value="${l}">${l}</option>`).join('');
+  fnSel.innerHTML = `<option value="">Select a function…</option>` + TEAM_FUNCTIONS.map(f => `<option value="${f}">${functionLabel(f)}</option>`).join('');
+  onInviteLevelChange();
+}
+
+// Same CMO-is-Executive-only lock and Reports To filtering as portal.html's
+// onTeamLevelChange() — kept in sync by hand, same convention noted above.
+function onInviteLevelChange(){
+  const levelSel = document.getElementById('inviteLevel');
+  const fnSel = document.getElementById('inviteFunction');
+  const reportsToSel = document.getElementById('inviteReportsTo');
+  if (!levelSel || !fnSel || !reportsToSel) return;
+  const level = levelSel.value;
+  if (level === 'CMO'){
+    fnSel.value = 'Executive';
+    fnSel.disabled = true;
+  } else {
+    fnSel.disabled = false;
+  }
+  const options = reportsToOptionsFor(level);
+  reportsToSel.innerHTML = (level === 'CMO'
+    ? `<option value="">— none (top of this account's chart) —</option>`
+    : `<option value="">— none on file yet —</option>`) +
+    options.map(m => `<option value="${m.id}">${m.name} — ${m.level}, ${functionLabel(m.functionGroup)}</option>`).join('');
+  if (editingTeamMemberId){
+    Array.from(reportsToSel.options).forEach(o => { if (o.value === editingTeamMemberId) o.remove(); });
+  }
+}
+
+function readInviteForm(){
+  return {
+    name: document.getElementById('inviteName').value.trim(),
+    email: document.getElementById('inviteEmail').value.trim(),
+    level: document.getElementById('inviteLevel').value,
+    functionGroup: document.getElementById('inviteFunction').value,
+    reportsToId: document.getElementById('inviteReportsTo').value || null,
+    isAdmin: document.getElementById('inviteIsAdmin').checked
+  };
+}
+
+function resetInviteForm(){
+  ['inviteName','inviteEmail'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('inviteIsAdmin').checked = false;
+  document.getElementById('inviteLevel').value = '';
+  document.getElementById('inviteFunction').value = '';
+  onInviteLevelChange();
+}
+
+// Routes to the invite (create) or save (update) path — same form, same
+// fields, same validation either way.
+function submitTeamMemberForm(){
+  if (editingTeamMemberId) return saveTeamMemberEdit();
+  return inviteTeamMember();
+}
+
+function startEditTeamMember(id){
+  const m = findTeamMember(id);
+  if (!m) return;
+  editingTeamMemberId = id;
+  const f = document.getElementById('inviteForm');
+  f.style.display = 'block';
+  populateInviteFormSelects();
+  document.getElementById('inviteName').value = m.name || '';
+  document.getElementById('inviteEmail').value = m.email || '';
+  document.getElementById('inviteIsAdmin').checked = !!m.isAdmin;
+  document.getElementById('inviteLevel').value = m.level || '';
+  onInviteLevelChange();
+  document.getElementById('inviteFunction').value = m.functionGroup || '';
+  document.getElementById('inviteReportsTo').value = m.reportsToId || '';
+  document.getElementById('inviteFormHeading').textContent = `Edit ${m.name}`;
+  document.getElementById('inviteSubmitBtn').textContent = 'Save changes';
+  document.getElementById('inviteCancelBtn').style.display = 'inline-block';
+  const el = document.getElementById('teamStatus');
+  if (el) el.textContent = '';
+  f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelEditTeamMember(){
+  editingTeamMemberId = null;
+  resetInviteForm();
+  document.getElementById('inviteFormHeading').textContent = 'Invite a team member';
+  document.getElementById('inviteSubmitBtn').textContent = 'Send invite';
+  document.getElementById('inviteCancelBtn').style.display = 'none';
+  document.getElementById('inviteForm').style.display = 'none';
+}
+
+// 2026-08-19 (Path 5 build) — the backend now issues a real temp
+// password + login for any invite that includes an email (see
+// POST /api/accounts/:id/team's comment in server.js). There's no real
+// email delivery in this build, same limitation as every other
+// "shown once" secret here, so that password has to be shown to
+// whoever's running this form, once, right here — same convention as
+// the admin's own temp password on onboarding.html.
+async function inviteTeamMember(){
+  const { name, email, level, functionGroup, reportsToId, isAdmin } = readInviteForm();
+  const el = document.getElementById('teamStatus');
+  if (!name || !email.includes('@') || !level || !functionGroup){
+    el.style.color = 'var(--advocacy)';
+    el.textContent = 'Name, a valid email, Level, and Function are all required.';
+    return;
+  }
+  const localMember = { id: `local-team-${Date.now()}`, name, email, isAdmin, level, functionGroup, reportsToId, status: 'active' };
+  let persisted = false;
+  let tempPassword = null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.status === 409){
+        el.style.color = 'var(--advocacy)';
+        el.textContent = data.error || 'That email is already registered to a Verilume account.';
+        return;
+      }
+      if (resp.ok){
+        localMember.id = data.memberId;
+        tempPassword = data.tempPassword || null;
+        persisted = true;
+      }
+    } catch (e){ /* falls through to local-only, same convention as portal.html */ }
+  }
+  state.team.push(localMember);
+  resetInviteForm();
+  toggleInviteForm();
+  renderTeam();
+  el.style.color = 'var(--cx)';
+  if (persisted && tempPassword){
+    el.innerHTML = `✓ ${escapeHtml(name)} can sign in now with ${escapeHtml(email)}. `
+      + `<strong>Temporary password — shown once, save it before leaving this page:</strong> `
+      + `<code style="font-family:'SF Mono',Consolas,monospace;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPassword)}</code> `
+      + `They'll be asked to set their own password on first login. Lost this before handing it off? Use "Reissue login" on their row below.`;
+  } else if (persisted){
+    el.textContent = `✓ Invite sent to ${email} — saved to this account's real backend record (same roster the Portal's Team & Org Chart reads).`;
+  } else {
+    el.textContent = `✓ Invite sent to ${email} (mocked — local only, this session; no backend record for this account, or the backend is unreachable).`;
+  }
+}
+
+// 2026-08-19 (Path 5 build) — recovery path for the one-time-shown temp
+// password above: if whoever ran the invite lost it before handing it
+// off, this generates a fresh one (invalidating any prior password,
+// used or not) via POST /api/team/:id/reissue-credentials.
+async function reissueTeamMemberCredentials(id){
+  const m = findTeamMember(id);
+  const el = document.getElementById('teamStatus');
+  if (!m) return;
+  if (!m.email){
+    el.style.color = 'var(--advocacy)';
+    el.textContent = `${m.name} has no email on file — edit them to add one before issuing login credentials.`;
+    return;
+  }
+  if (!confirm(`Generate a new temporary password for ${m.name}? Any password they already have (temp or one they set themselves) will stop working.`)) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}/reissue-credentials`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      el.style.color = 'var(--advocacy)';
+      el.textContent = data.error || `Couldn't reissue credentials (${resp.status}).`;
+      return;
+    }
+    el.style.color = 'var(--cx)';
+    el.innerHTML = `✓ New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}) — shown once: `
+      + `<code style="font-family:'SF Mono',Consolas,monospace;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>`;
+  } catch (e){
+    el.style.color = 'var(--advocacy)';
+    el.textContent = 'Could not reach the backend to reissue credentials — try again.';
+  }
+}
+
+async function saveTeamMemberEdit(){
+  const id = editingTeamMemberId;
+  const m = findTeamMember(id);
+  const el = document.getElementById('teamStatus');
+  if (!m){ cancelEditTeamMember(); return; }
+  const { name, email, level, functionGroup, reportsToId, isAdmin } = readInviteForm();
+  if (!name || !email.includes('@') || !level || !functionGroup){
+    el.style.color = 'var(--advocacy)';
+    el.textContent = 'Name, a valid email, Level, and Function are all required.';
+    return;
+  }
+  if (reportsToId === id){
+    el.style.color = 'var(--advocacy)';
+    el.textContent = "Someone can't report to themselves.";
+    return;
+  }
+  if (m.isAdmin && !isAdmin && countActiveAdmins(id) === 0){
+    el.style.color = 'var(--advocacy)';
+    el.textContent = `${m.name} is this account's only Admin — promote someone else to Admin first.`;
+    return;
+  }
+  Object.assign(m, { name, email, isAdmin, level, functionGroup, reportsToId });
+  let persisted = false;
+  if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId })
+      });
+      persisted = resp.ok;
+    } catch (e){ /* state already reflects the change either way */ }
+  }
+  cancelEditTeamMember();
+  renderTeam();
+  el.style.color = 'var(--cx)';
+  el.textContent = persisted
+    ? `✓ Saved changes to ${name} — updated in this account's real backend record.`
+    : `✓ Saved changes to ${name} (mocked — local only, this session; no backend record for this account, or the backend is unreachable).`;
+}
+
+init();
+</script>
+</body>
+</html>
