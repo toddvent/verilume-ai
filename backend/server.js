@@ -5635,6 +5635,24 @@ async function handleRequest(req, res) {
       if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)){
         return sendJson(res, 400, { error: 'that does not look like a valid email address' });
       }
+      // 2026-08-21 fix — previously the only email-uniqueness check in the
+      // whole signup path lived in POST /api/auth/register-admin, which
+      // only runs AFTER the OTP is sent and verified. That meant someone
+      // re-registering an existing email got a 6-digit code texted/emailed
+      // to them, went through entering it, and only THEN learned the email
+      // was taken — a wasted round trip and a bad first impression. Check
+      // it here too, before any code is sent, so the failure is immediate.
+      // register-admin's own check stays in place as the authoritative
+      // guard (someone could still register a *different* email than the
+      // one they verified, and that must still be caught there); this is
+      // purely an earlier, friendlier warning for the common case where
+      // the verification target IS the email being registered.
+      if (emailRaw){
+        const emailAlreadyTaken = db.prepare('SELECT id FROM team_members WHERE lower(email) = lower(?)').get(emailRaw);
+        if (emailAlreadyTaken){
+          return sendJson(res, 409, { error: 'this email is already registered to a Verilume account — sign in instead' });
+        }
+      }
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
       const recentCount = db.prepare(
@@ -5686,6 +5704,27 @@ async function handleRequest(req, res) {
       // passwords, the password-reset interim code above).
       if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
       return sendJson(res, 200, response);
+    }
+
+    // POST /api/auth/check-email — { email } -> { available: boolean }.
+    // Added 2026-08-21 alongside the early-uniqueness-check fix above, for
+    // signup flows that verify by PHONE (e.g. assessment.html's Save
+    // Assessment modal) and so never pass email into
+    // request-signup-verification at all — those flows have no chance to
+    // learn the email is taken until register-admin, after the OTP round
+    // trip. Call this the moment the email field loses focus (before
+    // Continue/Save is even clickable) to surface "already registered" as
+    // inline validation instead. Deliberately side-effect-free (no rate
+    // limit, no write) — it's a plain availability lookup, same data
+    // register-admin already checks, just exposed earlier and standalone.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'check-email'){
+      const body = await readBody(req);
+      const email = (body.email || '').trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+        return sendJson(res, 400, { error: 'a valid email is required' });
+      }
+      const taken = db.prepare('SELECT id FROM team_members WHERE lower(email) = lower(?)').get(email);
+      return sendJson(res, 200, { available: !taken });
     }
 
     // POST /api/auth/verify-signup-code — { verificationId, code } -> checks
@@ -9686,3 +9725,4 @@ if (require.main === module) {
 }
 
 module.exports = handleRequest;
+
