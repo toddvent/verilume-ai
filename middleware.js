@@ -21,7 +21,22 @@ export const config = {
   matcher: '/:path*',
 };
 
+// Paths that must stay reachable with no credentials, regardless of the
+// Basic Auth gate below — third-party verification bots (e.g. Twilio's
+// domain-verification crawler) hit these with no way to supply a
+// username/password, so gating them causes verification to fail silently
+// with a 401 that looks identical to a misconfigured gate.
+const PUBLIC_PATHS = [
+  /^\/[a-f0-9]{32}\.html$/i, // Twilio domain-verification file (name = the verification token)
+  /^\/robots\.txt$/,
+];
+
 export default function middleware(request) {
+  const { pathname } = new URL(request.url);
+  if (PUBLIC_PATHS.some((re) => re.test(pathname))) {
+    return;
+  }
+
   const expectedUser = process.env.SITE_BASIC_AUTH_USER;
   const expectedPass = process.env.SITE_BASIC_AUTH_PASS;
 
