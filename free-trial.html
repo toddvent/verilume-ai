@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Start Your Free Trial</title>
+<meta name="description" content="Start a 1-week free trial of the full Verilume Portal.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    2026-08-21 — placeholder page, per direct instruction ("Provide Links
+    to 1 Week Free Trial Page not yet designed. You could add an empty
+    page for now called Free Trial."). Linked from assessment.html's
+    report step (#freeTrialCta), shown to visitors who already have a
+    real Verilume account. No real trial-activation flow exists yet —
+    this exists so that link isn't a 404 while the real page gets
+    designed, same placeholder convention already used for terms.html's
+    not-yet-drafted legal text.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --cx:#0891B2; --line:#D2D2D7; --muted:#6E6E73;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:640px;margin:0 auto;padding:80px 28px 120px;text-align:center;}
+  .back-nav{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;padding:20px 28px;border-bottom:1px solid var(--line);}
+  .back-nav a{color:var(--cx);text-decoration:none;}
+  .back-nav a:hover{text-decoration:underline;}
+  .wordmark{font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
+  .wordmark b{color:#2563EB;font-weight:500;}
+  .eyebrow{font-size:12.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--cx);margin:0 0 12px;}
+  h1{font-weight:500;font-size:clamp(28px,4vw,38px);margin:0 0 16px;letter-spacing:-0.01em;}
+  p{font-size:15.5px;line-height:1.7;color:#3a3a3d;margin:0 0 12px;}
+  .placeholder-note{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);line-height:1.7;text-align:left;}
+  .btn-ghost{display:inline-block;margin-top:28px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;padding:10px 22px;border:1px solid var(--line);border-radius:999px;}
+  .btn-ghost:hover{border-color:var(--ink);}
+
+  /* Sitewide utility nav — same markup/logic as every other page. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
+</style>
+</head>
+<body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit;
+})();
+</script>
+
+<div class="back-nav"><a class="wordmark" href="index.html">Veri<b>lume</b></a></div>
+<div class="wrap">
+  <div class="eyebrow">1-Week Free Trial</div>
+  <h1>This page is coming soon</h1>
+  <p>We're still designing the free-trial experience for accounts that want full Portal access before committing to a paid engagement.</p>
+  <p>In the meantime, your account is already active — head to your Portal to keep working, or reach out and we'll get you set up manually.</p>
+  <a class="btn-ghost" href="portal.html">Go to your Portal →</a>
+
+  <div class="placeholder-note">
+    Prototype note — this is an intentional placeholder (per direct instruction) so the "Start Free Trial" link on the free assessment results page has somewhere real to go, rather than 404ing, while the actual trial-activation flow is designed.
+  </div>
+</div>
+</body>
+</html>
