@@ -144,9 +144,22 @@
      sessionStorage pointer everywhere, so this bar and any page's own
      logic agree. See the #utilityNav script block for the actual logic. */
   .utility-nav{background:var(--ink);}
-  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:7px 28px;display:flex;justify-content:flex-end;align-items:center;gap:20px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
-  .utility-nav-inner a{color:rgba(255,255,255,0.72);text-decoration:none;}
-  .utility-nav-inner a:hover{color:#fff;text-decoration:underline;}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  /* 2026-08-21 fix, per direct correction ("We have a stylized button
+     approach that we perfect in the previous location and used across the
+     website") — the first version of this bar used plain uppercase text
+     links, not the site's actual pill-button convention (the public "Log
+     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
+     8px/16px padding). Rebuilt to match that same pill shape, just with
+     light-on-dark colors instead of dark-on-light, since this bar's
+     background is var(--ink) — same color-inversion approach already used
+     for the dark-header Logout pill on account.html/print-specs.html/
+     ooh-specs.html. border-radius is hardcoded to 999px rather than
+     var(--radius-pill) because several pages this bar lives on
+     (forgot-password.html, select-tier.html, terms.html) never define
+     that variable at all. */
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 </head>
 <body>
@@ -172,7 +185,7 @@
       : 'http://localhost:8787';
   }
   function vlActiveAccountId(){
-    try { return sessionStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
   }
   function vlUtilityNavInit(){
     var accountId = vlActiveAccountId();
@@ -187,12 +200,12 @@
       authLink.onclick = function(e){
         e.preventDefault();
         var token = null;
-        try { token = sessionStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
         var finish = function(){
           try {
-            sessionStorage.removeItem('verilume_session_' + accountId);
-            sessionStorage.removeItem('verilume_member_' + accountId);
-            sessionStorage.removeItem('verilume_active_account');
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
           } catch (e3) {}
           location.href = '/';
         };
@@ -426,13 +439,13 @@
   function vlMemberKey(accountId){ return 'verilume_member_' + accountId; }
   function vlPersistSession(accountId, token, memberId){
     try {
-      sessionStorage.setItem(vlSessionKey(accountId), token);
-      if (memberId) sessionStorage.setItem(vlMemberKey(accountId), memberId);
+      localStorage.setItem(vlSessionKey(accountId), token);
+      if (memberId) localStorage.setItem(vlMemberKey(accountId), memberId);
       // 2026-08-21 — also set the sitewide "who's logged in" pointer (see
       // #utilityNav's script comment) so the utility nav, and
       // assessment.html's Save & Schedule modal, recognize this session
       // without needing to know the accountId in advance.
-      sessionStorage.setItem('verilume_active_account', accountId);
+      localStorage.setItem('verilume_active_account', accountId);
     } catch (e) {}
   }
   window.vlOpenLoginModal = function(){
