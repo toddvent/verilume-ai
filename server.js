@@ -900,6 +900,20 @@ ensureColumn('campaigns', 'keyMessageMode', "TEXT DEFAULT 'exact'");
 ensureColumn('campaigns', 'messageType', 'TEXT');
 ensureColumn('campaigns', 'mandatoryPhrase', 'TEXT');
 
+// Added 2026-08-22 — structured campaign-type briefing (Phase B from the
+// copywriting-findings audit). campaignType is a real enum (see
+// CAMPAIGN_TYPE_REGISTRY below), replacing the free-text-only Objective
+// field's job of signaling "what kind of campaign is this" for the 4
+// scenario types the original framework doc named. campaignTypeDetailsJson
+// holds the small set of extra structured inputs each type needs beyond
+// what a campaign already has (e.g. Trade Incentive's partner name/amount)
+// — kept as one flexible JSON blob rather than a new column per type per
+// field, same convention as competitorsJson/brandKeywordsJson elsewhere in
+// this schema, since only one type's extra fields are ever in use on a
+// given campaign at once.
+ensureColumn('campaigns', 'campaignType', 'TEXT');
+ensureColumn('campaigns', 'campaignTypeDetailsJson', 'TEXT');
+
 // Added 2026-07-25 (round 53) — org_model (team/solo), per the Media Plan
 // scoping doc's solo/local-business flow folded in as a parallel track, not
 // a separate build. Governs UI density in the front end (Team & Org Chart,
@@ -5692,6 +5706,92 @@ const MEDIA_LOOP_STAGE_JOB = {
   Loyalty: 'Speaks ONLY to past customers — the job is retention: give someone who already said yes once a real, specific reason to come back, never a first-impression pitch.',
   Advocacy: 'Speaks to people who already believe in the brand — the job is to turn that belief into a referral (asking them to tell someone else), not to sell to the reader themselves.'
 };
+
+// Structured campaign-type briefing (2026-08-22) — Phase B from the
+// copywriting-findings audit ("Missing entirely: any campaignType
+// classification... objective today is one free-text field, not a typed
+// structure with its own required inputs"). The 4 scenario types are per
+// the original uploaded framework doc's own four scenario briefs. Each
+// entry: `label` (shown in the UI), `promptGuidance` (what actually shapes
+// AI-generated copy for this type — this is the real point of the
+// feature, not just a data field), `coreFields` (existing campaign fields
+// this type genuinely needs set — checked directly off the campaign row,
+// no new columns needed for these), and `detailFields` (small, genuinely
+// new per-type inputs with no existing home, stored in
+// campaignTypeDetailsJson as one flexible blob rather than a column each —
+// same convention as competitorsJson/brandKeywordsJson elsewhere in this
+// schema). An unset/'' campaignType is "General" — no extra requirements,
+// existing behavior for every campaign created before this round.
+const CAMPAIGN_TYPE_REGISTRY = {
+  urgency_offer: {
+    label: 'Urgency Offer',
+    promptGuidance: 'This is a time-bound URGENCY OFFER. The copy must create genuine urgency around a real deadline, lead with the specific offer, and never bury the expiration. Do not manufacture false scarcity beyond what is actually true here.',
+    coreFields: ['mandatoryPhrase', 'endDate'],
+    detailFields: [
+      { key: 'offerDetails', label: 'Offer details (what exactly is being offered, in plain terms)', required: true }
+    ]
+  },
+  product_launch: {
+    label: 'Product Launch',
+    promptGuidance: 'This is a PRODUCT LAUNCH. The copy must frame this as genuinely new — what is launching and why it matters now — and should build anticipation appropriate to a first announcement, not a routine promotional message.',
+    coreFields: ['startDate', 'keyMessage'],
+    detailFields: [
+      { key: 'launchHighlights', label: 'What makes this launch genuinely newsworthy (real, specific)', required: true }
+    ]
+  },
+  loyalty: {
+    label: 'Loyalty',
+    promptGuidance: 'This is a LOYALTY campaign, speaking ONLY to past customers. The copy must read as a genuine thank-you/retention message to someone who already said yes once — never a first-impression pitch, never generic acquisition language.',
+    coreFields: ['audienceTargets'],
+    detailFields: [
+      { key: 'rewardDetail', label: 'The specific reward/benefit being offered to returning customers', required: true }
+    ]
+  },
+  trade_incentive: {
+    label: 'Trade Incentive',
+    promptGuidance: 'This is a TRADE INCENTIVE — written for a trade partner/dealer audience, not a consumer end customer. The copy must speak partner-to-partner (their business benefit, not a consumer sales pitch) and state the real incentive structure plainly.',
+    coreFields: [],
+    detailFields: [
+      { key: 'partnerName', label: 'Partner/dealer network this incentive targets', required: true },
+      { key: 'incentiveAmount', label: 'Incentive amount or structure (real, specific)', required: true }
+    ]
+  }
+};
+function campaignTypeDetails(campaign){
+  if (!campaign.campaignTypeDetailsJson) return {};
+  try { const parsed = JSON.parse(campaign.campaignTypeDetailsJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
+}
+// Honest completeness check — never blocks anything (this codebase's
+// "suggestion, never a silent gate" discipline holds here too), just
+// reports what's missing so the UI/AI prompt can be honest about gaps
+// rather than silently working around them.
+function campaignTypeCompleteness(campaign){
+  const type = campaign.campaignType || '';
+  if (!type || !CAMPAIGN_TYPE_REGISTRY[type]){
+    return { campaignType: '', label: 'General', complete: true, missingCore: [], missingDetail: [] };
+  }
+  const def = CAMPAIGN_TYPE_REGISTRY[type];
+  const details = campaignTypeDetails(campaign);
+  const missingCore = def.coreFields.filter(f => !campaign[f] || (typeof campaign[f] === 'string' && !campaign[f].trim()));
+  const missingDetail = def.detailFields.filter(f => f.required && (!details[f.key] || !String(details[f.key]).trim())).map(f => f.key);
+  return { campaignType: type, label: def.label, complete: missingCore.length === 0 && missingDetail.length === 0, missingCore, missingDetail };
+}
+// Builds the prompt section injected into every real-AI copy generator
+// below when a campaign has a real campaignType set — this is the actual
+// point of the feature (a typed scenario briefing shapes generation), not
+// just a stored classification. Returns '' for General/unset, same
+// honest-optional-context convention as competitorContext/visionStatement.
+function campaignTypeBriefContext(campaign){
+  const type = campaign.campaignType || '';
+  if (!type || !CAMPAIGN_TYPE_REGISTRY[type]) return '';
+  const def = CAMPAIGN_TYPE_REGISTRY[type];
+  const details = campaignTypeDetails(campaign);
+  const detailLines = def.detailFields
+    .map(f => details[f.key] ? `- ${f.label}: ${details[f.key]}` : null)
+    .filter(Boolean)
+    .join('\n');
+  return `\nCAMPAIGN TYPE: ${def.label}\n${def.promptGuidance}${detailLines ? `\n${detailLines}` : ''}\n`;
+}
 async function scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMessage){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, verdict: null, rationale: null, missingElements: [], note: 'AI business-outcome relevance scoring requires ANTHROPIC_API_KEY to be configured. The deterministic Stage/Objective and Primary KPI checks (see the Messaging QA score above) still run without one.' };
   if (!draftCopy || !draftCopy.trim()) return { score: null, verdict: null, rationale: null, missingElements: [], note: 'No Long Form Copy to score yet.' };
@@ -5801,7 +5901,7 @@ CAMPAIGN CONTEXT:
 - Key Message the human supplied, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief, not a sentence to quote verbatim -- write real, finished copy that captures this direction in your own words; do not reproduce it as-is)' : ' (weave this in as the real anchor of the copy if present, as close to verbatim as reads naturally)'}: ${opts.keyMessage || '(none supplied — establish your own opening line grounded in the brand voice and style facts above)'}
 - Role/Style approach: ${opts.style || 'Storytelling'}
 - Product/Focus: ${opts.focus || '(not set)'}
-
+${campaignTypeBriefContext(campaign)}
 Write 3-5 short paragraphs of real Long Form Copy (120-220 words). It must read as something a real luxury travel brand would actually publish — specific, sensory where appropriate, never generic "unforgettable journey" language, and it must end with a call to action that genuinely serves the stated Primary KPI for this Loop Stage.
 
 Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs separated by \\n\\n>", "sourcesUsed": ["<short phrase naming a specific real fact/voice element you actually used from the material above>", "..."]}`;
@@ -6132,7 +6232,7 @@ CAMPAIGN CONTEXT:
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 - Role/Style approach, if the account has one on file: ${campaign.roleStyle || '(none set -- follow your assigned angle above)'}
-
+${campaignTypeBriefContext(campaign)}
 Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs separated by \\n\\n>"}`;
 }
 // One subagent angle's generation call — a lighter-weight sibling of
@@ -6359,9 +6459,6 @@ function getAccountRecord(accountId){
 // native http module, so nothing about the routing logic below needed to
 // change for this to work in both places.
 async function handleRequest(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','accounts','CXM-...']
-
   if (req.method === 'OPTIONS'){
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
@@ -6372,6 +6469,17 @@ async function handleRequest(req, res) {
   }
 
   try {
+    // 2026-08-22 — moved inside the try block (previously ran before it).
+    // new URL() on a malformed req.url/host is an edge case, but when it
+    // throws, it threw BEFORE any error handling existed for it — an
+    // uncaught synchronous exception in this async function, which is
+    // exactly the class of bug the new process-level uncaughtException/
+    // unhandledRejection handlers below were added to catch. Belt-and-
+    // suspenders: this keeps the failure inside handleRequest's own
+    // request-scoped try/catch (a clean JSON 500 for just this one
+    // request) rather than needing the process-wide net to catch it.
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','accounts','CXM-...']
     // GET /api/health — buildStamp added round 132bx follow-on #3
     // (2026-08-15), matching CXMEDIA_BUILD_STAMP in portal.html, so it's
     // possible to confirm which copy of the code is actually running on
@@ -8168,6 +8276,29 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { templates: TAXONOMY_TEMPLATES });
     }
 
+    // GET /api/accounts/:accountId/campaign-type-registry — 2026-08-22,
+    // structured campaign-type briefing (Phase B). Same "full registry,
+    // account-gated but not account-scoped" posture as taxonomy-templates
+    // just above — the client picks whichever type fits, or General/none.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-type-registry'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, { types: CAMPAIGN_TYPE_REGISTRY });
+    }
+
+    // GET /api/campaigns/:id/campaign-type-status — honest completeness
+    // check for whatever campaignType is currently set on this campaign
+    // (or `complete:true`/General if none is set — never blocks anything,
+    // same "suggestion, never a silent gate" discipline as every other
+    // completeness/confidence check in this build).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'campaign-type-status'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      return sendJson(res, 200, campaignTypeCompleteness(campaign));
+    }
+
     // Round 102 — Marketing Calendar (doc Section 5). Reads straight off
     // channel_planning_details: every entry already carries Hit Date (the
     // date a piece actually reaches its audience — the doc calls this out as
@@ -8479,8 +8610,8 @@ async function handleRequest(req, res) {
       const productCode = threeLetterCode(body.productCode || productName);
       const campaignCode = generateCampaignCode(accountId, account.partnerCode, productCode, body.startDate || null);
       db.prepare(
-        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, createdAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, campaignType, campaignTypeDetailsJson, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         campaignId, accountId, body.objective || '', body.segment || '', body.stage || '', body.keyMessage || '',
         body.name || body.objective || 'Untitled Campaign',
@@ -8517,6 +8648,12 @@ async function handleRequest(req, res) {
         // roleStyle/keyMessageMode).
         body.messageType || '',
         body.mandatoryPhrase || '',
+        // 2026-08-22 — campaignType/campaignTypeDetailsJson, see the
+        // ensureColumn() comment above and CAMPAIGN_TYPE_REGISTRY.
+        // detailsJson is validated as real JSON (or dropped) rather than
+        // trusted verbatim, since it's a client-supplied blob.
+        body.campaignType || '',
+        (() => { try { return body.campaignTypeDetails && typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : ''; } catch (e){ return ''; } })(),
         now
       );
       // Round 55 — insert one row per {allocationId, amount} draw when the
@@ -8615,7 +8752,14 @@ async function handleRequest(req, res) {
         // session-only gap this round for these two that roleStyle/
         // keyMessageMode already had closed.
         messageType: body.messageType !== undefined ? body.messageType : existing.messageType,
-        mandatoryPhrase: body.mandatoryPhrase !== undefined ? body.mandatoryPhrase : existing.mandatoryPhrase
+        mandatoryPhrase: body.mandatoryPhrase !== undefined ? body.mandatoryPhrase : existing.mandatoryPhrase,
+        // 2026-08-22 — campaignType/campaignTypeDetailsJson, same
+        // merge-update convention as every field above. detailsJson
+        // validated as real JSON before storing (client-supplied blob).
+        campaignType: body.campaignType !== undefined ? body.campaignType : existing.campaignType,
+        campaignTypeDetailsJson: body.campaignTypeDetails !== undefined
+          ? (() => { try { return typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : existing.campaignTypeDetailsJson; } catch (e){ return existing.campaignTypeDetailsJson; } })()
+          : existing.campaignTypeDetailsJson
       };
       if (!existing.campaignCode){
         const account = db.prepare('SELECT partnerCode FROM accounts WHERE accountId = ?').get(existing.accountId);
@@ -8625,8 +8769,8 @@ async function handleRequest(req, res) {
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, campaignType = ?, campaignTypeDetailsJson = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.campaignType, merged.campaignTypeDetailsJson, campaignId);
       // Round 55 — same merge-update convention: only touch draws when the
       // caller actually sent an allocationDraws array, and replace them
       // wholesale (delete + reinsert) rather than trying to diff rows, same
@@ -11990,6 +12134,35 @@ async function handleRequest(req, res) {
     sendJson(res, 500, { error: 'server error', detail: e.message });
   }
 }
+
+// 2026-08-22 — process-level safety net, added after a live production
+// crash (500 INTERNAL_FUNCTION_INVOCATION_FAILED on a completely unrelated,
+// route-unmatched GET request, immediately following a login-MFA POST on
+// the same warm container). handleRequest()'s own try/catch only protects
+// errors thrown SYNCHRONOUSLY inside a request's own call chain — it has
+// no reach over a stray throw from a timer, an un-awaited background
+// promise, or any other async operation that outlives the request that
+// started it. Node's default behavior for an uncaught exception or an
+// unhandled promise rejection is to crash the entire process — on a warm
+// serverless container, that takes down whatever OTHER, completely
+// unrelated request happens to be in flight at that exact moment, which
+// is consistent with what was observed (a harmless unmatched GET, with
+// zero outgoing calls of its own per Vercel's own request trace, crashing
+// outright). This mirrors the exact fix already applied to
+// pg-sync-bridge.js's Worker on 2026-08-20 for the same crash signature —
+// this is the same fix at the process level instead of one specific
+// Worker, since the earlier fix only covers errors from that one Worker,
+// not from anywhere else in this ~12,000-line file's ~200 async
+// functions. Logs and stays up rather than crashing — the in-flight
+// request whose own code actually threw still fails (as it should; the
+// bug there is real), but every OTHER concurrent/subsequent request on
+// this container no longer gets caught in the blast radius.
+process.on('uncaughtException', (err) => {
+  console.error('[process] uncaughtException — server staying up:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] unhandledRejection — server staying up:', reason);
+});
 
 // Local dev / standalone mode: only start a real listening server when this
 // file is run directly (`node server.js`), same as before. When Vercel
