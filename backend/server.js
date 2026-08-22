@@ -7345,6 +7345,39 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { campaigns: getCampaignsForAccount(accountId) });
     }
 
+    // GET /api/accounts/:id/campaign-smart-defaults — 2026-08-22, roadmap
+    // item 3: "confidence-gated intake — the fun, not intimidating engine."
+    // Per direct instruction: the moment Verilume has enough signal to be
+    // confident about an account, it should hand the client a shortcut
+    // instead of re-asking a form it can already answer. Looks at this
+    // account's own most recent campaign that actually has a Key Message or
+    // Audience Targets on file and offers it back as a one-click suggestion
+    // — never auto-applied server-side, since a wrong silent guess is worse
+    // than no guess (the frontend still requires a deliberate click to use
+    // it). confident:false on a genuinely first-ever campaign is the honest
+    // answer, not a fabricated default — there is nothing to be confident
+    // about yet.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-smart-defaults'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const source = db.prepare(
+        `SELECT id, name, keyMessage, audienceTargets, segment FROM campaigns
+         WHERE accountId = ? AND (
+           (keyMessage IS NOT NULL AND keyMessage != '') OR
+           (audienceTargets IS NOT NULL AND audienceTargets != '')
+         )
+         ORDER BY createdAt DESC LIMIT 1`
+      ).get(accountId);
+      if (!source){
+        return sendJson(res, 200, { confident: false, reason: 'No prior campaign with a Key Message or Audience Targets on file yet — nothing to suggest from.' });
+      }
+      return sendJson(res, 200, {
+        confident: true,
+        source: { campaignId: source.id, name: source.name || source.id },
+        suggestions: { keyMessage: source.keyMessage || null, audienceTargets: source.audienceTargets || null, segment: source.segment || null }
+      });
+    }
+
     // POST /api/accounts/:id/campaigns — create a campaign under this account
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaigns'){
       const accountId = decodeURIComponent(parts[2]);
