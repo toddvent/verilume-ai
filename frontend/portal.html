@@ -2201,7 +2201,19 @@
            shows it under "Client ID"), reached via the gear icon at upper
            right. -->
       <img class="co-logo" id="acctLogo" alt="" style="display:none;">
-      <div class="co-name" id="acctCompanyName">Acme Hospitality Group</div>
+      <!-- 2026-08-22 fix — this used to hard-code "Acme Hospitality Group"
+           (the internal demo/placeholder company name) directly in the
+           markup, so it painted on-screen the instant the page loaded,
+           before the Init IIFE below has a chance to fetch this account's
+           real data and correct it (loadAccountData() + several other
+           awaited loads first — see that IIFE's own comment). A client
+           logging into their own account would see the wrong company name
+           flash for 1-2 seconds before their real one replaced it — a
+           startup client seeing "Atlas Ocean Voyages" impersonated as
+           "Acme Hospitality Group," even briefly, is a real trust problem,
+           not just a cosmetic one. "Loading…" is a neutral placeholder that
+           never claims to be any specific account. -->
+      <div class="co-name" id="acctCompanyName">Loading…</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <div class="stage-row" id="orgModelRow" style="margin:0;"></div>
@@ -7652,7 +7664,19 @@ let cmpRecommendedChannelsAuto = true;
 // directly, at which point their edit is never silently overwritten again.
 let cmpPmBriefBuilderAuto = true;
 let lastCreatedCampaignId = null; // most recently created campaign's ID — shown in the "Campaign created" banner
-document.getElementById('acctCompanyName').textContent = state.company;
+// 2026-08-22 fix — removed a stray synchronous
+// `document.getElementById('acctCompanyName').textContent = state.company;`
+// that used to sit here. It ran at parse time, before loadAccountData() has
+// fetched this account's real data, so it only ever painted the mock
+// default ('Acme Hospitality Group') — the same value the raw HTML markup
+// already showed (see that element's own comment). It was dead weight left
+// over from before the "Async now" Init IIFE refactor described in that
+// IIFE's own comment ("everything that was previously synchronous top-level
+// code... moves inside this IIFE so it runs only once real data... is
+// actually in hand") — the real, correct assignment already happens inside
+// that IIFE once loadAccountData() resolves. Deleting this line removes one
+// of the two places the wrong company name got painted before the real one
+// replaced it.
 
 /* ---------- Function group taxonomy — same functionGroup keys/labels now
    tagged on assessment.html's PRODUCTS[] (see that file's PRODUCTS comment
