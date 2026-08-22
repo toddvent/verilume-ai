@@ -26776,6 +26776,33 @@ function renderCampaignSmartDefaultField(fieldKey, fieldData, holder, inputId, k
       el.value = fieldData.value;
       if (opts && opts.onFill) opts.onFill();
     }
+    // 2026-08-22, next round (items 5-6) — genuine adaptive skip. The vision
+    // doc's own language is "skipped asking," but until now this still
+    // always showed the full field, filled in, with a banner on top — a
+    // suggestion-shaped UI, not an actually skipped question. When the
+    // field now genuinely holds the value that was just silently filled,
+    // collapse the field itself into a compact one-line confirmation with
+    // an explicit "Change it" control that re-expands the real field —
+    // the first real instance of this pattern in the product, deliberately
+    // scoped to just these two free-text fields, where hiding a single
+    // textarea is safe and fully reversible (touches no gating logic —
+    // the value is genuinely present in the underlying textarea the whole
+    // time, so every downstream validator/counter/gate behaves exactly as
+    // if a human had typed it). Left as suggestion-only elsewhere (Segment's
+    // tile row, Role/Style's dropdown) since this simple hide/show doesn't
+    // cleanly generalize to that UI yet.
+    if (el && el.value === fieldData.value){
+      el.style.display = 'none';
+      if (inputId === 'cmpKeyMessage'){
+        const counterEl = document.getElementById('cmpKeyMessageCounter');
+        if (counterEl) counterEl.style.display = 'none';
+      }
+      holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <span><b>${kind === 'brand' ? 'Key Message' : 'Audience Targets'} set automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same one, so Verilume skipped asking: "${preview(fieldData.value)}"</span>
+        <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;white-space:nowrap;" onclick="cmpExpandSmartDefaultField('${fieldKey}', '${inputId}')">Change it</button>
+      </div>`;
+      return;
+    }
     holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
       <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same ${kind === 'brand' ? 'Key Message' : 'Audience Targets'}, so Verilume skipped asking.
       <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearCampaignSmartDefaultField('${fieldKey}', '${inputId}')">Not this time — clear it</button>
@@ -26791,9 +26818,31 @@ function renderCampaignSmartDefaultField(fieldKey, fieldData, holder, inputId, k
 }
 function clearCampaignSmartDefaultField(field, inputId){
   const el = document.getElementById(inputId);
-  if (el){ el.value = ''; if (field === 'keyMessage'){ updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); } }
+  if (el){ el.value = ''; el.style.display = ''; if (field === 'keyMessage'){ updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); } }
+  if (field === 'keyMessage'){
+    const counterEl = document.getElementById('cmpKeyMessageCounter');
+    if (counterEl) counterEl.style.display = '';
+  }
   const holder = document.getElementById(field === 'keyMessage' ? 'cmpKeyMessageSmartDefault' : 'campaignAudienceTargetsSmartDefault');
   if (holder) holder.innerHTML = '';
+}
+// 2026-08-22, next round — the "Change it" side of genuine adaptive skip
+// (see renderCampaignSmartDefaultField's collapse branch above). Unlike
+// clearCampaignSmartDefaultField, this does NOT blank the value — the
+// auto-filled text is still exactly what most of this account's recent
+// campaigns used, and is very likely still a fine starting point; this
+// just re-reveals the real field so it can be edited in place, same as if
+// the question had never been skipped.
+function cmpExpandSmartDefaultField(field, inputId){
+  const el = document.getElementById(inputId);
+  if (el) el.style.display = '';
+  if (field === 'keyMessage'){
+    const counterEl = document.getElementById('cmpKeyMessageCounter');
+    if (counterEl) counterEl.style.display = '';
+  }
+  const holder = document.getElementById(field === 'keyMessage' ? 'cmpKeyMessageSmartDefault' : 'campaignAudienceTargetsSmartDefault');
+  if (holder) holder.innerHTML = '';
+  if (el) el.focus();
 }
 function applyCampaignSmartDefault(field){
   const fields = window._cmpSmartDefaults || {};
@@ -31217,11 +31266,22 @@ function renderProjectDetail(){
   const derivFn = pt.derivFn;
   const structuredDefs = STRUCTURED_FIELD_DEFS[project.projectType];
 
+  // 2026-08-22, next round (items 1-2) — real AI relevance/compliance
+  // scoring, extended from creative_jobs to here. Each derivative gets its
+  // own score panel + button (auto-fires below once this render lands, same
+  // as the master's), since a derivative is its own piece of distributed
+  // copy that can drift independently of the master it came from — the
+  // same reasoning that already justified renderDerivativesValidationPanel()
+  // running the heuristic checks per-derivative rather than just once.
   const derivBlocks = project.derivatives
     ? Object.entries(project.derivatives).map(([k, v]) => `
       <div class="derivative-block">
         <h4>${pt.derivativeLabels[k] || k}</h4>
         <textarea id="deriv-${k}">${v}</textarea>
+        <div class="btn-row" style="margin-top:6px;">
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 10px;" onclick="scoreMfpContent('${k}')">Score with AI →</button>
+        </div>
+        <div id="mfpDerivScorePanel-${k}" style="margin-top:6px;"></div>
       </div>`).join('')
     : '';
 
@@ -31272,6 +31332,29 @@ function renderProjectDetail(){
           ${masterPanelInner}
           ${project.masterRationale ? `<p class="draft-rationale">${project.masterRationale}</p>` : ''}
         </div>
+        <!-- 2026-08-22, next round (items 1-2, 7-8) — the same real
+             relevance/compliance scorer and 3-subagent interview panel
+             Creative Jobs already gets (scoreCurrentDraft()/
+             runCopyInterview() above), reaching the Marketing Function
+             Project master too. Auto-fires at the end of
+             renderProjectDetail() below whenever masterContent exists —
+             same "drafts arrive already scored" moment from the vision
+             doc's day-in-the-life, now true here as well, not just in
+             Creative Jobs. Interview is scoped to the MASTER only, not
+             every derivative — running a full 3-candidate generate+score
+             panel per derivative (up to 4 more per project) was judged too
+             heavy for what this round can honestly verify; the master is
+             where a genuinely different angle matters most, and a chosen
+             master candidate still flows into every derivative the normal
+             way (derivatives read from project.masterContent). -->
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-ghost" onclick="scoreMfpContent('master')">Score with AI →</button>
+          <button type="button" class="btn-ghost" onclick="runMfpInterview()">Interview candidates →</button>
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;" onclick="toggleMfpScoreHistory('master')">Score history</button>
+        </div>
+        <div id="mfpMasterScorePanel" style="margin-top:8px;"></div>
+        <div id="mfpScoreHistory-master" style="margin-top:8px;"></div>
+        <div id="mfpInterviewPanel" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -31320,6 +31403,16 @@ function renderProjectDetail(){
     <div class="recorded visible" id="projectSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
   `;
   renderQaPanel();
+  // 2026-08-22, next round (items 1-2) — auto-fire real AI scoring the
+  // moment this render lands, same "scored before you decide" behavior as
+  // scoreCurrentDraft() firing when the Creative Jobs copy workspace opens.
+  // Fire-and-forget: these are async and paint into their own panels once
+  // they resolve, same pattern as scoreCurrentDraft() itself. Guarded on
+  // masterContent/derivatives existing so a freshly-opened project with
+  // nothing generated yet doesn't fire a request that can only ever come
+  // back "nothing to score."
+  if (project.masterContent) scoreMfpContent('master');
+  if (project.derivatives) Object.keys(project.derivatives).forEach(k => scoreMfpContent(k));
 }
 
 /* ---------- Master/derivative generators — templated JS standing in for
@@ -33373,6 +33466,191 @@ function renderDerivativesValidationPanel(){
   `;
 }
 
+// 2026-08-22, next round (items 1-2, 3, 7-8) — real AI relevance/compliance
+// scoring, score history, and the 3-subagent interview panel, extended from
+// creative_jobs (see scoreCurrentDraft()/runCopyInterview()/
+// renderInterviewPanel() above — this reuses their shared building blocks:
+// renderAiStatusBubble/renderAiStatusTip, renderDraftScoreCard, scorePill,
+// SCORE_STATUS_TIPS/INTERVIEW_STATUS_TIPS) to the Marketing Function
+// Project workspace. Until now these 7 generators only ever got the
+// deterministic buildContentChecks() heuristic above — this reaches the
+// SAME real scorer/interview engine a Creative Jobs draft gets, via the
+// campaign-scoped endpoints (POST /api/campaigns/:id/score-copy,
+// /copy-interview) added alongside content_score_history/
+// campaign_copy_interviews.
+function mfpSourceKey(project, part){
+  return part === 'master' ? `${project.projectType}:master` : `${project.projectType}:derivative:${part}`;
+}
+function mfpPartLabel(pt, part){
+  return part === 'master' ? pt.masterLabel : ((pt.derivativeLabels && pt.derivativeLabels[part]) || part);
+}
+async function scoreMfpContent(part){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const campaign = findCampaign(currentCampaignId);
+  if (!project || !campaign) return;
+  const pt = PROJECT_TYPES.find(t => t.key === project.projectType);
+  const panel = document.getElementById(part === 'master' ? 'mfpMasterScorePanel' : `mfpDerivScorePanel-${part}`);
+  if (!pt || !panel) return;
+  const copyText = part === 'master' ? (project.masterContent || '') : ((project.derivatives || {})[part] || '');
+  if (!copyText.trim()){
+    panel.innerHTML = `<div class="hint">Nothing to score yet — generate this ${mfpPartLabel(pt, part).toLowerCase()} first.</div>`;
+    return;
+  }
+  const label = mfpPartLabel(pt, part).toLowerCase();
+  panel.innerHTML = renderAiStatusBubble(`Reading this ${label} against your campaign's objective, audience, and brand voice guide — checking relevance and compliance before you decide.`, SCORE_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/score-copy`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ copy: copyText, sourceKey: mfpSourceKey(project, part) })
+    });
+    if (!resp.ok){ panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't score this — try again.</div>`; return; }
+    const result = await resp.json();
+    panel.innerHTML = renderDraftScoreCard(result) + renderAiStatusTip(SCORE_STATUS_TIPS);
+  } catch (e){
+    panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't score this.</div>`;
+  }
+}
+// Item 3 — score history. Toggled open/closed on the same button rather
+// than a separate always-visible panel, since most of the time the latest
+// score (already shown above) is all a reviewer needs; history matters
+// specifically when checking whether a revision actually improved things.
+let mfpScoreHistoryOpen = {};
+async function toggleMfpScoreHistory(part){
+  const project = findProject(currentCampaignId, currentProjectId);
+  if (!project) return;
+  const holder = document.getElementById(`mfpScoreHistory-${part}`);
+  if (!holder) return;
+  if (mfpScoreHistoryOpen[part]){
+    mfpScoreHistoryOpen[part] = false;
+    holder.innerHTML = '';
+    return;
+  }
+  mfpScoreHistoryOpen[part] = true;
+  holder.innerHTML = `<div class="hint">Loading history…</div>`;
+  try {
+    const sourceKey = mfpSourceKey(project, part);
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/score-history?sourceKey=${encodeURIComponent(sourceKey)}`);
+    if (!resp.ok){ holder.innerHTML = `<div class="hint">Couldn't load history.</div>`; return; }
+    const { history } = await resp.json();
+    if (!history || !history.length){
+      holder.innerHTML = `<div class="hint">No scoring history yet for this piece of copy.</div>`;
+      return;
+    }
+    const rows = history.map(h => {
+      const when = new Date(h.scoredAt).toLocaleString();
+      return `<div style="padding:4px 0;border-bottom:1px solid var(--line);font-size:0.78125rem;display:flex;gap:12px;align-items:baseline;">
+        <span class="hint" style="min-width:130px;">${when}</span>
+        <span>Relevance: <b>${h.relevanceScore === null ? '—' : h.relevanceScore}</b></span>
+        <span>Compliance: <b>${h.complianceScore === null ? '—' : h.complianceScore}</b></span>
+        <span class="hint">${h.mode === 'ai' ? 'AI' : 'heuristic'}</span>
+      </div>`;
+    }).join('');
+    holder.innerHTML = `<div style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;">
+      <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;margin-bottom:4px;">Score history (${history.length})</div>
+      ${rows}
+    </div>`;
+  } catch (e){
+    holder.innerHTML = `<div class="hint">Backend unreachable — couldn't load history.</div>`;
+  }
+}
+// Items 7-8 — the 3-subagent interview panel, scoped to the MASTER only
+// (see the HTML comment above the button in renderProjectDetail() for why
+// not per-derivative too), plus its own history list so past runs are
+// visible in this workspace directly rather than only in the Ops Console.
+let lastMfpInterviewCache = {};
+async function runMfpInterview(){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const holder = document.getElementById('mfpInterviewPanel');
+  if (!project || !holder) return;
+  holder.innerHTML = renderAiStatusBubble("Drafting three independent takes on your brief — direct-response, brand-story, and proof-and-trust — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceKey: mfpSourceKey(project, 'master') })
+    });
+    if (!resp.ok){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the interview — try again.</div>`;
+      return;
+    }
+    const result = await resp.json();
+    if (!result.available){
+      holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Interview panel unavailable.')}</div>`;
+      return;
+    }
+    lastMfpInterviewCache[currentProjectId] = result;
+    holder.innerHTML = renderMfpInterviewPanel(result);
+  } catch (e){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the interview.</div>`;
+  }
+}
+function renderMfpInterviewPanel(result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.copy){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+      </div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+    <div id="mfpInterviewSelectFlag" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+// Applies the winning candidate straight into project.masterContent — same
+// explicit-click-only discipline as runInterviewSelect() for Creative Jobs.
+// Unlike that one, there's no single "masterContent" textarea id for
+// structured-field project types (headline/lead/quote/etc. each have their
+// own field), so a structured project's candidate copy replaces the `lead`
+// field (the one every structured type's rationale already treats as the
+// real body text) rather than silently overwriting the whole structured
+// object with one flat string; a plain-textarea project (One-Pager,
+// Analytics Brief) replaces masterContent directly.
+async function runMfpInterviewSelect(interviewId, candidateKey){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const flag = document.getElementById('mfpInterviewSelectFlag');
+  if (!project) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this draft — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    if (project.fields){
+      project.fields.lead = result.copy;
+      project.masterContent = composeMasterFromFields(project.projectType, project.fields);
+    } else {
+      project.masterContent = result.copy;
+    }
+    renderProjectDetail();
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — draft not applied.'; }
+  }
+}
+
 // QA persona commentary — framed by the reviewer's level, per direct
 // instruction that QA can be requested from a direct manager or a
 // skip-level manager ("boss of boss"). A CMO-level review reads as
@@ -34087,6 +34365,22 @@ function cmpAudienceAngle(segments){
   }
   if (segments.includes('Hand-Raisers') || segments.includes('New To Brand')){
     return { tier: 'new-to-brand', text: 'people who don\u2019t yet know this brand well \u2014 emphasizing product education, earning trust and understanding before asking for anything', arc: 'discovery \u2192 differentiation \u2192 trust \u2014 explains what makes this account different without reading like a brochure; earns the first impression before asking for anything', hook: n => `Here's what makes ${n} different.`, copyLine: `No crowds, no filler \u2014 just the specific things that make this worth trying for the first time.` };
+  }
+  // 2026-08-22, next round (item 4) \u2014 this tier is reached by whatever's
+  // left after Past Customers/Hand-Raisers/New To Brand are ruled out
+  // above: Partners and/or Sales Team. The relevance-score-flow spec
+  // flagged Long Form Copy as only ever pulling its angle from segments[0]
+  // \u2014 true here specifically, and it silently drops the second audience
+  // when BOTH Partners and Sales Team are selected together (a real,
+  // reachable combination \u2014 an account can genuinely want one Long Form
+  // draft that has to work for both a co-marketing partner and its own
+  // sales team). Real per-segment text still applies when only one of the
+  // two is selected; a combined angle applies only when both are, rather
+  // than always silently keeping just the first.
+  const otherSegments = segments.filter(s => ACCOUNT_SEGMENT_ANGLE[s]);
+  if (otherSegments.length > 1){
+    const combinedText = otherSegments.map(s => ACCOUNT_SEGMENT_ANGLE[s]).join('; and separately, ');
+    return { tier: 'other-combined', text: combinedText, arc: 'direct, twice \u2014 this draft has to hold up for more than one relationship to the account at once, so it doesn\u2019t lean on either audience\u2019s specific context alone', hook: n => `Meet ${n}.`, copyLine: '' };
   }
   return { tier: 'other', text: ACCOUNT_SEGMENT_ANGLE[segments[0]] || 'the people this campaign is actually written for', arc: 'direct \u2014 addresses this audience\u2019s specific relationship to the account plainly', hook: n => `Meet ${n}.`, copyLine: '' };
 }

@@ -1365,6 +1365,84 @@ db.exec(`
     createdAt TEXT NOT NULL
   );
 `);
+// 2026-08-22, next round — two roadmap-item-2/4 gaps closed together.
+//
+// Gap A (item 2): scoreDraftCopy() has only ever been reachable from
+// creative_jobs, via POST /api/creative-jobs/:id/score. The Marketing
+// Function Project generators (Social Batch, Email Sequence, Landing Page,
+// Press Release, Internal Comms, One-Pager, Analytics Brief) have their own
+// output — project.masterContent and its derivatives, held client-side —
+// but that output only ever gets the deterministic buildContentChecks()
+// heuristic (see portal.html), never the real AI-judged relevance/
+// compliance score every creative_jobs draft gets. content_score_history
+// is the log both surfaces now write to: sourceType distinguishes
+// 'creative_job' rows (unchanged behavior, now ALSO logged here alongside
+// the existing single-latest-score columns on creative_jobs itself) from
+// the new 'campaign_copy' rows the MFP workspace produces. sourceKey is a
+// free-form string identifying WHAT was scored within its source (a jobId
+// for creative_job rows; a string like 'social-batch:master' or
+// 'landing-page:derivative:adClickThrough' for campaign_copy rows) — this
+// is also what makes item 3 (score history) real: querying by sourceKey
+// returns every score that piece of copy has ever gotten, in order, so a
+// revision's scores can actually be compared over time instead of only
+// ever showing the latest number.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS content_score_history (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    campaignId TEXT NOT NULL,
+    sourceType TEXT NOT NULL,
+    sourceKey TEXT NOT NULL,
+    relevanceScore INTEGER,
+    complianceScore INTEGER,
+    note TEXT,
+    complianceFlagsJson TEXT,
+    mode TEXT,
+    scoredAt TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+`);
+// Gap B (item 4): runCandidateInterview() was already built generically
+// (any campaign+account, nothing copy-specific except the angle briefs —
+// see its own comment), but the only endpoint that calls it is job-scoped
+// (POST /api/creative-jobs/:id/interview), and creative_job_interviews.jobId
+// is NOT NULL with a real FK to creative_jobs — a Marketing Function
+// Project's copy has no creative_jobs row to attach to (same reasoning
+// that already justified account_voice_interviews as its own table rather
+// than forcing a null jobId onto that one). campaign_copy_interviews is the
+// campaign-scoped sibling: same append-only/select-once shape, keyed by
+// campaignId + sourceKey (same sourceKey convention as content_score_history
+// above, so a given piece of MFP copy's scores and its interview history
+// line up under the same key) instead of jobId. No workingCopy-equivalent
+// exists to auto-apply a selection into server-side — MFP master/derivative
+// content lives entirely client-side in `project` state — so /select on
+// this table only records the choice and returns the winning candidate's
+// text for the frontend to apply itself.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS campaign_copy_interviews (
+    id TEXT PRIMARY KEY,
+    campaignId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    sourceKey TEXT NOT NULL,
+    requestedBy TEXT,
+    candidatesJson TEXT NOT NULL,
+    selectedCandidateKey TEXT,
+    selectedBy TEXT,
+    selectedAt TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (campaignId) REFERENCES campaigns(id)
+  );
+`);
+// Shared logger — both the existing creative-jobs score endpoint and the
+// new campaign-copy score endpoint below call this after scoreDraftCopy()
+// returns, so history is complete regardless of which surface produced it.
+function logScoreHistory(accountId, campaignId, sourceType, sourceKey, result){
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO content_score_history (id, accountId, campaignId, sourceType, sourceKey, relevanceScore, complianceScore, note, complianceFlagsJson, mode, scoredAt, createdAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(generateId('CSH'), accountId, campaignId, sourceType, sourceKey, result.relevanceScore, result.complianceScore, result.note || null, JSON.stringify(result.flags || []), result.mode, now, now);
+  return now;
+}
 // Three genuinely distinct brand-voice directions — not three re-rolls of one
 // prompt, same "real subagents" discipline as INTERVIEW_SUBAGENT_ANGLES
 // above. Each is a full personality a brand could plausibly commit to, not a
@@ -5800,7 +5878,7 @@ function scoreDraftHeuristically(copyText, campaign){
   }
   return { relevanceScore, relevanceNote, mode: 'heuristic' };
 }
-function scoreComplianceHeuristically(copyText, account){
+function scoreComplianceHeuristically(copyText, account, campaign){
   const flags = [];
   GENERIC_COMPLIANCE_RISK_PATTERNS.forEach(p => { if (p.re.test(copyText)) flags.push(p.flag); });
   extractVoiceGuideAvoidTerms(account.voiceGuideText).forEach(term => {
@@ -5808,6 +5886,17 @@ function scoreComplianceHeuristically(copyText, account){
       flags.push(`Uses "${term}" — this account's own Voice Guide says to avoid it.`);
     }
   });
+  // 2026-08-22, next round (item 10) — the same "Mandatory Phrase present"
+  // check the frontend's buildContentChecks() validator already runs,
+  // folded into the real scorer's compliance pass too, so a copy piece
+  // that fails this doesn't just get flagged by one validator and not the
+  // other. A missing mandatory phrase IS a compliance issue by this
+  // account's own definition of the word (they set it, it's required),
+  // not a relevance one — it belongs in this function, not the heuristic
+  // relevance scorer above.
+  if (campaign && campaign.mandatoryPhrase && !copyText.includes(campaign.mandatoryPhrase)){
+    flags.push(`Missing this campaign's Mandatory Phrase, required verbatim: "${campaign.mandatoryPhrase}".`);
+  }
   const complianceScore = Math.max(0, 100 - flags.length * 20);
   return { complianceScore, flags, mode: 'heuristic' };
 }
@@ -5846,6 +5935,7 @@ COMPLIANCE (0-100): how well this copy honors the brand voice guide below and av
 BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
 ${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}
+${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy — its absence is a compliance failure, flag it by name in complianceFlags if missing): "${campaign.mandatoryPhrase}"\n` : ''}
 
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
@@ -5872,7 +5962,7 @@ ${copyText.slice(0, 2000)}`;
     } catch (e){ /* fall through to heuristic below */ }
   }
   const rel = scoreDraftHeuristically(copyText, campaign);
-  const comp = scoreComplianceHeuristically(copyText, account);
+  const comp = scoreComplianceHeuristically(copyText, account, campaign);
   return { relevanceScore: rel.relevanceScore, note: rel.relevanceNote, complianceScore: comp.complianceScore, flags: comp.flags, mode: 'heuristic' };
 }
 
@@ -9203,10 +9293,167 @@ async function handleRequest(req, res) {
       const now = new Date().toISOString();
       db.prepare(`UPDATE creative_jobs SET draftRelevanceScore = ?, draftComplianceScore = ?, draftScoreNote = ?, draftComplianceFlags = ?, draftScoredAt = ? WHERE id = ?`)
         .run(result.relevanceScore, result.complianceScore, result.note || null, JSON.stringify(result.flags || []), now, jobId);
+      // 2026-08-22, next round (item 3) — also append to the shared history
+      // log, keyed by this job so past scores for this exact job are
+      // queryable via GET .../score-history below, not just the latest.
+      if (result.mode !== 'none') logScoreHistory(job.accountId, job.campaignId, 'creative_job', `job:${jobId}`, result);
       return sendJson(res, 200, {
         relevanceScore: result.relevanceScore, complianceScore: result.complianceScore,
         note: result.note || null, flags: result.flags || [], mode: result.mode, scoredAt: now
       });
+    }
+
+    // POST /api/campaigns/:id/score-copy — 2026-08-22, next round (item 2
+    // continued). The Marketing Function Project generators' equivalent of
+    // POST /api/creative-jobs/:id/score above — same scoreDraftCopy() call,
+    // same real-AI-with-heuristic-fallback behavior, just for copy that
+    // lives client-side on a campaign's project state rather than on a
+    // creative_jobs row. Body: { copy: string (required), sourceKey: string
+    // (required — identifies which MFP master/derivative this is, e.g.
+    // 'social-batch:master' or 'landing-page:derivative:adClickThrough';
+    // this is what makes the score-history and copy-interview endpoints
+    // below able to group scores/interviews by the exact piece of copy they
+    // belong to). Does NOT persist onto the campaign row itself — unlike a
+    // creative_jobs draft, there's no one "current" MFP copy for a given
+    // sourceKey (a project can be regenerated repeatedly), so every call
+    // both returns its result AND logs it to content_score_history; the
+    // frontend is the source of truth for "what's the latest," same as it
+    // already is for project.masterContent itself.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'score-copy'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      if (typeof body.sourceKey !== 'string' || !body.sourceKey){
+        return sendJson(res, 400, { error: 'sourceKey is required' });
+      }
+      const copyText = typeof body.copy === 'string' ? body.copy : '';
+      const result = await scoreDraftCopy(copyText, campaign, account);
+      const scoredAt = result.mode !== 'none'
+        ? logScoreHistory(campaign.accountId, campaignId, 'campaign_copy', body.sourceKey, result)
+        : new Date().toISOString();
+      return sendJson(res, 200, {
+        relevanceScore: result.relevanceScore, complianceScore: result.complianceScore,
+        note: result.note || null, flags: result.flags || [], mode: result.mode, scoredAt
+      });
+    }
+
+    // GET /api/campaigns/:id/score-history?sourceKey=... — 2026-08-22, next
+    // round (item 3). Returns every content_score_history row for this
+    // campaign, most recent first; sourceKey narrows to one piece of copy
+    // (a job or an MFP master/derivative). Read-only, works for both
+    // 'creative_job' and 'campaign_copy' rows — the same history log serves
+    // both surfaces (see content_score_history's own comment for why one
+    // shared table).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'score-history'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const sourceKey = url.searchParams.get('sourceKey');
+      const rows = sourceKey
+        ? db.prepare('SELECT * FROM content_score_history WHERE campaignId = ? AND sourceKey = ? ORDER BY scoredAt DESC').all(campaignId, sourceKey)
+        : db.prepare('SELECT * FROM content_score_history WHERE campaignId = ? ORDER BY scoredAt DESC').all(campaignId);
+      return sendJson(res, 200, { history: rows.map(r => ({
+        id: r.id, sourceType: r.sourceType, sourceKey: r.sourceKey, relevanceScore: r.relevanceScore,
+        complianceScore: r.complianceScore, note: r.note, flags: (() => { try { return JSON.parse(r.complianceFlagsJson) || []; } catch (e){ return []; } })(),
+        mode: r.mode, scoredAt: r.scoredAt
+      })) });
+    }
+
+    // POST /api/campaigns/:id/copy-interview — 2026-08-22, next round (item
+    // 4 continued). The Marketing Function Project workspace's equivalent
+    // of POST /api/creative-jobs/:id/interview — runs the SAME
+    // runCandidateInterview() 3-subagent panel, just against a campaign
+    // directly rather than through a job, and logs to
+    // campaign_copy_interviews instead of creative_job_interviews (see that
+    // table's comment for why a separate table). Body: { sourceKey } (same
+    // convention as score-copy above).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const session = authenticate(req);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      if (typeof body.sourceKey !== 'string' || !body.sourceKey){
+        return sendJson(res, 400, { error: 'sourceKey is required' });
+      }
+      const result = await runCandidateInterview(campaign, account);
+      if (!result.available){
+        return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
+      }
+      const now = new Date().toISOString();
+      const interviewId = generateId('CCI');
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare(`INSERT INTO campaign_copy_interviews (id, campaignId, accountId, sourceKey, requestedBy, candidatesJson, createdAt)
+        VALUES (?,?,?,?,?,?,?)`)
+        .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now);
+      return sendJson(res, 200, {
+        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now
+      });
+    }
+
+    // POST /api/campaigns/:id/copy-interview/:interviewId/select — same
+    // explicit-click-only apply discipline as the creative-jobs sibling.
+    // Unlike that one, there's no server-side workingCopy field to update —
+    // MFP copy lives client-side — so this only records the selection and
+    // hands back the winning candidate's text for the frontend to apply.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview' && parts[5] === 'select'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const interview = db.prepare('SELECT * FROM campaign_copy_interviews WHERE id = ? AND campaignId = ?').get(interviewId, campaignId);
+      if (!interview) return sendJson(res, 404, { error: 'interview not found for this campaign' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey){
+        return sendJson(res, 400, { error: 'candidateKey is required' });
+      }
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const chosen = candidates.find(c => c.key === body.candidateKey);
+      if (!chosen || !chosen.copy){
+        return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real copy on this interview' });
+      }
+      const now = new Date().toISOString();
+      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare('UPDATE campaign_copy_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+        .run(body.candidateKey, selectedBy, now, interviewId);
+      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy });
+    }
+
+    // GET /api/campaigns/:id/copy-interviews?sourceKey=... — 2026-08-22,
+    // next round (item 8). History list for the client-side MFP copy
+    // workspace, so past interview runs for a piece of copy are visible
+    // there directly rather than only in the Ops Console (which only ever
+    // showed creative_job_interviews, not this campaign-scoped table).
+    // Candidates are redacted the same way the live-run response is —
+    // history is still client-facing data, same redaction rules apply.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interviews'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const sourceKey = url.searchParams.get('sourceKey');
+      const rows = sourceKey
+        ? db.prepare('SELECT * FROM campaign_copy_interviews WHERE campaignId = ? AND sourceKey = ? ORDER BY createdAt DESC').all(campaignId, sourceKey)
+        : db.prepare('SELECT * FROM campaign_copy_interviews WHERE campaignId = ? ORDER BY createdAt DESC').all(campaignId);
+      return sendJson(res, 200, { interviews: rows.map(r => {
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        return {
+          id: r.id, sourceKey: r.sourceKey, candidates: redactCandidatesForClient(candidates),
+          selectedCandidateKey: r.selectedCandidateKey, selectedAt: r.selectedAt, createdAt: r.createdAt
+        };
+      }) });
     }
 
     // POST /api/creative-jobs/:id/copy-decision — 2026-08-22, structured
