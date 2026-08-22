@@ -31251,7 +31251,73 @@ function sharedContextClause(){
     objectiveLine = copyFn ? copyFn(focus) : (campaign.objective ? `${campaign.objective} — worth your attention right now.` : '');
     objectiveShort = objectiveLine ? objectiveLine.split(/(?<=[.!?])\s/)[0] : '';
   }
-  return { campaign, toneClause, objectiveLine, objectiveShort };
+
+  // 2026-08-22 -- 5 more real signals, closing the gap between Press
+  // Release/Internal Comms (already consolidated onto campaign.longformCopy
+  // -- Brand Messaging's own approved draft -- back in round 132ad, so they
+  // already inherit Role/Style, Message Type, Key Message mode, and
+  // Audience through it) and Social Batch/Email Sequence/Landing Page,
+  // which never got that consolidation and instead glue raw campaign
+  // fields straight into their own separate, simpler templates. Two of
+  // these are real, currently-live bugs, not just missed nice-to-haves:
+  //
+  // 1) keyMessageForCopy/keyMessageIsDescriptive -- these 3 generators
+  //    currently quote campaign.keyMessage verbatim regardless of
+  //    keyMessageMode, which is exactly backwards for Descriptive mode (a
+  //    directional brief the AI Copywriter is explicitly told to paraphrase,
+  //    never quote -- see generateMessagingCopyViaAI()'s keyMessageMode
+  //    branch, server.js). Never glue a Descriptive-mode Key Message
+  //    verbatim into distributed copy; callers fall back to objectiveLine
+  //    instead, same as when no Key Message is set at all.
+  // 2) audienceLine -- reuses cmpAudienceAngle()'s real, already-written
+  //    three-tier audience copy (Past Customers alone / Past + other /
+  //    Hand-Raisers+New-to-Brand, per the round 132ad direct decision)
+  //    instead of these generators' own flat "Made for {campaign.segment}"
+  //    string. That flat string is a real, currently-live bug, not just a
+  //    style gap: campaign.segment is the exact comma-joined value
+  //    validateOutputAgainstObjective()'s "Segment not recapped as literal
+  //    internal copy" check looks for verbatim -- so any campaign with a
+  //    Segment set was GUARANTEED to fail that check on these 3 project
+  //    types, every time.
+  // 3) ctaText -- composes PRIMARY_KPI_ANGLE's real measured-outcome ask
+  //    (falling back to the funnel Stage's ask when no Primary KPI is set,
+  //    same fallback order cmpMessagingElements() already uses) through
+  //    LONGFORM_ROLE_STYLE's cta() framing and MESSAGE_TYPE_CUE's register
+  //    suffix -- the exact same composition Long Form Copy's own CTA
+  //    already runs, so a campaign's CTA reads consistently whether it's in
+  //    the Long Form Copy draft or a Social Batch/Email/Landing Page CTA.
+  //    This is also a real, currently-live bug fix: these 3 project types'
+  //    generic hardcoded CTAs ("Learn more → [link]", "Get started →
+  //    [link]") could never satisfy cmpKpiCtaMismatch()'s "does the copy
+  //    contain the KPI's real ask" check, so any campaign with a curated
+  //    Primary KPI was GUARANTEED to fail "Call to action matches Primary
+  //    KPI" on these 3 project types too -- now including on their
+  //    derivatives, since last round's validateDerivativesAgainstObjective()
+  //    runs the exact same check.
+  let keyMessageForCopy = '';
+  let keyMessageIsDescriptive = false;
+  let audienceLine = '';
+  let ctaText = '';
+  if (campaign){
+    keyMessageIsDescriptive = campaign.keyMessageMode === 'descriptive';
+    keyMessageForCopy = (campaign.keyMessage && !keyMessageIsDescriptive) ? campaign.keyMessage : '';
+
+    if (campaign.segment){
+      const segArr = campaign.segment.split(',').map(s => s.trim()).filter(Boolean);
+      if (segArr.length) audienceLine = cmpAudienceAngle(segArr).copyLine || '';
+    }
+
+    const styleKey = campaign.roleStyle || campaign.longformStyle || 'Storytelling';
+    const style = LONGFORM_ROLE_STYLE[styleKey] || LONGFORM_ROLE_STYLE['Storytelling'];
+    const kpiInfo = campaign.primaryKpi ? PRIMARY_KPI_ANGLE[campaign.primaryKpi] : null;
+    const stageInfo = MEDIA_LOOP_STAGE_ANGLE[campaign.stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
+    const askText = kpiInfo ? kpiInfo.ask : stageInfo.ask;
+    ctaText = style && style.cta ? style.cta(askText) : `${askText}.`;
+    const messageType = campaign.messageType || '';
+    if (messageType && MESSAGE_TYPE_CUE[messageType]) ctaText = MESSAGE_TYPE_CUE[messageType].ctaSuffix(ctaText);
+  }
+
+  return { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText };
 }
 
 // 2026-08-22 — per direct instruction to leverage the new Brand Voice
@@ -31464,11 +31530,11 @@ function generatePressReleaseDerivatives(){
 
 function generateSocialBatchMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause, objectiveLine } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
   project.fields = {
-    hook: `${campaign.keyMessage || objectiveLine || 'Something new'} — ${toneClause}.`,
-    body: `${objectiveLine || 'Here\'s what\'s new.'} ${campaign.segment ? `Made for ${campaign.segment}.` : ''} Here's what's new, and why it matters right now.`,
-    cta: 'Learn more → [link]',
+    hook: `${keyMessageForCopy || objectiveLine || 'Something new'} — ${toneClause}.`,
+    body: `${objectiveLine || 'Here\'s what\'s new.'} ${audienceLine ? `${audienceLine} ` : ''}Here's what's new, and why it matters right now.`,
+    cta: `${ctaText || 'Learn more'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('social-batch', project.fields);
@@ -31478,8 +31544,9 @@ function generateSocialBatchMaster(){
   // naming the raw Objective here (unlike in the fields above) stays honest
   // and useful — it's explaining reasoning to a human reviewer, not printing
   // a field label as if it were prose.
-  const rationaleParts = [`Why this draft: the hook line leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}`];
-  if (campaign.segment) rationaleParts.push(`"Made for ${campaign.segment}" reflects this campaign's Segment field directly`);
+  const rationaleParts = [`Why this draft: the hook line leads with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a real, finished sentence built from this campaign's Objective — Key Message is set to Descriptive mode, so it informs the draft's direction without being quoted verbatim` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}`];
+  if (audienceLine) rationaleParts.push(`the body's audience line reflects this campaign's Segment field through the same three-tier audience logic Long Form Copy uses, not a flat recap of the raw Segment label`);
+  rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''} — the same CTA composition Long Form Copy uses, not a generic "learn more"`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
@@ -31523,12 +31590,18 @@ function generateAnalyticsBriefMaster(){
 
 function generateSocialBatchDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
+  const { keyMessageForCopy, objectiveShort } = sharedContextClause();
   const hero = project.masterContent;
   const short = hero.split('\n')[0];
+  // 2026-08-22 -- the Instagram caption's second line used to glue
+  // campaign.keyMessage in verbatim regardless of keyMessageMode; falls
+  // back to objectiveShort (a real short sentence, not another raw field)
+  // when Key Message is unset or set to Descriptive mode, same fallback
+  // order the master hook already uses.
+  const igLine = keyMessageForCopy || objectiveShort || '';
   project.derivatives = {
     linkedin: `${hero}\n\n#${state.industry.replace(/[^a-zA-Z0-9]/g,'')} #Marketing`,
-    instagram_caption: `${short} ✨\n${campaign.keyMessage || ''}\n.\n.\n.\n#${state.company.replace(/\s+/g,'')}`,
+    instagram_caption: `${short} ✨${igLine ? `\n${igLine}` : ''}\n.\n.\n.\n#${state.company.replace(/\s+/g,'')}`,
     x_post: short.length > 240 ? short.slice(0, 237) + '...' : short,
     facebook: `${hero}\n\nTap the link to see more →`
   };
@@ -31546,20 +31619,21 @@ function generateSocialBatchDerivatives(){
 // cascade per the architecture doc's Section 4.
 function generateEmailSequenceMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause, objectiveLine, objectiveShort } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
   project.fields = {
-    subjectLine: campaign.keyMessage || objectiveShort || 'An update for you',
-    preheader: campaign.segment ? `Built for ${campaign.segment}` : '',
-    body: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.keyMessage ? campaign.keyMessage + ' ' : ''}${campaign.segment ? `This is for you, ${campaign.segment}.` : ''} Here's what's changing, and why it matters right now.`,
-    cta: 'Get started → [link]',
+    subjectLine: keyMessageForCopy || objectiveShort || 'An update for you',
+    preheader: audienceLine || '',
+    body: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${keyMessageForCopy ? keyMessageForCopy + ' ' : ''}${audienceLine ? audienceLine + ' ' : ''}Here's what's changing, and why it matters right now.`,
+    cta: `${ctaText || 'Get started'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('email-sequence', project.fields);
   // 2026-08-22 — same distinction as generateSocialBatchMaster() above: the
   // rationale panel is internal reviewer commentary, not distributed copy,
   // so naming the raw Objective here stays fine on purpose.
-  const rationaleParts = [`Why this draft: the subject line and body lead with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
-  if (campaign.segment) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field ("${campaign.segment}") directly`);
+  const rationaleParts = [`Why this draft: the subject line and body lead with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a real, finished sentence built from this campaign's Objective — Key Message is set to Descriptive mode, so it informs direction without being quoted verbatim` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
+  if (audienceLine) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field through the same three-tier audience logic Long Form Copy uses`);
+  rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''}`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
@@ -31567,7 +31641,7 @@ function generateEmailSequenceMaster(){
 
 function generateEmailSequenceDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
+  const { objectiveLine, objectiveShort, keyMessageForCopy, audienceLine, ctaText } = sharedContextClause();
   const arc = (project.fields && project.fields.body) || project.masterContent;
   const subject = (project.fields && project.fields.subjectLine) || objectiveShort || 'An update for you';
   // 2026-08-22 fix — these three follow-up emails used to splice the raw
@@ -31579,31 +31653,40 @@ function generateEmailSequenceDerivatives(){
   // table Brand Messaging already uses, instead of gluing the raw label
   // into a fragment.
   const email3ReactionLine = objectiveLine || 'People are responding well.';
+  // 2026-08-22 — campaign.keyMessage/campaign.segment used to be spliced in
+  // verbatim here regardless of Key Message mode, and Segment's flat string
+  // guaranteed a "Segment not recapped" validator fail whenever set (see
+  // sharedContextClause()'s comment). keyMessageForCopy already resolves to
+  // '' under Descriptive mode; audienceLine is the same real three-tier
+  // audience copy the master body uses, not the raw Segment label. Every
+  // CTA line below now also closes on ctaText (Primary KPI/Stage-grounded,
+  // Role/Style- and Message-Type-shaped) instead of a hardcoded generic verb.
   project.derivatives = {
-    email2: `Subject: Still thinking about it?\n\nHi [First Name],\n\nA quick follow-up on "${subject}" — ${campaign.keyMessage || objectiveLine || 'here\'s the short version.'} If you haven't had a chance to look yet, here's the short version.\n\nGet started → [link]`,
-    email3: `Subject: Here's what people are saying\n\nHi [First Name],\n\n"${campaign.keyMessage || 'This made a real difference for us.'}" — ${email3ReactionLine} ${campaign.segment ? `Especially for ${campaign.segment}.` : ''}\n\nSee for yourself → [link]`,
-    email4: `Subject: Last call\n\nHi [First Name],\n\nThis is the last note in this sequence — ${objectiveShort ? objectiveShort.charAt(0).toLowerCase() + objectiveShort.slice(1) : 'no pressure, just making sure it didn\'t get lost in your inbox.'}\n\n${arc.slice(0, 140)}${arc.length > 140 ? '...' : ''}\n\nTake a look → [link]`
+    email2: `Subject: Still thinking about it?\n\nHi [First Name],\n\nA quick follow-up on "${subject}" — ${keyMessageForCopy || objectiveLine || 'here\'s the short version.'} If you haven't had a chance to look yet, here's the short version.\n\n${ctaText || 'Get started'} → [link]`,
+    email3: `Subject: Here's what people are saying\n\nHi [First Name],\n\n"${keyMessageForCopy || 'This made a real difference for us.'}" — ${email3ReactionLine}${audienceLine ? ` ${audienceLine}` : ''}\n\n${ctaText || 'See for yourself'} → [link]`,
+    email4: `Subject: Last call\n\nHi [First Name],\n\nThis is the last note in this sequence — ${objectiveShort ? objectiveShort.charAt(0).toLowerCase() + objectiveShort.slice(1) : 'no pressure, just making sure it didn\'t get lost in your inbox.'}\n\n${arc.slice(0, 140)}${arc.length > 140 ? '...' : ''}\n\n${ctaText || 'Take a look'} → [link]`
   };
   renderProjectDetail();
 }
 
 function generateLandingPageMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause, objectiveLine, objectiveShort } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
   project.fields = {
-    heroHeadline: campaign.keyMessage || objectiveShort || `${state.company} — a step forward`,
-    heroSubhead: campaign.segment ? `Built for ${campaign.segment}` : 'A step forward for the brand',
+    heroHeadline: keyMessageForCopy || objectiveShort || `${state.company} — a step forward`,
+    heroSubhead: audienceLine || 'A step forward for the brand',
     benefits: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.`,
-    proofPoint: campaign.keyMessage || 'This made a real difference for us.',
+    proofPoint: keyMessageForCopy || 'This made a real difference for us.',
     proofAttribution: 'a customer',
-    cta: 'Get started → [link]',
+    cta: `${ctaText || 'Get started'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('landing-page', project.fields);
   // 2026-08-22 — same distinction as the other two generators above: the
   // rationale panel is internal reviewer commentary, not distributed copy.
-  const rationaleParts = [`Why this draft: the hero headline leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `a short line built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
-  if (campaign.segment) rationaleParts.push(`the subhead reflects this campaign's Segment field ("${campaign.segment}") directly`);
+  const rationaleParts = [`Why this draft: the hero headline leads with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a short line built from this campaign's Objective — Key Message is set to Descriptive mode, so it never appears verbatim, including in the proof point (a Descriptive-mode brief quoted as if a customer said it would be actively misleading)` : `a short line built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
+  if (audienceLine) rationaleParts.push(`the subhead reflects this campaign's Segment field through the same three-tier audience logic Long Form Copy uses, not a flat recap of the raw Segment label`);
+  rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''}`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
@@ -31611,12 +31694,12 @@ function generateLandingPageMaster(){
 
 function generateLandingPageDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
+  const { objectiveLine, objectiveShort, keyMessageForCopy } = sharedContextClause();
   const headline = (project.fields && project.fields.heroHeadline) || objectiveShort || `${state.company} — a step forward`;
   const subhead = (project.fields && project.fields.heroSubhead) || '';
   project.derivatives = {
-    metaTitleDescription: `Title: ${headline} | ${state.company}\nDescription: ${subhead} ${campaign.keyMessage || objectiveLine || 'Learn more.'}`.slice(0, 300),
-    adClickThrough: `${headline}${subhead ? ' — ' + subhead : ''}. ${campaign.keyMessage || 'Learn more.'} →`
+    metaTitleDescription: `Title: ${headline} | ${state.company}\nDescription: ${subhead} ${keyMessageForCopy || objectiveLine || 'Learn more.'}`.slice(0, 300),
+    adClickThrough: `${headline}${subhead ? ' — ' + subhead.replace(/\.$/, '') : ''}. ${keyMessageForCopy || objectiveShort || 'Learn more.'} →`
   };
   renderProjectDetail();
 }
