@@ -115,6 +115,31 @@
   .copy-bp-cell .lbl{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
   .copy-bp-cell .val{font-size:0.9375rem;font-weight:600;color:var(--ink);}
 
+  /* 2026-08-22 — "AI Thought" speech bubbles. Per direct instruction: make
+     sure every AI wait-moment explains what's actually happening AND
+     surfaces a best-practice tip, not just a bare "loading…" — this is the
+     same "always provide value along the way" principle already applied to
+     the build (see the "fun, not intimidating" standing design principle
+     in the CX vision doc). Styled as an actual speech bubble (rounded card
+     + a small triangular tail) pointing back at the control that triggered
+     it, with a pulsing three-dot "thinking" indicator while work is in
+     flight and a persistent tip line that stays after the result lands —
+     so the guidance doesn't disappear the moment the answer does. */
+  .ai-status-bubble{position:relative;background:var(--cx-tint);border-radius:var(--radius-md);padding:12px 16px;margin:10px 0;font-size:0.8125rem;line-height:1.45;color:var(--ink);}
+  .ai-status-bubble::after{content:"";position:absolute;left:22px;bottom:-6px;width:12px;height:12px;background:var(--cx-tint);transform:rotate(45deg);border-radius:2px;}
+  .ai-status-bubble .doing{display:flex;align-items:flex-start;gap:8px;font-weight:600;color:var(--cx);}
+  .ai-status-bubble .doing .thinking-dots{display:inline-flex;gap:3px;flex-shrink:0;margin-top:3px;}
+  .ai-status-bubble .doing .thinking-dots span{width:5px;height:5px;border-radius:50%;background:var(--cx);opacity:0.35;animation:ai-think-pulse 1.1s infinite ease-in-out;}
+  .ai-status-bubble .doing .thinking-dots span:nth-child(2){animation-delay:0.15s;}
+  .ai-status-bubble .doing .thinking-dots span:nth-child(3){animation-delay:0.3s;}
+  @keyframes ai-think-pulse{0%,80%,100%{opacity:0.3;transform:scale(0.85);}40%{opacity:1;transform:scale(1);}}
+  .ai-status-bubble .doing-text{flex:1;}
+  .ai-status-bubble .tip{margin-top:8px;padding-top:8px;border-top:1px solid rgba(8,145,178,0.18);color:var(--muted);font-size:0.75rem;}
+  .ai-status-bubble .tip b{color:var(--ink);font-weight:600;}
+  @media (prefers-reduced-motion: reduce){
+    .ai-status-bubble .doing .thinking-dots span{animation:none;opacity:0.6;}
+  }
+
   /* The wireframe preview — a lightweight visual mock of the recommended/
      edited copy placed on the asset it's actually headed for, sized to
      that asset's own aspect ratio. Per direct instruction: "wires will not
@@ -2176,7 +2201,19 @@
            shows it under "Client ID"), reached via the gear icon at upper
            right. -->
       <img class="co-logo" id="acctLogo" alt="" style="display:none;">
-      <div class="co-name" id="acctCompanyName">Acme Hospitality Group</div>
+      <!-- 2026-08-22 fix — this used to hard-code "Acme Hospitality Group"
+           (the internal demo/placeholder company name) directly in the
+           markup, so it painted on-screen the instant the page loaded,
+           before the Init IIFE below has a chance to fetch this account's
+           real data and correct it (loadAccountData() + several other
+           awaited loads first — see that IIFE's own comment). A client
+           logging into their own account would see the wrong company name
+           flash for 1-2 seconds before their real one replaced it — a
+           startup client seeing "Atlas Ocean Voyages" impersonated as
+           "Acme Hospitality Group," even briefly, is a real trust problem,
+           not just a cosmetic one. "Loading…" is a neutral placeholder that
+           never claims to be any specific account. -->
+      <div class="co-name" id="acctCompanyName">Loading…</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <div class="stage-row" id="orgModelRow" style="margin:0;"></div>
@@ -3062,6 +3099,47 @@
       </div>
     </div>
 
+    <!-- 2026-08-22 — the multi-model Brand Voice contest, per direct
+         instruction: "add a multi-model contest in the brand setup section
+         that presents an overall voice theme to include a vision statement
+         and longform copy example that incorporates the critical customer
+         facing messages." Deliberately alongside the single-draft generator
+         above, not replacing it — this is a heavier, real-AI-call action a
+         team would reach for when they want to compare genuinely distinct
+         directions, not the default first step. -->
+    <div class="module open accent-cx" id="voiceContestModule" style="margin-top:24px;">
+      <div class="module-head" onclick="toggleModule('voiceContestModule')">
+        <span class="modnum">2</span>
+        <div class="titles">
+          <span class="tag">Multi-model</span>
+          <h2>Voice contest — Vision Statement &amp; Longform Example</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="lede" style="margin:2px 0 12px;">Runs your brand through three genuinely distinct voice directions at once — Confident Authority, Warm Storyteller, Bold Modern — each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Compare them side by side and pick the one that's actually you — nothing is applied until you choose.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Run contest →</button>
+        </div>
+        <div id="voiceContestPanel" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:20px;">
+      <label>Vision Statement</label>
+      <p class="lede" style="margin:2px 0 8px;">A single, memorable north-star line for this brand's voice — from the contest above, or written directly.</p>
+      <textarea id="voiceVisionStatement" rows="2" placeholder="Run the contest above, or write your own."></textarea>
+    </div>
+    <div class="field">
+      <label>Longform Example</label>
+      <p class="lede" style="margin:2px 0 8px;">Real, finished copy in this voice — the reference example every future longform draft gets measured against.</p>
+      <textarea id="voiceLongformExample" rows="6" placeholder="Run the contest above, or write your own."></textarea>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-ghost" onclick="saveVisionLongformEdits()">Save Vision &amp; Longform Example →</button>
+    </div>
+    <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
+
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
       <span class="seq-spacer"></span>
@@ -3777,6 +3855,10 @@
             <input type="checkbox" id="teamNewIsAdmin" style="margin:0;width:18px;height:18px;">
             <span class="body" style="display:inline;"><strong>Admin</strong> — full account access (billing, payment methods, inviting/removing team members), separate from their org-chart role below.</span>
           </label>
+          <!-- 2026-08-22 — shown only when the logged-in session is a real,
+               non-admin team member (see applyIsAdminToggleGate()); a legacy
+               account-level session or a real admin never sees this. -->
+          <div id="teamNewIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
         </div>
         <div class="field">
           <label for="teamNewLevel">Level</label>
@@ -4651,6 +4733,38 @@
     <h1>Marketing Calendar</h1>
     <p class="lede lede-full">Every Channel Planning Detail entry on this account, plotted by Hit Date — the date a piece actually reaches its audience. Read-only for now; edit channel planning entries from the campaign itself.</p>
 
+    <!-- 2026-08-22 — Product Group / Creative Focus Group setup, per direct
+         instruction: "I need to add the Atlas Product Groups and Creative
+         Focus Groups to create proper campaigns that help us test
+         copywriting and this should be feeding the marketing calendar...
+         Let's provide clients with an option to begin with a quick start
+         option when creating the groups... Brands can override everything
+         and start with a fresh upload or edit what we provide." This is the
+         real gap that made "test copywriting" hard on a brand-new account:
+         Campaign Creation's Product Group/Creative Focus Group tiles
+         (cmpTaxonomyValues()) and this page's own filters above already
+         read from the SAME account_taxonomies backend data, but until now
+         the only way to populate it was uploading real historical Channel
+         Planning Detail rows first — a chicken-and-egg problem for a new
+         account with nothing to upload yet. This module is the missing
+         direct-entry path onto that same real data (GET/PUT
+         /api/accounts/:id/taxonomies, already built, just never had a UI),
+         with a quick-start layer on top. -->
+    <div class="module open accent-cx" id="taxonomyManagerModule" style="margin-bottom:24px;">
+      <div class="module-head" onclick="toggleModule('taxonomyManagerModule')">
+        <span class="modnum">1</span>
+        <div class="titles">
+          <span class="tag">Setup</span>
+          <h2>Product Groups &amp; Creative Focus Group</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="lede" style="margin:2px 0 12px;">The Product Group and Creative Focus Group values every campaign, the tiles above, and this calendar's own filters all read from — set up once here, real for every campaign going forward. Start from a quick-start template for a fast head start, or build your own list from scratch; either way, every value is yours to add, edit, or remove before saving.</p>
+        <div id="taxonomyManagerBody"></div>
+      </div>
+    </div>
+
     <div class="mktcal-toolbar">
       <div class="mktcal-nav">
         <button class="btn-ghost" type="button" onclick="mktCalShiftMonth(-1)" aria-label="Previous month">&larr;</button>
@@ -5127,6 +5241,7 @@
                    here shrinks to naming the field, not re-explaining it. -->
               <div class="field-divider">Lifecycle-Loop Stage <span class="ai-thought-mount" data-topic="K"></span></div>
               <p class="lede" style="margin-bottom:14px;">Select the Media Loop stage this campaign supports.</p>
+              <div id="cmpStageSmartDefault" style="margin-bottom:8px;"></div>
               <div class="stage-row" id="stageRow"></div>
               <!-- Round 132bt (2026-08-13) fix, per direct testing feedback:
                    "copy below the five lifecycle options duplicates the
@@ -5167,6 +5282,7 @@
               <div class="select-tile-row" id="cmpSegmentRow"></div>
               <div class="rr-error" id="cmpSegmentError"></div>
               <div class="hint" id="cmpSegmentStageNote" style="margin-top:6px;"></div>
+              <div id="cmpSegmentSmartDefault" style="margin-top:8px;"></div>
 
               <!-- Round 132aj (2026-08-11), per direct instruction: "The
                    objective copy and speech bubble can be removed because it
@@ -5199,6 +5315,7 @@
                      worth explaining (Primary vs. other tracked KPIs), and
                      the AI Thought icon covers strategic guidance. -->
                 <label>Primary KPI <span class="ai-thought-mount" data-topic="D"></span></label>
+                <div id="cmpPrimaryKpiSmartDefault" style="margin:6px 0;"></div>
                 <!-- Round 132bu (2026-08-13), per direct instruction: "Loop
                      select is mandatory to deliver accurate channel
                      recommendations but not enforced... create top-down
@@ -5604,6 +5721,7 @@
             <div class="field-divider">Step 1 — Channel Plan</div>
             <div class="field" style="margin-top:0;">
               <label>Channel(s) <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
+              <div id="cmpChannelsSmartDefault" style="margin:6px 0;"></div>
               <p class="hint" id="cmpChannelRowRecap" style="margin:0;"></p>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Add
@@ -5811,6 +5929,28 @@
                   <div id="cmpKeyMessageSmartDefault" style="margin-bottom:8px;"></div>
                   <textarea id="cmpKeyMessage" maxlength="500" rows="3" placeholder="e.g. Fresh, local, fast — the short version. Full long-form messaging comes later in the flow." oninput="updateKeyMessageCounter();cmpKeyMessageOrBriefEdited();"></textarea>
                   <div class="char-counter" id="cmpKeyMessageCounter">0 / 500</div>
+                  <!-- 2026-08-22 — new, and a different axis from Message
+                       Type below: this governs whether Key Message itself
+                       must survive verbatim in the draft, not its
+                       tone/register. Default Exact keeps every existing
+                       campaign's behavior unchanged (validateOutputAgainstObjective()'s
+                       "Key Message reflected" check already requires a
+                       literal match, on purpose, for real human-authored
+                       copy). Descriptive is for a directional brief instead
+                       — a sentence like "something about the spring sale
+                       and free upgrades" that the AI Copywriter should
+                       paraphrase into real copy, not quote back verbatim;
+                       picking it changes what that same validator check
+                       requires (see renderFaqKeyMessageMode-adjacent logic
+                       in validateOutputAgainstObjective()). -->
+                  <div class="msg-subfield">
+                    <label for="cmpKeyMessageMode">Key Message mode</label>
+                    <select id="cmpKeyMessageMode" onchange="cmpKeyMessageOrBriefEdited();">
+                      <option value="exact">Exact — real copy, should read close to verbatim in the draft</option>
+                      <option value="descriptive">Descriptive — a directional brief; the AI Copywriter should paraphrase it, not quote it</option>
+                    </select>
+                    <div id="cmpKeyMessageModeSmartDefault"></div>
+                  </div>
                   <!-- Round 132ad (2026-08-11), per direct decision: keep Key
                        Message free-form, but add two intent signals for the
                        AI Copywriter rather than overloading the one field.
@@ -5837,6 +5977,7 @@
                       <option value="Brand Campaign">Brand Campaign — warm, offer stays secondary</option>
                       <option value="Launch">Launch — newness-forward, first-to-know framing</option>
                     </select>
+                    <div id="cmpMessageTypeSmartDefault"></div>
                   </div>
                   <div class="msg-subfield">
                     <label for="cmpMandatoryPhrase">Mandatory phrase (optional) — NOT the same as Key Message above: this exact wording must appear verbatim, word-for-word, never paraphrased — e.g. "50% Off. Promotion Expires July 31."</label>
@@ -5891,6 +6032,7 @@
                       <option value="Nostalgic Return">Nostalgic return — memory before the ask, for past guests</option>
                       <option value="Discovery">Discovery — explains what's different, for new-to-brand</option>
                     </select>
+                    <div id="cmpRoleStyleSmartDefault"></div>
                   </div>
                   <p class="hint" id="cmpLongFormLockNote">Unlocks once Key Message is written and the Brief Builder context above is filled in — it drafts directly from your Key Message text, Message Type, and the Role/Style approach above.</p>
                   <textarea id="cmpLongFormCopy" rows="14" placeholder="Full-length draft copy for this campaign." oninput="cmpUnapproveMsgField('longform');"></textarea>
@@ -6292,6 +6434,29 @@
         </div>
         <div class="faq-body" id="bpFaqBodyN">
           <p id="bpFaqTextN"></p>
+        </div>
+      </div>
+      <!-- 2026-08-22, "work on the next copywriting priority" — Draft
+           Scoring and the Blind Test Interview panel get the same
+           self-explaining treatment as every other field (see the icon
+           mounts on the copy workspace's Draft Score label and Interview
+           candidates button). -->
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadO" onclick="toggleFaqItem('O')">
+          <span class="faq-label">Draft Scoring</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyO">
+          <p id="bpFaqTextO"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadP" onclick="toggleFaqItem('P')">
+          <span class="faq-label">Blind Test Interview</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyP">
+          <p id="bpFaqTextP"></p>
         </div>
       </div>
     </div>
@@ -6942,6 +7107,40 @@
       </div>
     </div>
 
+    <!-- 2026-08-22 — Campaign Type card. Backend closed this gap this round
+         (CAMPAIGN_TYPE_REGISTRY in backend/server.js: Urgency Offer/Product
+         Launch/Loyalty/Trade Incentive, each with typed required inputs and
+         its own AI-prompt guidance injected into every real-AI copy
+         generator) but had no UI to set it — this is that UI. Mirrors
+         saveCampaignBrandFields()'s save pattern exactly: local-first,
+         explicit backend write on Save, honest local-only fallback flag.
+         CAMPAIGN_TYPE_REGISTRY_CLIENT below is a hand-mirrored copy of the
+         backend registry (same convention already used for
+         MESSAGE_TYPE_CUE/messageType) — no network round trip needed just
+         to render the picker and detail-field inputs, and completeness is
+         computed the same way client-side so it updates live as the person
+         types, not only after a save. -->
+    <div class="sk-card cmp-form-col" id="campaignTypeCard">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Campaign Type</div><h3>What kind of campaign is this?</h3></div>
+        <div class="hicon">▣</div>
+      </div>
+      <div class="sk-card-body">
+        <div class="field">
+          <label for="campaignTypeSelect">Campaign type (optional — shapes the AI copy prompts below with scenario-specific guidance; General/not-set behaves exactly as before this field existed)</label>
+          <select id="campaignTypeSelect" onchange="onCampaignTypeSelectChanged();">
+            <option value="">General — no specific scenario, no extra requirements</option>
+          </select>
+        </div>
+        <div id="campaignTypeDetailFields"></div>
+        <div id="campaignTypeStatus" style="margin-top:4px;"></div>
+        <div class="btn-row" style="margin-top:12px;">
+          <button type="button" class="btn-primary" onclick="saveCampaignTypeFields()">Save →</button>
+        </div>
+        <div id="campaignTypeSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
+      </div>
+    </div>
+
     <!-- Round 56 — sk-* card system, per the round-49 audit's deprioritized-
          to-last redesign item (Campaign Creation/Detail/Project Detail were
          the last surfaces still on the pre-Apple .dash-tile/.module/.field
@@ -7585,7 +7784,19 @@ let cmpRecommendedChannelsAuto = true;
 // directly, at which point their edit is never silently overwritten again.
 let cmpPmBriefBuilderAuto = true;
 let lastCreatedCampaignId = null; // most recently created campaign's ID — shown in the "Campaign created" banner
-document.getElementById('acctCompanyName').textContent = state.company;
+// 2026-08-22 fix — removed a stray synchronous
+// `document.getElementById('acctCompanyName').textContent = state.company;`
+// that used to sit here. It ran at parse time, before loadAccountData() has
+// fetched this account's real data, so it only ever painted the mock
+// default ('Acme Hospitality Group') — the same value the raw HTML markup
+// already showed (see that element's own comment). It was dead weight left
+// over from before the "Async now" Init IIFE refactor described in that
+// IIFE's own comment ("everything that was previously synchronous top-level
+// code... moves inside this IIFE so it runs only once real data... is
+// actually in hand") — the real, correct assignment already happens inside
+// that IIFE once loadAccountData() resolves. Deleting this line removes one
+// of the two places the wrong company name got painted before the real one
+// replaced it.
 
 /* ---------- Function group taxonomy — same functionGroup keys/labels now
    tagged on assessment.html's PRODUCTS[] (see that file's PRODUCTS comment
@@ -9838,7 +10049,7 @@ function renderCmpProductGroupRow(){
   if (!row) return;
   let values = cmpTaxonomyValues('productGroup');
   if (!values){
-    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — configured in the Marketing Calendar.</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('marketingCalendar')" style="cursor:pointer;">set it up on Marketing Calendar</a> (quick-start templates available).</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix, per direct instruction: "remove Multi-
@@ -9867,7 +10078,7 @@ function renderCmpCreativeFocusGroupRow(){
   if (!row) return;
   let values = cmpTaxonomyValues('creativeMarket');
   if (!values){
-    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — configured in the Marketing Calendar.</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('marketingCalendar')" style="cursor:pointer;">set it up on Marketing Calendar</a> (quick-start templates available).</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix — same as Product Group above: MULTI-
@@ -12297,6 +12508,13 @@ async function loadAccountData(){
         state.voice.draft = record.account.voiceGuideText || '';
         state.voice.version = record.account.voiceVersion || 0;
       }
+      // 2026-08-22 — the multi-model Brand Voice contest's two dedicated
+      // fields, read back the same way the draft above is — independent of
+      // voiceApproved, since a Vision Statement/Longform Example can exist
+      // (and be worth showing) even before the main Voice Guide draft is
+      // separately approved.
+      state.voice.visionStatement = record.account.visionStatement || '';
+      state.voice.longformExample = record.account.longformVoiceExample || '';
       // Round 20, Brand Foundations (Style Guide — Colors & Fonts) — read the
       // persisted style assets back the same way Voice does above, so
       // "approved" and every field survive a reload.
@@ -17071,6 +17289,51 @@ async function loadTeam(){
   } catch (e){
     console.warn('loadTeam: backend not reachable, starting with an empty (local-only) team roster.', e);
   }
+  checkPortalViewerAdminStatus();
+}
+
+// 2026-08-22 — closes the roster-UI half of the isAdmin gap fix (backend's
+// PATCH /api/team/:id now 403s a non-admin who actually changes isAdmin —
+// see requireAdminMember() in backend/server.js). Without this, a non-admin
+// editing their own name would submit the Admin toggle unchanged and never
+// see the 403 (the backend only gates on the value actually changing), but a
+// non-admin who genuinely tried to self-promote would hit a raw, unexplained
+// 403 with no visible cause. Defaults to true (toggle enabled, no change
+// from before this round) until proven otherwise — this matches the
+// backend's own default-to-root treatment of a session it can't identify a
+// specific member for (session.memberId === null, the legacy account-level
+// login every portal.html session still uses today), and keeps this a pure
+// UX improvement rather than a second access-control layer: the backend
+// gate is still what actually protects anything here.
+let portalViewerIsAdmin = true;
+async function checkPortalViewerAdminStatus(){
+  if (dataSourceLabel !== 'backend') return;
+  try {
+    // GET /api/auth/me requires a real per-person session (memberId set) —
+    // it 401s outright for this account's legacy account-level sessions,
+    // which is exactly the case that should leave portalViewerIsAdmin at its
+    // true default (a legacy session is root-equivalent everywhere else in
+    // this codebase too, see requireAdminMember()'s own comment).
+    const resp = await authedFetch(`${BACKEND_URL}/api/auth/me`);
+    if (resp.ok){
+      const me = await resp.json();
+      portalViewerIsAdmin = !!me.isAdmin;
+    }
+  } catch (e){ /* leave the safe default in place */ }
+  applyIsAdminToggleGate();
+}
+// Disables the shared Admin checkbox (Add/Edit Team Member form) and shows
+// why, for a non-admin viewer only — never hides it outright, since "you
+// don't have this permission" is more honest and less confusing than the
+// field silently disappearing. A no-op for the common case (legacy
+// account-level session, or a real admin) — the checkbox stays exactly as
+// interactive as it's always been.
+function applyIsAdminToggleGate(){
+  const checkbox = document.getElementById('teamNewIsAdmin');
+  const hint = document.getElementById('teamNewIsAdminGateHint');
+  if (!checkbox) return;
+  checkbox.disabled = !portalViewerIsAdmin;
+  if (hint) hint.style.display = portalViewerIsAdmin ? 'none' : 'block';
 }
 
 // Fills the Objective/Segment/Stage <select>s with their curated default
@@ -24494,7 +24757,13 @@ function cmpPopulateFormFields(c, opts){
   const mandatoryEl = document.getElementById('cmpMandatoryPhrase');
   if (mandatoryEl) mandatoryEl.value = c.mandatoryPhrase || '';
   const styleEl = document.getElementById('cmpLongformStyle');
-  if (styleEl) styleEl.value = c.longformStyle || 'Storytelling';
+  // 2026-08-22 — c.roleStyle is the real, backend-persisted value (see
+  // server.js); c.longformStyle is the older local-session-only field this
+  // already fell back to. Prefer the persisted one now that one exists,
+  // keep the session fallback for anything saved before this round.
+  if (styleEl) styleEl.value = c.roleStyle || c.longformStyle || 'Storytelling';
+  const keyMessageModeEl = document.getElementById('cmpKeyMessageMode');
+  if (keyMessageModeEl) keyMessageModeEl.value = c.keyMessageMode || 'exact';
   // Round 132nn (2026-08-10) — same "local-session flag only" honesty as
   // cmpMessagingApproved right below: the per-field approvals reset on
   // every load too, not persisted. A campaign with real saved content in
@@ -25000,6 +25269,8 @@ function resetCampaignForm(){
   ['cmpName','cmpKeyMessage','cmpBudget','cmpPlannedImpressions','cmpStartDate','cmpEndDate','cmpKpiGoal','cmpReachFrequency','cmpVideoViewRate','cmpFunnelVisitRate','cmpFunnelLeadRate','cmpFunnelBookingRate','cmpFunnelAov','cmpFunnelEcommerceMix','cmpFunnelDirectRate','cmpTransactionWindow','cmpLongFormCopy','cmpKeyMessageType','cmpMandatoryPhrase'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const styleResetEl = document.getElementById('cmpLongformStyle');
   if (styleResetEl) styleResetEl.value = 'Storytelling';
+  const keyMessageModeResetEl = document.getElementById('cmpKeyMessageMode');
+  if (keyMessageModeResetEl) keyMessageModeResetEl.value = 'exact';
   const dateErrEl = document.getElementById('cmpDateError');
   if (dateErrEl) dateErrEl.textContent = '';
   const endDateEl = document.getElementById('cmpEndDate');
@@ -25213,7 +25484,15 @@ const BP_FAQ_TOPICS = [
   // (channel mix, creative/messaging, budget logic, landing page relevance
   // & performance, brand groundwork) rather than inventing a second
   // explanation of the same score — see renderFaqN() below.
-  { letter: 'N', label: 'Campaign Relevance Score', keywords: ['relevance','relevance score','channel mix','budget logic','landing page','brand groundwork','score'] }
+  { letter: 'N', label: 'Campaign Relevance Score', keywords: ['relevance','relevance score','channel mix','budget logic','landing page','brand groundwork','score'] },
+  // 2026-08-22 — per direct instruction, "work on the next copywriting
+  // priority": wire the two newest copy-workspace features (Draft Scoring,
+  // the Blind Test Interview panel) into this same system, so they explain
+  // themselves the same way every other field already does. Sit right after
+  // N in both this array and the drawer HTML — same "audit found it, add it
+  // here" pattern as G-J and N before them.
+  { letter: 'O', label: 'Draft Scoring', keywords: ['draft score','relevance score','compliance score','scoring','flags','heuristic','ai-scored'] },
+  { letter: 'P', label: 'Blind Test Interview', keywords: ['interview','candidates','blind test','direct-response','brand-story','proof-and-trust','recommended'] }
 ];
 
 // Round 132ll (2026-08-10), per direct instruction: "we should tag the
@@ -25444,7 +25723,9 @@ const AI_THOUGHT_PREVIEWS = {
   I: 'Why generic tone anchors produce generic drafts — and specific ones don’t.',
   J: 'Naming the competitor your customers actually compare you to, not just the biggest name.',
   L: 'Demand Fulfillment categories are always on with budgets not allocated to a specific campaign.',
-  N: 'What the score on this campaign\'s header actually measures — and which of its six inputs is dragging it down right now.'
+  N: 'What the score on this campaign\'s header actually measures — and which of its six inputs is dragging it down right now.',
+  O: 'What Draft Scoring is actually checking in the copy above — and whether this deployment is scoring it with AI or a fallback heuristic.',
+  P: 'What the Blind Test Interview panel does: drafts three independent takes on this brief, scores each one the same way, and ranks them.'
 };
 function aiThoughtRoleLabel(letter){
   const roleKey = BP_FAQ_TOPIC_ROLE[letter];
@@ -25507,6 +25788,26 @@ function aiThoughtDynamicPreview(letter){
         : `What we’d recommend for this campaign’s “${objective}” objective.`;
     }
     return AI_THOUGHT_PREVIEWS.A;
+  }
+  // 2026-08-22 — O/P read the same jobId-keyed caches renderFaqO()/renderFaqP()
+  // use below, so the hover teaser and the drawer body never disagree about
+  // what's currently loaded for this job's copy workspace.
+  if (letter === 'O'){
+    const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
+    const cached = jobId ? lastDraftScoreCache[jobId] : null;
+    if (cached){
+      return `This draft is at ${cached.relevanceScore ?? '—'}/100 relevance, ${cached.complianceScore ?? '—'}/100 compliance — see what's behind those numbers.`;
+    }
+    return AI_THOUGHT_PREVIEWS.O;
+  }
+  if (letter === 'P'){
+    const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
+    const cached = jobId ? lastInterviewCache[jobId] : null;
+    if (cached && cached.candidates){
+      const won = cached.candidates.find(c => c.key === cached.recommendedKey);
+      return won ? `Last run, "${won.label}" scored highest — see how all three candidates compared.` : AI_THOUGHT_PREVIEWS.P;
+    }
+    return AI_THOUGHT_PREVIEWS.P;
   }
   return AI_THOUGHT_PREVIEWS[letter];
 }
@@ -25622,6 +25923,8 @@ function renderBestPracticeFaq(){
   renderFaqJ();
   renderFaqL();
   renderFaqN();
+  renderFaqO();
+  renderFaqP();
 }
 
 // (f) Round 29 — "Learned from your past campaigns" (see
@@ -26057,6 +26360,54 @@ function renderFaqN(){
   el.textContent = `This campaign's header score (currently ${score.overall !== null ? score.overall + '%' : '—'}) measures whether its real channel mix, budget logic, creative/messaging, and landing page actually serve its stated objective and KPI — not whether steps are checked off. ${detail} See the full breakdown below, in this campaign's own Campaign Relevance Score panel.`;
 }
 
+// 2026-08-22 — Draft Scoring's own drawer topic. Reads lastDraftScoreCache
+// (jobId-keyed, set by scoreCurrentDraft() above) for whichever job's copy
+// workspace is currently open (openCopyWorkspaceJobId), same dual-state
+// pattern as renderFaqN(): a live read when something's loaded, honest
+// generic explanatory text when nothing is.
+function renderFaqO(){
+  const el = document.getElementById('bpFaqTextO');
+  if (!el) return;
+  const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
+  const cached = jobId ? lastDraftScoreCache[jobId] : null;
+  const base = 'Draft Scoring checks the copy in the workspace against two things: Relevance (does it actually serve this campaign\'s objective, audience, and brand voice guide) and Compliance (does it trip any flagged language). ';
+  if (!cached){
+    el.textContent = base + 'Open a creative job\'s copy workspace and add copy to see it scored.';
+    return;
+  }
+  const modeText = cached.mode === 'heuristic'
+    ? 'This deployment has no ANTHROPIC_API_KEY configured, so it\'s using the keyword/rule-based heuristic fallback, not an AI judgment.'
+    : (cached.mode === 'ai' ? 'This draft was scored by AI.' : '');
+  const flagsText = (cached.flags && cached.flags.length)
+    ? `Flags on this draft: ${cached.flags.join('; ')}.`
+    : 'No compliance flags on this draft right now.';
+  el.textContent = `${base}Right now: Relevance ${cached.relevanceScore ?? '—'}/100, Compliance ${cached.complianceScore ?? '—'}/100. ${flagsText} ${modeText}`.trim();
+}
+
+// 2026-08-22 — Blind Test Interview's own drawer topic. Reads
+// lastInterviewCache (jobId-keyed, set by runCopyInterview() below) the same
+// way — live breakdown of the last run for the open job, generic
+// explanation otherwise.
+function renderFaqP(){
+  const el = document.getElementById('bpFaqTextP');
+  if (!el) return;
+  const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
+  const cached = jobId ? lastInterviewCache[jobId] : null;
+  const base = 'The Blind Test Interview panel drafts three independent takes on this job\'s brief — direct-response, brand-story, and proof-and-trust — then scores each one with the same Relevance/Compliance scorer Draft Scoring uses, blind to which angle you might prefer, and ranks them. ';
+  if (!cached || !cached.candidates){
+    el.textContent = base + 'Click "Interview candidates" in the copy workspace to run it for this job.';
+    return;
+  }
+  const scored = cached.candidates.filter(c => c.copy);
+  if (!scored.length){
+    el.textContent = base + 'The last run didn\'t produce any usable candidates — check each card above for its specific error.';
+    return;
+  }
+  const summary = scored.map(c => `${c.label} — Relevance ${c.relevanceScore ?? '—'}, Compliance ${c.complianceScore ?? '—'}`).join('; ');
+  const winner = cached.candidates.find(c => c.key === cached.recommendedKey);
+  el.textContent = `${base}Last run: ${summary}.${winner ? ` "${winner.label}" scored highest and is marked top-scoring above.` : ''} Picking one is always your explicit click — nothing here gets auto-applied.`;
+}
+
 // Round 11, point 4 — Key Message is now an up-to-500-character abstract
 // (the long-form version comes later in the flow, once Projects exist
 // inside the campaign), so it gets a live counter like any abstract field.
@@ -26125,57 +26476,469 @@ function startNewCampaign(){
 }
 
 // 2026-08-22 — confidence-gated intake (roadmap item 3: "the fun, not
-// intimidating engine"). Deliberately NOT auto-filled — a wrong silent
-// guess sitting in a field is worse than an honest blank one, and this form
-// already has enough cascading auto-behaviors tied to Key Message
-// (cmpKeyMessageOrBriefEdited() etc.) that quietly writing into it on load
-// risks surprising side effects. Instead this offers a one-click "use
-// this" suggestion banner — the client still makes the deliberate choice,
-// but doesn't have to re-type what Verilume already knows about their
-// brand from a prior campaign. On a genuinely first-ever campaign for this
-// account it renders nothing — there is nothing to suggest yet, and a
-// fabricated suggestion would be worse than silence.
+// intimidating engine").
+//
+// Extended same day, later round, per the vision doc's own flagged next step:
+// genuine adaptive question-skipping, not just a suggestion banner every
+// time. The backend now returns two independent confidence tiers per field
+// (see the endpoint's own comment for the full rule):
+//   'skip'    — 3+ recent campaigns in a row all agree on this value. Real,
+//               repeated signal — confident enough to hand the field back
+//               already filled in (renderSkipFill()) rather than making the
+//               client re-type or even re-click something Verilume has
+//               already seen 3 times running. STILL fully editable and
+//               STILL visibly marked as auto-filled — never a silent guess
+//               sitting in a field with no indication it wasn't typed by a
+//               human. A visible "Not this time — clear it" affordance is
+//               one click away, same "reversible, never locked" discipline
+//               as the original suggestion banner.
+//   'suggest' — only the most recent campaign has a value (the ORIGINAL
+//               behavior this replaces nothing of) — one data point isn't
+//               enough to auto-fill, so this still asks first via a
+//               click-to-apply banner (renderSuggestBanner()).
+//   'none'    — nothing on file. Renders nothing, same as before.
 async function loadCampaignSmartDefaults(){
   const kmHolder = document.getElementById('cmpKeyMessageSmartDefault');
   const atHolder = document.getElementById('campaignAudienceTargetsSmartDefault');
+  const segHolder = document.getElementById('cmpSegmentSmartDefault');
+  // 2026-08-22 extension — Stage and Channels join the same confidence-gated
+  // intake pattern.
+  const stageHolder = document.getElementById('cmpStageSmartDefault');
+  const chHolder = document.getElementById('cmpChannelsSmartDefault');
+  // 2026-08-22, next round — Primary KPI now wired too. Its <select>'s
+  // option list (PRIMARY_KPI_OPTIONS) turned out to be a static list
+  // populated once at page init (populateCampaignFormSelects()), not
+  // re-scoped per Stage/Objective the way an older comment nearby implied
+  // — so there's no populate-order risk here after all; confirmed before
+  // wiring rather than assumed.
+  const kpiHolder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  // 2026-08-22, later round — Role/Style, Key Message mode, and Message Type.
+  const roleStyleHolder = document.getElementById('cmpRoleStyleSmartDefault');
+  const kmModeHolder = document.getElementById('cmpKeyMessageModeSmartDefault');
+  const msgTypeHolder = document.getElementById('cmpMessageTypeSmartDefault');
   if (kmHolder) kmHolder.innerHTML = '';
   if (atHolder) atHolder.innerHTML = '';
+  if (segHolder) segHolder.innerHTML = '';
+  if (stageHolder) stageHolder.innerHTML = '';
+  if (chHolder) chHolder.innerHTML = '';
+  if (kpiHolder) kpiHolder.innerHTML = '';
+  if (roleStyleHolder) roleStyleHolder.innerHTML = '';
+  if (kmModeHolder) kmModeHolder.innerHTML = '';
+  if (msgTypeHolder) msgTypeHolder.innerHTML = '';
   if (!state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-smart-defaults`);
     if (!resp.ok) return;
     const data = await resp.json();
     if (!data.confident) return;
-    const s = data.suggestions || {};
-    const sourceName = escapeHtml(data.source ? data.source.name : 'a prior campaign');
-    if (kmHolder && s.keyMessage){
-      kmHolder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
-        Already know your brand from <b>${sourceName}</b>: "${escapeHtml(s.keyMessage.slice(0, 140))}${s.keyMessage.length > 140 ? '…' : ''}"
-        <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyCampaignSmartDefault('keyMessage')">Use this →</button>
-      </div>`;
-    }
-    if (atHolder && s.audienceTargets){
-      atHolder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
-        Already know your audience from <b>${sourceName}</b>: "${escapeHtml(s.audienceTargets.slice(0, 140))}${s.audienceTargets.length > 140 ? '…' : ''}"
-        <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyCampaignSmartDefault('audienceTargets')">Use this →</button>
-      </div>`;
-    }
-    window._cmpSmartDefaults = s;
+    const fields = data.fields || {};
+    window._cmpSmartDefaults = fields;
+    renderCampaignSmartDefaultField('keyMessage', fields.keyMessage, kmHolder, 'cmpKeyMessage', 'brand', {
+      onFill: () => { updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
+    });
+    renderCampaignSmartDefaultField('audienceTargets', fields.audienceTargets, atHolder, 'campaignAudienceTargets', 'audience');
+    renderSegmentSmartDefault(fields.segment, segHolder);
+    // Primary KPI intentionally applied BEFORE Stage below: toggleStage()
+    // (fired by the Stage smart-default's own skip-fill) cascades into
+    // applyObjectiveDrivenDefaults(), which fills Primary KPI from a
+    // generic objective-based best-practice ONLY if it's still blank at
+    // that point. Filling Primary KPI from this account's own real history
+    // first means that generic fallback never overwrites — real signal
+    // outranks a generic default, the same precedence this whole feature
+    // is built on.
+    renderPrimaryKpiSmartDefault(fields.primaryKpi, kpiHolder);
+    renderStageSmartDefault(fields.stage, stageHolder);
+    renderChannelsSmartDefault(fields.channels, chHolder);
+    // Role/Style, Key Message mode, and Message Type don't cascade into any
+    // other field the way Stage cascades into Primary KPI, so order among
+    // these 3 (and relative to the fields above) doesn't matter -- each only
+    // ever touches its own <select>.
+    renderSelectSmartDefault('roleStyle', fields.roleStyle, roleStyleHolder);
+    renderSelectSmartDefault('keyMessageMode', fields.keyMessageMode, kmModeHolder);
+    renderSelectSmartDefault('messageType', fields.messageType, msgTypeHolder);
   } catch (e){
     // A missed suggestion is a non-event, not an error worth surfacing —
     // the form is exactly as usable as it would've been without this call.
   }
 }
+// 2026-08-22 — Primary KPI, same skip/suggest shape as Stage. A dedicated
+// renderer rather than reusing renderCampaignSmartDefaultField(): that
+// helper's skip/clear/apply paths are hardcoded to the keyMessage/
+// audienceTargets pair (its copy text, its clear/apply branching), and
+// Primary KPI also needs one extra guard the free-text fields don't: only
+// apply a historical value that's still a real, curated option (a
+// campaign's saved primaryKpi could be a free-typed "Other" value that
+// isn't in PRIMARY_KPI_OPTIONS — silently assigning that to the select
+// would just no-op, so this checks first and stays silent instead of
+// showing a banner for a suggestion that can't actually apply).
+function renderPrimaryKpiSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  if (!PRIMARY_KPI_OPTIONS.includes(fieldData.value)) return; // e.g. a free-typed "Other" value from history — nothing to select
+  const kpiSel = document.getElementById('cmpPrimaryKpi');
+  const onApplied = () => {
+    if (!kpiSel) return;
+    toggleOtherField('cmpPrimaryKpi', 'cmpPrimaryKpiOtherWrap');
+    cmpToggleReachFrequencyField();
+    cmpToggleVideoViewRateField();
+    cmpToggleFunnelFields();
+    cmpUpdateKpiGoalBenchmarkHint();
+    cmpCheckKpiStageMismatch();
+  };
+  if (fieldData.level === 'skip'){
+    if (kpiSel && !kpiSel.value){
+      kpiSel.value = fieldData.value;
+      onApplied();
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Primary KPI, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearPrimaryKpiSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your Primary KPI from <b>${sourceName}</b>: "${escapeHtml(fieldData.value)}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyPrimaryKpiSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applyPrimaryKpiSmartDefault(){
+  const fieldData = (window._cmpSmartDefaults || {}).primaryKpi;
+  if (!fieldData || !fieldData.value || !PRIMARY_KPI_OPTIONS.includes(fieldData.value)) return;
+  const kpiSel = document.getElementById('cmpPrimaryKpi');
+  if (kpiSel){
+    kpiSel.value = fieldData.value;
+    toggleOtherField('cmpPrimaryKpi', 'cmpPrimaryKpiOtherWrap');
+    cmpToggleReachFrequencyField();
+    cmpToggleVideoViewRateField();
+    cmpToggleFunnelFields();
+    cmpUpdateKpiGoalBenchmarkHint();
+    cmpCheckKpiStageMismatch();
+  }
+  const holder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearPrimaryKpiSmartDefault(){
+  const kpiSel = document.getElementById('cmpPrimaryKpi');
+  if (kpiSel){
+    kpiSel.value = '';
+    toggleOtherField('cmpPrimaryKpi', 'cmpPrimaryKpiOtherWrap');
+    cmpUpdateKpiGoalBenchmarkHint();
+  }
+  const holder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+
+// 2026-08-22, later round -- Role/Style, Key Message mode, and Message Type
+// join the confidence-gated intake, now that all 3 persist across campaigns
+// (this same round closed that gap for messageType -- see the ensureColumn()
+// comment in backend/server.js). One generic implementation for all 3 rather
+// than copy-pasting the Primary KPI shape three times, since all 3 are
+// plain <select>s with a fixed, known-at-call-time option list -- config is
+// looked up lazily (cmpSelectSmartDefaultConfig()), never at module-load
+// time, specifically so it can call Object.keys(LONGFORM_ROLE_STYLE)/
+// Object.keys(MESSAGE_TYPE_CUE) without a temporal-dead-zone risk (those
+// consts are declared much later in this file; this function is only ever
+// CALLED after the whole script has finished loading, so by then they're
+// safely initialized).
+//
+// Real constraint surfaced rather than papered over: #cmpKeyMessageType has
+// a genuine blank ("Not set") option, so it can use the exact same
+// only-fill-if-blank 'skip' pattern Primary KPI/Stage/Channels already use.
+// #cmpLongformStyle and #cmpKeyMessageMode do NOT have a blank option --
+// they always show a real default (Storytelling / Exact) whether or not a
+// person has actually looked at them, so there's no reliable signal to gate
+// a SILENT auto-fill on the way there is for every other field ("only fill
+// if currently blank"). Auto-overwriting a value that's already showing
+// something, even a default, would break this whole feature's own
+// discipline ("a wrong silent guess is worse than no guess" / never
+// silently overwrite). So these two are deliberately downgraded to
+// suggest-only in the UI even when the backend reports 'skip'-tier
+// confidence -- always a click-to-apply banner, never a silent fill --
+// with copy that explains why, rather than pretending the same mechanism
+// applies cleanly to a field that has no blank state.
+function cmpSelectSmartDefaultConfig(fieldKey){
+  if (fieldKey === 'roleStyle') return {
+    selectId: 'cmpLongformStyle', holderId: 'cmpRoleStyleSmartDefault', label: 'Role/Style',
+    validOptions: Object.keys(LONGFORM_ROLE_STYLE), neverAutoFill: true,
+    onApplied: () => { cmpUnapproveMsgField('longform'); cmpRenderMsgFieldGate('longform'); }
+  };
+  if (fieldKey === 'keyMessageMode') return {
+    selectId: 'cmpKeyMessageMode', holderId: 'cmpKeyMessageModeSmartDefault', label: 'Key Message mode',
+    validOptions: ['exact', 'descriptive'], neverAutoFill: true,
+    onApplied: () => cmpKeyMessageOrBriefEdited()
+  };
+  if (fieldKey === 'messageType') return {
+    selectId: 'cmpKeyMessageType', holderId: 'cmpMessageTypeSmartDefault', label: 'Message Type',
+    validOptions: Object.keys(MESSAGE_TYPE_CUE), neverAutoFill: false,
+    onApplied: () => cmpKeyMessageOrBriefEdited()
+  };
+  return null;
+}
+function renderSelectSmartDefault(fieldKey, fieldData, holder){
+  const cfg = cmpSelectSmartDefaultConfig(fieldKey);
+  if (!holder || !cfg || !fieldData || fieldData.level === 'none') return;
+  if (!cfg.validOptions.includes(fieldData.value)) return; // e.g. a value from an older/retired option set
+  const sel = document.getElementById(cfg.selectId);
+  if (fieldData.level === 'skip' && !cfg.neverAutoFill){
+    if (sel && !sel.value){ sel.value = fieldData.value; cfg.onApplied(); }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same ${cfg.label}, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearSelectSmartDefault('${fieldKey}')">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  const skipButNoBlank = fieldData.level === 'skip' && cfg.neverAutoFill;
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    ${skipButNoBlank ? `Your last ${fieldData.sourceCount} campaigns all used the same ${cfg.label}` : `Already know your ${cfg.label} from <b>${sourceName}</b>`}: "${escapeHtml(fieldData.value)}"${skipButNoBlank ? ' — this field already shows a default, so Verilume asks before changing it rather than filling it in silently' : ''}
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applySelectSmartDefault('${fieldKey}')">Use this →</button>
+  </div>`;
+}
+function applySelectSmartDefault(fieldKey){
+  const cfg = cmpSelectSmartDefaultConfig(fieldKey);
+  const fieldData = (window._cmpSmartDefaults || {})[fieldKey];
+  if (!cfg || !fieldData || !fieldData.value || !cfg.validOptions.includes(fieldData.value)) return;
+  const sel = document.getElementById(cfg.selectId);
+  if (sel){ sel.value = fieldData.value; cfg.onApplied(); }
+  const holder = document.getElementById(cfg.holderId);
+  if (holder) holder.innerHTML = '';
+}
+function clearSelectSmartDefault(fieldKey){
+  const cfg = cmpSelectSmartDefaultConfig(fieldKey);
+  if (!cfg) return;
+  const sel = document.getElementById(cfg.selectId);
+  if (sel){ sel.value = ''; cfg.onApplied(); }
+  const holder = document.getElementById(cfg.holderId);
+  if (holder) holder.innerHTML = '';
+}
+// 2026-08-22 — Stage is a single tile pick (selectedStage), not a text
+// field or a multi-select Set, so it gets its own small renderer — same
+// skip/suggest shape as every other field, applied via the real
+// toggleStage() so every one of its side effects (Objective display, KPI
+// options, applyObjectiveDrivenDefaults()) runs exactly as if a human had
+// clicked the tile.
+function renderStageSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  if (!MEDIA_LOOP_STAGES.includes(fieldData.value)) return; // stale/renamed stage value — stay silent rather than apply something invalid
+  if (fieldData.level === 'skip'){
+    if (!selectedStage){
+      toggleStage(fieldData.value);
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Lifecycle-Loop Stage, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearStageSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your Lifecycle-Loop Stage from <b>${sourceName}</b>: "${escapeHtml(fieldData.value)}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyStageSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applyStageSmartDefault(){
+  const fieldData = (window._cmpSmartDefaults || {}).stage;
+  if (!fieldData || !fieldData.value || !MEDIA_LOOP_STAGES.includes(fieldData.value)) return;
+  if (!selectedStage) toggleStage(fieldData.value);
+  const holder = document.getElementById('cmpStageSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearStageSmartDefault(){
+  if (selectedStage) toggleStage(selectedStage); // toggleStage() un-selects when called with the currently-selected stage
+  const holder = document.getElementById('cmpStageSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// 2026-08-22 — Channels, same skip/suggest shape again, applied via the
+// real toggleChannel() per channel so every side effect it already owns
+// (Channel Plan row sync, Recommended-vs-added recap, PR/Corp Comm required
+// status) runs exactly as if a human had checked each one.
+function renderChannelsSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  const allChannels = fieldData.value.split(',').map(s => s.trim()).filter(Boolean).filter(ch => CHANNELS.includes(ch));
+  if (!allChannels.length) return;
+  if (fieldData.level === 'skip'){
+    if (selectedChannels.size === 0){
+      allChannels.forEach(ch => toggleChannel(ch));
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Channels, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearChannelsSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your Channels from <b>${sourceName}</b>: "${escapeHtml(allChannels.join(', '))}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyChannelsSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applyChannelsSmartDefault(){
+  const fieldData = (window._cmpSmartDefaults || {}).channels;
+  if (!fieldData || !fieldData.value) return;
+  const allChannels = fieldData.value.split(',').map(s => s.trim()).filter(Boolean).filter(ch => CHANNELS.includes(ch));
+  allChannels.forEach(ch => { if (!selectedChannels.has(ch)) toggleChannel(ch); });
+  const holder = document.getElementById('cmpChannelsSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearChannelsSmartDefault(){
+  [...selectedChannels].forEach(ch => toggleChannel(ch));
+  const holder = document.getElementById('cmpChannelsSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// Segment needs its own renderer, separate from renderCampaignSmartDefaultField
+// above — it's not a text field with a .value, it's the multi-select chip
+// row driven by the selectedSegments Set (see toggleSegment()/renderSegmentRow()
+// above). Eligibility is stage-dependent (cmpSegmentDisabledSet()), so this
+// filters the suggested/auto-filled segments down to whatever's currently
+// eligible — at the moment this runs (right after resetCampaignForm(),
+// before a stage is picked) nothing is disabled yet, but filtering here
+// defensively means this stays correct even if that ever changes. Anything
+// filtered out for being currently ineligible is silently dropped rather
+// than applied and immediately stripped — same end state, cleaner UX.
+function cmpEligibleSegmentsFrom(list){
+  const disabled = cmpSegmentDisabledSet();
+  return list.filter(s => ACCOUNT_SEGMENTS.includes(s) && !disabled.has(s));
+}
+function renderSegmentSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  const allSegments = fieldData.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (fieldData.level === 'skip'){
+    const eligible = cmpEligibleSegmentsFrom(allSegments);
+    if (!eligible.length) return; // nothing currently eligible to offer — stay silent rather than show an empty win
+    if (selectedSegments.size === 0){
+      eligible.forEach(s => selectedSegments.add(s));
+      renderSegmentRow();
+      if (typeof cmpRenderAudienceChannelGapNote === 'function') cmpRenderAudienceChannelGapNote();
+      if (typeof renderFaqG === 'function') renderFaqG();
+      if (typeof renderFaqM === 'function') renderFaqM();
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all targeted the same Segments, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearSegmentSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  // 'suggest' — click-to-apply banner, same pattern as the text fields.
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your audience segments from <b>${sourceName}</b>: "${escapeHtml(allSegments.join(', '))}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applySegmentSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applySegmentSmartDefault(){
+  const fields = window._cmpSmartDefaults || {};
+  const fieldData = fields.segment;
+  if (!fieldData || !fieldData.value) return;
+  const allSegments = fieldData.value.split(',').map(s => s.trim()).filter(Boolean);
+  const eligible = cmpEligibleSegmentsFrom(allSegments);
+  eligible.forEach(s => selectedSegments.add(s));
+  renderSegmentRow();
+  if (selectedSegments.size) document.getElementById('cmpSegmentError').textContent = '';
+  if (typeof cmpRenderAudienceChannelGapNote === 'function') cmpRenderAudienceChannelGapNote();
+  if (typeof renderFaqG === 'function') renderFaqG();
+  if (typeof renderFaqM === 'function') renderFaqM();
+  const holder = document.getElementById('cmpSegmentSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearSegmentSmartDefault(){
+  selectedSegments = new Set();
+  renderSegmentRow();
+  if (typeof cmpRenderAudienceChannelGapNote === 'function') cmpRenderAudienceChannelGapNote();
+  const holder = document.getElementById('cmpSegmentSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// Shared renderer for both fields this drives (keyMessage, audienceTargets)
+// — kind is just the word used in the sentence ("brand"/"audience") so the
+// copy reads naturally for each.
+function renderCampaignSmartDefaultField(fieldKey, fieldData, holder, inputId, kind, opts){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  const preview = (v) => escapeHtml(v.slice(0, 140)) + (v.length > 140 ? '…' : '');
+  if (fieldData.level === 'skip'){
+    const el = document.getElementById(inputId);
+    if (el && !el.value){
+      el.value = fieldData.value;
+      if (opts && opts.onFill) opts.onFill();
+    }
+    // 2026-08-22, next round (items 5-6) — genuine adaptive skip. The vision
+    // doc's own language is "skipped asking," but until now this still
+    // always showed the full field, filled in, with a banner on top — a
+    // suggestion-shaped UI, not an actually skipped question. When the
+    // field now genuinely holds the value that was just silently filled,
+    // collapse the field itself into a compact one-line confirmation with
+    // an explicit "Change it" control that re-expands the real field —
+    // the first real instance of this pattern in the product, deliberately
+    // scoped to just these two free-text fields, where hiding a single
+    // textarea is safe and fully reversible (touches no gating logic —
+    // the value is genuinely present in the underlying textarea the whole
+    // time, so every downstream validator/counter/gate behaves exactly as
+    // if a human had typed it). Left as suggestion-only elsewhere (Segment's
+    // tile row, Role/Style's dropdown) since this simple hide/show doesn't
+    // cleanly generalize to that UI yet.
+    if (el && el.value === fieldData.value){
+      el.style.display = 'none';
+      if (inputId === 'cmpKeyMessage'){
+        const counterEl = document.getElementById('cmpKeyMessageCounter');
+        if (counterEl) counterEl.style.display = 'none';
+      }
+      holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <span><b>${kind === 'brand' ? 'Key Message' : 'Audience Targets'} set automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same one, so Verilume skipped asking: "${preview(fieldData.value)}"</span>
+        <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;white-space:nowrap;" onclick="cmpExpandSmartDefaultField('${fieldKey}', '${inputId}')">Change it</button>
+      </div>`;
+      return;
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same ${kind === 'brand' ? 'Key Message' : 'Audience Targets'}, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearCampaignSmartDefaultField('${fieldKey}', '${inputId}')">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  // 'suggest' — original click-to-apply banner, unchanged behavior.
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your ${kind} from <b>${sourceName}</b>: "${preview(fieldData.value)}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyCampaignSmartDefault('${fieldKey}')">Use this →</button>
+  </div>`;
+}
+function clearCampaignSmartDefaultField(field, inputId){
+  const el = document.getElementById(inputId);
+  if (el){ el.value = ''; el.style.display = ''; if (field === 'keyMessage'){ updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); } }
+  if (field === 'keyMessage'){
+    const counterEl = document.getElementById('cmpKeyMessageCounter');
+    if (counterEl) counterEl.style.display = '';
+  }
+  const holder = document.getElementById(field === 'keyMessage' ? 'cmpKeyMessageSmartDefault' : 'campaignAudienceTargetsSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// 2026-08-22, next round — the "Change it" side of genuine adaptive skip
+// (see renderCampaignSmartDefaultField's collapse branch above). Unlike
+// clearCampaignSmartDefaultField, this does NOT blank the value — the
+// auto-filled text is still exactly what most of this account's recent
+// campaigns used, and is very likely still a fine starting point; this
+// just re-reveals the real field so it can be edited in place, same as if
+// the question had never been skipped.
+function cmpExpandSmartDefaultField(field, inputId){
+  const el = document.getElementById(inputId);
+  if (el) el.style.display = '';
+  if (field === 'keyMessage'){
+    const counterEl = document.getElementById('cmpKeyMessageCounter');
+    if (counterEl) counterEl.style.display = '';
+  }
+  const holder = document.getElementById(field === 'keyMessage' ? 'cmpKeyMessageSmartDefault' : 'campaignAudienceTargetsSmartDefault');
+  if (holder) holder.innerHTML = '';
+  if (el) el.focus();
+}
 function applyCampaignSmartDefault(field){
-  const s = window._cmpSmartDefaults || {};
+  const fields = window._cmpSmartDefaults || {};
+  const fieldData = fields[field];
+  if (!fieldData || !fieldData.value) return;
   if (field === 'keyMessage'){
     const el = document.getElementById('cmpKeyMessage');
-    if (el && s.keyMessage){ el.value = s.keyMessage; updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
+    if (el){ el.value = fieldData.value; updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
     const holder = document.getElementById('cmpKeyMessageSmartDefault');
     if (holder) holder.innerHTML = '';
   } else if (field === 'audienceTargets'){
     const el = document.getElementById('campaignAudienceTargets');
-    if (el && s.audienceTargets){ el.value = s.audienceTargets; }
+    if (el){ el.value = fieldData.value; }
     const holder = document.getElementById('campaignAudienceTargetsSmartDefault');
     if (holder) holder.innerHTML = '';
   }
@@ -26298,9 +27061,14 @@ function cmpBuildFormPayload(){
     // too — one record, not a second parallel copy. Round 132ad
     // (2026-08-11) — brandGuidelines (the old campaign-level Do's/Don'ts)
     // removed per direct decision; Do's/Don'ts now come from the account's
-    // Brand Voice avoid-words only. messageType/mandatoryPhrase/
-    // longformStyle are new, local-session-only fields (no backend column
-    // yet, same honest disclosure as briefBuilderExpandedText).
+    // Brand Voice avoid-words only. longformStyle stays local-session-only
+    // (roleStyle below is what actually persists it, under the DB column's
+    // name). messageType/mandatoryPhrase used to be local-session-only too
+    // (no backend column) — as of 2026-08-22 both persist for real, same
+    // gap-closing round that gave them their own ensureColumn()s in
+    // backend/server.js; this payload already sent them under these exact
+    // keys before that, so no change was needed here beyond the backend
+    // actually listening.
     // Round 132ao (2026-08-12) follow-up — brandToneNotes is deliberately
     // NOT included in this payload anymore: the wizard's own Tone Notes
     // field is removed (see cmpEffectiveToneDescriptor()), and this key is
@@ -26313,6 +27081,14 @@ function cmpBuildFormPayload(){
     messageType: document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '',
     mandatoryPhrase: document.getElementById('cmpMandatoryPhrase') ? document.getElementById('cmpMandatoryPhrase').value.trim() : '',
     longformStyle: document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling',
+    // 2026-08-22 — these two are what actually get persisted server-side
+    // (see backend/server.js's roleStyle/keyMessageMode columns).
+    // roleStyle mirrors longformStyle above under the DB column's name —
+    // deliberately not renaming longformStyle itself, since
+    // cmpAssembleLongFormCopy() and every other local-session reader
+    // already depend on that exact key.
+    roleStyle: document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling',
+    keyMessageMode: document.getElementById('cmpKeyMessageMode') ? document.getElementById('cmpKeyMessageMode').value : 'exact',
     // Round 132h (2026-08-09) — the assembled Creative Brief (see
     // generateCreativeBrief()) now saves into this same c.creativeBrief
     // field the Campaign Detail Brand card and recommendCopyForJob() both
@@ -27033,6 +27809,176 @@ async function saveCampaignBrandFields(){
   loadCreativeJobs();
 }
 
+// 2026-08-22 — hand-mirrored copy of backend/server.js's
+// CAMPAIGN_TYPE_REGISTRY (same convention MESSAGE_TYPE_CUE already uses for
+// messageType — a small, rarely-changing registry duplicated client-side
+// rather than fetched, so the picker/detail-fields render with no extra
+// round trip). coreFieldLabels is frontend-only — friendly display names for
+// the completeness check, since coreFields itself just names existing
+// campaign columns (mandatoryPhrase, endDate, etc.) the same way the
+// backend's campaignTypeCompleteness() does.
+const CAMPAIGN_TYPE_REGISTRY_CLIENT = {
+  urgency_offer: {
+    label: 'Urgency Offer',
+    coreFields: ['mandatoryPhrase', 'endDate'],
+    coreFieldLabels: { mandatoryPhrase: 'Mandatory phrase (Brand card)', endDate: 'Campaign end date' },
+    detailFields: [
+      { key: 'offerDetails', label: 'Offer details (what exactly is being offered, in plain terms)', required: true }
+    ]
+  },
+  product_launch: {
+    label: 'Product Launch',
+    coreFields: ['startDate', 'keyMessage'],
+    coreFieldLabels: { startDate: 'Campaign start date', keyMessage: 'Key message (Brand card)' },
+    detailFields: [
+      { key: 'launchHighlights', label: 'What makes this launch genuinely newsworthy (real, specific)', required: true }
+    ]
+  },
+  loyalty: {
+    label: 'Loyalty',
+    coreFields: ['audienceTargets'],
+    coreFieldLabels: { audienceTargets: 'Audience targets (Performance Marketing card)' },
+    detailFields: [
+      { key: 'rewardDetail', label: 'The specific reward/benefit being offered to returning customers', required: true }
+    ]
+  },
+  trade_incentive: {
+    label: 'Trade Incentive',
+    coreFields: [],
+    coreFieldLabels: {},
+    detailFields: [
+      { key: 'partnerName', label: 'Partner/dealer network this incentive targets', required: true },
+      { key: 'incentiveAmount', label: 'Incentive amount or structure (real, specific)', required: true }
+    ]
+  }
+};
+// Parses c.campaignTypeDetailsJson the same defensively-empty way the
+// backend's campaignTypeDetails() does — a malformed/missing blob is just
+// "no details yet," never an error surfaced to the person editing.
+function campaignTypeDetailsClient(c){
+  if (!c || !c.campaignTypeDetailsJson) return {};
+  try { const parsed = JSON.parse(c.campaignTypeDetailsJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
+}
+// Renders the whole card from the campaign's current saved state — called
+// from renderCampaignDetail() same as every other card's populate step, and
+// again after a successful save so the completeness readout reflects what
+// was just written.
+function renderCampaignTypeCard(c){
+  const select = document.getElementById('campaignTypeSelect');
+  if (!select) return;
+  if (select.options.length <= 1){
+    Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = CAMPAIGN_TYPE_REGISTRY_CLIENT[key].label;
+      select.appendChild(opt);
+    });
+  }
+  select.value = c.campaignType || '';
+  renderCampaignTypeDetailFields(c.campaignType || '', campaignTypeDetailsClient(c));
+  renderCampaignTypeCompleteness(c);
+}
+// Rebuilds just the detail-field inputs for whatever type is currently
+// selected — called on every select change (before any save) and on initial
+// render. savedValues seeds the inputs from what's actually on the campaign;
+// left blank (not passed) when the type selection itself just changed, since
+// switching types mid-edit shouldn't leave the old type's stale values
+// sitting in fields that no longer apply.
+function renderCampaignTypeDetailFields(typeKey, savedValues){
+  const holder = document.getElementById('campaignTypeDetailFields');
+  if (!holder) return;
+  const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
+  if (!def || !def.detailFields.length){
+    holder.innerHTML = '';
+    return;
+  }
+  const values = savedValues || {};
+  holder.innerHTML = def.detailFields.map(f => `
+    <div class="field campaign-type-detail-field">
+      <label for="cmpTypeDetail_${f.key}">${f.label}${f.required ? ' (required for this type)' : ''}</label>
+      <input type="text" id="cmpTypeDetail_${f.key}" data-detail-key="${f.key}" value="${(values[f.key] || '').replace(/"/g, '&quot;')}">
+    </div>
+  `).join('');
+}
+function onCampaignTypeSelectChanged(){
+  const typeKey = document.getElementById('campaignTypeSelect').value;
+  // Switching type: start the detail fields blank rather than carrying over
+  // values that belonged to a different type's questions — matches what the
+  // person sees (a fresh set of fields for the newly-selected type).
+  renderCampaignTypeDetailFields(typeKey, {});
+  const c = findCampaign(currentCampaignId);
+  if (c){
+    // Live preview only — nothing persists until Save is clicked. Shown
+    // against a hypothetical in-progress campaign object so a person can see
+    // what switching types would require before committing to it.
+    renderCampaignTypeCompleteness(Object.assign({}, c, { campaignType: typeKey, campaignTypeDetailsJson: '' }));
+  }
+}
+// Same honest "suggestion, never a silent gate" discipline as everywhere
+// else in this build — this never blocks Save, it just reports what's
+// missing so the person (and, once saved, the AI prompt) can see the gap
+// rather than silently working around it. Mirrors backend's
+// campaignTypeCompleteness() field-for-field.
+function renderCampaignTypeCompleteness(c){
+  const statusEl = document.getElementById('campaignTypeStatus');
+  if (!statusEl) return;
+  const typeKey = c.campaignType || '';
+  const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
+  if (!typeKey || !def){
+    statusEl.innerHTML = '';
+    return;
+  }
+  const details = campaignTypeDetailsClient(c);
+  const missingCore = def.coreFields.filter(f => !c[f] || (typeof c[f] === 'string' && !c[f].trim()));
+  const missingDetail = def.detailFields.filter(f => f.required && (!details[f.key] || !String(details[f.key]).trim()));
+  const complete = !missingCore.length && !missingDetail.length;
+  const missingLabels = [
+    ...missingCore.map(f => def.coreFieldLabels[f] || f),
+    ...missingDetail.map(f => f.label)
+  ];
+  statusEl.innerHTML = complete
+    ? `<span class="hint" style="color:var(--cx);">✓ ${def.label} — all required fields on file. The AI copy prompts below now include this scenario's guidance.</span>`
+    : `<span class="hint" style="color:var(--warn, #b45309);">⚠ ${def.label} selected — still missing: ${missingLabels.join(', ')}. The AI copy prompts will still use ${def.label} guidance once saved, but these specifics won't be included until they're filled in.</span>`;
+}
+async function saveCampaignTypeFields(){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const typeKey = document.getElementById('campaignTypeSelect').value;
+  const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
+  const details = {};
+  if (def){
+    def.detailFields.forEach(f => {
+      const el = document.getElementById(`cmpTypeDetail_${f.key}`);
+      if (el && el.value.trim()) details[f.key] = el.value.trim();
+    });
+  }
+  c.campaignType = typeKey;
+  c.campaignTypeDetailsJson = Object.keys(details).length ? JSON.stringify(details) : '';
+  const flag = document.getElementById('campaignTypeSaveFlag');
+  let persisted = false;
+  if (!c.localOnly && dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // Backend's merge-update endpoint expects campaignTypeDetails as a
+        // real object (it JSON.stringifies it server-side before storing),
+        // not the already-stringified campaignTypeDetailsJson this file
+        // otherwise keeps on the local campaign object — see this endpoint's
+        // 2026-08-22 comment in backend/server.js.
+        body: JSON.stringify({ campaignType: typeKey, campaignTypeDetails: details })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('saveCampaignTypeFields: backend write failed, saved locally only.', e); }
+  }
+  if (flag){
+    flag.textContent = persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend. The AI copy prompts for this campaign now reflect this type.`
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable) — the AI copy prompts on the real backend record won't see this until it's reachable.`;
+    flag.classList.add('visible');
+  }
+  renderCampaignTypeCompleteness(c);
+}
+
 // Round 99 (2026-08-06) — Performance Marketing's "validate the buy, hand
 // off audience targets" action, per direct instruction. Mirrors
 // saveCampaignBrandFields()'s save pattern exactly: local-first, backend
@@ -27074,6 +28020,7 @@ async function saveCampaignPerformanceFields(){
 // card relevant to that task.
 const CAMPAIGN_DETAIL_CARD_IDS = [
   'campaignMediaMixCard', 'campaignPerfMarketingCard', 'campaignBrandCard',
+  'campaignTypeCard',
   'campaignLifecycleCard', 'campaignAnalyticsCard', 'campaignTrackingCard',
   'campaignCreativeCollectionsCard', 'campaignCreativeJobsCard',
   'campaignTraffickingCard', 'campaignQaCard'
@@ -27115,6 +28062,12 @@ function renderCampaignDetail(focusCardId){
   document.getElementById('campaignBrandToneNotes').value = c.brandToneNotes || '';
   document.getElementById('campaignCreativeBrief').value = c.creativeBrief || '';
   document.getElementById('campaignLongformCopy').value = c.longformCopy || '';
+  // 2026-08-22 — Campaign Type card, same "populate on every detail-page
+  // render" convention as every other card above. Ad Hoc projects have no
+  // typed scenario any more than they have a Stage/Objective, so this stays
+  // visible but harmless for them (General/unset, same as an un-migrated
+  // pre-existing campaign) rather than adding another isAdHoc special case.
+  renderCampaignTypeCard(c);
   document.getElementById('campaignMeta').textContent = isAdHoc
     ? `Ad Hoc — a project started directly, without a Campaign. Everything created here stands alone.${c.localOnly ? ' Local only, this session (no backend record for this account).' : ''}`
     : `${[c.keyMessage].filter(Boolean).join(' · ') || 'No key message set.'}${c.localOnly ? ' — local only, this session (no backend record for this account).' : ''}`;
@@ -27642,8 +28595,237 @@ function mktCalMonthRange(year, month){
 
 async function renderMarketingCalendarStep(){
   if (!mktCal.taxonomiesLoaded) await mktCalLoadTaxonomies();
+  await renderTaxonomyManager();
   mktCalRenderMonthLabel();
   await mktCalFetchEvents();
+}
+
+// 2026-08-22 — Product Group / Creative Focus Group quick-start + direct
+// management, per direct instruction (see the #taxonomyManagerModule HTML
+// comment above for the full context). Reads/writes the SAME
+// account_taxonomies backend data cmpTaxonomyValues()/mktCalLoadTaxonomies()
+// already use — this is a new UI on existing, already-wired data, not a new
+// data path. taxonomyDraft is the in-progress edit (from a template, blank,
+// or an existing saved set) — null means "nothing being edited right now,"
+// which is what decides whether renderTaxonomyManager() shows the picker,
+// the read-only current-values summary, or the chip editor.
+let taxonomyTemplatesCache = null;
+let taxonomyDraft = null;
+let taxonomyDraftSource = null; // 'blank' | 'existing' | 'template:<Label>' — editor copy only, not persisted
+
+async function loadTaxonomyTemplates(){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-templates`);
+    taxonomyTemplatesCache = resp.ok ? ((await resp.json()).templates || []) : [];
+  } catch (e){
+    taxonomyTemplatesCache = [];
+  }
+}
+
+async function renderTaxonomyManager(){
+  const body = document.getElementById('taxonomyManagerBody');
+  if (!body || !state.companyId) return;
+  if (taxonomyDraft){
+    body.innerHTML = renderTaxonomyEditor();
+    renderTaxonomyChipGroup('productGroup');
+    renderTaxonomyChipGroup('creativeMarket');
+    return;
+  }
+  const existingPG = cmpTaxonomyValues('productGroup') || [];
+  const existingCM = cmpTaxonomyValues('creativeMarket') || [];
+  if (existingPG.length || existingCM.length){
+    body.innerHTML = renderTaxonomyCurrentValues(existingPG, existingCM);
+    return;
+  }
+  body.innerHTML = `<p class="hint">Loading quick-start templates…</p>`;
+  await loadTaxonomyTemplates();
+  if (!taxonomyDraft) body.innerHTML = renderTaxonomyPicker(); // guard: bail if the user clicked something else while this awaited
+}
+
+function renderTaxonomyPicker(){
+  const cards = (taxonomyTemplatesCache || []).map(t => `
+    <div style="border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;">
+      <div style="font-weight:700;font-size:0.9375rem;">${escapeHtml(t.label)}</div>
+      <div class="hint" style="margin:4px 0 8px;">${escapeHtml(t.naicsHint || '')}</div>
+      <p style="font-size:0.8125rem;color:var(--muted);margin:0 0 10px;flex-grow:1;">${escapeHtml(t.description || '')}</p>
+      <div style="font-size:0.8125rem;margin-bottom:6px;"><b>Product Group:</b> ${t.productGroup.map(escapeHtml).join(', ')}</div>
+      <div style="font-size:0.8125rem;margin-bottom:10px;">
+        <b>Creative Focus Group:</b> ${t.creativeMarket.length ? t.creativeMarket.map(escapeHtml).join(', ') : '<span class="hint" style="font-style:normal;">(not started — define your own)</span>'}
+      </div>
+      <button type="button" class="btn-primary" onclick="pickTaxonomyTemplate('${t.key}')" style="margin-top:auto;">Use this template →</button>
+    </div>`).join('');
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;">
+      ${cards}
+      <div style="border:1px dashed var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-weight:700;font-size:0.9375rem;margin-bottom:6px;">Start blank</div>
+        <p style="font-size:0.8125rem;color:var(--muted);margin:0 0 10px;">Build your own Product Group and Creative Focus Group lists from scratch — nothing pre-filled.</p>
+        <button type="button" class="btn-ghost" onclick="startBlankTaxonomy()">Start blank →</button>
+      </div>
+    </div>`;
+}
+
+function pickTaxonomyTemplate(key){
+  const t = (taxonomyTemplatesCache || []).find(x => x.key === key);
+  if (!t) return;
+  taxonomyDraft = { productGroup: [...t.productGroup], creativeMarket: [...t.creativeMarket] };
+  taxonomyDraftSource = `template:${t.label}`;
+  renderTaxonomyManager();
+}
+
+function startBlankTaxonomy(){
+  taxonomyDraft = { productGroup: [], creativeMarket: [] };
+  taxonomyDraftSource = 'blank';
+  renderTaxonomyManager();
+}
+
+function editExistingTaxonomy(){
+  taxonomyDraft = { productGroup: [...(cmpTaxonomyValues('productGroup') || [])], creativeMarket: [...(cmpTaxonomyValues('creativeMarket') || [])] };
+  taxonomyDraftSource = 'existing';
+  renderTaxonomyManager();
+}
+
+function cancelTaxonomyDraft(){
+  taxonomyDraft = null;
+  taxonomyDraftSource = null;
+  renderTaxonomyManager();
+}
+
+// Reopens the template picker even when this account already has real
+// values on file — the account overriding everything with a different
+// quick-start is a real, named use case ("brands can override everything"),
+// but since PUT is a whole-list replace, applying one here would silently
+// wipe out whatever's already saved the moment it's saved — flagged clearly
+// before that happens, and nothing is actually overwritten until Save is
+// clicked.
+async function reopenTaxonomyPicker(){
+  const body = document.getElementById('taxonomyManagerBody');
+  if (!body) return;
+  body.innerHTML = `<p class="hint">Loading quick-start templates…</p>`;
+  if (!taxonomyTemplatesCache) await loadTaxonomyTemplates();
+  body.innerHTML = `<p class="hint" style="color:var(--advocacy);margin:0 0 10px;">Picking a template below replaces this account's current Product Group and Creative Focus Group values once you save — review before saving.</p>`
+    + renderTaxonomyPicker()
+    + `<div class="btn-row" style="margin-top:10px;"><button type="button" class="btn-ghost" onclick="renderTaxonomyManager()">Cancel — keep current values</button></div>`;
+}
+
+function renderTaxonomyCurrentValues(pg, cm){
+  const chipList = (list) => list.length
+    ? list.map(v => `<span class="camp-tag" style="display:inline-block;margin:0 6px 6px 0;">${escapeHtml(v)}</span>`).join('')
+    : `<p class="hint" style="margin:0;">None yet.</p>`;
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:16px;margin-bottom:14px;">
+      <div>
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Product Group</div>
+        ${chipList(pg)}
+      </div>
+      <div>
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:6px;">Creative Focus Group</div>
+        ${chipList(cm)}
+      </div>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-ghost" onclick="editExistingTaxonomy()">Edit these values →</button>
+      <button type="button" class="btn-ghost" onclick="reopenTaxonomyPicker()">Apply a different quick-start template →</button>
+    </div>
+    <div class="hint" id="taxonomySaveFlag" style="margin-top:8px;"></div>`;
+}
+
+function renderTaxonomyEditor(){
+  const sourceNote = taxonomyDraftSource === 'blank'
+    ? 'Starting blank — add your own values below.'
+    : taxonomyDraftSource === 'existing'
+      ? "Editing this account's current values."
+      : taxonomyDraftSource
+        ? `Pre-filled from the "${taxonomyDraftSource.slice(9)}" template — edit or remove anything before saving. Nothing is saved yet.`
+        : '';
+  return `
+    <p class="hint" style="margin:0 0 12px;">${escapeHtml(sourceNote)}</p>
+    <div class="field" style="margin-bottom:16px;">
+      <label>Product Group</label>
+      <div id="taxonomyChipsProductGroup" style="margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="taxonomyInputProductGroup" placeholder="Add a Product Group…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaxonomyChip('productGroup');}">
+        <button type="button" class="btn-ghost" onclick="addTaxonomyChip('productGroup')">Add</button>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:16px;">
+      <label>Creative Focus Group</label>
+      <div id="taxonomyChipsCreativeMarket" style="margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="taxonomyInputCreativeMarket" placeholder="Add a Creative Focus Group…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaxonomyChip('creativeMarket');}">
+        <button type="button" class="btn-ghost" onclick="addTaxonomyChip('creativeMarket')">Add</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-primary" onclick="saveTaxonomyGroups()">Save →</button>
+      <button type="button" class="btn-ghost" onclick="cancelTaxonomyDraft()">Cancel</button>
+    </div>
+    <div class="hint" id="taxonomySaveFlag" style="margin-top:8px;"></div>`;
+}
+
+function taxonomyChipElId(key){
+  return `taxonomyChips${key[0].toUpperCase()}${key.slice(1)}`;
+}
+function renderTaxonomyChipGroup(key){
+  const el = document.getElementById(taxonomyChipElId(key));
+  if (!el || !taxonomyDraft) return;
+  const list = taxonomyDraft[key] || [];
+  el.innerHTML = list.length
+    ? list.map((v, i) => `
+      <span class="camp-tag" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0;padding:5px 6px 5px 10px;">
+        ${escapeHtml(v)}
+        <button type="button" onclick="removeTaxonomyChip('${key}', ${i})" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:0.8125rem;line-height:1;padding:0 2px;" aria-label="Remove ${escapeHtml(v)}">×</button>
+      </span>`).join('')
+    : `<p class="hint" style="margin:0;">None yet.</p>`;
+}
+function addTaxonomyChip(key){
+  const input = document.getElementById(`taxonomyInput${key[0].toUpperCase()}${key.slice(1)}`);
+  if (!input || !taxonomyDraft) return;
+  const value = input.value.trim();
+  if (!value) return;
+  const list = taxonomyDraft[key];
+  if (!list.some(v => v.toLowerCase() === value.toLowerCase())) list.push(value);
+  input.value = '';
+  renderTaxonomyChipGroup(key);
+}
+function removeTaxonomyChip(key, i){
+  if (!taxonomyDraft) return;
+  taxonomyDraft[key].splice(i, 1);
+  renderTaxonomyChipGroup(key);
+}
+
+async function saveTaxonomyGroups(){
+  const flag = document.getElementById('taxonomySaveFlag');
+  if (!taxonomyDraft) return;
+  if (dataSourceLabel !== 'backend'){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'No backend account session — nothing to save to yet.'; }
+    return;
+  }
+  if (flag){ flag.style.color = ''; flag.textContent = 'Saving…'; }
+  try {
+    const [pgResp, cmResp] = await Promise.all([
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies/productGroup`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'Product Group', values: taxonomyDraft.productGroup })
+      }),
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies/creativeMarket`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'Creative Focus Group', values: taxonomyDraft.creativeMarket })
+      })
+    ]);
+    if (!pgResp.ok || !cmResp.ok){
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't save — try again."; }
+      return;
+    }
+    taxonomyDraft = null;
+    taxonomyDraftSource = null;
+    await mktCalLoadTaxonomies(); // refreshes state.calendarTaxonomies + Campaign Creation's tiles + this page's own filters
+    await renderTaxonomyManager();
+    const freshFlag = document.getElementById('taxonomySaveFlag');
+    if (freshFlag){ freshFlag.style.color = 'var(--cx)'; freshFlag.textContent = `Saved ${new Date().toLocaleTimeString()} — available now on Campaign Creation and this calendar's own filters.`; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not saved.'; }
+  }
 }
 
 function mktCalRenderMonthLabel(){
@@ -28940,7 +30122,14 @@ function renderCopyWorkspace(jobId){
           <div id="copyLibraryPickerPanel" style="margin-top:10px;"></div>
 
           <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+            <label style="display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#3A3428;margin-bottom:8px;">Draft Score <span class="ai-thought-mount" data-topic="O"></span></label>
             <div id="copyDraftScore" style="margin-bottom:14px;"></div>
+          </div>
+          <div style="margin-top:0;padding-top:16px;border-top:1px solid var(--line);">
+            <button type="button" class="btn-ghost" onclick="runCopyInterview('${job.id}')">Interview candidates →</button>
+            <span class="ai-thought-mount" data-topic="P"></span>
+            <span class="hint" style="margin-left:8px;">Runs the brief through several strategic angles and scores each one, so you compare real drafts instead of picking blind.</span>
+            <div id="copyInterviewPanel" style="margin-top:12px;"></div>
           </div>
           <div style="margin-top:0;padding-top:0;">
             ${job.copyApproved
@@ -28971,6 +30160,10 @@ function renderCopyWorkspace(jobId){
     </div>`;
   loadCopyDecisionHistory(job.id);
   scoreCurrentDraft(job.id, currentCopy);
+  // 2026-08-22 — new mount points (topics O/P) live inside this
+  // dynamically-built panel, not the static page markup mountAiThoughtIcons()
+  // walks on load, so re-run it here (idempotent — see its own comment).
+  if (typeof mountAiThoughtIcons === 'function') mountAiThoughtIcons();
   const textEl = document.getElementById('copyWorkspaceText');
   const updateWireframeAndCount = () => {
     document.getElementById('copyWireframeHolder').innerHTML = renderCopyWireframe(job, textEl.value, bp);
@@ -29110,12 +30303,57 @@ async function submitCopyDecision(jobId, approved){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — decision not saved.'; }
   }
 }
+// 2026-08-22 — "AI Thought" speech bubbles. Per direct instruction: make
+// sure speech-bubble moments explain what's happening AND surface a
+// best-practice tip tied to that feature, not just a bare "loading…" —
+// same "always provide value along the way" standing principle as the CX
+// vision doc's "fun, not intimidating" section. aiStatusTipCounter cycles
+// through each feature's tip list so repeated uses in one session don't
+// always show the same line; renderAiStatusBubble is the transient
+// "thinking" state (pulsing dots + a tip), renderAiStatusTip is the smaller
+// note left behind once a real result has landed, so the guidance doesn't
+// vanish the instant the answer does.
+let aiStatusTipCounter = 0;
+function pickAiStatusTip(tips){
+  if (!tips || !tips.length) return null;
+  return tips[(aiStatusTipCounter++) % tips.length];
+}
+function renderAiStatusBubble(doingText, tips){
+  const tip = pickAiStatusTip(tips);
+  return `<div class="ai-status-bubble">
+    <div class="doing"><span class="thinking-dots"><span></span><span></span><span></span></span><span class="doing-text">${escapeHtml(doingText)}</span></div>
+    ${tip ? `<div class="tip"><b>Best practice:</b> ${escapeHtml(tip)}</div>` : ''}
+  </div>`;
+}
+function renderAiStatusTip(tips){
+  const tip = pickAiStatusTip(tips);
+  if (!tip) return '';
+  return `<div class="ai-status-bubble" style="padding:10px 14px;"><div class="tip" style="border-top:none;padding-top:0;margin-top:0;">💡 <b>Best practice:</b> ${escapeHtml(tip)}</div></div>`;
+}
+const SCORE_STATUS_TIPS = [
+  "The more specific your campaign's Primary KPI, the more this relevance score actually means — a vague KPI gives the scorer less to check against.",
+  "Add exact phrases to avoid in your Brand Voice Guide (e.g. avoid \"guarantee\") — the compliance check reads those directly, so it's only as sharp as what's written there.",
+  "A high relevance score with a low compliance score usually means the draft is on-brief but risky — read the flags before you approve, not just the numbers."
+];
+const INTERVIEW_STATUS_TIPS = [
+  "The top-scoring draft isn't always the most polished-sounding one — it's the one that best fits this campaign's specific KPI and audience.",
+  "If every candidate scores similarly, that's often a sign the brief itself is too open-ended — a sharper Key Message usually spreads the scores out more.",
+  "Running the interview again on the same brief can surface a different winner — treat each run as a second opinion, not a single verdict."
+];
+
 // 2026-08-22 — pre-decision draft scoring (roadmap item 2: "relevance
 // scoring & compliance scoring shown pre-decision"). Fires automatically
 // whenever the copy workspace opens or the draft copy is re-saved, so a
 // reviewer sees a score before they decide, matching the "drafts arrive,
 // already scored" moment from the CX vision doc's day-in-the-life — this
 // is that moment, actually built.
+// 2026-08-22 — jobId-keyed cache of the last score result, same shape as
+// lastInterviewCache below. Exists so the AI Agent Thoughts drawer (topic O
+// — renderFaqO()/aiThoughtDynamicPreview()) can show this job's actual
+// current score instead of only generic explanatory text; the copy
+// workspace panel itself doesn't need this cache since it already re-fetches
+// and re-renders directly into #copyDraftScore.
+let lastDraftScoreCache = {};
 async function scoreCurrentDraft(jobId, copyOverride){
   const holder = document.getElementById('copyDraftScore');
   if (!holder) return;
@@ -29123,16 +30361,19 @@ async function scoreCurrentDraft(jobId, copyOverride){
   const copy = copyOverride !== undefined ? copyOverride : (textEl ? textEl.value : '');
   if (!copy || !copy.trim()){
     holder.innerHTML = `<div class="hint">Nothing to score yet — add copy above.</div>`;
+    delete lastDraftScoreCache[jobId];
     return;
   }
-  holder.innerHTML = `<div class="hint">Scoring draft…</div>`;
+  holder.innerHTML = renderAiStatusBubble("Reading this draft against your campaign's objective, audience, and brand voice guide — checking relevance and compliance before you decide.", SCORE_STATUS_TIPS);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/score`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copy })
     });
     if (!resp.ok){ holder.innerHTML = ''; return; }
     const result = await resp.json();
-    holder.innerHTML = renderDraftScoreCard(result);
+    lastDraftScoreCache[jobId] = result;
+    holder.innerHTML = renderDraftScoreCard(result) + renderAiStatusTip(SCORE_STATUS_TIPS);
+    if (typeof renderFaqO === 'function') renderFaqO();
   } catch (e){
     holder.innerHTML = '';
   }
@@ -29182,6 +30423,156 @@ async function loadCopyDecisionHistory(jobId){
   } catch (e){
     // History is a nice-to-have on this panel — a failed fetch here
     // shouldn't block the rest of the copy workspace from working.
+  }
+}
+// 2026-08-22 — multi-candidate "interview" panel (CX & Copywriting vision
+// roadmap item 4, last on the build list). Runs POST /interview, which
+// scores every real candidate with the same relevance/compliance scorer as
+// the pre-decision score above, and renders them side by side ranked by
+// combined score. Picking one is always an explicit click (runInterviewSelect
+// below) — never auto-applied — same "suggestion, not a silent fill"
+// discipline as the campaign smart-defaults panel (item 3).
+let lastInterviewCache = {};
+async function runCopyInterview(jobId){
+  const holder = document.getElementById('copyInterviewPanel');
+  if (!holder) return;
+  holder.innerHTML = renderAiStatusBubble("Drafting three independent takes on your brief — direct-response, brand-story, and proof-and-trust — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    if (!resp.ok){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the interview — try again.</div>`;
+      return;
+    }
+    const result = await resp.json();
+    if (!result.available){
+      holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Interview panel unavailable.')}</div>`;
+      return;
+    }
+    lastInterviewCache[jobId] = result;
+    holder.innerHTML = renderInterviewPanel(jobId, result);
+    if (typeof renderFaqP === 'function') renderFaqP();
+  } catch (e){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the interview.</div>`;
+  }
+}
+function renderInterviewPanel(jobId, result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.copy){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+      </div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
+    </div>`;
+  }).join('');
+  const editableCandidates = (result.candidates || []).filter(c => c.copy);
+  const startFromOptions = editableCandidates.map(c =>
+    `<option value="${escapeHtml(c.key)}">Close enough — start from "${escapeHtml(c.label)}"</option>`
+  ).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+    <div id="copyInterviewSelectFlag" class="hint" style="margin-top:8px;"></div>
+    <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px;">
+      <div style="font-weight:700;font-size:0.8125rem;">None of these quite right?</div>
+      <div class="hint" style="margin-top:2px;">Tell us what's off — this goes straight to our team so the next round can be sharper.</div>
+      <textarea id="interviewFeedbackNote" rows="2" placeholder="What don't you like, and what would you change?" style="width:100%;margin-top:8px;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:8px;border:1px solid var(--line);border-radius:6px;"></textarea>
+      ${editableCandidates.length ? `<select id="interviewFeedbackStartFrom" style="width:100%;margin-top:8px;font-size:0.8125rem;padding:6px;border:1px solid var(--line);border-radius:6px;">
+        <option value="">Start fresh next time — none of these are close</option>
+        ${startFromOptions}
+      </select>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:8px;" onclick="submitInterviewFeedback('${jobId}', '${result.interviewId}')">Submit feedback</button>
+      <div id="interviewFeedbackFlag" class="hint" style="margin-top:6px;"></div>
+    </div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+async function submitInterviewFeedback(jobId, interviewId){
+  const noteEl = document.getElementById('interviewFeedbackNote');
+  const startFromEl = document.getElementById('interviewFeedbackStartFrom');
+  const flag = document.getElementById('interviewFeedbackFlag');
+  const note = noteEl ? noteEl.value.trim() : '';
+  const startFromKey = startFromEl ? startFromEl.value : '';
+  if (!note){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Add a note first — what would you change?'; }
+    return;
+  }
+  const body = { note, type: startFromKey ? 'edit_manually' : 'none_selected' };
+  if (startFromKey) body.startFromKey = startFromKey;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(interviewId)}/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't save that — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    if (result.workingCopy){
+      const job = findCreativeJob(jobId);
+      if (job) job.workingCopy = result.workingCopy;
+      const textEl = document.getElementById('copyWorkspaceText');
+      if (textEl){
+        textEl.value = result.workingCopy;
+        textEl.dispatchEvent(new Event('input'));
+      }
+      scoreCurrentDraft(jobId, result.workingCopy);
+    }
+    if (flag){
+      flag.style.color = 'var(--cx)';
+      flag.textContent = result.workingCopy
+        ? 'Feedback saved and applied to the copy box above — edit it there and save when ready.'
+        : "Feedback saved — our team will factor it into this account's next round.";
+    }
+    if (noteEl) noteEl.disabled = true;
+    const submitBtn = flag && flag.previousElementSibling;
+    if (submitBtn && submitBtn.tagName === 'BUTTON') submitBtn.disabled = true;
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — feedback not saved."; }
+  }
+}
+async function runInterviewSelect(jobId, interviewId, candidateKey){
+  const flag = document.getElementById('copyInterviewSelectFlag');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || 'Couldn\'t apply this draft — try again.'; }
+      return;
+    }
+    const result = await resp.json();
+    const job = findCreativeJob(jobId);
+    if (job) job.workingCopy = result.workingCopy;
+    const textEl = document.getElementById('copyWorkspaceText');
+    if (textEl){
+      textEl.value = result.workingCopy;
+      textEl.dispatchEvent(new Event('input'));
+    }
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to the copy box above — save when ready.'; }
+    scoreCurrentDraft(jobId, result.workingCopy);
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — draft not applied.'; }
   }
 }
 async function advanceJobStatus(jobId, status){
@@ -30135,11 +31526,22 @@ function renderProjectDetail(){
   const derivFn = pt.derivFn;
   const structuredDefs = STRUCTURED_FIELD_DEFS[project.projectType];
 
+  // 2026-08-22, next round (items 1-2) — real AI relevance/compliance
+  // scoring, extended from creative_jobs to here. Each derivative gets its
+  // own score panel + button (auto-fires below once this render lands, same
+  // as the master's), since a derivative is its own piece of distributed
+  // copy that can drift independently of the master it came from — the
+  // same reasoning that already justified renderDerivativesValidationPanel()
+  // running the heuristic checks per-derivative rather than just once.
   const derivBlocks = project.derivatives
     ? Object.entries(project.derivatives).map(([k, v]) => `
       <div class="derivative-block">
         <h4>${pt.derivativeLabels[k] || k}</h4>
         <textarea id="deriv-${k}">${v}</textarea>
+        <div class="btn-row" style="margin-top:6px;">
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 10px;" onclick="scoreMfpContent('${k}')">Score with AI →</button>
+        </div>
+        <div id="mfpDerivScorePanel-${k}" style="margin-top:6px;"></div>
       </div>`).join('')
     : '';
 
@@ -30190,6 +31592,29 @@ function renderProjectDetail(){
           ${masterPanelInner}
           ${project.masterRationale ? `<p class="draft-rationale">${project.masterRationale}</p>` : ''}
         </div>
+        <!-- 2026-08-22, next round (items 1-2, 7-8) — the same real
+             relevance/compliance scorer and 3-subagent interview panel
+             Creative Jobs already gets (scoreCurrentDraft()/
+             runCopyInterview() above), reaching the Marketing Function
+             Project master too. Auto-fires at the end of
+             renderProjectDetail() below whenever masterContent exists —
+             same "drafts arrive already scored" moment from the vision
+             doc's day-in-the-life, now true here as well, not just in
+             Creative Jobs. Interview is scoped to the MASTER only, not
+             every derivative — running a full 3-candidate generate+score
+             panel per derivative (up to 4 more per project) was judged too
+             heavy for what this round can honestly verify; the master is
+             where a genuinely different angle matters most, and a chosen
+             master candidate still flows into every derivative the normal
+             way (derivatives read from project.masterContent). -->
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-ghost" onclick="scoreMfpContent('master')">Score with AI →</button>
+          <button type="button" class="btn-ghost" onclick="runMfpInterview()">Interview candidates →</button>
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;" onclick="toggleMfpScoreHistory('master')">Score history</button>
+        </div>
+        <div id="mfpMasterScorePanel" style="margin-top:8px;"></div>
+        <div id="mfpScoreHistory-master" style="margin-top:8px;"></div>
+        <div id="mfpInterviewPanel" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -30211,6 +31636,12 @@ function renderProjectDetail(){
           <button type="button" class="btn-ghost" onclick="renderValidationPanel()">Validate against objective →</button>
         </div>
         <div id="validationPanel" style="margin-top:12px;"></div>
+        ${derivFn ? `
+        <p class="lede" style="margin-top:16px;margin-bottom:10px;">The checks above only ever looked at the master. Since every derivative below is its own piece of distributed copy (a social caption, an email subject line), it can drift or leak an internal label independently of the master it was generated from — this runs the same checks against each one.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-ghost" onclick="renderDerivativesValidationPanel()">Validate derivatives against objective →</button>
+        </div>
+        <div id="derivativesValidationPanel" style="margin-top:12px;"></div>` : ''}
       </div>
     </div>
 
@@ -30232,6 +31663,16 @@ function renderProjectDetail(){
     <div class="recorded visible" id="projectSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
   `;
   renderQaPanel();
+  // 2026-08-22, next round (items 1-2) — auto-fire real AI scoring the
+  // moment this render lands, same "scored before you decide" behavior as
+  // scoreCurrentDraft() firing when the Creative Jobs copy workspace opens.
+  // Fire-and-forget: these are async and paint into their own panels once
+  // they resolve, same pattern as scoreCurrentDraft() itself. Guarded on
+  // masterContent/derivatives existing so a freshly-opened project with
+  // nothing generated yet doesn't fire a request that can only ever come
+  // back "nothing to score."
+  if (project.masterContent) scoreMfpContent('master');
+  if (project.derivatives) Object.keys(project.derivatives).forEach(k => scoreMfpContent(k));
 }
 
 /* ---------- Master/derivative generators — templated JS standing in for
@@ -30244,7 +31685,141 @@ function renderProjectDetail(){
 function sharedContextClause(){
   const campaign = findCampaign(currentCampaignId);
   const toneClause = state.voice.approved ? 'in the brand\'s approved voice' : 'in a direct, confident tone (no approved Brand Voice yet)';
-  return { campaign, toneClause };
+  // 2026-08-22 — objectiveLine/objectiveShort close the gap flagged in the
+  // brand-messaging-relevance-score-flow-spec doc's "Core Finding: Two Copy
+  // Systems, One of Them Wrong": Brand Messaging's own longform engine
+  // (cmpMessagingElements()) already translates Objective into a real,
+  // finished sentence via CAMPAIGN_OBJECTIVE_COPY instead of printing the
+  // raw internal label ("Brand Awareness") as if it were prose — but every
+  // Marketing Function Project generator below (Social Batch, Email
+  // Sequence, Landing Page, and Press Release/Email/Landing derivatives)
+  // was still splicing campaign.objective straight into distributable
+  // copy, unvalidated (validateOutputAgainstObjective() only ever checked
+  // project.masterContent, never these derivatives). Reusing the SAME
+  // CAMPAIGN_OBJECTIVE_COPY table Brand Messaging already uses — one real
+  // copy engine, not a second, weaker one that just prints field labels.
+  // campaign can be null on some call sites (no campaign loaded yet) — every
+  // reader below already guards for that the same way it guarded raw
+  // campaign.objective before.
+  let objectiveLine = '';
+  let objectiveShort = '';
+  if (campaign){
+    const focus = (campaign.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(' and ')
+      || (campaign.productGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(' and ');
+    const copyFn = CAMPAIGN_OBJECTIVE_COPY[campaign.objective];
+    objectiveLine = copyFn ? copyFn(focus) : (campaign.objective ? `${campaign.objective} — worth your attention right now.` : '');
+    objectiveShort = objectiveLine ? objectiveLine.split(/(?<=[.!?])\s/)[0] : '';
+  }
+
+  // 2026-08-22 -- 5 more real signals, closing the gap between Press
+  // Release/Internal Comms (already consolidated onto campaign.longformCopy
+  // -- Brand Messaging's own approved draft -- back in round 132ad, so they
+  // already inherit Role/Style, Message Type, Key Message mode, and
+  // Audience through it) and Social Batch/Email Sequence/Landing Page,
+  // which never got that consolidation and instead glue raw campaign
+  // fields straight into their own separate, simpler templates. Two of
+  // these are real, currently-live bugs, not just missed nice-to-haves:
+  //
+  // 1) keyMessageForCopy/keyMessageIsDescriptive -- these 3 generators
+  //    currently quote campaign.keyMessage verbatim regardless of
+  //    keyMessageMode, which is exactly backwards for Descriptive mode (a
+  //    directional brief the AI Copywriter is explicitly told to paraphrase,
+  //    never quote -- see generateMessagingCopyViaAI()'s keyMessageMode
+  //    branch, server.js). Never glue a Descriptive-mode Key Message
+  //    verbatim into distributed copy; callers fall back to objectiveLine
+  //    instead, same as when no Key Message is set at all.
+  // 2) audienceLine -- reuses cmpAudienceAngle()'s real, already-written
+  //    three-tier audience copy (Past Customers alone / Past + other /
+  //    Hand-Raisers+New-to-Brand, per the round 132ad direct decision)
+  //    instead of these generators' own flat "Made for {campaign.segment}"
+  //    string. That flat string is a real, currently-live bug, not just a
+  //    style gap: campaign.segment is the exact comma-joined value
+  //    validateOutputAgainstObjective()'s "Segment not recapped as literal
+  //    internal copy" check looks for verbatim -- so any campaign with a
+  //    Segment set was GUARANTEED to fail that check on these 3 project
+  //    types, every time.
+  // 3) ctaText -- composes PRIMARY_KPI_ANGLE's real measured-outcome ask
+  //    (falling back to the funnel Stage's ask when no Primary KPI is set,
+  //    same fallback order cmpMessagingElements() already uses) through
+  //    LONGFORM_ROLE_STYLE's cta() framing and MESSAGE_TYPE_CUE's register
+  //    suffix -- the exact same composition Long Form Copy's own CTA
+  //    already runs, so a campaign's CTA reads consistently whether it's in
+  //    the Long Form Copy draft or a Social Batch/Email/Landing Page CTA.
+  //    This is also a real, currently-live bug fix: these 3 project types'
+  //    generic hardcoded CTAs ("Learn more → [link]", "Get started →
+  //    [link]") could never satisfy cmpKpiCtaMismatch()'s "does the copy
+  //    contain the KPI's real ask" check, so any campaign with a curated
+  //    Primary KPI was GUARANTEED to fail "Call to action matches Primary
+  //    KPI" on these 3 project types too -- now including on their
+  //    derivatives, since last round's validateDerivativesAgainstObjective()
+  //    runs the exact same check.
+  let keyMessageForCopy = '';
+  let keyMessageIsDescriptive = false;
+  let audienceLine = '';
+  let ctaText = '';
+  if (campaign){
+    keyMessageIsDescriptive = campaign.keyMessageMode === 'descriptive';
+    keyMessageForCopy = (campaign.keyMessage && !keyMessageIsDescriptive) ? campaign.keyMessage : '';
+
+    if (campaign.segment){
+      const segArr = campaign.segment.split(',').map(s => s.trim()).filter(Boolean);
+      if (segArr.length) audienceLine = cmpAudienceAngle(segArr).copyLine || '';
+    }
+
+    const styleKey = campaign.roleStyle || campaign.longformStyle || 'Storytelling';
+    const style = LONGFORM_ROLE_STYLE[styleKey] || LONGFORM_ROLE_STYLE['Storytelling'];
+    const kpiInfo = campaign.primaryKpi ? PRIMARY_KPI_ANGLE[campaign.primaryKpi] : null;
+    const stageInfo = MEDIA_LOOP_STAGE_ANGLE[campaign.stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
+    const askText = kpiInfo ? kpiInfo.ask : stageInfo.ask;
+    ctaText = style && style.cta ? style.cta(askText) : `${askText}.`;
+    const messageType = campaign.messageType || '';
+    if (messageType && MESSAGE_TYPE_CUE[messageType]) ctaText = MESSAGE_TYPE_CUE[messageType].ctaSuffix(ctaText);
+  }
+
+  return { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText };
+}
+
+// 2026-08-22 — shared word-boundary-safe truncation, replacing the crude
+// `.slice(n)` cutoffs a couple of derivative generators used (Social
+// Batch's x_post, Landing Page's metaTitleDescription), which could and did
+// cut a real word in half mid-string ("...environ" instead of "...
+// environment"). Cuts back to the last whole word within maxLen, and only
+// backs off that far when doing so doesn't lose more than ~40% of the
+// allowed length (a single very long unbroken run — a URL, say — still gets
+// a hard cut rather than an empty result). Strips a trailing comma/colon/
+// dash before appending the ellipsis so it never reads like a sentence was
+// cut off mid-clause-punctuation.
+function truncateAtWordBoundary(text, maxLen){
+  if (!text) return '';
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(' ');
+  const safe = lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return safe.replace(/[,;:\-–—]+$/, '').trim() + '...';
+}
+
+// 2026-08-22 — per direct instruction to leverage the new Brand Voice
+// contest fields (Vision Statement / Longform Example) "as part of our
+// copywriting features at the campaign level and PR and corporate comm."
+// These deterministic template generators (Press Release, Internal Comms,
+// Social Batch, Email Sequence, Landing Page) never call a real model — see
+// the honest-mocked-content convention noted throughout this file — so a
+// Vision Statement can't change their generated prose the way it changes a
+// real AI draft. What it CAN do honestly is show up in the "why this draft"
+// rationale, matching this file's existing "explain the choices" pattern,
+// so it's visible that the account's Vision Statement is on file and
+// informing this account's overall voice — and it genuinely IS shaping the
+// substance here too, one level up: Press Release and Internal Comms both
+// draw their real prose from campaign.longformCopy, which is either the
+// real AI-drafted Brand Messaging copy (generateMessagingCopyViaAI on the
+// backend — now given the Vision Statement/Longform Example directly, see
+// server.js) or its deterministic fallback — so once a real AI draft is
+// generated upstream, this Vision Statement has already shaped the actual
+// words these derivative drafts pull in, not just the rationale text.
+function voiceRationaleSuffix(){
+  return state.voice.visionStatement
+    ? ` (this account's Vision Statement — "${state.voice.visionStatement}" — is on file and informs the underlying Brand Messaging copy this draft draws from)`
+    : '';
 }
 
 // Round 55 — structured field editing. Renders one labeled input/textarea
@@ -30379,11 +31954,20 @@ function updatePlainMaster(value){
 // cmpAssembleLongFormCopy()) instead, so it never recaps internal fields.
 function generatePressReleaseMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, keyMessageForCopy, keyMessageIsDescriptive } = sharedContextClause();
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const longform = (campaign.longformCopy || '').trim();
   const paragraphs = longform.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
-  const km = campaign.keyMessage || '';
+  // 2026-08-22 fix — the `lead` field already draws from campaign.longformCopy
+  // (round 132ad's "one copy engine" consolidation), but headline/quote here
+  // never went through that consolidation and quoted campaign.keyMessage
+  // verbatim regardless of keyMessageMode -- exactly backwards for
+  // Descriptive mode, where Key Message is a directional brief the AI
+  // Copywriter is told to paraphrase, never quote. keyMessageForCopy already
+  // resolves to '' under Descriptive mode; every use below falls back to the
+  // approved longform paragraphs instead, same fallback order the lead field
+  // already established.
+  const km = keyMessageForCopy;
   // Round 55 — populate the structured fields object (the new source of
   // truth) instead of assembling one flat string directly; masterContent is
   // then derived via composeMasterFromFields() so every existing reader
@@ -30404,41 +31988,80 @@ function generatePressReleaseMaster(){
   // specific campaign's fields, not a generic disclaimer (see
   // cxmedia-ux-audit-round28.md).
   const rationaleParts = [longform
-    ? `Why this draft: the lead is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline/quote pull from the Key Message — nothing here re-derives from the raw Objective/Segment fields, so it never recaps internal campaign labels as copy`
+    ? `Why this draft: the lead is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline/quote pull from ${km ? 'the Key Message' : keyMessageIsDescriptive ? 'the approved Long Form Copy instead of the Key Message, since Key Message is set to Descriptive mode and shouldn\'t be quoted verbatim' : 'the approved Long Form Copy'} — nothing here re-derives from the raw Objective/Segment fields, so it never recaps internal campaign labels as copy`
     : `Why this draft: no Long Form Copy is approved yet on this campaign's Brand Messaging step, so this is a placeholder shape until then — approve Long Form Copy there for a real draft here`];
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct, since this account hasn't approved a Brand Voice yet — approving one under Brand Groundwork will change every future draft's register automatically`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct, since this account hasn't approved a Brand Voice yet — approving one under Brand Groundwork will change every future draft's register automatically`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
 
 function generatePressReleaseDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
+  const { objectiveLine, objectiveShort, keyMessageForCopy } = sharedContextClause();
   const master = project.masterContent;
-  const headline = master.split('\n')[2] || campaign.objective;
+  const headline = master.split('\n')[2] || objectiveShort || `${state.company} announcement`;
+  // 2026-08-22 fix — same bug as Social Batch/Email Sequence/Landing Page
+  // (see generateSocialBatchMaster()'s own comment): these three used to
+  // splice the raw internal Objective label straight in ("Big news: Brand
+  // Awareness.", "We're announcing brand awareness."), unvalidated since
+  // validateOutputAgainstObjective() never checks derivatives. Rebuilt off
+  // objectiveLine, the same real-sentence CAMPAIGN_OBJECTIVE_COPY translation
+  // the master generator already relies on for its own headline/lead.
+  // 2026-08-22 follow-up fix — all 3 of these also quoted campaign.keyMessage
+  // verbatim regardless of keyMessageMode, same bug as the master's
+  // headline/quote fields above. keyMessageForCopy resolves to '' under
+  // Descriptive mode, so every use below already falls back to objectiveLine.
+  // 2026-08-22 second follow-up fix, caught during this round's testing —
+  // objectiveLine is already a complete sentence ending in its own period,
+  // so gluing a literal "." right after it (as both lines below did)
+  // produced a visible double period whenever keyMessageForCopy was empty
+  // (unset Key Message, or Descriptive mode). Strips any trailing period off
+  // the objective/headline fallback before adding the template's own.
+  const objectiveLead = (objectiveLine || headline).replace(/\.$/, '');
   project.derivatives = {
-    social_teaser: `Big news: ${campaign.objective}. ${campaign.keyMessage || ''} Read the full release → [link] #${state.company.replace(/\s+/g,'')}`,
-    linkedin_post: `We're announcing ${campaign.objective.toLowerCase()}.\n\n${campaign.keyMessage || 'Here\'s what it means for our customers.'}\n\nFull press release in the comments. 👇`,
-    media_email_blurb: `Subject: ${headline}\n\nHi [Name],\n\nSharing today's announcement from ${state.company}: ${campaign.objective}. Full release attached — happy to arrange an interview or additional comment if useful for your coverage.\n\nBest,\n[Name]`
+    social_teaser: `Big news: ${objectiveLead}.${keyMessageForCopy ? ` ${keyMessageForCopy}` : ''} Read the full release → [link] #${state.company.replace(/\s+/g,'')}`,
+    linkedin_post: `We're announcing something new.\n\n${keyMessageForCopy || objectiveLine || 'Here\'s what it means for our customers.'}\n\nFull press release in the comments. 👇`,
+    media_email_blurb: `Subject: ${headline}\n\nHi [Name],\n\nSharing today's announcement from ${state.company}: ${objectiveLead}. Full release attached — happy to arrange an interview or additional comment if useful for your coverage.\n\nBest,\n[Name]`
   };
   renderProjectDetail();
 }
 
 function generateSocialBatchMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
+  // 2026-08-22 — Mandatory Phrase (campaign.mandatoryPhrase, real
+  // human-authored required text like "50% Off. Promotion Expires July
+  // 31." — distinct in kind from Key Message, per round 132ad's own
+  // decision) used to reach only Long Form Copy's `offerLine`
+  // (cmpAssembleLongFormCopy()). It never reached Social Batch/Email
+  // Sequence/Landing Page at all, even though it's exactly the kind of
+  // required text a real distributed post/email/page needs to carry.
+  // Placed as its own trailing sentence in `body`, after the emotional/
+  // differentiator content and before the CTA — same ordering discipline
+  // Long Form Copy's offerLine already follows ("held for its own explicit
+  // line... never opening the draft"). Deliberately NOT folded into
+  // `legalDisclaimer` — that's a distinct, user-editable compliance field
+  // with its own reuse library; overwriting it from Mandatory Phrase would
+  // silently clobber a real disclaimer someone typed in.
+  const mandatoryLine = campaign.mandatoryPhrase ? ` ${campaign.mandatoryPhrase}` : '';
   project.fields = {
-    hook: `${campaign.keyMessage || campaign.objective} — ${toneClause}.`,
-    body: `${campaign.objective}. ${campaign.segment ? `Made for ${campaign.segment}.` : ''} Here's what's new, and why it matters right now.`,
-    cta: 'Learn more → [link]',
+    hook: `${keyMessageForCopy || objectiveLine || 'Something new'} — ${toneClause}.`,
+    body: `${objectiveLine || 'Here\'s what\'s new.'} ${audienceLine ? `${audienceLine} ` : ''}Here's what's new, and why it matters right now.${mandatoryLine}`,
+    cta: `${ctaText || 'Learn more'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('social-batch', project.fields);
   // Round 29 — same "explain the choices" treatment as the press release
-  // generator (see cxmedia-ux-audit-round28.md).
-  const rationaleParts = [`Why this draft: the hook line leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}"), since no Key Message was entered`}`];
-  if (campaign.segment) rationaleParts.push(`"Made for ${campaign.segment}" reflects this campaign's Segment field directly`);
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  // generator (see cxmedia-ux-audit-round28.md). 2026-08-22 — the rationale
+  // panel is internal "why this draft" commentary, not distributed copy, so
+  // naming the raw Objective here (unlike in the fields above) stays honest
+  // and useful — it's explaining reasoning to a human reviewer, not printing
+  // a field label as if it were prose.
+  const rationaleParts = [`Why this draft: the hook line leads with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a real, finished sentence built from this campaign's Objective — Key Message is set to Descriptive mode, so it informs the draft's direction without being quoted verbatim` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}`];
+  if (audienceLine) rationaleParts.push(`the body's audience line reflects this campaign's Segment field through the same three-tier audience logic Long Form Copy uses, not a flat recap of the raw Segment label`);
+  if (mandatoryLine) rationaleParts.push(`the body closes with this campaign's Mandatory Phrase verbatim, before the CTA`);
+  rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''} — the same CTA composition Long Form Copy uses, not a generic "learn more"`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
@@ -30452,11 +32075,19 @@ function generateSocialBatchMaster(){
 // generator in this file (never a real Claude call).
 function generateOnePagerMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, keyMessageForCopy, audienceLine } = sharedContextClause();
   let draft = `${campaign.objective}\n${'='.repeat(campaign.objective.length)}\n\n`;
   draft += `Written ${toneClause} for internal/partner distribution — one page, no jargon.\n\n`;
-  draft += `THE OPPORTUNITY\n${campaign.keyMessage || 'A clear, focused move for this account this cycle.'}\n\n`;
-  draft += `WHO IT'S FOR\n${campaign.segment ? `Built for ${campaign.segment}.` : 'Built for this account\'s core audience.'}\n\n`;
+  // 2026-08-22 fix — "THE OPPORTUNITY" used to quote campaign.keyMessage
+  // verbatim regardless of keyMessageMode, and "WHO IT'S FOR" recapped the
+  // raw, comma-joined campaign.segment string — the exact same two bugs
+  // fixed this round in Press Release/Internal Comms (see their own
+  // comments). This is a partner/internal-distribution document, same
+  // audience class as Internal Comms, so it gets the same real-signal fix:
+  // keyMessageForCopy (empty under Descriptive mode) and audienceLine (the
+  // real three-tier audience copy) instead of raw field values.
+  draft += `THE OPPORTUNITY\n${keyMessageForCopy || 'A clear, focused move for this account this cycle.'}\n\n`;
+  draft += `WHO IT'S FOR\n${audienceLine || 'Built for this account\'s core audience.'}\n\n`;
   draft += `WHERE IT SITS\n${campaign.stage ? `Positioned at the ${campaign.stage} stage of the Media Loop.` : 'Positioned within this campaign\'s broader push.'}\n\n`;
   draft += `WHY NOW\n${state.company} is a ${state.industry.toLowerCase()} brand (${state.footprint.toLowerCase()} footprint) — this campaign moves the needle on that footprint directly.\n\n`;
   draft += `NEXT STEP\n[Owner] to confirm budget and timeline against the Media Plan allocation this campaign draws from.`;
@@ -30467,10 +32098,21 @@ function generateOnePagerMaster(){
 
 function generateAnalyticsBriefMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, audienceLine } = sharedContextClause();
   let draft = `ANALYTICS BRIEF — ${campaign.objective}\n\n`;
   draft += `Written ${toneClause}. This is a mocked structure standing in for a real measurement-framework pull (tagging, attribution, MMM) — see cxmedia-campaign-project-architecture.md; no live analytics connection exists in this prototype.\n\n`;
-  draft += `WHAT WE'RE MEASURING\nPerformance of "${campaign.objective}"${campaign.segment ? ` against ${campaign.segment}` : ''}${campaign.stage ? ` at the ${campaign.stage} stage of the Media Loop` : ''}.\n\n`;
+  // 2026-08-22 fix — "against {campaign.segment}" recapped the raw,
+  // comma-joined Segment string mid-sentence, the same guaranteed-fail
+  // pattern fixed elsewhere this round. Unlike those fixes, audienceLine is
+  // a full sentence (real, finished prose), not a short noun phrase, so it
+  // can't just replace the word after "against" the way a label would —
+  // doing that would read as broken grammar ("against Whether this is a
+  // first look..."). Restructured into its own trailing sentence instead;
+  // Objective stays a quoted heading-style label here on purpose (that
+  // usage was reviewed and left alone in an earlier round as a legitimate
+  // internal category reference, not a leak — this fix is scoped to the
+  // Segment recap only).
+  draft += `WHAT WE'RE MEASURING\nPerformance of "${campaign.objective}"${campaign.stage ? ` at the ${campaign.stage} stage of the Media Loop` : ''}.${audienceLine ? ` ${audienceLine}` : ''}\n\n`;
   draft += `SIGNALS TO WATCH\n- Reach and engagement against this campaign's channel mix\n- Movement in this account's Continuous Monitoring re-rates tied to this stage\n- Any Media Plan allocation this campaign draws against, actual vs. approved spend\n\n`;
   draft += `READ-OUT CADENCE\nWeekly pull to the Manager, escalated to the Director on any material miss against KPI.\n\n`;
   draft += `OPEN QUESTIONS\n[Owner] to confirm which KPI(s) this brief should be scored against before the first read-out.`;
@@ -30481,13 +32123,19 @@ function generateAnalyticsBriefMaster(){
 
 function generateSocialBatchDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
+  const { keyMessageForCopy, objectiveShort } = sharedContextClause();
   const hero = project.masterContent;
   const short = hero.split('\n')[0];
+  // 2026-08-22 -- the Instagram caption's second line used to glue
+  // campaign.keyMessage in verbatim regardless of keyMessageMode; falls
+  // back to objectiveShort (a real short sentence, not another raw field)
+  // when Key Message is unset or set to Descriptive mode, same fallback
+  // order the master hook already uses.
+  const igLine = keyMessageForCopy || objectiveShort || '';
   project.derivatives = {
     linkedin: `${hero}\n\n#${state.industry.replace(/[^a-zA-Z0-9]/g,'')} #Marketing`,
-    instagram_caption: `${short} ✨\n${campaign.keyMessage || ''}\n.\n.\n.\n#${state.company.replace(/\s+/g,'')}`,
-    x_post: short.length > 240 ? short.slice(0, 237) + '...' : short,
+    instagram_caption: `${short} ✨${igLine ? `\n${igLine}` : ''}\n.\n.\n.\n#${state.company.replace(/\s+/g,'')}`,
+    x_post: short.length > 240 ? truncateAtWordBoundary(short, 237) : short,
     facebook: `${hero}\n\nTap the link to see more →`
   };
   renderProjectDetail();
@@ -30504,63 +32152,99 @@ function generateSocialBatchDerivatives(){
 // cascade per the architecture doc's Section 4.
 function generateEmailSequenceMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
+  // 2026-08-22 — Mandatory Phrase now reaches Email Sequence too, same
+  // reasoning as generateSocialBatchMaster()'s own comment: its own
+  // trailing sentence in the body, after the emotional content, before the
+  // CTA — never folded into legalDisclaimer, a separate user-editable field.
+  const mandatoryLine = campaign.mandatoryPhrase ? ` ${campaign.mandatoryPhrase}` : '';
   project.fields = {
-    subjectLine: campaign.keyMessage || campaign.objective,
-    preheader: campaign.segment ? `Built for ${campaign.segment}` : '',
-    body: `Written ${toneClause}. ${campaign.objective}. ${campaign.keyMessage ? campaign.keyMessage + ' ' : ''}${campaign.segment ? `This is for you, ${campaign.segment}.` : ''} Here's what's changing, and why it matters right now.`,
-    cta: 'Get started → [link]',
+    subjectLine: keyMessageForCopy || objectiveShort || 'An update for you',
+    preheader: audienceLine || '',
+    body: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${keyMessageForCopy ? keyMessageForCopy + ' ' : ''}${audienceLine ? audienceLine + ' ' : ''}Here's what's changing, and why it matters right now.${mandatoryLine}`,
+    cta: `${ctaText || 'Get started'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('email-sequence', project.fields);
-  const rationaleParts = [`Why this draft: the subject line and body lead with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}"), since no Key Message was entered`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
-  if (campaign.segment) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field ("${campaign.segment}") directly`);
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  // 2026-08-22 — same distinction as generateSocialBatchMaster() above: the
+  // rationale panel is internal reviewer commentary, not distributed copy,
+  // so naming the raw Objective here stays fine on purpose.
+  const rationaleParts = [`Why this draft: the subject line and body lead with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a real, finished sentence built from this campaign's Objective — Key Message is set to Descriptive mode, so it informs direction without being quoted verbatim` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
+  if (audienceLine) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field through the same three-tier audience logic Long Form Copy uses`);
+  if (mandatoryLine) rationaleParts.push(`the body closes with this campaign's Mandatory Phrase verbatim, before the CTA`);
+  rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
 
 function generateEmailSequenceDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
+  const { objectiveLine, objectiveShort, keyMessageForCopy, audienceLine, ctaText } = sharedContextClause();
   const arc = (project.fields && project.fields.body) || project.masterContent;
-  const subject = (project.fields && project.fields.subjectLine) || campaign.objective;
+  const subject = (project.fields && project.fields.subjectLine) || objectiveShort || 'An update for you';
+  // 2026-08-22 fix — these three follow-up emails used to splice the raw
+  // internal Objective label into sentence fragments that only ever made
+  // grammatical sense for a couple of the five actual values (e.g. "the
+  // kind of reaction brand awareness has been getting" reads as nonsense —
+  // Objective is a category name, not a reaction). Now built from
+  // objectiveLine, a real finished sentence from the same CAMPAIGN_OBJECTIVE_COPY
+  // table Brand Messaging already uses, instead of gluing the raw label
+  // into a fragment.
+  const email3ReactionLine = objectiveLine || 'People are responding well.';
+  // 2026-08-22 — campaign.keyMessage/campaign.segment used to be spliced in
+  // verbatim here regardless of Key Message mode, and Segment's flat string
+  // guaranteed a "Segment not recapped" validator fail whenever set (see
+  // sharedContextClause()'s comment). keyMessageForCopy already resolves to
+  // '' under Descriptive mode; audienceLine is the same real three-tier
+  // audience copy the master body uses, not the raw Segment label. Every
+  // CTA line below now also closes on ctaText (Primary KPI/Stage-grounded,
+  // Role/Style- and Message-Type-shaped) instead of a hardcoded generic verb.
   project.derivatives = {
-    email2: `Subject: Still thinking about it?\n\nHi [First Name],\n\nA quick follow-up on "${subject}" — ${campaign.keyMessage || campaign.objective}. If you haven't had a chance to look yet, here's the short version.\n\nGet started → [link]`,
-    email3: `Subject: Here's what people are saying\n\nHi [First Name],\n\n"${campaign.keyMessage || 'This made a real difference for us.'}" — that's the kind of reaction ${campaign.objective.toLowerCase()} has been getting. ${campaign.segment ? `Especially for ${campaign.segment}.` : ''}\n\nSee for yourself → [link]`,
-    email4: `Subject: Last call\n\nHi [First Name],\n\nThis is the last note in this sequence about ${campaign.objective.toLowerCase()} — no pressure, just making sure it didn't get lost in your inbox.\n\n${arc.slice(0, 140)}${arc.length > 140 ? '...' : ''}\n\nTake a look → [link]`
+    email2: `Subject: Still thinking about it?\n\nHi [First Name],\n\nA quick follow-up on "${subject}" — ${keyMessageForCopy || objectiveLine || 'here\'s the short version.'} If you haven't had a chance to look yet, here's the short version.\n\n${ctaText || 'Get started'} → [link]`,
+    email3: `Subject: Here's what people are saying\n\nHi [First Name],\n\n"${keyMessageForCopy || 'This made a real difference for us.'}" — ${email3ReactionLine}${audienceLine ? ` ${audienceLine}` : ''}\n\n${ctaText || 'See for yourself'} → [link]`,
+    email4: `Subject: Last call\n\nHi [First Name],\n\nThis is the last note in this sequence — ${objectiveShort ? objectiveShort.charAt(0).toLowerCase() + objectiveShort.slice(1) : 'no pressure, just making sure it didn\'t get lost in your inbox.'}\n\n${arc.slice(0, 140)}${arc.length > 140 ? '...' : ''}\n\n${ctaText || 'Take a look'} → [link]`
   };
   renderProjectDetail();
 }
 
 function generateLandingPageMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
+  // 2026-08-22 — Mandatory Phrase now reaches Landing Page too, same
+  // reasoning as generateSocialBatchMaster()'s own comment: appended as its
+  // own trailing sentence in `benefits`, after the objective/stage content,
+  // before the proof point/CTA — never folded into legalDisclaimer.
+  const mandatoryLine = campaign.mandatoryPhrase ? ` ${campaign.mandatoryPhrase}` : '';
   project.fields = {
-    heroHeadline: campaign.keyMessage || campaign.objective,
-    heroSubhead: campaign.segment ? `Built for ${campaign.segment}` : 'A step forward for the brand',
-    benefits: `Written ${toneClause}. ${campaign.objective}. ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.`,
-    proofPoint: campaign.keyMessage || 'This made a real difference for us.',
+    heroHeadline: keyMessageForCopy || objectiveShort || `${state.company} — a step forward`,
+    heroSubhead: audienceLine || 'A step forward for the brand',
+    benefits: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.${mandatoryLine}`,
+    proofPoint: keyMessageForCopy || 'This made a real difference for us.',
     proofAttribution: 'a customer',
-    cta: 'Get started → [link]',
+    cta: `${ctaText || 'Get started'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('landing-page', project.fields);
-  const rationaleParts = [`Why this draft: the hero headline leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}")`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
-  if (campaign.segment) rationaleParts.push(`the subhead reflects this campaign's Segment field ("${campaign.segment}") directly`);
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  // 2026-08-22 — same distinction as the other two generators above: the
+  // rationale panel is internal reviewer commentary, not distributed copy.
+  const rationaleParts = [`Why this draft: the hero headline leads with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a short line built from this campaign's Objective — Key Message is set to Descriptive mode, so it never appears verbatim, including in the proof point (a Descriptive-mode brief quoted as if a customer said it would be actively misleading)` : `a short line built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
+  if (audienceLine) rationaleParts.push(`the subhead reflects this campaign's Segment field through the same three-tier audience logic Long Form Copy uses, not a flat recap of the raw Segment label`);
+  if (mandatoryLine) rationaleParts.push(`the benefits section closes with this campaign's Mandatory Phrase verbatim, before the proof point and CTA`);
+  rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
 
 function generateLandingPageDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
-  const headline = (project.fields && project.fields.heroHeadline) || campaign.objective;
+  const { objectiveLine, objectiveShort, keyMessageForCopy } = sharedContextClause();
+  const headline = (project.fields && project.fields.heroHeadline) || objectiveShort || `${state.company} — a step forward`;
   const subhead = (project.fields && project.fields.heroSubhead) || '';
   project.derivatives = {
-    metaTitleDescription: `Title: ${headline} | ${state.company}\nDescription: ${subhead} ${campaign.keyMessage || campaign.objective}.`.slice(0, 300),
-    adClickThrough: `${headline}${subhead ? ' — ' + subhead : ''}. ${campaign.keyMessage || 'Learn more.'} →`
+    metaTitleDescription: truncateAtWordBoundary(`Title: ${headline} | ${state.company}\nDescription: ${subhead} ${keyMessageForCopy || objectiveLine || 'Learn more.'}`, 300),
+    adClickThrough: `${headline}${subhead ? ' — ' + subhead.replace(/\.$/, '') : ''}. ${keyMessageForCopy || objectiveShort || 'Learn more.'} →`
   };
   renderProjectDetail();
 }
@@ -30572,9 +32256,13 @@ function generateLandingPageDerivatives(){
 // would say.
 function generateInternalCommsMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, keyMessageForCopy, keyMessageIsDescriptive } = sharedContextClause();
   const longform = (campaign.longformCopy || '').trim();
-  const km = campaign.keyMessage || '';
+  // 2026-08-22 fix — same bug as Press Release's headline/quote: "what's
+  // launching" already draws from campaign.longformCopy, but the headline
+  // here quoted campaign.keyMessage verbatim regardless of keyMessageMode.
+  // keyMessageForCopy already resolves to '' under Descriptive mode.
+  const km = keyMessageForCopy;
   project.fields = {
     headline: km ? `Now launching: ${km}` : (longform ? 'Now launching' : 'Now launching — set a Key Message on Brand Messaging for a real headline here'),
     whatsLaunching: longform || `Approve this campaign's Brand Messaging (Long Form Copy) first for real copy here.`,
@@ -30584,21 +32272,36 @@ function generateInternalCommsMaster(){
   };
   project.masterContent = composeMasterFromFields('internal-comm', project.fields);
   const rationaleParts = [longform
-    ? `Why this draft: "what's launching" is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline pulls from the Key Message — nothing here re-derives from the raw Objective/Segment fields`
+    ? `Why this draft: "what's launching" is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline pulls from ${km ? 'the Key Message' : keyMessageIsDescriptive ? 'a generic "Now launching" lead-in instead of the Key Message, since it\'s set to Descriptive mode and shouldn\'t be quoted verbatim' : 'a generic "Now launching" lead-in'} — nothing here re-derives from the raw Objective/Segment fields`
     : `Why this draft: no Long Form Copy is approved yet on this campaign's Brand Messaging step, so this is a placeholder shape until then`];
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
 
 function generateInternalCommsDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
-  const headline = (project.fields && project.fields.headline) || campaign.objective;
+  const { campaign, objectiveLine, objectiveShort, keyMessageForCopy, audienceLine } = sharedContextClause();
+  const headline = (project.fields && project.fields.headline) || objectiveShort || `${state.company} update`;
   const whatsLaunching = (project.fields && project.fields.whatsLaunching) || project.masterContent;
+  // 2026-08-22 — "- What: {Objective}" stays the raw label on purpose (a
+  // real internal briefing bullet naming the campaign's category — "What:
+  // Brand Awareness" — is legitimate shorthand, not a leak into distributed
+  // copy). "What to say if asked" is different: that's a scripted answer a
+  // team member is meant to read or paraphrase out loud, so it gets the
+  // same real-sentence fix as every other consumer/spoken-facing line —
+  // literally reading "Brand Awareness" as an answer sounds robotic.
+  // 2026-08-22 follow-up fix — "Why now" and "What to say if asked" used to
+  // quote campaign.keyMessage verbatim regardless of keyMessageMode, same
+  // bug as the master's headline field above. "Who it's for" used to recap
+  // the raw, comma-joined campaign.segment string directly, which is
+  // exactly what validateOutputAgainstObjective()'s "Segment not recapped"
+  // check searches for verbatim — a guaranteed fail whenever Segment was
+  // set. Now uses audienceLine, the same real three-tier audience copy Long
+  // Form Copy/Social Batch/Email Sequence/Landing Page all already use.
   project.derivatives = {
     slackVersion: `📣 ${headline}\n${whatsLaunching}\nQuestions? Reply in-thread or ping [Owner].`,
-    talkingPoints: `- What: ${campaign.objective}\n- Why now: ${campaign.keyMessage || 'supports this account\'s current priorities'}\n${campaign.segment ? `- Who it's for: ${campaign.segment}\n` : ''}- What to say if asked: "${campaign.keyMessage || campaign.objective}"\n- Who to escalate questions to: [Owner]`
+    talkingPoints: `- What: ${campaign.objective}\n- Why now: ${keyMessageForCopy || 'supports this account\'s current priorities'}\n${audienceLine ? `- Who it's for: ${audienceLine}\n` : ''}- What to say if asked: "${keyMessageForCopy || objectiveLine || 'Ask [Owner] for the current talking points.'}"\n- Who to escalate questions to: [Owner]`
   };
   renderProjectDetail();
 }
@@ -31809,8 +33512,21 @@ function renderTeamRosterView(){
 // (Primary KPI), the real structural signal the 4-source Atlas Ocean
 // Voyages benchmark review surfaced as consistently present in strong
 // copy and never checkable here before.
-function validateOutputAgainstObjective(project, campaign){
-  const draft = (project.masterContent || '');
+// 2026-08-22 -- pulled the 4 content-shape checks (everything except Brand
+// Voice, which is a global account-level fact, not something a specific
+// piece of text can pass or fail on its own) out of validateOutputAgainstObjective()
+// into this shared helper so the exact same real logic -- not a re-description
+// of it -- can run against derivative text too (see validateDerivativesAgainstObjective()
+// below), closing the gap named explicitly at the end of the Press Release/
+// Internal Comms round: this validator used to only ever look at
+// project.masterContent, so a raw Objective/Segment label leak (or a CTA
+// that didn't match Primary KPI) reaching a distributed derivative --
+// a social caption, an email subject line -- was invisible here even after
+// the generators themselves got fixed to stop causing it. This is a real
+// feature addition (new checks running somewhere they never ran before),
+// not a fix to existing behavior.
+function buildContentChecks(text, campaign){
+  const draft = (text || '');
   const draftLower = draft.toLowerCase();
   const checks = [];
 
@@ -31822,12 +33538,34 @@ function validateOutputAgainstObjective(project, campaign){
       : `This campaign has no Objective set — nothing to check against.`
   });
 
+  // 2026-08-22 — honors the new Key Message mode selector (#cmpKeyMessageMode,
+  // campaign.keyMessageMode): 'exact' (default, unchanged behavior below) is
+  // real human-authored copy that genuinely belongs verbatim, so this stays
+  // a literal match. 'descriptive' is a directional brief the AI Copywriter
+  // is instructed to paraphrase, not quote (see the keyMessageMode branch in
+  // generateMessagingCopyViaAI()/generateInterviewCandidateCopy(), server.js)
+  // — a literal-match check would be actively wrong there, since a good
+  // paraphrase is supposed to fail it. This check instead falls back to a
+  // keyword-overlap look (same stopword-filtered approach scoreDraftHeuristically()
+  // in server.js already uses), which is honestly a coverage heuristic, not
+  // a real "captures the intent" judgment.
+  const keyMessageIsDescriptive = campaign.keyMessageMode === 'descriptive';
+  let keyMessagePass = !campaign.keyMessage || draft.includes(campaign.keyMessage);
+  let keyMessageDetail = campaign.keyMessage
+    ? `Looking for the exact Key Message text ("${campaign.keyMessage}") in the draft — this one stays a literal match on purpose: Key Message is real, human-authored copy (not an internal field label), so it genuinely belongs verbatim. A paraphrase won't match this check even if it's a faithful one, so treat a fail here as a prompt to re-read the draft, not an automatic problem.`
+    : `No Key Message was entered on this campaign, so this check is automatically satisfied.`;
+  if (keyMessageIsDescriptive && campaign.keyMessage){
+    const kmTerms = [...new Set(campaign.keyMessage.toLowerCase().match(/[a-z0-9']+/g) || [])].filter(w => w.length >= 4);
+    const matched = kmTerms.filter(w => draftLower.includes(w));
+    keyMessagePass = kmTerms.length === 0 || matched.length >= Math.ceil(kmTerms.length * 0.4);
+    keyMessageDetail = kmTerms.length
+      ? `Key Message is set to Descriptive mode — not checking for the brief's exact wording (a good paraphrase should NOT match verbatim). Instead checking that the draft covers at least some of the brief's own real words: matches ${matched.length} of ${kmTerms.length} (${matched.slice(0, 6).join(', ') || 'none'}${matched.length > 6 ? '…' : ''}). This is a keyword-coverage heuristic, not a real judgment of whether the draft actually captures the brief's intent — read the draft yourself either way.`
+      : `Key Message is set to Descriptive mode, but has no words long enough to check coverage against — this check is automatically satisfied.`;
+  }
   checks.push({
-    label: 'Key Message reflected',
-    pass: !campaign.keyMessage || draft.includes(campaign.keyMessage),
-    detail: campaign.keyMessage
-      ? `Looking for the exact Key Message text ("${campaign.keyMessage}") in the draft — this one stays a literal match on purpose: Key Message is real, human-authored copy (not an internal field label), so it genuinely belongs verbatim. A paraphrase won't match this check even if it's a faithful one, so treat a fail here as a prompt to re-read the draft, not an automatic problem.`
-      : `No Key Message was entered on this campaign, so this check is automatically satisfied.`
+    label: keyMessageIsDescriptive ? 'Key Message brief covered (descriptive mode)' : 'Key Message reflected',
+    pass: keyMessagePass,
+    detail: keyMessageDetail
   });
 
   checks.push({
@@ -31861,6 +33599,34 @@ function validateOutputAgainstObjective(project, campaign){
         : (campaign.primaryKpi ? `Primary KPI "${campaign.primaryKpi}" isn't in the curated PRIMARY_KPI_ANGLE map yet, so this check is automatically satisfied.` : `No Primary KPI set on Lifecycle Stage & Goals yet — set one so the call to action can be checked against what this campaign is actually optimizing for.`))
   });
 
+  // 2026-08-22 -- new. Mandatory Phrase (campaign.mandatoryPhrase) is real,
+  // human-authored required text -- e.g. "50% Off. Promotion Expires July
+  // 31." -- distinct in kind from every other field checked above: it's not
+  // an internal label to keep OUT of the draft, it's required text that
+  // must survive INTO the draft verbatim, same treatment Long Form Copy's
+  // own offerLine already gives it. Nothing validated this before now, so a
+  // manual edit could silently drop required legal/promo text with no
+  // signal anywhere in this product. Honest limitation, same class as
+  // Social Batch's x_post/instagram_caption structurally having no CTA
+  // field (documented 2 rounds ago): a short-form derivative -- an X post,
+  // a Slack notification, a talking-points bullet -- may not have room for
+  // a full promotional phrase without reading badly, so this check can
+  // legitimately fail on some derivatives even when nothing is actually
+  // wrong; read a fail here as "check this one," not an automatic problem.
+  checks.push({
+    label: 'Mandatory Phrase present',
+    pass: !campaign.mandatoryPhrase || draft.includes(campaign.mandatoryPhrase),
+    detail: campaign.mandatoryPhrase
+      ? `Looking for this campaign's Mandatory Phrase ("${campaign.mandatoryPhrase}") verbatim -- this is required text (legal/promo terms the team wrote on purpose), not a directional signal, so it belongs word-for-word wherever it's expected to appear. A fail here is worth a human read: some shorter derivative formats may not have room for the full phrase without reading badly, so this isn't automatically a problem the way a leaked internal label would be.`
+      : `No Mandatory Phrase is set on this campaign, so this check is automatically satisfied.`
+  });
+
+  return checks;
+}
+
+function validateOutputAgainstObjective(project, campaign){
+  const checks = buildContentChecks(project.masterContent || '', campaign);
+
   checks.push({
     label: 'Brand Voice approved before this draft',
     pass: !!state.voice.approved,
@@ -31871,6 +33637,37 @@ function validateOutputAgainstObjective(project, campaign){
 
   const passCount = checks.filter(c => c.pass).length;
   return { checks, passCount, total: checks.length, allPass: passCount === checks.length };
+}
+
+// 2026-08-22 -- new. Runs the same 4 content checks buildContentChecks()
+// gives the master, once per derivative field, so a leak or CTA/KPI
+// mismatch that only shows up in (say) the LinkedIn post or Email 3 -- not
+// the master it was generated from -- is finally visible somewhere. Brand
+// Voice approval is deliberately not repeated per-derivative: it's one
+// account-level fact, not something each derivative can independently pass
+// or fail, and repeating it 3-4x per project would just be noise.
+// Master-only project types (One-Pager, Analytics Brief -- derivFn: null)
+// have no project.derivatives at all, so this returns null for them, same
+// as the "no derivatives to validate" case for any project that hasn't
+// generated its derivatives yet.
+function validateDerivativesAgainstObjective(project, campaign){
+  if (!project.derivatives) return null;
+  const pt = PROJECT_TYPES.find(t => t.key === project.projectType);
+  const results = Object.entries(project.derivatives).map(([key, text]) => {
+    const checks = buildContentChecks(text || '', campaign);
+    const passCount = checks.filter(c => c.pass).length;
+    return {
+      key,
+      label: (pt && pt.derivativeLabels && pt.derivativeLabels[key]) || key,
+      checks,
+      passCount,
+      total: checks.length,
+      allPass: passCount === checks.length
+    };
+  });
+  const totalChecks = results.reduce((sum, r) => sum + r.total, 0);
+  const totalPass = results.reduce((sum, r) => sum + r.passCount, 0);
+  return { results, totalChecks, totalPass, allPass: results.every(r => r.allPass) };
 }
 
 
@@ -31893,6 +33690,225 @@ function renderValidationPanel(){
       </div>
     `).join('')}
   `;
+}
+
+// 2026-08-22 -- new. Same rendering pattern as renderValidationPanel() above,
+// one collapsible block per derivative field instead of one flat list, since
+// this can be 2-4 separate pieces of copy at once and a flat merged list
+// would make it hard to tell which derivative a failing check belongs to.
+function renderDerivativesValidationPanel(){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const campaign = findCampaign(currentCampaignId);
+  const panel = document.getElementById('derivativesValidationPanel');
+  if (!panel || !project || !campaign) return;
+  if (!project.derivatives){
+    panel.innerHTML = `<p class="hint">Generate the derivatives above first — there's nothing to validate yet.</p>`;
+    return;
+  }
+  const result = validateDerivativesAgainstObjective(project, campaign);
+  if (!result || !result.results.length){
+    panel.innerHTML = `<p class="hint">No derivative fields to validate for this project type.</p>`;
+    return;
+  }
+  panel.innerHTML = `
+    <p class="hint" style="margin-bottom:10px;">${result.totalPass} of ${result.totalChecks} checks passed across ${result.results.length} derivative${result.results.length === 1 ? '' : 's'}.</p>
+    ${result.results.map(r => `
+      <div style="margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:6px;">
+        <div style="font-weight:600;margin-bottom:6px;">${r.allPass ? '✓' : '✕'} ${r.label} <span class="hint" style="font-weight:400;">(${r.passCount}/${r.total})</span></div>
+        ${r.checks.map(c => `
+          <div style="display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--line);">
+            <span style="flex-shrink:0;">${c.pass ? '✓' : '✕'}</span>
+            <span><strong>${c.label}</strong><br><span class="hint" style="display:inline;">${c.detail}</span></span>
+          </div>
+        `).join('')}
+      </div>
+    `).join('')}
+  `;
+}
+
+// 2026-08-22, next round (items 1-2, 3, 7-8) — real AI relevance/compliance
+// scoring, score history, and the 3-subagent interview panel, extended from
+// creative_jobs (see scoreCurrentDraft()/runCopyInterview()/
+// renderInterviewPanel() above — this reuses their shared building blocks:
+// renderAiStatusBubble/renderAiStatusTip, renderDraftScoreCard, scorePill,
+// SCORE_STATUS_TIPS/INTERVIEW_STATUS_TIPS) to the Marketing Function
+// Project workspace. Until now these 7 generators only ever got the
+// deterministic buildContentChecks() heuristic above — this reaches the
+// SAME real scorer/interview engine a Creative Jobs draft gets, via the
+// campaign-scoped endpoints (POST /api/campaigns/:id/score-copy,
+// /copy-interview) added alongside content_score_history/
+// campaign_copy_interviews.
+function mfpSourceKey(project, part){
+  return part === 'master' ? `${project.projectType}:master` : `${project.projectType}:derivative:${part}`;
+}
+function mfpPartLabel(pt, part){
+  return part === 'master' ? pt.masterLabel : ((pt.derivativeLabels && pt.derivativeLabels[part]) || part);
+}
+async function scoreMfpContent(part){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const campaign = findCampaign(currentCampaignId);
+  if (!project || !campaign) return;
+  const pt = PROJECT_TYPES.find(t => t.key === project.projectType);
+  const panel = document.getElementById(part === 'master' ? 'mfpMasterScorePanel' : `mfpDerivScorePanel-${part}`);
+  if (!pt || !panel) return;
+  const copyText = part === 'master' ? (project.masterContent || '') : ((project.derivatives || {})[part] || '');
+  if (!copyText.trim()){
+    panel.innerHTML = `<div class="hint">Nothing to score yet — generate this ${mfpPartLabel(pt, part).toLowerCase()} first.</div>`;
+    return;
+  }
+  const label = mfpPartLabel(pt, part).toLowerCase();
+  panel.innerHTML = renderAiStatusBubble(`Reading this ${label} against your campaign's objective, audience, and brand voice guide — checking relevance and compliance before you decide.`, SCORE_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/score-copy`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ copy: copyText, sourceKey: mfpSourceKey(project, part) })
+    });
+    if (!resp.ok){ panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't score this — try again.</div>`; return; }
+    const result = await resp.json();
+    panel.innerHTML = renderDraftScoreCard(result) + renderAiStatusTip(SCORE_STATUS_TIPS);
+  } catch (e){
+    panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't score this.</div>`;
+  }
+}
+// Item 3 — score history. Toggled open/closed on the same button rather
+// than a separate always-visible panel, since most of the time the latest
+// score (already shown above) is all a reviewer needs; history matters
+// specifically when checking whether a revision actually improved things.
+let mfpScoreHistoryOpen = {};
+async function toggleMfpScoreHistory(part){
+  const project = findProject(currentCampaignId, currentProjectId);
+  if (!project) return;
+  const holder = document.getElementById(`mfpScoreHistory-${part}`);
+  if (!holder) return;
+  if (mfpScoreHistoryOpen[part]){
+    mfpScoreHistoryOpen[part] = false;
+    holder.innerHTML = '';
+    return;
+  }
+  mfpScoreHistoryOpen[part] = true;
+  holder.innerHTML = `<div class="hint">Loading history…</div>`;
+  try {
+    const sourceKey = mfpSourceKey(project, part);
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/score-history?sourceKey=${encodeURIComponent(sourceKey)}`);
+    if (!resp.ok){ holder.innerHTML = `<div class="hint">Couldn't load history.</div>`; return; }
+    const { history } = await resp.json();
+    if (!history || !history.length){
+      holder.innerHTML = `<div class="hint">No scoring history yet for this piece of copy.</div>`;
+      return;
+    }
+    const rows = history.map(h => {
+      const when = new Date(h.scoredAt).toLocaleString();
+      return `<div style="padding:4px 0;border-bottom:1px solid var(--line);font-size:0.78125rem;display:flex;gap:12px;align-items:baseline;">
+        <span class="hint" style="min-width:130px;">${when}</span>
+        <span>Relevance: <b>${h.relevanceScore === null ? '—' : h.relevanceScore}</b></span>
+        <span>Compliance: <b>${h.complianceScore === null ? '—' : h.complianceScore}</b></span>
+        <span class="hint">${h.mode === 'ai' ? 'AI' : 'heuristic'}</span>
+      </div>`;
+    }).join('');
+    holder.innerHTML = `<div style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;">
+      <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;margin-bottom:4px;">Score history (${history.length})</div>
+      ${rows}
+    </div>`;
+  } catch (e){
+    holder.innerHTML = `<div class="hint">Backend unreachable — couldn't load history.</div>`;
+  }
+}
+// Items 7-8 — the 3-subagent interview panel, scoped to the MASTER only
+// (see the HTML comment above the button in renderProjectDetail() for why
+// not per-derivative too), plus its own history list so past runs are
+// visible in this workspace directly rather than only in the Ops Console.
+let lastMfpInterviewCache = {};
+async function runMfpInterview(){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const holder = document.getElementById('mfpInterviewPanel');
+  if (!project || !holder) return;
+  holder.innerHTML = renderAiStatusBubble("Drafting three independent takes on your brief — direct-response, brand-story, and proof-and-trust — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceKey: mfpSourceKey(project, 'master') })
+    });
+    if (!resp.ok){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the interview — try again.</div>`;
+      return;
+    }
+    const result = await resp.json();
+    if (!result.available){
+      holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Interview panel unavailable.')}</div>`;
+      return;
+    }
+    lastMfpInterviewCache[currentProjectId] = result;
+    holder.innerHTML = renderMfpInterviewPanel(result);
+  } catch (e){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the interview.</div>`;
+  }
+}
+function renderMfpInterviewPanel(result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.copy){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+      </div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+    <div id="mfpInterviewSelectFlag" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+// Applies the winning candidate straight into project.masterContent — same
+// explicit-click-only discipline as runInterviewSelect() for Creative Jobs.
+// Unlike that one, there's no single "masterContent" textarea id for
+// structured-field project types (headline/lead/quote/etc. each have their
+// own field), so a structured project's candidate copy replaces the `lead`
+// field (the one every structured type's rationale already treats as the
+// real body text) rather than silently overwriting the whole structured
+// object with one flat string; a plain-textarea project (One-Pager,
+// Analytics Brief) replaces masterContent directly.
+async function runMfpInterviewSelect(interviewId, candidateKey){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const flag = document.getElementById('mfpInterviewSelectFlag');
+  if (!project) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this draft — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    if (project.fields){
+      project.fields.lead = result.copy;
+      project.masterContent = composeMasterFromFields(project.projectType, project.fields);
+    } else {
+      project.masterContent = result.copy;
+    }
+    renderProjectDetail();
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — draft not applied.'; }
+  }
 }
 
 // QA persona commentary — framed by the reviewer's level, per direct
@@ -31958,10 +33974,29 @@ function requestQa(){
     ? `${reviewer.name} (${reviewer.level}, ${functionLabel(reviewer.functionGroup)}) flags ${failing.length} of ${result.total} checks: ${failing.map(c => c.label).join(', ')}.`
     : `${reviewer.name} (${reviewer.level}, ${functionLabel(reviewer.functionGroup)}) finds all ${result.total} checks pass.`;
   const framing = qaReviewFraming(reviewer.level);
+
+  // 2026-08-22 -- follow-up to the derivative-level validation panel: a
+  // reviewer looking only at validateOutputAgainstObjective()'s master-level
+  // result could sign off on a project whose derivatives still leak a label
+  // or drift from Primary KPI, since those findings never reached this
+  // simulated QA comment before. Reuses validateDerivativesAgainstObjective()
+  // (same real checks, not a new judgment) and folds a second sentence into
+  // the same reviewer comment when derivatives exist and have been generated
+  // -- silent (not "0 issues" noise) when there's nothing to say, i.e. no
+  // derivatives generated yet, or this is a master-only project type.
+  const derivResult = validateDerivativesAgainstObjective(project, campaign);
+  let derivSentence = '';
+  if (derivResult && derivResult.results.length){
+    const failingDerivs = derivResult.results.filter(r => !r.allPass);
+    derivSentence = failingDerivs.length
+      ? ` On the derivatives: ${failingDerivs.length} of ${derivResult.results.length} have issues — ${failingDerivs.map(r => `${r.label} (${r.checks.filter(c => !c.pass).map(c => c.label).join(', ')})`).join('; ')}.`
+      : ` All ${derivResult.results.length} derivatives also pass.`;
+  }
+
   outputEl.innerHTML = `
     <div class="cascade-note">
-      <strong>Simulated QA review from ${reviewer.name}:</strong> ${opening} Reviewing ${framing}. ${failing.length ? `Suggested next step: revisit ${failing.map(c => `"${c.label}"`).join(' and ')} before this goes out.` : `No changes requested — ready to move forward.`}
-      <br><span class="hint" style="display:inline;">Templated, not a real review from ${reviewer.name} — this reuses the same validation checks above, framed at ${reviewer.level} level. No notification was actually sent (no email/Slack integration in this build).</span>
+      <strong>Simulated QA review from ${reviewer.name}:</strong> ${opening}${derivSentence} Reviewing ${framing}. ${failing.length ? `Suggested next step: revisit ${failing.map(c => `"${c.label}"`).join(' and ')} before this goes out.` : `No changes requested — ready to move forward.`}
+      <br><span class="hint" style="display:inline;">Templated, not a real review from ${reviewer.name} — this reuses the same validation checks above (master and, where generated, derivatives), framed at ${reviewer.level} level. No notification was actually sent (no email/Slack integration in this build).</span>
     </div>
   `;
 }
@@ -31986,6 +34021,7 @@ function renderCampaignSubNav(containerId, isAdHoc){
   if (!currentCampaignId){ el.innerHTML = ''; return; }
   const sections = [
     { id: 'campaignBrandCard', label: 'Brand' },
+    { id: 'campaignTypeCard', label: 'Campaign Type' },
     { id: 'campaignLifecycleCard', label: 'Overview' },
     ...(isAdHoc ? [] : [{ id: 'campaignAnalyticsCard', label: 'Performance' }]),
     ...(isAdHoc ? [] : [{ id: 'campaignTrackingCard', label: 'Tracking' }]),
@@ -32590,6 +34626,22 @@ function cmpAudienceAngle(segments){
   }
   if (segments.includes('Hand-Raisers') || segments.includes('New To Brand')){
     return { tier: 'new-to-brand', text: 'people who don\u2019t yet know this brand well \u2014 emphasizing product education, earning trust and understanding before asking for anything', arc: 'discovery \u2192 differentiation \u2192 trust \u2014 explains what makes this account different without reading like a brochure; earns the first impression before asking for anything', hook: n => `Here's what makes ${n} different.`, copyLine: `No crowds, no filler \u2014 just the specific things that make this worth trying for the first time.` };
+  }
+  // 2026-08-22, next round (item 4) \u2014 this tier is reached by whatever's
+  // left after Past Customers/Hand-Raisers/New To Brand are ruled out
+  // above: Partners and/or Sales Team. The relevance-score-flow spec
+  // flagged Long Form Copy as only ever pulling its angle from segments[0]
+  // \u2014 true here specifically, and it silently drops the second audience
+  // when BOTH Partners and Sales Team are selected together (a real,
+  // reachable combination \u2014 an account can genuinely want one Long Form
+  // draft that has to work for both a co-marketing partner and its own
+  // sales team). Real per-segment text still applies when only one of the
+  // two is selected; a combined angle applies only when both are, rather
+  // than always silently keeping just the first.
+  const otherSegments = segments.filter(s => ACCOUNT_SEGMENT_ANGLE[s]);
+  if (otherSegments.length > 1){
+    const combinedText = otherSegments.map(s => ACCOUNT_SEGMENT_ANGLE[s]).join('; and separately, ');
+    return { tier: 'other-combined', text: combinedText, arc: 'direct, twice \u2014 this draft has to hold up for more than one relationship to the account at once, so it doesn\u2019t lean on either audience\u2019s specific context alone', hook: n => `Meet ${n}.`, copyLine: '' };
   }
   return { tier: 'other', text: ACCOUNT_SEGMENT_ANGLE[segments[0]] || 'the people this campaign is actually written for', arc: 'direct \u2014 addresses this audience\u2019s specific relationship to the account plainly', hook: n => `Meet ${n}.`, copyLine: '' };
 }
@@ -33493,13 +35545,29 @@ function cmpPersistMessagingToCampaign(){
   // with '' on every messaging Approve would silently blank out whatever
   // that other page had saved.
   c.longformCopy = document.getElementById('cmpLongFormCopy') ? document.getElementById('cmpLongFormCopy').value.trim() : '';
-  // Round 132ad — messageType/mandatoryPhrase/longformStyle are new,
-  // local-session-only fields (no backend column yet, same honest
-  // disclosure as briefBuilderExpandedText above). brandGuidelines (the old
-  // campaign-level Do's/Don'ts) is no longer written here at all.
+  // Round 132ad — messageType/mandatoryPhrase/longformStyle are new fields.
+  // longformStyle stays local-session-only on purpose (roleStyle below
+  // mirrors it into the field that actually persists). messageType/
+  // mandatoryPhrase used to be local-session-only too (no backend column,
+  // same honest disclosure as briefBuilderExpandedText above) — as of
+  // 2026-08-22 both now persist for real, see the ensureColumn() comment in
+  // backend/server.js. brandGuidelines (the old campaign-level Do's/Don'ts)
+  // is no longer written here at all.
   c.messageType = document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '';
   c.mandatoryPhrase = document.getElementById('cmpMandatoryPhrase') ? document.getElementById('cmpMandatoryPhrase').value.trim() : '';
   c.longformStyle = document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling';
+  // 2026-08-22 — c.roleStyle/c.keyMessageMode/c.messageType/c.mandatoryPhrase
+  // are the four fields that actually reach the backend below (roleStyle
+  // deliberately mirrors longformStyle's value under the DB column's name
+  // rather than replacing it — see cmpBuildFormPayload()'s own comment on
+  // the same duplication). This round adds messageType/mandatoryPhrase to
+  // this same POST body, closing the exact gap that earlier round closed
+  // for roleStyle/keyMessageMode: without this, a campaign's saved Message
+  // Type reverted to unset on reload, so every Marketing Function Project
+  // generator's CTA composition (MESSAGE_TYPE_CUE, see sharedContextClause())
+  // silently stopped reflecting it after a page refresh.
+  c.roleStyle = c.longformStyle;
+  c.keyMessageMode = document.getElementById('cmpKeyMessageMode') ? document.getElementById('cmpKeyMessageMode').value : 'exact';
   c.channelCopyVersions = computeChannelCopyVersions();
   c.creativeBrief = generateCreativeBrief();
   if (!c.localOnly && dataSourceLabel === 'backend'){
@@ -33508,7 +35576,9 @@ function cmpPersistMessagingToCampaign(){
       body: JSON.stringify({
         keyMessage: c.keyMessage, brandToneNotes: c.brandToneNotes,
         longformCopy: c.longformCopy, creativeBrief: c.creativeBrief,
-        channelCopyVersionsJson: JSON.stringify(c.channelCopyVersions)
+        channelCopyVersionsJson: JSON.stringify(c.channelCopyVersions),
+        roleStyle: c.roleStyle, keyMessageMode: c.keyMessageMode,
+        messageType: c.messageType, mandatoryPhrase: c.mandatoryPhrase
       })
     }).catch(e => console.warn('cmpPersistMessagingToCampaign: backend write failed, kept locally only.', e));
   }
@@ -36996,6 +39066,120 @@ function renderVoiceStep(){
     banner.classList.add('visible');
   } else {
     banner.classList.remove('visible');
+  }
+  // 2026-08-22 — Vision Statement / Longform Example fields, same
+  // "show what's already there instead of requiring a re-run" treatment.
+  const visionEl = document.getElementById('voiceVisionStatement');
+  const longformEl = document.getElementById('voiceLongformExample');
+  if (visionEl) visionEl.value = state.voice.visionStatement || '';
+  if (longformEl) longformEl.value = state.voice.longformExample || '';
+}
+
+// 2026-08-22 — the multi-model Brand Voice contest. Same real-AI-call,
+// explicit-click-to-apply pattern as runCopyInterview()/runInterviewSelect()
+// in the copy workspace, applied at the account level instead of a specific
+// creative job.
+const VOICE_CONTEST_STATUS_TIPS = [
+  "A voice direction that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products & Services, not just how it reads.",
+  "The Vision Statement is the north star, not a tagline — it should still make sense a year from now, even as individual campaigns change.",
+  "If none of the three feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above need a second look before trying again."
+];
+let lastVoiceContestCache = null;
+async function runBrandVoiceContest(){
+  const holder = document.getElementById('voiceContestPanel');
+  if (!holder || !state.companyId) return;
+  holder.innerHTML = renderAiStatusBubble("Drafting three distinct brand voice directions — Confident Authority, Warm Storyteller, Bold Modern — each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: document.getElementById('voiceAvoidWords').value.trim(), antiExample: document.getElementById('voiceAntiExample').value.trim() })
+    });
+    if (!resp.ok){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the contest — try again.</div>`;
+      return;
+    }
+    const result = await resp.json();
+    if (!result.available){
+      holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Voice contest unavailable.')}</div>`;
+      return;
+    }
+    lastVoiceContestCache = result;
+    holder.innerHTML = renderBrandVoiceContestPanel(result);
+  } catch (e){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the contest.</div>`;
+  }
+}
+function renderBrandVoiceContestPanel(result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.visionStatement || !c.longformExample){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— fewest compliance flags</span>' : ''}</div>
+      <div style="font-size:0.8125rem;font-style:italic;margin:8px 0;">"${escapeHtml(c.visionStatement)}"</div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="applyBrandVoiceCandidate('${result.interviewId}', '${c.key}')">Use this →</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;">${cards}</div>
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(VOICE_CONTEST_STATUS_TIPS)}`;
+}
+async function applyBrandVoiceCandidate(interviewId, candidateKey){
+  const flag = document.getElementById('voiceContestSelectFlag');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    state.voice.visionStatement = result.visionStatement;
+    state.voice.longformExample = result.longformVoiceExample;
+    const visionEl = document.getElementById('voiceVisionStatement');
+    const longformEl = document.getElementById('voiceLongformExample');
+    if (visionEl) visionEl.value = result.visionStatement;
+    if (longformEl) longformEl.value = result.longformVoiceExample;
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to Vision Statement and Longform Example below — saved automatically.'; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not applied.'; }
+  }
+}
+async function saveVisionLongformEdits(){
+  const flag = document.getElementById('voiceVisionLongformSaveFlag');
+  const visionStatement = document.getElementById('voiceVisionStatement').value;
+  const longformVoiceExample = document.getElementById('voiceLongformExample').value;
+  state.voice.visionStatement = visionStatement;
+  state.voice.longformExample = longformVoiceExample;
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/vision-longform`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visionStatement, longformVoiceExample })
+      });
+      persisted = resp.ok;
+    } catch (e){ /* falls through to local-only flag below */ }
+  }
+  if (flag){
+    flag.textContent = persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
   }
 }
 

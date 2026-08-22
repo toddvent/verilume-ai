@@ -238,8 +238,18 @@
     var authLink = document.getElementById('utilNavAuthLink');
     if (!portalLink || !authLink) return;
     if (accountId){
-      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
-      portalLink.style.display = '';
+      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
+      // already ON portal.html is redundant (you're already there); hide
+      // it there specifically, still show it everywhere else (marketing
+      // pages, assessment.html, account.html, etc.) so there's always a
+      // way back to the Portal from outside it.
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
       authLink.textContent = 'Logout';
       authLink.href = '#';
       authLink.onclick = function(e){
@@ -652,6 +662,10 @@
             Admin — full account access
           </label>
           <div class="hint">Separate from Level/Function — governs billing, payment methods, and inviting/removing team members.</div>
+          <!-- 2026-08-22 — shown only for a real, non-admin logged-in member
+               (see applyInviteIsAdminGate()); a legacy account-level session
+               or a real admin never sees this. -->
+          <div id="inviteIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
         </div>
       </div>
       <div class="btn-row">
@@ -848,6 +862,7 @@ async function init(){
   await loadTeamData();
   renderTeam();
   renderMyProfile();
+  applyInviteIsAdminGate();
   await loadInvoices();
   await loadFinancialSummary();
 }
@@ -931,6 +946,35 @@ function functionLabel(key){
 
 function findTeamMember(id){
   return state.team.find(m => m.id === id) || null;
+}
+
+// 2026-08-22 — closes the roster-UI half of the isAdmin gap fix (backend's
+// PATCH /api/team/:id now 403s a non-admin who actually changes isAdmin —
+// see requireAdminMember() in backend/server.js). Without this, a non-admin
+// genuinely trying to self-promote here would hit a raw, unexplained 403.
+// Unlike portal.html (no per-member session, no separate round trip
+// needed), account.html already tracks currentMemberId and loads every
+// member's real isAdmin flag into state.team via loadTeamData() — so "am I
+// admin" is just a lookup, not a fetch. No currentMemberId (a legacy
+// account-level session, or state.team not loaded yet) defaults to true —
+// same root-equivalent treatment the backend itself gives that session.
+function accountViewerIsAdmin(){
+  if (!currentMemberId) return true;
+  const me = findTeamMember(currentMemberId);
+  return me ? !!me.isAdmin : true;
+}
+// Disables the shared Admin checkbox (Invite/Edit Team Member form) and
+// shows why, for a non-admin viewer only — never hides it outright, since
+// "you don't have this permission" is more honest than the field silently
+// disappearing. A no-op for the common case (legacy session, or a real
+// admin) — the checkbox stays exactly as interactive as it's always been.
+function applyInviteIsAdminGate(){
+  const checkbox = document.getElementById('inviteIsAdmin');
+  const hint = document.getElementById('inviteIsAdminGateHint');
+  if (!checkbox) return;
+  const isAdmin = accountViewerIsAdmin();
+  checkbox.disabled = !isAdmin;
+  if (hint) hint.style.display = isAdmin ? 'none' : 'block';
 }
 
 /* ---------- Recovery phone number (round 2026-08-19) ----------
@@ -1426,6 +1470,7 @@ function startEditTeamMember(id){
   const m = findTeamMember(id);
   if (!m) return;
   editingTeamMemberId = id;
+  applyInviteIsAdminGate();
   const f = document.getElementById('inviteForm');
   f.style.display = 'block';
   populateInviteFormSelects();
