@@ -5237,6 +5237,7 @@
                    here shrinks to naming the field, not re-explaining it. -->
               <div class="field-divider">Lifecycle-Loop Stage <span class="ai-thought-mount" data-topic="K"></span></div>
               <p class="lede" style="margin-bottom:14px;">Select the Media Loop stage this campaign supports.</p>
+              <div id="cmpStageSmartDefault" style="margin-bottom:8px;"></div>
               <div class="stage-row" id="stageRow"></div>
               <!-- Round 132bt (2026-08-13) fix, per direct testing feedback:
                    "copy below the five lifecycle options duplicates the
@@ -5310,6 +5311,7 @@
                      worth explaining (Primary vs. other tracked KPIs), and
                      the AI Thought icon covers strategic guidance. -->
                 <label>Primary KPI <span class="ai-thought-mount" data-topic="D"></span></label>
+                <div id="cmpPrimaryKpiSmartDefault" style="margin:6px 0;"></div>
                 <!-- Round 132bu (2026-08-13), per direct instruction: "Loop
                      select is mandatory to deliver accurate channel
                      recommendations but not enforced... create top-down
@@ -5715,6 +5717,7 @@
             <div class="field-divider">Step 1 — Channel Plan</div>
             <div class="field" style="margin-top:0;">
               <label>Channel(s) <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
+              <div id="cmpChannelsSmartDefault" style="margin:6px 0;"></div>
               <p class="hint" id="cmpChannelRowRecap" style="margin:0;"></p>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Add
@@ -5922,6 +5925,27 @@
                   <div id="cmpKeyMessageSmartDefault" style="margin-bottom:8px;"></div>
                   <textarea id="cmpKeyMessage" maxlength="500" rows="3" placeholder="e.g. Fresh, local, fast — the short version. Full long-form messaging comes later in the flow." oninput="updateKeyMessageCounter();cmpKeyMessageOrBriefEdited();"></textarea>
                   <div class="char-counter" id="cmpKeyMessageCounter">0 / 500</div>
+                  <!-- 2026-08-22 — new, and a different axis from Message
+                       Type below: this governs whether Key Message itself
+                       must survive verbatim in the draft, not its
+                       tone/register. Default Exact keeps every existing
+                       campaign's behavior unchanged (validateOutputAgainstObjective()'s
+                       "Key Message reflected" check already requires a
+                       literal match, on purpose, for real human-authored
+                       copy). Descriptive is for a directional brief instead
+                       — a sentence like "something about the spring sale
+                       and free upgrades" that the AI Copywriter should
+                       paraphrase into real copy, not quote back verbatim;
+                       picking it changes what that same validator check
+                       requires (see renderFaqKeyMessageMode-adjacent logic
+                       in validateOutputAgainstObjective()). -->
+                  <div class="msg-subfield">
+                    <label for="cmpKeyMessageMode">Key Message mode</label>
+                    <select id="cmpKeyMessageMode" onchange="cmpKeyMessageOrBriefEdited();">
+                      <option value="exact">Exact — real copy, should read close to verbatim in the draft</option>
+                      <option value="descriptive">Descriptive — a directional brief; the AI Copywriter should paraphrase it, not quote it</option>
+                    </select>
+                  </div>
                   <!-- Round 132ad (2026-08-11), per direct decision: keep Key
                        Message free-form, but add two intent signals for the
                        AI Copywriter rather than overloading the one field.
@@ -24647,7 +24671,13 @@ function cmpPopulateFormFields(c, opts){
   const mandatoryEl = document.getElementById('cmpMandatoryPhrase');
   if (mandatoryEl) mandatoryEl.value = c.mandatoryPhrase || '';
   const styleEl = document.getElementById('cmpLongformStyle');
-  if (styleEl) styleEl.value = c.longformStyle || 'Storytelling';
+  // 2026-08-22 — c.roleStyle is the real, backend-persisted value (see
+  // server.js); c.longformStyle is the older local-session-only field this
+  // already fell back to. Prefer the persisted one now that one exists,
+  // keep the session fallback for anything saved before this round.
+  if (styleEl) styleEl.value = c.roleStyle || c.longformStyle || 'Storytelling';
+  const keyMessageModeEl = document.getElementById('cmpKeyMessageMode');
+  if (keyMessageModeEl) keyMessageModeEl.value = c.keyMessageMode || 'exact';
   // Round 132nn (2026-08-10) — same "local-session flag only" honesty as
   // cmpMessagingApproved right below: the per-field approvals reset on
   // every load too, not persisted. A campaign with real saved content in
@@ -25153,6 +25183,8 @@ function resetCampaignForm(){
   ['cmpName','cmpKeyMessage','cmpBudget','cmpPlannedImpressions','cmpStartDate','cmpEndDate','cmpKpiGoal','cmpReachFrequency','cmpVideoViewRate','cmpFunnelVisitRate','cmpFunnelLeadRate','cmpFunnelBookingRate','cmpFunnelAov','cmpFunnelEcommerceMix','cmpFunnelDirectRate','cmpTransactionWindow','cmpLongFormCopy','cmpKeyMessageType','cmpMandatoryPhrase'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const styleResetEl = document.getElementById('cmpLongformStyle');
   if (styleResetEl) styleResetEl.value = 'Storytelling';
+  const keyMessageModeResetEl = document.getElementById('cmpKeyMessageMode');
+  if (keyMessageModeResetEl) keyMessageModeResetEl.value = 'exact';
   const dateErrEl = document.getElementById('cmpDateError');
   if (dateErrEl) dateErrEl.textContent = '';
   const endDateEl = document.getElementById('cmpEndDate');
@@ -26383,9 +26415,23 @@ async function loadCampaignSmartDefaults(){
   const kmHolder = document.getElementById('cmpKeyMessageSmartDefault');
   const atHolder = document.getElementById('campaignAudienceTargetsSmartDefault');
   const segHolder = document.getElementById('cmpSegmentSmartDefault');
+  // 2026-08-22 extension — Stage and Channels join the same confidence-gated
+  // intake pattern.
+  const stageHolder = document.getElementById('cmpStageSmartDefault');
+  const chHolder = document.getElementById('cmpChannelsSmartDefault');
+  // 2026-08-22, next round — Primary KPI now wired too. Its <select>'s
+  // option list (PRIMARY_KPI_OPTIONS) turned out to be a static list
+  // populated once at page init (populateCampaignFormSelects()), not
+  // re-scoped per Stage/Objective the way an older comment nearby implied
+  // — so there's no populate-order risk here after all; confirmed before
+  // wiring rather than assumed.
+  const kpiHolder = document.getElementById('cmpPrimaryKpiSmartDefault');
   if (kmHolder) kmHolder.innerHTML = '';
   if (atHolder) atHolder.innerHTML = '';
   if (segHolder) segHolder.innerHTML = '';
+  if (stageHolder) stageHolder.innerHTML = '';
+  if (chHolder) chHolder.innerHTML = '';
+  if (kpiHolder) kpiHolder.innerHTML = '';
   if (!state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-smart-defaults`);
@@ -26399,10 +26445,161 @@ async function loadCampaignSmartDefaults(){
     });
     renderCampaignSmartDefaultField('audienceTargets', fields.audienceTargets, atHolder, 'campaignAudienceTargets', 'audience');
     renderSegmentSmartDefault(fields.segment, segHolder);
+    // Primary KPI intentionally applied BEFORE Stage below: toggleStage()
+    // (fired by the Stage smart-default's own skip-fill) cascades into
+    // applyObjectiveDrivenDefaults(), which fills Primary KPI from a
+    // generic objective-based best-practice ONLY if it's still blank at
+    // that point. Filling Primary KPI from this account's own real history
+    // first means that generic fallback never overwrites — real signal
+    // outranks a generic default, the same precedence this whole feature
+    // is built on.
+    renderPrimaryKpiSmartDefault(fields.primaryKpi, kpiHolder);
+    renderStageSmartDefault(fields.stage, stageHolder);
+    renderChannelsSmartDefault(fields.channels, chHolder);
   } catch (e){
     // A missed suggestion is a non-event, not an error worth surfacing —
     // the form is exactly as usable as it would've been without this call.
   }
+}
+// 2026-08-22 — Primary KPI, same skip/suggest shape as Stage. A dedicated
+// renderer rather than reusing renderCampaignSmartDefaultField(): that
+// helper's skip/clear/apply paths are hardcoded to the keyMessage/
+// audienceTargets pair (its copy text, its clear/apply branching), and
+// Primary KPI also needs one extra guard the free-text fields don't: only
+// apply a historical value that's still a real, curated option (a
+// campaign's saved primaryKpi could be a free-typed "Other" value that
+// isn't in PRIMARY_KPI_OPTIONS — silently assigning that to the select
+// would just no-op, so this checks first and stays silent instead of
+// showing a banner for a suggestion that can't actually apply).
+function renderPrimaryKpiSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  if (!PRIMARY_KPI_OPTIONS.includes(fieldData.value)) return; // e.g. a free-typed "Other" value from history — nothing to select
+  const kpiSel = document.getElementById('cmpPrimaryKpi');
+  const onApplied = () => {
+    if (!kpiSel) return;
+    toggleOtherField('cmpPrimaryKpi', 'cmpPrimaryKpiOtherWrap');
+    cmpToggleReachFrequencyField();
+    cmpToggleVideoViewRateField();
+    cmpToggleFunnelFields();
+    cmpUpdateKpiGoalBenchmarkHint();
+    cmpCheckKpiStageMismatch();
+  };
+  if (fieldData.level === 'skip'){
+    if (kpiSel && !kpiSel.value){
+      kpiSel.value = fieldData.value;
+      onApplied();
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Primary KPI, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearPrimaryKpiSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your Primary KPI from <b>${sourceName}</b>: "${escapeHtml(fieldData.value)}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyPrimaryKpiSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applyPrimaryKpiSmartDefault(){
+  const fieldData = (window._cmpSmartDefaults || {}).primaryKpi;
+  if (!fieldData || !fieldData.value || !PRIMARY_KPI_OPTIONS.includes(fieldData.value)) return;
+  const kpiSel = document.getElementById('cmpPrimaryKpi');
+  if (kpiSel){
+    kpiSel.value = fieldData.value;
+    toggleOtherField('cmpPrimaryKpi', 'cmpPrimaryKpiOtherWrap');
+    cmpToggleReachFrequencyField();
+    cmpToggleVideoViewRateField();
+    cmpToggleFunnelFields();
+    cmpUpdateKpiGoalBenchmarkHint();
+    cmpCheckKpiStageMismatch();
+  }
+  const holder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearPrimaryKpiSmartDefault(){
+  const kpiSel = document.getElementById('cmpPrimaryKpi');
+  if (kpiSel){
+    kpiSel.value = '';
+    toggleOtherField('cmpPrimaryKpi', 'cmpPrimaryKpiOtherWrap');
+    cmpUpdateKpiGoalBenchmarkHint();
+  }
+  const holder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// 2026-08-22 — Stage is a single tile pick (selectedStage), not a text
+// field or a multi-select Set, so it gets its own small renderer — same
+// skip/suggest shape as every other field, applied via the real
+// toggleStage() so every one of its side effects (Objective display, KPI
+// options, applyObjectiveDrivenDefaults()) runs exactly as if a human had
+// clicked the tile.
+function renderStageSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  if (!MEDIA_LOOP_STAGES.includes(fieldData.value)) return; // stale/renamed stage value — stay silent rather than apply something invalid
+  if (fieldData.level === 'skip'){
+    if (!selectedStage){
+      toggleStage(fieldData.value);
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Lifecycle-Loop Stage, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearStageSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your Lifecycle-Loop Stage from <b>${sourceName}</b>: "${escapeHtml(fieldData.value)}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyStageSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applyStageSmartDefault(){
+  const fieldData = (window._cmpSmartDefaults || {}).stage;
+  if (!fieldData || !fieldData.value || !MEDIA_LOOP_STAGES.includes(fieldData.value)) return;
+  if (!selectedStage) toggleStage(fieldData.value);
+  const holder = document.getElementById('cmpStageSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearStageSmartDefault(){
+  if (selectedStage) toggleStage(selectedStage); // toggleStage() un-selects when called with the currently-selected stage
+  const holder = document.getElementById('cmpStageSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// 2026-08-22 — Channels, same skip/suggest shape again, applied via the
+// real toggleChannel() per channel so every side effect it already owns
+// (Channel Plan row sync, Recommended-vs-added recap, PR/Corp Comm required
+// status) runs exactly as if a human had checked each one.
+function renderChannelsSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  const allChannels = fieldData.value.split(',').map(s => s.trim()).filter(Boolean).filter(ch => CHANNELS.includes(ch));
+  if (!allChannels.length) return;
+  if (fieldData.level === 'skip'){
+    if (selectedChannels.size === 0){
+      allChannels.forEach(ch => toggleChannel(ch));
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Channels, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearChannelsSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your Channels from <b>${sourceName}</b>: "${escapeHtml(allChannels.join(', '))}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyChannelsSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applyChannelsSmartDefault(){
+  const fieldData = (window._cmpSmartDefaults || {}).channels;
+  if (!fieldData || !fieldData.value) return;
+  const allChannels = fieldData.value.split(',').map(s => s.trim()).filter(Boolean).filter(ch => CHANNELS.includes(ch));
+  allChannels.forEach(ch => { if (!selectedChannels.has(ch)) toggleChannel(ch); });
+  const holder = document.getElementById('cmpChannelsSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearChannelsSmartDefault(){
+  [...selectedChannels].forEach(ch => toggleChannel(ch));
+  const holder = document.getElementById('cmpChannelsSmartDefault');
+  if (holder) holder.innerHTML = '';
 }
 // Segment needs its own renderer, separate from renderCampaignSmartDefaultField
 // above — it's not a text field with a .value, it's the multi-select chip
@@ -26646,6 +26843,14 @@ function cmpBuildFormPayload(){
     messageType: document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '',
     mandatoryPhrase: document.getElementById('cmpMandatoryPhrase') ? document.getElementById('cmpMandatoryPhrase').value.trim() : '',
     longformStyle: document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling',
+    // 2026-08-22 — these two are what actually get persisted server-side
+    // (see backend/server.js's roleStyle/keyMessageMode columns).
+    // roleStyle mirrors longformStyle above under the DB column's name —
+    // deliberately not renaming longformStyle itself, since
+    // cmpAssembleLongFormCopy() and every other local-session reader
+    // already depend on that exact key.
+    roleStyle: document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling',
+    keyMessageMode: document.getElementById('cmpKeyMessageMode') ? document.getElementById('cmpKeyMessageMode').value : 'exact',
     // Round 132h (2026-08-09) — the assembled Creative Brief (see
     // generateCreativeBrief()) now saves into this same c.creativeBrief
     // field the Campaign Detail Brand card and recommendCopyForJob() both
@@ -30982,6 +31187,12 @@ function renderProjectDetail(){
           <button type="button" class="btn-ghost" onclick="renderValidationPanel()">Validate against objective →</button>
         </div>
         <div id="validationPanel" style="margin-top:12px;"></div>
+        ${derivFn ? `
+        <p class="lede" style="margin-top:16px;margin-bottom:10px;">The checks above only ever looked at the master. Since every derivative below is its own piece of distributed copy (a social caption, an email subject line), it can drift or leak an internal label independently of the master it was generated from — this runs the same checks against each one.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-ghost" onclick="renderDerivativesValidationPanel()">Validate derivatives against objective →</button>
+        </div>
+        <div id="derivativesValidationPanel" style="margin-top:12px;"></div>` : ''}
       </div>
     </div>
 
@@ -31015,7 +31226,32 @@ function renderProjectDetail(){
 function sharedContextClause(){
   const campaign = findCampaign(currentCampaignId);
   const toneClause = state.voice.approved ? 'in the brand\'s approved voice' : 'in a direct, confident tone (no approved Brand Voice yet)';
-  return { campaign, toneClause };
+  // 2026-08-22 — objectiveLine/objectiveShort close the gap flagged in the
+  // brand-messaging-relevance-score-flow-spec doc's "Core Finding: Two Copy
+  // Systems, One of Them Wrong": Brand Messaging's own longform engine
+  // (cmpMessagingElements()) already translates Objective into a real,
+  // finished sentence via CAMPAIGN_OBJECTIVE_COPY instead of printing the
+  // raw internal label ("Brand Awareness") as if it were prose — but every
+  // Marketing Function Project generator below (Social Batch, Email
+  // Sequence, Landing Page, and Press Release/Email/Landing derivatives)
+  // was still splicing campaign.objective straight into distributable
+  // copy, unvalidated (validateOutputAgainstObjective() only ever checked
+  // project.masterContent, never these derivatives). Reusing the SAME
+  // CAMPAIGN_OBJECTIVE_COPY table Brand Messaging already uses — one real
+  // copy engine, not a second, weaker one that just prints field labels.
+  // campaign can be null on some call sites (no campaign loaded yet) — every
+  // reader below already guards for that the same way it guarded raw
+  // campaign.objective before.
+  let objectiveLine = '';
+  let objectiveShort = '';
+  if (campaign){
+    const focus = (campaign.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(' and ')
+      || (campaign.productGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(' and ');
+    const copyFn = CAMPAIGN_OBJECTIVE_COPY[campaign.objective];
+    objectiveLine = copyFn ? copyFn(focus) : (campaign.objective ? `${campaign.objective} — worth your attention right now.` : '');
+    objectiveShort = objectiveLine ? objectiveLine.split(/(?<=[.!?])\s/)[0] : '';
+  }
+  return { campaign, toneClause, objectiveLine, objectiveShort };
 }
 
 // 2026-08-22 — per direct instruction to leverage the new Brand Voice
@@ -31208,30 +31444,41 @@ function generatePressReleaseMaster(){
 
 function generatePressReleaseDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
+  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
   const master = project.masterContent;
-  const headline = master.split('\n')[2] || campaign.objective;
+  const headline = master.split('\n')[2] || objectiveShort || `${state.company} announcement`;
+  // 2026-08-22 fix — same bug as Social Batch/Email Sequence/Landing Page
+  // (see generateSocialBatchMaster()'s own comment): these three used to
+  // splice the raw internal Objective label straight in ("Big news: Brand
+  // Awareness.", "We're announcing brand awareness."), unvalidated since
+  // validateOutputAgainstObjective() never checks derivatives. Rebuilt off
+  // objectiveLine, the same real-sentence CAMPAIGN_OBJECTIVE_COPY translation
+  // the master generator already relies on for its own headline/lead.
   project.derivatives = {
-    social_teaser: `Big news: ${campaign.objective}. ${campaign.keyMessage || ''} Read the full release → [link] #${state.company.replace(/\s+/g,'')}`,
-    linkedin_post: `We're announcing ${campaign.objective.toLowerCase()}.\n\n${campaign.keyMessage || 'Here\'s what it means for our customers.'}\n\nFull press release in the comments. 👇`,
-    media_email_blurb: `Subject: ${headline}\n\nHi [Name],\n\nSharing today's announcement from ${state.company}: ${campaign.objective}. Full release attached — happy to arrange an interview or additional comment if useful for your coverage.\n\nBest,\n[Name]`
+    social_teaser: `Big news: ${objectiveLine || headline}. ${campaign.keyMessage || ''} Read the full release → [link] #${state.company.replace(/\s+/g,'')}`,
+    linkedin_post: `We're announcing something new.\n\n${campaign.keyMessage || objectiveLine || 'Here\'s what it means for our customers.'}\n\nFull press release in the comments. 👇`,
+    media_email_blurb: `Subject: ${headline}\n\nHi [Name],\n\nSharing today's announcement from ${state.company}: ${objectiveLine || headline}. Full release attached — happy to arrange an interview or additional comment if useful for your coverage.\n\nBest,\n[Name]`
   };
   renderProjectDetail();
 }
 
 function generateSocialBatchMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine } = sharedContextClause();
   project.fields = {
-    hook: `${campaign.keyMessage || campaign.objective} — ${toneClause}.`,
-    body: `${campaign.objective}. ${campaign.segment ? `Made for ${campaign.segment}.` : ''} Here's what's new, and why it matters right now.`,
+    hook: `${campaign.keyMessage || objectiveLine || 'Something new'} — ${toneClause}.`,
+    body: `${objectiveLine || 'Here\'s what\'s new.'} ${campaign.segment ? `Made for ${campaign.segment}.` : ''} Here's what's new, and why it matters right now.`,
     cta: 'Learn more → [link]',
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('social-batch', project.fields);
   // Round 29 — same "explain the choices" treatment as the press release
-  // generator (see cxmedia-ux-audit-round28.md).
-  const rationaleParts = [`Why this draft: the hook line leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}"), since no Key Message was entered`}`];
+  // generator (see cxmedia-ux-audit-round28.md). 2026-08-22 — the rationale
+  // panel is internal "why this draft" commentary, not distributed copy, so
+  // naming the raw Objective here (unlike in the fields above) stays honest
+  // and useful — it's explaining reasoning to a human reviewer, not printing
+  // a field label as if it were prose.
+  const rationaleParts = [`Why this draft: the hook line leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}`];
   if (campaign.segment) rationaleParts.push(`"Made for ${campaign.segment}" reflects this campaign's Segment field directly`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31299,16 +31546,19 @@ function generateSocialBatchDerivatives(){
 // cascade per the architecture doc's Section 4.
 function generateEmailSequenceMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, objectiveShort } = sharedContextClause();
   project.fields = {
-    subjectLine: campaign.keyMessage || campaign.objective,
+    subjectLine: campaign.keyMessage || objectiveShort || 'An update for you',
     preheader: campaign.segment ? `Built for ${campaign.segment}` : '',
-    body: `Written ${toneClause}. ${campaign.objective}. ${campaign.keyMessage ? campaign.keyMessage + ' ' : ''}${campaign.segment ? `This is for you, ${campaign.segment}.` : ''} Here's what's changing, and why it matters right now.`,
+    body: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.keyMessage ? campaign.keyMessage + ' ' : ''}${campaign.segment ? `This is for you, ${campaign.segment}.` : ''} Here's what's changing, and why it matters right now.`,
     cta: 'Get started → [link]',
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('email-sequence', project.fields);
-  const rationaleParts = [`Why this draft: the subject line and body lead with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}"), since no Key Message was entered`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
+  // 2026-08-22 — same distinction as generateSocialBatchMaster() above: the
+  // rationale panel is internal reviewer commentary, not distributed copy,
+  // so naming the raw Objective here stays fine on purpose.
+  const rationaleParts = [`Why this draft: the subject line and body lead with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
   if (campaign.segment) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field ("${campaign.segment}") directly`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31317,31 +31567,42 @@ function generateEmailSequenceMaster(){
 
 function generateEmailSequenceDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
+  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
   const arc = (project.fields && project.fields.body) || project.masterContent;
-  const subject = (project.fields && project.fields.subjectLine) || campaign.objective;
+  const subject = (project.fields && project.fields.subjectLine) || objectiveShort || 'An update for you';
+  // 2026-08-22 fix — these three follow-up emails used to splice the raw
+  // internal Objective label into sentence fragments that only ever made
+  // grammatical sense for a couple of the five actual values (e.g. "the
+  // kind of reaction brand awareness has been getting" reads as nonsense —
+  // Objective is a category name, not a reaction). Now built from
+  // objectiveLine, a real finished sentence from the same CAMPAIGN_OBJECTIVE_COPY
+  // table Brand Messaging already uses, instead of gluing the raw label
+  // into a fragment.
+  const email3ReactionLine = objectiveLine || 'People are responding well.';
   project.derivatives = {
-    email2: `Subject: Still thinking about it?\n\nHi [First Name],\n\nA quick follow-up on "${subject}" — ${campaign.keyMessage || campaign.objective}. If you haven't had a chance to look yet, here's the short version.\n\nGet started → [link]`,
-    email3: `Subject: Here's what people are saying\n\nHi [First Name],\n\n"${campaign.keyMessage || 'This made a real difference for us.'}" — that's the kind of reaction ${campaign.objective.toLowerCase()} has been getting. ${campaign.segment ? `Especially for ${campaign.segment}.` : ''}\n\nSee for yourself → [link]`,
-    email4: `Subject: Last call\n\nHi [First Name],\n\nThis is the last note in this sequence about ${campaign.objective.toLowerCase()} — no pressure, just making sure it didn't get lost in your inbox.\n\n${arc.slice(0, 140)}${arc.length > 140 ? '...' : ''}\n\nTake a look → [link]`
+    email2: `Subject: Still thinking about it?\n\nHi [First Name],\n\nA quick follow-up on "${subject}" — ${campaign.keyMessage || objectiveLine || 'here\'s the short version.'} If you haven't had a chance to look yet, here's the short version.\n\nGet started → [link]`,
+    email3: `Subject: Here's what people are saying\n\nHi [First Name],\n\n"${campaign.keyMessage || 'This made a real difference for us.'}" — ${email3ReactionLine} ${campaign.segment ? `Especially for ${campaign.segment}.` : ''}\n\nSee for yourself → [link]`,
+    email4: `Subject: Last call\n\nHi [First Name],\n\nThis is the last note in this sequence — ${objectiveShort ? objectiveShort.charAt(0).toLowerCase() + objectiveShort.slice(1) : 'no pressure, just making sure it didn\'t get lost in your inbox.'}\n\n${arc.slice(0, 140)}${arc.length > 140 ? '...' : ''}\n\nTake a look → [link]`
   };
   renderProjectDetail();
 }
 
 function generateLandingPageMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, objectiveLine, objectiveShort } = sharedContextClause();
   project.fields = {
-    heroHeadline: campaign.keyMessage || campaign.objective,
+    heroHeadline: campaign.keyMessage || objectiveShort || `${state.company} — a step forward`,
     heroSubhead: campaign.segment ? `Built for ${campaign.segment}` : 'A step forward for the brand',
-    benefits: `Written ${toneClause}. ${campaign.objective}. ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.`,
+    benefits: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.`,
     proofPoint: campaign.keyMessage || 'This made a real difference for us.',
     proofAttribution: 'a customer',
     cta: 'Get started → [link]',
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
   project.masterContent = composeMasterFromFields('landing-page', project.fields);
-  const rationaleParts = [`Why this draft: the hero headline leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}")`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
+  // 2026-08-22 — same distinction as the other two generators above: the
+  // rationale panel is internal reviewer commentary, not distributed copy.
+  const rationaleParts = [`Why this draft: the hero headline leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `a short line built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
   if (campaign.segment) rationaleParts.push(`the subhead reflects this campaign's Segment field ("${campaign.segment}") directly`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31350,11 +31611,11 @@ function generateLandingPageMaster(){
 
 function generateLandingPageDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
-  const headline = (project.fields && project.fields.heroHeadline) || campaign.objective;
+  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
+  const headline = (project.fields && project.fields.heroHeadline) || objectiveShort || `${state.company} — a step forward`;
   const subhead = (project.fields && project.fields.heroSubhead) || '';
   project.derivatives = {
-    metaTitleDescription: `Title: ${headline} | ${state.company}\nDescription: ${subhead} ${campaign.keyMessage || campaign.objective}.`.slice(0, 300),
+    metaTitleDescription: `Title: ${headline} | ${state.company}\nDescription: ${subhead} ${campaign.keyMessage || objectiveLine || 'Learn more.'}`.slice(0, 300),
     adClickThrough: `${headline}${subhead ? ' — ' + subhead : ''}. ${campaign.keyMessage || 'Learn more.'} →`
   };
   renderProjectDetail();
@@ -31388,12 +31649,19 @@ function generateInternalCommsMaster(){
 
 function generateInternalCommsDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign } = sharedContextClause();
-  const headline = (project.fields && project.fields.headline) || campaign.objective;
+  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
+  const headline = (project.fields && project.fields.headline) || objectiveShort || `${state.company} update`;
   const whatsLaunching = (project.fields && project.fields.whatsLaunching) || project.masterContent;
+  // 2026-08-22 — "- What: {Objective}" stays the raw label on purpose (a
+  // real internal briefing bullet naming the campaign's category — "What:
+  // Brand Awareness" — is legitimate shorthand, not a leak into distributed
+  // copy). "What to say if asked" is different: that's a scripted answer a
+  // team member is meant to read or paraphrase out loud, so it gets the
+  // same real-sentence fix as every other consumer/spoken-facing line —
+  // literally reading "Brand Awareness" as an answer sounds robotic.
   project.derivatives = {
     slackVersion: `📣 ${headline}\n${whatsLaunching}\nQuestions? Reply in-thread or ping [Owner].`,
-    talkingPoints: `- What: ${campaign.objective}\n- Why now: ${campaign.keyMessage || 'supports this account\'s current priorities'}\n${campaign.segment ? `- Who it's for: ${campaign.segment}\n` : ''}- What to say if asked: "${campaign.keyMessage || campaign.objective}"\n- Who to escalate questions to: [Owner]`
+    talkingPoints: `- What: ${campaign.objective}\n- Why now: ${campaign.keyMessage || 'supports this account\'s current priorities'}\n${campaign.segment ? `- Who it's for: ${campaign.segment}\n` : ''}- What to say if asked: "${campaign.keyMessage || objectiveLine || 'Ask [Owner] for the current talking points.'}"\n- Who to escalate questions to: [Owner]`
   };
   renderProjectDetail();
 }
@@ -32604,8 +32872,21 @@ function renderTeamRosterView(){
 // (Primary KPI), the real structural signal the 4-source Atlas Ocean
 // Voyages benchmark review surfaced as consistently present in strong
 // copy and never checkable here before.
-function validateOutputAgainstObjective(project, campaign){
-  const draft = (project.masterContent || '');
+// 2026-08-22 -- pulled the 4 content-shape checks (everything except Brand
+// Voice, which is a global account-level fact, not something a specific
+// piece of text can pass or fail on its own) out of validateOutputAgainstObjective()
+// into this shared helper so the exact same real logic -- not a re-description
+// of it -- can run against derivative text too (see validateDerivativesAgainstObjective()
+// below), closing the gap named explicitly at the end of the Press Release/
+// Internal Comms round: this validator used to only ever look at
+// project.masterContent, so a raw Objective/Segment label leak (or a CTA
+// that didn't match Primary KPI) reaching a distributed derivative --
+// a social caption, an email subject line -- was invisible here even after
+// the generators themselves got fixed to stop causing it. This is a real
+// feature addition (new checks running somewhere they never ran before),
+// not a fix to existing behavior.
+function buildContentChecks(text, campaign){
+  const draft = (text || '');
   const draftLower = draft.toLowerCase();
   const checks = [];
 
@@ -32617,12 +32898,34 @@ function validateOutputAgainstObjective(project, campaign){
       : `This campaign has no Objective set — nothing to check against.`
   });
 
+  // 2026-08-22 — honors the new Key Message mode selector (#cmpKeyMessageMode,
+  // campaign.keyMessageMode): 'exact' (default, unchanged behavior below) is
+  // real human-authored copy that genuinely belongs verbatim, so this stays
+  // a literal match. 'descriptive' is a directional brief the AI Copywriter
+  // is instructed to paraphrase, not quote (see the keyMessageMode branch in
+  // generateMessagingCopyViaAI()/generateInterviewCandidateCopy(), server.js)
+  // — a literal-match check would be actively wrong there, since a good
+  // paraphrase is supposed to fail it. This check instead falls back to a
+  // keyword-overlap look (same stopword-filtered approach scoreDraftHeuristically()
+  // in server.js already uses), which is honestly a coverage heuristic, not
+  // a real "captures the intent" judgment.
+  const keyMessageIsDescriptive = campaign.keyMessageMode === 'descriptive';
+  let keyMessagePass = !campaign.keyMessage || draft.includes(campaign.keyMessage);
+  let keyMessageDetail = campaign.keyMessage
+    ? `Looking for the exact Key Message text ("${campaign.keyMessage}") in the draft — this one stays a literal match on purpose: Key Message is real, human-authored copy (not an internal field label), so it genuinely belongs verbatim. A paraphrase won't match this check even if it's a faithful one, so treat a fail here as a prompt to re-read the draft, not an automatic problem.`
+    : `No Key Message was entered on this campaign, so this check is automatically satisfied.`;
+  if (keyMessageIsDescriptive && campaign.keyMessage){
+    const kmTerms = [...new Set(campaign.keyMessage.toLowerCase().match(/[a-z0-9']+/g) || [])].filter(w => w.length >= 4);
+    const matched = kmTerms.filter(w => draftLower.includes(w));
+    keyMessagePass = kmTerms.length === 0 || matched.length >= Math.ceil(kmTerms.length * 0.4);
+    keyMessageDetail = kmTerms.length
+      ? `Key Message is set to Descriptive mode — not checking for the brief's exact wording (a good paraphrase should NOT match verbatim). Instead checking that the draft covers at least some of the brief's own real words: matches ${matched.length} of ${kmTerms.length} (${matched.slice(0, 6).join(', ') || 'none'}${matched.length > 6 ? '…' : ''}). This is a keyword-coverage heuristic, not a real judgment of whether the draft actually captures the brief's intent — read the draft yourself either way.`
+      : `Key Message is set to Descriptive mode, but has no words long enough to check coverage against — this check is automatically satisfied.`;
+  }
   checks.push({
-    label: 'Key Message reflected',
-    pass: !campaign.keyMessage || draft.includes(campaign.keyMessage),
-    detail: campaign.keyMessage
-      ? `Looking for the exact Key Message text ("${campaign.keyMessage}") in the draft — this one stays a literal match on purpose: Key Message is real, human-authored copy (not an internal field label), so it genuinely belongs verbatim. A paraphrase won't match this check even if it's a faithful one, so treat a fail here as a prompt to re-read the draft, not an automatic problem.`
-      : `No Key Message was entered on this campaign, so this check is automatically satisfied.`
+    label: keyMessageIsDescriptive ? 'Key Message brief covered (descriptive mode)' : 'Key Message reflected',
+    pass: keyMessagePass,
+    detail: keyMessageDetail
   });
 
   checks.push({
@@ -32656,6 +32959,12 @@ function validateOutputAgainstObjective(project, campaign){
         : (campaign.primaryKpi ? `Primary KPI "${campaign.primaryKpi}" isn't in the curated PRIMARY_KPI_ANGLE map yet, so this check is automatically satisfied.` : `No Primary KPI set on Lifecycle Stage & Goals yet — set one so the call to action can be checked against what this campaign is actually optimizing for.`))
   });
 
+  return checks;
+}
+
+function validateOutputAgainstObjective(project, campaign){
+  const checks = buildContentChecks(project.masterContent || '', campaign);
+
   checks.push({
     label: 'Brand Voice approved before this draft',
     pass: !!state.voice.approved,
@@ -32666,6 +32975,37 @@ function validateOutputAgainstObjective(project, campaign){
 
   const passCount = checks.filter(c => c.pass).length;
   return { checks, passCount, total: checks.length, allPass: passCount === checks.length };
+}
+
+// 2026-08-22 -- new. Runs the same 4 content checks buildContentChecks()
+// gives the master, once per derivative field, so a leak or CTA/KPI
+// mismatch that only shows up in (say) the LinkedIn post or Email 3 -- not
+// the master it was generated from -- is finally visible somewhere. Brand
+// Voice approval is deliberately not repeated per-derivative: it's one
+// account-level fact, not something each derivative can independently pass
+// or fail, and repeating it 3-4x per project would just be noise.
+// Master-only project types (One-Pager, Analytics Brief -- derivFn: null)
+// have no project.derivatives at all, so this returns null for them, same
+// as the "no derivatives to validate" case for any project that hasn't
+// generated its derivatives yet.
+function validateDerivativesAgainstObjective(project, campaign){
+  if (!project.derivatives) return null;
+  const pt = PROJECT_TYPES.find(t => t.key === project.projectType);
+  const results = Object.entries(project.derivatives).map(([key, text]) => {
+    const checks = buildContentChecks(text || '', campaign);
+    const passCount = checks.filter(c => c.pass).length;
+    return {
+      key,
+      label: (pt && pt.derivativeLabels && pt.derivativeLabels[key]) || key,
+      checks,
+      passCount,
+      total: checks.length,
+      allPass: passCount === checks.length
+    };
+  });
+  const totalChecks = results.reduce((sum, r) => sum + r.total, 0);
+  const totalPass = results.reduce((sum, r) => sum + r.passCount, 0);
+  return { results, totalChecks, totalPass, allPass: results.every(r => r.allPass) };
 }
 
 
@@ -32685,6 +33025,40 @@ function renderValidationPanel(){
       <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
         <span style="flex-shrink:0;">${c.pass ? '✓' : '✕'}</span>
         <span><strong>${c.label}</strong><br><span class="hint" style="display:inline;">${c.detail}</span></span>
+      </div>
+    `).join('')}
+  `;
+}
+
+// 2026-08-22 -- new. Same rendering pattern as renderValidationPanel() above,
+// one collapsible block per derivative field instead of one flat list, since
+// this can be 2-4 separate pieces of copy at once and a flat merged list
+// would make it hard to tell which derivative a failing check belongs to.
+function renderDerivativesValidationPanel(){
+  const project = findProject(currentCampaignId, currentProjectId);
+  const campaign = findCampaign(currentCampaignId);
+  const panel = document.getElementById('derivativesValidationPanel');
+  if (!panel || !project || !campaign) return;
+  if (!project.derivatives){
+    panel.innerHTML = `<p class="hint">Generate the derivatives above first — there's nothing to validate yet.</p>`;
+    return;
+  }
+  const result = validateDerivativesAgainstObjective(project, campaign);
+  if (!result || !result.results.length){
+    panel.innerHTML = `<p class="hint">No derivative fields to validate for this project type.</p>`;
+    return;
+  }
+  panel.innerHTML = `
+    <p class="hint" style="margin-bottom:10px;">${result.totalPass} of ${result.totalChecks} checks passed across ${result.results.length} derivative${result.results.length === 1 ? '' : 's'}.</p>
+    ${result.results.map(r => `
+      <div style="margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:6px;">
+        <div style="font-weight:600;margin-bottom:6px;">${r.allPass ? '✓' : '✕'} ${r.label} <span class="hint" style="font-weight:400;">(${r.passCount}/${r.total})</span></div>
+        ${r.checks.map(c => `
+          <div style="display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--line);">
+            <span style="flex-shrink:0;">${c.pass ? '✓' : '✕'}</span>
+            <span><strong>${c.label}</strong><br><span class="hint" style="display:inline;">${c.detail}</span></span>
+          </div>
+        `).join('')}
       </div>
     `).join('')}
   `;
@@ -32753,10 +33127,29 @@ function requestQa(){
     ? `${reviewer.name} (${reviewer.level}, ${functionLabel(reviewer.functionGroup)}) flags ${failing.length} of ${result.total} checks: ${failing.map(c => c.label).join(', ')}.`
     : `${reviewer.name} (${reviewer.level}, ${functionLabel(reviewer.functionGroup)}) finds all ${result.total} checks pass.`;
   const framing = qaReviewFraming(reviewer.level);
+
+  // 2026-08-22 -- follow-up to the derivative-level validation panel: a
+  // reviewer looking only at validateOutputAgainstObjective()'s master-level
+  // result could sign off on a project whose derivatives still leak a label
+  // or drift from Primary KPI, since those findings never reached this
+  // simulated QA comment before. Reuses validateDerivativesAgainstObjective()
+  // (same real checks, not a new judgment) and folds a second sentence into
+  // the same reviewer comment when derivatives exist and have been generated
+  // -- silent (not "0 issues" noise) when there's nothing to say, i.e. no
+  // derivatives generated yet, or this is a master-only project type.
+  const derivResult = validateDerivativesAgainstObjective(project, campaign);
+  let derivSentence = '';
+  if (derivResult && derivResult.results.length){
+    const failingDerivs = derivResult.results.filter(r => !r.allPass);
+    derivSentence = failingDerivs.length
+      ? ` On the derivatives: ${failingDerivs.length} of ${derivResult.results.length} have issues — ${failingDerivs.map(r => `${r.label} (${r.checks.filter(c => !c.pass).map(c => c.label).join(', ')})`).join('; ')}.`
+      : ` All ${derivResult.results.length} derivatives also pass.`;
+  }
+
   outputEl.innerHTML = `
     <div class="cascade-note">
-      <strong>Simulated QA review from ${reviewer.name}:</strong> ${opening} Reviewing ${framing}. ${failing.length ? `Suggested next step: revisit ${failing.map(c => `"${c.label}"`).join(' and ')} before this goes out.` : `No changes requested — ready to move forward.`}
-      <br><span class="hint" style="display:inline;">Templated, not a real review from ${reviewer.name} — this reuses the same validation checks above, framed at ${reviewer.level} level. No notification was actually sent (no email/Slack integration in this build).</span>
+      <strong>Simulated QA review from ${reviewer.name}:</strong> ${opening}${derivSentence} Reviewing ${framing}. ${failing.length ? `Suggested next step: revisit ${failing.map(c => `"${c.label}"`).join(' and ')} before this goes out.` : `No changes requested — ready to move forward.`}
+      <br><span class="hint" style="display:inline;">Templated, not a real review from ${reviewer.name} — this reuses the same validation checks above (master and, where generated, derivatives), framed at ${reviewer.level} level. No notification was actually sent (no email/Slack integration in this build).</span>
     </div>
   `;
 }
@@ -34295,6 +34688,14 @@ function cmpPersistMessagingToCampaign(){
   c.messageType = document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '';
   c.mandatoryPhrase = document.getElementById('cmpMandatoryPhrase') ? document.getElementById('cmpMandatoryPhrase').value.trim() : '';
   c.longformStyle = document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling';
+  // 2026-08-22 — c.roleStyle/c.keyMessageMode are the two fields that
+  // actually reach the backend below (unlike messageType/mandatoryPhrase/
+  // longformStyle above, still local-session-only, no backend column).
+  // roleStyle deliberately mirrors longformStyle's value under the DB
+  // column's name rather than replacing it — see cmpBuildFormPayload()'s
+  // own comment on the same duplication.
+  c.roleStyle = c.longformStyle;
+  c.keyMessageMode = document.getElementById('cmpKeyMessageMode') ? document.getElementById('cmpKeyMessageMode').value : 'exact';
   c.channelCopyVersions = computeChannelCopyVersions();
   c.creativeBrief = generateCreativeBrief();
   if (!c.localOnly && dataSourceLabel === 'backend'){
@@ -34303,7 +34704,8 @@ function cmpPersistMessagingToCampaign(){
       body: JSON.stringify({
         keyMessage: c.keyMessage, brandToneNotes: c.brandToneNotes,
         longformCopy: c.longformCopy, creativeBrief: c.creativeBrief,
-        channelCopyVersionsJson: JSON.stringify(c.channelCopyVersions)
+        channelCopyVersionsJson: JSON.stringify(c.channelCopyVersions),
+        roleStyle: c.roleStyle, keyMessageMode: c.keyMessageMode
       })
     }).catch(e => console.warn('cmpPersistMessagingToCampaign: backend write failed, kept locally only.', e));
   }
