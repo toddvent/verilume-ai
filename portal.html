@@ -5808,6 +5808,7 @@
                        Phrase's own hint below is reworded to open by
                        contrasting itself against this field by name. -->
                   <p class="hint" style="margin:0 0 8px;">Free-form direction for the AI Copywriter — it may paraphrase this. For text that must appear word-for-word, use Mandatory Phrase below instead, not this field.</p>
+                  <div id="cmpKeyMessageSmartDefault" style="margin-bottom:8px;"></div>
                   <textarea id="cmpKeyMessage" maxlength="500" rows="3" placeholder="e.g. Fresh, local, fast — the short version. Full long-form messaging comes later in the flow." oninput="updateKeyMessageCounter();cmpKeyMessageOrBriefEdited();"></textarea>
                   <div class="char-counter" id="cmpKeyMessageCounter">0 / 500</div>
                   <!-- Round 132ad (2026-08-11), per direct decision: keep Key
@@ -6876,6 +6877,7 @@
         <p class="lede" style="margin:0 0 12px;">Once the recommended mix above (or the programmatic allocation) is validated, set the audience target this campaign is actually going after — Omni-Channel Creative reads this same value so creative production stays pointed at the right audience.</p>
         <div class="field">
           <label for="campaignAudienceTargets">Audience targets <span class="ai-thought-mount" data-topic="G"></span></label>
+          <div id="campaignAudienceTargetsSmartDefault" style="margin-bottom:8px;"></div>
           <textarea id="campaignAudienceTargets" rows="3" placeholder="Who this campaign's buys/allocations are actually targeting — e.g. segments, personas, geos, lookalikes..."></textarea>
         </div>
         <div class="btn-row" style="margin-top:0;">
@@ -26119,6 +26121,64 @@ function startNewCampaign(){
   resetCampaignForm();
   goToStep('campaigns');
   openCmpStage('creation');
+  loadCampaignSmartDefaults();
+}
+
+// 2026-08-22 — confidence-gated intake (roadmap item 3: "the fun, not
+// intimidating engine"). Deliberately NOT auto-filled — a wrong silent
+// guess sitting in a field is worse than an honest blank one, and this form
+// already has enough cascading auto-behaviors tied to Key Message
+// (cmpKeyMessageOrBriefEdited() etc.) that quietly writing into it on load
+// risks surprising side effects. Instead this offers a one-click "use
+// this" suggestion banner — the client still makes the deliberate choice,
+// but doesn't have to re-type what Verilume already knows about their
+// brand from a prior campaign. On a genuinely first-ever campaign for this
+// account it renders nothing — there is nothing to suggest yet, and a
+// fabricated suggestion would be worse than silence.
+async function loadCampaignSmartDefaults(){
+  const kmHolder = document.getElementById('cmpKeyMessageSmartDefault');
+  const atHolder = document.getElementById('campaignAudienceTargetsSmartDefault');
+  if (kmHolder) kmHolder.innerHTML = '';
+  if (atHolder) atHolder.innerHTML = '';
+  if (!state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-smart-defaults`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.confident) return;
+    const s = data.suggestions || {};
+    const sourceName = escapeHtml(data.source ? data.source.name : 'a prior campaign');
+    if (kmHolder && s.keyMessage){
+      kmHolder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+        Already know your brand from <b>${sourceName}</b>: "${escapeHtml(s.keyMessage.slice(0, 140))}${s.keyMessage.length > 140 ? '…' : ''}"
+        <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyCampaignSmartDefault('keyMessage')">Use this →</button>
+      </div>`;
+    }
+    if (atHolder && s.audienceTargets){
+      atHolder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+        Already know your audience from <b>${sourceName}</b>: "${escapeHtml(s.audienceTargets.slice(0, 140))}${s.audienceTargets.length > 140 ? '…' : ''}"
+        <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyCampaignSmartDefault('audienceTargets')">Use this →</button>
+      </div>`;
+    }
+    window._cmpSmartDefaults = s;
+  } catch (e){
+    // A missed suggestion is a non-event, not an error worth surfacing —
+    // the form is exactly as usable as it would've been without this call.
+  }
+}
+function applyCampaignSmartDefault(field){
+  const s = window._cmpSmartDefaults || {};
+  if (field === 'keyMessage'){
+    const el = document.getElementById('cmpKeyMessage');
+    if (el && s.keyMessage){ el.value = s.keyMessage; updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
+    const holder = document.getElementById('cmpKeyMessageSmartDefault');
+    if (holder) holder.innerHTML = '';
+  } else if (field === 'audienceTargets'){
+    const el = document.getElementById('campaignAudienceTargets');
+    if (el && s.audienceTargets){ el.value = s.audienceTargets; }
+    const holder = document.getElementById('campaignAudienceTargetsSmartDefault');
+    if (holder) holder.innerHTML = '';
+  }
 }
 
 function startCampaignFromCell(stage, layer){
