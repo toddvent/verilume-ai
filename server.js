@@ -4846,6 +4846,41 @@ function requireAccount(req, res, accountId){
   return true;
 }
 
+// 2026-08-22 — closes a real, previously-flagged privilege-escalation gap
+// (see the Registration & Account Management product doc's "Known gaps"
+// section, deliberately left open at Todd's direction "for now" to make
+// demoing easier, then explicitly asked to be fixed this round): every
+// team-member endpoint before this only ever called requireAccount() —
+// which proves the caller has a valid session for THIS account, but never
+// checks whether that specific person is an admin. Any logged-in team
+// member could self-promote to admin, demote/edit the real admin, invite
+// a new admin, or reissue the admin's own login credentials.
+//
+// A session with memberId === null is the legacy account-level
+// access-code login (see sessions.memberId's own ensureColumn comment
+// above) — it predates the whole team_members/isAdmin system entirely and
+// represents the account's own root access, so it's always treated as
+// admin-equivalent here, same as requireAccount() already treats it as
+// fully authorized for everything else. A session with a real memberId is
+// checked against team_members.isAdmin directly from the database (never
+// trusted from the session/JWT itself, matching GET /api/auth/me's own
+// existing "re-read isAdmin on every call" discipline) — so a revoked
+// admin flag takes effect immediately, not just at next login.
+function requireAdminMember(req, res, accountId){
+  const session = authenticate(req);
+  if (!session || session.accountId !== accountId){
+    sendJson(res, 401, { error: 'unauthorized — a valid session token for this account is required' });
+    return false;
+  }
+  if (!session.memberId) return true; // legacy account-level login — root access, same as requireAccount()
+  const member = db.prepare('SELECT isAdmin FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId);
+  if (!member || !member.isAdmin){
+    sendJson(res, 403, { error: 'admin access required for this action' });
+    return false;
+  }
+  return true;
+}
+
 // Round 132bf (2026-08-13) — plain regex HTML text extraction for the real
 // website-scan endpoint below. No headless browser / JS execution, so a
 // single-page app that renders its real content client-side may come back
@@ -8753,6 +8788,17 @@ async function handleRequest(req, res) {
         // keyMessageMode already had closed.
         messageType: body.messageType !== undefined ? body.messageType : existing.messageType,
         mandatoryPhrase: body.mandatoryPhrase !== undefined ? body.mandatoryPhrase : existing.mandatoryPhrase,
+        // 2026-08-22 — startDate/endDate previously had NO update path at
+        // all (set once at creation only, same original gap keyMessage had
+        // before round 65 closed it). Discovered while building the
+        // campaignType feature — Urgency Offer requires endDate and
+        // Product Launch requires startDate as real completeness
+        // requirements, and a campaign's dates are very often only
+        // finalized after creation, not known up front. Closing the same
+        // gap the same way every other previously-creation-only field in
+        // this endpoint already was.
+        startDate: body.startDate !== undefined ? body.startDate : existing.startDate,
+        endDate: body.endDate !== undefined ? body.endDate : existing.endDate,
         // 2026-08-22 — campaignType/campaignTypeDetailsJson, same
         // merge-update convention as every field above. detailsJson
         // validated as real JSON before storing (client-supplied blob).
@@ -8769,8 +8815,8 @@ async function handleRequest(req, res) {
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, campaignType = ?, campaignTypeDetailsJson = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.campaignType, merged.campaignTypeDetailsJson, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, campaignId);
       // Round 55 — same merge-update convention: only touch draws when the
       // caller actually sent an allocationDraws array, and replace them
       // wholesale (delete + reinsert) rather than trying to diff rows, same
@@ -11752,6 +11798,11 @@ async function handleRequest(req, res) {
       if (!body.name || !body.level || !body.functionGroup){
         return sendJson(res, 400, { error: 'name, level, and functionGroup are required' });
       }
+      // 2026-08-22 — closes the "invite new admins with isAdmin:1" gap.
+      // Inviting a regular team member stays open to any authenticated
+      // team member (unchanged); only granting isAdmin on the new invite
+      // itself requires the requester to already be an admin.
+      if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
       if (body.email){
         const emailTaken = db.prepare('SELECT id FROM team_members WHERE lower(email) = lower(?)').get(body.email);
@@ -11791,7 +11842,15 @@ async function handleRequest(req, res) {
       const memberId = decodeURIComponent(parts[2]);
       const existing = db.prepare('SELECT id, accountId, email FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
-      if (!requireAccount(req, res, existing.accountId)) return;
+      // 2026-08-22 — this is an admin recovery path by design (see this
+      // endpoint's own opening comment: "admin recovery path for a team
+      // member's one-time-shown temp password"), but had no actual admin
+      // check — any logged-in team member could reissue login credentials
+      // for ANY other member, including the account's real admin, and see
+      // the new tempPassword in the response. That's a full account
+      // takeover path. Now gated the same way the endpoint's own
+      // documentation always described it as working.
+      if (!requireAdminMember(req, res, existing.accountId)) return;
       if (!existing.email){
         return sendJson(res, 400, { error: 'this team member has no email on file — add one (edit the member) before issuing login credentials' });
       }
@@ -11812,7 +11871,7 @@ async function handleRequest(req, res) {
     // endpoint without stepping on fields the other didn't send.
     if (req.method === 'PATCH' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'team'){
       const memberId = decodeURIComponent(parts[2]);
-      const existing = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
+      const existing = db.prepare('SELECT id, accountId, isAdmin FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       if (!requireAccount(req, res, existing.accountId)) return;
       const body = await readBody(req);
@@ -11822,8 +11881,22 @@ async function handleRequest(req, res) {
           db.prepare(`UPDATE team_members SET ${field} = ? WHERE id = ?`).run(body[field] || null, memberId);
         }
       });
-      if (body.isAdmin !== undefined){
-        db.prepare('UPDATE team_members SET isAdmin = ? WHERE id = ?').run(body.isAdmin ? 1 : 0, memberId);
+      // 2026-08-22 — closes the "self-promote to admin / demote the real
+      // admin" gap: changing isAdmin in EITHER direction now requires the
+      // requester to already be an admin themselves. Every other field on
+      // this endpoint stays open to any team member editing their own or a
+      // peer's roster info, unchanged. Deliberately gated on the value
+      // ACTUALLY CHANGING, not just being present in the body —
+      // portal.html's edit form always sends isAdmin as part of every save
+      // (it round-trips the member's current value along with whatever the
+      // form editor actually changed), so gating on mere presence would
+      // have broken every non-admin's ability to edit their own name/
+      // email/level, not just admin escalation. No-op writes (sending the
+      // same value that's already stored) never require admin.
+      const requestedIsAdmin = body.isAdmin !== undefined ? (body.isAdmin ? 1 : 0) : null;
+      if (requestedIsAdmin !== null && requestedIsAdmin !== (existing.isAdmin ? 1 : 0)){
+        if (!requireAdminMember(req, res, existing.accountId)) return;
+        db.prepare('UPDATE team_members SET isAdmin = ? WHERE id = ?').run(requestedIsAdmin, memberId);
       }
       return sendJson(res, 200, { updated: true });
     }
@@ -11833,11 +11906,13 @@ async function handleRequest(req, res) {
     // row rather than being silently reassigned — the front end's manager/
     // skip-level resolution already handles a dangling reference by treating
     // it as "no manager on file," the same as if reportsToId were null.
+    // 2026-08-22 — now requires admin: previously any team member could
+    // delete any other member, including the account's real admin.
     if (req.method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'team'){
       const memberId = decodeURIComponent(parts[2]);
       const existing = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
-      if (!requireAccount(req, res, existing.accountId)) return;
+      if (!requireAdminMember(req, res, existing.accountId)) return;
       db.prepare('DELETE FROM team_members WHERE id = ?').run(memberId);
       return sendJson(res, 200, { deleted: true });
     }
