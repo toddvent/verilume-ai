@@ -5945,6 +5945,7 @@
                       <option value="exact">Exact — real copy, should read close to verbatim in the draft</option>
                       <option value="descriptive">Descriptive — a directional brief; the AI Copywriter should paraphrase it, not quote it</option>
                     </select>
+                    <div id="cmpKeyMessageModeSmartDefault"></div>
                   </div>
                   <!-- Round 132ad (2026-08-11), per direct decision: keep Key
                        Message free-form, but add two intent signals for the
@@ -5972,6 +5973,7 @@
                       <option value="Brand Campaign">Brand Campaign — warm, offer stays secondary</option>
                       <option value="Launch">Launch — newness-forward, first-to-know framing</option>
                     </select>
+                    <div id="cmpMessageTypeSmartDefault"></div>
                   </div>
                   <div class="msg-subfield">
                     <label for="cmpMandatoryPhrase">Mandatory phrase (optional) — NOT the same as Key Message above: this exact wording must appear verbatim, word-for-word, never paraphrased — e.g. "50% Off. Promotion Expires July 31."</label>
@@ -6026,6 +6028,7 @@
                       <option value="Nostalgic Return">Nostalgic return — memory before the ask, for past guests</option>
                       <option value="Discovery">Discovery — explains what's different, for new-to-brand</option>
                     </select>
+                    <div id="cmpRoleStyleSmartDefault"></div>
                   </div>
                   <p class="hint" id="cmpLongFormLockNote">Unlocks once Key Message is written and the Brief Builder context above is filled in — it drafts directly from your Key Message text, Message Type, and the Role/Style approach above.</p>
                   <textarea id="cmpLongFormCopy" rows="14" placeholder="Full-length draft copy for this campaign." oninput="cmpUnapproveMsgField('longform');"></textarea>
@@ -26426,12 +26429,19 @@ async function loadCampaignSmartDefaults(){
   // — so there's no populate-order risk here after all; confirmed before
   // wiring rather than assumed.
   const kpiHolder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  // 2026-08-22, later round — Role/Style, Key Message mode, and Message Type.
+  const roleStyleHolder = document.getElementById('cmpRoleStyleSmartDefault');
+  const kmModeHolder = document.getElementById('cmpKeyMessageModeSmartDefault');
+  const msgTypeHolder = document.getElementById('cmpMessageTypeSmartDefault');
   if (kmHolder) kmHolder.innerHTML = '';
   if (atHolder) atHolder.innerHTML = '';
   if (segHolder) segHolder.innerHTML = '';
   if (stageHolder) stageHolder.innerHTML = '';
   if (chHolder) chHolder.innerHTML = '';
   if (kpiHolder) kpiHolder.innerHTML = '';
+  if (roleStyleHolder) roleStyleHolder.innerHTML = '';
+  if (kmModeHolder) kmModeHolder.innerHTML = '';
+  if (msgTypeHolder) msgTypeHolder.innerHTML = '';
   if (!state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-smart-defaults`);
@@ -26456,6 +26466,13 @@ async function loadCampaignSmartDefaults(){
     renderPrimaryKpiSmartDefault(fields.primaryKpi, kpiHolder);
     renderStageSmartDefault(fields.stage, stageHolder);
     renderChannelsSmartDefault(fields.channels, chHolder);
+    // Role/Style, Key Message mode, and Message Type don't cascade into any
+    // other field the way Stage cascades into Primary KPI, so order among
+    // these 3 (and relative to the fields above) doesn't matter -- each only
+    // ever touches its own <select>.
+    renderSelectSmartDefault('roleStyle', fields.roleStyle, roleStyleHolder);
+    renderSelectSmartDefault('keyMessageMode', fields.keyMessageMode, kmModeHolder);
+    renderSelectSmartDefault('messageType', fields.messageType, msgTypeHolder);
   } catch (e){
     // A missed suggestion is a non-event, not an error worth surfacing —
     // the form is exactly as usable as it would've been without this call.
@@ -26525,6 +26542,90 @@ function clearPrimaryKpiSmartDefault(){
     cmpUpdateKpiGoalBenchmarkHint();
   }
   const holder = document.getElementById('cmpPrimaryKpiSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+
+// 2026-08-22, later round -- Role/Style, Key Message mode, and Message Type
+// join the confidence-gated intake, now that all 3 persist across campaigns
+// (this same round closed that gap for messageType -- see the ensureColumn()
+// comment in backend/server.js). One generic implementation for all 3 rather
+// than copy-pasting the Primary KPI shape three times, since all 3 are
+// plain <select>s with a fixed, known-at-call-time option list -- config is
+// looked up lazily (cmpSelectSmartDefaultConfig()), never at module-load
+// time, specifically so it can call Object.keys(LONGFORM_ROLE_STYLE)/
+// Object.keys(MESSAGE_TYPE_CUE) without a temporal-dead-zone risk (those
+// consts are declared much later in this file; this function is only ever
+// CALLED after the whole script has finished loading, so by then they're
+// safely initialized).
+//
+// Real constraint surfaced rather than papered over: #cmpKeyMessageType has
+// a genuine blank ("Not set") option, so it can use the exact same
+// only-fill-if-blank 'skip' pattern Primary KPI/Stage/Channels already use.
+// #cmpLongformStyle and #cmpKeyMessageMode do NOT have a blank option --
+// they always show a real default (Storytelling / Exact) whether or not a
+// person has actually looked at them, so there's no reliable signal to gate
+// a SILENT auto-fill on the way there is for every other field ("only fill
+// if currently blank"). Auto-overwriting a value that's already showing
+// something, even a default, would break this whole feature's own
+// discipline ("a wrong silent guess is worse than no guess" / never
+// silently overwrite). So these two are deliberately downgraded to
+// suggest-only in the UI even when the backend reports 'skip'-tier
+// confidence -- always a click-to-apply banner, never a silent fill --
+// with copy that explains why, rather than pretending the same mechanism
+// applies cleanly to a field that has no blank state.
+function cmpSelectSmartDefaultConfig(fieldKey){
+  if (fieldKey === 'roleStyle') return {
+    selectId: 'cmpLongformStyle', holderId: 'cmpRoleStyleSmartDefault', label: 'Role/Style',
+    validOptions: Object.keys(LONGFORM_ROLE_STYLE), neverAutoFill: true,
+    onApplied: () => { cmpUnapproveMsgField('longform'); cmpRenderMsgFieldGate('longform'); }
+  };
+  if (fieldKey === 'keyMessageMode') return {
+    selectId: 'cmpKeyMessageMode', holderId: 'cmpKeyMessageModeSmartDefault', label: 'Key Message mode',
+    validOptions: ['exact', 'descriptive'], neverAutoFill: true,
+    onApplied: () => cmpKeyMessageOrBriefEdited()
+  };
+  if (fieldKey === 'messageType') return {
+    selectId: 'cmpKeyMessageType', holderId: 'cmpMessageTypeSmartDefault', label: 'Message Type',
+    validOptions: Object.keys(MESSAGE_TYPE_CUE), neverAutoFill: false,
+    onApplied: () => cmpKeyMessageOrBriefEdited()
+  };
+  return null;
+}
+function renderSelectSmartDefault(fieldKey, fieldData, holder){
+  const cfg = cmpSelectSmartDefaultConfig(fieldKey);
+  if (!holder || !cfg || !fieldData || fieldData.level === 'none') return;
+  if (!cfg.validOptions.includes(fieldData.value)) return; // e.g. a value from an older/retired option set
+  const sel = document.getElementById(cfg.selectId);
+  if (fieldData.level === 'skip' && !cfg.neverAutoFill){
+    if (sel && !sel.value){ sel.value = fieldData.value; cfg.onApplied(); }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same ${cfg.label}, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearSelectSmartDefault('${fieldKey}')">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  const skipButNoBlank = fieldData.level === 'skip' && cfg.neverAutoFill;
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    ${skipButNoBlank ? `Your last ${fieldData.sourceCount} campaigns all used the same ${cfg.label}` : `Already know your ${cfg.label} from <b>${sourceName}</b>`}: "${escapeHtml(fieldData.value)}"${skipButNoBlank ? ' — this field already shows a default, so Verilume asks before changing it rather than filling it in silently' : ''}
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applySelectSmartDefault('${fieldKey}')">Use this →</button>
+  </div>`;
+}
+function applySelectSmartDefault(fieldKey){
+  const cfg = cmpSelectSmartDefaultConfig(fieldKey);
+  const fieldData = (window._cmpSmartDefaults || {})[fieldKey];
+  if (!cfg || !fieldData || !fieldData.value || !cfg.validOptions.includes(fieldData.value)) return;
+  const sel = document.getElementById(cfg.selectId);
+  if (sel){ sel.value = fieldData.value; cfg.onApplied(); }
+  const holder = document.getElementById(cfg.holderId);
+  if (holder) holder.innerHTML = '';
+}
+function clearSelectSmartDefault(fieldKey){
+  const cfg = cmpSelectSmartDefaultConfig(fieldKey);
+  if (!cfg) return;
+  const sel = document.getElementById(cfg.selectId);
+  if (sel){ sel.value = ''; cfg.onApplied(); }
+  const holder = document.getElementById(cfg.holderId);
   if (holder) holder.innerHTML = '';
 }
 // 2026-08-22 — Stage is a single tile pick (selectedStage), not a text
@@ -26828,9 +26929,14 @@ function cmpBuildFormPayload(){
     // too — one record, not a second parallel copy. Round 132ad
     // (2026-08-11) — brandGuidelines (the old campaign-level Do's/Don'ts)
     // removed per direct decision; Do's/Don'ts now come from the account's
-    // Brand Voice avoid-words only. messageType/mandatoryPhrase/
-    // longformStyle are new, local-session-only fields (no backend column
-    // yet, same honest disclosure as briefBuilderExpandedText).
+    // Brand Voice avoid-words only. longformStyle stays local-session-only
+    // (roleStyle below is what actually persists it, under the DB column's
+    // name). messageType/mandatoryPhrase used to be local-session-only too
+    // (no backend column) — as of 2026-08-22 both persist for real, same
+    // gap-closing round that gave them their own ensureColumn()s in
+    // backend/server.js; this payload already sent them under these exact
+    // keys before that, so no change was needed here beyond the backend
+    // actually listening.
     // Round 132ao (2026-08-12) follow-up — brandToneNotes is deliberately
     // NOT included in this payload anymore: the wizard's own Tone Notes
     // field is removed (see cmpEffectiveToneDescriptor()), and this key is
@@ -31570,9 +31676,24 @@ function generatePressReleaseDerivatives(){
 function generateSocialBatchMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
   const { campaign, toneClause, objectiveLine, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
+  // 2026-08-22 — Mandatory Phrase (campaign.mandatoryPhrase, real
+  // human-authored required text like "50% Off. Promotion Expires July
+  // 31." — distinct in kind from Key Message, per round 132ad's own
+  // decision) used to reach only Long Form Copy's `offerLine`
+  // (cmpAssembleLongFormCopy()). It never reached Social Batch/Email
+  // Sequence/Landing Page at all, even though it's exactly the kind of
+  // required text a real distributed post/email/page needs to carry.
+  // Placed as its own trailing sentence in `body`, after the emotional/
+  // differentiator content and before the CTA — same ordering discipline
+  // Long Form Copy's offerLine already follows ("held for its own explicit
+  // line... never opening the draft"). Deliberately NOT folded into
+  // `legalDisclaimer` — that's a distinct, user-editable compliance field
+  // with its own reuse library; overwriting it from Mandatory Phrase would
+  // silently clobber a real disclaimer someone typed in.
+  const mandatoryLine = campaign.mandatoryPhrase ? ` ${campaign.mandatoryPhrase}` : '';
   project.fields = {
     hook: `${keyMessageForCopy || objectiveLine || 'Something new'} — ${toneClause}.`,
-    body: `${objectiveLine || 'Here\'s what\'s new.'} ${audienceLine ? `${audienceLine} ` : ''}Here's what's new, and why it matters right now.`,
+    body: `${objectiveLine || 'Here\'s what\'s new.'} ${audienceLine ? `${audienceLine} ` : ''}Here's what's new, and why it matters right now.${mandatoryLine}`,
     cta: `${ctaText || 'Learn more'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
@@ -31585,6 +31706,7 @@ function generateSocialBatchMaster(){
   // a field label as if it were prose.
   const rationaleParts = [`Why this draft: the hook line leads with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a real, finished sentence built from this campaign's Objective — Key Message is set to Descriptive mode, so it informs the draft's direction without being quoted verbatim` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}`];
   if (audienceLine) rationaleParts.push(`the body's audience line reflects this campaign's Segment field through the same three-tier audience logic Long Form Copy uses, not a flat recap of the raw Segment label`);
+  if (mandatoryLine) rationaleParts.push(`the body closes with this campaign's Mandatory Phrase verbatim, before the CTA`);
   rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''} — the same CTA composition Long Form Copy uses, not a generic "learn more"`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31678,10 +31800,15 @@ function generateSocialBatchDerivatives(){
 function generateEmailSequenceMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
   const { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
+  // 2026-08-22 — Mandatory Phrase now reaches Email Sequence too, same
+  // reasoning as generateSocialBatchMaster()'s own comment: its own
+  // trailing sentence in the body, after the emotional content, before the
+  // CTA — never folded into legalDisclaimer, a separate user-editable field.
+  const mandatoryLine = campaign.mandatoryPhrase ? ` ${campaign.mandatoryPhrase}` : '';
   project.fields = {
     subjectLine: keyMessageForCopy || objectiveShort || 'An update for you',
     preheader: audienceLine || '',
-    body: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${keyMessageForCopy ? keyMessageForCopy + ' ' : ''}${audienceLine ? audienceLine + ' ' : ''}Here's what's changing, and why it matters right now.`,
+    body: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${keyMessageForCopy ? keyMessageForCopy + ' ' : ''}${audienceLine ? audienceLine + ' ' : ''}Here's what's changing, and why it matters right now.${mandatoryLine}`,
     cta: `${ctaText || 'Get started'} → [link]`,
     legalDisclaimer: project.fields && project.fields.legalDisclaimer ? project.fields.legalDisclaimer : ''
   };
@@ -31691,6 +31818,7 @@ function generateEmailSequenceMaster(){
   // so naming the raw Objective here stays fine on purpose.
   const rationaleParts = [`Why this draft: the subject line and body lead with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a real, finished sentence built from this campaign's Objective — Key Message is set to Descriptive mode, so it informs direction without being quoted verbatim` : `a real, finished sentence built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
   if (audienceLine) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field through the same three-tier audience logic Long Form Copy uses`);
+  if (mandatoryLine) rationaleParts.push(`the body closes with this campaign's Mandatory Phrase verbatim, before the CTA`);
   rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''}`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31730,10 +31858,15 @@ function generateEmailSequenceDerivatives(){
 function generateLandingPageMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
   const { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText } = sharedContextClause();
+  // 2026-08-22 — Mandatory Phrase now reaches Landing Page too, same
+  // reasoning as generateSocialBatchMaster()'s own comment: appended as its
+  // own trailing sentence in `benefits`, after the objective/stage content,
+  // before the proof point/CTA — never folded into legalDisclaimer.
+  const mandatoryLine = campaign.mandatoryPhrase ? ` ${campaign.mandatoryPhrase}` : '';
   project.fields = {
     heroHeadline: keyMessageForCopy || objectiveShort || `${state.company} — a step forward`,
     heroSubhead: audienceLine || 'A step forward for the brand',
-    benefits: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.`,
+    benefits: `Written ${toneClause}. ${objectiveLine || 'Here\'s what\'s changing.'} ${campaign.stage ? `Positioned at the ${campaign.stage} stage of the customer journey.` : ''} The core benefits: what changes, why it matters, and what to do next.${mandatoryLine}`,
     proofPoint: keyMessageForCopy || 'This made a real difference for us.',
     proofAttribution: 'a customer',
     cta: `${ctaText || 'Get started'} → [link]`,
@@ -31744,6 +31877,7 @@ function generateLandingPageMaster(){
   // rationale panel is internal reviewer commentary, not distributed copy.
   const rationaleParts = [`Why this draft: the hero headline leads with ${keyMessageForCopy ? `this campaign's Key Message ("${keyMessageForCopy}")` : keyMessageIsDescriptive ? `a short line built from this campaign's Objective — Key Message is set to Descriptive mode, so it never appears verbatim, including in the proof point (a Descriptive-mode brief quoted as if a customer said it would be actively misleading)` : `a short line built from this campaign's Objective ("${campaign.objective}") — never the raw label itself`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
   if (audienceLine) rationaleParts.push(`the subhead reflects this campaign's Segment field through the same three-tier audience logic Long Form Copy uses, not a flat recap of the raw Segment label`);
+  if (mandatoryLine) rationaleParts.push(`the benefits section closes with this campaign's Mandatory Phrase verbatim, before the proof point and CTA`);
   rationaleParts.push(`the CTA is grounded in ${campaign.primaryKpi ? `this campaign's real Primary KPI ("${campaign.primaryKpi}")` : 'this campaign\'s funnel Stage'}${campaign.messageType ? `, with a ${campaign.messageType} register applied` : ''}`);
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -33110,6 +33244,28 @@ function buildContentChecks(text, campaign){
       : (kpiInfo
         ? `This campaign is measured on "${campaign.primaryKpi}" (${kpiInfo.mechanism}) — the draft's call to action is aligned with "${kpiInfo.ask}" rather than a generic "learn more"/"buy now." None of the 4 Atlas Ocean Voyages reference examples had a real Primary KPI to write toward; this campaign does, so its copy is held to that higher bar.`
         : (campaign.primaryKpi ? `Primary KPI "${campaign.primaryKpi}" isn't in the curated PRIMARY_KPI_ANGLE map yet, so this check is automatically satisfied.` : `No Primary KPI set on Lifecycle Stage & Goals yet — set one so the call to action can be checked against what this campaign is actually optimizing for.`))
+  });
+
+  // 2026-08-22 -- new. Mandatory Phrase (campaign.mandatoryPhrase) is real,
+  // human-authored required text -- e.g. "50% Off. Promotion Expires July
+  // 31." -- distinct in kind from every other field checked above: it's not
+  // an internal label to keep OUT of the draft, it's required text that
+  // must survive INTO the draft verbatim, same treatment Long Form Copy's
+  // own offerLine already gives it. Nothing validated this before now, so a
+  // manual edit could silently drop required legal/promo text with no
+  // signal anywhere in this product. Honest limitation, same class as
+  // Social Batch's x_post/instagram_caption structurally having no CTA
+  // field (documented 2 rounds ago): a short-form derivative -- an X post,
+  // a Slack notification, a talking-points bullet -- may not have room for
+  // a full promotional phrase without reading badly, so this check can
+  // legitimately fail on some derivatives even when nothing is actually
+  // wrong; read a fail here as "check this one," not an automatic problem.
+  checks.push({
+    label: 'Mandatory Phrase present',
+    pass: !campaign.mandatoryPhrase || draft.includes(campaign.mandatoryPhrase),
+    detail: campaign.mandatoryPhrase
+      ? `Looking for this campaign's Mandatory Phrase ("${campaign.mandatoryPhrase}") verbatim -- this is required text (legal/promo terms the team wrote on purpose), not a directional signal, so it belongs word-for-word wherever it's expected to appear. A fail here is worth a human read: some shorter derivative formats may not have room for the full phrase without reading badly, so this isn't automatically a problem the way a leaked internal label would be.`
+      : `No Mandatory Phrase is set on this campaign, so this check is automatically satisfied.`
   });
 
   return checks;
@@ -34834,19 +34990,27 @@ function cmpPersistMessagingToCampaign(){
   // with '' on every messaging Approve would silently blank out whatever
   // that other page had saved.
   c.longformCopy = document.getElementById('cmpLongFormCopy') ? document.getElementById('cmpLongFormCopy').value.trim() : '';
-  // Round 132ad — messageType/mandatoryPhrase/longformStyle are new,
-  // local-session-only fields (no backend column yet, same honest
-  // disclosure as briefBuilderExpandedText above). brandGuidelines (the old
-  // campaign-level Do's/Don'ts) is no longer written here at all.
+  // Round 132ad — messageType/mandatoryPhrase/longformStyle are new fields.
+  // longformStyle stays local-session-only on purpose (roleStyle below
+  // mirrors it into the field that actually persists). messageType/
+  // mandatoryPhrase used to be local-session-only too (no backend column,
+  // same honest disclosure as briefBuilderExpandedText above) — as of
+  // 2026-08-22 both now persist for real, see the ensureColumn() comment in
+  // backend/server.js. brandGuidelines (the old campaign-level Do's/Don'ts)
+  // is no longer written here at all.
   c.messageType = document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '';
   c.mandatoryPhrase = document.getElementById('cmpMandatoryPhrase') ? document.getElementById('cmpMandatoryPhrase').value.trim() : '';
   c.longformStyle = document.getElementById('cmpLongformStyle') ? document.getElementById('cmpLongformStyle').value : 'Storytelling';
-  // 2026-08-22 — c.roleStyle/c.keyMessageMode are the two fields that
-  // actually reach the backend below (unlike messageType/mandatoryPhrase/
-  // longformStyle above, still local-session-only, no backend column).
-  // roleStyle deliberately mirrors longformStyle's value under the DB
-  // column's name rather than replacing it — see cmpBuildFormPayload()'s
-  // own comment on the same duplication.
+  // 2026-08-22 — c.roleStyle/c.keyMessageMode/c.messageType/c.mandatoryPhrase
+  // are the four fields that actually reach the backend below (roleStyle
+  // deliberately mirrors longformStyle's value under the DB column's name
+  // rather than replacing it — see cmpBuildFormPayload()'s own comment on
+  // the same duplication). This round adds messageType/mandatoryPhrase to
+  // this same POST body, closing the exact gap that earlier round closed
+  // for roleStyle/keyMessageMode: without this, a campaign's saved Message
+  // Type reverted to unset on reload, so every Marketing Function Project
+  // generator's CTA composition (MESSAGE_TYPE_CUE, see sharedContextClause())
+  // silently stopped reflecting it after a page refresh.
   c.roleStyle = c.longformStyle;
   c.keyMessageMode = document.getElementById('cmpKeyMessageMode') ? document.getElementById('cmpKeyMessageMode').value : 'exact';
   c.channelCopyVersions = computeChannelCopyVersions();
@@ -34858,7 +35022,8 @@ function cmpPersistMessagingToCampaign(){
         keyMessage: c.keyMessage, brandToneNotes: c.brandToneNotes,
         longformCopy: c.longformCopy, creativeBrief: c.creativeBrief,
         channelCopyVersionsJson: JSON.stringify(c.channelCopyVersions),
-        roleStyle: c.roleStyle, keyMessageMode: c.keyMessageMode
+        roleStyle: c.roleStyle, keyMessageMode: c.keyMessageMode,
+        messageType: c.messageType, mandatoryPhrase: c.mandatoryPhrase
       })
     }).catch(e => console.warn('cmpPersistMessagingToCampaign: backend write failed, kept locally only.', e));
   }

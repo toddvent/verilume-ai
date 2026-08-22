@@ -881,6 +881,25 @@ ensureColumn('campaigns', 'campaignCode', 'TEXT');
 ensureColumn('campaigns', 'roleStyle', 'TEXT');
 ensureColumn('campaigns', 'keyMessageMode', "TEXT DEFAULT 'exact'");
 
+// 2026-08-22 -- messageType and mandatoryPhrase are the two fields the
+// roleStyle/keyMessageMode comment above explicitly named as still
+// local-session-only (cmpPersistMessagingToCampaign(), portal.html: "no
+// backend column yet, same honest disclosure as briefBuilderExpandedText").
+// That was a real, live gap, not just a documentation note: the Marketing
+// Function Project generators built over the last 2 rounds
+// (generateSocialBatchMaster/generateEmailSequenceMaster/etc., and their
+// Press Release/Internal Comms/One-Pager counterparts) now compose their
+// CTAs from campaign.messageType (via MESSAGE_TYPE_CUE) -- so on any
+// browser reload, a saved campaign's Message Type reverted to unset and
+// that CTA composition silently stopped reflecting it. mandatoryPhrase
+// (real, human-authored required text -- e.g. "50% Off. Promotion Expires
+// July 31." -- distinct in kind from every other field, per round 132ad's
+// own decision to treat it as verbatim-required rather than a directional
+// signal) had the exact same gap. Both now persist the same way
+// roleStyle/keyMessageMode already do.
+ensureColumn('campaigns', 'messageType', 'TEXT');
+ensureColumn('campaigns', 'mandatoryPhrase', 'TEXT');
+
 // Added 2026-07-25 (round 53) — org_model (team/solo), per the Media Plan
 // scoping doc's solo/local-business flow folded in as a parallel track, not
 // a separate build. Governs UI density in the front end (Team & Org Chart,
@@ -8045,8 +8064,17 @@ async function handleRequest(req, res) {
       // derives it purely from selectedStage via STAGE_TO_OBJECTIVE — there
       // is no standalone Objective input left to pre-fill), so Stage is the
       // real upstream field worth learning from an account's history.
+      // 2026-08-22, later round — roleStyle/keyMessageMode/messageType added
+      // to the SELECT. These 3 only became worth learning from an account's
+      // history once all 3 actually persist across campaigns (roleStyle/
+      // keyMessageMode already did; messageType/mandatoryPhrase just closed
+      // that same gap this round — see the ensureColumn() comment above).
+      // mandatoryPhrase is deliberately NOT included here: it's real,
+      // campaign-specific required text (a promo/legal phrase), not a tone
+      // or mode setting a NEW campaign should inherit by default the way
+      // Role/Style or Key Message mode reasonably can.
       const recent = db.prepare(
-        `SELECT id, name, keyMessage, audienceTargets, segment, stage, primaryKpi, channels, createdAt FROM campaigns
+        `SELECT id, name, keyMessage, audienceTargets, segment, stage, primaryKpi, channels, roleStyle, keyMessageMode, messageType, createdAt FROM campaigns
          WHERE accountId = ? ORDER BY createdAt DESC LIMIT 8`
       ).all(accountId);
       const SKIP_THRESHOLD = 3;
@@ -8107,11 +8135,20 @@ async function handleRequest(req, res) {
         // identical (dedupe/sort/rejoin a comma list).
         stage: confidenceForField('stage'),
         primaryKpi: confidenceForField('primaryKpi'),
-        channels: confidenceForField('channels', canonicalizeSegments)
+        channels: confidenceForField('channels', canonicalizeSegments),
+        // 2026-08-22, later round — Role/Style, Key Message mode, and
+        // Message Type are the next natural fields per this endpoint's own
+        // "next natural fields" pattern (each prior extension picked up
+        // whatever had just become real/persisted). All 3 are plain scalar
+        // fields, same shape as stage/primaryKpi — no eligibility rules to
+        // apply client-side, so the default `norm` is fine.
+        roleStyle: confidenceForField('roleStyle'),
+        keyMessageMode: confidenceForField('keyMessageMode'),
+        messageType: confidenceForField('messageType')
       };
       const confident = Object.values(fields).some(f => f.level !== 'none');
       if (!confident){
-        return sendJson(res, 200, { confident: false, reason: 'No prior campaign with a Key Message, Audience Targets, Segment, Lifecycle-Loop Stage, Primary KPI, or Channels on file yet — nothing to suggest from.', fields });
+        return sendJson(res, 200, { confident: false, reason: 'No prior campaign with a Key Message, Audience Targets, Segment, Lifecycle-Loop Stage, Primary KPI, Channels, Role/Style, Key Message mode, or Message Type on file yet — nothing to suggest from.', fields });
       }
       return sendJson(res, 200, { confident: true, fields });
     }
@@ -8146,8 +8183,8 @@ async function handleRequest(req, res) {
       const productCode = threeLetterCode(body.productCode || productName);
       const campaignCode = generateCampaignCode(accountId, account.partnerCode, productCode, body.startDate || null);
       db.prepare(
-        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, createdAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         campaignId, accountId, body.objective || '', body.segment || '', body.stage || '', body.keyMessage || '',
         body.name || body.objective || 'Untitled Campaign',
@@ -8178,6 +8215,12 @@ async function handleRequest(req, res) {
         // comment above.
         body.roleStyle || '',
         body.keyMessageMode || 'exact',
+        // 2026-08-22 — messageType/mandatoryPhrase, see the ensureColumn()
+        // comment above (this round closes the same "session-only" gap for
+        // these two that an earlier round already closed for
+        // roleStyle/keyMessageMode).
+        body.messageType || '',
+        body.mandatoryPhrase || '',
         now
       );
       // Round 55 — insert one row per {allocationId, amount} draw when the
@@ -8271,7 +8314,12 @@ async function handleRequest(req, res) {
         productName: body.productName !== undefined ? body.productName : existing.productName,
         // 2026-08-22 — same merge-update convention as every field above.
         roleStyle: body.roleStyle !== undefined ? body.roleStyle : existing.roleStyle,
-        keyMessageMode: body.keyMessageMode !== undefined ? body.keyMessageMode : existing.keyMessageMode
+        keyMessageMode: body.keyMessageMode !== undefined ? body.keyMessageMode : existing.keyMessageMode,
+        // 2026-08-22 — messageType/mandatoryPhrase, closing the same
+        // session-only gap this round for these two that roleStyle/
+        // keyMessageMode already had closed.
+        messageType: body.messageType !== undefined ? body.messageType : existing.messageType,
+        mandatoryPhrase: body.mandatoryPhrase !== undefined ? body.mandatoryPhrase : existing.mandatoryPhrase
       };
       if (!existing.campaignCode){
         const account = db.prepare('SELECT partnerCode FROM accounts WHERE accountId = ?').get(existing.accountId);
@@ -8281,8 +8329,8 @@ async function handleRequest(req, res) {
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, campaignId);
       // Round 55 — same merge-update convention: only touch draws when the
       // caller actually sent an allocationDraws array, and replace them
       // wholesale (delete + reinsert) rather than trying to diff rows, same
