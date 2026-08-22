@@ -94,6 +94,16 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
+// 2026-08-22 — real text extraction for brand writing samples (see
+// extractSampleText()/brandWritingSampleContext() below), closing the gap
+// flagged in the 2026-08-21 copywriting findings: brand_writing_samples
+// stores real uploaded files, but nothing ever read them back into a
+// generation prompt. mammoth handles .docx; pdf-parse (pinned to the 1.x
+// line — 2.x replaced the simple function API with a class-based one) handles
+// .pdf. Both are pure-JS, no native build step, safe for a Vercel serverless
+// function.
+const mammoth = require('mammoth');
+const pdfParse = require('pdf-parse');
 
 // Database: local SQLite file when running standalone (unchanged local-dev
 // behavior), or Supabase Postgres when DATABASE_URL is set (production /
@@ -2538,6 +2548,63 @@ db.exec(`
     FOREIGN KEY (uploadedFileId) REFERENCES uploaded_files(id)
   );
 `);
+
+// ---------- PR & Corporate Communications real backend (round 132c22b) ----------
+// Replaces the previously 100%-mocked REPUTATION_DATA.pressReleases /
+// .editorialPitches / .corporateComms in portal.html with real,
+// account-scoped, backend-persisted CRUD, matching the discipline already
+// applied to Brand Writing Samples above. Deliberately does NOT touch
+// REPUTATION_DATA.mentions/.sentiment — those require a real, paid
+// third-party listening-vendor integration (Brandwatch/Meltwater/Mention,
+// see PARTNER_DIRECTORY.reputation above) this build doesn't have, and this
+// codebase's standing convention is an honestly-disclosed mock over a
+// fabricated one (same scoping decision as Competitor Monitoring's
+// Reddit-at-volume/TV sources). `workingCopy` reuses the same shared
+// content-field identifier already registered for campaign copy, rather
+// than inventing a redundant `content` identifier.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS press_releases (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    workingCopy TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    distributedDate TEXT,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+  CREATE TABLE IF NOT EXISTS editorial_pitches (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    outlet TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    workingCopy TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    sentDate TEXT,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+  CREATE TABLE IF NOT EXISTS corporate_comms (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    audience TEXT NOT NULL,
+    workingCopy TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    approvedAt TEXT,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const PRESS_RELEASE_STATUSES = ['draft', 'distributed'];
+const EDITORIAL_PITCH_STATUSES = ['pending', 'placed'];
+const CORPORATE_COMMS_STATUSES = ['draft', 'approved'];
 
 // Real, disclosed-as-heuristic PII screening over a text file's contents.
 // Never claims to be exhaustive or a compliance guarantee (a human should
@@ -5891,6 +5958,80 @@ Respond with ONLY a JSON object: {"score": <0-100 integer>, "verdict": "<one of:
 // (cmpAssembleLongFormCopy(), portal.html) remains the always-on fallback
 // when no key is configured, exactly as scoreContentRelevance()/
 // scoreMessagingBusinessOutcomeRelevance() already do for scoring.
+// 2026-08-22 — Brand Writing Samples reaching real AI generation. Closes the
+// gap named as the single biggest actionable item in the 2026-08-21
+// copywriting findings PDF: the round-132bp upload feature (backend table +
+// full CRUD + portal.html library UI) stores and categorizes real sample
+// files, but until now nothing ever read them back into a prompt — a sample
+// could sit in the library forever without ever influencing a single draft.
+//
+// decodeDataUrlBuffer() — uploaded_files.dataUrl is a base64 data: URL (see
+// that table's own comment), not raw bytes; this is the one place that
+// needed decoding to actually get at a file's real content.
+function decodeDataUrlBuffer(dataUrl){
+  if (!dataUrl) return null;
+  const match = /^data:([^;]+);base64,([\s\S]+)$/.exec(dataUrl);
+  if (!match) return null;
+  try { return { mimeType: match[1], buffer: Buffer.from(match[2], 'base64') }; }
+  catch (e){ return null; }
+}
+// extractSampleText() — real parsing, not a stub. Covers .docx (mammoth) and
+// .pdf (pdf-parse) today; legacy .doc and .ppt/.pptx are NOT parsed yet
+// (deliberately disclosed here rather than silently claimed as covered — a
+// sample in either of those formats still stores, categorizes, and displays
+// correctly in the library, it just doesn't contribute text to a prompt
+// until a follow-up round adds those formats). Every failure path — a
+// corrupt file, a format edge case pdf-parse's bundled parser can't read,
+// an unexpected mimeType — returns null rather than throwing, so one bad
+// sample can never break a real copy-generation request.
+async function extractSampleText(uploadedFile){
+  if (!uploadedFile || !uploadedFile.dataUrl) return null;
+  const decoded = decodeDataUrlBuffer(uploadedFile.dataUrl);
+  if (!decoded) return null;
+  const mime = (uploadedFile.mimeType || decoded.mimeType || '').toLowerCase();
+  const filename = (uploadedFile.originalFilename || '').toLowerCase();
+  try {
+    if (mime.includes('wordprocessingml') || filename.endsWith('.docx')){
+      const result = await mammoth.extractRawText({ buffer: decoded.buffer });
+      return (result && result.value) || null;
+    }
+    if (mime.includes('pdf') || filename.endsWith('.pdf')){
+      const result = await pdfParse(decoded.buffer);
+      return (result && result.text) || null;
+    }
+  } catch (e){ return null; }
+  return null; // legacy .doc, .ppt/.pptx, or an unrecognized mimeType — not parsed yet
+}
+// brandWritingSampleContext() — the actual prompt-context builder. Scoped to
+// the two categories closest to real customer-facing/persuasive writing
+// (consumer_marketing, sales) rather than every category (standard
+// presentation templates and PR materials are a different register and
+// would blur the "match this brand's actual persuasive voice" signal this
+// is meant to give). Caps at 2 real excerpts, most-recent-by-date first —
+// enough to be a genuine few-shot reference without ballooning the prompt.
+// Never fabricates a section when nothing extracts cleanly: returns '' (the
+// same honest-empty-context convention every other optional prompt section
+// in this file already follows), so a request with no usable samples reads
+// identically to how it did before this feature existed.
+async function brandWritingSampleContext(accountId){
+  try {
+    const samples = db.prepare(
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND category IN ('consumer_marketing', 'sales') AND uploadedFileId IS NOT NULL ORDER BY docDate DESC, createdAt DESC`
+    ).all(accountId);
+    if (!samples.length) return '';
+    const blocks = [];
+    for (const sample of samples){
+      if (blocks.length >= 2) break;
+      const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
+      const text = await extractSampleText(file);
+      if (text && text.trim()){
+        blocks.push(`--- "${sample.title}" (${sample.category === 'sales' ? 'Sales' : 'Consumer Marketing'}, ${sample.docDate}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+      }
+    }
+    if (!blocks.length) return '';
+    return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
 async function generateMessagingCopyViaAI(campaign, account, opts){
   opts = opts || {};
   if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI copy generation requires ANTHROPIC_API_KEY to be configured. Falling back to the deterministic template draft (see the Long Form Copy field) until one is set.' };
@@ -5908,6 +6049,9 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // competitorContext below.
     const visionStatement = (account.visionStatement || '').trim();
     const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
+    // 2026-08-22 — real brand writing samples (see brandWritingSampleContext()
+    // above), the fix for "upload sample copy to help our models learn."
+    const sampleContext = await brandWritingSampleContext(account.accountId);
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -5921,7 +6065,7 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
 
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
 ${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
-${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to, even as individual campaigns change):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register, rhythm, and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}
+${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to, even as individual campaigns change):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register, rhythm, and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext}
 BRAND STYLE / PRODUCT FACTS (real, approved — use specific details from this where they genuinely fit, never invent facts not present here):
 ${styleNotes || '(none on file)'}
 
@@ -5956,6 +6100,70 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
     };
   } catch (e){
     return { copy: null, sourcesUsed: [], note: 'AI copy generation failed: ' + e.message };
+  }
+}
+
+// ---------- PR & Corp Comm AI drafting (round 132c22b) ----------
+// Same honest-fallback / real-brand-context convention as
+// generateMessagingCopyViaAI above (Voice Guide, Vision Statement, longform
+// voice example, and real Brand Writing Samples when on file) applied to
+// the three PR & Corp Comm content types. Deliberately a single shared
+// helper — the three call sites differ only in the docType label and the
+// brief fields — rather than three near-duplicate prompt builders.
+async function draftPrCorpCommCopyViaAI(account, docType, brief){
+  if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI drafting requires ANTHROPIC_API_KEY to be configured. Draft the copy manually below until one is set.' };
+  try {
+    const voiceGuide = (account.voiceGuideText || '').slice(0, 2500);
+    const visionStatement = (account.visionStatement || '').trim();
+    const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
+    const sampleContext = await brandWritingSampleContext(account.accountId);
+    const docSpec = {
+      press_release: {
+        label: 'a real, publish-ready press release',
+        brief: `Headline/Title: ${brief.title || '(not set)'}\nKey facts/announcement this release is built around: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts, dates, or figures)'}`,
+        format: 'Standard press release format: a dateline-style opening paragraph (who/what/when/where), 2-4 body paragraphs with real supporting detail, one quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied), and a boilerplate-style closing line about the brand. 250-400 words.'
+      },
+      editorial_pitch: {
+        label: 'a real, send-ready editorial pitch email to a journalist/outlet contact',
+        brief: `Outlet: ${brief.outlet || '(not set)'}\nStory topic/angle: ${brief.topic || '(not set)'}`,
+        format: 'A short pitch email: a subject line, then 2-3 tight paragraphs — the hook, why it fits this specific outlet, and a clear ask (interview, exclusive, etc). Under 200 words total, no generic PR-speak.'
+      },
+      corporate_comms: {
+        label: 'a real, ready-to-circulate internal or external corporate communication',
+        brief: `Title: ${brief.title || '(not set)'}\nAudience: ${brief.audience || '(not set)'}\nContext/situation this communication addresses: ${brief.context || '(none supplied — use only what is in the brand context above; do not invent facts)'}`,
+        format: 'Format the communication appropriately for the stated audience (talking points for a leadership audience, a holding statement for external/customer-facing, etc). Real, finished, ready-to-circulate language — never a placeholder or outline.'
+      }
+    }[docType];
+    if (!docSpec) return { copy: null, note: `Unknown docType "${docType}".` };
+    const prompt = `You are an expert corporate communications and PR writer for a luxury travel brand. Write ${docSpec.label} — not a summary, not a template, not placeholder language. Write the way a senior comms professional briefed on this brand's actual voice would write.
+
+BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
+${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
+${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext}
+BRIEF:
+${docSpec.brief}
+
+FORMAT: ${docSpec.format}
+
+Never invent facts, figures, dates, or quotes not present in the brief or brand context above — where a real detail is missing, write around it (e.g. a bracketed placeholder like [Title Placeholder]) rather than fabricating one.
+
+Respond with ONLY a JSON object: {"copy": "<the full drafted text>", "sourcesUsed": ["<short phrase naming a specific real fact/voice element you actually used from the material above>", "..."]}`;
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!resp.ok) return { copy: null, note: `AI drafting failed (HTTP ${resp.status}).` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    return {
+      copy: typeof parsed.copy === 'string' ? parsed.copy : null,
+      sourcesUsed: Array.isArray(parsed.sourcesUsed) ? parsed.sourcesUsed : [],
+      note: null
+    };
+  } catch (e){
+    return { copy: null, sourcesUsed: [], note: 'AI drafting failed: ' + e.message };
   }
 }
 
@@ -6244,7 +6452,7 @@ const INTERVIEW_CROSS_VENDOR_BRIEF = 'Write the single best, most persuasive ver
 // path and the 4 vendor paths below build from this same context, so a
 // cross-vendor comparison is actually comparing the same brief, not
 // accidentally different context depth per vendor.
-function buildInterviewPrompt(brief, campaign, account){
+function buildInterviewPrompt(brief, campaign, account, sampleContext){
   const stageJob = MEDIA_LOOP_STAGE_JOB[campaign.stage] || 'No Loop Stage set on this campaign yet.';
   const voiceGuide = (account.voiceGuideText || '').slice(0, 2000);
   const styleNotes = (account.styleNotes || '').slice(0, 1200);
@@ -6256,7 +6464,7 @@ YOUR ANGLE FOR THIS DRAFT: ${brief}
 
 BRAND VOICE GUIDE (follow exactly):
 ${voiceGuide || '(no approved Brand Voice on file — write in a clear, direct, confident default tone)'}
-${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to): ${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (match this voice's register and rhythm, not its specific facts):\n${longformVoiceExample}\n` : ''}
+${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to): ${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (match this voice's register and rhythm, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext || ''}
 BRAND STYLE / PRODUCT FACTS (use specific real details where they fit; never invent facts not present here):
 ${styleNotes || '(none on file)'}
 
@@ -6275,9 +6483,9 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
 // taking an explicit strategic brief instead of the general-purpose prompt,
 // so the candidates are honestly different drafts rather than three samples
 // of one instruction.
-async function generateInterviewCandidateCopy(angle, campaign, account){
+async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext){
   try {
-    const prompt = buildInterviewPrompt(angle.brief, campaign, account);
+    const prompt = buildInterviewPrompt(angle.brief, campaign, account, sampleContext);
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -6296,9 +6504,9 @@ async function generateInterviewCandidateCopy(angle, campaign, account){
 // shares buildInterviewPrompt() (already ends in the {"copy": "..."}
 // instruction) with the Anthropic angles above, so this compares vendors on
 // the exact same brief-and-context depth.
-async function generateVendorInterviewCopy(vendorKey, campaign, account){
+async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleContext){
   try {
-    const prompt = buildInterviewPrompt(INTERVIEW_CROSS_VENDOR_BRIEF, campaign, account);
+    const prompt = buildInterviewPrompt(INTERVIEW_CROSS_VENDOR_BRIEF, campaign, account, sampleContext);
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
     if (!parsed) return { copy: null, error: 'Generation returned no parseable JSON.' };
@@ -6402,11 +6610,16 @@ async function runCandidateInterview(campaign, account){
       candidates: []
     };
   }
+  // 2026-08-22 — fetched once here, not once per candidate: every angle and
+  // vendor in this panel is judging the same brief against the same brand,
+  // so there's no reason to re-query/re-extract the same samples up to 7
+  // times per click.
+  const sampleContext = await brandWritingSampleContext(account.accountId);
   const generated = await Promise.all(
-    INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account))
+    INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext))
   );
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account)));
+  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext)));
 
   const scored = await Promise.all(
     generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
@@ -10816,6 +11029,203 @@ async function handleRequest(req, res) {
       if (!existing) return sendJson(res, 404, { error: 'brand writing sample not found' });
       db.prepare('DELETE FROM brand_writing_samples WHERE id = ?').run(sampleId);
       return sendJson(res, 200, { deleted: true });
+    }
+
+    // ---------- PR & Corp Comm real backend (round 132c22b) ----------
+    // Press Releases: POST create / GET list / PATCH update / DELETE /
+    // POST :id/generate-draft (AI drafts into workingCopy, honest fallback
+    // note when ANTHROPIC_API_KEY isn't configured — same convention as
+    // generateMessagingCopyViaAI's fallback).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!body.title || !body.title.trim()) return sendJson(res, 400, { error: 'title is required' });
+      const id = generateId('PRL');
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now);
+      return sendJson(res, 201, { id, status: 'saved' });
+    }
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT * FROM press_releases WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      return sendJson(res, 200, { pressReleases: rows, statuses: PRESS_RELEASE_STATUSES });
+    }
+    if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const prId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'press release not found' });
+      const body = await readBody(req);
+      if (body.status !== undefined && !PRESS_RELEASE_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${PRESS_RELEASE_STATUSES.join(', ')}` });
+      const now = new Date().toISOString();
+      const nextTitle = body.title !== undefined ? body.title : existing.title;
+      const nextCopy = body.workingCopy !== undefined ? body.workingCopy : existing.workingCopy;
+      const nextStatus = body.status !== undefined ? body.status : existing.status;
+      // distributedDate follows status the same way copyApprovedAt/etc do elsewhere in this file —
+      // stamped the moment status flips to 'distributed', never hand-entered.
+      const nextDistributedDate = nextStatus === 'distributed' ? (existing.distributedDate || now) : (nextStatus === existing.status ? existing.distributedDate : null);
+      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ? WHERE id = ?')
+        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, prId);
+      return sendJson(res, 200, { updated: true });
+    }
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const prId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'press release not found' });
+      db.prepare('DELETE FROM press_releases WHERE id = ?').run(prId);
+      return sendJson(res, 200, { deleted: true });
+    }
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases' && parts[5] === 'generate-draft'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const prId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'press release not found' });
+      const body = await readBody(req);
+      const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || '' });
+      if (result.copy){
+        const now = new Date().toISOString();
+        db.prepare('UPDATE press_releases SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, prId);
+      }
+      return sendJson(res, 200, result);
+    }
+
+    // Editorial Pitches: POST create / GET list / PATCH update / DELETE /
+    // POST :id/generate-draft.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!body.outlet || !body.outlet.trim()) return sendJson(res, 400, { error: 'outlet is required' });
+      if (!body.topic || !body.topic.trim()) return sendJson(res, 400, { error: 'topic is required' });
+      const id = generateId('EDP');
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO editorial_pitches (id, accountId, outlet, topic, workingCopy, status, sentDate, createdBy, createdAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.outlet.trim(), body.topic.trim(), (body.workingCopy || '').trim() || null, 'pending', null, (body.createdBy || '').trim() || null, now, now);
+      return sendJson(res, 201, { id, status: 'saved' });
+    }
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT * FROM editorial_pitches WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      return sendJson(res, 200, { editorialPitches: rows, statuses: EDITORIAL_PITCH_STATUSES });
+    }
+    if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const pitchId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM editorial_pitches WHERE id = ? AND accountId = ?').get(pitchId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'editorial pitch not found' });
+      const body = await readBody(req);
+      if (body.status !== undefined && !EDITORIAL_PITCH_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${EDITORIAL_PITCH_STATUSES.join(', ')}` });
+      const now = new Date().toISOString();
+      const nextOutlet = body.outlet !== undefined ? body.outlet : existing.outlet;
+      const nextTopic = body.topic !== undefined ? body.topic : existing.topic;
+      const nextCopy = body.workingCopy !== undefined ? body.workingCopy : existing.workingCopy;
+      const nextStatus = body.status !== undefined ? body.status : existing.status;
+      const nextSentDate = existing.sentDate || (body.status !== undefined ? now : null);
+      db.prepare('UPDATE editorial_pitches SET outlet = ?, topic = ?, workingCopy = ?, status = ?, sentDate = ?, updatedAt = ? WHERE id = ?')
+        .run(nextOutlet, nextTopic, nextCopy, nextStatus, nextSentDate, now, pitchId);
+      return sendJson(res, 200, { updated: true });
+    }
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const pitchId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM editorial_pitches WHERE id = ? AND accountId = ?').get(pitchId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'editorial pitch not found' });
+      db.prepare('DELETE FROM editorial_pitches WHERE id = ?').run(pitchId);
+      return sendJson(res, 200, { deleted: true });
+    }
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches' && parts[5] === 'generate-draft'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const pitchId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM editorial_pitches WHERE id = ? AND accountId = ?').get(pitchId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'editorial pitch not found' });
+      const result = await draftPrCorpCommCopyViaAI(account, 'editorial_pitch', { outlet: existing.outlet, topic: existing.topic });
+      if (result.copy){
+        const now = new Date().toISOString();
+        db.prepare('UPDATE editorial_pitches SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, pitchId);
+      }
+      return sendJson(res, 200, result);
+    }
+
+    // Corporate Communications: POST create / GET list / PATCH update /
+    // DELETE / POST :id/generate-draft.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!body.title || !body.title.trim()) return sendJson(res, 400, { error: 'title is required' });
+      if (!body.audience || !body.audience.trim()) return sendJson(res, 400, { error: 'audience is required' });
+      const id = generateId('CCM');
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO corporate_comms (id, accountId, title, audience, workingCopy, status, approvedAt, createdBy, createdAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.title.trim(), body.audience.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now);
+      return sendJson(res, 201, { id, status: 'saved' });
+    }
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT * FROM corporate_comms WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      return sendJson(res, 200, { corporateComms: rows, statuses: CORPORATE_COMMS_STATUSES });
+    }
+    if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const commId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM corporate_comms WHERE id = ? AND accountId = ?').get(commId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'corporate communication not found' });
+      const body = await readBody(req);
+      if (body.status !== undefined && !CORPORATE_COMMS_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${CORPORATE_COMMS_STATUSES.join(', ')}` });
+      const now = new Date().toISOString();
+      const nextTitle = body.title !== undefined ? body.title : existing.title;
+      const nextAudience = body.audience !== undefined ? body.audience : existing.audience;
+      const nextCopy = body.workingCopy !== undefined ? body.workingCopy : existing.workingCopy;
+      const nextStatus = body.status !== undefined ? body.status : existing.status;
+      const nextApprovedAt = nextStatus === 'approved' ? (existing.approvedAt || now) : (nextStatus === existing.status ? existing.approvedAt : null);
+      db.prepare('UPDATE corporate_comms SET title = ?, audience = ?, workingCopy = ?, status = ?, approvedAt = ?, updatedAt = ? WHERE id = ?')
+        .run(nextTitle, nextAudience, nextCopy, nextStatus, nextApprovedAt, now, commId);
+      return sendJson(res, 200, { updated: true });
+    }
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const commId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM corporate_comms WHERE id = ? AND accountId = ?').get(commId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'corporate communication not found' });
+      db.prepare('DELETE FROM corporate_comms WHERE id = ?').run(commId);
+      return sendJson(res, 200, { deleted: true });
+    }
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms' && parts[5] === 'generate-draft'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const commId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM corporate_comms WHERE id = ? AND accountId = ?').get(commId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'corporate communication not found' });
+      const body = await readBody(req);
+      const result = await draftPrCorpCommCopyViaAI(account, 'corporate_comms', { title: existing.title, audience: existing.audience, context: body.context || '' });
+      if (result.copy){
+        const now = new Date().toISOString();
+        db.prepare('UPDATE corporate_comms SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, commId);
+      }
+      return sendJson(res, 200, result);
     }
 
     // POST /api/market-population-master — CX Ops bulk-loads real

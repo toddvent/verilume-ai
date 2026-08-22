@@ -1,13 +1,18 @@
 {
-  "name": "verilume-ai",
+  "name": "cxmedia-demo-backend",
   "version": "1.0.0",
-  "private": true,
-  "description": "Verilume AI / CXMedia.AI platform — Vercel deployment. Static marketing/portal frontend in frontend/, API served from api/[...path].js (wraps backend/server.js), data persisted in Supabase Postgres via backend/pg-sync-bridge.js.",
+  "description": "CXMedia.AI local demo backend — real account records + score history, replacing assessment.html's link-carried scorecard handoff. Local demonstration only, not a production deployment. See ../cxmedia-backend-production-scope.md for what a real deployment needs (auth, hosting, a managed database).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "engines": {
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "mammoth": "^1.12.1",
+    "pdf-parse": "^1.1.1"
   },
   "license": "UNLICENSED"
 }

@@ -2671,18 +2671,35 @@
     <div class="seo-section" id="repPressSection">
       <div class="seo-section-head"><div class="seo-section-title">📰 Press Release Development &amp; Distribution</div></div>
       <p class="seo-section-sub">Drafting stays here; a distributed release has already gone out through the wire/distribution service.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <input type="text" id="prcPressNewTitle" placeholder="Press release title" style="flex:1;min-width:200px;">
+        <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
+      </div>
+      <div id="prcpressNewStatus" class="hint" style="margin-bottom:8px;"></div>
       <div class="seo-card-list" id="repPressList"></div>
     </div>
 
     <div class="seo-section" id="repEditorialSection">
       <div class="seo-section-head"><div class="seo-section-title">✉️ Editorial Solicitation</div></div>
       <p class="seo-section-sub">Pitches out to press contacts, and whether they've landed.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <input type="text" id="prcEditorialNewOutlet" placeholder="Outlet (e.g. Travel + Leisure)" style="flex:1;min-width:180px;">
+        <input type="text" id="prcEditorialNewTopic" placeholder="Story topic/angle" style="flex:1;min-width:200px;">
+        <button type="button" class="btn-primary" onclick="prcCreateEditorial()">+ Add</button>
+      </div>
+      <div id="prceditorialNewStatus" class="hint" style="margin-bottom:8px;"></div>
       <div class="seo-card-list" id="repEditorialList"></div>
     </div>
 
     <div class="seo-section" id="repCorpCommsSection">
       <div class="seo-section-head"><div class="seo-section-title">🏢 Corporate Communications</div></div>
       <p class="seo-section-sub">Internal and external communications — talking points, holding statements, and crisis-response drafts — reunited here with Reputation Monitoring and PR rather than living disconnected under Content Development.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <input type="text" id="prcCorpNewTitle" placeholder="Title" style="flex:1;min-width:180px;">
+        <input type="text" id="prcCorpNewAudience" placeholder="Audience (e.g. Internal — Leadership)" style="flex:1;min-width:200px;">
+        <button type="button" class="btn-primary" onclick="prcCreateCorp()">+ Add</button>
+      </div>
+      <div id="prccorpNewStatus" class="hint" style="margin-bottom:8px;"></div>
       <div class="seo-card-list" id="repCorpCommsList"></div>
     </div>
 
@@ -13462,33 +13479,33 @@ const SEO_DATA = {
 // round adds so a CMO sees that connection without hunting for it across
 // two separate workstreams.
 const REPUTATION_DATA = {
+  // mentions/sentiment stay an honestly-disclosed mock — real reputation
+  // monitoring requires a paid third-party listening vendor (Brandwatch/
+  // Meltwater/Mention — see PARTNER_DIRECTORY.reputation above) this build
+  // doesn't have. Never fabricated as if it were real, same convention as
+  // Competitor Monitoring's Reddit-at-volume/TV scoping.
   sentiment: { label: 'Mixed', score: 62, changeVsLastPeriod: -6 },
   mentions: [
     { channel: 'Reddit', title: 'r/cruise thread: "Anyone else have server issues booking Atlas Ocean Voyages?"', date: '2026-08-04', sentiment: 'negative', urgent: true, note: 'Multiple replies mention the booking site timing out — likely the same window as the /destinations/antarctica 5xx errors.' },
     { channel: 'News', title: 'Cruise Industry News: "Atlas Ocean Voyages Expands 2027 Antarctica Season"', date: '2026-08-10', sentiment: 'positive', urgent: false, note: 'Picked up by 3 trade outlets — no action needed, monitor for syndication.' },
     { channel: 'Social', title: 'Instagram comment thread on a guest photo post', date: '2026-08-11', sentiment: 'positive', urgent: false, note: 'Strong engagement, no response required.' },
     { channel: 'Reviews', title: 'A 2-star review citing a delayed excursion transfer', date: '2026-08-12', sentiment: 'negative', urgent: true, note: 'No public response posted yet — a same-week reply is the norm for this review platform.' }
-  ],
-  pressReleases: [
-    { title: 'Atlas Ocean Voyages Announces 2027 World Voyage', status: 'distributed', date: '2025-11-03' },
-    { title: '2026 Sustainability Commitment Update', status: 'draft', date: null, note: 'Drafted, awaiting Brand review before distribution.' }
-  ],
-  editorialPitches: [
-    { outlet: 'Travel + Leisure', topic: 'Small-ship expedition trends for 2027', status: 'pending', sentDate: '2026-08-01' },
-    { outlet: 'Cruise Critic', topic: 'Antarctica season expansion', status: 'placed', sentDate: '2026-07-20' }
-  ],
-  // Round 132bx (2026-08-15) — reunited with Reputation/PR per direct
-  // instruction; previously an orphaned, unbuilt line under Content
-  // Development (FUNCTION_GROUPS['Content Development']), disconnected
-  // from Reputation Monitoring despite PR's own campaignLabel already
-  // reading "PR/Corp Comm." The Content Development taxonomy entry stays
-  // (a content *format* still belongs there), but this workstream is now
-  // its practical home.
-  corporateComms: [
-    { title: 'Q3 All-Hands Talking Points — Antarctica Season Expansion', audience: 'Internal — Leadership', status: 'approved', date: '2026-08-08' },
-    { title: 'Holding Statement — Booking Site Intermittent Errors', audience: 'External — Customer Support', status: 'draft', date: '2026-08-05', note: 'Drafted in response to the Reddit thread and site errors above — awaiting Legal/Brand sign-off before it\'s needed.' }
   ]
+  // pressReleases/editorialPitches/corporateComms moved off this mock
+  // constant, round 132c22b (2026-08-22) — now real, account-scoped,
+  // backend-persisted CRUD. See prcState/loadPrCorpCommData() below and
+  // POST/GET/PATCH/DELETE /api/accounts/:id/press-releases|editorial-
+  // pitches|corporate-comms on the backend.
 };
+
+// Live, backend-loaded counterpart to the three mock arrays removed from
+// REPUTATION_DATA above. Populated by loadPrCorpCommData() (called once at
+// app init, and again after any create/update/delete in this workstream)
+// — starts empty rather than undefined so every .filter()/.find() call
+// against it before the first load resolves safely, same defensive-empty
+// convention used elsewhere in this file (e.g. bwsSamples).
+let prcState = { pressReleases: [], editorialPitches: [], corporateComms: [] };
+let prcExpanded = {}; // `${type}:${id}` -> true while that row's copy editor is open
 
 // Round 132bx (2026-08-15, cont'd) — Competitor Monitoring, per direct
 // instruction: "The battle document is the brief that positions client
@@ -13711,7 +13728,7 @@ function computeConnectedSignals(){
   // editorial pitch already in flight on the same topic area (Reputation)
   // — a visibility gap AND an in-progress fix for it, surfaced together.
   const notCited = SEO_DATA.aeoGeoVisibility.find(e => e.status === 'not cited');
-  const relatedPitch = REPUTATION_DATA.editorialPitches.find(p => p.status === 'pending');
+  const relatedPitch = (prcState.editorialPitches || []).find(p => p.status === 'pending');
   if (notCited && relatedPitch){
     signals.push({
       workstreams: [{ label: 'Search Optimization', key: 'searchOptimization', anchor: 'seoAeoGeoSection' }, { label: 'Reputation', key: 'reputation', anchor: 'repEditorialSection' }],
@@ -14548,10 +14565,10 @@ function cfdWsAction(key, action){
     const n = REPUTATION_DATA.mentions.filter(m => m.urgent).length;
     say(n === 0 ? 'No mentions need a response right now — showing all mentions below.' : `<strong>${n} ${n===1?'mention needs':'mentions need'} a response</strong> — showing mentions below.`, () => seoScrollTo('repMentionsSection'));
   } else if (action === 'repPressReleases'){
-    const drafts = REPUTATION_DATA.pressReleases.filter(p => p.status === 'draft').length;
+    const drafts = (prcState.pressReleases || []).filter(p => p.status === 'draft').length;
     say(drafts === 0 ? 'Nothing in draft — showing press releases below.' : `<strong>${drafts} press ${drafts===1?'release is':'releases are'}</strong> still in draft — showing below.`, () => seoScrollTo('repPressSection'));
   } else if (action === 'repEditorial'){
-    const pending = REPUTATION_DATA.editorialPitches.filter(p => p.status === 'pending').length;
+    const pending = (prcState.editorialPitches || []).filter(p => p.status === 'pending').length;
     say(`<strong>${pending} pending ${pending===1?'pitch':'pitches'}</strong> — showing editorial pitches below.`, () => seoScrollTo('repEditorialSection'));
   } else if (action === 'repCorpComms'){
     say('Showing corporate communications below.', () => seoScrollTo('repCorpCommsSection'));
@@ -32649,58 +32666,197 @@ function renderRepMentions(){
     </div>`).join('');
 }
 
-function renderRepPress(){
-  const el = document.getElementById('repPressList');
+// ---------- PR & Corp Comm real backend (round 132c22b) ----------
+// Loads the three real, account-scoped lists that used to be
+// REPUTATION_DATA.pressReleases/.editorialPitches/.corporateComms. Called
+// once at app init (so Dashboard's Connected Signal 2 has real data to
+// check on first render) and again after any create/update/delete/AI-draft
+// in this workstream. Same defensive dataSourceLabel/companyId guard as
+// bwsLoadLibrary() and loadTeam() — a no-op for mock/handoff accounts.
+async function loadPrCorpCommData(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const [prResp, edResp, ccResp] = await Promise.all([
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`),
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/editorial-pitches`),
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/corporate-comms`)
+    ]);
+    if (prResp.ok) prcState.pressReleases = (await prResp.json()).pressReleases || [];
+    if (edResp.ok) prcState.editorialPitches = (await edResp.json()).editorialPitches || [];
+    if (ccResp.ok) prcState.corporateComms = (await ccResp.json()).corporateComms || [];
+  } catch (e){ /* honest-empty fallback — prcState stays whatever it already was */ }
+  if (document.getElementById('repPressList')) renderReputationStep();
+  const signalsEl = document.getElementById('connectedSignalsList');
+  if (signalsEl) renderConnectedSignals();
+}
+
+// One shared "add" handler for all three doc types — differs only in the
+// required fields and which array/endpoint it targets, same
+// config-over-duplication approach as PRC_TYPE_CONFIG below.
+const PRC_TYPE_CONFIG = {
+  press: { endpoint: 'press-releases', stateKey: 'pressReleases', idPrefix: 'PRL', statusMap: { distributed: ['sent', 'Distributed'], draft: ['pending', 'Draft'] }, nextStatus: { draft: 'distributed', distributed: 'draft' }, nextLabel: { draft: 'Mark Distributed →', distributed: 'Revert to Draft' } },
+  editorial: { endpoint: 'editorial-pitches', stateKey: 'editorialPitches', idPrefix: 'EDP', statusMap: { placed: ['sent', 'Placed'], pending: ['pending', 'Pending'] }, nextStatus: { pending: 'placed', placed: 'pending' }, nextLabel: { pending: 'Mark Placed →', placed: 'Revert to Pending' } },
+  corp: { endpoint: 'corporate-comms', stateKey: 'corporateComms', idPrefix: 'CCM', statusMap: { approved: ['sent', 'Approved'], draft: ['pending', 'Draft'] }, nextStatus: { draft: 'approved', approved: 'draft' }, nextLabel: { draft: 'Mark Approved →', approved: 'Revert to Draft' } }
+};
+
+async function prcCreate(type, fields){
+  const cfg = PRC_TYPE_CONFIG[type];
+  const statusEl = document.getElementById(`prc${type}NewStatus`);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...fields, createdBy: state.userName || '' })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving failed.'; return; }
+    if (statusEl) statusEl.textContent = '';
+    await loadPrCorpCommData();
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not save.'; }
+}
+
+function prcCreatePress(){
+  const title = (document.getElementById('prcPressNewTitle') || {}).value || '';
+  if (!title.trim()){ document.getElementById('prcpressNewStatus').textContent = 'Title is required.'; return; }
+  prcCreate('press', { title: title.trim() });
+  document.getElementById('prcPressNewTitle').value = '';
+}
+function prcCreateEditorial(){
+  const outlet = (document.getElementById('prcEditorialNewOutlet') || {}).value || '';
+  const topic = (document.getElementById('prcEditorialNewTopic') || {}).value || '';
+  if (!outlet.trim() || !topic.trim()){ document.getElementById('prceditorialNewStatus').textContent = 'Outlet and topic are both required.'; return; }
+  prcCreate('editorial', { outlet: outlet.trim(), topic: topic.trim() });
+  document.getElementById('prcEditorialNewOutlet').value = '';
+  document.getElementById('prcEditorialNewTopic').value = '';
+}
+function prcCreateCorp(){
+  const title = (document.getElementById('prcCorpNewTitle') || {}).value || '';
+  const audience = (document.getElementById('prcCorpNewAudience') || {}).value || '';
+  if (!title.trim() || !audience.trim()){ document.getElementById('prccorpNewStatus').textContent = 'Title and audience are both required.'; return; }
+  prcCreate('corp', { title: title.trim(), audience: audience.trim() });
+  document.getElementById('prcCorpNewTitle').value = '';
+  document.getElementById('prcCorpNewAudience').value = '';
+}
+
+async function prcToggleStatus(type, id){
+  const cfg = PRC_TYPE_CONFIG[type];
+  const item = prcState[cfg.stateKey].find(x => x.id === id);
+  if (!item) return;
+  const nextStatus = cfg.nextStatus[item.status] || item.status;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus })
+    });
+    if (resp.ok) await loadPrCorpCommData();
+  } catch (e){ /* no-op — next load reflects real state */ }
+}
+
+async function prcDelete(type, id){
+  const cfg = PRC_TYPE_CONFIG[type];
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (resp.ok) await loadPrCorpCommData();
+  } catch (e){ /* no-op */ }
+}
+
+function prcToggleExpand(type, id){
+  const key = `${type}:${id}`;
+  prcExpanded[key] = !prcExpanded[key];
+  renderReputationStep();
+}
+
+async function prcSaveCopy(type, id){
+  const cfg = PRC_TYPE_CONFIG[type];
+  const textarea = document.getElementById(`prcCopy-${type}-${id}`);
+  if (!textarea) return;
+  const statusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workingCopy: textarea.value })
+    });
+    if (resp.ok){ if (statusEl) statusEl.textContent = 'Saved.'; await loadPrCorpCommData(); }
+    else if (statusEl) statusEl.textContent = 'Save failed.';
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
+}
+
+// AI drafting — draftPrCorpCommCopyViaAI() on the backend, same honest
+// ANTHROPIC_API_KEY-not-configured fallback note convention as
+// generateMessagingCopyViaAI's campaign copy generation. Never auto-
+// distributes/approves — it only fills workingCopy for a human to review.
+async function prcGenerateDraft(type, id){
+  const cfg = PRC_TYPE_CONFIG[type];
+  prcExpanded[`${type}:${id}`] = true;
+  const statusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
+  if (statusEl) statusEl.textContent = 'Drafting with AI…';
+  else renderReputationStep(); // expand first so the status line exists to update
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}/generate-draft`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    const data = await resp.json().catch(() => ({}));
+    await loadPrCorpCommData();
+    const freshStatusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
+    if (freshStatusEl) freshStatusEl.textContent = data.copy ? `Drafted — review and edit before saving.${data.sourcesUsed && data.sourcesUsed.length ? ' Used: ' + data.sourcesUsed.join(', ') : ''}` : (data.note || 'AI drafting did not return a draft.');
+  } catch (e){
+    const freshStatusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
+    if (freshStatusEl) freshStatusEl.textContent = 'Backend unreachable — could not draft.';
+  }
+}
+
+function prcRenderSection(type, containerId, titleFn, subtitleFn){
+  const el = document.getElementById(containerId);
   if (!el) return;
-  const statusMap = { distributed: ['sent', 'Distributed'], draft: ['pending', 'Draft'] };
-  el.innerHTML = REPUTATION_DATA.pressReleases.map(p => {
-    const [cls, label] = statusMap[p.status] || ['info', p.status];
-    return `<div class="seo-row">
-      <div class="seo-row-main">
-        <div class="seo-row-title">${escapeHtml(p.title)}${p.date ? ` <span class="hint" style="font-weight:400;">— ${escapeHtml(p.date)}</span>` : ''}</div>
-        ${p.note ? `<div class="seo-row-detail">${escapeHtml(p.note)}</div>` : ''}
+  const cfg = PRC_TYPE_CONFIG[type];
+  const rows = prcState[cfg.stateKey];
+  if (!rows.length){ el.innerHTML = '<p class="hint">Nothing here yet — add one above.</p>'; return; }
+  el.innerHTML = rows.map(item => {
+    const [cls, label] = cfg.statusMap[item.status] || ['info', item.status];
+    const key = `${type}:${item.id}`;
+    const expanded = !!prcExpanded[key];
+    return `<div class="seo-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+        <div class="seo-row-main">
+          <div class="seo-row-title">${titleFn(item)}</div>
+          ${subtitleFn(item) ? `<div class="seo-row-detail">${subtitleFn(item)}</div>` : ''}
+        </div>
+        <span class="seo-badge rep-badge ${cls}" style="white-space:nowrap;">${label}</span>
       </div>
-      <span class="seo-badge rep-badge ${cls}">${label}</span>
+      <div class="btn-row" style="margin:8px 0 0;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" onclick="prcToggleExpand('${type}','${item.id}')">${expanded ? 'Hide draft' : 'View / edit draft'}</button>
+        <button type="button" class="btn-ghost" onclick="prcGenerateDraft('${type}','${item.id}')">Draft with AI →</button>
+        <button type="button" class="btn-ghost" onclick="prcToggleStatus('${type}','${item.id}')">${cfg.nextLabel[item.status] || 'Change status'}</button>
+        <button type="button" class="btn-ghost" onclick="prcDelete('${type}','${item.id}')">Remove</button>
+      </div>
+      ${expanded ? `<div style="margin-top:8px;">
+        <textarea id="prcCopy-${type}-${item.id}" rows="6" style="width:100%;font-family:inherit;">${escapeHtml(item.workingCopy || '')}</textarea>
+        <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveCopy('${type}','${item.id}')">Save →</button></div>
+        <div id="prcCopyStatus-${type}-${item.id}" class="hint" style="margin-top:4px;"></div>
+      </div>` : ''}
     </div>`;
   }).join('');
+}
+
+function renderRepPress(){
+  prcRenderSection('press', 'repPressList',
+    p => `${escapeHtml(p.title)}${p.distributedDate ? ` <span class="hint" style="font-weight:400;">— ${escapeHtml(p.distributedDate.slice(0,10))}</span>` : ''}`,
+    p => '');
 }
 
 function renderRepEditorial(){
-  const el = document.getElementById('repEditorialList');
-  if (!el) return;
-  const statusMap = { placed: ['sent', 'Placed'], pending: ['pending', 'Pending'] };
-  el.innerHTML = REPUTATION_DATA.editorialPitches.map(p => {
-    const [cls, label] = statusMap[p.status] || ['info', p.status];
-    return `<div class="seo-row">
-      <div class="seo-row-main">
-        <div class="seo-row-title">${escapeHtml(p.outlet)} <span class="hint" style="font-weight:400;">— ${escapeHtml(p.topic)}</span></div>
-        <div class="seo-row-detail">Sent ${escapeHtml(p.sentDate)}</div>
-      </div>
-      <span class="seo-badge rep-badge ${cls}">${label}</span>
-    </div>`;
-  }).join('');
+  prcRenderSection('editorial', 'repEditorialList',
+    p => `${escapeHtml(p.outlet)} <span class="hint" style="font-weight:400;">— ${escapeHtml(p.topic)}</span>`,
+    p => p.sentDate ? `Sent ${escapeHtml(p.sentDate.slice(0,10))}` : '');
 }
 
 function renderRepCorpComms(){
-  const el = document.getElementById('repCorpCommsList');
-  if (!el) return;
-  const statusMap = { approved: ['sent', 'Approved'], draft: ['pending', 'Draft'] };
-  el.innerHTML = REPUTATION_DATA.corporateComms.map(c => {
-    const [cls, label] = statusMap[c.status] || ['info', c.status];
-    return `<div class="seo-row">
-      <div class="seo-row-main">
-        <div class="seo-row-title">${escapeHtml(c.title)} <span class="hint" style="font-weight:400;">— ${escapeHtml(c.audience)}, ${escapeHtml(c.date)}</span></div>
-        ${c.note ? `<div class="seo-row-detail">${escapeHtml(c.note)}</div>` : ''}
-      </div>
-      <span class="seo-badge rep-badge ${cls}">${label}</span>
-    </div>`;
-  }).join('');
+  prcRenderSection('corp', 'repCorpCommsList',
+    c => `${escapeHtml(c.title)} <span class="hint" style="font-weight:400;">— ${escapeHtml(c.audience)}</span>`,
+    c => c.approvedAt ? `Approved ${escapeHtml(c.approvedAt.slice(0,10))}` : '');
 }
 
 function renderReputationStep(){
   const urgent = REPUTATION_DATA.mentions.filter(m => m.urgent).length;
   const positive = REPUTATION_DATA.mentions.filter(m => m.sentiment === 'positive').length;
-  const pendingPitches = REPUTATION_DATA.editorialPitches.filter(p => p.status === 'pending').length;
+  const pendingPitches = prcState.editorialPitches.filter(p => p.status === 'pending').length;
   const summaryEl = document.getElementById('repOverviewSummary');
   if (summaryEl){
     summaryEl.innerHTML = `
@@ -39920,6 +40076,7 @@ async function saveCompetitivePositioning(){
   await loadAccountData();
   await loadCampaigns();
   await loadTeam();
+  await loadPrCorpCommData();
   await loadMediaPlan();
   await loadContentLibrary();
   renderOrgModelRow();
