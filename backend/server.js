@@ -1127,6 +1127,52 @@ ensureColumn('creative_jobs', 'cxRelevanceScore', 'REAL');
 ensureColumn('creative_jobs', 'cxRelevanceScoredAt', 'TEXT');
 ensureColumn('creative_jobs', 'cxRelevanceNotes', 'TEXT');
 
+// 2026-08-22 — Copy decision log ("structured approve/reject-with-reason
+// capture", first item off the CX & Copywriting product-vision roadmap).
+// creative_jobs.copyApproved above only ever stores the CURRENT state —
+// approving copy after a prior rejection overwrites the rejection with no
+// trace of it, and there was never anywhere to capture WHY something was
+// rejected in the first place. That "why" is exactly the training signal
+// the vision doc describes ("rejecting isn't a dead end... that reason is
+// what makes tomorrow's first draft need less correction than today's") —
+// today it was being thrown away. This table is a permanent, append-only
+// log of every copy decision on a job (one row per decision, oldest to
+// newest), independent of creative_jobs.copyApproved which still tracks
+// only the current/latest state for the existing status-gate logic below.
+// decidedBy is the session's accountId/memberId pair rendered as a single
+// string (best-effort attribution — not a foreign key, since a decision
+// should stay on the record even if the deciding member is later removed).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS creative_job_decisions (
+    id TEXT PRIMARY KEY,
+    jobId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    approved INTEGER NOT NULL,
+    reason TEXT,
+    decidedBy TEXT,
+    decidedAt TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (jobId) REFERENCES creative_jobs(id)
+  );
+`);
+
+// 2026-08-22 — pre-decision draft scoring (item 2 off the CX & Copywriting
+// vision roadmap: "relevance scoring & compliance scoring shown pre-
+// decision — not yet computed or surfaced at draft time"). Deliberately
+// SEPARATE from cxRelevanceScore/cxRelevanceScoredAt/cxRelevanceNotes above
+// — those are the human's own final sign-off score, entered manually once
+// a job reaches 'Complete' (round 132c17). draftRelevanceScore/
+// draftComplianceScore are the automated score shown BEFORE a human
+// decides whether to approve or request changes, computed fresh every time
+// the draft copy is scored — the two are allowed to disagree (an automated
+// score is a signal to speed up triage, not a replacement for the human's
+// own final judgment call).
+ensureColumn('creative_jobs', 'draftRelevanceScore', 'REAL');
+ensureColumn('creative_jobs', 'draftComplianceScore', 'REAL');
+ensureColumn('creative_jobs', 'draftScoreNote', 'TEXT');
+ensureColumn('creative_jobs', 'draftComplianceFlags', 'TEXT');
+ensureColumn('creative_jobs', 'draftScoredAt', 'TEXT');
+
 // Maps a creative job's existing `channel` value to the 6 fixed creative
 // "skills" from the instruction above. CREATIVE_SKILLS is the authoritative
 // list (also used by the front end for display/filtering); anything not
@@ -5339,6 +5385,135 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
   }
 }
 
+// A short, generic list of absolute/risky claim patterns that show up
+// across ad-compliance guidelines regardless of brand or industry (not a
+// substitute for real legal review — a floor, not a ceiling). Checked in
+// addition to whatever a brand's own voice guide flags below.
+const GENERIC_COMPLIANCE_RISK_PATTERNS = [
+  { re: /\bguarantee(d)?\b/i, flag: 'Uses "guarantee(d)" — confirm this claim is actually backed and legally supportable.' },
+  { re: /\b100%\s*(safe|effective|guaranteed)\b/i, flag: 'Makes an absolute ("100%...") claim — these draw regulatory scrutiny in most industries.' },
+  { re: /\bcure[sd]?\b/i, flag: 'Uses "cure" — a medical/therapeutic claim word; almost never appropriate outside a regulated health context.' },
+  { re: /\brisk[- ]free\b/i, flag: 'Uses "risk-free" — verify this is literally true, not just "low risk."' },
+  { re: /\bno\s+risk\b/i, flag: 'Claims "no risk" — same concern as "risk-free."' },
+];
+
+// Pulls explicit "avoid ..."/"never say ..."/"don't use ..." quoted phrases
+// out of a brand's own Voice Guide text, so the compliance check is
+// grounded in what THIS brand actually asked not to say, not a generic
+// guess. Deliberately only matches quoted phrases (`avoid "synergy"`) to
+// avoid false positives from prose that merely discusses the word "avoid."
+function extractVoiceGuideAvoidTerms(voiceGuideText){
+  if (!voiceGuideText) return [];
+  const terms = [];
+  const re = /\b(?:avoid|never say|never use|don't say|don't use|do not say|do not use)\s*[:\-]?\s*"([^"]{2,40})"/gi;
+  let m;
+  while ((m = re.exec(voiceGuideText))){
+    terms.push(m[1].trim());
+  }
+  return terms;
+}
+
+// A short stopword list for the relevance heuristic below — common words
+// stripped out so the overlap score reflects genuinely meaningful campaign
+// terms, not "the"/"and"/"with" matching by coincidence.
+const RELEVANCE_STOPWORDS = new Set(['the','and','for','with','that','this','from','your','you','are','was','were','have','has','will','into','onto','their','them','they','a','an','of','to','in','on','at','is','it','be','as']);
+function tokenize(text){
+  return (text || '').toLowerCase().match(/[a-z0-9']+/g) || [];
+}
+
+// Deterministic fallback scorer — runs when ANTHROPIC_API_KEY isn't
+// configured (same "real, honest fallback" pattern as
+// generateMessagingCopyViaAI and the Twilio "interim code" path, never a
+// fabricated number dressed up as AI output). relevanceScore is a plain
+// keyword-overlap heuristic against the campaign's own stated objective/
+// segment/key message/primary KPI; complianceScore starts at 100 and
+// deducts for each matched risk term, brand-specific or generic.
+function scoreDraftHeuristically(copyText, campaign){
+  const signalSource = [campaign.objective, campaign.segment, campaign.keyMessage, campaign.primaryKpi].filter(Boolean).join(' ');
+  const signalTerms = [...new Set(tokenize(signalSource).filter(w => w.length >= 4 && !RELEVANCE_STOPWORDS.has(w)))];
+  const copyTokens = new Set(tokenize(copyText));
+  let relevanceScore = null;
+  let relevanceNote;
+  if (!signalTerms.length){
+    relevanceNote = 'No objective/segment/key message set on this campaign yet — nothing to score relevance against.';
+  } else {
+    const matched = signalTerms.filter(t => copyTokens.has(t));
+    relevanceScore = Math.round((matched.length / signalTerms.length) * 100);
+    relevanceNote = matched.length
+      ? `Matches ${matched.length} of ${signalTerms.length} campaign-context terms: ${matched.slice(0, 6).join(', ')}${matched.length > 6 ? '…' : ''}.`
+      : `Matches none of this campaign's ${signalTerms.length} context terms — worth checking this draft is actually on-brief.`;
+  }
+  return { relevanceScore, relevanceNote, mode: 'heuristic' };
+}
+function scoreComplianceHeuristically(copyText, account){
+  const flags = [];
+  GENERIC_COMPLIANCE_RISK_PATTERNS.forEach(p => { if (p.re.test(copyText)) flags.push(p.flag); });
+  extractVoiceGuideAvoidTerms(account.voiceGuideText).forEach(term => {
+    if (new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(copyText)){
+      flags.push(`Uses "${term}" — this account's own Voice Guide says to avoid it.`);
+    }
+  });
+  const complianceScore = Math.max(0, 100 - flags.length * 20);
+  return { complianceScore, flags, mode: 'heuristic' };
+}
+
+// The pre-decision scoring entry point — POST /api/creative-jobs/:id/score
+// below calls this. Tries a real AI-judged score when ANTHROPIC_API_KEY is
+// configured (a second, smaller Claude call, separate from the drafting
+// call in generateMessagingCopyViaAI — scoring existing copy is a
+// different task from writing new copy, and keeping them separate calls
+// means scoring works even for copy a human wrote or edited by hand, not
+// just AI-drafted copy); falls back to the deterministic heuristics above
+// otherwise, same honest-fallback convention as everywhere else in this
+// file that touches ANTHROPIC_API_KEY.
+async function scoreDraftCopy(copyText, campaign, account){
+  if (!copyText || !copyText.trim()){
+    return { relevanceScore: null, complianceScore: null, note: 'No copy to score yet.', flags: [], mode: 'none' };
+  }
+  if (process.env.ANTHROPIC_API_KEY){
+    try {
+      const voiceGuide = (account.voiceGuideText || '').slice(0, 1500);
+      const prompt = `Score this marketing copy on two dimensions, 0-100 each. Respond with ONLY a JSON object: {"relevanceScore": <0-100>, "relevanceNote": "<one sentence>", "complianceScore": <0-100>, "complianceFlags": ["<short specific flag>", ...]}
+
+RELEVANCE (0-100): how well this copy serves the campaign's stated objective, audience/segment, and primary KPI below. 100 = precisely on-brief; 0 = unrelated.
+- Objective: ${campaign.objective || '(not set)'}
+- Audience/Segment: ${campaign.segment || '(not set)'}
+- Primary KPI: ${campaign.primaryKpi || '(not set)'}
+- Key Message: ${campaign.keyMessage || '(not set)'}
+
+COMPLIANCE (0-100): how well this copy honors the brand voice guide below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
+BRAND VOICE GUIDE:
+${voiceGuide || '(none on file)'}
+
+COPY TO SCORE:
+${copyText.slice(0, 2000)}`;
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 500, messages: [{ role: 'user', content: prompt }] })
+      });
+      if (resp.ok){
+        const data = await resp.json();
+        const text = (data.content || []).map(b => b.text || '').join('');
+        const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+        return {
+          relevanceScore: typeof parsed.relevanceScore === 'number' ? parsed.relevanceScore : null,
+          note: typeof parsed.relevanceNote === 'string' ? parsed.relevanceNote : null,
+          complianceScore: typeof parsed.complianceScore === 'number' ? parsed.complianceScore : null,
+          flags: Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags : [],
+          mode: 'ai'
+        };
+      }
+      // fall through to heuristic on a non-OK response rather than failing
+      // the whole score — a scoring endpoint should never 500 the copy
+      // workspace just because the AI scoring call itself hiccuped.
+    } catch (e){ /* fall through to heuristic below */ }
+  }
+  const rel = scoreDraftHeuristically(copyText, campaign);
+  const comp = scoreComplianceHeuristically(copyText, account);
+  return { relevanceScore: rel.relevanceScore, note: rel.relevanceNote, complianceScore: comp.complianceScore, flags: comp.flags, mode: 'heuristic' };
+}
+
 // Returns { account, cells: [{stage, layer, score, history:[...]}] } — the
 // latest score per cell plus its full timestamped history, same shape
 // portal.html's in-memory scoreHistory used, now read from the database.
@@ -8178,6 +8353,94 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE creative_jobs SET cxRelevanceScore = ?, cxRelevanceScoredAt = ?, cxRelevanceNotes = ?, updatedAt = ? WHERE id = ?')
         .run(score, now, body.cxRelevanceNotes || null, now, jobId);
       return sendJson(res, 200, { cxRelevanceScore: score, cxRelevanceScoredAt: now });
+    }
+
+    // POST /api/creative-jobs/:id/score — 2026-08-22, pre-decision draft
+    // scoring (roadmap item 2). Scores whatever is CURRENTLY in
+    // creative_jobs.workingCopy (or an explicit { copy } in the body, so
+    // the frontend can score text still sitting in the textarea before it's
+    // even been saved) against the job's own campaign context and the
+    // account's brand voice guide. Persists the result on the job so a
+    // reload shows the last score without re-scoring, and returns it
+    // directly so the copy workspace can render it immediately.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'score'){
+      const jobId = decodeURIComponent(parts[2]);
+      const job = db.prepare('SELECT * FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!job) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, job.accountId)) return;
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(job.campaignId);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(job.accountId);
+      if (!campaign || !account) return sendJson(res, 404, { error: 'campaign or account not found for this job' });
+      const body = await readBody(req);
+      const copyText = typeof body.copy === 'string' ? body.copy : (job.workingCopy || '');
+      const result = await scoreDraftCopy(copyText, campaign, account);
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE creative_jobs SET draftRelevanceScore = ?, draftComplianceScore = ?, draftScoreNote = ?, draftComplianceFlags = ?, draftScoredAt = ? WHERE id = ?`)
+        .run(result.relevanceScore, result.complianceScore, result.note || null, JSON.stringify(result.flags || []), now, jobId);
+      return sendJson(res, 200, {
+        relevanceScore: result.relevanceScore, complianceScore: result.complianceScore,
+        note: result.note || null, flags: result.flags || [], mode: result.mode, scoredAt: now
+      });
+    }
+
+    // POST /api/creative-jobs/:id/copy-decision — 2026-08-22, structured
+    // approve/reject-with-reason capture (CX & Copywriting vision doc,
+    // roadmap item 1). Body: { approved: boolean, reason?: string }. reason
+    // is required when approved is false — an unlabeled rejection carries
+    // no training signal, which is exactly the gap this endpoint exists to
+    // close. Every call appends a permanent row to creative_job_decisions
+    // (never overwritten, unlike creative_jobs.copyApproved which only
+    // tracks the current state) and then applies the SAME copyApproved/
+    // copyApprovedAt update the existing PATCH endpoint makes, so every
+    // other gate downstream of copy approval (status advance, assetApproved)
+    // keeps working unchanged. A rejection after a prior approval also
+    // clears assetApproved — an asset can't stay approved once the copy
+    // under it has been sent back.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'copy-decision'){
+      const jobId = decodeURIComponent(parts[2]);
+      const existing = db.prepare('SELECT * FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!existing) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, existing.accountId)) return;
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.approved !== 'boolean'){
+        return sendJson(res, 400, { error: 'approved (boolean) is required' });
+      }
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      if (!body.approved && !reason){
+        return sendJson(res, 400, { error: 'reason is required when rejecting copy — this is what the next draft learns from' });
+      }
+      const now = new Date().toISOString();
+      const decisionId = generateId('CJD');
+      const decidedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare(`INSERT INTO creative_job_decisions (id, jobId, accountId, approved, reason, decidedBy, decidedAt, createdAt)
+        VALUES (?,?,?,?,?,?,?,?)`)
+        .run(decisionId, jobId, existing.accountId, body.approved ? 1 : 0, reason || null, decidedBy, now, now);
+      const copyApproved = body.approved ? 1 : 0;
+      const copyApprovedAt = body.approved ? now : null;
+      // Rejecting after a prior asset approval retracts it — see the same
+      // "copy must be approved before the asset can be" gate in the PATCH
+      // handler above; a rejection is the inverse of that gate firing.
+      const assetApproved = body.approved ? existing.assetApproved : 0;
+      const assetApprovedAt = body.approved ? existing.assetApprovedAt : null;
+      db.prepare(`UPDATE creative_jobs SET copyApproved = ?, copyApprovedAt = ?, assetApproved = ?, assetApprovedAt = ?, updatedAt = ? WHERE id = ?`)
+        .run(copyApproved, copyApprovedAt, assetApproved, assetApprovedAt, now, jobId);
+      return sendJson(res, 200, {
+        decisionId, approved: !!body.approved, reason: reason || null, decidedAt: now,
+        copyApproved: !!copyApproved, copyApprovedAt, assetApproved: !!assetApproved
+      });
+    }
+
+    // GET /api/creative-jobs/:id/copy-decisions — the full decision history
+    // for a job, oldest first, so the copy workspace can show not just
+    // "approved" but the trail of what was rejected and why along the way.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'copy-decisions'){
+      const jobId = decodeURIComponent(parts[2]);
+      const existing = db.prepare('SELECT id, accountId FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!existing) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, existing.accountId)) return;
+      const decisions = db.prepare('SELECT id, approved, reason, decidedBy, decidedAt FROM creative_job_decisions WHERE jobId = ? ORDER BY decidedAt ASC').all(jobId);
+      return sendJson(res, 200, { decisions: decisions.map(d => ({ ...d, approved: !!d.approved })) });
     }
 
     // POST /api/campaigns/:id/send-to-trafficking — round 73, per direct
