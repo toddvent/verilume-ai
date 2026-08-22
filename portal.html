@@ -2084,8 +2084,18 @@
     var authLink = document.getElementById('utilNavAuthLink');
     if (!portalLink || !authLink) return;
     if (accountId){
-      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
-      portalLink.style.display = '';
+      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
+      // already ON portal.html is redundant (you're already there); hide
+      // it there specifically, still show it everywhere else (marketing
+      // pages, assessment.html, account.html, etc.) so there's always a
+      // way back to the Portal from outside it.
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
       authLink.textContent = 'Logout';
       authLink.href = '#';
       authLink.onclick = function(e){
@@ -28870,15 +28880,25 @@ function renderCopyWorkspace(jobId){
           <div id="copyLibraryPickerPanel" style="margin-top:10px;"></div>
 
           <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+            <div id="copyDraftScore" style="margin-bottom:14px;"></div>
+          </div>
+          <div style="margin-top:0;padding-top:0;">
             ${job.copyApproved
               ? `<span class="badge strong">Copy approved${job.copyApprovedAt ? ' — ' + new Date(job.copyApprovedAt).toLocaleString() : ''}</span>`
-              : `<button type="button" class="btn-primary" onclick="approveJobCopy('${job.id}')">Approve copy →</button>`}
-            <div class="hint" style="margin-top:8px;">Copy must be approved before this job can move past Pending — the creative team's next step is gated on it.</div>
+              : `<button type="button" class="btn-primary" onclick="submitCopyDecision('${job.id}', true)">Approve copy →</button>`}
+            <button type="button" class="btn-ghost" onclick="submitCopyDecision('${job.id}', false)" style="margin-left:8px;">Request changes →</button>
+            <div class="field" style="margin-top:10px;">
+              <label for="copyDecisionReason">Reason ${job.copyApproved ? '(optional — used if you request changes)' : '(required if you request changes; helps future drafts)'}</label>
+              <textarea id="copyDecisionReason" rows="2" placeholder="e.g. Too formal for this segment, doesn't mention the sale end date..."></textarea>
+            </div>
+            <div id="copyDecisionFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:6px;"></div>
+            <div class="hint" style="margin-top:8px;">Copy must be approved before this job can move past Pending — the creative team's next step is gated on it. Every approval or requested change is logged below, with its reason — that history is what makes the next draft need fewer corrections.</div>
             <div class="btn-row" style="margin-top:10px;">
               <button type="button" class="btn-ghost" onclick="advanceJobStatus('${job.id}', 'In Progress')" ${job.status !== 'Pending' ? 'disabled' : ''}>Move to In Progress →</button>
               <button type="button" class="btn-ghost" onclick="advanceJobStatus('${job.id}', 'Pending Approval')" ${job.status !== 'In Progress' ? 'disabled' : ''}>Submit for Approval →</button>
             </div>
             <div id="copyWorkspaceStatusFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:8px;"></div>
+            <div id="copyDecisionHistory" style="margin-top:14px;"></div>
           </div>
         </div>
         <div>
@@ -28889,6 +28909,8 @@ function renderCopyWorkspace(jobId){
 
       ${renderJobActualsSection(job)}
     </div>`;
+  loadCopyDecisionHistory(job.id);
+  scoreCurrentDraft(job.id, currentCopy);
   const textEl = document.getElementById('copyWorkspaceText');
   const updateWireframeAndCount = () => {
     document.getElementById('copyWireframeHolder').innerHTML = renderCopyWireframe(job, textEl.value, bp);
@@ -28975,6 +28997,7 @@ async function saveJobWorkingCopy(jobId){
     if (resp.ok){
       job.workingCopy = text;
       flag.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+      scoreCurrentDraft(jobId, text);
     } else {
       flag.textContent = 'Couldn\'t save — try again.';
     }
@@ -28982,26 +29005,123 @@ async function saveJobWorkingCopy(jobId){
     flag.textContent = 'Backend unreachable — copy not saved.';
   }
 }
-async function approveJobCopy(jobId){
+// 2026-08-22 — structured approve/reject-with-reason capture (CX &
+// Copywriting product-vision roadmap, item 1). Replaces the old
+// approveJobCopy() — a plain PATCH with no memory of *why* something was
+// or wasn't approved — with a call to POST /copy-decision, which logs
+// every decision (not just the latest one) so a rejection's reason is
+// preserved as real signal instead of being silently overwritten by the
+// next approval.
+async function submitCopyDecision(jobId, approved){
   const job = findCreativeJob(jobId);
   if (!job) return;
   const text = document.getElementById('copyWorkspaceText').value;
+  const reason = (document.getElementById('copyDecisionReason').value || '').trim();
+  const flag = document.getElementById('copyDecisionFlag');
+  if (!approved && !reason){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Add a reason before requesting changes — that\'s what the next draft learns from.'; }
+    document.getElementById('copyDecisionReason').focus();
+    return;
+  }
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workingCopy: text, copyApproved: true })
+    // Save whatever's in the copy box first, same as the old approve flow,
+    // so a decision always reflects the text actually on screen.
+    await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workingCopy: text })
+    });
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/copy-decision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved, reason: reason || undefined })
     });
     if (resp.ok){
+      const result = await resp.json();
       job.workingCopy = text;
-      job.copyApproved = 1;
-      job.copyApprovedAt = new Date().toISOString();
+      job.copyApproved = result.copyApproved ? 1 : 0;
+      job.copyApprovedAt = result.copyApprovedAt;
+      job.assetApproved = result.assetApproved ? 1 : 0;
+      if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = approved ? 'Approved.' : 'Changes requested — logged for the next draft.'; }
       renderCopyWorkspace(jobId);
       loadCreativeJobs();
     } else {
-      alert('Couldn\'t approve this copy right now — try again.');
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || 'Couldn\'t save this decision — try again.'; }
     }
   } catch (e){
-    alert('Backend unreachable — couldn\'t approve this copy.');
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — decision not saved.'; }
+  }
+}
+// 2026-08-22 — pre-decision draft scoring (roadmap item 2: "relevance
+// scoring & compliance scoring shown pre-decision"). Fires automatically
+// whenever the copy workspace opens or the draft copy is re-saved, so a
+// reviewer sees a score before they decide, matching the "drafts arrive,
+// already scored" moment from the CX vision doc's day-in-the-life — this
+// is that moment, actually built.
+async function scoreCurrentDraft(jobId, copyOverride){
+  const holder = document.getElementById('copyDraftScore');
+  if (!holder) return;
+  const textEl = document.getElementById('copyWorkspaceText');
+  const copy = copyOverride !== undefined ? copyOverride : (textEl ? textEl.value : '');
+  if (!copy || !copy.trim()){
+    holder.innerHTML = `<div class="hint">Nothing to score yet — add copy above.</div>`;
+    return;
+  }
+  holder.innerHTML = `<div class="hint">Scoring draft…</div>`;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/score`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copy })
+    });
+    if (!resp.ok){ holder.innerHTML = ''; return; }
+    const result = await resp.json();
+    holder.innerHTML = renderDraftScoreCard(result);
+  } catch (e){
+    holder.innerHTML = '';
+  }
+}
+function scorePill(score){
+  if (score === null || score === undefined) return `<span class="hint">not scored</span>`;
+  const color = score >= 75 ? 'var(--cx)' : (score >= 50 ? 'var(--media)' : 'var(--advocacy)');
+  return `<span style="font-weight:700;color:${color};">${Math.round(score)}</span><span class="hint">/100</span>`;
+}
+function renderDraftScoreCard(result){
+  const flagsHtml = (result.flags && result.flags.length)
+    ? `<ul style="margin:6px 0 0;padding-left:18px;">${result.flags.map(f => `<li class="hint" style="color:var(--advocacy);">${escapeHtml(f)}</li>`).join('')}</ul>`
+    : `<div class="hint" style="margin-top:4px;">No compliance flags.</div>`;
+  const modeNote = result.mode === 'heuristic'
+    ? `<div class="hint" style="margin-top:6px;">Heuristic scoring (no ANTHROPIC_API_KEY configured on this deployment) — a keyword/rule-based estimate, not an AI judgment.</div>`
+    : (result.mode === 'ai' ? `<div class="hint" style="margin-top:6px;">AI-scored.</div>` : '');
+  return `
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Relevance</div>${scorePill(result.relevanceScore)}</div>
+      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Compliance</div>${scorePill(result.complianceScore)}</div>
+    </div>
+    ${result.note ? `<div class="hint" style="margin-top:6px;">${escapeHtml(result.note)}</div>` : ''}
+    ${flagsHtml}
+    ${modeNote}
+  `;
+}
+async function loadCopyDecisionHistory(jobId){
+  const holder = document.getElementById('copyDecisionHistory');
+  if (!holder) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/copy-decisions`);
+    if (!resp.ok) return;
+    const { decisions } = await resp.json();
+    if (!decisions || !decisions.length){
+      holder.innerHTML = '';
+      return;
+    }
+    const rows = decisions.slice().reverse().map(d => {
+      const when = new Date(d.decidedAt).toLocaleString();
+      const label = d.approved
+        ? `<span style="color:var(--cx);font-weight:600;">Approved</span>`
+        : `<span style="color:var(--advocacy);font-weight:600;">Changes requested</span>`;
+      const reasonHtml = d.reason ? ` — "${escapeHtml(d.reason)}"` : '';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:0.8125rem;">${label} <span class="hint">${when}</span>${reasonHtml}</div>`;
+    }).join('');
+    holder.innerHTML = `<div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;margin-bottom:4px;">Decision history</div>${rows}`;
+  } catch (e){
+    // History is a nice-to-have on this panel — a failed fetch here
+    // shouldn't block the rest of the copy workspace from working.
   }
 }
 async function advanceJobStatus(jobId, status){
