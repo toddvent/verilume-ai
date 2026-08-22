@@ -31320,6 +31320,25 @@ function sharedContextClause(){
   return { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText };
 }
 
+// 2026-08-22 — shared word-boundary-safe truncation, replacing the crude
+// `.slice(n)` cutoffs a couple of derivative generators used (Social
+// Batch's x_post, Landing Page's metaTitleDescription), which could and did
+// cut a real word in half mid-string ("...environ" instead of "...
+// environment"). Cuts back to the last whole word within maxLen, and only
+// backs off that far when doing so doesn't lose more than ~40% of the
+// allowed length (a single very long unbroken run — a URL, say — still gets
+// a hard cut rather than an empty result). Strips a trailing comma/colon/
+// dash before appending the ellipsis so it never reads like a sentence was
+// cut off mid-clause-punctuation.
+function truncateAtWordBoundary(text, maxLen){
+  if (!text) return '';
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(' ');
+  const safe = lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return safe.replace(/[,;:\-–—]+$/, '').trim() + '...';
+}
+
 // 2026-08-22 — per direct instruction to leverage the new Brand Voice
 // contest fields (Vision Statement / Longform Example) "as part of our
 // copywriting features at the campaign level and PR and corporate comm."
@@ -31476,11 +31495,20 @@ function updatePlainMaster(value){
 // cmpAssembleLongFormCopy()) instead, so it never recaps internal fields.
 function generatePressReleaseMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, keyMessageForCopy, keyMessageIsDescriptive } = sharedContextClause();
   const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const longform = (campaign.longformCopy || '').trim();
   const paragraphs = longform.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
-  const km = campaign.keyMessage || '';
+  // 2026-08-22 fix — the `lead` field already draws from campaign.longformCopy
+  // (round 132ad's "one copy engine" consolidation), but headline/quote here
+  // never went through that consolidation and quoted campaign.keyMessage
+  // verbatim regardless of keyMessageMode -- exactly backwards for
+  // Descriptive mode, where Key Message is a directional brief the AI
+  // Copywriter is told to paraphrase, never quote. keyMessageForCopy already
+  // resolves to '' under Descriptive mode; every use below falls back to the
+  // approved longform paragraphs instead, same fallback order the lead field
+  // already established.
+  const km = keyMessageForCopy;
   // Round 55 — populate the structured fields object (the new source of
   // truth) instead of assembling one flat string directly; masterContent is
   // then derived via composeMasterFromFields() so every existing reader
@@ -31501,7 +31529,7 @@ function generatePressReleaseMaster(){
   // specific campaign's fields, not a generic disclaimer (see
   // cxmedia-ux-audit-round28.md).
   const rationaleParts = [longform
-    ? `Why this draft: the lead is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline/quote pull from the Key Message — nothing here re-derives from the raw Objective/Segment fields, so it never recaps internal campaign labels as copy`
+    ? `Why this draft: the lead is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline/quote pull from ${km ? 'the Key Message' : keyMessageIsDescriptive ? 'the approved Long Form Copy instead of the Key Message, since Key Message is set to Descriptive mode and shouldn\'t be quoted verbatim' : 'the approved Long Form Copy'} — nothing here re-derives from the raw Objective/Segment fields, so it never recaps internal campaign labels as copy`
     : `Why this draft: no Long Form Copy is approved yet on this campaign's Brand Messaging step, so this is a placeholder shape until then — approve Long Form Copy there for a real draft here`];
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct, since this account hasn't approved a Brand Voice yet — approving one under Brand Groundwork will change every future draft's register automatically`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31510,7 +31538,7 @@ function generatePressReleaseMaster(){
 
 function generatePressReleaseDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
+  const { objectiveLine, objectiveShort, keyMessageForCopy } = sharedContextClause();
   const master = project.masterContent;
   const headline = master.split('\n')[2] || objectiveShort || `${state.company} announcement`;
   // 2026-08-22 fix — same bug as Social Batch/Email Sequence/Landing Page
@@ -31520,10 +31548,21 @@ function generatePressReleaseDerivatives(){
   // validateOutputAgainstObjective() never checks derivatives. Rebuilt off
   // objectiveLine, the same real-sentence CAMPAIGN_OBJECTIVE_COPY translation
   // the master generator already relies on for its own headline/lead.
+  // 2026-08-22 follow-up fix — all 3 of these also quoted campaign.keyMessage
+  // verbatim regardless of keyMessageMode, same bug as the master's
+  // headline/quote fields above. keyMessageForCopy resolves to '' under
+  // Descriptive mode, so every use below already falls back to objectiveLine.
+  // 2026-08-22 second follow-up fix, caught during this round's testing —
+  // objectiveLine is already a complete sentence ending in its own period,
+  // so gluing a literal "." right after it (as both lines below did)
+  // produced a visible double period whenever keyMessageForCopy was empty
+  // (unset Key Message, or Descriptive mode). Strips any trailing period off
+  // the objective/headline fallback before adding the template's own.
+  const objectiveLead = (objectiveLine || headline).replace(/\.$/, '');
   project.derivatives = {
-    social_teaser: `Big news: ${objectiveLine || headline}. ${campaign.keyMessage || ''} Read the full release → [link] #${state.company.replace(/\s+/g,'')}`,
-    linkedin_post: `We're announcing something new.\n\n${campaign.keyMessage || objectiveLine || 'Here\'s what it means for our customers.'}\n\nFull press release in the comments. 👇`,
-    media_email_blurb: `Subject: ${headline}\n\nHi [Name],\n\nSharing today's announcement from ${state.company}: ${objectiveLine || headline}. Full release attached — happy to arrange an interview or additional comment if useful for your coverage.\n\nBest,\n[Name]`
+    social_teaser: `Big news: ${objectiveLead}.${keyMessageForCopy ? ` ${keyMessageForCopy}` : ''} Read the full release → [link] #${state.company.replace(/\s+/g,'')}`,
+    linkedin_post: `We're announcing something new.\n\n${keyMessageForCopy || objectiveLine || 'Here\'s what it means for our customers.'}\n\nFull press release in the comments. 👇`,
+    media_email_blurb: `Subject: ${headline}\n\nHi [Name],\n\nSharing today's announcement from ${state.company}: ${objectiveLead}. Full release attached — happy to arrange an interview or additional comment if useful for your coverage.\n\nBest,\n[Name]`
   };
   renderProjectDetail();
 }
@@ -31561,11 +31600,19 @@ function generateSocialBatchMaster(){
 // generator in this file (never a real Claude call).
 function generateOnePagerMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, keyMessageForCopy, audienceLine } = sharedContextClause();
   let draft = `${campaign.objective}\n${'='.repeat(campaign.objective.length)}\n\n`;
   draft += `Written ${toneClause} for internal/partner distribution — one page, no jargon.\n\n`;
-  draft += `THE OPPORTUNITY\n${campaign.keyMessage || 'A clear, focused move for this account this cycle.'}\n\n`;
-  draft += `WHO IT'S FOR\n${campaign.segment ? `Built for ${campaign.segment}.` : 'Built for this account\'s core audience.'}\n\n`;
+  // 2026-08-22 fix — "THE OPPORTUNITY" used to quote campaign.keyMessage
+  // verbatim regardless of keyMessageMode, and "WHO IT'S FOR" recapped the
+  // raw, comma-joined campaign.segment string — the exact same two bugs
+  // fixed this round in Press Release/Internal Comms (see their own
+  // comments). This is a partner/internal-distribution document, same
+  // audience class as Internal Comms, so it gets the same real-signal fix:
+  // keyMessageForCopy (empty under Descriptive mode) and audienceLine (the
+  // real three-tier audience copy) instead of raw field values.
+  draft += `THE OPPORTUNITY\n${keyMessageForCopy || 'A clear, focused move for this account this cycle.'}\n\n`;
+  draft += `WHO IT'S FOR\n${audienceLine || 'Built for this account\'s core audience.'}\n\n`;
   draft += `WHERE IT SITS\n${campaign.stage ? `Positioned at the ${campaign.stage} stage of the Media Loop.` : 'Positioned within this campaign\'s broader push.'}\n\n`;
   draft += `WHY NOW\n${state.company} is a ${state.industry.toLowerCase()} brand (${state.footprint.toLowerCase()} footprint) — this campaign moves the needle on that footprint directly.\n\n`;
   draft += `NEXT STEP\n[Owner] to confirm budget and timeline against the Media Plan allocation this campaign draws from.`;
@@ -31576,10 +31623,21 @@ function generateOnePagerMaster(){
 
 function generateAnalyticsBriefMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, audienceLine } = sharedContextClause();
   let draft = `ANALYTICS BRIEF — ${campaign.objective}\n\n`;
   draft += `Written ${toneClause}. This is a mocked structure standing in for a real measurement-framework pull (tagging, attribution, MMM) — see cxmedia-campaign-project-architecture.md; no live analytics connection exists in this prototype.\n\n`;
-  draft += `WHAT WE'RE MEASURING\nPerformance of "${campaign.objective}"${campaign.segment ? ` against ${campaign.segment}` : ''}${campaign.stage ? ` at the ${campaign.stage} stage of the Media Loop` : ''}.\n\n`;
+  // 2026-08-22 fix — "against {campaign.segment}" recapped the raw,
+  // comma-joined Segment string mid-sentence, the same guaranteed-fail
+  // pattern fixed elsewhere this round. Unlike those fixes, audienceLine is
+  // a full sentence (real, finished prose), not a short noun phrase, so it
+  // can't just replace the word after "against" the way a label would —
+  // doing that would read as broken grammar ("against Whether this is a
+  // first look..."). Restructured into its own trailing sentence instead;
+  // Objective stays a quoted heading-style label here on purpose (that
+  // usage was reviewed and left alone in an earlier round as a legitimate
+  // internal category reference, not a leak — this fix is scoped to the
+  // Segment recap only).
+  draft += `WHAT WE'RE MEASURING\nPerformance of "${campaign.objective}"${campaign.stage ? ` at the ${campaign.stage} stage of the Media Loop` : ''}.${audienceLine ? ` ${audienceLine}` : ''}\n\n`;
   draft += `SIGNALS TO WATCH\n- Reach and engagement against this campaign's channel mix\n- Movement in this account's Continuous Monitoring re-rates tied to this stage\n- Any Media Plan allocation this campaign draws against, actual vs. approved spend\n\n`;
   draft += `READ-OUT CADENCE\nWeekly pull to the Manager, escalated to the Director on any material miss against KPI.\n\n`;
   draft += `OPEN QUESTIONS\n[Owner] to confirm which KPI(s) this brief should be scored against before the first read-out.`;
@@ -31602,7 +31660,7 @@ function generateSocialBatchDerivatives(){
   project.derivatives = {
     linkedin: `${hero}\n\n#${state.industry.replace(/[^a-zA-Z0-9]/g,'')} #Marketing`,
     instagram_caption: `${short} ✨${igLine ? `\n${igLine}` : ''}\n.\n.\n.\n#${state.company.replace(/\s+/g,'')}`,
-    x_post: short.length > 240 ? short.slice(0, 237) + '...' : short,
+    x_post: short.length > 240 ? truncateAtWordBoundary(short, 237) : short,
     facebook: `${hero}\n\nTap the link to see more →`
   };
   renderProjectDetail();
@@ -31698,7 +31756,7 @@ function generateLandingPageDerivatives(){
   const headline = (project.fields && project.fields.heroHeadline) || objectiveShort || `${state.company} — a step forward`;
   const subhead = (project.fields && project.fields.heroSubhead) || '';
   project.derivatives = {
-    metaTitleDescription: `Title: ${headline} | ${state.company}\nDescription: ${subhead} ${keyMessageForCopy || objectiveLine || 'Learn more.'}`.slice(0, 300),
+    metaTitleDescription: truncateAtWordBoundary(`Title: ${headline} | ${state.company}\nDescription: ${subhead} ${keyMessageForCopy || objectiveLine || 'Learn more.'}`, 300),
     adClickThrough: `${headline}${subhead ? ' — ' + subhead.replace(/\.$/, '') : ''}. ${keyMessageForCopy || objectiveShort || 'Learn more.'} →`
   };
   renderProjectDetail();
@@ -31711,9 +31769,13 @@ function generateLandingPageDerivatives(){
 // would say.
 function generateInternalCommsMaster(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, toneClause } = sharedContextClause();
+  const { campaign, toneClause, keyMessageForCopy, keyMessageIsDescriptive } = sharedContextClause();
   const longform = (campaign.longformCopy || '').trim();
-  const km = campaign.keyMessage || '';
+  // 2026-08-22 fix — same bug as Press Release's headline/quote: "what's
+  // launching" already draws from campaign.longformCopy, but the headline
+  // here quoted campaign.keyMessage verbatim regardless of keyMessageMode.
+  // keyMessageForCopy already resolves to '' under Descriptive mode.
+  const km = keyMessageForCopy;
   project.fields = {
     headline: km ? `Now launching: ${km}` : (longform ? 'Now launching' : 'Now launching — set a Key Message on Brand Messaging for a real headline here'),
     whatsLaunching: longform || `Approve this campaign's Brand Messaging (Long Form Copy) first for real copy here.`,
@@ -31723,7 +31785,7 @@ function generateInternalCommsMaster(){
   };
   project.masterContent = composeMasterFromFields('internal-comm', project.fields);
   const rationaleParts = [longform
-    ? `Why this draft: "what's launching" is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline pulls from the Key Message — nothing here re-derives from the raw Objective/Segment fields`
+    ? `Why this draft: "what's launching" is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline pulls from ${km ? 'the Key Message' : keyMessageIsDescriptive ? 'a generic "Now launching" lead-in instead of the Key Message, since it\'s set to Descriptive mode and shouldn\'t be quoted verbatim' : 'a generic "Now launching" lead-in'} — nothing here re-derives from the raw Objective/Segment fields`
     : `Why this draft: no Long Form Copy is approved yet on this campaign's Brand Messaging step, so this is a placeholder shape until then`];
   rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
@@ -31732,7 +31794,7 @@ function generateInternalCommsMaster(){
 
 function generateInternalCommsDerivatives(){
   const project = findProject(currentCampaignId, currentProjectId);
-  const { campaign, objectiveLine, objectiveShort } = sharedContextClause();
+  const { campaign, objectiveLine, objectiveShort, keyMessageForCopy, audienceLine } = sharedContextClause();
   const headline = (project.fields && project.fields.headline) || objectiveShort || `${state.company} update`;
   const whatsLaunching = (project.fields && project.fields.whatsLaunching) || project.masterContent;
   // 2026-08-22 — "- What: {Objective}" stays the raw label on purpose (a
@@ -31742,9 +31804,17 @@ function generateInternalCommsDerivatives(){
   // team member is meant to read or paraphrase out loud, so it gets the
   // same real-sentence fix as every other consumer/spoken-facing line —
   // literally reading "Brand Awareness" as an answer sounds robotic.
+  // 2026-08-22 follow-up fix — "Why now" and "What to say if asked" used to
+  // quote campaign.keyMessage verbatim regardless of keyMessageMode, same
+  // bug as the master's headline field above. "Who it's for" used to recap
+  // the raw, comma-joined campaign.segment string directly, which is
+  // exactly what validateOutputAgainstObjective()'s "Segment not recapped"
+  // check searches for verbatim — a guaranteed fail whenever Segment was
+  // set. Now uses audienceLine, the same real three-tier audience copy Long
+  // Form Copy/Social Batch/Email Sequence/Landing Page all already use.
   project.derivatives = {
     slackVersion: `📣 ${headline}\n${whatsLaunching}\nQuestions? Reply in-thread or ping [Owner].`,
-    talkingPoints: `- What: ${campaign.objective}\n- Why now: ${campaign.keyMessage || 'supports this account\'s current priorities'}\n${campaign.segment ? `- Who it's for: ${campaign.segment}\n` : ''}- What to say if asked: "${campaign.keyMessage || objectiveLine || 'Ask [Owner] for the current talking points.'}"\n- Who to escalate questions to: [Owner]`
+    talkingPoints: `- What: ${campaign.objective}\n- Why now: ${keyMessageForCopy || 'supports this account\'s current priorities'}\n${audienceLine ? `- Who it's for: ${audienceLine}\n` : ''}- What to say if asked: "${keyMessageForCopy || objectiveLine || 'Ask [Owner] for the current talking points.'}"\n- Who to escalate questions to: [Owner]`
   };
   renderProjectDetail();
 }
