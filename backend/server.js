@@ -345,6 +345,16 @@ ensureColumn('accounts', 'voiceGuideText', 'TEXT');
 ensureColumn('accounts', 'voiceApproved', 'INTEGER DEFAULT 0');
 ensureColumn('accounts', 'voiceVersion', 'INTEGER DEFAULT 0');
 ensureColumn('accounts', 'voiceApprovedAt', 'TEXT');
+// 2026-08-22 — the multi-model Brand Voice contest, per direct instruction:
+// "add a multi-model contest in the brand setup section that presents an
+// overall voice theme to include a vision statement and longform copy
+// example that incorporates the critical customer facing messages." Kept
+// separate from voiceGuideText (the existing single-draft field) rather than
+// folded into it — a Vision Statement and a Longform Example are each their
+// own addressable thing, not fragments of one blob. See
+// runBrandVoiceContest() below for how these get filled in.
+ensureColumn('accounts', 'visionStatement', 'TEXT');
+ensureColumn('accounts', 'longformVoiceExample', 'TEXT');
 
 // Added 2026-07-23 (round 19) — Company Profile (Brand Foundations). The
 // free assessment already collects target audience (generations) and
@@ -1155,6 +1165,248 @@ db.exec(`
     FOREIGN KEY (jobId) REFERENCES creative_jobs(id)
   );
 `);
+
+// 2026-08-22 — Multi-candidate "interview" panel (CX & Copywriting vision
+// roadmap item 4, the last and biggest item on the list — "run the same
+// brief across multiple models and subagents, side by side... we want the
+// best of the best by function"). Honest scope note, since this is the
+// item most likely to get overclaimed: this deployment has exactly one
+// AI vendor credentialed (ANTHROPIC_API_KEY, see generateMessagingCopyViaAI
+// above) — there is no OpenAI/Gemini key anywhere in this codebase, so a
+// real cross-vendor "GPT vs Gemini vs Claude" bake-off isn't something this
+// build can honestly claim yet. What IS real and shippable today: running
+// the SAME brief through several distinct copywriting "subagents" — each a
+// separate generation call with its own strategic angle (direct-response /
+// brand-story / proof-and-trust), which is exactly the "subagents" half of
+// Todd's ask — then scoring every candidate with the same scoreDraftCopy()
+// used for the pre-decision score (item 2), so the panel ranks them on the
+// same real relevance/compliance axes a human reviewer would use, not a
+// fabricated "AI vote." The panel ALSO lists the not-yet-configured vendors
+// (OpenAI, Google) honestly as "not configured on this deployment" rather
+// than hiding them — so the UI is already the shape a real multi-vendor
+// panel will have the day those credentials exist, with zero redesign
+// needed then. Append-only log, same convention as creative_job_decisions:
+// candidatesJson is the full panel result at the moment it ran;
+// selectedCandidateKey/selectedBy/selectedAt are filled in later, once, by
+// the separate /select endpoint below (an interview can be run without ever
+// being acted on — that's fine, it's just not reflected in workingCopy).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS creative_job_interviews (
+    id TEXT PRIMARY KEY,
+    jobId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    requestedBy TEXT,
+    candidatesJson TEXT NOT NULL,
+    selectedCandidateKey TEXT,
+    selectedBy TEXT,
+    selectedAt TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (jobId) REFERENCES creative_jobs(id)
+  );
+`);
+// 2026-08-22, later same day — per direct instruction: "we will need to
+// incorporate the test product type as this will expand to other features
+// as we build." The blind-test/interview mechanism was built generically
+// (runCandidateInterview() takes any campaign+account and any candidate
+// set — nothing about it is copy-specific except the angle briefs), and
+// Todd's already flagging that copy is only the FIRST feature to run
+// through it — relevance scoring, subject lines, or anything else judged
+// by multiple independent passes will want the same blind-test mechanism
+// later. productType tags which feature produced a given interview row so
+// the admin view (and any future per-feature reporting) can group/filter
+// by it from day one, instead of every row silently being assumed to mean
+// "copywriting" forever. ensureColumn (not baked into the CREATE TABLE
+// above) so this lands correctly on a deployment that already created the
+// table under the prior shape. INTERVIEW_PRODUCT_TYPES is the registry new
+// product types get added to as they're built — see the copywriting
+// interview endpoint below for the one real entry today.
+ensureColumn('creative_job_interviews', 'productType', "TEXT DEFAULT 'copywriting'");
+// 2026-08-22, later same day — per direct instruction: "we may run into
+// scenarios when no option is selected. This is a good time to insert the
+// feedback loop. What don't they like and what do they want to change or is
+// one option close enough to edit manually." Same append-only-row
+// convention as everything else on this table: feedback is recorded ONCE
+// per interview (a second submission overwrites it — an interview only
+// gets re-run, not re-critiqued twice), via the new POST .../feedback
+// endpoint below. feedbackType distinguishes the two real scenarios Todd
+// named ('none_selected' — nothing worked, free-text only; 'edit_manually'
+// — one candidate was close, applied to workingCopy as a starting point,
+// same as /select, with the gap explained in feedbackNote) so a future
+// pass can tell "needs a different angle entirely" apart from "was close."
+ensureColumn('creative_job_interviews', 'feedbackNote', 'TEXT');
+ensureColumn('creative_job_interviews', 'feedbackType', 'TEXT');
+ensureColumn('creative_job_interviews', 'feedbackBy', 'TEXT');
+ensureColumn('creative_job_interviews', 'feedbackAt', 'TEXT');
+const INTERVIEW_PRODUCT_TYPES = {
+  copywriting: { label: 'Copywriting', description: 'Blind draft copy candidates, scored on relevance + compliance.' }
+  // Future product types register here as they're built — e.g. a subject-line
+  // tester or a landing-page-variant tester would each add one entry, reusing
+  // runCandidateInterview()'s same generate → score → rank → log shape.
+};
+
+// 2026-08-22 — the multi-model Brand Voice contest. Deliberately a SEPARATE
+// table from creative_job_interviews rather than a new INTERVIEW_PRODUCT_TYPES
+// entry: every product type that table was designed for (see its own comment)
+// is scoped to a specific creative job/campaign (jobId NOT NULL, FK'd to
+// creative_jobs) — a subject-line tester or landing-page tester both still
+// belong to one job. A Brand Voice contest belongs to the ACCOUNT, not any
+// one job — there's no campaign or creative job to attach it to, and forcing
+// a NULL/placeholder jobId onto an existing NOT-NULL FK'd column would be
+// exactly the kind of misleading schema shortcut this build has avoided
+// everywhere else. Same append-only-row convention, same feedback-loop shape
+// (feedbackNote/Type/By/At) as creative_job_interviews, just without the
+// job-scoped fields that don't apply here.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_voice_interviews (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    requestedBy TEXT,
+    candidatesJson TEXT NOT NULL,
+    selectedCandidateKey TEXT,
+    selectedBy TEXT,
+    selectedAt TEXT,
+    feedbackNote TEXT,
+    feedbackType TEXT,
+    feedbackBy TEXT,
+    feedbackAt TEXT,
+    createdAt TEXT NOT NULL
+  );
+`);
+// Three genuinely distinct brand-voice directions — not three re-rolls of one
+// prompt, same "real subagents" discipline as INTERVIEW_SUBAGENT_ANGLES
+// above. Each is a full personality a brand could plausibly commit to, not a
+// minor wording variation of the others.
+const BRAND_VOICE_SUBAGENT_ANGLES = [
+  { key: 'confident-authority', label: 'Confident Authority', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+    brief: 'A voice that leads with the plain claim, then the reasoning — never hedges with "we strive to" or "we believe." Speaks like the expert in the room. Short, declarative sentences. Confidence comes from specificity, not volume.' },
+  { key: 'warm-storyteller', label: 'Warm Storyteller', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+    brief: 'A voice that opens with a specific, sensory moment — never a generic greeting — and lets the point arrive as the natural next beat of the story, not a hard pivot to a sales line. Warmth comes from specificity (a real detail), never from generic friendliness.' },
+  { key: 'bold-modern', label: 'Bold Modern', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+    brief: 'A voice that is energetic and contemporary without being juvenile — punchy sentence rhythm, confident fragments where they earn their place, zero corporate hedging. Reads like a brand that knows exactly who it is and isn\'t trying to please everyone.' }
+];
+// Same "architected for, not yet credentialed" honesty as
+// INTERVIEW_UNCONFIGURED_VENDORS above — reused verbatim rather than
+// duplicated, since it's the exact same vendor pool for the exact same
+// reason (only ANTHROPIC_API_KEY exists on this deployment today).
+//
+// "Critical customer-facing messages" — per direct instruction, derived from
+// this account's EXISTING brand inputs rather than a new required field:
+// Products & Services (what to actually talk about) and the approved Brand &
+// Product Keyword chips (the emotional/voice signal already validated for
+// this account) are the two account-level fields already asking for exactly
+// this. Tone Anchors / Words-to-avoid / anti-example are tracked client-side
+// today (see generateVoiceDraft() in portal.html) rather than persisted per-
+// account — this endpoint accepts them as optional request-body context so
+// the contest still benefits from them when the client has them picked,
+// without inventing a new server-side field this round just to hold them.
+function brandVoiceCriticalMessagesContext(account, extra){
+  const lines = [];
+  if (account.productsServices) lines.push(`Products & Services: ${String(account.productsServices).slice(0, 800)}`);
+  let brandKeywords = null, productKeywords = null;
+  try {
+    const parsed = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
+    if (parsed){ brandKeywords = parsed.brand || null; productKeywords = parsed.product || null; }
+  } catch (e){ /* malformed/legacy JSON — fall through without it */ }
+  if (Array.isArray(brandKeywords) && brandKeywords.length) lines.push(`Approved Brand Keywords (emotional/voice signal): ${brandKeywords.join(', ')}`);
+  if (Array.isArray(productKeywords) && productKeywords.length) lines.push(`Approved Product Keywords (what this brand sells): ${productKeywords.join(', ')}`);
+  if (extra && Array.isArray(extra.toneAnchors) && extra.toneAnchors.length) lines.push(`Tone Anchors picked for this account: ${extra.toneAnchors.join(', ')}`);
+  if (extra && extra.avoidWords) lines.push(`Words to avoid: ${extra.avoidWords}`);
+  if (extra && extra.antiExample) lines.push(`What this voice is NOT: ${extra.antiExample}`);
+  return lines.length ? lines.join('\n') : '(No Products & Services, approved Brand/Product Keywords, or Tone Anchors on file yet for this account — draft from the account\'s Industry alone.)';
+}
+async function generateBrandVoiceCandidate(angle, account, extra){
+  try {
+    const context = brandVoiceCriticalMessagesContext(account, extra);
+    const prompt = `You are a brand strategist proposing ONE distinct voice direction for a company, as part of a panel where several different directions are being compared side by side.
+
+YOUR DIRECTION FOR THIS CANDIDATE: ${angle.brief}
+
+COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
+
+CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
+${context}
+
+Respond with ONLY a JSON object with two fields:
+{"visionStatement": "<a single, memorable 1-2 sentence vision statement for this brand's voice — the north star, not a tagline>", "longformExample": "<120-200 words of real, finished longform copy in this voice, written as if it were the opening of a real customer-facing piece (e.g. a welcome email or About page) — must naturally incorporate the critical customer-facing messages above, not just describe them>"}`;
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: angle.model, max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!resp.ok) return { visionStatement: null, longformExample: null, error: `Generation failed (HTTP ${resp.status}).` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    return {
+      visionStatement: typeof parsed.visionStatement === 'string' ? parsed.visionStatement : null,
+      longformExample: typeof parsed.longformExample === 'string' ? parsed.longformExample : null,
+      error: null
+    };
+  } catch (e){
+    return { visionStatement: null, longformExample: null, error: 'Generation failed: ' + e.message };
+  }
+}
+// No relevance score here — unlike the copy interview panel, there's no
+// campaign objective to score relevance against at the account level, and
+// fabricating one against nothing real would be exactly the kind of
+// invented-precision this build has avoided everywhere else. Compliance
+// IS a real, checkable signal at this level though (this account's own
+// Voice Guide avoid-words, if any exist yet) — reuses
+// scoreComplianceHeuristically() unchanged, run against the combined vision
+// statement + longform example text. Ranking (recommendedKey) only picks a
+// winner when one candidate has strictly fewer compliance flags than every
+// other configured candidate — a tie means no honest winner to declare, so
+// recommendedKey stays null and a human decides, same as the copy panel's
+// null-degradation path when scoring can't distinguish candidates.
+async function runBrandVoiceContest(account, extra){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return {
+      available: false,
+      note: 'The Brand Voice contest requires ANTHROPIC_API_KEY to be configured — without it there is no real draft to run multiple ways. Set the key to enable this panel.',
+      recommendedKey: null,
+      candidates: []
+    };
+  }
+  const generated = await Promise.all(
+    BRAND_VOICE_SUBAGENT_ANGLES.map(angle => generateBrandVoiceCandidate(angle, account, extra))
+  );
+  const liveCandidates = BRAND_VOICE_SUBAGENT_ANGLES.map((angle, i) => {
+    const gen = generated[i];
+    const combinedText = [gen.visionStatement, gen.longformExample].filter(Boolean).join('\n\n');
+    const compliance = combinedText ? scoreComplianceHeuristically(combinedText, account) : null;
+    return {
+      key: angle.key, label: angle.label, vendor: angle.vendor, model: angle.model, configured: true,
+      visionStatement: gen.visionStatement, longformExample: gen.longformExample, error: gen.error,
+      complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : []
+    };
+  });
+  const unconfiguredCandidates = INTERVIEW_UNCONFIGURED_VENDORS.map(v => ({
+    key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
+    visionStatement: null, longformExample: null, error: `${v.envVar} not configured on this deployment.`,
+    complianceScore: null, flags: []
+  }));
+  const scored = liveCandidates.filter(c => c.visionStatement && c.longformExample);
+  let recommendedKey = null;
+  if (scored.length){
+    const sorted = [...scored].sort((a, b) => (b.complianceScore || 0) - (a.complianceScore || 0));
+    const top = sorted[0];
+    const tiedWithTop = sorted.filter(c => c.complianceScore === top.complianceScore);
+    if (tiedWithTop.length === 1) recommendedKey = top.key;
+  }
+  return { available: true, note: null, recommendedKey, candidates: [...liveCandidates, ...unconfiguredCandidates] };
+}
+// Same allowlist discipline as redactCandidatesForClient() above — strips
+// vendor/model before anything reaches the client, per the standing "never
+// reveal the actual model" rule. A parallel function rather than reusing
+// redactCandidatesForClient() directly since the candidate shape is
+// different (visionStatement/longformExample, not copy/relevanceScore).
+function redactBrandVoiceCandidatesForClient(candidates){
+  return (candidates || []).map(c => ({
+    key: c.key, label: c.label, configured: c.configured,
+    visionStatement: c.visionStatement, longformExample: c.longformExample, error: c.error,
+    complianceScore: c.complianceScore, flags: c.flags
+  }));
+}
 
 // 2026-08-22 — pre-decision draft scoring (item 2 off the CX & Copywriting
 // vision roadmap: "relevance scoring & compliance scoring shown pre-
@@ -5334,6 +5586,16 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     const stageJob = MEDIA_LOOP_STAGE_JOB[campaign.stage] || 'No Loop Stage set on this campaign yet.';
     const voiceGuide = (account.voiceGuideText || '').slice(0, 2500);
     const styleNotes = (account.styleNotes || '').slice(0, 1500);
+    // 2026-08-22 — per direct instruction to leverage the new Brand Voice
+    // contest fields "as part of our copywriting features at the campaign
+    // level" once they're non-null. visionStatement is the account's
+    // north-star line; longformVoiceExample is a real, finished reference
+    // piece in that voice — both feed this prompt as additional brand
+    // context alongside (not replacing) the existing Voice Guide, only when
+    // actually on file, same honest-optional-context convention as
+    // competitorContext below.
+    const visionStatement = (account.visionStatement || '').trim();
+    const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -5347,7 +5609,7 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
 
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
 ${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
-
+${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to, even as individual campaigns change):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register, rhythm, and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}
 BRAND STYLE / PRODUCT FACTS (real, approved — use specific details from this where they genuinely fit, never invent facts not present here):
 ${styleNotes || '(none on file)'}
 
@@ -5473,6 +5735,12 @@ async function scoreDraftCopy(copyText, campaign, account){
   if (process.env.ANTHROPIC_API_KEY){
     try {
       const voiceGuide = (account.voiceGuideText || '').slice(0, 1500);
+      // Same Vision Statement context the drafting prompts now receive
+      // (generateMessagingCopyViaAI/generateInterviewCandidateCopy above) —
+      // the compliance judge should be checking copy against the same full
+      // picture of the brand's voice the drafter was given, not a narrower
+      // one.
+      const visionStatement = (account.visionStatement || '').trim();
       const prompt = `Score this marketing copy on two dimensions, 0-100 each. Respond with ONLY a JSON object: {"relevanceScore": <0-100>, "relevanceNote": "<one sentence>", "complianceScore": <0-100>, "complianceFlags": ["<short specific flag>", ...]}
 
 RELEVANCE (0-100): how well this copy serves the campaign's stated objective, audience/segment, and primary KPI below. 100 = precisely on-brief; 0 = unrelated.
@@ -5484,6 +5752,7 @@ RELEVANCE (0-100): how well this copy serves the campaign's stated objective, au
 COMPLIANCE (0-100): how well this copy honors the brand voice guide below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
 BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
+${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}
 
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
@@ -5512,6 +5781,166 @@ ${copyText.slice(0, 2000)}`;
   const rel = scoreDraftHeuristically(copyText, campaign);
   const comp = scoreComplianceHeuristically(copyText, account);
   return { relevanceScore: rel.relevanceScore, note: rel.relevanceNote, complianceScore: comp.complianceScore, flags: comp.flags, mode: 'heuristic' };
+}
+
+// Candidate "subagent" angles for the interview panel (roadmap item 4 —
+// "run the same brief across multiple models and subagents, side by side").
+// All three currently run on the one credentialed vendor (see
+// INTERVIEW_UNCONFIGURED_VENDORS below for the honest story on the others),
+// but each is a genuinely distinct strategic brief a real creative team
+// would assign separately — not three re-rolls of the same prompt.
+const INTERVIEW_SUBAGENT_ANGLES = [
+  { key: 'direct-response', label: 'Direct-response angle', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+    brief: 'Write for maximum action on the Primary KPI. Lead with the strongest concrete benefit or offer, keep sentences short, and make the call to action impossible to miss. Urgency over atmosphere.' },
+  { key: 'brand-story', label: 'Brand-story angle', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+    brief: 'Write to build brand affinity first. Open with a sensory, specific moment grounded in the brand voice guide, and let the call to action arrive as the natural next step in the story rather than a hard pivot.' },
+  { key: 'proof-and-trust', label: 'Proof-and-trust angle', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+    brief: 'Write to reduce hesitation. Lead with the most credible, specific proof point available in the brand/style material (a real detail, never an invented statistic), and let the call to action feel like a low-risk next step.' }
+];
+
+// Vendors this panel is architected for but not yet credentialed on this
+// deployment (no OPENAI_API_KEY / GEMINI_API_KEY / XAI_API_KEY /
+// PERPLEXITY_API_KEY anywhere in this codebase today) — listed honestly as
+// "not configured" rather than silently omitted, so the response shape
+// already matches what a real cross-vendor bake-off needs the day those
+// credentials are added, with no redesign. 2026-08-22, per direct
+// clarification: "when I say winner may not come from the same model, I'm
+// referring to results coming from Claude, ChatGPT, Gemini, Grok,
+// Perplexity — not necessarily a different Claude model." That's the full
+// 5-vendor pool Todd has in mind for this panel (Anthropic is the one
+// that's actually live today — see INTERVIEW_SUBAGENT_ANGLES above); Grok
+// and Perplexity were missing from this list even though they were always
+// part of that intent, so this now honestly names all 4 not-yet-configured
+// vendors instead of 2.
+const INTERVIEW_UNCONFIGURED_VENDORS = [
+  { key: 'openai-gpt', label: 'GPT (OpenAI)', vendor: 'OpenAI', envVar: 'OPENAI_API_KEY' },
+  { key: 'google-gemini', label: 'Gemini (Google)', vendor: 'Google', envVar: 'GEMINI_API_KEY' },
+  { key: 'xai-grok', label: 'Grok (xAI)', vendor: 'xAI', envVar: 'XAI_API_KEY' },
+  { key: 'perplexity', label: 'Perplexity', vendor: 'Perplexity', envVar: 'PERPLEXITY_API_KEY' }
+];
+
+// One subagent angle's generation call — a lighter-weight sibling of
+// generateMessagingCopyViaAI above, sharing its brand-context inputs but
+// taking an explicit strategic brief instead of the general-purpose prompt,
+// so the candidates are honestly different drafts rather than three samples
+// of one instruction.
+async function generateInterviewCandidateCopy(angle, campaign, account){
+  try {
+    const stageJob = MEDIA_LOOP_STAGE_JOB[campaign.stage] || 'No Loop Stage set on this campaign yet.';
+    const voiceGuide = (account.voiceGuideText || '').slice(0, 2000);
+    const styleNotes = (account.styleNotes || '').slice(0, 1200);
+    // Same Vision Statement / Longform Example context as
+    // generateMessagingCopyViaAI() above — every candidate angle in this
+    // panel should still be anchored to the account's real voice, not just
+    // the single-draft generator.
+    const visionStatement = (account.visionStatement || '').trim();
+    const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1000).trim();
+    const prompt = `You are a specialist copywriter working one specific strategic angle on a creative team. Write real, finished, publish-ready Long Form Copy (120-220 words, 3-5 short paragraphs) for a luxury travel brand campaign — not a summary, not a template.
+
+YOUR ANGLE FOR THIS DRAFT: ${angle.brief}
+
+BRAND VOICE GUIDE (follow exactly):
+${voiceGuide || '(no approved Brand Voice on file — write in a clear, direct, confident default tone)'}
+${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to): ${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (match this voice's register and rhythm, not its specific facts):\n${longformVoiceExample}\n` : ''}
+BRAND STYLE / PRODUCT FACTS (use specific real details where they fit; never invent facts not present here):
+${styleNotes || '(none on file)'}
+
+CAMPAIGN CONTEXT:
+- Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
+- Objective: ${campaign.objective || '(not set)'}
+- Audience/Segment: ${campaign.segment || '(not set)'}
+- Primary KPI: ${campaign.primaryKpi || '(not set)'}
+- Key Message, if any: ${campaign.keyMessage || '(none supplied)'}
+
+Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs separated by \\n\\n>"}`;
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: angle.model, max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!resp.ok) return { copy: null, error: `Generation failed (HTTP ${resp.status}).` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
+  } catch (e){
+    return { copy: null, error: 'Generation failed: ' + e.message };
+  }
+}
+
+// The panel itself — POST /api/creative-jobs/:id/interview below calls
+// this. Requires ANTHROPIC_API_KEY (same gate as generateMessagingCopyViaAI)
+// — without it there is no real brief to run multiple ways, so this returns
+// available:false with an honest note rather than three identical template
+// drafts dressed up as a comparison. Runs the three subagent angles in
+// parallel, scores every real candidate with the SAME scoreDraftCopy() used
+// by the item-2 pre-decision score — this panel is that one judgment
+// mechanism applied three times, not a second, different one — then ranks
+// by the average of relevance and compliance. Also appends the
+// not-yet-configured vendors (see INTERVIEW_UNCONFIGURED_VENDORS above) so
+// the shape already matches a real cross-vendor panel.
+async function runCandidateInterview(campaign, account){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return {
+      available: false,
+      note: 'The interview panel requires ANTHROPIC_API_KEY to be configured — without it there is no real draft to run multiple ways. Set the key to enable this panel.',
+      recommendedKey: null,
+      candidates: []
+    };
+  }
+  const generated = await Promise.all(
+    INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account))
+  );
+  const scored = await Promise.all(
+    generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
+  );
+  const liveCandidates = INTERVIEW_SUBAGENT_ANGLES.map((angle, i) => {
+    const gen = generated[i];
+    const score = scored[i];
+    const relevanceScore = score ? score.relevanceScore : null;
+    const complianceScore = score ? score.complianceScore : null;
+    const combinedScore = (typeof relevanceScore === 'number' && typeof complianceScore === 'number')
+      ? Math.round((relevanceScore + complianceScore) / 2)
+      : null;
+    return {
+      key: angle.key, label: angle.label, vendor: angle.vendor, model: angle.model, configured: true,
+      copy: gen.copy, error: gen.error,
+      relevanceScore, complianceScore, combinedScore,
+      note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null
+    };
+  });
+  const unconfiguredCandidates = INTERVIEW_UNCONFIGURED_VENDORS.map(v => ({
+    key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
+    copy: null, error: `${v.envVar} not configured on this deployment.`,
+    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
+  }));
+  const ranked = [...liveCandidates].sort((a, b) => {
+    if (a.combinedScore == null) return 1;
+    if (b.combinedScore == null) return -1;
+    return b.combinedScore - a.combinedScore;
+  });
+  const recommendedKey = (ranked[0] && ranked[0].combinedScore != null) ? ranked[0].key : null;
+  return { available: true, note: null, recommendedKey, candidates: [...liveCandidates, ...unconfiguredCandidates] };
+}
+
+// 2026-08-22, per direct instruction: "we will never reveal the actual
+// model that was selected to the client but I do want visibility via the
+// admin portal." candidatesJson in creative_job_interviews keeps the FULL
+// record (vendor, model — everything; that's what GET
+// /api/ops/accounts/:id/interviews below reads), but every CLIENT-facing
+// interview response is passed through this first. This has to happen
+// server-side, not just be left out of the UI: without it, an account-side
+// user with browser devtools open could read "vendor": "Anthropic" /
+// "model": "claude-sonnet-4-5" straight off the network response even
+// though the on-screen label only ever says something like "Direct-response
+// angle."
+function redactCandidatesForClient(candidates){
+  return (candidates || []).map(c => ({
+    key: c.key, label: c.label, configured: c.configured,
+    copy: c.copy, error: c.error,
+    relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
+    note: c.note, flags: c.flags, scoreMode: c.scoreMode
+  }));
 }
 
 // Returns { account, cells: [{stage, layer, score, history:[...]}] } — the
@@ -6702,6 +7131,132 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { voiceVersion: nextVersion, voiceApprovedAt: now });
     }
 
+    // POST /api/accounts/:id/voice-contest — 2026-08-22, the multi-model
+    // Brand Voice contest (see runBrandVoiceContest() above). Body (all
+    // optional): { toneAnchors: string[], avoidWords: string, antiExample:
+    // string } — today's client-side-only Tone Anchor picks/Words-to-avoid,
+    // passed through as extra context since they aren't a persisted account
+    // field yet. Logs the full panel (including vendor/model) to
+    // account_voice_interviews, returns a REDACTED copy for the client —
+    // never mutates accounts.visionStatement/longformVoiceExample itself,
+    // same "explicit click to apply" discipline as the copy interview panel
+    // — see the /select endpoint below.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const session = authenticate(req);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const extra = {
+        toneAnchors: Array.isArray(body.toneAnchors) ? body.toneAnchors.filter(t => typeof t === 'string') : [],
+        avoidWords: typeof body.avoidWords === 'string' ? body.avoidWords : '',
+        antiExample: typeof body.antiExample === 'string' ? body.antiExample : ''
+      };
+      const result = await runBrandVoiceContest(account, extra);
+      if (!result.available){
+        return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
+      }
+      const now = new Date().toISOString();
+      const interviewId = generateId('AVI');
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?)`)
+        .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now);
+      return sendJson(res, 200, {
+        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactBrandVoiceCandidatesForClient(result.candidates), createdAt: now
+      });
+    }
+
+    // POST /api/accounts/:id/voice-contest/:interviewId/select — applies a
+    // chosen candidate's Vision Statement + Longform Example directly to the
+    // account, ONLY on this explicit click — same "suggestion, never a
+    // silent auto-fill" discipline as every other interview/select endpoint
+    // in this build.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'select'){
+      const accountId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+      if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey){
+        return sendJson(res, 400, { error: 'candidateKey is required' });
+      }
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const chosen = candidates.find(c => c.key === body.candidateKey);
+      if (!chosen || !chosen.visionStatement || !chosen.longformExample){
+        return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
+      }
+      const now = new Date().toISOString();
+      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+        .run(body.candidateKey, selectedBy, now, interviewId);
+      db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?')
+        .run(chosen.visionStatement, chosen.longformExample, accountId);
+      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, visionStatement: chosen.visionStatement, longformVoiceExample: chosen.longformExample });
+    }
+
+    // GET /api/accounts/:id/voice-contest — history of past contests for
+    // this account, newest first, redacted the same way as the POST above.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, createdAt FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      const interviews = rows.map(r => {
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        return {
+          id: r.id, requestedBy: r.requestedBy, candidates: redactBrandVoiceCandidatesForClient(candidates),
+          selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
+          feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, createdAt: r.createdAt
+        };
+      });
+      return sendJson(res, 200, { interviews });
+    }
+
+    // POST /api/accounts/:id/vision-longform — manual edit path for the two
+    // fields the contest above fills in. Merge-update (either field alone is
+    // fine), same convention as POST /api/campaigns/:id — this is what a
+    // "Save edits" click after tweaking a selected candidate's text calls,
+    // independent of the contest/select flow above.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'vision-longform'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const existing = db.prepare('SELECT visionStatement, longformVoiceExample FROM accounts WHERE accountId = ?').get(accountId);
+      if (!existing) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const visionStatement = body.visionStatement !== undefined ? body.visionStatement : existing.visionStatement;
+      const longformVoiceExample = body.longformVoiceExample !== undefined ? body.longformVoiceExample : existing.longformVoiceExample;
+      db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?').run(visionStatement, longformVoiceExample, accountId);
+      return sendJson(res, 200, { visionStatement, longformVoiceExample });
+    }
+
+    // GET /api/ops/accounts/:id/voice-contests — staff-only, unredacted (real
+    // vendor/model) view into the Brand Voice contest, same ADMIN_API_TOKEN
+    // gate and "never reveal the actual model to the client" rationale as
+    // GET /api/ops/accounts/:id/interviews.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'voice-contests'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = decodeURIComponent(parts[3]);
+      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, feedbackBy, feedbackAt, createdAt FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      const interviews = rows.map(r => {
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        return {
+          id: r.id, requestedBy: r.requestedBy,
+          candidates, // unredacted — real vendor/model included, staff-only
+          selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
+          feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, feedbackBy: r.feedbackBy || null, feedbackAt: r.feedbackAt || null,
+          createdAt: r.createdAt
+        };
+      });
+      return sendJson(res, 200, { accountId, interviews });
+    }
+
     // POST /api/accounts/:id/profile — round 19, Brand Foundations (Company
     // Profile). Edits industry/footprint/audience/wealth after the fact —
     // these normally arrive once from the assessment handoff, but a team
@@ -7349,33 +7904,91 @@ async function handleRequest(req, res) {
     // item 3: "confidence-gated intake — the fun, not intimidating engine."
     // Per direct instruction: the moment Verilume has enough signal to be
     // confident about an account, it should hand the client a shortcut
-    // instead of re-asking a form it can already answer. Looks at this
-    // account's own most recent campaign that actually has a Key Message or
-    // Audience Targets on file and offers it back as a one-click suggestion
-    // — never auto-applied server-side, since a wrong silent guess is worse
-    // than no guess (the frontend still requires a deliberate click to use
-    // it). confident:false on a genuinely first-ever campaign is the honest
-    // answer, not a fabricated default — there is nothing to be confident
-    // about yet.
+    // instead of re-asking a form it can already answer.
+    //
+    // Extended same day, later round — per the vision doc's own next-step
+    // note on this item: move past "borrow the last campaign's value" toward
+    // genuine adaptive question-skipping. Two real confidence tiers now,
+    // computed independently per field (a field can be 'skip'-confident while
+    // another on the same account is only 'suggest'-confident, or has
+    // nothing at all — never forced to move together):
+    //   'skip'    — the last 3+ campaigns that actually set this field all
+    //               agree on the exact same value. That's real, repeated
+    //               signal, not a one-off — confident enough to hand the
+    //               field back already filled in, not just offered as a
+    //               click-away suggestion. Still fully editable; never
+    //               hidden or locked, per the same "a wrong silent guess is
+    //               worse than no guess" discipline as the original design.
+    //   'suggest' — only the most recent campaign has a value (today's
+    //               original behavior, unchanged) — one prior data point
+    //               isn't enough to auto-fill, but it's still worth a
+    //               one-click offer rather than silence.
+    //   'none'    — nothing on file for this field. Honest, not fabricated.
+    // Looks at the account's last 8 campaigns (recency-ordered) per field,
+    // using however many of those actually have that field set — a field
+    // set on every recent campaign reaches 'skip' faster than one that's
+    // only occasionally filled in.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-smart-defaults'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const source = db.prepare(
-        `SELECT id, name, keyMessage, audienceTargets, segment FROM campaigns
-         WHERE accountId = ? AND (
-           (keyMessage IS NOT NULL AND keyMessage != '') OR
-           (audienceTargets IS NOT NULL AND audienceTargets != '')
-         )
-         ORDER BY createdAt DESC LIMIT 1`
-      ).get(accountId);
-      if (!source){
-        return sendJson(res, 200, { confident: false, reason: 'No prior campaign with a Key Message or Audience Targets on file yet — nothing to suggest from.' });
+      const recent = db.prepare(
+        `SELECT id, name, keyMessage, audienceTargets, segment, createdAt FROM campaigns
+         WHERE accountId = ? ORDER BY createdAt DESC LIMIT 8`
+      ).all(accountId);
+      const SKIP_THRESHOLD = 3;
+      // Segment is stored as a comma-separated string (see selectedSegments
+      // in portal.html), and two campaigns that picked the exact same
+      // segments can still have them in a different order — comparing the
+      // raw string would treat "Past Customers,Hand-Raisers" and
+      // "Hand-Raisers,Past Customers" as a disagreement they aren't.
+      // Canonicalize (trim, dedupe, sort, rejoin) before comparing OR
+      // returning, so both the streak math and the value handed back to the
+      // client are order-independent.
+      function canonicalizeSegments(raw){
+        const parts = [...new Set(String(raw).split(',').map(s => s.trim()).filter(Boolean))].sort();
+        return parts.join(',');
       }
-      return sendJson(res, 200, {
-        confident: true,
-        source: { campaignId: source.id, name: source.name || source.id },
-        suggestions: { keyMessage: source.keyMessage || null, audienceTargets: source.audienceTargets || null, segment: source.segment || null }
-      });
+      function confidenceForField(fieldName, normalize){
+        const norm = normalize || (v => v.trim());
+        const withValue = recent
+          .filter(c => c[fieldName] && String(c[fieldName]).trim())
+          .map(c => ({ id: c.id, name: c.name || c.id, value: norm(String(c[fieldName])) }))
+          .filter(c => c.value); // a segment string that canonicalizes to empty (all whitespace/commas) is effectively unset
+        if (!withValue.length) return { level: 'none' };
+        const mostRecent = withValue[0];
+        // 'skip' requires the run of most-recent non-empty values to agree —
+        // a single outlier campaign in between (a genuinely different brief)
+        // should NOT count toward the streak, so this walks from the front
+        // and stops at the first disagreement rather than counting matches
+        // anywhere in the 8-campaign window.
+        let streak = 0;
+        for (const c of withValue){
+          if (c.value === mostRecent.value) streak++;
+          else break;
+        }
+        if (streak >= SKIP_THRESHOLD){
+          return { level: 'skip', value: mostRecent.value, sourceCount: streak };
+        }
+        return { level: 'suggest', value: mostRecent.value, source: { campaignId: mostRecent.id, name: mostRecent.name } };
+      }
+      const fields = {
+        keyMessage: confidenceForField('keyMessage'),
+        audienceTargets: confidenceForField('audienceTargets'),
+        // 2026-08-22, later same round — Segment extension. Deliberately
+        // scoped out of the first pass of this feature: Segment isn't a
+        // free-text field, it's a multi-select with stage-based eligibility
+        // rules (cmpSegmentDisabledSet() in portal.html — e.g. Past
+        // Customers is invalid at the Awareness stage). The backend side
+        // stays simple (same confidence math as the other two fields, just
+        // segment-shaped comparison) — the eligibility filtering happens
+        // client-side at apply time, where selectedStage actually lives.
+        segment: confidenceForField('segment', canonicalizeSegments)
+      };
+      const confident = fields.keyMessage.level !== 'none' || fields.audienceTargets.level !== 'none' || fields.segment.level !== 'none';
+      if (!confident){
+        return sendJson(res, 200, { confident: false, reason: 'No prior campaign with a Key Message, Audience Targets, or Segment on file yet — nothing to suggest from.', fields });
+      }
+      return sendJson(res, 200, { confident: true, fields });
     }
 
     // POST /api/accounts/:id/campaigns — create a campaign under this account
@@ -8474,6 +9087,214 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, existing.accountId)) return;
       const decisions = db.prepare('SELECT id, approved, reason, decidedBy, decidedAt FROM creative_job_decisions WHERE jobId = ? ORDER BY decidedAt ASC').all(jobId);
       return sendJson(res, 200, { decisions: decisions.map(d => ({ ...d, approved: !!d.approved })) });
+    }
+
+    // POST /api/creative-jobs/:id/interview — 2026-08-22, the multi-
+    // candidate "interview" panel (roadmap item 4, last on the CX &
+    // Copywriting vision doc's build list). Runs runCandidateInterview()
+    // (see its comment above for the honest single-vendor/multi-angle
+    // scope) against the job's own campaign + account, logs the full panel
+    // result (including vendor/model) as a permanent row, and returns a
+    // REDACTED copy for the copy workspace to render side-by-side — see
+    // redactCandidatesForClient above. Never mutates workingCopy itself —
+    // see the /select endpoint below for the explicit, one-click apply step.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'interview'){
+      const jobId = decodeURIComponent(parts[2]);
+      const job = db.prepare('SELECT * FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!job) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, job.accountId)) return;
+      const session = authenticate(req);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(job.campaignId);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(job.accountId);
+      if (!campaign || !account) return sendJson(res, 404, { error: 'campaign or account not found for this job' });
+      const result = await runCandidateInterview(campaign, account);
+      if (!result.available){
+        return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
+      }
+      const now = new Date().toISOString();
+      const interviewId = generateId('CJI');
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare(`INSERT INTO creative_job_interviews (id, jobId, accountId, requestedBy, candidatesJson, productType, createdAt)
+        VALUES (?,?,?,?,?,?,?)`)
+        .run(interviewId, jobId, job.accountId, requestedBy, JSON.stringify(result.candidates), 'copywriting', now);
+      return sendJson(res, 200, {
+        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now
+      });
+    }
+
+    // POST /api/creative-jobs/:id/interview/:interviewId/select — records
+    // which candidate a human actually picked and, ONLY on this explicit
+    // click, applies its copy to creative_jobs.workingCopy — same
+    // "suggestion, never a silent auto-fill" discipline as the campaign
+    // smart-defaults endpoint (roadmap item 3). Body: { candidateKey }.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'interview' && parts[5] === 'select'){
+      const jobId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const job = db.prepare('SELECT * FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!job) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, job.accountId)) return;
+      const interview = db.prepare('SELECT * FROM creative_job_interviews WHERE id = ? AND jobId = ?').get(interviewId, jobId);
+      if (!interview) return sendJson(res, 404, { error: 'interview not found for this job' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey){
+        return sendJson(res, 400, { error: 'candidateKey is required' });
+      }
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const chosen = candidates.find(c => c.key === body.candidateKey);
+      if (!chosen || !chosen.copy){
+        return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real copy on this interview' });
+      }
+      const now = new Date().toISOString();
+      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare('UPDATE creative_job_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+        .run(body.candidateKey, selectedBy, now, interviewId);
+      db.prepare('UPDATE creative_jobs SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(chosen.copy, now, jobId);
+      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, workingCopy: chosen.copy });
+    }
+
+    // POST /api/creative-jobs/:id/interview/:interviewId/feedback — the
+    // "no clean winner" path. Body: { note (required, free text — what they
+    // don't like / what they'd change), type ('none_selected' | default, or
+    // 'edit_manually'), startFromKey (optional — only meaningful with type
+    // 'edit_manually': the candidate that was close enough to start from) }.
+    // When startFromKey is given, this applies that candidate's copy to
+    // workingCopy exactly like /select does (so it lands in the editable
+    // copy box), records it as the selected candidate for reporting, AND
+    // saves the note explaining what still needs to change — the two are
+    // not mutually exclusive; "close enough to edit" still needs a note on
+    // what's being edited. Feedback is staff-visible via the Ops Console
+    // interview review (never surfaced to redactCandidatesForClient, since
+    // it may reference a candidate by its real content) — this is the
+    // "Feeds The Loop" half of the blind-test client slide made real: a
+    // rejected or edited panel isn't a dead end, it's a record staff can
+    // read to improve the next brief. NOTE: this only records the note today
+    // — it does not yet feed back into generateInterviewCandidateCopy()'s
+    // prompts automatically; that's the natural next step once there's
+    // enough real feedback volume to design against.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'interview' && parts[5] === 'feedback'){
+      const jobId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const job = db.prepare('SELECT * FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!job) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, job.accountId)) return;
+      const interview = db.prepare('SELECT * FROM creative_job_interviews WHERE id = ? AND jobId = ?').get(interviewId, jobId);
+      if (!interview) return sendJson(res, 404, { error: 'interview not found for this job' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.note !== 'string' || !body.note.trim()){
+        return sendJson(res, 400, { error: 'note is required — tell us what to change' });
+      }
+      const feedbackType = body.type === 'edit_manually' ? 'edit_manually' : 'none_selected';
+      const now = new Date().toISOString();
+      const actorBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      let workingCopy = null;
+      if (feedbackType === 'edit_manually' && typeof body.startFromKey === 'string' && body.startFromKey){
+        let candidates = [];
+        try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+        const chosen = candidates.find(c => c.key === body.startFromKey);
+        if (!chosen || !chosen.copy){
+          return sendJson(res, 400, { error: 'startFromKey does not match a candidate with real copy on this interview' });
+        }
+        db.prepare('UPDATE creative_job_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+          .run(body.startFromKey, actorBy, now, interviewId);
+        db.prepare('UPDATE creative_jobs SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(chosen.copy, now, jobId);
+        workingCopy = chosen.copy;
+      }
+      db.prepare('UPDATE creative_job_interviews SET feedbackNote = ?, feedbackType = ?, feedbackBy = ?, feedbackAt = ? WHERE id = ?')
+        .run(body.note.trim(), feedbackType, actorBy, now, interviewId);
+      return sendJson(res, 200, { interviewId, feedbackType, feedbackNote: body.note.trim(), feedbackAt: now, workingCopy });
+    }
+
+    // GET /api/creative-jobs/:id/interviews — history of past interview
+    // panels for this job, newest first, each with its full candidate set
+    // and whatever was ultimately selected (if anything). Client-facing —
+    // redacted through redactCandidatesForClient() above, same as
+    // POST .../interview. selectedCandidateKey itself is fine to return (a
+    // panel angle like "direct-response", not a model name), which is what
+    // lets the copy workspace show "you picked the direct-response draft"
+    // without ever naming the model behind it.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'interviews'){
+      const jobId = decodeURIComponent(parts[2]);
+      const existing = db.prepare('SELECT id, accountId FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!existing) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, existing.accountId)) return;
+      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, productType, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, feedbackBy, feedbackAt, createdAt FROM creative_job_interviews WHERE jobId = ? ORDER BY createdAt DESC').all(jobId);
+      const interviews = rows.map(r => {
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        return {
+          id: r.id, requestedBy: r.requestedBy, productType: r.productType || 'copywriting', candidates: redactCandidatesForClient(candidates),
+          selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
+          feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, feedbackBy: r.feedbackBy || null, feedbackAt: r.feedbackAt || null,
+          createdAt: r.createdAt
+        };
+      });
+      return sendJson(res, 200, { interviews });
+    }
+
+    // GET /api/ops/accounts/:id/interviews — 2026-08-22, staff-only view
+    // into the interview panel's UNREDACTED results (real vendor + model
+    // per candidate), per direct instruction: never reveal the actual model
+    // to the client, but staff need real visibility. Same ADMIN_API_TOKEN
+    // gate as GET /api/ops/integration-status — platform-staff tooling, not
+    // a per-account client session, so requireAccount doesn't apply here on
+    // purpose. Returns every interview run across every creative job for
+    // this account, newest first, joined with the job's own channel/status
+    // and the campaign name so staff don't have to cross-reference by hand.
+    // Optional ?productType=copywriting query param filters to one feature
+    // — added the same day the productType column was, since Todd flagged
+    // this mechanism will grow more product types over time (see
+    // INTERVIEW_PRODUCT_TYPES above) and the admin view needs to stay
+    // legible once it's not just copywriting rows anymore. Also returns the
+    // full productTypes registry so the Ops Console can render a real
+    // filter dropdown instead of a hardcoded one.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'interviews'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = decodeURIComponent(parts[3]);
+      const productTypeFilter = url.searchParams.get('productType') || '';
+      const rows = productTypeFilter
+        ? db.prepare(`
+            SELECT i.id, i.jobId, i.requestedBy, i.candidatesJson, i.productType, i.selectedCandidateKey, i.selectedBy, i.selectedAt,
+                   i.feedbackNote, i.feedbackType, i.feedbackBy, i.feedbackAt, i.createdAt,
+                   j.channel, j.status AS jobStatus, j.campaignId
+            FROM creative_job_interviews i
+            LEFT JOIN creative_jobs j ON j.id = i.jobId
+            WHERE i.accountId = ? AND COALESCE(i.productType, 'copywriting') = ?
+            ORDER BY i.createdAt DESC
+          `).all(accountId, productTypeFilter)
+        : db.prepare(`
+            SELECT i.id, i.jobId, i.requestedBy, i.candidatesJson, i.productType, i.selectedCandidateKey, i.selectedBy, i.selectedAt,
+                   i.feedbackNote, i.feedbackType, i.feedbackBy, i.feedbackAt, i.createdAt,
+                   j.channel, j.status AS jobStatus, j.campaignId
+            FROM creative_job_interviews i
+            LEFT JOIN creative_jobs j ON j.id = i.jobId
+            WHERE i.accountId = ?
+            ORDER BY i.createdAt DESC
+          `).all(accountId);
+      const campaignNameCache = {};
+      const interviews = rows.map(r => {
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        if (r.campaignId && !(r.campaignId in campaignNameCache)){
+          const c = db.prepare('SELECT name FROM campaigns WHERE id = ?').get(r.campaignId);
+          campaignNameCache[r.campaignId] = c ? c.name : null;
+        }
+        return {
+          id: r.id, jobId: r.jobId, channel: r.channel, jobStatus: r.jobStatus,
+          campaignId: r.campaignId, campaignName: r.campaignId ? campaignNameCache[r.campaignId] : null,
+          requestedBy: r.requestedBy, productType: r.productType || 'copywriting',
+          candidates, // unredacted — real vendor/model included, staff-only
+          selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
+          feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, feedbackBy: r.feedbackBy || null, feedbackAt: r.feedbackAt || null,
+          createdAt: r.createdAt
+        };
+      });
+      const productTypes = Object.entries(INTERVIEW_PRODUCT_TYPES).map(([key, v]) => ({ key, ...v }));
+      return sendJson(res, 200, { accountId, productTypes, interviews });
     }
 
     // POST /api/campaigns/:id/send-to-trafficking — round 73, per direct

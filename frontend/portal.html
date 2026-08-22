@@ -115,6 +115,31 @@
   .copy-bp-cell .lbl{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
   .copy-bp-cell .val{font-size:0.9375rem;font-weight:600;color:var(--ink);}
 
+  /* 2026-08-22 — "AI Thought" speech bubbles. Per direct instruction: make
+     sure every AI wait-moment explains what's actually happening AND
+     surfaces a best-practice tip, not just a bare "loading…" — this is the
+     same "always provide value along the way" principle already applied to
+     the build (see the "fun, not intimidating" standing design principle
+     in the CX vision doc). Styled as an actual speech bubble (rounded card
+     + a small triangular tail) pointing back at the control that triggered
+     it, with a pulsing three-dot "thinking" indicator while work is in
+     flight and a persistent tip line that stays after the result lands —
+     so the guidance doesn't disappear the moment the answer does. */
+  .ai-status-bubble{position:relative;background:var(--cx-tint);border-radius:var(--radius-md);padding:12px 16px;margin:10px 0;font-size:0.8125rem;line-height:1.45;color:var(--ink);}
+  .ai-status-bubble::after{content:"";position:absolute;left:22px;bottom:-6px;width:12px;height:12px;background:var(--cx-tint);transform:rotate(45deg);border-radius:2px;}
+  .ai-status-bubble .doing{display:flex;align-items:flex-start;gap:8px;font-weight:600;color:var(--cx);}
+  .ai-status-bubble .doing .thinking-dots{display:inline-flex;gap:3px;flex-shrink:0;margin-top:3px;}
+  .ai-status-bubble .doing .thinking-dots span{width:5px;height:5px;border-radius:50%;background:var(--cx);opacity:0.35;animation:ai-think-pulse 1.1s infinite ease-in-out;}
+  .ai-status-bubble .doing .thinking-dots span:nth-child(2){animation-delay:0.15s;}
+  .ai-status-bubble .doing .thinking-dots span:nth-child(3){animation-delay:0.3s;}
+  @keyframes ai-think-pulse{0%,80%,100%{opacity:0.3;transform:scale(0.85);}40%{opacity:1;transform:scale(1);}}
+  .ai-status-bubble .doing-text{flex:1;}
+  .ai-status-bubble .tip{margin-top:8px;padding-top:8px;border-top:1px solid rgba(8,145,178,0.18);color:var(--muted);font-size:0.75rem;}
+  .ai-status-bubble .tip b{color:var(--ink);font-weight:600;}
+  @media (prefers-reduced-motion: reduce){
+    .ai-status-bubble .doing .thinking-dots span{animation:none;opacity:0.6;}
+  }
+
   /* The wireframe preview — a lightweight visual mock of the recommended/
      edited copy placed on the asset it's actually headed for, sized to
      that asset's own aspect ratio. Per direct instruction: "wires will not
@@ -180,7 +205,15 @@
   /* Round 132bb — settings gear pinned to the card's upper-right corner,
      independent of the wrapping tag/org-model row beside it (see markup
      comment below for why the account ID moved out of this bar entirely). */
-  .account-summary #dashAccountLink{position:absolute;top:14px;right:18px;}
+  /* 2026-08-21 — #dashAccountLink was previously position:absolute (top:14px;
+     right:18px), floating over whatever the last flex child of
+     .account-summary happened to be. That worked fine while it was the only
+     control up there, but once #dashLogoutLink was added as that last flex
+     child, the two overlapped (gear icon drawn on top of the logout pill's
+     text). Now both sit inside a single flex wrapper (see the markup) as
+     the account-summary's last flex child, so this rule is no longer
+     needed — kept as a no-op comment so the history is visible rather than
+     silently deleted. */
 
   .step{display:none;}
   .step.active{display:block;}
@@ -2014,9 +2047,120 @@
   .signal-headline{font-weight:700;font-size:0.9375rem;color:var(--ink);margin-bottom:4px;}
   .signal-body{font-size:0.8438rem;color:var(--muted);line-height:1.55;}
   .signal-empty{font-size:0.8438rem;color:var(--muted);font-style:italic;}
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  /* 2026-08-21 fix, per direct correction ("We have a stylized button
+     approach that we perfect in the previous location and used across the
+     website") — the first version of this bar used plain uppercase text
+     links, not the site's actual pill-button convention (the public "Log
+     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
+     8px/16px padding). Rebuilt to match that same pill shape, just with
+     light-on-dark colors instead of dark-on-light, since this bar's
+     background is var(--ink) — same color-inversion approach already used
+     for the dark-header Logout pill on account.html/print-specs.html/
+     ooh-specs.html. border-radius is hardcoded to 999px rather than
+     var(--radius-pill) because several pages this bar lives on
+     (forgot-password.html, select-tier.html, terms.html) never define
+     that variable at all. */
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 </head>
 <body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
+      // already ON portal.html is redundant (you're already there); hide
+      // it there specifically, still show it everywhere else (marketing
+      // pages, assessment.html, account.html, etc.) so there's always a
+      // way back to the Portal from outside it.
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
 
 <!-- 2026-08-19 (login redesign) — the old in-page access-code gate (Round 60)
      was removed. It was a separate, account-level, single-shared-code system
@@ -2063,11 +2207,18 @@
       <div class="stage-row" id="orgModelRow" style="margin:0;"></div>
       <div class="tag" id="acctTag">Prototype — Client Portal, post-authentication</div>
     </div>
-    <!-- Round 66 — Account settings link, moved to the card's upper-right
-         corner in Round 132bb (see #dashAccountLink CSS) so it reads as a
-         persistent settings control rather than another item in the tag
-         row, and so the account ID it leads to no longer needs a separate
-         home in this bar. -->
+    <!-- Round 66 — Account settings link, originally pinned to the card's
+         upper-right corner via position:absolute (see the removed
+         #dashAccountLink CSS rule above for why that changed).
+         2026-08-21 — briefly regrouped with a #dashLogoutLink pill right
+         here (Logout living inside the account-summary card). Superseded
+         the same day, per direct instruction ("Logout is in the wrong
+         place... should be consistent in the header to the right of the
+         Verilume logo in the exact place where it is on the public
+         pages... utility nav above the main nav"): Logout now lives
+         exclusively in the sitewide #utilityNav strip (see that div right
+         after <body>), not duplicated here. This icon is back to being the
+         account-summary's only control. -->
     <a href="account.html" class="icon-link" title="Account" aria-label="Account" id="dashAccountLink" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--white);border:1px solid var(--line);color:var(--ink);font-size:14px;text-decoration:none;flex-shrink:0;">⚙</a>
   </div>
 
@@ -2935,6 +3086,47 @@
         <strong>Feeds forward:</strong> once approved, this doc is what every Messaging (Ad Copy, Email Copy, Brochures, Team Training Guides) and Creative-brief prompt in this Portal would read as shared context — the concrete mechanism behind "enhancing the model's future outputs." No other function reads it live in this prototype yet; this note is here so the intent is visible even before that wiring exists.
       </div>
     </div>
+
+    <!-- 2026-08-22 — the multi-model Brand Voice contest, per direct
+         instruction: "add a multi-model contest in the brand setup section
+         that presents an overall voice theme to include a vision statement
+         and longform copy example that incorporates the critical customer
+         facing messages." Deliberately alongside the single-draft generator
+         above, not replacing it — this is a heavier, real-AI-call action a
+         team would reach for when they want to compare genuinely distinct
+         directions, not the default first step. -->
+    <div class="module open accent-cx" id="voiceContestModule" style="margin-top:24px;">
+      <div class="module-head" onclick="toggleModule('voiceContestModule')">
+        <span class="modnum">2</span>
+        <div class="titles">
+          <span class="tag">Multi-model</span>
+          <h2>Voice contest — Vision Statement &amp; Longform Example</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="lede" style="margin:2px 0 12px;">Runs your brand through three genuinely distinct voice directions at once — Confident Authority, Warm Storyteller, Bold Modern — each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Compare them side by side and pick the one that's actually you — nothing is applied until you choose.</p>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Run contest →</button>
+        </div>
+        <div id="voiceContestPanel" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:20px;">
+      <label>Vision Statement</label>
+      <p class="lede" style="margin:2px 0 8px;">A single, memorable north-star line for this brand's voice — from the contest above, or written directly.</p>
+      <textarea id="voiceVisionStatement" rows="2" placeholder="Run the contest above, or write your own."></textarea>
+    </div>
+    <div class="field">
+      <label>Longform Example</label>
+      <p class="lede" style="margin:2px 0 8px;">Real, finished copy in this voice — the reference example every future longform draft gets measured against.</p>
+      <textarea id="voiceLongformExample" rows="6" placeholder="Run the contest above, or write your own."></textarea>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn-ghost" onclick="saveVisionLongformEdits()">Save Vision &amp; Longform Example →</button>
+    </div>
+    <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
 
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
@@ -5041,6 +5233,7 @@
               <div class="select-tile-row" id="cmpSegmentRow"></div>
               <div class="rr-error" id="cmpSegmentError"></div>
               <div class="hint" id="cmpSegmentStageNote" style="margin-top:6px;"></div>
+              <div id="cmpSegmentSmartDefault" style="margin-top:8px;"></div>
 
               <!-- Round 132aj (2026-08-11), per direct instruction: "The
                    objective copy and speech bubble can be removed because it
@@ -5682,6 +5875,7 @@
                        Phrase's own hint below is reworded to open by
                        contrasting itself against this field by name. -->
                   <p class="hint" style="margin:0 0 8px;">Free-form direction for the AI Copywriter — it may paraphrase this. For text that must appear word-for-word, use Mandatory Phrase below instead, not this field.</p>
+                  <div id="cmpKeyMessageSmartDefault" style="margin-bottom:8px;"></div>
                   <textarea id="cmpKeyMessage" maxlength="500" rows="3" placeholder="e.g. Fresh, local, fast — the short version. Full long-form messaging comes later in the flow." oninput="updateKeyMessageCounter();cmpKeyMessageOrBriefEdited();"></textarea>
                   <div class="char-counter" id="cmpKeyMessageCounter">0 / 500</div>
                   <!-- Round 132ad (2026-08-11), per direct decision: keep Key
@@ -6750,6 +6944,7 @@
         <p class="lede" style="margin:0 0 12px;">Once the recommended mix above (or the programmatic allocation) is validated, set the audience target this campaign is actually going after — Omni-Channel Creative reads this same value so creative production stays pointed at the right audience.</p>
         <div class="field">
           <label for="campaignAudienceTargets">Audience targets <span class="ai-thought-mount" data-topic="G"></span></label>
+          <div id="campaignAudienceTargetsSmartDefault" style="margin-bottom:8px;"></div>
           <textarea id="campaignAudienceTargets" rows="3" placeholder="Who this campaign's buys/allocations are actually targeting — e.g. segments, personas, geos, lookalikes..."></textarea>
         </div>
         <div class="btn-row" style="margin-top:0;">
@@ -11991,14 +12186,49 @@ function authedFetch(url, options = {}){
 
 function restoreSessionToken(){
   try {
-    const cached = sessionStorage.getItem(sessionStorageKey(state.companyId));
+    const cached = localStorage.getItem(sessionStorageKey(state.companyId));
     if (cached) sessionToken = cached;
   } catch (e) { /* sessionStorage unavailable — skip caching, same graceful-degrade posture as the rest of this file */ }
 }
 
 function persistSessionToken(token){
   sessionToken = token;
-  try { sessionStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
+  try { localStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
+}
+
+// 2026-08-21 — ends the session and returns to login. Best-effort call to
+// POST /api/auth/logout first (invalidates the token server-side so it
+// can't be replayed if it leaked anywhere), but the redirect happens
+// regardless of whether that call succeeds — a logout button that can get
+// stuck because the backend is unreachable would be worse than one that
+// occasionally leaves a stale, expired-on-its-own-schedule session row
+// behind server-side. Clears the exact sessionStorage key
+// persistSessionToken() wrote, so a browser-back after logging out lands
+// back on the login gate rather than a stale authedFetch() still carrying
+// the old token in memory.
+async function logout(){
+  const token = sessionToken;
+  try {
+    if (token){
+      await fetch(`${BACKEND_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+    }
+  } catch (e) { /* unreachable backend shouldn't block logging out locally */ }
+  sessionToken = null;
+  try {
+    localStorage.removeItem(sessionStorageKey(state.companyId));
+    // 2026-08-21 — also clear the sitewide "who's logged in" pointer (see
+    // #utilityNav's script comment), so the utility nav and every other
+    // page agree this session is over, not just this page's own storage.
+    localStorage.removeItem('verilume_active_account');
+  } catch (e) {}
+  // 2026-08-21, per direct instruction ("Redirect users verilume.ai after
+  // logout") — was login.html?next=..., which just re-prompted for
+  // credentials immediately; the actual ask is the site's public homepage.
+  location.href = '/';
 }
 
 // 2026-08-19 (login redesign) — replaced the in-page account-level
@@ -12134,6 +12364,13 @@ async function loadAccountData(){
         state.voice.draft = record.account.voiceGuideText || '';
         state.voice.version = record.account.voiceVersion || 0;
       }
+      // 2026-08-22 — the multi-model Brand Voice contest's two dedicated
+      // fields, read back the same way the draft above is — independent of
+      // voiceApproved, since a Vision Statement/Longform Example can exist
+      // (and be worth showing) even before the main Voice Guide draft is
+      // separately approved.
+      state.voice.visionStatement = record.account.visionStatement || '';
+      state.voice.longformExample = record.account.longformVoiceExample || '';
       // Round 20, Brand Foundations (Style Guide — Colors & Fonts) — read the
       // persisted style assets back the same way Voice does above, so
       // "approved" and every field survive a reload.
@@ -25958,6 +26195,164 @@ function startNewCampaign(){
   resetCampaignForm();
   goToStep('campaigns');
   openCmpStage('creation');
+  loadCampaignSmartDefaults();
+}
+
+// 2026-08-22 — confidence-gated intake (roadmap item 3: "the fun, not
+// intimidating engine").
+//
+// Extended same day, later round, per the vision doc's own flagged next step:
+// genuine adaptive question-skipping, not just a suggestion banner every
+// time. The backend now returns two independent confidence tiers per field
+// (see the endpoint's own comment for the full rule):
+//   'skip'    — 3+ recent campaigns in a row all agree on this value. Real,
+//               repeated signal — confident enough to hand the field back
+//               already filled in (renderSkipFill()) rather than making the
+//               client re-type or even re-click something Verilume has
+//               already seen 3 times running. STILL fully editable and
+//               STILL visibly marked as auto-filled — never a silent guess
+//               sitting in a field with no indication it wasn't typed by a
+//               human. A visible "Not this time — clear it" affordance is
+//               one click away, same "reversible, never locked" discipline
+//               as the original suggestion banner.
+//   'suggest' — only the most recent campaign has a value (the ORIGINAL
+//               behavior this replaces nothing of) — one data point isn't
+//               enough to auto-fill, so this still asks first via a
+//               click-to-apply banner (renderSuggestBanner()).
+//   'none'    — nothing on file. Renders nothing, same as before.
+async function loadCampaignSmartDefaults(){
+  const kmHolder = document.getElementById('cmpKeyMessageSmartDefault');
+  const atHolder = document.getElementById('campaignAudienceTargetsSmartDefault');
+  const segHolder = document.getElementById('cmpSegmentSmartDefault');
+  if (kmHolder) kmHolder.innerHTML = '';
+  if (atHolder) atHolder.innerHTML = '';
+  if (segHolder) segHolder.innerHTML = '';
+  if (!state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-smart-defaults`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.confident) return;
+    const fields = data.fields || {};
+    window._cmpSmartDefaults = fields;
+    renderCampaignSmartDefaultField('keyMessage', fields.keyMessage, kmHolder, 'cmpKeyMessage', 'brand', {
+      onFill: () => { updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
+    });
+    renderCampaignSmartDefaultField('audienceTargets', fields.audienceTargets, atHolder, 'campaignAudienceTargets', 'audience');
+    renderSegmentSmartDefault(fields.segment, segHolder);
+  } catch (e){
+    // A missed suggestion is a non-event, not an error worth surfacing —
+    // the form is exactly as usable as it would've been without this call.
+  }
+}
+// Segment needs its own renderer, separate from renderCampaignSmartDefaultField
+// above — it's not a text field with a .value, it's the multi-select chip
+// row driven by the selectedSegments Set (see toggleSegment()/renderSegmentRow()
+// above). Eligibility is stage-dependent (cmpSegmentDisabledSet()), so this
+// filters the suggested/auto-filled segments down to whatever's currently
+// eligible — at the moment this runs (right after resetCampaignForm(),
+// before a stage is picked) nothing is disabled yet, but filtering here
+// defensively means this stays correct even if that ever changes. Anything
+// filtered out for being currently ineligible is silently dropped rather
+// than applied and immediately stripped — same end state, cleaner UX.
+function cmpEligibleSegmentsFrom(list){
+  const disabled = cmpSegmentDisabledSet();
+  return list.filter(s => ACCOUNT_SEGMENTS.includes(s) && !disabled.has(s));
+}
+function renderSegmentSmartDefault(fieldData, holder){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  const allSegments = fieldData.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (fieldData.level === 'skip'){
+    const eligible = cmpEligibleSegmentsFrom(allSegments);
+    if (!eligible.length) return; // nothing currently eligible to offer — stay silent rather than show an empty win
+    if (selectedSegments.size === 0){
+      eligible.forEach(s => selectedSegments.add(s));
+      renderSegmentRow();
+      if (typeof cmpRenderAudienceChannelGapNote === 'function') cmpRenderAudienceChannelGapNote();
+      if (typeof renderFaqG === 'function') renderFaqG();
+      if (typeof renderFaqM === 'function') renderFaqM();
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all targeted the same Segments, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearSegmentSmartDefault()">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  // 'suggest' — click-to-apply banner, same pattern as the text fields.
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your audience segments from <b>${sourceName}</b>: "${escapeHtml(allSegments.join(', '))}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applySegmentSmartDefault()">Use this →</button>
+  </div>`;
+}
+function applySegmentSmartDefault(){
+  const fields = window._cmpSmartDefaults || {};
+  const fieldData = fields.segment;
+  if (!fieldData || !fieldData.value) return;
+  const allSegments = fieldData.value.split(',').map(s => s.trim()).filter(Boolean);
+  const eligible = cmpEligibleSegmentsFrom(allSegments);
+  eligible.forEach(s => selectedSegments.add(s));
+  renderSegmentRow();
+  if (selectedSegments.size) document.getElementById('cmpSegmentError').textContent = '';
+  if (typeof cmpRenderAudienceChannelGapNote === 'function') cmpRenderAudienceChannelGapNote();
+  if (typeof renderFaqG === 'function') renderFaqG();
+  if (typeof renderFaqM === 'function') renderFaqM();
+  const holder = document.getElementById('cmpSegmentSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function clearSegmentSmartDefault(){
+  selectedSegments = new Set();
+  renderSegmentRow();
+  if (typeof cmpRenderAudienceChannelGapNote === 'function') cmpRenderAudienceChannelGapNote();
+  const holder = document.getElementById('cmpSegmentSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+// Shared renderer for both fields this drives (keyMessage, audienceTargets)
+// — kind is just the word used in the sentence ("brand"/"audience") so the
+// copy reads naturally for each.
+function renderCampaignSmartDefaultField(fieldKey, fieldData, holder, inputId, kind, opts){
+  if (!holder || !fieldData || fieldData.level === 'none') return;
+  const preview = (v) => escapeHtml(v.slice(0, 140)) + (v.length > 140 ? '…' : '');
+  if (fieldData.level === 'skip'){
+    const el = document.getElementById(inputId);
+    if (el && !el.value){
+      el.value = fieldData.value;
+      if (opts && opts.onFill) opts.onFill();
+    }
+    holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
+      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same ${kind === 'brand' ? 'Key Message' : 'Audience Targets'}, so Verilume skipped asking.
+      <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearCampaignSmartDefaultField('${fieldKey}', '${inputId}')">Not this time — clear it</button>
+    </div>`;
+    return;
+  }
+  // 'suggest' — original click-to-apply banner, unchanged behavior.
+  const sourceName = escapeHtml(fieldData.source ? fieldData.source.name : 'a prior campaign');
+  holder.innerHTML = `<div class="hint" style="background:var(--panel-alt, #f5f4ef);border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+    Already know your ${kind} from <b>${sourceName}</b>: "${preview(fieldData.value)}"
+    <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="applyCampaignSmartDefault('${fieldKey}')">Use this →</button>
+  </div>`;
+}
+function clearCampaignSmartDefaultField(field, inputId){
+  const el = document.getElementById(inputId);
+  if (el){ el.value = ''; if (field === 'keyMessage'){ updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); } }
+  const holder = document.getElementById(field === 'keyMessage' ? 'cmpKeyMessageSmartDefault' : 'campaignAudienceTargetsSmartDefault');
+  if (holder) holder.innerHTML = '';
+}
+function applyCampaignSmartDefault(field){
+  const fields = window._cmpSmartDefaults || {};
+  const fieldData = fields[field];
+  if (!fieldData || !fieldData.value) return;
+  if (field === 'keyMessage'){
+    const el = document.getElementById('cmpKeyMessage');
+    if (el){ el.value = fieldData.value; updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
+    const holder = document.getElementById('cmpKeyMessageSmartDefault');
+    if (holder) holder.innerHTML = '';
+  } else if (field === 'audienceTargets'){
+    const el = document.getElementById('campaignAudienceTargets');
+    if (el){ el.value = fieldData.value; }
+    const holder = document.getElementById('campaignAudienceTargetsSmartDefault');
+    if (holder) holder.innerHTML = '';
+  }
 }
 
 function startCampaignFromCell(stage, layer){
@@ -28719,15 +29114,30 @@ function renderCopyWorkspace(jobId){
           <div id="copyLibraryPickerPanel" style="margin-top:10px;"></div>
 
           <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+            <div id="copyDraftScore" style="margin-bottom:14px;"></div>
+          </div>
+          <div style="margin-top:0;padding-top:16px;border-top:1px solid var(--line);">
+            <button type="button" class="btn-ghost" onclick="runCopyInterview('${job.id}')">Interview candidates →</button>
+            <span class="hint" style="margin-left:8px;">Runs the brief through several strategic angles and scores each one, so you compare real drafts instead of picking blind.</span>
+            <div id="copyInterviewPanel" style="margin-top:12px;"></div>
+          </div>
+          <div style="margin-top:0;padding-top:0;">
             ${job.copyApproved
               ? `<span class="badge strong">Copy approved${job.copyApprovedAt ? ' — ' + new Date(job.copyApprovedAt).toLocaleString() : ''}</span>`
-              : `<button type="button" class="btn-primary" onclick="approveJobCopy('${job.id}')">Approve copy →</button>`}
-            <div class="hint" style="margin-top:8px;">Copy must be approved before this job can move past Pending — the creative team's next step is gated on it.</div>
+              : `<button type="button" class="btn-primary" onclick="submitCopyDecision('${job.id}', true)">Approve copy →</button>`}
+            <button type="button" class="btn-ghost" onclick="submitCopyDecision('${job.id}', false)" style="margin-left:8px;">Request changes →</button>
+            <div class="field" style="margin-top:10px;">
+              <label for="copyDecisionReason">Reason ${job.copyApproved ? '(optional — used if you request changes)' : '(required if you request changes; helps future drafts)'}</label>
+              <textarea id="copyDecisionReason" rows="2" placeholder="e.g. Too formal for this segment, doesn't mention the sale end date..."></textarea>
+            </div>
+            <div id="copyDecisionFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:6px;"></div>
+            <div class="hint" style="margin-top:8px;">Copy must be approved before this job can move past Pending — the creative team's next step is gated on it. Every approval or requested change is logged below, with its reason — that history is what makes the next draft need fewer corrections.</div>
             <div class="btn-row" style="margin-top:10px;">
               <button type="button" class="btn-ghost" onclick="advanceJobStatus('${job.id}', 'In Progress')" ${job.status !== 'Pending' ? 'disabled' : ''}>Move to In Progress →</button>
               <button type="button" class="btn-ghost" onclick="advanceJobStatus('${job.id}', 'Pending Approval')" ${job.status !== 'In Progress' ? 'disabled' : ''}>Submit for Approval →</button>
             </div>
             <div id="copyWorkspaceStatusFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:8px;"></div>
+            <div id="copyDecisionHistory" style="margin-top:14px;"></div>
           </div>
         </div>
         <div>
@@ -28738,6 +29148,8 @@ function renderCopyWorkspace(jobId){
 
       ${renderJobActualsSection(job)}
     </div>`;
+  loadCopyDecisionHistory(job.id);
+  scoreCurrentDraft(job.id, currentCopy);
   const textEl = document.getElementById('copyWorkspaceText');
   const updateWireframeAndCount = () => {
     document.getElementById('copyWireframeHolder').innerHTML = renderCopyWireframe(job, textEl.value, bp);
@@ -28824,6 +29236,7 @@ async function saveJobWorkingCopy(jobId){
     if (resp.ok){
       job.workingCopy = text;
       flag.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+      scoreCurrentDraft(jobId, text);
     } else {
       flag.textContent = 'Couldn\'t save — try again.';
     }
@@ -28831,26 +29244,310 @@ async function saveJobWorkingCopy(jobId){
     flag.textContent = 'Backend unreachable — copy not saved.';
   }
 }
-async function approveJobCopy(jobId){
+// 2026-08-22 — structured approve/reject-with-reason capture (CX &
+// Copywriting product-vision roadmap, item 1). Replaces the old
+// approveJobCopy() — a plain PATCH with no memory of *why* something was
+// or wasn't approved — with a call to POST /copy-decision, which logs
+// every decision (not just the latest one) so a rejection's reason is
+// preserved as real signal instead of being silently overwritten by the
+// next approval.
+async function submitCopyDecision(jobId, approved){
   const job = findCreativeJob(jobId);
   if (!job) return;
   const text = document.getElementById('copyWorkspaceText').value;
+  const reason = (document.getElementById('copyDecisionReason').value || '').trim();
+  const flag = document.getElementById('copyDecisionFlag');
+  if (!approved && !reason){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Add a reason before requesting changes — that\'s what the next draft learns from.'; }
+    document.getElementById('copyDecisionReason').focus();
+    return;
+  }
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workingCopy: text, copyApproved: true })
+    // Save whatever's in the copy box first, same as the old approve flow,
+    // so a decision always reflects the text actually on screen.
+    await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workingCopy: text })
+    });
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/copy-decision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved, reason: reason || undefined })
     });
     if (resp.ok){
+      const result = await resp.json();
       job.workingCopy = text;
-      job.copyApproved = 1;
-      job.copyApprovedAt = new Date().toISOString();
+      job.copyApproved = result.copyApproved ? 1 : 0;
+      job.copyApprovedAt = result.copyApprovedAt;
+      job.assetApproved = result.assetApproved ? 1 : 0;
+      if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = approved ? 'Approved.' : 'Changes requested — logged for the next draft.'; }
       renderCopyWorkspace(jobId);
       loadCreativeJobs();
     } else {
-      alert('Couldn\'t approve this copy right now — try again.');
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || 'Couldn\'t save this decision — try again.'; }
     }
   } catch (e){
-    alert('Backend unreachable — couldn\'t approve this copy.');
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — decision not saved.'; }
+  }
+}
+// 2026-08-22 — "AI Thought" speech bubbles. Per direct instruction: make
+// sure speech-bubble moments explain what's happening AND surface a
+// best-practice tip tied to that feature, not just a bare "loading…" —
+// same "always provide value along the way" standing principle as the CX
+// vision doc's "fun, not intimidating" section. aiStatusTipCounter cycles
+// through each feature's tip list so repeated uses in one session don't
+// always show the same line; renderAiStatusBubble is the transient
+// "thinking" state (pulsing dots + a tip), renderAiStatusTip is the smaller
+// note left behind once a real result has landed, so the guidance doesn't
+// vanish the instant the answer does.
+let aiStatusTipCounter = 0;
+function pickAiStatusTip(tips){
+  if (!tips || !tips.length) return null;
+  return tips[(aiStatusTipCounter++) % tips.length];
+}
+function renderAiStatusBubble(doingText, tips){
+  const tip = pickAiStatusTip(tips);
+  return `<div class="ai-status-bubble">
+    <div class="doing"><span class="thinking-dots"><span></span><span></span><span></span></span><span class="doing-text">${escapeHtml(doingText)}</span></div>
+    ${tip ? `<div class="tip"><b>Best practice:</b> ${escapeHtml(tip)}</div>` : ''}
+  </div>`;
+}
+function renderAiStatusTip(tips){
+  const tip = pickAiStatusTip(tips);
+  if (!tip) return '';
+  return `<div class="ai-status-bubble" style="padding:10px 14px;"><div class="tip" style="border-top:none;padding-top:0;margin-top:0;">💡 <b>Best practice:</b> ${escapeHtml(tip)}</div></div>`;
+}
+const SCORE_STATUS_TIPS = [
+  "The more specific your campaign's Primary KPI, the more this relevance score actually means — a vague KPI gives the scorer less to check against.",
+  "Add exact phrases to avoid in your Brand Voice Guide (e.g. avoid \"guarantee\") — the compliance check reads those directly, so it's only as sharp as what's written there.",
+  "A high relevance score with a low compliance score usually means the draft is on-brief but risky — read the flags before you approve, not just the numbers."
+];
+const INTERVIEW_STATUS_TIPS = [
+  "The top-scoring draft isn't always the most polished-sounding one — it's the one that best fits this campaign's specific KPI and audience.",
+  "If every candidate scores similarly, that's often a sign the brief itself is too open-ended — a sharper Key Message usually spreads the scores out more.",
+  "Running the interview again on the same brief can surface a different winner — treat each run as a second opinion, not a single verdict."
+];
+
+// 2026-08-22 — pre-decision draft scoring (roadmap item 2: "relevance
+// scoring & compliance scoring shown pre-decision"). Fires automatically
+// whenever the copy workspace opens or the draft copy is re-saved, so a
+// reviewer sees a score before they decide, matching the "drafts arrive,
+// already scored" moment from the CX vision doc's day-in-the-life — this
+// is that moment, actually built.
+async function scoreCurrentDraft(jobId, copyOverride){
+  const holder = document.getElementById('copyDraftScore');
+  if (!holder) return;
+  const textEl = document.getElementById('copyWorkspaceText');
+  const copy = copyOverride !== undefined ? copyOverride : (textEl ? textEl.value : '');
+  if (!copy || !copy.trim()){
+    holder.innerHTML = `<div class="hint">Nothing to score yet — add copy above.</div>`;
+    return;
+  }
+  holder.innerHTML = renderAiStatusBubble("Reading this draft against your campaign's objective, audience, and brand voice guide — checking relevance and compliance before you decide.", SCORE_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/score`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copy })
+    });
+    if (!resp.ok){ holder.innerHTML = ''; return; }
+    const result = await resp.json();
+    holder.innerHTML = renderDraftScoreCard(result) + renderAiStatusTip(SCORE_STATUS_TIPS);
+  } catch (e){
+    holder.innerHTML = '';
+  }
+}
+function scorePill(score){
+  if (score === null || score === undefined) return `<span class="hint">not scored</span>`;
+  const color = score >= 75 ? 'var(--cx)' : (score >= 50 ? 'var(--media)' : 'var(--advocacy)');
+  return `<span style="font-weight:700;color:${color};">${Math.round(score)}</span><span class="hint">/100</span>`;
+}
+function renderDraftScoreCard(result){
+  const flagsHtml = (result.flags && result.flags.length)
+    ? `<ul style="margin:6px 0 0;padding-left:18px;">${result.flags.map(f => `<li class="hint" style="color:var(--advocacy);">${escapeHtml(f)}</li>`).join('')}</ul>`
+    : `<div class="hint" style="margin-top:4px;">No compliance flags.</div>`;
+  const modeNote = result.mode === 'heuristic'
+    ? `<div class="hint" style="margin-top:6px;">Heuristic scoring (no ANTHROPIC_API_KEY configured on this deployment) — a keyword/rule-based estimate, not an AI judgment.</div>`
+    : (result.mode === 'ai' ? `<div class="hint" style="margin-top:6px;">AI-scored.</div>` : '');
+  return `
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Relevance</div>${scorePill(result.relevanceScore)}</div>
+      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Compliance</div>${scorePill(result.complianceScore)}</div>
+    </div>
+    ${result.note ? `<div class="hint" style="margin-top:6px;">${escapeHtml(result.note)}</div>` : ''}
+    ${flagsHtml}
+    ${modeNote}
+  `;
+}
+async function loadCopyDecisionHistory(jobId){
+  const holder = document.getElementById('copyDecisionHistory');
+  if (!holder) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/copy-decisions`);
+    if (!resp.ok) return;
+    const { decisions } = await resp.json();
+    if (!decisions || !decisions.length){
+      holder.innerHTML = '';
+      return;
+    }
+    const rows = decisions.slice().reverse().map(d => {
+      const when = new Date(d.decidedAt).toLocaleString();
+      const label = d.approved
+        ? `<span style="color:var(--cx);font-weight:600;">Approved</span>`
+        : `<span style="color:var(--advocacy);font-weight:600;">Changes requested</span>`;
+      const reasonHtml = d.reason ? ` — "${escapeHtml(d.reason)}"` : '';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:0.8125rem;">${label} <span class="hint">${when}</span>${reasonHtml}</div>`;
+    }).join('');
+    holder.innerHTML = `<div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;margin-bottom:4px;">Decision history</div>${rows}`;
+  } catch (e){
+    // History is a nice-to-have on this panel — a failed fetch here
+    // shouldn't block the rest of the copy workspace from working.
+  }
+}
+// 2026-08-22 — multi-candidate "interview" panel (CX & Copywriting vision
+// roadmap item 4, last on the build list). Runs POST /interview, which
+// scores every real candidate with the same relevance/compliance scorer as
+// the pre-decision score above, and renders them side by side ranked by
+// combined score. Picking one is always an explicit click (runInterviewSelect
+// below) — never auto-applied — same "suggestion, not a silent fill"
+// discipline as the campaign smart-defaults panel (item 3).
+let lastInterviewCache = {};
+async function runCopyInterview(jobId){
+  const holder = document.getElementById('copyInterviewPanel');
+  if (!holder) return;
+  holder.innerHTML = renderAiStatusBubble("Drafting three independent takes on your brief — direct-response, brand-story, and proof-and-trust — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    if (!resp.ok){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the interview — try again.</div>`;
+      return;
+    }
+    const result = await resp.json();
+    if (!result.available){
+      holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Interview panel unavailable.')}</div>`;
+      return;
+    }
+    lastInterviewCache[jobId] = result;
+    holder.innerHTML = renderInterviewPanel(jobId, result);
+  } catch (e){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the interview.</div>`;
+  }
+}
+function renderInterviewPanel(jobId, result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.copy){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+      </div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
+    </div>`;
+  }).join('');
+  const editableCandidates = (result.candidates || []).filter(c => c.copy);
+  const startFromOptions = editableCandidates.map(c =>
+    `<option value="${escapeHtml(c.key)}">Close enough — start from "${escapeHtml(c.label)}"</option>`
+  ).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+    <div id="copyInterviewSelectFlag" class="hint" style="margin-top:8px;"></div>
+    <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px;">
+      <div style="font-weight:700;font-size:0.8125rem;">None of these quite right?</div>
+      <div class="hint" style="margin-top:2px;">Tell us what's off — this goes straight to our team so the next round can be sharper.</div>
+      <textarea id="interviewFeedbackNote" rows="2" placeholder="What don't you like, and what would you change?" style="width:100%;margin-top:8px;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:8px;border:1px solid var(--line);border-radius:6px;"></textarea>
+      ${editableCandidates.length ? `<select id="interviewFeedbackStartFrom" style="width:100%;margin-top:8px;font-size:0.8125rem;padding:6px;border:1px solid var(--line);border-radius:6px;">
+        <option value="">Start fresh next time — none of these are close</option>
+        ${startFromOptions}
+      </select>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:8px;" onclick="submitInterviewFeedback('${jobId}', '${result.interviewId}')">Submit feedback</button>
+      <div id="interviewFeedbackFlag" class="hint" style="margin-top:6px;"></div>
+    </div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+async function submitInterviewFeedback(jobId, interviewId){
+  const noteEl = document.getElementById('interviewFeedbackNote');
+  const startFromEl = document.getElementById('interviewFeedbackStartFrom');
+  const flag = document.getElementById('interviewFeedbackFlag');
+  const note = noteEl ? noteEl.value.trim() : '';
+  const startFromKey = startFromEl ? startFromEl.value : '';
+  if (!note){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Add a note first — what would you change?'; }
+    return;
+  }
+  const body = { note, type: startFromKey ? 'edit_manually' : 'none_selected' };
+  if (startFromKey) body.startFromKey = startFromKey;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(interviewId)}/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't save that — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    if (result.workingCopy){
+      const job = findCreativeJob(jobId);
+      if (job) job.workingCopy = result.workingCopy;
+      const textEl = document.getElementById('copyWorkspaceText');
+      if (textEl){
+        textEl.value = result.workingCopy;
+        textEl.dispatchEvent(new Event('input'));
+      }
+      scoreCurrentDraft(jobId, result.workingCopy);
+    }
+    if (flag){
+      flag.style.color = 'var(--cx)';
+      flag.textContent = result.workingCopy
+        ? 'Feedback saved and applied to the copy box above — edit it there and save when ready.'
+        : "Feedback saved — our team will factor it into this account's next round.";
+    }
+    if (noteEl) noteEl.disabled = true;
+    const submitBtn = flag && flag.previousElementSibling;
+    if (submitBtn && submitBtn.tagName === 'BUTTON') submitBtn.disabled = true;
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — feedback not saved."; }
+  }
+}
+async function runInterviewSelect(jobId, interviewId, candidateKey){
+  const flag = document.getElementById('copyInterviewSelectFlag');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || 'Couldn\'t apply this draft — try again.'; }
+      return;
+    }
+    const result = await resp.json();
+    const job = findCreativeJob(jobId);
+    if (job) job.workingCopy = result.workingCopy;
+    const textEl = document.getElementById('copyWorkspaceText');
+    if (textEl){
+      textEl.value = result.workingCopy;
+      textEl.dispatchEvent(new Event('input'));
+    }
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to the copy box above — save when ready.'; }
+    scoreCurrentDraft(jobId, result.workingCopy);
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — draft not applied.'; }
   }
 }
 async function advanceJobStatus(jobId, status){
@@ -29916,6 +30613,30 @@ function sharedContextClause(){
   return { campaign, toneClause };
 }
 
+// 2026-08-22 — per direct instruction to leverage the new Brand Voice
+// contest fields (Vision Statement / Longform Example) "as part of our
+// copywriting features at the campaign level and PR and corporate comm."
+// These deterministic template generators (Press Release, Internal Comms,
+// Social Batch, Email Sequence, Landing Page) never call a real model — see
+// the honest-mocked-content convention noted throughout this file — so a
+// Vision Statement can't change their generated prose the way it changes a
+// real AI draft. What it CAN do honestly is show up in the "why this draft"
+// rationale, matching this file's existing "explain the choices" pattern,
+// so it's visible that the account's Vision Statement is on file and
+// informing this account's overall voice — and it genuinely IS shaping the
+// substance here too, one level up: Press Release and Internal Comms both
+// draw their real prose from campaign.longformCopy, which is either the
+// real AI-drafted Brand Messaging copy (generateMessagingCopyViaAI on the
+// backend — now given the Vision Statement/Longform Example directly, see
+// server.js) or its deterministic fallback — so once a real AI draft is
+// generated upstream, this Vision Statement has already shaped the actual
+// words these derivative drafts pull in, not just the rationale text.
+function voiceRationaleSuffix(){
+  return state.voice.visionStatement
+    ? ` (this account's Vision Statement — "${state.voice.visionStatement}" — is on file and informs the underlying Brand Messaging copy this draft draws from)`
+    : '';
+}
+
 // Round 55 — structured field editing. Renders one labeled input/textarea
 // per STRUCTURED_FIELD_DEFS entry instead of the old single flat textarea,
 // plus a library-picker (reuse a saved boilerplate/legal/testimonial, or
@@ -30075,7 +30796,7 @@ function generatePressReleaseMaster(){
   const rationaleParts = [longform
     ? `Why this draft: the lead is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline/quote pull from the Key Message — nothing here re-derives from the raw Objective/Segment fields, so it never recaps internal campaign labels as copy`
     : `Why this draft: no Long Form Copy is approved yet on this campaign's Brand Messaging step, so this is a placeholder shape until then — approve Long Form Copy there for a real draft here`];
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct, since this account hasn't approved a Brand Voice yet — approving one under Brand Groundwork will change every future draft's register automatically`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct, since this account hasn't approved a Brand Voice yet — approving one under Brand Groundwork will change every future draft's register automatically`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
@@ -30107,7 +30828,7 @@ function generateSocialBatchMaster(){
   // generator (see cxmedia-ux-audit-round28.md).
   const rationaleParts = [`Why this draft: the hook line leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}"), since no Key Message was entered`}`];
   if (campaign.segment) rationaleParts.push(`"Made for ${campaign.segment}" reflects this campaign's Segment field directly`);
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
@@ -30184,7 +30905,7 @@ function generateEmailSequenceMaster(){
   project.masterContent = composeMasterFromFields('email-sequence', project.fields);
   const rationaleParts = [`Why this draft: the subject line and body lead with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}"), since no Key Message was entered`} — this is Email 1, so it sets the narrative arc every later email in the sequence references`];
   if (campaign.segment) rationaleParts.push(`the preheader and body both reflect this campaign's Segment field ("${campaign.segment}") directly`);
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
@@ -30217,7 +30938,7 @@ function generateLandingPageMaster(){
   project.masterContent = composeMasterFromFields('landing-page', project.fields);
   const rationaleParts = [`Why this draft: the hero headline leads with ${campaign.keyMessage ? `this campaign's Key Message ("${campaign.keyMessage}")` : `this campaign's Objective ("${campaign.objective}")`}, and the benefits section reflects this campaign's own Objective/Stage fields rather than generic copy`];
   if (campaign.segment) rationaleParts.push(`the subhead reflects this campaign's Segment field ("${campaign.segment}") directly`);
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
@@ -30255,7 +30976,7 @@ function generateInternalCommsMaster(){
   const rationaleParts = [longform
     ? `Why this draft: "what's launching" is this campaign's own approved Brand Messaging Long Form Copy verbatim, and the headline pulls from the Key Message — nothing here re-derives from the raw Objective/Segment fields`
     : `Why this draft: no Long Form Copy is approved yet on this campaign's Brand Messaging step, so this is a placeholder shape until then`];
-  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}`);
+  rationaleParts.push(`tone is ${state.voice.approved ? `pulled from this account's approved Brand Voice (v${state.voice.version})` : `generic and direct — approve a Brand Voice under Brand Groundwork to change this and every future draft's register`}${voiceRationaleSuffix()}`);
   project.masterRationale = rationaleParts.join('; ') + '.';
   renderProjectDetail();
 }
@@ -36665,6 +37386,120 @@ function renderVoiceStep(){
     banner.classList.add('visible');
   } else {
     banner.classList.remove('visible');
+  }
+  // 2026-08-22 — Vision Statement / Longform Example fields, same
+  // "show what's already there instead of requiring a re-run" treatment.
+  const visionEl = document.getElementById('voiceVisionStatement');
+  const longformEl = document.getElementById('voiceLongformExample');
+  if (visionEl) visionEl.value = state.voice.visionStatement || '';
+  if (longformEl) longformEl.value = state.voice.longformExample || '';
+}
+
+// 2026-08-22 — the multi-model Brand Voice contest. Same real-AI-call,
+// explicit-click-to-apply pattern as runCopyInterview()/runInterviewSelect()
+// in the copy workspace, applied at the account level instead of a specific
+// creative job.
+const VOICE_CONTEST_STATUS_TIPS = [
+  "A voice direction that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products & Services, not just how it reads.",
+  "The Vision Statement is the north star, not a tagline — it should still make sense a year from now, even as individual campaigns change.",
+  "If none of the three feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above need a second look before trying again."
+];
+let lastVoiceContestCache = null;
+async function runBrandVoiceContest(){
+  const holder = document.getElementById('voiceContestPanel');
+  if (!holder || !state.companyId) return;
+  holder.innerHTML = renderAiStatusBubble("Drafting three distinct brand voice directions — Confident Authority, Warm Storyteller, Bold Modern — each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: document.getElementById('voiceAvoidWords').value.trim(), antiExample: document.getElementById('voiceAntiExample').value.trim() })
+    });
+    if (!resp.ok){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the contest — try again.</div>`;
+      return;
+    }
+    const result = await resp.json();
+    if (!result.available){
+      holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Voice contest unavailable.')}</div>`;
+      return;
+    }
+    lastVoiceContestCache = result;
+    holder.innerHTML = renderBrandVoiceContestPanel(result);
+  } catch (e){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the contest.</div>`;
+  }
+}
+function renderBrandVoiceContestPanel(result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.visionStatement || !c.longformExample){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— fewest compliance flags</span>' : ''}</div>
+      <div style="font-size:0.8125rem;font-style:italic;margin:8px 0;">"${escapeHtml(c.visionStatement)}"</div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="applyBrandVoiceCandidate('${result.interviewId}', '${c.key}')">Use this →</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;">${cards}</div>
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(VOICE_CONTEST_STATUS_TIPS)}`;
+}
+async function applyBrandVoiceCandidate(interviewId, candidateKey){
+  const flag = document.getElementById('voiceContestSelectFlag');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    state.voice.visionStatement = result.visionStatement;
+    state.voice.longformExample = result.longformVoiceExample;
+    const visionEl = document.getElementById('voiceVisionStatement');
+    const longformEl = document.getElementById('voiceLongformExample');
+    if (visionEl) visionEl.value = result.visionStatement;
+    if (longformEl) longformEl.value = result.longformVoiceExample;
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to Vision Statement and Longform Example below — saved automatically.'; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not applied.'; }
+  }
+}
+async function saveVisionLongformEdits(){
+  const flag = document.getElementById('voiceVisionLongformSaveFlag');
+  const visionStatement = document.getElementById('voiceVisionStatement').value;
+  const longformVoiceExample = document.getElementById('voiceLongformExample').value;
+  state.voice.visionStatement = visionStatement;
+  state.voice.longformExample = longformVoiceExample;
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/vision-longform`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visionStatement, longformVoiceExample })
+      });
+      persisted = resp.ok;
+    } catch (e){ /* falls through to local-only flag below */ }
+  }
+  if (flag){
+    flag.textContent = persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
   }
 }
 
