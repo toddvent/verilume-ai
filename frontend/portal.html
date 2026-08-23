@@ -87,6 +87,21 @@
   .back-nav .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.25rem;font-weight:500;color:var(--ink);text-decoration:none;}
   .back-nav .wordmark b{color:var(--media);font-weight:500;}
 
+  /* 2026-08-23 (nav redesign, round 12, Phase 1) — six-tab primary nav,
+     attached directly below the account-branded header per the
+     nav-redesign-2026-08-23 project's directive 2. Kept in this file's own
+     light, minimal visual language (--cx/--media/--line tokens) rather than
+     the dark navy header used in the project's mockups, since the
+     account-summary card already serves as this app's branded header and a
+     second, differently-styled header directly under it would read as two
+     competing headers rather than one. A horizontal-scroll mobile
+     treatment (per the project's round 7/8 mockups) is a later phase — this
+     is desktop-only for now. */
+  .primary-nav{display:flex;gap:4px;max-width:1040px;margin:0 auto;padding:0 28px;border-bottom:1px solid var(--line);overflow-x:auto;}
+  .primary-nav-item{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;letter-spacing:0.01em;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;padding:12px 14px 10px;cursor:pointer;white-space:nowrap;}
+  .primary-nav-item:hover{color:var(--ink);}
+  .primary-nav-item.active{color:var(--cx);border-bottom-color:var(--cx);}
+
   /* Round 66 — the flat Quick Links pill row (round 65) was replaced by
      the numbered "Fundamentals Setup" module (see #fundamentalsModule in
      the body) reusing .module/.dash-grid/.dash-tile, so the .quick-links/
@@ -2233,6 +2248,23 @@
          account-summary's only control. -->
     <a href="account.html" class="icon-link" title="Account" aria-label="Account" id="dashAccountLink" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--white);border:1px solid var(--line);color:var(--ink);font-size:14px;text-decoration:none;flex-shrink:0;">⚙</a>
   </div>
+
+  <!-- 2026-08-23 (nav redesign, round 12, Phase 1) — the six-tab persistent
+       primary nav from the nav-redesign-2026-08-23 project, attached to the
+       account-branded header per that project's directive 2. Sits outside
+       every .step div (a sibling, not nested), so it stays visible across
+       the whole app rather than only on the Dashboard. Phase 1 wires it to
+       the Dashboard's existing content (see switchPrimaryTab() and
+       renderWorkstreams()'s tab filter) — dedicated per-tab landing pages
+       are a later phase. -->
+  <nav class="primary-nav" id="primaryNav" aria-label="Primary">
+    <button type="button" class="primary-nav-item active" data-tab="dailyBrief" onclick="switchPrimaryTab('dailyBrief')">Daily Brief</button>
+    <button type="button" class="primary-nav-item" data-tab="strategy" onclick="switchPrimaryTab('strategy')">Strategy</button>
+    <button type="button" class="primary-nav-item" data-tab="brand" onclick="switchPrimaryTab('brand')">Brand</button>
+    <button type="button" class="primary-nav-item" data-tab="marketer" onclick="switchPrimaryTab('marketer')">Marketer</button>
+    <button type="button" class="primary-nav-item" data-tab="dataScientist" onclick="switchPrimaryTab('dataScientist')">Data Scientist</button>
+    <button type="button" class="primary-nav-item" data-tab="accountManagement" onclick="switchPrimaryTab('accountManagement')">Account Management</button>
+  </nav>
 
   <!-- ================= DASHBOARD ================= -->
   <div class="step active" id="step-dashboard">
@@ -13400,19 +13432,44 @@ function toggleNewsRead(id){
 // itself is now a function (see wsLabel() below) rather than a plain
 // string, so it reads this account's real name once state.company has
 // loaded instead of a hardcoded "Brand".
+// 2026-08-23 (nav redesign, round 12) — `tab` assigns each workstream card
+// to one of the six primary-nav tabs (see PRIMARY_TABS below), per the
+// mapping worked out across the nav-redesign-2026-08-23 project's rounds
+// 1-9 (nav-structure.html §2/§3). This is Phase 1 of that build: the
+// existing workstream cards/content are unchanged, just filtered by tab
+// instead of shown as one flat 11-card grid. Strategy has no card of its
+// own yet — its content (Media & Budget Planning, Research, Competitive &
+// Market Intelligence) currently lives nested inside 'brand' (Competitive
+// Positioning) and isn't its own top-level workstream card; renderWorkstreams()
+// below shows an honest "nothing built here yet, here's what's related"
+// message for that tab rather than fabricating a card. See the project doc
+// for the full phase plan.
 const WORKSTREAMS = [
-  { key: 'experienceManagement', label: 'AI Agent Training', desc: 'Budgets, research, brand style, marketing ops, content development, omni-channel creative, performance marketing, lifecycle marketing, and PR — the direct-access grid, if you already know where you\'re going.' },
-  { key: 'brand', label: () => state.company ? `${state.company} Configuration` : 'Configuration', desc: 'The upfront setup every other workstream depends on: brand voice & style, sample writings & presentations, competitive positioning, marketing budget upload, product & campaign groups, and team management — done once here, inherited everywhere else.' },
-  { key: 'mediaScience', label: 'Media Science', desc: 'Measurement coverage & confidence, match-market testing, website traffic analysis, and the media-performance side of AI agent analysis.', badge: 'Analytics' },
-  { key: 'customerExperiences', label: 'Customer Experiences (CX)', desc: 'AI agent analysis, layered from the CMO view down to channel-specific creative performance — the guest/customer-experience side.' },
-  { key: 'reputation', label: 'PR & Corp Comm', desc: 'PR & Corporate Communications — brand mentions, press, and editorial relationships, monitored continuously and connected to what Search Optimization is already seeing.', badge: 'Enterprise' },
-  { key: 'teamDevelopment', label: 'Team Experiences', desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.' },
-  { key: 'marketingCalendar', label: 'Marketing Calendar', desc: 'Every scheduled campaign event across this account, by month — the account-wide view before drilling into any one campaign.' },
-  { key: 'campaignMgmt', label: 'Campaign Management', desc: 'Every campaign’s status across Brand, Marketing Functions, Creative, QA & Approval, In Market, and Analysis — in one place, instead of checking each function group separately.' },
-  { key: 'collaboration', label: 'Collaboration', desc: 'Describe what you need in plain language — your AI Partner routes it to the right function(s) instead of you clicking through the org chart.', badge: 'Enterprise' },
-  { key: 'searchOptimization', label: 'Search Optimization', desc: 'SEO, AEO & GEO — organic visibility across search engines and AI answer engines, monitored continuously.', badge: 'Enterprise' },
-  { key: 'manageAccount', label: 'Manage Account', desc: 'AI Partner Onboarding & Training, account settings, vendors, and partners.' }
+  { key: 'experienceManagement', tab: 'marketer', label: 'AI Agent Training', desc: 'Budgets, research, brand style, marketing ops, content development, omni-channel creative, performance marketing, lifecycle marketing, and PR — the direct-access grid, if you already know where you\'re going.' },
+  { key: 'brand', tab: 'accountManagement', label: () => state.company ? `${state.company} Configuration` : 'Configuration', desc: 'The upfront setup every other workstream depends on: brand voice & style, sample writings & presentations, competitive positioning, marketing budget upload, product & campaign groups, and team management — done once here, inherited everywhere else.' },
+  { key: 'mediaScience', tab: 'dataScientist', label: 'Media Science', desc: 'Measurement coverage & confidence, match-market testing, website traffic analysis, and the media-performance side of AI agent analysis.', badge: 'Analytics' },
+  { key: 'customerExperiences', tab: 'brand', label: 'Customer Experiences (CX)', desc: 'AI agent analysis, layered from the CMO view down to channel-specific creative performance — the guest/customer-experience side.' },
+  { key: 'reputation', tab: 'brand', label: 'PR & Corp Comm', desc: 'PR & Corporate Communications — brand mentions, press, and editorial relationships, monitored continuously and connected to what Search Optimization is already seeing.', badge: 'Enterprise' },
+  { key: 'teamDevelopment', tab: 'accountManagement', label: 'Team Experiences', desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.' },
+  { key: 'marketingCalendar', tab: 'marketer', label: 'Marketing Calendar', desc: 'Every scheduled campaign event across this account, by month — the account-wide view before drilling into any one campaign.' },
+  { key: 'campaignMgmt', tab: 'marketer', label: 'Campaign Management', desc: 'Every campaign’s status across Brand, Marketing Functions, Creative, QA & Approval, In Market, and Analysis — in one place, instead of checking each function group separately.' },
+  { key: 'collaboration', tab: 'dailyBrief', label: 'Collaboration', desc: 'Describe what you need in plain language — your AI Partner routes it to the right function(s) instead of you clicking through the org chart.', badge: 'Enterprise' },
+  { key: 'searchOptimization', tab: 'brand', label: 'Search Optimization', desc: 'SEO, AEO & GEO — organic visibility across search engines and AI answer engines, monitored continuously.', badge: 'Enterprise' },
+  { key: 'manageAccount', tab: 'accountManagement', label: 'Manage Account', desc: 'AI Partner Onboarding & Training, account settings, vendors, and partners.' }
 ];
+
+// 2026-08-23 (nav redesign, round 12) — the six primary-nav tabs from the
+// nav-redesign-2026-08-23 project, in the order they render. `key` matches
+// WORKSTREAMS' own `tab` field above.
+const PRIMARY_TABS = [
+  { key: 'dailyBrief', label: 'Daily Brief' },
+  { key: 'strategy', label: 'Strategy' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'marketer', label: 'Marketer' },
+  { key: 'dataScientist', label: 'Data Scientist' },
+  { key: 'accountManagement', label: 'Account Management' }
+];
+let activePrimaryTab = 'dailyBrief';
 
 // Round 132d (2026-08-09), per direct instruction: "The total active
 // campaign metric should be part of the Portal workstream card" — same
@@ -13938,10 +13995,113 @@ function cwOrderedWorkstreams(){
   reordered.unshift(found);
   return reordered;
 }
+// 2026-08-23 (nav redesign, round 13), per direct instruction — the exact
+// functional sub-pages named for the Strategy tab across rounds 1-9 of the
+// nav-redesign-2026-08-23 project (nav-structure.html §2), as real,
+// clickable links even though most of the destinations aren't built yet.
+// "Content doesn't matter for the sections beyond the shells... the links
+// to the detailed functional pages should all be in place even if the
+// page behind it is still pending work." Items with a `step` link to a
+// real, already-built step; items without one route to the generic
+// pendingFeature landing (see renderPendingFeatureStep()) instead of being
+// hidden or left dead.
+const STRATEGY_SHELL_GROUPS = [
+  { label: 'Media & Budget Planning', items: [
+    { label: 'Manage Budgets' },
+    { label: 'MMM Model Allocations' },
+    { label: 'Finalized / Audited Agency Media Plans', step: 'mediaplan' }
+  ]},
+  { label: 'Research', items: [
+    { label: 'Product & Destination Positioning' },
+    { label: 'Consumer Trends' }
+  ]},
+  { label: 'Competitive & Market Intelligence', items: [
+    { label: 'Competitor Tracking', step: 'competitivePositioning' },
+    { label: 'Battle Brief' },
+    { label: 'What Competitors Are Doing' }
+  ]}
+];
+// Escapes a label for safe inclusion inside a single-quoted inline JS
+// string literal (onclick="...('...')") — distinct from escapeHtml(),
+// which escapes for HTML text content, not JS string content.
+function jsStrEscape(s){
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+function strategyShellHtml(){
+  return STRATEGY_SHELL_GROUPS.map(g => `
+    <div class="group-card" style="grid-column:1/-1;">
+      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${g.items.map(item => {
+          const onclick = item.step
+            ? `goToStep('${item.step}')`
+            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending</span>'}</a>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+// 2026-08-23 (nav redesign, round 13) — populates the previously-orphaned
+// step-placeholder markup (confirmed via grep: nothing ever navigated here
+// before this round) as a generic "this link is real, the page behind it
+// isn't built yet" landing, per direct instruction that every functional
+// link should be in place even when its destination is still pending.
+function renderPendingFeatureStep(title, groupLabel){
+  const eyebrowEl = document.getElementById('placeholderEyebrow');
+  const titleEl = document.getElementById('placeholderTitle');
+  const nameEl = document.getElementById('placeholderName');
+  const tierNoteEl = document.getElementById('placeholderTierNote');
+  const groupLinkEl = document.getElementById('placeholderGroupLink');
+  if (eyebrowEl) eyebrowEl.textContent = groupLabel || 'Pending Development';
+  if (titleEl) titleEl.textContent = title || 'Coming Soon';
+  if (nameEl) nameEl.textContent = title || '';
+  if (tierNoteEl) tierNoteEl.textContent = 'This page is on the roadmap and not yet built in this prototype.';
+  if (groupLinkEl){
+    groupLinkEl.textContent = groupLabel || 'Dashboard';
+    groupLinkEl.onclick = function(){ goToStep('dashboard'); };
+  }
+}
+// 2026-08-23 (nav redesign, round 13), per direct instruction — every
+// shell beyond Daily Brief should nudge an unconfigured account to
+// Account Management first. Reuses the exact same four-field check
+// computeWorkstreamAlert()'s 'manageAccount' branch already uses, so this
+// banner and that workstream card's own "Onboarding Steps Open" count
+// never disagree about what "configured" means.
+function accountIsConfigured(){
+  return !!(state.voice && state.voice.approved && state.styleAssets && state.styleAssets.approved && state.positioning && state.positioning.approved && state.industry);
+}
+function accountNotConfiguredBannerHtml(){
+  return `<div class="group-card" style="grid-column:1/-1;background:var(--paper-dim);border-style:dashed;text-align:center;padding:18px 20px;color:var(--muted);font-size:0.875rem;">
+    Configure your account first — Brand Voice, Style Guide, and Competitive Positioning aren't fully approved yet. <a class="flink" onclick="goToStep('manageAccount')">Go to Account Management →</a>
+  </div>`;
+}
+// 2026-08-23 (nav redesign, round 12) — filters the same workstream cards
+// by the active primary-nav tab instead of always showing all 11 flat.
+// Daily Brief shows everything (it's the summary landing, same convention
+// as the AI Agent Thoughts drawer's own empty-Daily-Brief-group rule in
+// this project's mockups) rather than being filtered to just Collaboration.
 function renderWorkstreams(){
   const grid = document.getElementById('workstreamGrid');
   if (!grid) return;
-  grid.innerHTML = cwOrderedWorkstreams().map(w => {
+  let list = cwOrderedWorkstreams();
+  if (activePrimaryTab && activePrimaryTab !== 'dailyBrief'){
+    list = list.filter(w => w.tab === activePrimaryTab);
+  }
+  const banner = (activePrimaryTab && activePrimaryTab !== 'dailyBrief' && !accountIsConfigured())
+    ? accountNotConfiguredBannerHtml() : '';
+  if (activePrimaryTab === 'strategy'){
+    // Strategy has no workstream card of its own yet (see WORKSTREAMS'
+    // comment above) — a real shell of functional links instead of a
+    // blank grid or a fabricated card. Per direct instruction, content
+    // behind those links doesn't matter yet; the links themselves do.
+    grid.innerHTML = banner + strategyShellHtml();
+    return;
+  }
+  if (!list.length){
+    grid.innerHTML = banner + `<div class="group-card" style="text-align:center;color:var(--muted);padding:32px 20px;grid-column:1/-1;">Nothing mapped to this tab yet.</div>`;
+    return;
+  }
+  grid.innerHTML = banner + list.map(w => {
     const alert = computeWorkstreamAlert(w.key);
     return `
     <div class="group-card workstream-card" onclick="openWorkstream('${w.key}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openWorkstream('${w.key}')">
@@ -13957,6 +14117,18 @@ function renderWorkstreams(){
 
 function openWorkstream(key){
   cwRecordLastUsedWorkstream(key);
+  // 2026-08-23 (nav redesign, round 12) — keep the primary nav's highlighted
+  // tab in sync when a workstream card is opened directly, so drilling into
+  // e.g. Media Science from the Data Scientist tab doesn't leave a stale
+  // "Daily Brief" (or whatever tab was last active) highlighted behind it.
+  const openedFrom = WORKSTREAMS.find(w => w.key === key);
+  if (openedFrom && openedFrom.tab){
+    activePrimaryTab = openedFrom.tab;
+    try { sessionStorage.setItem('primaryTab', activePrimaryTab); } catch (e) {}
+    document.querySelectorAll('.primary-nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.tab === activePrimaryTab);
+    });
+  }
   if (key === 'marketingCalendar'){
     goToStep('marketingCalendar');
   } else if (key === 'campaignMgmt'){
@@ -14050,6 +14222,33 @@ function cfdReopen(){
 // within a session, resets on a fresh visit, so a returning-mid-session
 // user doesn't get bounced back to Start of Day every time they navigate
 // back to the Dashboard.
+// 2026-08-23 (nav redesign, round 12, Phase 1) — the persistent six-tab
+// primary nav from the nav-redesign-2026-08-23 project. This is the first
+// build phase: real, working navigation wired to the Dashboard's existing
+// content (Round 65 previously removed all persistent global nav in favor
+// of everything living on the Dashboard — this reverses that, per the
+// nav-redesign project's directive 2). Daily Brief lands on the existing
+// "Start of Day" panel; every other tab lands on "Working Dashboard" with
+// its workstream grid filtered to that tab's cards (see renderWorkstreams()
+// above). Dedicated per-tab landing pages (the full Strategy/Marketer/etc.
+// dashboards from the mockups, the Top 5 Most Urgent module, Account
+// Management's tile grid, mobile breakpoints) are later phases — not yet
+// built here.
+function switchPrimaryTab(tab){
+  activePrimaryTab = tab;
+  try { sessionStorage.setItem('primaryTab', tab); } catch (e) {}
+  document.querySelectorAll('.primary-nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === tab);
+  });
+  goToStep('dashboard');
+  if (tab === 'dailyBrief'){
+    switchDashboardTab('startOfDay');
+  } else {
+    switchDashboardTab('working');
+    renderWorkstreams();
+  }
+}
+
 function switchDashboardTab(tab){
   try { sessionStorage.setItem('dashboardTab', tab); } catch (e) {}
   const startBtn = document.getElementById('dashTabBtn-startOfDay');
@@ -17102,7 +17301,10 @@ function renderCampaignMgmtStep(){
   }
 
   if (!all.length){
-    listEl.innerHTML = `<tr><td colspan="7"><p class="lede" style="margin:12px 0;">No campaigns yet — create one via the module above to see it tracked here.</p></td></tr>`;
+    // 2026-08-23 (nav redesign, round 13) — exact phrase per direct
+    // instruction: "'Campaigns Do Not Currently' exist within the campaign
+    // shell."
+    listEl.innerHTML = `<tr><td colspan="7"><p class="lede" style="margin:12px 0;"><strong>Campaigns Do Not Currently Exist</strong><br>Create one via the module above to see it tracked here.</p></td></tr>`;
     return;
   }
 
@@ -34560,6 +34762,16 @@ function goToStep(step, arg, arg2){
     if (arg2) currentProjectId = arg2;
     renderProjectDetail();
     document.getElementById('step-project').classList.add('active');
+  } else if (step === 'pendingFeature'){
+    // 2026-08-23 (nav redesign, round 13), per direct instruction: "The
+    // links to the detailed functional pages should all be in place even
+    // if the page behind it is still pending work." Reuses the existing
+    // (previously unwired — nothing ever navigated to it) step-placeholder
+    // markup as a generic "this isn't built yet" landing for any shell
+    // link that doesn't have a real destination step yet, rather than
+    // hiding the link or leaving it dead.
+    renderPendingFeatureStep(arg, arg2);
+    document.getElementById('step-placeholder').classList.add('active');
   } else {
     // Round 19 (2026-08-05) — the Dashboard itself only renders its own
     // three simplified sections now; the render calls this branch used to
@@ -40273,6 +40485,14 @@ async function saveCompetitivePositioning(){
   renderBrandFoundationsModule();
   // Round 19 — the Dashboard's own three simplified sections.
   renderDailyNews();
+  // 2026-08-23 (nav redesign, round 12) — restore the primary-nav tab
+  // choice for this session, same persistence convention as the dashboard
+  // tab below, before the first renderWorkstreams() so the grid renders
+  // already filtered to the right tab instead of flashing unfiltered.
+  try { activePrimaryTab = sessionStorage.getItem('primaryTab') || 'dailyBrief'; } catch (e) { activePrimaryTab = 'dailyBrief'; }
+  document.querySelectorAll('.primary-nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === activePrimaryTab);
+  });
   renderWorkstreams();
   renderExecCharts();
   cfdRender();
@@ -40281,8 +40501,12 @@ async function saveCompetitivePositioning(){
   // Round 132bx (2026-08-15) — restore the Portal Home tab choice for this
   // session (same persistence convention as the CFD skip counter). Defaults
   // to Start of Day, the lean landing view, on a fresh session.
-  let savedDashboardTab = 'startOfDay';
-  try { savedDashboardTab = sessionStorage.getItem('dashboardTab') || 'startOfDay'; } catch (e) {}
+  // 2026-08-23 (nav redesign, round 12) — if a non-Daily-Brief primary tab
+  // was restored above, land on Working Dashboard (where the filtered
+  // workstream grid lives) instead of Start of Day, so the restored tab
+  // and the restored panel never disagree with each other.
+  let savedDashboardTab = activePrimaryTab === 'dailyBrief' ? 'startOfDay' : 'working';
+  try { savedDashboardTab = sessionStorage.getItem('dashboardTab') || savedDashboardTab; } catch (e) {}
   switchDashboardTab(savedDashboardTab);
 
   accResyncAll();
