@@ -7503,7 +7503,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '132c17-2026-08-17-campaign-job-id-mailclass';
+const CXMEDIA_BUILD_STAMP = '2026-08-23-nav-redesign-r13-perf-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40447,11 +40447,24 @@ async function saveCompetitivePositioning(){
   if (urlToken) persistSessionToken(urlToken);
 
   await loadAccountData();
-  await loadCampaigns();
-  await loadTeam();
-  await loadPrCorpCommData();
-  await loadMediaPlan();
-  await loadContentLibrary();
+  // 2026-08-23 — these five were previously awaited one at a time, so the
+  // header (#acctCompanyName) and the Start-of-Day standup bubble — both
+  // of which only render after this whole block finishes, further down —
+  // sat on "Loading…" for the sum of six sequential network round trips
+  // instead of the slowest one. Each only depends on loadAccountData()
+  // having already set dataSourceLabel/state.companyId (confirmed by
+  // reading each function), not on each other, so they're safe to run
+  // concurrently. Per Todd's report (2026-08-23): login and the page shell
+  // were fast, but the header and "sample reports" (the standup bubble)
+  // lagged — this serial chain was the actual cause, not the earlier
+  // DB cold-start issue.
+  await Promise.all([
+    loadCampaigns(),
+    loadTeam(),
+    loadPrCorpCommData(),
+    loadMediaPlan(),
+    loadContentLibrary()
+  ]);
   renderOrgModelRow();
   applyOrgModel();
 
