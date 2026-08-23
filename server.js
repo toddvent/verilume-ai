@@ -111,14 +111,50 @@ const pdfParse = require('pdf-parse');
 // interface, so every query call site below works unmodified either way.
 // See pg-sync-bridge.js for how the Postgres path stays synchronous.
 const DB_PATH = path.join(__dirname, 'cxmedia.db');
+
+// 2026-08-23 fix — see the long comment below INIT_PHASE for why this
+// wrapper exists. In short: the ~230 `db.exec(...)` / `ensureColumn(...)`
+// calls below (schema setup, run once at module load) were completely
+// unguarded. When the DB is unreachable (bad DATABASE_URL, DNS failure,
+// connection refused, etc.), the very first one throws synchronously
+// *during module require()* — before handleRequest's try/catch exists,
+// and before the process.on('uncaughtException') safety net further down
+// this file has even been registered yet. Node has nothing left to catch
+// it, so it kills the entire Lambda process ("Node.js process exited with
+// exit status: 1"). That's a total outage on every cold start, not a
+// clean per-request 500 — worse than the error it's trying to survive.
+let INIT_PHASE = true;
+function wrapDbForInit(rawDb) {
+  return {
+    exec(sql) {
+      try {
+        rawDb.exec(sql);
+      } catch (e) {
+        if (INIT_PHASE) {
+          // Schema setup failed during cold start (most likely: DB
+          // unreachable). Log it loudly and move on instead of crashing
+          // the whole process — every real request will still hit this
+          // same connectivity problem and get a normal, catchable error
+          // from handleRequest's own try/catch (a clean 500), instead of
+          // every single cold start taking the entire function down.
+          console.error('[startup] schema-init query failed — continuing without crashing the process (DB connectivity issue most likely):', e.message);
+          return;
+        }
+        throw e;
+      }
+    },
+    prepare(sql) { return rawDb.prepare(sql); },
+    close() { return rawDb.close(); },
+  };
+}
 let db;
 if (process.env.DATABASE_URL) {
   const { createSyncDb } = require('./pg-sync-bridge');
-  db = createSyncDb(process.env.DATABASE_URL);
+  db = wrapDbForInit(createSyncDb(process.env.DATABASE_URL));
   console.log('CXMedia.AI backend: using Supabase/Postgres (DATABASE_URL set)');
 } else {
   const { DatabaseSync } = require('node:sqlite');
-  db = new DatabaseSync(DB_PATH);
+  db = wrapDbForInit(new DatabaseSync(DB_PATH));
   console.log('CXMedia.AI backend: using local SQLite file (no DATABASE_URL set)');
 }
 
@@ -2562,6 +2598,26 @@ db.exec(`
 // Reddit-at-volume/TV sources). `workingCopy` reuses the same shared
 // content-field identifier already registered for campaign copy, rather
 // than inventing a redundant `content` identifier.
+// 2026-08-23 fix — each CREATE TABLE below MUST be its own db.exec() call,
+// never combined into one multi-statement string like the original version
+// of this block was. pg-sync-worker.js always calls pool.query(sql, params)
+// with a (possibly empty) params ARRAY for every exec() — see
+// pg-sync-bridge.js's exec(){ callWorker(sql, [], 'exec') } — and passing
+// any values array at all, even [], forces node-postgres onto the extended
+// (parameterized) query protocol, which Postgres does not allow to carry
+// more than one SQL command. A single db.exec() with 3 semicolon-separated
+// CREATE TABLE statements throws "cannot insert multiple commands into a
+// prepared statement" against real Postgres — invisible in this sandbox's
+// SQLite testing (node:sqlite's exec() has no such restriction), but fatal
+// on the real deployment: this file's schema-setup `db.exec()` calls run at
+// module load, so the throw happened on every cold start, before
+// handleRequest() even existed for that container to route requests
+// through — which is why the failure showed up on/around unrelated routes
+// like /api/auth/login-user rather than anywhere near this new code.
+// Grepped the rest of this file to confirm: every other db.exec() call is
+// already single-statement; this was the only exception, and this is the
+// same "must never carry params into a multi-statement exec" rule
+// documented in the LEGACY_CASING_COLUMNS comment's neighboring context.
 db.exec(`
   CREATE TABLE IF NOT EXISTS press_releases (
     id TEXT PRIMARY KEY,
@@ -2575,6 +2631,8 @@ db.exec(`
     updatedAt TEXT NOT NULL,
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
+`);
+db.exec(`
   CREATE TABLE IF NOT EXISTS editorial_pitches (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2588,6 +2646,8 @@ db.exec(`
     updatedAt TEXT NOT NULL,
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
+`);
+db.exec(`
   CREATE TABLE IF NOT EXISTS corporate_comms (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -12660,5 +12720,16 @@ if (require.main === module) {
   const PORT = process.env.PORT || 8787;
   server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
 }
+
+// 2026-08-23 fix — module load (and all ~230 top-level schema-setup
+// db.exec()/ensureColumn() calls above) is finished at this point. Flip
+// INIT_PHASE off so any db.exec() call from here on — i.e. any real
+// per-request query — throws normally again instead of being swallowed.
+// Those still get caught cleanly by handleRequest's own try/catch (a
+// normal 500 with a real error message) or, for anything async, by the
+// process.on('uncaughtException')/'unhandledRejection' handlers just
+// above. Only the one-time startup window is forgiving; request-time
+// failures still surface exactly as before.
+INIT_PHASE = false;
 
 module.exports = handleRequest;
