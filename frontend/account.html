@@ -176,9 +176,120 @@
        little on the smallest screens instead of forcing 140px no matter what. */
     .phone-row select{flex:0 0 112px;min-width:96px;}
   }
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  /* 2026-08-21 fix, per direct correction ("We have a stylized button
+     approach that we perfect in the previous location and used across the
+     website") — the first version of this bar used plain uppercase text
+     links, not the site's actual pill-button convention (the public "Log
+     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
+     8px/16px padding). Rebuilt to match that same pill shape, just with
+     light-on-dark colors instead of dark-on-light, since this bar's
+     background is var(--ink) — same color-inversion approach already used
+     for the dark-header Logout pill on account.html/print-specs.html/
+     ooh-specs.html. border-radius is hardcoded to 999px rather than
+     var(--radius-pill) because several pages this bar lives on
+     (forgot-password.html, select-tier.html, terms.html) never define
+     that variable at all. */
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 </head>
 <body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
+      // already ON portal.html is redundant (you're already there); hide
+      // it there specifically, still show it everywhere else (marketing
+      // pages, assessment.html, account.html, etc.) so there's always a
+      // way back to the Portal from outside it.
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
 
 <div class="back-nav">
   <a class="wordmark" href="index.html">Veri<b>lume</b></a>
@@ -210,6 +321,11 @@
       <div class="tag">Plan</div>
       <div style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;color:var(--media);">Self-Service</div>
     </div>
+    <!-- 2026-08-21 — Logout briefly lived here, then in .back-nav before
+         that. Superseded the same day, per direct instruction ("Logout is
+         in the wrong place... utility nav above the main nav"): Logout now
+         lives exclusively in the sitewide #utilityNav strip (see that div
+         right after <body>), consistent across every page. -->
   </div>
 
   <div class="quicknav">
@@ -546,6 +662,10 @@
             Admin — full account access
           </label>
           <div class="hint">Separate from Level/Function — governs billing, payment methods, and inviting/removing team members.</div>
+          <!-- 2026-08-22 — shown only for a real, non-admin logged-in member
+               (see applyInviteIsAdminGate()); a legacy account-level session
+               or a real admin never sees this. -->
+          <div id="inviteIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
         </div>
       </div>
       <div class="btn-row">
@@ -619,12 +739,12 @@ function memberStorageKey(accountId){
 function persistMemberId(accountId, memberId){
   currentMemberId = memberId || null;
   if (!memberId) return;
-  try { sessionStorage.setItem(memberStorageKey(accountId), memberId); } catch (e) {}
+  try { localStorage.setItem(memberStorageKey(accountId), memberId); } catch (e) {}
 }
 
 function restoreMemberId(){
   try {
-    const cached = sessionStorage.getItem(memberStorageKey(state.companyId));
+    const cached = localStorage.getItem(memberStorageKey(state.companyId));
     if (cached) currentMemberId = cached;
   } catch (e) { /* sessionStorage unavailable — skip caching */ }
 }
@@ -637,14 +757,42 @@ function authedFetch(url, options = {}){
 
 function restoreSessionToken(){
   try {
-    const cached = sessionStorage.getItem(sessionStorageKey(state.companyId));
+    const cached = localStorage.getItem(sessionStorageKey(state.companyId));
     if (cached) sessionToken = cached;
   } catch (e) { /* sessionStorage unavailable — skip caching */ }
 }
 
 function persistSessionToken(token){
   sessionToken = token;
-  try { sessionStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
+  try { localStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
+}
+
+// 2026-08-21, per direct instruction ("want to make sure login | logout
+// has consistent behavior across the site") — same logout() shape as
+// portal.html, account.html, print-specs.html, and ooh-specs.html now all
+// share this identical session mechanism (sessionToken / sessionStorageKey
+// / authedFetch), so logout needs to behave identically everywhere too,
+// not just clear the one page's own in-memory copy.
+async function logout(){
+  const token = sessionToken;
+  try {
+    if (token){
+      await fetch(`${BACKEND_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+    }
+  } catch (e) { /* unreachable backend shouldn't block logging out locally */ }
+  sessionToken = null;
+  try {
+    localStorage.removeItem(sessionStorageKey(state.companyId));
+    // 2026-08-21 — also clear the sitewide "who's logged in" pointer (see
+    // #utilityNav's script comment), so the utility nav and every other
+    // page agree this session is over, not just this page's own storage.
+    localStorage.removeItem('verilume_active_account');
+  } catch (e) {}
+  location.href = '/'; // per direct instruction: redirect to verilume.ai after logout
 }
 
 // 2026-08-19 (login redesign) — replaced the in-page login-gate modal (plus
@@ -714,6 +862,7 @@ async function init(){
   await loadTeamData();
   renderTeam();
   renderMyProfile();
+  applyInviteIsAdminGate();
   await loadInvoices();
   await loadFinancialSummary();
 }
@@ -797,6 +946,35 @@ function functionLabel(key){
 
 function findTeamMember(id){
   return state.team.find(m => m.id === id) || null;
+}
+
+// 2026-08-22 — closes the roster-UI half of the isAdmin gap fix (backend's
+// PATCH /api/team/:id now 403s a non-admin who actually changes isAdmin —
+// see requireAdminMember() in backend/server.js). Without this, a non-admin
+// genuinely trying to self-promote here would hit a raw, unexplained 403.
+// Unlike portal.html (no per-member session, no separate round trip
+// needed), account.html already tracks currentMemberId and loads every
+// member's real isAdmin flag into state.team via loadTeamData() — so "am I
+// admin" is just a lookup, not a fetch. No currentMemberId (a legacy
+// account-level session, or state.team not loaded yet) defaults to true —
+// same root-equivalent treatment the backend itself gives that session.
+function accountViewerIsAdmin(){
+  if (!currentMemberId) return true;
+  const me = findTeamMember(currentMemberId);
+  return me ? !!me.isAdmin : true;
+}
+// Disables the shared Admin checkbox (Invite/Edit Team Member form) and
+// shows why, for a non-admin viewer only — never hides it outright, since
+// "you don't have this permission" is more honest than the field silently
+// disappearing. A no-op for the common case (legacy session, or a real
+// admin) — the checkbox stays exactly as interactive as it's always been.
+function applyInviteIsAdminGate(){
+  const checkbox = document.getElementById('inviteIsAdmin');
+  const hint = document.getElementById('inviteIsAdminGateHint');
+  if (!checkbox) return;
+  const isAdmin = accountViewerIsAdmin();
+  checkbox.disabled = !isAdmin;
+  if (hint) hint.style.display = isAdmin ? 'none' : 'block';
 }
 
 /* ---------- Recovery phone number (round 2026-08-19) ----------
@@ -1292,6 +1470,7 @@ function startEditTeamMember(id){
   const m = findTeamMember(id);
   if (!m) return;
   editingTeamMemberId = id;
+  applyInviteIsAdminGate();
   const f = document.getElementById('inviteForm');
   f.style.display = 'block';
   populateInviteFormSelects();

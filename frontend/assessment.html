@@ -797,9 +797,120 @@
   .product-cta-card h3{font-size:0.9375rem;margin:0 0 6px;}
   .product-cta-card p{font-size:0.8125rem;color:#6E6E73;margin:0 0 12px;line-height:1.5;}
   .product-cta-card a,.product-cta-card button{font-family:'Inter';font-weight:600;font-size:0.8125rem;color:var(--cx);background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;}
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  /* 2026-08-21 fix, per direct correction ("We have a stylized button
+     approach that we perfect in the previous location and used across the
+     website") — the first version of this bar used plain uppercase text
+     links, not the site's actual pill-button convention (the public "Log
+     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
+     8px/16px padding). Rebuilt to match that same pill shape, just with
+     light-on-dark colors instead of dark-on-light, since this bar's
+     background is var(--ink) — same color-inversion approach already used
+     for the dark-header Logout pill on account.html/print-specs.html/
+     ooh-specs.html. border-radius is hardcoded to 999px rather than
+     var(--radius-pill) because several pages this bar lives on
+     (forgot-password.html, select-tier.html, terms.html) never define
+     that variable at all. */
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 </head>
 <body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
+      // already ON portal.html is redundant (you're already there); hide
+      // it there specifically, still show it everywhere else (marketing
+      // pages, assessment.html, account.html, etc.) so there's always a
+      // way back to the Portal from outside it.
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
 
 <header id="siteHeader">
   <nav class="nav" aria-label="Primary">
@@ -814,7 +925,6 @@
       <a class="nav-cta" href="assessment.html">Start free assessment</a>
       </div>
       <div class="nav-right">
-        <a class="nav-login" href="login.html" id="navLoginLink">Log in</a>
         <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
       </div>
     </div>
@@ -962,6 +1072,27 @@
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Keep going with the assessment</button>
         <a class="btn-primary" id="saveModalAccountLink" href="#" target="_blank">Go to your account →</a>
+      </div>
+    </div>
+    <!-- 2026-08-21, per direct report ("The assessment pages do not
+         recognize that I'm logged in via the portal") — this "Save"
+         flow used to unconditionally open the create-account form even
+         for a visitor who already has an active session in this browser
+         (the utility nav's verilume_active_account pointer — see
+         openSaveAccountModal() below). Rather than silently create a
+         SECOND account for someone who already has one, this view
+         short-circuits to that instead: no form, just a direct path back
+         to the account they're already signed into. Actually attaching
+         THIS assessment's results to that existing account isn't wired up
+         yet (that's a real backend change, not just a UI one) — this is
+         the honest interim state: recognize the session, don't pretend to
+         save into it yet. -->
+    <div id="saveModalAlreadyView" style="display:none;">
+      <h3 style="margin:0 0 10px;font-size:1.15rem;">You're already signed in</h3>
+      <p style="font-size:0.875rem;line-height:1.6;margin:0 0 14px;color:#6E6E73;" id="saveModalAlreadyNote"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Keep going with the assessment</button>
+        <a class="btn-primary" id="saveModalAlreadyPortalLink" href="portal.html">Go to your Portal →</a>
       </div>
     </div>
   </div>
@@ -1526,6 +1657,17 @@
   <section class="step" data-step="report">
     <div class="eyebrow" style="margin-bottom:8px;">Your free results</div>
     <p class="recap-note" id="crmSyncNote" style="margin:0 0 16px;"></p>
+
+    <!-- 2026-08-21, per direct instruction — shown only to visitors who
+         already have a real Verilume account (see renderInitialReport());
+         free-trial.html is an intentional placeholder until that page is
+         actually designed. -->
+    <div id="freeTrialCta" style="display:none;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:var(--ink);color:#fff;border-radius:12px;padding:18px 22px;margin:0 0 22px;">
+      <div style="font-size:0.95rem;line-height:1.5;">
+        <strong>Like what you see?</strong> Start your 1-week free trial of the full Verilume Portal.
+      </div>
+      <a href="free-trial.html" style="flex:none;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;white-space:nowrap;">Start Free Trial →</a>
+    </div>
 
     <div class="first-deliverable" id="firstDeliverable">
       <div class="result-band" id="resultBand">
@@ -3060,12 +3202,40 @@ function sessionStorageKey(accountId){
   return `verilume_session_${accountId}`;
 }
 function persistSessionToken(accountId, token){
-  try { sessionStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { /* sessionStorage unavailable — skip caching */ }
+  try {
+    localStorage.setItem(sessionStorageKey(accountId), token);
+    // 2026-08-21 — also set the sitewide "who's logged in" pointer (see
+    // #utilityNav's script comment) so the utility nav, and this same
+    // page's own openSaveAccountModal(), recognize the session that was
+    // just created without needing the accountId passed in separately.
+    localStorage.setItem('verilume_active_account', accountId);
+  } catch (e) { /* sessionStorage unavailable — skip caching */ }
 }
 
 function openSaveAccountModal(){
   saveModalThenOpenPortal = false; // reset here; activateInPortal() sets it true right after calling this
   pendingSignup = null;
+  document.getElementById('saveAccountModal').style.display = 'flex';
+  // 2026-08-21, per direct report ("The assessment pages do not recognize
+  // that I'm logged in via the portal") — check the sitewide
+  // verilume_active_account pointer (set by login.html, this page's own
+  // Save flow, and the quick-login modal on every public page) before
+  // showing the create-account form. A visitor who's already signed in
+  // gets pointed straight back to their Portal instead of being walked
+  // through registering a second, unrelated account.
+  var activeAccountId = null;
+  try { activeAccountId = localStorage.getItem('verilume_active_account') || null; } catch (e) {}
+  if (activeAccountId){
+    document.getElementById('saveModalFormView').style.display = 'none';
+    document.getElementById('saveModalVerifyView').style.display = 'none';
+    document.getElementById('saveModalSuccessView').style.display = 'none';
+    document.getElementById('saveModalAlreadyNote').textContent =
+      `You're already signed in to a Verilume account (${activeAccountId}). This assessment isn't linked to it yet — for now, head to your Portal to see your real account, or keep going here to finish the free assessment.`;
+    document.getElementById('saveModalAlreadyPortalLink').href = 'portal.html?accountId=' + encodeURIComponent(activeAccountId);
+    document.getElementById('saveModalAlreadyView').style.display = 'block';
+    return;
+  }
+  document.getElementById('saveModalAlreadyView').style.display = 'none';
   document.getElementById('saveModalFormView').style.display = 'block';
   document.getElementById('saveModalVerifyView').style.display = 'none';
   document.getElementById('saveModalSuccessView').style.display = 'none';
@@ -3284,10 +3454,56 @@ async function finishSaveAccountCreation(){
       body: JSON.stringify({ newPassword: password })
     });
     if (!pwResp.ok){
-      throw new Error("Your account was created, but couldn't set your password — sign in with the temporary credentials sent to your email, or try Forgot Password.");
+      // 2026-08-21 fix — this used to claim "sign in with the temporary
+      // credentials sent to your email," which is false in any
+      // environment with no live email vendor configured (see
+      // sendSignupEmailCode()'s own comment in server.js) — the temp
+      // password is real and does exist (register-admin above just
+      // returned it as admin.tempPassword) but it was never actually
+      // emailed anywhere, so that instruction sent people looking for a
+      // message that would never arrive. Same interim-reveal convention
+      // used everywhere else in this codebase for a not-yet-configured
+      // vendor: show the real temp password directly, once, right here.
+      const interimNote = admin.tempPassword
+        ? ` Your temporary password is: ${admin.tempPassword} (shown here only because no email delivery is configured in this environment yet — normally this would be emailed instead). Sign in with ${admin.email} and that password, or use Forgot Password.`
+        : ' Try Forgot Password to regain access.';
+      // Surfaces the real status/error instead of hiding it — this call
+      // failing at all is unexpected (register-admin just succeeded with
+      // the same session mechanism change-password checks), so if this
+      // fires again the status/message here is the fastest way to tell a
+      // real bug apart from a one-off network/cold-start hiccup.
+      const pwErrBody = await pwResp.json().catch(() => ({}));
+      console.warn('finishSaveAccountCreation: change-password failed', pwResp.status, pwErrBody);
+      throw new Error(`Your account was created, but couldn't set your password (${pwResp.status}${pwErrBody.error ? ': ' + pwErrBody.error : ''}).${interimNote}`);
     }
 
     persistSessionToken(accountId, admin.token);
+
+    // 2026-08-21 — the Save & Schedule modal collects real name/email/phone
+    // but never wrote it into `state`, so if the visitor kept going with
+    // the assessment afterward (rather than going straight to the Portal),
+    // any later use of state.email/firstName/etc. (syncLeadToBackend(),
+    // the skip-Contact-step path in finishQuickReveal()) had nothing to
+    // work with. Populate them now that the account is real.
+    state.email = email;
+    const nameParts = (name || '').trim().split(/\s+/);
+    state.firstName = nameParts[0] || '';
+    state.lastName = nameParts.slice(1).join(' ') || '';
+    // phoneE164 is already the combined +countrycode+digits string with no
+    // separator to split back apart cleanly — state.phoneCountry is left
+    // as-is (decorative CRM field only) and the full E.164 number goes
+    // into state.phone rather than guessing where the split falls.
+    state.phone = phoneE164;
+
+    // 2026-08-21 fix — persistSessionToken() sets the verilume_active_account
+    // pointer, but the utility nav at the top of THIS page only reads that
+    // pointer once, at page load. Without re-running its init function here,
+    // someone who creates an account and stays on assessment.html (rather
+    // than navigating away) sees "Log in" in the header despite genuinely
+    // being logged in now — same symptom as the earlier sessionStorage bug,
+    // different cause. window.vlUtilityNavInit is exposed by the utility
+    // nav's own script specifically for this.
+    if (typeof window.vlUtilityNavInit === 'function') window.vlUtilityNavInit();
 
     const openedPortal = saveModalThenOpenPortal;
     if (openedPortal){
@@ -4116,6 +4332,24 @@ function startQuickReveal(){
 // step of the free assessment; the report only opens once that's done.
 function finishQuickReveal(){
   clearTimeout(quickRevealTimer);
+  // 2026-08-21, per direct report — someone who already created a real
+  // account (Save & Schedule modal → verified → chose "Keep going with
+  // the assessment" instead of "Go to your account") was still being
+  // walked through the Contact/registration step here, asking for name/
+  // email/phone/company all over again even though we already have real,
+  // verified credentials for them. Skip straight to the report in that
+  // case; syncLeadToBackend() still fires (now populated from the account
+  // just created, not blank) so the lead record isn't lost, but it
+  // doesn't block getting to the results the way the Contact form used to.
+  let hasAccount = false;
+  try { hasAccount = !!localStorage.getItem('verilume_active_account'); } catch (e) {}
+  if (hasAccount){
+    syncLeadToBackend(); // fire-and-forget, same "never blocks the report" posture as submitContact()
+    goToStep('report');
+    renderInitialReport();
+    initEnhanceAccordion();
+    return;
+  }
   const contactCompanyEl = document.getElementById('inContactCompany');
   if (contactCompanyEl) contactCompanyEl.value = state.company || '';
   goToStep('contact');
@@ -5125,6 +5359,17 @@ function renderInitialReport(){
   renderReportSynthesis();
   renderAudienceRecapChips();
   renderFullReport();
+  // 2026-08-21, per direct instruction — visitors who already have a real
+  // Verilume account (created via the Save & Schedule modal, then chose
+  // "Keep going with the assessment" instead of going straight to the
+  // Portal) get a Free Trial CTA on their results instead of nothing;
+  // free-trial.html is a placeholder page until that flow is designed.
+  const cta = document.getElementById('freeTrialCta');
+  if (cta){
+    let hasAccount = false;
+    try { hasAccount = !!localStorage.getItem('verilume_active_account'); } catch (e) {}
+    cta.style.display = hasAccount ? 'flex' : 'none';
+  }
 }
 
 // Which accordion item is "done" — drives both the status pill and the
@@ -5957,8 +6202,13 @@ function copyReport(){
   function vlMemberKey(accountId){ return 'verilume_member_' + accountId; }
   function vlPersistSession(accountId, token, memberId){
     try {
-      sessionStorage.setItem(vlSessionKey(accountId), token);
-      if (memberId) sessionStorage.setItem(vlMemberKey(accountId), memberId);
+      localStorage.setItem(vlSessionKey(accountId), token);
+      if (memberId) localStorage.setItem(vlMemberKey(accountId), memberId);
+      // 2026-08-21 — also set the sitewide "who's logged in" pointer (see
+      // #utilityNav's script comment) so the utility nav, and
+      // assessment.html's Save & Schedule modal, recognize this session
+      // without needing to know the accountId in advance.
+      localStorage.setItem('verilume_active_account', accountId);
     } catch (e) {}
   }
   window.vlOpenLoginModal = function(){
@@ -5998,6 +6248,26 @@ function copyReport(){
       if (!resp.ok){
         errEl.textContent = data.error || ("Couldn't sign in (" + resp.status + ").");
         btn.disabled = false;
+        return;
+      }
+      // 2026-08-21 fix, per direct report ("Logging Out and Login from the
+      // assessment.html page does not recognize the user password") — this
+      // modal (injected identically on every public page, including
+      // assessment.html) only ever checked data.mustChangePassword, never
+      // data.mfaRequired. login-user sends a step-up MFA code instead of a
+      // session token for any login that isn't already on a trusted
+      // device (see server.js's checkTrustedDevice) — which is the normal
+      // case, not an edge case. That response has no token/accountId at
+      // all, so the old code fell through to vlPersistSession(undefined,
+      // undefined, ...) and redirected to portal.html?accountId=undefined
+      // — a session that was never actually established. From the visitor's
+      // side that looks exactly like "my password wasn't accepted," even
+      // though login-user had just verified it correctly. Same hand-off
+      // pattern as the mustChangePassword branch below: this modal doesn't
+      // try to replicate the MFA code-entry screen inline, it defers to
+      // login.html, which already handles that flow correctly end to end.
+      if (data.mfaRequired){
+        location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search);
         return;
       }
       if (data.mustChangePassword){
