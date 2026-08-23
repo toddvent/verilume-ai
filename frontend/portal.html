@@ -7503,7 +7503,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-23-nav-redesign-r13-perf-fix';
+const CXMEDIA_BUILD_STAMP = '2026-08-23-fetch-timeout-fallback-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12446,10 +12446,26 @@ function sessionStorageKey(accountId){
   return `verilume_session_${accountId}`;
 }
 
+// 2026-08-23 — plain fetch() has no timeout. Per Todd's screenshot
+// (2026-08-23): the header stayed on "Loading…" indefinitely on a live
+// deploy — not the 15-30s originally reported, an unbounded hang. Every
+// caller's own try/catch (loadAccountData() etc.) already falls back to
+// mock/cached data on a rejected fetch, but that fallback only runs if the
+// fetch actually rejects — a hung connection (the Supabase cold-start
+// issue in cxmedia-cold-start-db-retry-2026-08-23.md can leave one neither
+// succeeding nor failing) never rejects, so that fallback logic never got
+// a chance to run. Wrapping every authedFetch() call in an AbortController
+// timeout turns "hangs forever" into "fails after timeoutMs," so the
+// existing fallback logic actually fires instead of leaving the UI stuck.
 function authedFetch(url, options = {}){
   const headers = Object.assign({}, options.headers || {});
   if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
-  return fetch(url, Object.assign({}, options, { headers }));
+  const timeoutMs = options.timeoutMs || 12000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const opts = Object.assign({}, options, { headers, signal: options.signal || controller.signal });
+  delete opts.timeoutMs;
+  return fetch(url, opts).finally(() => clearTimeout(timer));
 }
 
 function restoreSessionToken(){
