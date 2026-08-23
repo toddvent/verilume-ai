@@ -609,70 +609,26 @@
   </section>
 
   <!-- TEAM MEMBERS -->
+  <!-- 2026-08-23, per direct instruction ("Keep the in-portal version" —
+       portal.html's step-team is canonical, this was the duplicate): the
+       roster table and invite/edit form that used to live here (lede
+       ~line 313 originally described both; roster ~1360+, invite form
+       ~1450-1523, using accountViewerIsAdmin() ~964 and countActiveAdmins()
+       ~1378-1385) are removed from this page's UI. team_members' backend
+       table and every API route it uses (GET/POST /api/accounts/:id/team,
+       PATCH /api/team/:id, etc.) are UNCHANGED — this is a UI-only
+       removal, not a data-model change. The JS functions that used to
+       drive this section (renderTeam(), loadTeamData(),
+       submitTeamMemberForm(), toggleInviteForm(), startEditTeamMember(),
+       etc.) are left in place per direct instruction not to touch
+       team_members/its routes, and are effectively dead code now that
+       nothing on this page calls into their removed DOM elements —
+       renderTeam() itself is now null-guarded (see its own comment) so a
+       future re-add of #teamRows wouldn't be needed to avoid a crash. -->
   <section class="acct-card" id="team">
     <h2>Team members</h2>
-    <p class="card-sub">Everyone invited to this account shares Client ID <strong id="teamCoIdLabel"></strong>. This is the same roster as the Portal's Team &amp; Org Chart — <strong>Admin</strong> is a separate account-permission flag (billing, payment methods, inviting/removing people) from a person's org-chart <strong>Level</strong> and <strong>Function</strong>, which is what the QA flow uses to resolve their manager.</p>
-    <div class="table-scroll">
-    <table class="data-table">
-      <thead>
-        <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr>
-      </thead>
-      <tbody id="teamRows"></tbody>
-    </table>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn-ghost" onclick="toggleInviteForm()">+ Invite team member</button>
-    </div>
-
-    <div class="invite-form" id="inviteForm" style="display:none;">
-      <h4 id="inviteFormHeading" style="margin:0 0 14px;">Invite a team member</h4>
-      <div class="field-row">
-        <div class="field">
-          <label for="inviteName">Name</label>
-          <input type="text" id="inviteName" placeholder="Alex Rivera">
-        </div>
-        <div class="field">
-          <label for="inviteEmail">Email</label>
-          <input type="email" id="inviteEmail" placeholder="alex@acmehospitality.com">
-        </div>
-        <div class="field">
-          <label for="inviteLevel">Level</label>
-          <select id="inviteLevel" onchange="onInviteLevelChange()">
-            <option value="">Select a level…</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="inviteFunction">Function</label>
-          <select id="inviteFunction">
-            <option value="">Select a function…</option>
-          </select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label for="inviteReportsTo">Reports to</label>
-          <select id="inviteReportsTo">
-            <option value="">— none (top of this account's chart) —</option>
-          </select>
-        </div>
-        <div class="field" style="display:flex;flex-direction:column;justify-content:flex-end;">
-          <label style="display:flex;align-items:center;gap:8px;font-family:'Inter';font-weight:600;font-size:13.5px;text-transform:none;letter-spacing:normal;color:var(--ink);margin-bottom:0;">
-            <input type="checkbox" id="inviteIsAdmin" style="width:16px;height:16px;">
-            Admin — full account access
-          </label>
-          <div class="hint">Separate from Level/Function — governs billing, payment methods, and inviting/removing team members.</div>
-          <!-- 2026-08-22 — shown only for a real, non-admin logged-in member
-               (see applyInviteIsAdminGate()); a legacy account-level session
-               or a real admin never sees this. -->
-          <div id="inviteIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn-primary" id="inviteSubmitBtn" onclick="submitTeamMemberForm()">Send invite</button>
-        <button class="btn-ghost" id="inviteCancelBtn" style="display:none;" onclick="cancelEditTeamMember()">Cancel edit</button>
-      </div>
-    </div>
+    <p class="card-sub">Everyone invited to this account shares Client ID <strong id="teamCoIdLabel"></strong>. Team &amp; Org Chart — who's on this account, their Level, Function, reporting line, and Admin status — is managed from the Portal now, not here, so there's one real place this roster is edited instead of two that can drift out of sync.</p>
+    <p style="margin:10px 0 0;"><a id="teamPortalLink" href="portal.html" style="color:var(--cx);font-weight:600;text-decoration:none;">Manage team members in your Portal →</a></p>
     <div class="status-note ok" id="teamStatus"></div>
   </section>
 
@@ -828,6 +784,10 @@ const ORG_LEVEL_INDEX = { CMO: 0, Director: 1, Manager: 2, Specialist: 3 };
 // account, so a user who arrived here from portal.html's gear icon lands
 // back on their own account rather than the seeded demo one.
 document.getElementById('backToPortalLink').href = `portal.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}`;
+// 2026-08-23 — Team Members' own pointer into portal.html's Team & Org
+// Chart step, using the ?step= deep-link portal.html's init IIFE now
+// supports (see that file's own comment on stepParam).
+if (document.getElementById('teamPortalLink')) document.getElementById('teamPortalLink').href = `portal.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}&step=team`;
 
 let state = {
   companyId: params.get('accountId') || 'CXM-NAT-2026-700',
@@ -1350,7 +1310,12 @@ async function loadFinancialSummary(){
 let editingTeamMemberId = null;
 
 function renderTeam(){
+  // 2026-08-23 — #teamRows no longer exists (Team Members' roster table
+  // was removed from this page's UI, see #team section's own comment);
+  // this call is left in place (still invoked from init() and a few
+  // status-change paths below) but is now a no-op rather than a crash.
   const body = document.getElementById('teamRows');
+  if (!body) return;
   if (!state.team.length){
     body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);">No team members yet — invite your first one below.</td></tr>`;
     return;
@@ -1400,7 +1365,12 @@ async function toggleTeamStatus(id){
 }
 
 function toggleInviteForm(){
+  // 2026-08-23 — #inviteForm no longer exists (invite/edit form removed
+  // from this page's UI, see #team section's own comment); guarded so this
+  // (now-unreachable, since nothing on this page calls it anymore) function
+  // fails safe instead of throwing if something still calls it.
   const f = document.getElementById('inviteForm');
+  if (!f) return;
   const opening = f.style.display === 'none';
   f.style.display = opening ? 'block' : 'none';
   if (opening) populateInviteFormSelects();

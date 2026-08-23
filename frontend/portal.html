@@ -2979,7 +2979,7 @@
 
   <!-- ================= STYLE GUIDE > VOICE (fully built) ================= -->
   <div class="step" id="step-voice">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Voice</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Voice</div>
     <div class="eyebrow">Brand · Style Guide · Voice</div>
     <h1>Brand Voice guide</h1>
     <p class="lede">Once approved, this becomes the shared reference every Messaging and Creative-brief prompt reads first — see <code>cxmedia-client-portal-structure.md</code> Section 3's worked example. This is the only fully built function in this prototype; everything else is honestly labeled as not-yet-built.</p>
@@ -3239,7 +3239,7 @@
 
   <!-- ================= COMPANY PROFILE (Brand Foundations) ================= -->
   <div class="step" id="step-companyProfile">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Account Setup</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Account Setup</div>
     <div class="eyebrow">Brand Groundwork · Account Setup</div>
     <h1>Account Setup</h1>
     <!-- 2026-08-19 (login redesign, round 2), per direct instruction: "I
@@ -3384,7 +3384,7 @@
 
   <!-- ================= STYLE GUIDE — COLORS & FONTS (Brand Foundations) ================= -->
   <div class="step" id="step-styleAssets">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Style Guide — Colors &amp; Fonts</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Style Guide — Colors &amp; Fonts</div>
     <div class="eyebrow">Brand Groundwork · Style Guide</div>
     <h1>Colors &amp; Fonts</h1>
     <p class="lede">Reference asset storage, not a generative task — this prototype doesn't parse an uploaded document's contents, so upload it for the record and copy the key details into the fields below, or skip straight to entering them manually. Either path saves to the same place, and every Campaign/Project reads it from here.</p>
@@ -3535,7 +3535,7 @@
 
   <!-- ================= SAMPLE WRITINGS & PRESENTATIONS (Brand Foundations, round 132bp) ================= -->
   <div class="step" id="step-brandWritingSamples">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Sample Writings &amp; Presentations</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Sample Writings &amp; Presentations</div>
     <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations</div>
     <h1>Sample Writings &amp; Presentations</h1>
     <p class="lede">Reference library of real writing and presentation samples for this brand — always categorized by purpose and date, so every Campaign/Project can pull the right precedent instead of guessing which file is current. Files (Word, PDF, PowerPoint) route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload before they're stored. Google Docs and Google Slides aren't files this prototype can fetch, so those go in as a labeled reference link instead.</p>
@@ -3645,7 +3645,7 @@
 
   <!-- ================= COMPETITIVE POSITIONING (Brand Foundations) ================= -->
   <div class="step" id="step-competitivePositioning">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Brand Groundwork / Competitive Positioning</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Competitive Positioning</div>
     <div class="eyebrow">Brand Groundwork · Competitive Positioning</div>
     <h1>Competitive Positioning</h1>
     <p class="lede lede-full">Industry Trends is Claude reasoning from known category patterns — not sourced from live market data. Direct Competitors is up to 5 named companies within <strong id="ctIndustryLabel"></strong> that this account competes with for the same customer, each with an optional reference document and a generated positioning read — reasoning about why they compete, never an asserted claim about what that competitor is actually doing (see <code>cxmedia-brand-foundations-plan.md</code>).</p>
@@ -3780,7 +3780,51 @@
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings &amp; Presentations</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('dashboard')">Done — Back to Dashboard →</a>
+      <!-- 2026-08-23 — Competitive Positioning used to be the last step in
+           Brand Groundwork ("Done — Back to Dashboard"); it's now step 5 of
+           8 in the Configuration workstream, continuing on to Marketing
+           Budget Upload (reused from Analysis, see step-marketingBudgetUpload's
+           own comment) rather than ending here. -->
+      <a class="btn-primary" onclick="goToStep('marketingBudgetUpload','configuration')">Next: Marketing Budget Upload →</a>
+    </div>
+  </div>
+
+  <!-- ================= PRODUCT & CAMPAIGN GROUPS (Configuration) =================
+       2026-08-23, per direct instruction: the Product Group / Creative
+       Focus Group setup module (originally added 2026-08-22 inside
+       step-marketingCalendar — see that step's own comment for the full
+       original context) moves here, as step 7 of 8 in the Configuration
+       workstream. Reuses the exact same module content, IDs, and JS
+       (renderTaxonomyManagerStep() → renderTaxonomyManager(), and every
+       loadTaxonomyTemplates/pickTaxonomyTemplate/etc. function below it) —
+       only the entry point and surrounding step chrome (crumb, eyebrow,
+       seq-nav) are new. account_taxonomies (backend) and
+       cmpTaxonomyValues()/mktCalLoadTaxonomies() are untouched; Marketing
+       Calendar's own filters still read the same data live. -->
+  <div class="step" id="step-taxonomyManager">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Product &amp; Campaign Groups</div>
+    <div class="eyebrow">Configuration · Product &amp; Campaign Groups</div>
+    <h1>Product Groups &amp; Creative Focus Group</h1>
+    <p class="lede lede-full">The Product Group and Creative Focus Group values every campaign, Campaign Creation's own tiles, and the Marketing Calendar's filters all read from — set up once here, real for every campaign going forward. Start from a quick-start template for a fast head start, or build your own list from scratch; either way, every value is yours to add, edit, or remove before saving.</p>
+
+    <div class="module open accent-cx" id="taxonomyManagerModule" style="margin-bottom:24px;">
+      <div class="module-head" onclick="toggleModule('taxonomyManagerModule')">
+        <span class="modnum">1</span>
+        <div class="titles">
+          <span class="tag">Setup</span>
+          <h2>Product Groups &amp; Creative Focus Group</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <div id="taxonomyManagerBody"></div>
+      </div>
+    </div>
+
+    <div class="seq-nav">
+      <a class="btn-ghost" onclick="goToStep('marketingBudgetUpload','configuration')">← Back: Marketing Budget Upload</a>
+      <span class="seq-spacer"></span>
+      <a class="btn-primary" onclick="goToStep('team')">Next: Team &amp; Org Chart →</a>
     </div>
   </div>
 
@@ -3792,11 +3836,30 @@
        boss" against this account's own chart instead of a hardcoded name.
        All dropdowns, per the direct instruction — no free-text role field. -->
   <div class="step" id="step-team">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Team &amp; Org Chart</div>
-    <div class="eyebrow">Team &amp; Org Chart</div>
+    <!-- 2026-08-23 — now step 8 of 8 in the Configuration workstream, per
+         direct instruction ("Keep the in-portal version" — this stays the
+         canonical Team & Org Chart; account.html's own duplicate Team
+         Members section was replaced with a pointer back here, see that
+         file's own comment). Gated admin-only below via teamAdminGateNotice
+         (portalViewerIsAdmin / checkPortalViewerAdminStatus() — the exact
+         helpers applyIsAdminToggleGate() already used on the Admin
+         checkbox further down this same step, not a new role system: "No
+         current changes since we haven't activated team roles."). -->
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Team &amp; Org Chart</div>
+    <div class="eyebrow">Configuration · Team &amp; Org Chart</div>
     <h1>Who's on this account, and who they report to.</h1>
     <p class="lede">A modern marketing org chart — CMO at the top, a Director and Manager per function underneath, Specialists doing the work. This isn't just a roster: it's what a Project Detail's "Request QA" panel uses to find the right reviewer, by walking this account's actual reporting line rather than asking who to send it to every time.</p>
 
+    <!-- Shown only for a non-admin viewer (portalViewerIsAdmin === false —
+         see renderTeamStep()'s gate below); a real admin or this build's
+         legacy account-level session (which defaults to admin-equivalent,
+         same as everywhere else this flag is read) never sees this and
+         goes straight to the modules below, unchanged. -->
+    <div id="teamAdminGateNotice" style="display:none;background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:18px;">
+      <p class="hint" style="margin:0;">Team &amp; Org Chart management is limited to this account's Admins. Contact your account admin if you need a change made here.</p>
+    </div>
+
+    <div id="teamStepBody">
     <div class="module open accent-media" id="actingAsModule">
       <div class="module-head" onclick="toggleModule('actingAsModule')">
         <span class="modnum">1</span>
@@ -3862,11 +3925,19 @@
           <input type="email" id="teamNewEmail" placeholder="priya@acmehospitality.com">
         </div>
         <!-- Round 43 — Admin is an account-permission flag, orthogonal to
-             Level/Function: it governs full account/billing access (shown
-             and managed on account.html's Team Members section), not this
+             Level/Function: it governs full account/billing access, not this
              person's place in the reporting chart. A CMO isn't automatically
              an Admin, and a Specialist isn't automatically excluded from
-             being one. -->
+             being one.
+             2026-08-22 update: this checkbox used to also be editable from
+             account.html's own Team Members section (invite form ~1450-1523,
+             roster ~1360+). 2026-08-23, per direct instruction ("Keep the
+             in-portal version" — this step is canonical, that was the
+             duplicate): account.html's Team Members section no longer
+             manages team members directly — it now points here. This
+             checkbox (and everything else on this step) is the one real
+             place team roster edits happen; team_members' backend table and
+             API routes are unchanged. -->
         <div class="field">
           <label class="toggle-row" style="border:none;padding:0;align-items:center;">
             <input type="checkbox" id="teamNewIsAdmin" style="margin:0;width:18px;height:18px;">
@@ -3903,6 +3974,16 @@
         </div>
         <div class="recorded visible" id="teamAddFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
       </div>
+    </div>
+    </div>
+    <!-- 2026-08-23 — last step in the Configuration sequence; "Done" returns
+         to the Dashboard rather than continuing to another step. Kept
+         outside #teamStepBody so a non-admin viewer (who never sees the
+         roster modules above) can still navigate back. -->
+    <div class="seq-nav">
+      <a class="btn-ghost" onclick="goToStep('taxonomyManager')">← Back: Product &amp; Campaign Groups</a>
+      <span class="seq-spacer"></span>
+      <a class="btn-primary" onclick="goToStep('dashboard')">Done — Back to Dashboard →</a>
     </div>
   </div>
 
@@ -4674,6 +4755,13 @@
         <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
+
+    <!-- 2026-08-23 — seq-nav only rendered (by mbuRenderCrumb(), which sets
+         both this and #mbuCrumb from the same returnTo argument) when this
+         step is reached as part of the Configuration workstream sequence;
+         empty/hidden for the pre-existing Analysis and Media Plan entry
+         points, which have no "next step" of their own to send someone to. -->
+    <div class="seq-nav" id="mbuSeqNav" style="display:none;"></div>
   </div>
 
   <!-- Round 99 (2026-08-06) — Omni-Channel Creative: the account-wide
@@ -4750,37 +4838,20 @@
     <h1>Marketing Calendar</h1>
     <p class="lede lede-full">Every Channel Planning Detail entry on this account, plotted by Hit Date — the date a piece actually reaches its audience. Read-only for now; edit channel planning entries from the campaign itself.</p>
 
-    <!-- 2026-08-22 — Product Group / Creative Focus Group setup, per direct
-         instruction: "I need to add the Atlas Product Groups and Creative
-         Focus Groups to create proper campaigns that help us test
-         copywriting and this should be feeding the marketing calendar...
-         Let's provide clients with an option to begin with a quick start
-         option when creating the groups... Brands can override everything
-         and start with a fresh upload or edit what we provide." This is the
-         real gap that made "test copywriting" hard on a brand-new account:
-         Campaign Creation's Product Group/Creative Focus Group tiles
-         (cmpTaxonomyValues()) and this page's own filters above already
-         read from the SAME account_taxonomies backend data, but until now
-         the only way to populate it was uploading real historical Channel
-         Planning Detail rows first — a chicken-and-egg problem for a new
-         account with nothing to upload yet. This module is the missing
-         direct-entry path onto that same real data (GET/PUT
-         /api/accounts/:id/taxonomies, already built, just never had a UI),
-         with a quick-start layer on top. -->
-    <div class="module open accent-cx" id="taxonomyManagerModule" style="margin-bottom:24px;">
-      <div class="module-head" onclick="toggleModule('taxonomyManagerModule')">
-        <span class="modnum">1</span>
-        <div class="titles">
-          <span class="tag">Setup</span>
-          <h2>Product Groups &amp; Creative Focus Group</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <p class="lede" style="margin:2px 0 12px;">The Product Group and Creative Focus Group values every campaign, the tiles above, and this calendar's own filters all read from — set up once here, real for every campaign going forward. Start from a quick-start template for a fast head start, or build your own list from scratch; either way, every value is yours to add, edit, or remove before saving.</p>
-        <div id="taxonomyManagerBody"></div>
-      </div>
-    </div>
+    <!-- 2026-08-22 — Product Group / Creative Focus Group setup module
+         originally lived here (see git history / cxmedia-campaigntype-ui-
+         isadmin-roster-ui-2026-08-22.md-adjacent notes for that round's
+         reasoning). 2026-08-23, per direct instruction: moved to the
+         Configuration workstream's own step (step-taxonomyManager, reached
+         from the Dashboard's Configuration card or goToStep('taxonomyManager'))
+         alongside the rest of this account's upfront setup — Product Group
+         and Creative Focus Group are account-level setup, not a Marketing
+         Calendar feature, and Configuration is now the one place that setup
+         lives. The underlying data/JS (account_taxonomies,
+         cmpTaxonomyValues(), mktCalLoadTaxonomies()) is unchanged and this
+         calendar's own filters below still read it live — only the
+         entry-point module and its "Setup" nav position moved, per direct
+         instruction to remove the duplicate reachable section here. -->
 
     <div class="mktcal-toolbar">
       <div class="mktcal-nav">
@@ -10066,7 +10137,10 @@ function renderCmpProductGroupRow(){
   if (!row) return;
   let values = cmpTaxonomyValues('productGroup');
   if (!values){
-    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('marketingCalendar')" style="cursor:pointer;">set it up on Marketing Calendar</a> (quick-start templates available).</p>`;
+    // 2026-08-23 — Product Groups & Creative Focus Group setup moved out of
+    // Marketing Calendar into the Configuration workstream (step-
+    // taxonomyManager); this pointer now goes there instead.
+    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;">set it up under Configuration</a> (quick-start templates available).</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix, per direct instruction: "remove Multi-
@@ -10095,7 +10169,8 @@ function renderCmpCreativeFocusGroupRow(){
   if (!row) return;
   let values = cmpTaxonomyValues('creativeMarket');
   if (!values){
-    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('marketingCalendar')" style="cursor:pointer;">set it up on Marketing Calendar</a> (quick-start templates available).</p>`;
+    // 2026-08-23 — same move as Product Group above.
+    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;">set it up under Configuration</a> (quick-start templates available).</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix — same as Product Group above: MULTI-
@@ -13311,9 +13386,23 @@ function toggleNewsRead(id){
 // Groundwork's Dashboard module — this adds a direct top-level entry point
 // into the existing, unchanged FUNCTION_GROUPS 'Brand' page (same content,
 // new door), per direct instruction to put Brand at position 2.
+// 2026-08-23 — the 'brand' workstream is repurposed into per-client
+// Configuration, per direct instruction: this is now the one place holding
+// every upfront setup item a dependent workstream needs before it can be
+// used (Brand Groundwork's five original steps, plus Marketing Budget
+// Upload, Product & Campaign Groups, and Team & Org Chart, folded in from
+// where they used to live — see step-marketingBudgetUpload,
+// step-taxonomyManager, and step-team's own comments for what moved and
+// why). `key: 'brand'` is deliberately left unchanged — it's read in many
+// unrelated places in this file (campaign function-group stage keys,
+// keyword-chip groups, etc.) and renaming it would be a much larger blast
+// radius than the label/desc change this actually calls for. The label
+// itself is now a function (see wsLabel() below) rather than a plain
+// string, so it reads this account's real name once state.company has
+// loaded instead of a hardcoded "Brand".
 const WORKSTREAMS = [
   { key: 'experienceManagement', label: 'AI Agent Training', desc: 'Budgets, research, brand style, marketing ops, content development, omni-channel creative, performance marketing, lifecycle marketing, and PR — the direct-access grid, if you already know where you\'re going.' },
-  { key: 'brand', label: 'Brand', desc: 'Style guide (voice, colors & fonts, music, logo), competitive positioning, creative, and campaign messaging.' },
+  { key: 'brand', label: () => state.company ? `${state.company} Configuration` : 'Configuration', desc: 'The upfront setup every other workstream depends on: brand voice & style, sample writings & presentations, competitive positioning, marketing budget upload, product & campaign groups, and team management — done once here, inherited everywhere else.' },
   { key: 'mediaScience', label: 'Media Science', desc: 'Measurement coverage & confidence, match-market testing, website traffic analysis, and the media-performance side of AI agent analysis.', badge: 'Analytics' },
   { key: 'customerExperiences', label: 'Customer Experiences (CX)', desc: 'AI agent analysis, layered from the CMO view down to channel-specific creative performance — the guest/customer-experience side.' },
   { key: 'reputation', label: 'PR & Corp Comm', desc: 'PR & Corporate Communications — brand mentions, press, and editorial relationships, monitored continuously and connected to what Search Optimization is already seeing.', badge: 'Enterprise' },
@@ -13825,6 +13914,13 @@ function computeWorkstreamAlert(key){
 // per-account the same way the session token already is
 // (sessionStorageKey()), so switching accountId never leaks one account's
 // "last used" into another's dashboard.
+// 2026-08-23 — resolves a WORKSTREAMS entry's label whether it's a plain
+// string (every entry but 'brand') or a function (the new Configuration
+// entry, which needs to read state.company at render time rather than at
+// module-load time — see WORKSTREAMS' own comment above).
+function wsLabel(w){
+  return typeof w.label === 'function' ? w.label() : w.label;
+}
 function cwLastUsedStorageKey(){
   return `verilume_last_workstream_${state.companyId}`;
 }
@@ -13849,7 +13945,7 @@ function renderWorkstreams(){
     const alert = computeWorkstreamAlert(w.key);
     return `
     <div class="group-card workstream-card" onclick="openWorkstream('${w.key}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openWorkstream('${w.key}')">
-      <div style="font-weight:700;font-size:0.9375rem;display:flex;align-items:center;gap:8px;">${w.label}${w.badge ? `<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;padding:2px 8px;border-radius:20px;background:var(--advocacy);color:var(--white);">${w.badge}</span>` : ''}</div>
+      <div style="font-weight:700;font-size:0.9375rem;display:flex;align-items:center;gap:8px;">${wsLabel(w)}${w.badge ? `<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;padding:2px 8px;border-radius:20px;background:var(--advocacy);color:var(--white);">${w.badge}</span>` : ''}</div>
       <div class="count" style="white-space:normal;line-height:1.45;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;letter-spacing:0;text-transform:none;font-weight:400;">${w.desc}</div>
       <div class="workstream-alert${alert.count > 0 ? ' has-count' : ''}">
         <span class="count-chip">${alert.count}</span>
@@ -13870,7 +13966,12 @@ function openWorkstream(key){
   } else if (key === 'experienceManagement'){
     goToStep('experienceManagement');
   } else if (key === 'brand'){
-    goToStep('group', 'Brand');
+    // 2026-08-23 — the Configuration workstream card now opens straight
+    // into its own step sequence (Account Setup first, same as Brand
+    // Groundwork always started) instead of the old FUNCTION_GROUPS
+    // 'Brand' grid (still reachable from AI Agent Training's own Brand
+    // sub-workstream — see EXPERIENCE_SUB_WORKSTREAMS, unchanged).
+    goToStep('companyProfile');
   } else if (key === 'mediaScience'){
     goToStep('mediaScience');
   } else if (key === 'customerExperiences'){
@@ -14055,7 +14156,7 @@ function cfdChip(which){
     if (!items.length){
       reply.innerHTML = `Nothing needs your attention right now — every workstream card below reads zero open items.`;
     } else {
-      reply.innerHTML = `Here's what's open: ` + items.map(x => `<strong>${x.a.count}</strong> ${x.a.label.toLowerCase()} (${x.w.label})`).join(' · ') + `. Track 1's real approve/reject queue (social replies, competitor counter-moves, creative swaps) isn't built yet — this is what this prototype can honestly show today.`;
+      reply.innerHTML = `Here's what's open: ` + items.map(x => `<strong>${x.a.count}</strong> ${x.a.label.toLowerCase()} (${wsLabel(x.w)})`).join(' · ') + `. Track 1's real approve/reject queue (social replies, competitor counter-moves, creative swaps) isn't built yet — this is what this prototype can honestly show today.`;
     }
     reply.style.display = 'block';
   }
@@ -17338,6 +17439,7 @@ async function checkPortalViewerAdminStatus(){
     }
   } catch (e){ /* leave the safe default in place */ }
   applyIsAdminToggleGate();
+  applyTeamStepAdminGate(); // 2026-08-23 — same gate, applied to the whole step-team section; see its own comment.
 }
 // Disables the shared Admin checkbox (Add/Edit Team Member form) and shows
 // why, for a non-admin viewer only — never hides it outright, since "you
@@ -23672,9 +23774,29 @@ async function mbuConfirmDeleteUpload(uploadId, confirmDelete){
 function mbuRenderCrumb(returnTo){
   const el = document.getElementById('mbuCrumb');
   if (!el) return;
+  // 2026-08-23 — added the 'configuration' case: Marketing Budget Upload is
+  // now also step 6 of 8 in the Configuration workstream (reused as-is, not
+  // rebuilt — see the seq-nav at the bottom of this step and Competitive
+  // Positioning's own "Next" link). The Analysis and Media Plan entry
+  // points/crumbs above are unchanged — this is purely additive.
   el.innerHTML = returnTo === 'mediaplan'
     ? `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('mediaplan')">Media Plan</a> / Marketing Budget Upload`
-    : `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Marketing Budget Upload`;
+    : returnTo === 'configuration'
+      ? `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Marketing Budget Upload`
+      : `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Marketing Budget Upload`;
+  const navEl = document.getElementById('mbuSeqNav');
+  if (navEl){
+    if (returnTo === 'configuration'){
+      navEl.style.display = '';
+      navEl.innerHTML = `
+        <a class="btn-ghost" onclick="goToStep('competitivePositioning')">← Back: Competitive Positioning</a>
+        <span class="seq-spacer"></span>
+        <a class="btn-primary" onclick="goToStep('taxonomyManager')">Next: Product &amp; Campaign Groups →</a>`;
+    } else {
+      navEl.style.display = 'none';
+      navEl.innerHTML = '';
+    }
+  }
 }
 function mbuResetImport(){
   mbuFileDataUrl = null; mbuFileName = null; mbuGrid = null; mbuUploadedFileId = null; mbuAnalysis = null; mbuBlockOverrides = {};
@@ -28611,8 +28733,13 @@ function mktCalMonthRange(year, month){
 }
 
 async function renderMarketingCalendarStep(){
+  // 2026-08-23 — renderTaxonomyManager() no longer runs from here; the
+  // Product Group / Creative Focus Group setup module it renders into
+  // moved to step-taxonomyManager (Configuration workstream) — see that
+  // step's own comment and renderTaxonomyManagerStep() below. This
+  // calendar's own filters still need mktCal.taxonomiesLoaded, so the load
+  // call stays.
   if (!mktCal.taxonomiesLoaded) await mktCalLoadTaxonomies();
-  await renderTaxonomyManager();
   mktCalRenderMonthLabel();
   await mktCalFetchEvents();
 }
@@ -28639,6 +28766,16 @@ async function loadTaxonomyTemplates(){
   }
 }
 
+// 2026-08-23 — Configuration workstream entry point for Product Group /
+// Creative Focus Group setup (step-taxonomyManager). Ensures the account's
+// taxonomy data is loaded (same mktCal.taxonomiesLoaded flag/cache
+// Marketing Calendar's own filters use — one fetch serves both) before
+// handing off to the unmoved renderTaxonomyManager() below, which still
+// renders into #taxonomyManagerBody exactly as it always has.
+async function renderTaxonomyManagerStep(){
+  if (!mktCal.taxonomiesLoaded) await mktCalLoadTaxonomies();
+  await renderTaxonomyManager();
+}
 async function renderTaxonomyManager(){
   const body = document.getElementById('taxonomyManagerBody');
   if (!body || !state.companyId) return;
@@ -32333,6 +32470,24 @@ function renderTeamStep(){
   renderTeamRosterView();
   // Round 131 — Skill Sets and Self-Rating moved to their own Team
   // Development workstream; see renderTeamDevelopmentStep() below.
+  applyTeamStepAdminGate(); // 2026-08-23 — admin-only visibility, see its own comment below.
+}
+
+// 2026-08-23 — admin-gates step-team, per direct instruction: "No current
+// changes since we haven't activated team roles" — this reuses the exact
+// same portalViewerIsAdmin flag and checkPortalViewerAdminStatus() flow
+// applyIsAdminToggleGate() already uses to gate the Admin checkbox further
+// down this same step, rather than building any new role/permission system.
+// A non-admin viewer sees #teamAdminGateNotice's "contact your account
+// admin" message instead of an error; a real admin, or this build's legacy
+// account-level session (portalViewerIsAdmin defaults to true — see that
+// flag's own comment), sees the step exactly as before this round.
+function applyTeamStepAdminGate(){
+  const notice = document.getElementById('teamAdminGateNotice');
+  const body = document.getElementById('teamStepBody');
+  if (!notice || !body) return;
+  notice.style.display = portalViewerIsAdmin ? 'none' : 'block';
+  body.style.display = portalViewerIsAdmin ? '' : 'none';
 }
 
 // Round 131 — Team Development workstream (step-teamDevelopment). Skill
@@ -34329,6 +34484,12 @@ function goToStep(step, arg, arg2){
     if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
     if (typeof mbuRenderCrumb === 'function') mbuRenderCrumb(arg);
     document.getElementById('step-marketingBudgetUpload').classList.add('active');
+  } else if (step === 'taxonomyManager'){
+    // 2026-08-23 — Product & Campaign Groups, moved here from Marketing
+    // Calendar as part of the Configuration workstream — see
+    // step-taxonomyManager's own HTML comment.
+    renderTaxonomyManagerStep();
+    document.getElementById('step-taxonomyManager').classList.add('active');
   } else if (step === 'brandCampaignBrief'){
     // No dedicated #step-brandCampaignBrief panel — this is a gate-then-
     // redirect pseudo-step; openBrandCampaignBrief() calls goToStep again
@@ -40131,9 +40292,19 @@ async function saveCompetitivePositioning(){
   // campaign already selected in the "existing campaign" picker, instead of
   // the Dashboard.
   const jobId = params.get('jobId');
+  // 2026-08-23 — ?step=<goToStep key> lets another page deep-link straight
+  // into a specific step instead of always landing on the Dashboard. Added
+  // for account.html's Team Members section, which now points here
+  // (portal.html?accountId=...&step=team) instead of duplicating team
+  // management in its own UI — see account.html's #team section comment.
+  // Same pattern as the jobId param just above; jobId still takes priority
+  // if somehow both are present, since it's the older, more specific case.
+  const stepParam = params.get('step');
   if (jobId){
     goToStep('campaigns');
     if (state.campaigns.some(c => c.id === jobId)) loadExistingCampaignIntoForm(jobId);
+  } else if (stepParam){
+    goToStep(stepParam);
   } else {
     goToStep('dashboard');
   }
