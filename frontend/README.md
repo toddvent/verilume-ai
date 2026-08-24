@@ -1,41 +1,45 @@
-# Verilume — nav redesign round 17: navy header/nav rebuild (2026-08-24)
+# Verilume — nav redesign round 17 continued (2026-08-24)
 
-Only `portal.html` changed this round — backend/config are untouched, no
-need to re-upload those.
+Only `portal.html` changed — same upload steps as last time (navigate
+into the existing `frontend/` folder in GitHub, upload this single file
+there — don't drag the folder).
 
-## What changed
+## What's fixed this round
 
-The header, primary nav, and Ask Verilume bar are rebuilt to match the
-approved comps exactly (fixed navy + amber, not the app's old light/minimal
-header):
+1. Header/nav/Ask Verilume width misalignment — all three navy/white
+   bars now line up exactly (was a jagged right edge).
+2. The Strategy, Brand, Marketer, Data Scientist, and Account Management
+   tabs now show real tile cards with descriptions and badges, matching
+   the comps you sent — including "PENDING DEVELOPMENT" (purple) on
+   Social Listening & Response and the Marketer AI-training group, and
+   "ENTERPRISE" (tan) on PR & Corporate Communications and Search
+   Optimization. Previously these were plain wrapped text pills with no
+   descriptions and no way to badge a whole section.
+3. Each tab now shows its own eyebrow/title/AI-Agent-Thoughts heading
+   (e.g. "PLANNING · WHERE ARE WE GOING" / "Strategy") instead of every
+   tab showing the Daily Brief's own copy.
 
-- Full-bleed navy header bar: amber initials avatar badge, company name +
-  "Verilume Portal" subtitle, Client ID display (restored — this had been
-  removed from the header in an earlier round), user initials avatar,
-  settings gear.
-- Navy primary nav with numbered tabs (01 Daily Brief through 06 Account
-  Management), bold white + amber underline when active.
-- Ask Verilume bar restyled with an amber mic icon and a "VOICE ·
-  ENTERPRISE" badge (matches the comps — this is a tier-gate label, not a
-  "not built yet" one; the voice feature itself is still UI-shell-only,
-  unchanged from before).
+## What's still open (not done this round — flagging honestly rather
+than leaving it silent)
 
-Build stamp: `2026-08-24-navy-header-nav-rebuild` — confirm this shows in
-the browser console after a hard refresh.
+Looking at your comps against what's live now, there's a real gap left
+below the AI Agent Thoughts card on every tab except Daily Brief:
 
-## Upload steps (learned from the folder-path issue last time)
+- The comps show 3 clean stat cards (label / big number / green delta /
+  small bar row). What's live still shows the old "Executive snapshot"
+  module with donut charts, a "SECTION 1" accordion label, and a
+  redundant "Start of Day / Working Dashboard" toggle none of the comps
+  have.
+- Daily Brief itself is the biggest remaining gap — its comp shows a
+  completely different content model (a "Good morning, {name}."
+  greeting, a Generative Summarized Commentary block, a Key Observations
+  side panel, a Key Tiles Per Role icon row, and an AI Partner — Text
+  Routing section). What's live is still the old Start-of-Day
+  conversational front door + Curated News only.
 
-1. In GitHub, navigate into the existing `frontend/` folder first.
-2. Upload this single `portal.html` file there (do NOT drag the folder) —
-   it should overwrite the existing file at `frontend/portal.html`.
-3. Push/commit; Vercel auto-deploys.
-4. Hard refresh and check the console for the build stamp above.
+Both are real content/structure rebuilds, not just a CSS pass — flagging
+now rather than claiming these are done. Happy to keep going on these
+next if you want me to just continue building, per your last note.
 
-## Still open
-
-The tile-by-tile "Pending Development" vs. "Enterprise" badge audit across
-all six tabs (task #35) needs the comp images again to do accurately — I
-don't have them saved anywhere in this session (they came through as
-inline attachments earlier and didn't persist as files). If you can
-re-attach them, or confirm the badge list from memory, I'll finish that
-pass plus the stat-card/Top 5 table verification (task #36) right after.
+Build stamp: `2026-08-24-navy-header-nav-rebuild` (unchanged this round
+— only content below the header changed, not tracked by that stamp).

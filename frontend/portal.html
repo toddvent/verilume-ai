@@ -125,7 +125,16 @@
      header — kept present and functional, visually hidden. */
   .app-header-hidden-meta{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
 
-  .primary-nav{display:flex;gap:2px;max-width:1040px;margin:0 auto;padding:0 28px;background:var(--hdr-navy);overflow-x:auto;}
+  /* 2026-08-24 (round 17 fix) — .primary-nav and .ask-bar are children of
+     .wrap (max-width:1040px; padding:0 28px), so their own
+     max-width:1040/margin:0 auto had no effect: the parent's content box
+     is only 984px (1040 minus its own 56px of padding), so both bars
+     rendered narrower than .account-summary, which bleeds past .wrap's
+     padding via margin:0 -28px to match .wrap's own 1040px outer box.
+     Per direct feedback ("Header width and navigation are not aligned"),
+     giving primary-nav and ask-bar the identical -28px bleed makes all
+     three chrome bars render at the same width. */
+  .primary-nav{display:flex;gap:2px;margin:0 -28px;padding:0 28px;background:var(--hdr-navy);overflow-x:auto;}
   .primary-nav-item{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;letter-spacing:0.01em;color:var(--hdr-muted-on-navy);background:none;border:none;border-bottom:2px solid transparent;padding:12px 14px 12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px;}
   .primary-nav-item .num{font-size:0.6875rem;font-weight:700;opacity:0.7;}
   .primary-nav-item:hover{color:var(--hdr-ink-on-navy);}
@@ -136,7 +145,7 @@
      pill) in place of round 16's --cx blue shell. Still UI-shell-only —
      see the markup's own comment; the ENTERPRISE badge reflects that Voice
      is a production tier gate, distinct from "not yet built." */
-  .ask-bar{background:var(--white);border-bottom:1px solid var(--line);padding:0 28px;}
+  .ask-bar{background:var(--white);border-bottom:1px solid var(--line);margin:0 -28px;padding:0 28px;}
   .ask-row{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 0;max-width:1040px;margin:0 auto;flex-wrap:wrap;}
   .ask-mic{display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex-shrink:0;color:#fff;background:var(--hdr-amber);cursor:pointer;border-radius:50%;}
   .ask-mic:hover{background:var(--hdr-amber-dim);}
@@ -156,11 +165,16 @@
   .prompt-chip .q{color:var(--muted);font-weight:800;}
   .ask-voice-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin:10px 0 0;padding:10px 12px;background:var(--paper-dim);border-radius:8px;}
 
-  /* PENDING DEVELOPMENT (existing purple .wf-badge.new/.item.new convention,
-     unchanged) vs. ENTERPRISE (new round 17 — tan/amber, a real production
-     tier gate, not a "not built yet" marker) — the comps use both, and they
-     mean different things. */
+  /* PENDING DEVELOPMENT (purple — a build-status marker, "not built yet")
+     vs. ENTERPRISE (tan/amber — a real production tier gate, not a
+     build-status marker) — the comps use both on section headers and on
+     individual tiles, and they mean different things. Corrected round 17
+     follow-up: the "existing .wf-badge.new convention" this comment
+     originally cited doesn't actually exist in this file (checked via
+     grep) — both badges are new this round. */
   .badge-enterprise{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.5625rem;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;color:var(--enterprise);background:var(--enterprise-tint);border:1px solid rgba(184,117,46,0.35);border-radius:20px;padding:3px 9px;white-space:nowrap;display:inline-block;}
+  .badge-pending{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.5625rem;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;color:var(--advocacy);background:var(--advocacy-tint);border:1px solid rgba(79,70,229,0.3);border-radius:20px;padding:3px 9px;white-space:nowrap;display:inline-block;}
+  .tile-card.is-pending{opacity:0.7;}
   @media (max-width:700px){
     .ask-row{gap:10px;}
     .ask-placeholder{display:none;}
@@ -652,6 +666,25 @@
   .derivative-block textarea{width:100%;min-height:90px;font-family:'Inter';font-size:0.875rem;line-height:1.55;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);background:var(--paper-dim);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
   .derivative-block textarea:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .cascade-note{background:var(--white);border:1px dashed var(--line);border-radius:16px;padding:14px 16px;margin:14px 0;font-size:0.7812rem;color:var(--muted);max-width:760px;}
+
+  /* 2026-08-24 (nav redesign, round 17) — real tile-card groups, per the
+     comps. Replaces the flat wrapped .flink pill rows the Strategy/Brand/
+     Marketer/Data Scientist/Account Management shells used (round 15/16) —
+     those never matched the comps' bordered box-tile-with-description
+     grid, and carried no way to badge a whole section (PENDING
+     DEVELOPMENT/ENTERPRISE only ever showed as inline text next to a
+     single pill). See renderTileShellGroups() (JS) — one shared renderer
+     now backs all five shells instead of five near-duplicate template
+     strings. */
+  .tile-shell-group{margin-bottom:28px;}
+  .tile-shell-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .tile-shell-head .lbl{font-weight:700;font-size:0.9375rem;color:var(--ink);}
+  .tile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+  .tile-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px 18px;cursor:pointer;transition:border-color 0.15s ease;}
+  .tile-card:hover{border-color:var(--hdr-navy);}
+  .tile-card .tc-label{font-weight:700;font-size:0.875rem;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .tile-card .tc-desc{font-size:0.75rem;color:var(--muted);margin-top:4px;line-height:1.45;}
+  .tile-shell-note{font-size:0.75rem;color:var(--muted);margin:0 0 24px;padding:12px 16px;background:var(--paper-dim);border-radius:10px;max-width:900px;}
 
   /* Function group nav */
   .group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:36px;}
@@ -2414,9 +2447,20 @@
 
   <!-- ================= DASHBOARD ================= -->
   <div class="step active" id="step-dashboard">
+    <!-- 2026-08-24 (nav redesign, round 17) — eyebrow/H1/lede are now
+         swapped per active primary tab by renderPrimaryTabHeaderText() (see
+         PRIMARY_TAB_HEADER_META below), matching the comps' per-tab
+         eyebrow (e.g. "PLANNING · WHERE ARE WE GOING") and H1 (e.g.
+         "Strategy") instead of always showing the CMO Dashboard's own
+         copy on every tab. The strings below are the dailyBrief default,
+         unchanged from before this round — Daily Brief's own comp shows a
+         "Good morning, {name}." greeting instead, which is a further, not
+         yet built, content change (see the tile-shell rebuild's own
+         follow-up notes) — this round only fixes the OTHER five tabs
+         showing dailyBrief's copy verbatim, not Daily Brief's own gap. -->
     <div class="eyebrow" id="dashboardEyebrow">CMO Dashboard</div>
-    <h1>The experience, working — and here's the proof.<span class="h1-sub">Everything the assessment found, now tracked to closed.</span></h1>
-    <p class="lede lede-full">This summary reads from the free assessment's scorecard and this account's Portal activity — the goal is a clean line from what the assessment found weak to what's been activated to close it. That's the Verilume standard: an honest read on where reach and delivery actually stand, not a vanity-metric roll-up, and a clear, prioritized line to what to fix next.</p>
+    <h1 id="dashboardH1">The experience, working — and here's the proof.<span class="h1-sub" id="dashboardH1Sub">Everything the assessment found, now tracked to closed.</span></h1>
+    <p class="lede lede-full" id="dashboardLede">This summary reads from the free assessment's scorecard and this account's Portal activity — the goal is a clean line from what the assessment found weak to what's been activated to close it. That's the Verilume standard: an honest read on where reach and delivery actually stand, not a vanity-metric roll-up, and a clear, prioritized line to what to fix next.</p>
 
     <!-- Round 132bx (2026-08-15) — Portal Home split into two tabs, per
          direct review comment (Aug 15 tracker row): the page was stacking
@@ -14224,41 +14268,78 @@ function cwOrderedWorkstreams(){
 // real, already-built step; items without one route to the generic
 // pendingFeature landing (see renderPendingFeatureStep()) instead of being
 // hidden or left dead.
-const STRATEGY_SHELL_GROUPS = [
-  { label: 'Media & Budget Planning', items: [
-    { label: 'Manage Budgets' },
-    { label: 'MMM Model Allocations' },
-    { label: 'Finalized / Audited Agency Media Plans', step: 'mediaplan' }
-  ]},
-  { label: 'Research', items: [
-    { label: 'Product & Destination Positioning' },
-    { label: 'Consumer Trends' }
-  ]},
-  { label: 'Competitive & Market Intelligence', items: [
-    { label: 'Competitor Tracking', step: 'competitivePositioning' },
-    { label: 'Battle Brief' },
-    { label: 'What Competitors Are Doing' }
-  ]}
-];
 // Escapes a label for safe inclusion inside a single-quoted inline JS
 // string literal (onclick="...('...')") — distinct from escapeHtml(),
 // which escapes for HTML text content, not JS string content.
 function jsStrEscape(s){
   return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
-function strategyShellHtml(){
-  return STRATEGY_SHELL_GROUPS.map(g => `
-    <div class="group-card" style="grid-column:1/-1;">
-      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+// 2026-08-24 (nav redesign, round 17) — shared tile-card renderer backing
+// every workstream shell (Strategy/Brand/Marketer/Data Scientist/Account
+// Management), replacing the flat .flink pill-row markup each shell used
+// to duplicate (round 15/16) — that never matched the comps' bordered
+// box-tile-with-description grid, and had no way to badge a whole
+// section, only a single inline "Pending Development" label per item.
+// groups: [{ label, badge?, note?, items: [{ label, desc?, step?,
+// stepArg?, badge? }] }]. badge is 'pending' | 'enterprise' | falsy — see
+// .badge-pending/.badge-enterprise's own CSS comment for what each means
+// (build-status vs. tier-gate — not the same thing, per the comps using
+// both). An item's badge doesn't change routing: goToStep() still fires
+// for any item with a real step regardless of badge — this prototype has
+// no real tier gate to enforce, so Enterprise is a label, not a lock.
+function tileBadgeHtml(kind){
+  if (kind === 'pending') return '<span class="badge-pending">Pending Development</span>';
+  if (kind === 'enterprise') return '<span class="badge-enterprise">Enterprise</span>';
+  return '';
+}
+function renderTileShellGroups(groups, topNote){
+  const top = topNote ? `<p class="tile-shell-note">${escapeHtml(topNote)}</p>` : '';
+  return top + groups.map(g => `
+    <div class="tile-shell-group">
+      <div class="tile-shell-head"><span class="lbl">${escapeHtml(g.label)}</span>${tileBadgeHtml(g.badge)}</div>
+      <div class="tile-grid">
         ${g.items.map(item => {
           const onclick = item.step
-            ? `goToStep('${item.step}')`
+            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
             : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
+          return `<div class="tile-card${item.badge === 'pending' ? ' is-pending' : ''}" onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')${onclick}">
+            <div class="tc-label">${escapeHtml(item.label)}${tileBadgeHtml(item.badge)}</div>
+            ${item.desc ? `<div class="tc-desc">${escapeHtml(item.desc)}</div>` : ''}
+          </div>`;
         }).join('')}
       </div>
+      ${g.note ? `<p class="tile-shell-note" style="margin-top:12px;">${escapeHtml(g.note)}</p>` : ''}
     </div>`).join('');
+}
+// 2026-08-23 (nav redesign, round 13), per direct instruction — the exact
+// functional sub-pages named for the Strategy tab across rounds 1-9 of the
+// nav-redesign-2026-08-23 project (nav-structure.html §2), as real,
+// clickable links even though most of the destinations aren't built yet.
+// "Content doesn't matter for the sections beyond the shells... the links
+// to the detailed functional pages should all be in place even if the
+// page behind it is still pending work." Items with a `step` link to a
+// real, already-built step; items without one route to the generic
+// pendingFeature landing (see renderPendingFeatureStep()) instead of being
+// hidden or left dead. Descriptions and the closing footer note added
+// round 17, sourced verbatim from the approved comps.
+const STRATEGY_SHELL_GROUPS = [
+  { label: 'Media & Budget Planning', items: [
+    { label: 'Manage Budgets', desc: 'Allocation/mix, annual + sales/trade — the decision, built on what Data Scientist reports up' },
+    { label: 'MMM Model Allocations', desc: 'Model-recommended channel mix' },
+    { label: 'Finalized / Audited Agency Media Plans', step: 'mediaplan', desc: 'Signed-off plans on record' }
+  ]},
+  { label: 'Research', items: [
+    { label: 'Product & Destination Positioning', desc: 'Where offerings sit vs. the category' },
+    { label: 'Consumer Trends', desc: 'Demand signals informing planning' }
+  ]},
+  { label: 'Competitive & Market Intelligence', items: [
+    { label: 'Competitor Tracking', step: 'competitivePositioning', desc: 'Ongoing monitoring' },
+    { label: 'Battle Brief', desc: 'Competitive positioning summary' },
+    { label: 'What Competitors Are Doing Now', desc: 'Live activity feed' }
+  ], note: "Website traffic comparisons live under Data Scientist → Media Science → Website Traffic Analysis — split out of Research, not dropped, since it's a measurement tool, not a planning input." }
+];
+function strategyShellHtml(){
+  return renderTileShellGroups(STRATEGY_SHELL_GROUPS);
 }
 // 2026-08-23 (nav redesign, round 15), per directive 1 (nav-structure.html
 // §1/§2) and Todd's direct instruction to prioritize the front-end build
@@ -14277,46 +14358,39 @@ function strategyShellHtml(){
 // Integrations as its own destination — today it's just a field inside
 // Account Setup; Billing & Security; Vendor & Partner Management) and
 // route to the same generic pendingFeature landing the Strategy shell
-// above uses, rather than being hidden.
+// above uses, rather than being hidden. Descriptions and the top banner
+// note added round 17, sourced verbatim from the approved comps — labels
+// also corrected to the comps' own wording ("Company Profile" /
+// "Marketing Budget Upload" / "Product Group & Creative Focus Taxonomy",
+// matching what's actually on screen rather than this file's earlier,
+// slightly different internal names for the same destinations).
 const ACCOUNT_MGMT_TILE_GROUPS = [
-  { label: 'Company basics', items: [
-    { label: 'Account Setup', step: 'companyProfile' },
+  { label: 'Company Basics', items: [
+    { label: 'Company Profile', step: 'companyProfile' },
     { label: 'Business & Revenue Profile', step: 'onboardingSurvey' },
-    { label: 'Partner Integrations' }
+    { label: 'Partner Integrations', desc: 'Meta, Google Ads, The Trade Desk' }
   ]},
-  { label: 'Brand foundation', items: [
-    { label: 'Style Guide — Voice', step: 'voice' },
+  { label: 'Brand Foundation', items: [
     { label: 'Style Guide — Colors & Fonts', step: 'styleAssets' },
     { label: 'Sample Writings & Presentations', step: 'brandWritingSamples' },
-    { label: 'Competitive Positioning', step: 'competitivePositioning' }
+    { label: 'Competitive Positioning', step: 'competitivePositioning', desc: 'Initial setup — ongoing tracking lives in Strategy' }
   ]},
-  { label: 'Budget & taxonomy', items: [
-    { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration' },
-    { label: 'Product & Campaign Groups', step: 'taxonomyManager' },
-    { label: 'Marketing Calendar Bulk Upload', step: 'bulkUpload' }
+  { label: 'Budget & Taxonomy', items: [
+    { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration', desc: 'Upfront upload only — ongoing allocation lives in Strategy' },
+    { label: 'Product Group & Creative Focus Taxonomy', step: 'taxonomyManager' },
+    { label: 'Marketing Calendar Bulk Upload', step: 'bulkUpload', desc: 'One-time historical import, not the live calendar' }
   ]},
   { label: 'Team', items: [
-    { label: 'Team & Org Chart', step: 'team' },
-    { label: 'Team Experiences', step: 'teamDevelopment' }
+    { label: 'Team & Org Chart', step: 'team', desc: 'In-portal — canonical, account.html links back here. Admin-only.' },
+    { label: 'Team Experiences', step: 'teamDevelopment', desc: 'Self-assessment, skill sets, career plan' }
   ]},
-  { label: 'Ongoing admin', items: [
-    { label: 'Billing & Security' },
-    { label: 'Vendor & Partner Management' }
+  { label: 'Ongoing Admin', items: [
+    { label: 'Billing & Security', desc: "Payment, invoices, contact info, comms preferences, password/security, plus the AI-training data/privacy opt-out" },
+    { label: 'Vendor & Partner Management', desc: 'Real vendor/partner records & contracts — distinct from Partner Integrations above' }
   ]}
 ];
 function accountManagementTileGridHtml(){
-  return ACCOUNT_MGMT_TILE_GROUPS.map(g => `
-    <div class="group-card" style="grid-column:1/-1;">
-      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${g.items.map(item => {
-          const onclick = item.step
-            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
-            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
-        }).join('')}
-      </div>
-    </div>`).join('');
+  return renderTileShellGroups(ACCOUNT_MGMT_TILE_GROUPS, 'A tile grid, not a step sequence. Everything here is optional, with no required order and no single required owner — different team members can complete different tiles.');
 }
 // 2026-08-23 (nav redesign, round 16) — Brand/Marketer/Data Scientist real
 // designed shells, same pattern as STRATEGY_SHELL_GROUPS and
@@ -14324,41 +14398,35 @@ function accountManagementTileGridHtml(){
 // destination by grepping the codebase first (never guessed), items with no
 // real page route to the same generic pendingFeature landing. Group/item
 // text sourced from mockup-remaining-full.html (nav-structure.html's
-// successor covering these three tabs).
+// successor covering these three tabs). Descriptions and section-level
+// badges added round 17, sourced verbatim from the approved comps: Social
+// Listening & Response is a whole-section Pending Development (the
+// section exists as a concept, nothing behind it is built); PR &
+// Corporate Communications and Search Optimization are whole-section
+// Enterprise (a real production tier gate, distinct from "not built").
 const BRAND_SHELL_GROUPS = [
-  { label: 'Creative production', items: [
+  { label: 'Creative Production', items: [
     { label: 'Experience Development' },
-    { label: 'Omni-Channel Creative', step: 'omniCreative' }
+    { label: 'Omni-Channel Creative', step: 'omniCreative', desc: 'Cross-channel creative production' }
   ]},
-  { label: 'Customer experiences', items: [
-    { label: 'AI Agent Analysis — CMO to Creative', step: 'customerExperiences' }
+  { label: 'Customer Experiences', items: [
+    { label: 'AI Agent Analysis — CMO to Creative', step: 'customerExperiences', desc: "Quantitative: the CMO-wide Media Score/CX Score quadrant, per-KPI trendline, and channel/creative performance — Media Science's ROAS/spend sits side by side with CX's AOV/experience metrics on one view" }
   ]},
-  { label: 'Social listening & response', items: [
-    { label: 'Customer Sentiment Analysis & Responses' }
+  { label: 'Social Listening & Response', badge: 'pending', items: [
+    { label: 'Customer Sentiment Analysis & Responses', desc: 'Qualitative: social monitoring plus an approved-response workflow — reads/responds to what customers are actually saying, a different axis from AI Agent Analysis above. Not a duplicate; kept both.', badge: 'pending' }
   ]},
-  { label: 'PR & corporate communications', items: [
-    { label: 'Reputation Monitoring', step: 'reputation' },
-    { label: 'Press Release Distribution & Monitoring', step: 'reputation' },
-    { label: 'Editorial Solicitation', step: 'reputation' },
-    { label: 'Specialty Partners' }
+  { label: 'PR & Corporate Communications', badge: 'enterprise', items: [
+    { label: 'Reputation Monitoring', step: 'reputation', badge: 'enterprise' },
+    { label: 'Press Release Distribution & Monitoring', step: 'reputation', badge: 'enterprise' },
+    { label: 'Editorial Solicitation', step: 'reputation', badge: 'enterprise' },
+    { label: 'Specialty Partners', badge: 'enterprise' }
   ]},
-  { label: 'Search optimization', items: [
-    { label: 'SEO, AEO & GEO Monitoring', step: 'searchOptimization' }
+  { label: 'Search Optimization', badge: 'enterprise', items: [
+    { label: 'SEO, AEO & GEO Monitoring', step: 'searchOptimization', badge: 'enterprise' }
   ]}
 ];
 function brandShellHtml(){
-  return BRAND_SHELL_GROUPS.map(g => `
-    <div class="group-card" style="grid-column:1/-1;">
-      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${g.items.map(item => {
-          const onclick = item.step
-            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
-            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
-        }).join('')}
-      </div>
-    </div>`).join('');
+  return renderTileShellGroups(BRAND_SHELL_GROUPS);
 }
 // Marketer shell. "From AI Agent Training" group (Performance Marketing /
 // Lifecycle Marketing) is explicitly marked Pending Development in the
@@ -14372,65 +14440,48 @@ function brandShellHtml(){
 // area) confirms test execution/read-out has no built page yet — Match
 // Market Builder (marketOptimization) is a different, already-real
 // capability and isn't a substitute. UTM & QR Code Activation carries its
-// own "Pending Development" badge in the mockup already.
+// own "Pending Development" badge in the mockup already — round 17 moves
+// it from an inline text label to the real .badge-pending pill, and adds
+// descriptions + the "From AI Agent Training" footer note, sourced
+// verbatim from the approved comps.
 const MARKETER_SHELL_GROUPS = [
-  { label: 'Marketing activity', items: [
-    { label: 'Campaign Management', step: 'campaignMgmt' },
-    { label: 'Marketing Calendar', step: 'marketingCalendar' },
-    { label: 'UTM & QR Code Activation' }
+  { label: 'Marketing Activity', items: [
+    { label: 'Campaign Management', step: 'campaignMgmt', desc: "Every campaign's status across Brand / Marketing Functions / Creative / QA & Approval / In Market / Analysis, in one place" },
+    { label: 'Marketing Calendar', step: 'marketingCalendar', desc: 'Live, account-wide view — fed by Campaign Management' },
+    { label: 'UTM & QR Code Activation', desc: 'Generates/activates campaign links & QR codes — master UTM taxonomy is configured by Analytics (Data Scientist)', badge: 'pending' }
   ]},
-  { label: 'From AI Agent Training', items: [
-    { label: 'Performance Marketing' },
-    { label: 'Lifecycle Marketing' }
-  ]},
+  { label: 'From AI Agent Training', badge: 'pending', items: [
+    { label: 'Performance Marketing', badge: 'pending' },
+    { label: 'Lifecycle Marketing', badge: 'pending' }
+  ], note: "Each of these two paths will get its own dashboard view under this tab — the top-3-chart row (and possibly the rest of default content) will need a view switcher rather than one shared metric set." },
   { label: 'Testing', items: [
     { label: 'A/B / Multi-Variant Testing' }
   ]}
 ];
 function marketerShellHtml(){
-  return MARKETER_SHELL_GROUPS.map(g => `
-    <div class="group-card" style="grid-column:1/-1;">
-      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${g.items.map(item => {
-          const onclick = item.step
-            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
-            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
-        }).join('')}
-      </div>
-    </div>`).join('');
+  return renderTileShellGroups(MARKETER_SHELL_GROUPS);
 }
+// Descriptions added round 17, sourced verbatim from the approved comps —
+// no badges on this tab (matches the comps: Data Scientist has none).
 const DATA_SCIENTIST_SHELL_GROUPS = [
-  { label: 'Media science', items: [
+  { label: 'Media Science', items: [
     { label: 'Measurement Coverage & Confidence', step: 'measurementCoverage' },
     { label: 'Match Market Builder', step: 'marketOptimization' },
     { label: 'Website Traffic Analysis', step: 'websiteTraffic' }
   ]},
-  { label: 'Analytics & data inputs', items: [
+  { label: 'Analytics & Data Inputs', items: [
     { label: 'Analytics Connections', step: 'analyticsSetup' },
     { label: 'MMM Data Inputs', step: 'analyticsSetup' },
     { label: 'Master UTM Configuration', step: 'analyticsSetup' },
     { label: 'Customer Sentiment Data' },
-    { label: 'Manual KPI & Actuals Entry', step: 'campaignMgmt' }
+    { label: 'Manual KPI & Actuals Entry', step: 'campaignMgmt', desc: "Also where Marketing Ops' KPI-development piece landed" }
   ]},
-  { label: 'Historical performance', items: [
-    { label: 'Historical Campaigns & Media Plans', step: 'campaignMgmt' }
+  { label: 'Historical Performance', items: [
+    { label: 'Historical Campaigns & Media Plans', step: 'campaignMgmt', desc: 'Analysis view' }
   ]}
 ];
 function dataScientistShellHtml(){
-  return DATA_SCIENTIST_SHELL_GROUPS.map(g => `
-    <div class="group-card" style="grid-column:1/-1;">
-      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${g.items.map(item => {
-          const onclick = item.step
-            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
-            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
-        }).join('')}
-      </div>
-    </div>`).join('');
+  return renderTileShellGroups(DATA_SCIENTIST_SHELL_GROUPS);
 }
 // 2026-08-23 (nav redesign, round 15) — Top 5 Most Urgent, per
 // nav-structure.html's callout spec: Campaign Code, Campaign Name, Assets
@@ -14504,6 +14555,41 @@ function toggleAskVerilumeVoiceNote(){
 // No dedicated topics live under Daily Brief (it's a summary landing, same
 // note as BP_FAQ_TOPIC_TAB's own comment) — its abstract says so honestly
 // rather than listing something that doesn't apply.
+// 2026-08-24 (nav redesign, round 17) — per-tab eyebrow/H1, sourced
+// verbatim from the approved comps. dailyBrief isn't listed: its H1 stays
+// the existing CMO Dashboard copy (already in the DOM) rather than the
+// comp's "Good morning, {name}." greeting — that's a further content
+// change (personalization + a different module stack below it) tracked
+// separately, not done this round.
+const PRIMARY_TAB_HEADER_META = {
+  strategy: { eyebrow: 'Planning · Where Are We Going', h1: 'Strategy' },
+  brand: { eyebrow: 'Creative & Brand', h1: 'Brand & Voice Experiences' },
+  marketer: { eyebrow: 'Execution', h1: 'Growth & Performance Marketing' },
+  dataScientist: { eyebrow: 'Measurement & Analysis', h1: 'Data Scientist' },
+  accountManagement: { eyebrow: 'Setup · All Optional', h1: 'Account Management' }
+};
+const DAILY_BRIEF_H1_TEXT = "The experience, working — and here's the proof.";
+function renderPrimaryTabHeaderText(){
+  const eyebrowEl = document.getElementById('dashboardEyebrow');
+  const h1El = document.getElementById('dashboardH1');
+  const subEl = document.getElementById('dashboardH1Sub');
+  const ledeEl = document.getElementById('dashboardLede');
+  if (!eyebrowEl || !h1El) return;
+  const tab = activePrimaryTab || 'dailyBrief';
+  const meta = PRIMARY_TAB_HEADER_META[tab];
+  if (meta){
+    eyebrowEl.textContent = meta.eyebrow;
+    h1El.childNodes[0].nodeValue = meta.h1;
+    if (subEl) subEl.style.display = 'none';
+    if (ledeEl) ledeEl.style.display = 'none';
+  } else {
+    // dailyBrief — restore the CMO Dashboard copy this element always had.
+    h1El.childNodes[0].nodeValue = DAILY_BRIEF_H1_TEXT;
+    renderDashboardLabel();
+    if (subEl) subEl.style.display = '';
+    if (ledeEl) ledeEl.style.display = '';
+  }
+}
 const AI_THOUGHTS_TAB_ABSTRACTS = {
   dailyBrief: 'No dedicated topics live here — Daily Brief is a summary page, so this opens straight to whichever AI Agent Thoughts topic is most relevant to what’s on screen.',
   strategy: 'Setting the right Objective, picking a Lifecycle-Loop Stage, reading competitive positioning, and what past campaigns tell you about what worked.',
@@ -14512,11 +14598,24 @@ const AI_THOUGHTS_TAB_ABSTRACTS = {
   dataScientist: 'Measurement by conversion type, and choosing the right attribution and testing approach for a campaign’s sophistication level.',
   accountManagement: 'The audience baseline data — wealth tier, generation, company profile — that every AI-generated recommendation across the portal reads from.'
 };
+const AI_THOUGHTS_TAB_TITLES = {
+  strategy: 'AI Agent Thoughts — Strategy',
+  brand: 'AI Agent Thoughts — Brand',
+  marketer: 'AI Agent Thoughts — Marketer',
+  dataScientist: 'AI Agent Thoughts — Data Scientist',
+  accountManagement: 'AI Agent Thoughts — Account Management'
+};
 function renderAiThoughtsPreviewCard(){
   const abstractEl = document.getElementById('aiThoughtsPreviewAbstract');
+  const titleEl = document.getElementById('aiThoughtsPreviewTitle');
   if (!abstractEl) return;
   const tab = activePrimaryTab || 'dailyBrief';
   abstractEl.textContent = AI_THOUGHTS_TAB_ABSTRACTS[tab] || AI_THOUGHTS_TAB_ABSTRACTS.dailyBrief;
+  // 2026-08-24 (round 17) — tab-scoped title per the comps ("AI Agent
+  // Thoughts — Brand", etc.); Daily Brief keeps the generic title since it
+  // has no dedicated topic slice of its own (see AI_THOUGHTS_TAB_ABSTRACTS'
+  // own comment).
+  if (titleEl) titleEl.textContent = AI_THOUGHTS_TAB_TITLES[tab] || 'AI Agent Thoughts';
 }
 // Opens the real drawer scoped to the active tab's first topic, same
 // "defined area, not a floating tooltip" convention bpFaqShowOnlyTopic()
@@ -14807,6 +14906,7 @@ function switchPrimaryTab(tab){
   renderExecChartsVisibility();
   renderAskVerilumeBar();
   renderAiThoughtsPreviewCard();
+  renderPrimaryTabHeaderText();
 }
 
 function switchDashboardTab(tab){
