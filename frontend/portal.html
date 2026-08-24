@@ -2678,26 +2678,26 @@
     </div>
 
     <div class="dash-tab-panel" id="dashPanel-working">
-      <!-- 2026-08-23 (nav redesign, round 16), per nav-structure.html §6
-           (round 11 of the design review) — a short "AI Agent Thoughts"
-           preview card under the page title on every tab, summarizing
-           that tab's slice of the 17-topic drawer (BP_FAQ_TAB_GROUPS
-           above). No content change to any topic — this just previews
-           what's already there and opens the same drawer. Green/thought-
-           bubble treatment matches the approved mockup exactly (its own
-           literal palette, not this app's shared token set — a small,
-           self-contained callout, same posture as the illustrative-tag
-           spans elsewhere in this file). Round 17 — now shown on Daily
-           Brief too (title/abstract already tab-scoped; see
-           AI_THOUGHTS_TAB_TITLES/AI_THOUGHTS_TAB_ABSTRACTS). -->
-      <div class="ai-thoughts-preview" id="aiThoughtsPreviewCard" role="button" tabindex="0" onclick="openAiThoughtsPreviewDrawer()" onkeydown="if(event.key==='Enter')openAiThoughtsPreviewDrawer()">
-        <div class="ic">💭</div>
-        <div class="body">
-          <div class="t" id="aiThoughtsPreviewTitle">AI Agent Thoughts</div>
-          <div class="s" id="aiThoughtsPreviewAbstract"></div>
-        </div>
-        <div class="go">Open →</div>
-      </div>
+      <!-- 2026-08-24 (round 17, direct feedback) — the green "AI Agent
+           Thoughts" preview card (round 16) is removed completely, per
+           direct instruction: it was wired to open the FAQ topics drawer
+           (openAiThoughtsPreviewDrawer()/BP_FAQ_TAB_GROUPS), but that's
+           NOT what this section is supposed to be. The real thing —
+           generative copy summarizing the account's current activity for
+           the active role, eventually read/voice-activated once the real
+           ElevenLabs integration is built ("the wired Eleven section
+           should be able to activate it upon request when we build it
+           out" — not a UI-shell button to add now, a note for that future
+           integration) — already exists as Daily Brief's own Generative
+           Commentary card (see dailyBriefExtraHtml()'s .gen-commentary-card,
+           AI-GENERATED badge). No merge needed; this card simply goes
+           away. renderAiThoughtsPreviewCard()/openAiThoughtsPreviewDrawer()
+           are no longer called (see their own call sites) but stay
+           defined, unused, same reversible-swap posture as the rest of
+           this codebase — the FAQ topics drawer itself is untouched and
+           still reachable via the per-field 💭 icons elsewhere in the
+           app (mountAiThoughtIcons()); only this one dashboard entry
+           point into it is gone. -->
 
       <!-- 2026-08-24 (round 17) — "Your Access" (CMO/Admin capability
            card) isn't in any comp; hidden rather than deleted, same
@@ -7842,7 +7842,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-24-full-width-mobile-nav-polish';
+const CXMEDIA_BUILD_STAMP = '2026-08-24-remove-ai-thoughts-preview-card';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14713,6 +14713,12 @@ const AI_THOUGHTS_TAB_TITLES = {
   dataScientist: 'AI Agent Thoughts — Data Scientist',
   accountManagement: 'AI Agent Thoughts — Account Management'
 };
+// 2026-08-24 (round 17, direct feedback) — no longer called anywhere
+// (see the two call sites' own comments). #aiThoughtsPreviewCard was
+// removed from the markup — this card was wired to the FAQ topics
+// drawer, which isn't what this section was supposed to be (see the
+// markup comment where it used to sit). Left defined, unused, same
+// reversible-swap posture as the rest of this codebase.
 function renderAiThoughtsPreviewCard(){
   const cardEl = document.getElementById('aiThoughtsPreviewCard');
   const abstractEl = document.getElementById('aiThoughtsPreviewAbstract');
@@ -15184,7 +15190,9 @@ function switchPrimaryTab(tab){
   renderTopUrgentModule();
   renderExecChartsVisibility();
   renderAskVerilumeBar();
-  renderAiThoughtsPreviewCard();
+  // 2026-08-24 (round 17, direct feedback) — renderAiThoughtsPreviewCard()
+  // no longer called; the card it populated is removed (see the markup's
+  // own comment, where #aiThoughtsPreviewCard used to sit).
   renderPrimaryTabHeaderText();
 }
 
@@ -41522,7 +41530,6 @@ async function saveCompetitivePositioning(){
   renderTopUrgentModule();
   renderExecChartsVisibility();
   renderAskVerilumeBar();
-  renderAiThoughtsPreviewCard();
   renderPrimaryTabHeaderText();
   renderExecCharts();
   cfdRender();

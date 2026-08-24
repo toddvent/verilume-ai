@@ -1,6 +1,6 @@
-# CXMedia.AI Portal — Round 17 Design Fixes
+# CXMedia.AI Portal — AI Agent Thoughts Card Removed
 
-Build stamp: `2026-08-24-full-width-mobile-nav-polish`
+Build stamp: `2026-08-24-remove-ai-thoughts-preview-card`
 (check the browser console after deploy — it logs this on load)
 
 ## What's in this package
@@ -8,64 +8,42 @@ Build stamp: `2026-08-24-full-width-mobile-nav-polish`
 One file: `portal.html`. Upload it to the existing frontend folder on
 GitHub, replacing the current file.
 
-## The root cause of "the old format appears cached"
+## What changed
 
-This wasn't a caching problem. The page's init code (the big startup
-function that runs once on page load) never called two of last round's
-new render functions — `renderStatCards()` and
-`renderPrimaryTabHeaderText()` — it only called them from inside
-`switchPrimaryTab()`, i.e. when someone clicked a nav tab. So a genuinely
-fresh page load rendered the raw HTML placeholder ("The experience,
-working — and here's the proof.", an empty stat-card grid, and the old
-generic "AI Agent Thoughts" card with no tab-scoped title) until you
-clicked something — which looks exactly like a stale cached build, but
-was actually a real bug. Fixed by calling both functions (plus syncing
-the new mobile nav dropdown) in the init sequence itself. Verified with a
-Playwright test that loads the page and checks the dashboard step
-without ever clicking a tab — "Good morning." and the stat cards now
-render immediately.
+The green "AI Agent Thoughts" card that sat under the page title on
+Daily Brief is removed completely, per direct feedback: it was wired to
+open the FAQ topics drawer (the 17-topic reference panel), but that's
+not what this section is supposed to be. The real thing — generative
+copy summarizing the account's current activity for the active role,
+eventually readable/voice-activated once the real ElevenLabs voice
+integration is built — already exists on the page as the Generative
+Commentary card (the "AI-Generated" badge card right under Top 5 Most
+Urgent). No merge was needed; the green card is just gone.
 
-If you still see anything that looks stale after this deploy, a hard
-refresh (Cmd/Ctrl+Shift+R) rules out a leftover browser cache, and the
-console's build-stamp line above confirms which file is actually loaded.
+The FAQ topics drawer itself is untouched — it's still reachable through
+the per-field 💭 icons elsewhere in the app (forms, etc.). Only this one
+dashboard entry point into it was removed.
 
-## Fixes from this round's feedback
+**On voice/read-aloud:** per direct instruction, nothing was built for
+this now — no placeholder button, no UI shell. When the real ElevenLabs
+integration is scoped, it should be able to activate a readout of the
+Generative Commentary content on request; that's a note for that future
+work, not something in this delivery.
 
-**1. Full page width** — the whole app shell was capped at 1040px, which
-read as a narrow centered column on any real monitor. Widened to 1440px
-(header, nav, and Ask Verilume bar all still line up edge-to-edge).
+## Also resolved this round (no code change needed)
 
-**2. Mobile navigation** — the six-tab row no longer fits on a phone
-screen without horizontal scrolling. Below 760px it's now a native
-dropdown showing the same six tabs; picking one calls the same
-navigation as the desktop buttons, and the two stay in sync either way.
-
-**3. Removed the small eyebrow text** ("CMO Dashboard," "Daily Brief ·
-Home," etc.) directly under the Ask Verilume bar on the dashboard — it
-read as visual clutter directly under the page's real title.
-
-**4. AI Agent Thoughts is Daily-Brief-only** — the card no longer shows
-on Strategy/Brand/Marketer/Data Scientist/Account Management.
-
-**5. Top 5 Most Urgent always shows its table** — Campaign Code / Name /
-Assets Due / Start / End columns render even with zero campaigns, with a
-"No Campaigns Have Been Added" row in place of data, instead of the whole
-table disappearing behind a sentence.
-
-**6. Visual polish** — real shadows + a subtle hover lift on every card
-type (stat cards, tile cards, curated news, key observations, role
-tiles, AI partner tiles) in place of flat borders, a bolder page-title
-weight, and more generous spacing throughout — aiming for the crisp,
-premium feel the comps have rather than a wireframe-flat layout.
+The "wrong account / stuck loading" issue from the live-site screenshot
+turned out to be a stale login session, not a bug — logging out and back
+in landed correctly on the Atlas account. Worth knowing for next time:
+if the portal seems to hang on "Loading…" or shows the wrong account,
+try logging out/in before assuming it's a deploy or caching issue.
 
 ## Testing performed before this delivery
 
 - JS syntax check across every `<script>` block — clean
-- Playwright screenshots at 1600px, 1440px, 1280px, 700px, and 390px
-- A dedicated fresh-load test (page load → dashboard step, no tab click)
-  confirming the init-sequencing bug is actually fixed, not just masked
-  by a test that happened to click a tab first
-- Click-through of all 6 nav tabs confirming the AI Agent Thoughts card
-  shows only on Daily Brief and every tab's header text updates correctly
-- Mobile dropdown exercised via `selectOption()`, confirmed it navigates
-  and stays in sync with the desktop buttons
+- A fresh-load Playwright test confirming `#aiThoughtsPreviewCard` no
+  longer exists in the DOM at all
+- Click-through of all 6 nav tabs — zero console errors
+- Confirmed the Generative Commentary card, Key Observations, Curated
+  News, Key Tiles Per Role, and AI Partner Routing sections all still
+  render correctly on Daily Brief with the green card gone
