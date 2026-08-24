@@ -91,6 +91,14 @@
 
 const http = require('http');
 const path = require('path');
+
+// 2026-08-23 deploy-verification marker — proves at a glance, from the
+// runtime logs alone, whether THIS build of server.js (the one with the
+// INIT_PHASE crash-guard fix) is what's actually running, independent of
+// any DATABASE_URL question. If a request's logs don't show this exact
+// line, the crash-fix deploy hasn't actually taken effect yet, no matter
+// what the deploy dashboard says.
+console.log('[server.js] BUILD MARKER: crash-fix-2026-08-23-v1 (INIT_PHASE guard present)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -210,7 +218,45 @@ db.exec(`
 // columns on an already-existing `campaigns` table. node:sqlite has no
 // "ADD COLUMN IF NOT EXISTS", so this just attempts each ALTER TABLE and
 // swallows the "duplicate column" error on any re-run/existing db file.
+//
+// 2026-08-24 fix — per Todd's report of the portal still taking 30+
+// seconds to wake up after the earlier cold-start fixes (queryWithRetry,
+// removing fixLegacyColumnCasing() from module load, the INIT_PHASE
+// crash guard). Root cause: this function is called ~184 times at module
+// load, every single cold start, and until now EVERY call was a full
+// blocking round trip through the synchronous worker-thread bridge
+// (`db.exec()` -> Atomics.wait) to Postgres — even though in steady state
+// (a database that's already been migrated) all 184 of those ALTERs fail
+// with "column already exists" and do nothing. That's the exact same
+// shape of bug fixLegacyColumnCasing() had (2026-08-21, see the comment
+// above that function) before it was switched to a single bulk
+// information_schema lookup — this function just never got the same
+// treatment. Same fix here: one bulk query listing every column that
+// already exists on the tables ensureColumn() touches, computed lazily on
+// the first call and cached for the rest of this cold start, so a table
+// that already has a column skips the ALTER (and its round trip)
+// entirely. Only genuinely-missing columns — normally zero, after the
+// first deploy that introduced them — still pay for a real ALTER TABLE.
+let ensureColumnExistingCache = null; // Set of "table.column", or null if the bulk check hasn't run yet / failed
+function ensureColumnBulkPrecheck(){
+  if (ensureColumnExistingCache) return ensureColumnExistingCache;
+  try {
+    const rows = db.prepare(
+      `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`
+    ).all();
+    ensureColumnExistingCache = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
+  } catch (e) {
+    // Bulk check failed (e.g. this is the very first run against a brand
+    // new database, before any tables exist yet) — fall back to the old
+    // per-column behavior below rather than silently skipping real work.
+    console.error('[ensureColumn] bulk information_schema pre-check failed, falling back to per-column ALTERs:', (e && e.message) || e);
+    ensureColumnExistingCache = false; // false = "checked, but unusable" — distinct from null = "not checked yet"
+  }
+  return ensureColumnExistingCache;
+}
 function ensureColumn(table, col, decl){
+  const existing = ensureColumnBulkPrecheck();
+  if (existing && existing.has(`${table}.${col.toLowerCase()}`)) return; // confirmed present — no round trip spent
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`); }
   catch (e) { /* column already exists — fine */ }
 }

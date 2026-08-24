@@ -27,7 +27,12 @@
 const { Worker, receiveMessageOnPort, MessageChannel } = require('worker_threads');
 const path = require('path');
 
-const WAIT_TIMEOUT_MS = 15000;
+// 2026-08-23 fix — raised from 15000 to 20000 alongside pg-sync-worker.js's
+// new connection retry logic (up to ~6s of internal backoff across 3
+// attempts when Supabase is waking from a cold pause). This must stay
+// comfortably above the worker's own worst-case retry time, or the bridge
+// would time out a call that was still legitimately retrying.
+const WAIT_TIMEOUT_MS = 20000;
 
 function createSyncDb(connectionString) {
   const worker = new Worker(path.join(__dirname, 'pg-sync-worker.js'), {
