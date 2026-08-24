@@ -2384,6 +2384,29 @@
         </div>
       </div>
 
+      <!-- 2026-08-23 (nav redesign, round 15) — Top 5 Most Urgent, per
+           nav-structure.html's callout: "Sits directly under the top-3
+           charts on every tab except Account Management (same one module,
+           same data, same 5 rows, regardless of which tab you're on —
+           account-wide, not tab-specific)." Reuses cmpCreativeGridRows()'s
+           existing soonest-due-first sort (the same sort Campaign
+           Management's own Creative grid already uses) rather than
+           inventing new due-date logic — see renderTopUrgentModule(). -->
+      <div class="module open accent-cx" id="topUrgentModule" style="display:none;">
+        <div class="module-head" onclick="toggleModule('topUrgentModule')">
+          <span class="modnum">—</span>
+          <div class="titles">
+            <span class="tag">Across every active campaign</span>
+            <h2>Top 5 Most Urgent</h2>
+          </div>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="module-body">
+          <p class="lede" style="margin-bottom:16px;">The 5 campaigns with the soonest creative-asset due date, account-wide — same list regardless of which tab you're on.</p>
+          <div id="topUrgentBody"></div>
+        </div>
+      </div>
+
       <div class="module open accent-cx" id="taskChipsModule">
         <div class="module-head" onclick="toggleModule('taskChipsModule')">
           <span class="modnum">02</span>
@@ -7503,7 +7526,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-23-fetch-timeout-fallback-fix';
+const CXMEDIA_BUILD_STAMP = '2026-08-23-top5-urgent-module';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14057,6 +14080,113 @@ function strategyShellHtml(){
       </div>
     </div>`).join('');
 }
+// 2026-08-23 (nav redesign, round 15), per directive 1 (nav-structure.html
+// §1/§2) and Todd's direct instruction to prioritize the front-end build
+// now: "a tile grid replaces the step sequence... everything in it is
+// optional with no required order and no single required owner." The live
+// Account Management tab was still landing on the old, filtered
+// WORKSTREAMS cards (Configuration / Team Experiences / Manage Account),
+// and clicking "Configuration" dropped into the old Round-58 Company
+// Profile → Voice → Style Assets → Competitive Positioning sequential
+// checklist (.seq-nav Back/Next pairs) — exactly the forced-order pattern
+// directive 1 asks to remove. This flat list replaces that entry point:
+// every item the approved design names for Account Management
+// (nav-structure.html's five groups), each a direct, real link where one
+// exists in the app already, confirmed by grep before writing this list —
+// not a guess. Three items don't have a dedicated page yet (Partner
+// Integrations as its own destination — today it's just a field inside
+// Account Setup; Billing & Security; Vendor & Partner Management) and
+// route to the same generic pendingFeature landing the Strategy shell
+// above uses, rather than being hidden.
+const ACCOUNT_MGMT_TILE_GROUPS = [
+  { label: 'Company basics', items: [
+    { label: 'Account Setup', step: 'companyProfile' },
+    { label: 'Business & Revenue Profile', step: 'onboardingSurvey' },
+    { label: 'Partner Integrations' }
+  ]},
+  { label: 'Brand foundation', items: [
+    { label: 'Style Guide — Voice', step: 'voice' },
+    { label: 'Style Guide — Colors & Fonts', step: 'styleAssets' },
+    { label: 'Sample Writings & Presentations', step: 'brandWritingSamples' },
+    { label: 'Competitive Positioning', step: 'competitivePositioning' }
+  ]},
+  { label: 'Budget & taxonomy', items: [
+    { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration' },
+    { label: 'Product & Campaign Groups', step: 'taxonomyManager' },
+    { label: 'Marketing Calendar Bulk Upload', step: 'bulkUpload' }
+  ]},
+  { label: 'Team', items: [
+    { label: 'Team & Org Chart', step: 'team' },
+    { label: 'Team Experiences', step: 'teamDevelopment' }
+  ]},
+  { label: 'Ongoing admin', items: [
+    { label: 'Billing & Security' },
+    { label: 'Vendor & Partner Management' }
+  ]}
+];
+function accountManagementTileGridHtml(){
+  return ACCOUNT_MGMT_TILE_GROUPS.map(g => `
+    <div class="group-card" style="grid-column:1/-1;">
+      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${g.items.map(item => {
+          const onclick = item.step
+            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
+            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending</span>'}</a>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+// 2026-08-23 (nav redesign, round 15) — Top 5 Most Urgent, per
+// nav-structure.html's callout spec: Campaign Code, Campaign Name, Assets
+// Due, Start, End, and a "Manage Campaign →" button, sorted soonest-due-
+// first, top 5 only. Reuses cmpCreativeGridRows() (already sorted this way
+// for Campaign Management's own Creative grid) rather than re-deriving the
+// sort, and cmpManageExistingCampaign() for the button — both existing,
+// tested functions, nothing new modeled here. Hidden entirely on Account
+// Management (maintenance content, not performance content — same
+// reasoning nav-structure.html gives for excluding it there).
+function renderTopUrgentModule(){
+  const moduleEl = document.getElementById('topUrgentModule');
+  const bodyEl = document.getElementById('topUrgentBody');
+  if (!moduleEl || !bodyEl) return;
+  if (activePrimaryTab === 'accountManagement'){
+    moduleEl.style.display = 'none';
+    return;
+  }
+  moduleEl.style.display = '';
+  // Fire-and-forget, same convention as cmpRenderCreativeGrid()'s own call
+  // to this — cmgmtLoadDueDates() re-renders this module itself (see its
+  // finally block) once real dates are in. NOT chained with .then() here:
+  // cmgmtLoadDueDates() early-returns (before ever setting
+  // cmgmtDueDatesLoaded = true) for any non-backend account, so a mock
+  // account would otherwise never satisfy the "loaded" check and a
+  // .then(renderTopUrgentModule) chain would call itself again forever —
+  // an infinite microtask loop that hung the whole page (caught in testing
+  // before this shipped).
+  if (!cmgmtDueDatesLoaded){
+    cmgmtLoadDueDates();
+  }
+  const rows = cmpCreativeGridRows().slice(0, 5);
+  if (!rows.length){
+    bodyEl.innerHTML = `<p class="cmp-stage-note" style="padding:0;">No campaigns on this account yet.</p>`;
+    return;
+  }
+  bodyEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table">
+    <thead><tr><th>Campaign Code</th><th>Campaign Name</th><th>Assets Due</th><th>Start</th><th>End</th><th></th></tr></thead>
+    <tbody>
+      ${rows.map(c => `<tr>
+        <td>${escapeHtml(c.id)}</td>
+        <td>${escapeHtml(c.name || c.objective || 'Untitled Campaign')}</td>
+        <td>${cmgmtCampaignDueDate(c) || '—'}</td>
+        <td>${c.startDate || '—'}</td>
+        <td>${c.endDate || '—'}</td>
+        <td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
 // 2026-08-23 (nav redesign, round 13) — populates the previously-orphaned
 // step-placeholder markup (confirmed via grep: nothing ever navigated here
 // before this round) as a generic "this link is real, the page behind it
@@ -14103,7 +14233,10 @@ function renderWorkstreams(){
   if (activePrimaryTab && activePrimaryTab !== 'dailyBrief'){
     list = list.filter(w => w.tab === activePrimaryTab);
   }
-  const banner = (activePrimaryTab && activePrimaryTab !== 'dailyBrief' && !accountIsConfigured())
+  // 2026-08-23 (round 15) — the "configure your account first" nudge
+  // doesn't make sense ON Account Management itself (that banner's own
+  // link points right back here) — suppressed only on this tab.
+  const banner = (activePrimaryTab && activePrimaryTab !== 'dailyBrief' && activePrimaryTab !== 'accountManagement' && !accountIsConfigured())
     ? accountNotConfiguredBannerHtml() : '';
   if (activePrimaryTab === 'strategy'){
     // Strategy has no workstream card of its own yet (see WORKSTREAMS'
@@ -14111,6 +14244,13 @@ function renderWorkstreams(){
     // blank grid or a fabricated card. Per direct instruction, content
     // behind those links doesn't matter yet; the links themselves do.
     grid.innerHTML = banner + strategyShellHtml();
+    return;
+  }
+  if (activePrimaryTab === 'accountManagement'){
+    // 2026-08-23 (round 15), directive 1 — a flat tile grid replaces the
+    // old filtered-card entry point into the Round-58 sequential checklist.
+    // See ACCOUNT_MGMT_TILE_GROUPS above for what's real vs. pending.
+    grid.innerHTML = accountManagementTileGridHtml();
     return;
   }
   if (!list.length){
@@ -14263,6 +14403,7 @@ function switchPrimaryTab(tab){
     switchDashboardTab('working');
     renderWorkstreams();
   }
+  renderTopUrgentModule();
 }
 
 function switchDashboardTab(tab){
@@ -17174,6 +17315,10 @@ async function cmgmtLoadDueDates(){
   finally {
     cmgmtDueDatesLoaded = true;
     renderCampaignMgmtStep();
+    // 2026-08-23 (round 15) — Top 5 Most Urgent also depends on real due
+    // dates; re-render it once they're in, same as the Campaign Management
+    // grid does on the line above.
+    renderTopUrgentModule();
   }
 }
 function cmgmtCampaignDueDate(c){
@@ -40523,6 +40668,7 @@ async function saveCompetitivePositioning(){
     el.classList.toggle('active', el.dataset.tab === activePrimaryTab);
   });
   renderWorkstreams();
+  renderTopUrgentModule();
   renderExecCharts();
   cfdRender();
   renderConnectedSignals(); // Round 132bx (2026-08-15) — Connected Signals module ("Key Observations")
