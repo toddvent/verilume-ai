@@ -102,6 +102,52 @@
   .primary-nav-item:hover{color:var(--ink);}
   .primary-nav-item.active{color:var(--cx);border-bottom-color:var(--cx);}
 
+  /* 2026-08-23 (nav redesign, round 16) — Ask Verilume persistent bar, per
+     directive 3. UI shell only (see the markup's own comment) — reuses this
+     file's existing token set (--cx as the accent, matching the active nav
+     underline, rather than inventing a new brand color) so it reads as part
+     of this app rather than a pasted-in mock. overflow-x:auto on the prompt
+     row gives it the same "scroll right is acceptable" mobile treatment as
+     the primary nav above and the Top 5 Most Urgent table, instead of a
+     second bespoke mobile pattern. */
+  .ask-bar{background:var(--white);border-bottom:1px solid var(--line);padding:0 28px;}
+  .ask-row{display:flex;align-items:center;gap:14px;height:44px;max-width:1040px;margin:0 auto;}
+  .ask-mic{display:flex;align-items:center;justify-content:center;width:26px;height:26px;flex-shrink:0;color:var(--cx);cursor:pointer;border-radius:50%;}
+  .ask-mic:hover{background:var(--paper-dim);}
+  .ask-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:700;color:var(--cx);white-space:nowrap;}
+  .ask-placeholder{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-left:1px solid var(--line);padding-left:14px;min-width:0;}
+  .ask-badge{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.5625rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:var(--muted);background:var(--paper-dim);border:1px solid var(--line);border-radius:20px;padding:3px 9px;white-space:nowrap;}
+  .ask-toggle{display:flex;align-items:center;gap:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--cx);cursor:pointer;padding:5px 10px;border-radius:6px;white-space:nowrap;}
+  .ask-toggle:hover{background:var(--paper-dim);}
+  .ask-toggle .chev{font-size:0.5625rem;transition:transform 0.15s;}
+  .ask-toggle.is-open .chev{transform:rotate(180deg);}
+  .ask-expand{max-width:1040px;margin:0 auto;padding:0 0 14px;display:none;}
+  .ask-expand.open{display:block;}
+  .ask-expand-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;}
+  .prompt-row{display:flex;flex-wrap:wrap;gap:8px;overflow-x:auto;padding-bottom:2px;}
+  .prompt-chip{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--cx);background:var(--paper-dim);border:1px solid var(--line);border-radius:999px;padding:6px 13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;}
+  .prompt-chip:hover{border-color:var(--cx);}
+  .prompt-chip .q{color:var(--muted);font-weight:800;}
+  .ask-voice-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin:10px 0 0;padding:10px 12px;background:var(--paper-dim);border-radius:8px;}
+  @media (max-width:700px){
+    .ask-row{gap:10px;}
+    .ask-placeholder{display:none;}
+    .ask-badge{display:none;}
+  }
+
+  /* 2026-08-23 (nav redesign, round 16) — AI Agent Thoughts tab-preview
+     card, literal colors matching the approved mockup's own green/thought-
+     bubble palette rather than this file's shared token set (a small,
+     self-contained callout — same posture as .illustrative-tag). */
+  .ai-thoughts-preview{background:#EAF7EF;border:1px solid #BFE0CC;border-radius:10px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:center;gap:16px;cursor:pointer;}
+  .ai-thoughts-preview:hover{border-color:#8FCBA6;}
+  .ai-thoughts-preview .ic{width:32px;height:32px;border-radius:50%;background:#fff;border:1px solid #BFE0CC;display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:0.9375rem;}
+  .ai-thoughts-preview .body{flex:1;min-width:0;}
+  .ai-thoughts-preview .t{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.78125rem;font-weight:700;color:#1E6B44;margin-bottom:2px;}
+  .ai-thoughts-preview .s{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.71875rem;color:#3E7A5C;line-height:1.45;}
+  .ai-thoughts-preview .go{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.71875rem;font-weight:700;color:#1E6B44;white-space:nowrap;flex:0 0 auto;}
+  @media (max-width:700px){ .ai-thoughts-preview .go{display:none;} }
+
   /* Round 66 — the flat Quick Links pill row (round 65) was replaced by
      the numbered "Fundamentals Setup" module (see #fundamentalsModule in
      the body) reusing .module/.dash-grid/.dash-tile, so the .quick-links/
@@ -2266,6 +2312,33 @@
     <button type="button" class="primary-nav-item" data-tab="accountManagement" onclick="switchPrimaryTab('accountManagement')">Account Management</button>
   </nav>
 
+  <!-- 2026-08-23 (nav redesign, round 16) — Ask Verilume, per directive 3
+       ("Voice becomes a persistent bar directly below the nav, present on
+       every page regardless of section") and round 14's explicit scope cut,
+       Todd verbatim: "I don't need the Eleven Labs functions to work yet
+       just the shell is fine." UI shell only — mic icon, collapsed-by-
+       default one-liner, expand/collapse, suggested prompts scoped to the
+       active tab (see ASK_VERILUME_PROMPTS below). Confirmed zero
+       ElevenLabs references anywhere in this codebase (round 2 of the
+       design review) — nothing here talks to a real voice API. A sibling
+       of every .step, same placement convention as the primary nav above,
+       so it stays visible across the whole app rather than nested in one
+       page. -->
+  <div class="ask-bar" id="askVerilumeBar">
+    <div class="ask-row">
+      <div class="ask-mic" id="askVerilumeMic" role="button" tabindex="0" aria-label="Ask Verilume — voice (pending development)" onclick="toggleAskVerilumeVoiceNote()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></div>
+      <div class="ask-label">Ask Verilume</div>
+      <div class="ask-placeholder">Type or talk — routes to the right function, wherever you are</div>
+      <span class="ask-badge">Voice · Pending Development</span>
+      <div class="ask-toggle" id="askVerilumeToggle" role="button" tabindex="0" onclick="toggleAskVerilumePrompts()">Suggested prompts <span class="chev">▾</span></div>
+    </div>
+    <div class="ask-expand" id="askVerilumeExpand">
+      <div class="ask-expand-label" id="askVerilumeExpandLabel">Suggested — scoped to Daily Brief</div>
+      <div class="prompt-row" id="askVerilumePromptRow"></div>
+      <p class="ask-voice-note" id="askVerilumeVoiceNote" style="display:none;">Voice — Pending Development. Typing and talking to Verilume directly isn't wired to a real assistant yet; this is the shell the real ElevenLabs integration will land in.</p>
+    </div>
+  </div>
+
   <!-- ================= DASHBOARD ================= -->
   <div class="step active" id="step-dashboard">
     <div class="eyebrow" id="dashboardEyebrow">CMO Dashboard</div>
@@ -2333,13 +2406,13 @@
         <div class="module-head" onclick="toggleModule('dailyNewsModule')">
           <span class="modnum">03</span>
           <div class="titles">
-            <span class="tag">Curated News</span>
+            <span class="tag" id="dailyNewsTag">Curated News</span>
             <h2>Top 5 stories for your team today</h2>
           </div>
           <span class="chevron">▸</span>
         </div>
         <div class="module-body">
-          <p class="lede" style="margin-bottom:6px;">A quick scan before you start — mark each one read as you go. <span class="illustrative-tag">sample headlines for this demo, not a live feed</span></p>
+          <p class="lede" style="margin-bottom:6px;">A quick scan before you start — mark each one read as you go. <span class="illustrative-tag">real, hand-curated headlines — refreshed periodically, not a live automated feed</span></p>
           <div class="news-list" id="dailyNewsList"></div>
         </div>
       </div>
@@ -2355,6 +2428,26 @@
            Chart's actingAsId). Not an access-control gate (this prototype
            has no real per-person auth to enforce one) — an honest CTA
            surface naming what this profile can reach. -->
+
+      <!-- 2026-08-23 (nav redesign, round 16), per nav-structure.html §6
+           (round 11 of the design review) — a short "AI Agent Thoughts"
+           preview card under the page title on every tab, summarizing
+           that tab's slice of the 17-topic drawer (BP_FAQ_TAB_GROUPS
+           above). No content change to any topic — this just previews
+           what's already there and opens the same drawer. Green/thought-
+           bubble treatment matches the approved mockup exactly (its own
+           literal palette, not this app's shared token set — a small,
+           self-contained callout, same posture as the illustrative-tag
+           spans elsewhere in this file). -->
+      <div class="ai-thoughts-preview" id="aiThoughtsPreviewCard" role="button" tabindex="0" onclick="openAiThoughtsPreviewDrawer()" onkeydown="if(event.key==='Enter')openAiThoughtsPreviewDrawer()">
+        <div class="ic">💭</div>
+        <div class="body">
+          <div class="t" id="aiThoughtsPreviewTitle">AI Agent Thoughts</div>
+          <div class="s" id="aiThoughtsPreviewAbstract"></div>
+        </div>
+        <div class="go">Open →</div>
+      </div>
+
       <div class="dash-tile" id="workingAccessCard" style="margin-bottom:24px;"></div>
 
       <div class="module open accent-media" id="execChartsModule">
@@ -7526,7 +7619,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-23-top5-urgent-module';
+const CXMEDIA_BUILD_STAMP = '2026-08-24-curated-news-activated-cmo-role';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13358,28 +13451,42 @@ function renderBrandFoundationsModule(){
     </div>`;
 }
 
-// Round 19 (2026-08-05) — Daily News, per direct instruction: 5 sample
-// stories with a Mark Read toggle. Titles are explicitly made up for this
-// demo (Todd: "You can make up the article titles or use latin") — flagged
-// honestly via .illustrative-tag in the module body above, same convention
-// used everywhere else in this file for non-real content.
+// Round 19 (2026-08-05) — Daily News, originally 5 lorem-ipsum-titled
+// placeholder stories per direct instruction ("You can make up the article
+// titles or use latin"). 2026-08-24, per direct instruction ("activate our
+// curated news function for the CMO role") — replaced with 5 real,
+// currently-live trade-press stories, hand-picked for relevance to this
+// account's CMO/Admin role (state.userProfile.role — the only role this
+// single-login prototype has, per Account Management's own honest note
+// about not being able to enforce per-person roles yet). Not a live feed —
+// still static/curated, same as the rest of this file's "real content,
+// hand-authored, not a modeled pull" convention (CHANNEL_COPY_TREATMENT,
+// cmpGuessVoiceMood(), etc.) — the change is real vs. placeholder titles,
+// not mock vs. live automation. A genuine live news pull would need a real
+// news API/connector (none installed for this account) — flagged as a
+// separate, later decision, not assumed here.
 const DAILY_NEWS_ITEMS = [
-  { id: 'n1', title: 'Lorem ipsum dolor: hotel loyalty programs lean into AI-personalized offers', meta: 'Marketing Dive · 6 min read' },
-  { id: 'n2', title: 'Consectetur adipiscing elit — first-party data strategies for 2026 hospitality brands', meta: 'Skift · 4 min read' },
-  { id: 'n3', title: 'Sed do eiusmod: three CX metrics every CMO should track alongside media spend', meta: 'AdAge · 5 min read' },
-  { id: 'n4', title: 'Ut enim ad minim veniam — programmatic OOH sees renewed budget interest', meta: 'AdWeek · 3 min read' },
-  { id: 'n5', title: 'Quis nostrud exercitation: search intent shifts as travelers plan further out', meta: 'Search Engine Land · 4 min read' }
+  { id: 'n1', title: 'Minor Hotels Builds AI Stack From Scratch To Improve Personalization', meta: 'Skift · Apr 2026', url: 'https://skift.com/2026/04/09/minor-hotels-ai-stack-personalisation/' },
+  { id: 'n2', title: 'Hotels Are Losing Travelers’ Discovery Window — And Scrambling to Get It Back', meta: 'Skift · Mar 2026', url: 'https://skift.com/2026/03/26/hilton-marriott-tui-minor-kempinski-ai-social-media-travelers/' },
+  { id: 'n3', title: 'CMOs Face a “Reputation and Results” Reckoning According to NIQ’s 2026 Outlook', meta: 'NIQ / Businesswire · Nov 2025', url: 'https://www.businesswire.com/news/home/20251118947080/en/CMOs-Face-a-%E2%80%98Reputation-and-Results%E2%80%99-Reckoning-According-to-NIQ%E2%80%99s-2026-Outlook' },
+  { id: 'n4', title: 'The Top Five Initiatives For B2C CMOs In 2026', meta: 'Forrester', url: 'https://www.forrester.com/blogs/the-top-5-initiatives-for-b2c-cmos-in-2026/' },
+  { id: 'n5', title: 'The 2026 AEO / GEO Benchmarks Report', meta: 'Conductor', url: 'https://www.conductor.com/academy/aeo-geo-benchmarks-report/' }
 ];
 
 function renderDailyNews(){
   const list = document.getElementById('dailyNewsList');
   if (!list) return;
+  const tagEl = document.getElementById('dailyNewsTag');
+  if (tagEl){
+    const role = (state.userProfile && state.userProfile.role) || 'CMO / Admin';
+    tagEl.textContent = `Curated News — for your ${role} role`;
+  }
   list.innerHTML = DAILY_NEWS_ITEMS.map(item => {
     const isRead = state.dailyNewsRead.has(item.id);
     return `
       <div class="news-item${isRead ? ' is-read' : ''}">
         <div class="news-body">
-          <a class="news-title" onclick="event.preventDefault();" href="#">${item.title}</a>
+          <a class="news-title" href="${item.url}" target="_blank" rel="noopener">${item.title}</a>
           <div class="news-meta">${item.meta}</div>
         </div>
         <button type="button" class="mark-read-btn" onclick="toggleNewsRead('${item.id}')" ${isRead ? 'disabled' : ''}>${isRead ? 'Read ✓' : 'Mark Read'}</button>
@@ -14075,7 +14182,7 @@ function strategyShellHtml(){
           const onclick = item.step
             ? `goToStep('${item.step}')`
             : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending</span>'}</a>`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
         }).join('')}
       </div>
     </div>`).join('');
@@ -14133,7 +14240,121 @@ function accountManagementTileGridHtml(){
           const onclick = item.step
             ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
             : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
-          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending</span>'}</a>`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+// 2026-08-23 (nav redesign, round 16) — Brand/Marketer/Data Scientist real
+// designed shells, same pattern as STRATEGY_SHELL_GROUPS and
+// ACCOUNT_MGMT_TILE_GROUPS above: every item mapped to its real goToStep()
+// destination by grepping the codebase first (never guessed), items with no
+// real page route to the same generic pendingFeature landing. Group/item
+// text sourced from mockup-remaining-full.html (nav-structure.html's
+// successor covering these three tabs).
+const BRAND_SHELL_GROUPS = [
+  { label: 'Creative production', items: [
+    { label: 'Experience Development' },
+    { label: 'Omni-Channel Creative', step: 'omniCreative' }
+  ]},
+  { label: 'Customer experiences', items: [
+    { label: 'AI Agent Analysis — CMO to Creative', step: 'customerExperiences' }
+  ]},
+  { label: 'Social listening & response', items: [
+    { label: 'Customer Sentiment Analysis & Responses' }
+  ]},
+  { label: 'PR & corporate communications', items: [
+    { label: 'Reputation Monitoring', step: 'reputation' },
+    { label: 'Press Release Distribution & Monitoring', step: 'reputation' },
+    { label: 'Editorial Solicitation', step: 'reputation' },
+    { label: 'Specialty Partners' }
+  ]},
+  { label: 'Search optimization', items: [
+    { label: 'SEO, AEO & GEO Monitoring', step: 'searchOptimization' }
+  ]}
+];
+function brandShellHtml(){
+  return BRAND_SHELL_GROUPS.map(g => `
+    <div class="group-card" style="grid-column:1/-1;">
+      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${g.items.map(item => {
+          const onclick = item.step
+            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
+            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+// Marketer shell. "From AI Agent Training" group (Performance Marketing /
+// Lifecycle Marketing) is explicitly marked Pending Development in the
+// mockup itself — real goToStep('group','Performance Marketing') /
+// ('group','Lifecycle Marketing') pages exist, but the mockup's own note
+// says the view-switcher these need (top-3-chart row per path) "will need
+// a view switcher rather than one shared metric set" and isn't designed
+// yet — matches the open punch-list item. Routed pending here on purpose,
+// not because no page exists. Same for A/B & Multi-Variant Testing: the
+// real capability audit (Analytics Connections card group, ~line 8052/16250
+// area) confirms test execution/read-out has no built page yet — Match
+// Market Builder (marketOptimization) is a different, already-real
+// capability and isn't a substitute. UTM & QR Code Activation carries its
+// own "Pending Development" badge in the mockup already.
+const MARKETER_SHELL_GROUPS = [
+  { label: 'Marketing activity', items: [
+    { label: 'Campaign Management', step: 'campaignMgmt' },
+    { label: 'Marketing Calendar', step: 'marketingCalendar' },
+    { label: 'UTM & QR Code Activation' }
+  ]},
+  { label: 'From AI Agent Training', items: [
+    { label: 'Performance Marketing' },
+    { label: 'Lifecycle Marketing' }
+  ]},
+  { label: 'Testing', items: [
+    { label: 'A/B / Multi-Variant Testing' }
+  ]}
+];
+function marketerShellHtml(){
+  return MARKETER_SHELL_GROUPS.map(g => `
+    <div class="group-card" style="grid-column:1/-1;">
+      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${g.items.map(item => {
+          const onclick = item.step
+            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
+            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+const DATA_SCIENTIST_SHELL_GROUPS = [
+  { label: 'Media science', items: [
+    { label: 'Measurement Coverage & Confidence', step: 'measurementCoverage' },
+    { label: 'Match Market Builder', step: 'marketOptimization' },
+    { label: 'Website Traffic Analysis', step: 'websiteTraffic' }
+  ]},
+  { label: 'Analytics & data inputs', items: [
+    { label: 'Analytics Connections', step: 'analyticsSetup' },
+    { label: 'MMM Data Inputs', step: 'analyticsSetup' },
+    { label: 'Master UTM Configuration', step: 'analyticsSetup' },
+    { label: 'Customer Sentiment Data' },
+    { label: 'Manual KPI & Actuals Entry', step: 'campaignMgmt' }
+  ]},
+  { label: 'Historical performance', items: [
+    { label: 'Historical Campaigns & Media Plans', step: 'campaignMgmt' }
+  ]}
+];
+function dataScientistShellHtml(){
+  return DATA_SCIENTIST_SHELL_GROUPS.map(g => `
+    <div class="group-card" style="grid-column:1/-1;">
+      <div style="font-weight:700;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:10px;">${escapeHtml(g.label)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${g.items.map(item => {
+          const onclick = item.step
+            ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
+            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
+          return `<a class="flink" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:6px 14px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="${onclick}">${escapeHtml(item.label)}${item.step ? '' : '<span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);">Pending Development</span>'}</a>`;
         }).join('')}
       </div>
     </div>`).join('');
@@ -14147,6 +14368,98 @@ function accountManagementTileGridHtml(){
 // tested functions, nothing new modeled here. Hidden entirely on Account
 // Management (maintenance content, not performance content — same
 // reasoning nav-structure.html gives for excluding it there).
+// 2026-08-23 (nav redesign, round 16) — directive 4 says every tab except
+// Account Management opens to top-3-charts default content; the exec chart
+// module (Impressions/#Campaigns/Marketing Efficiency) had never actually
+// been hidden on Account Management, same gap Top 5 Most Urgent already
+// closed above. Fixed alongside the mobile pass since it surfaced there —
+// Account Management's mobile screenshot still showed the charts.
+// 2026-08-23 (nav redesign, round 16) — Ask Verilume prompt sets, one per
+// primary tab, per directive 3's "chips scoped to whichever tab is open."
+// Illustrative only (per round 14's UI-shell-only scope) — these don't
+// call anything, same "content doesn't matter yet, the shell does" posture
+// round 13 established for the pending-feature links.
+const ASK_VERILUME_PROMPTS = {
+  dailyBrief: ['What changed on my account since yesterday', 'Summarize this week’s open items', 'What needs my attention first today'],
+  strategy: ['How’s budget pacing against plan', 'What’s our recommended stage-weighting right now', 'Where are we behind on measurement coverage'],
+  brand: ['Draft a subject line for the fall campaign', 'How’s creative approval tracking this week', 'What’s new in reputation monitoring'],
+  marketer: ['What changed on Active Campaigns since yesterday', 'Move Campaign 14 into QA', 'Which campaigns are closest to their asset due date'],
+  dataScientist: ['What’s our current measurement coverage confidence', 'Any match-market builder uploads pending review', 'Summarize this month’s analytics connection status'],
+  accountManagement: ['What’s left to finish account setup', 'Is our brand voice guide approved yet', 'Who on the team still needs onboarding']
+};
+const ASK_VERILUME_TAB_LABELS = {
+  dailyBrief: 'Daily Brief', strategy: 'Strategy', brand: 'Brand', marketer: 'Marketer',
+  dataScientist: 'Data Scientist', accountManagement: 'Account Management'
+};
+function renderAskVerilumeBar(){
+  const rowEl = document.getElementById('askVerilumePromptRow');
+  const labelEl = document.getElementById('askVerilumeExpandLabel');
+  if (!rowEl || !labelEl) return;
+  const tab = activePrimaryTab || 'dailyBrief';
+  const prompts = ASK_VERILUME_PROMPTS[tab] || ASK_VERILUME_PROMPTS.dailyBrief;
+  labelEl.textContent = `Suggested — scoped to ${ASK_VERILUME_TAB_LABELS[tab] || 'Daily Brief'}`;
+  rowEl.innerHTML = prompts.map(p => `<span class="prompt-chip" onclick="toggleAskVerilumeVoiceNote()"><span class="q">?</span>${escapeHtml(p)}</span>`).join('');
+}
+function toggleAskVerilumePrompts(){
+  const toggleEl = document.getElementById('askVerilumeToggle');
+  const expandEl = document.getElementById('askVerilumeExpand');
+  if (!toggleEl || !expandEl) return;
+  const willOpen = !expandEl.classList.contains('open');
+  expandEl.classList.toggle('open', willOpen);
+  toggleEl.classList.toggle('is-open', willOpen);
+  toggleEl.innerHTML = willOpen ? 'Hide prompts <span class="chev">▾</span>' : 'Suggested prompts <span class="chev">▾</span>';
+  if (!willOpen){
+    const noteEl = document.getElementById('askVerilumeVoiceNote');
+    if (noteEl) noteEl.style.display = 'none';
+  }
+}
+// Mic tap and prompt-chip taps both land here — this is the one place the
+// "voice isn't real yet" message shows, rather than navigating away from
+// whatever page the visitor is on (the whole point of a persistent bar is
+// staying put). forceOpen expands the panel first (prompt chips are only
+// visible once it's already open, but the mic can be tapped from collapsed).
+function toggleAskVerilumeVoiceNote(){
+  const expandEl = document.getElementById('askVerilumeExpand');
+  const noteEl = document.getElementById('askVerilumeVoiceNote');
+  if (!expandEl || !noteEl) return;
+  if (!expandEl.classList.contains('open')) toggleAskVerilumePrompts();
+  noteEl.style.display = '';
+}
+// 2026-08-23 (nav redesign, round 16), per nav-structure.html §6 (round 11
+// of the design review) — one abstract per tab, verbatim from the approved
+// doc's own table, summarizing that tab's slice of BP_FAQ_TOPIC_TAB above.
+// No dedicated topics live under Daily Brief (it's a summary landing, same
+// note as BP_FAQ_TOPIC_TAB's own comment) — its abstract says so honestly
+// rather than listing something that doesn't apply.
+const AI_THOUGHTS_TAB_ABSTRACTS = {
+  dailyBrief: 'No dedicated topics live here — Daily Brief is a summary page, so this opens straight to whichever AI Agent Thoughts topic is most relevant to what’s on screen.',
+  strategy: 'Setting the right Objective, picking a Lifecycle-Loop Stage, reading competitive positioning, and what past campaigns tell you about what worked.',
+  brand: 'Brand voice anchors, creative direction, how Draft Scoring works, and how the Blind Test Interview picks the right copy angle.',
+  marketer: 'Campaign audiences and lifecycle stage, media mix and budget split, audience targeting execution, demand fulfillment, and what drives a campaign’s Relevance Score.',
+  dataScientist: 'Measurement by conversion type, and choosing the right attribution and testing approach for a campaign’s sophistication level.',
+  accountManagement: 'The audience baseline data — wealth tier, generation, company profile — that every AI-generated recommendation across the portal reads from.'
+};
+function renderAiThoughtsPreviewCard(){
+  const abstractEl = document.getElementById('aiThoughtsPreviewAbstract');
+  if (!abstractEl) return;
+  const tab = activePrimaryTab || 'dailyBrief';
+  abstractEl.textContent = AI_THOUGHTS_TAB_ABSTRACTS[tab] || AI_THOUGHTS_TAB_ABSTRACTS.dailyBrief;
+}
+// Opens the real drawer scoped to the active tab's first topic, same
+// "defined area, not a floating tooltip" convention bpFaqShowOnlyTopic()
+// already established for the per-field thought-bubble icons — Daily
+// Brief has no topic of its own, so it opens unfiltered instead.
+function openAiThoughtsPreviewDrawer(){
+  const tab = activePrimaryTab || 'dailyBrief';
+  const firstLetter = Object.keys(BP_FAQ_TOPIC_TAB).find(letter => BP_FAQ_TOPIC_TAB[letter] === tab);
+  openFaqDrawer();
+  if (firstLetter) bpFaqShowOnlyTopic(firstLetter);
+}
+function renderExecChartsVisibility(){
+  const moduleEl = document.getElementById('execChartsModule');
+  if (!moduleEl) return;
+  moduleEl.style.display = activePrimaryTab === 'accountManagement' ? 'none' : '';
+}
 function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
   const bodyEl = document.getElementById('topUrgentBody');
@@ -14251,6 +14564,20 @@ function renderWorkstreams(){
     // old filtered-card entry point into the Round-58 sequential checklist.
     // See ACCOUNT_MGMT_TILE_GROUPS above for what's real vs. pending.
     grid.innerHTML = accountManagementTileGridHtml();
+    return;
+  }
+  if (activePrimaryTab === 'brand'){
+    // 2026-08-23 (round 16) — real designed shell replacing the old
+    // filtered flat-card grid, same pattern as Strategy/Account Management.
+    grid.innerHTML = banner + brandShellHtml();
+    return;
+  }
+  if (activePrimaryTab === 'marketer'){
+    grid.innerHTML = banner + marketerShellHtml();
+    return;
+  }
+  if (activePrimaryTab === 'dataScientist'){
+    grid.innerHTML = banner + dataScientistShellHtml();
     return;
   }
   if (!list.length){
@@ -14404,6 +14731,9 @@ function switchPrimaryTab(tab){
     renderWorkstreams();
   }
   renderTopUrgentModule();
+  renderExecChartsVisibility();
+  renderAskVerilumeBar();
+  renderAiThoughtsPreviewCard();
 }
 
 function switchDashboardTab(tab){
@@ -26046,7 +26376,39 @@ function bpFaqClassifyTopicRole(topic){
 }
 // Computed once — BP_FAQ_TOPICS/BP_FAQ_ROLES are both static, so every
 // topic's role assignment is stable for the session. letter -> role key.
+// Still used by Collaboration's own role-chip filter (collabRenderRoleChips
+// et al., above) — BP_FAQ_ROLES/BP_FAQ_TOPIC_ROLE stay exactly as they were
+// for that, unrelated feature. The drawer's own visual grouping below was
+// switched to BP_FAQ_TAB_GROUPS/BP_FAQ_TOPIC_TAB instead (round 16) — see
+// that block's own comment for why.
 const BP_FAQ_TOPIC_ROLE = Object.fromEntries(BP_FAQ_TOPICS.map(t => [t.letter, bpFaqClassifyTopicRole(t)]));
+
+// 2026-08-23 (nav redesign, round 16), per nav-structure.html §5 (round 11
+// of the design review) — per direct instruction: "we should organize AI
+// Thoughts drawer based on the navigational hierarchy," clarified in round
+// 11 to categories-only, no content change: "We're just organizing the
+// categories based on the site hierarchy for consistency." Replaces the
+// drawer's own display grouping (renderBpFaqRoleGroups()/
+// aiThoughtRoleLabel()) — an explicit, approved letter->tab table, not the
+// keyword-heuristic classifier BP_FAQ_TOPIC_ROLE above uses, since round 11
+// hand-assigned every topic to one of the six tabs rather than asking for
+// a re-derived guess. No topic maps to Daily Brief, per the doc's own
+// note — it's a landing/summary tab, an empty category there is correct,
+// not a gap (skipped below the same way an empty role group already was).
+const BP_FAQ_TAB_GROUPS = [
+  { key: 'strategy', label: 'Strategy' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'marketer', label: 'Marketer' },
+  { key: 'dataScientist', label: 'Data Scientist' },
+  { key: 'accountManagement', label: 'Account Management' }
+];
+const BP_FAQ_TOPIC_TAB = {
+  A: 'strategy', K: 'strategy', J: 'strategy', F: 'strategy',
+  I: 'brand', C: 'brand', O: 'brand', P: 'brand',
+  M: 'marketer', B: 'marketer', G: 'marketer', L: 'marketer', N: 'marketer',
+  D: 'dataScientist', E: 'dataScientist',
+  H: 'accountManagement'
+};
 
 function renderFaqTopicChips(){
   const el = document.getElementById('bpFaqTopicChips');
@@ -26070,17 +26432,17 @@ function renderBpFaqRoleGroups(){
     if (item) items[t.letter] = item;
   });
   widget.innerHTML = '';
-  BP_FAQ_ROLES.forEach(role => {
-    const topicsForRole = BP_FAQ_TOPICS.filter(t => BP_FAQ_TOPIC_ROLE[t.letter] === role.key);
-    if (!topicsForRole.length) return;
+  BP_FAQ_TAB_GROUPS.forEach(tabGroup => {
+    const topicsForTab = BP_FAQ_TOPICS.filter(t => BP_FAQ_TOPIC_TAB[t.letter] === tabGroup.key);
+    if (!topicsForTab.length) return;
     const group = document.createElement('div');
     group.className = 'faq-role-group';
-    group.dataset.role = role.key;
+    group.dataset.role = tabGroup.key;
     const heading = document.createElement('div');
     heading.className = 'faq-role-label';
-    heading.innerHTML = `${role.label} <span class="faq-role-sub">— ${role.sub}</span>`;
+    heading.innerHTML = tabGroup.label;
     group.appendChild(heading);
-    topicsForRole.forEach(t => { if (items[t.letter]) group.appendChild(items[t.letter]); });
+    topicsForTab.forEach(t => { if (items[t.letter]) group.appendChild(items[t.letter]); });
     widget.appendChild(group);
   });
 }
@@ -26230,9 +26592,9 @@ const AI_THOUGHT_PREVIEWS = {
   P: 'What the Blind Test Interview panel does: drafts three independent takes on this brief, scores each one the same way, and ranks them.'
 };
 function aiThoughtRoleLabel(letter){
-  const roleKey = BP_FAQ_TOPIC_ROLE[letter];
-  const role = BP_FAQ_ROLES.find(r => r.key === roleKey);
-  return role ? role.label : 'AI Agent';
+  const tabKey = BP_FAQ_TOPIC_TAB[letter];
+  const tabGroup = BP_FAQ_TAB_GROUPS.find(g => g.key === tabKey);
+  return tabGroup ? tabGroup.label : 'AI Agent';
 }
 function aiThoughtTipEl(){
   let tip = document.getElementById('aiThoughtTip');
@@ -40669,6 +41031,9 @@ async function saveCompetitivePositioning(){
   });
   renderWorkstreams();
   renderTopUrgentModule();
+  renderExecChartsVisibility();
+  renderAskVerilumeBar();
+  renderAiThoughtsPreviewCard();
   renderExecCharts();
   cfdRender();
   renderConnectedSignals(); // Round 132bx (2026-08-15) — Connected Signals module ("Key Observations")
