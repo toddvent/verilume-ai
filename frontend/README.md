@@ -1,45 +1,59 @@
-# Verilume — nav redesign round 17 continued (2026-08-24)
+# CXMedia.AI Portal — Round 17 Final: Navy Comp Redesign Complete
 
-Only `portal.html` changed — same upload steps as last time (navigate
-into the existing `frontend/` folder in GitHub, upload this single file
-there — don't drag the folder).
+Build stamp: `2026-08-24-daily-brief-stat-cards-rebuild`
+(check the browser console after deploy — it logs this on load)
 
-## What's fixed this round
+## What's in this package
 
-1. Header/nav/Ask Verilume width misalignment — all three navy/white
-   bars now line up exactly (was a jagged right edge).
-2. The Strategy, Brand, Marketer, Data Scientist, and Account Management
-   tabs now show real tile cards with descriptions and badges, matching
-   the comps you sent — including "PENDING DEVELOPMENT" (purple) on
-   Social Listening & Response and the Marketer AI-training group, and
-   "ENTERPRISE" (tan) on PR & Corporate Communications and Search
-   Optimization. Previously these were plain wrapped text pills with no
-   descriptions and no way to badge a whole section.
-3. Each tab now shows its own eyebrow/title/AI-Agent-Thoughts heading
-   (e.g. "PLANNING · WHERE ARE WE GOING" / "Strategy") instead of every
-   tab showing the Daily Brief's own copy.
+One file: `portal.html`. Upload it to the existing frontend folder on GitHub,
+replacing the current file (navigate into the folder first, then upload the
+single file — do not upload a folder).
 
-## What's still open (not done this round — flagging honestly rather
-than leaving it silent)
+## What changed this round (full rebuild, matching all 6 comps + 5 mobile comps)
 
-Looking at your comps against what's live now, there's a real gap left
-below the AI Agent Thoughts card on every tab except Daily Brief:
+**Header / navigation / Ask Verilume bar**
+- Full-bleed navy header, numbered tabs (01–06), amber active-tab underline
+- Fixed the width-misalignment bug (header/nav/ask-bar now share the same
+  edge-to-edge bleed, so all three chrome bars line up perfectly)
 
-- The comps show 3 clean stat cards (label / big number / green delta /
-  small bar row). What's live still shows the old "Executive snapshot"
-  module with donut charts, a "SECTION 1" accordion label, and a
-  redundant "Start of Day / Working Dashboard" toggle none of the comps
-  have.
-- Daily Brief itself is the biggest remaining gap — its comp shows a
-  completely different content model (a "Good morning, {name}."
-  greeting, a Generative Summarized Commentary block, a Key Observations
-  side panel, a Key Tiles Per Role icon row, and an AI Partner — Text
-  Routing section). What's live is still the old Start-of-Day
-  conversational front door + Curated News only.
+**Tile grids — Strategy, Brand, Marketer, Data Scientist, Account Management**
+- Rewritten as real bordered tile cards with descriptions, replacing the old
+  flat pill-link rows
+- Two distinct badge types per the comps: "Pending Development" (purple, a
+  build-status marker) and "Enterprise" (tan, a real production tier gate) —
+  both at the section level and the individual-tile level where the comps
+  show them
 
-Both are real content/structure rebuilds, not just a CSS pass — flagging
-now rather than claiming these are done. Happy to keep going on these
-next if you want me to just continue building, per your last note.
+**Daily Brief — full content rebuild**
+- "Good morning, {name}." greeting (falls back to "Good morning." if no name
+  is set)
+- Stat cards (replacing the donut charts) + Top 5 Most Urgent
+- Generative Commentary card (AI-Generated badge) + Key Observations panel
+- Curated News — 3-card grid of real curated headlines
+- Key Tiles Per Role — one tile per tab, click-through navigation
+- AI Partner — Text Routing (Collaboration [Enterprise] / Team collaboration
+  [Pending Development])
 
-Build stamp: `2026-08-24-navy-header-nav-rebuild` (unchanged this round
-— only content below the header changed, not tracked by that stamp).
+**Dashboard panel unification**
+- Removed the old "Start of Day / Working Dashboard" toggle and its
+  accordion module chrome — every tab now shows one clean, always-visible
+  panel, matching the comps (none of them show a dual-panel split)
+- Stat cards now appear on all 5 tabs that have them in the comps; Account
+  Management correctly has none (setup tile grid only)
+
+## Testing performed before this delivery
+
+- JS syntax check across every `<script>` block — clean
+- Playwright screenshots at desktop (1280px) and mobile (390px) for all 6
+  tabs
+- Click-driven navigation test (nav tabs + Daily Brief's Key Tiles Per Role)
+  confirmed tab-switching and header text update correctly
+- Confirmed Account Management has no stat cards, as intended
+
+## What was intentionally left alone
+
+The old donut-chart renderer, CFD conversational box, old accordion-style
+Curated News, and the Connected Signals narrative engine are still in the
+codebase (not deleted) — they're just no longer wired into the visible
+markup. This keeps the swap reversible without touching real, working code
+that isn't broken.

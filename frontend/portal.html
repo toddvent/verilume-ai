@@ -676,7 +676,7 @@
      single pill). See renderTileShellGroups() (JS) — one shared renderer
      now backs all five shells instead of five near-duplicate template
      strings. */
-  .tile-shell-group{margin-bottom:28px;}
+  .tile-shell-group{grid-column:1/-1;margin-bottom:28px;}
   .tile-shell-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
   .tile-shell-head .lbl{font-weight:700;font-size:0.9375rem;color:var(--ink);}
   .tile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
@@ -685,6 +685,67 @@
   .tile-card .tc-label{font-weight:700;font-size:0.875rem;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .tile-card .tc-desc{font-size:0.75rem;color:var(--muted);margin-top:4px;line-height:1.45;}
   .tile-shell-note{font-size:0.75rem;color:var(--muted);margin:0 0 24px;padding:12px 16px;background:var(--paper-dim);border-radius:10px;max-width:900px;}
+
+  /* 2026-08-24 (nav redesign, round 17 continued) — per-tab stat card row,
+     per the comps. Replaces the old "Executive snapshot" donut-chart
+     accordion module (#execChartsModule) on every tab it's shown on —
+     that module's own donut/CSV/expand code (renderExecCharts() etc.) is
+     left in place, unused, rather than deleted, since it's real working
+     code this just stops calling; see renderStatCards(). */
+  .stat-card-row-head{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .customize-kpis-btn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+  .customize-kpis-btn:hover{border-color:var(--hdr-navy);}
+  .stat-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;}
+  .stat-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+  .stat-card .sc-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+  .stat-card .sc-value{font-size:1.75rem;font-weight:700;color:var(--ink);line-height:1.15;}
+  .stat-card .sc-delta{font-size:0.75rem;font-weight:600;margin-top:6px;display:flex;align-items:center;gap:4px;}
+  .stat-card .sc-delta.good{color:#1E8E4A;}
+  .stat-card .sc-delta.neutral{color:var(--muted);}
+  .stat-card .sc-spark{display:flex;align-items:flex-end;gap:3px;height:20px;margin-top:12px;}
+  .stat-card .sc-spark span{flex:1;background:var(--line);border-radius:2px;min-height:4px;}
+  .stat-card .sc-spark span.hi{background:var(--hdr-amber);}
+  @media (max-width:820px){ .stat-card-grid{grid-template-columns:1fr;} }
+
+  /* Daily Brief's own modules — Generative Summarized Commentary + Key
+     Observations, Curated News, Key Tiles Per Role, AI Partner — Text
+     Routing — all sourced verbatim from the approved comps. */
+  .db-section{grid-column:1/-1;margin:0 0 28px;}
+  .db-section-title{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+  .gen-commentary-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start;}
+  @media (max-width:820px){ .gen-commentary-grid{grid-template-columns:1fr;} }
+  .gen-commentary-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+  .gen-commentary-card p{font-size:0.8125rem;line-height:1.6;color:var(--ink);margin:10px 0 0;}
+  .gen-commentary-card p:first-of-type{margin-top:12px;}
+  .badge-ai-generated{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.5625rem;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;color:var(--enterprise);background:var(--enterprise-tint);border-radius:20px;padding:3px 9px;white-space:nowrap;display:inline-block;}
+  .key-obs-list{display:flex;flex-direction:column;gap:10px;}
+  .key-obs-item{background:var(--white);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:10px;padding:12px 14px;font-size:0.8125rem;line-height:1.5;color:var(--ink);}
+  .key-obs-item b{font-weight:700;}
+  .key-obs-item.warn{border-left-color:var(--hdr-amber);}
+  .key-obs-item.good{border-left-color:#1E8E4A;}
+  .key-obs-item.info{border-left-color:var(--media);}
+  .curated-news-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  @media (max-width:820px){ .curated-news-grid{grid-template-columns:1fr;} }
+  .curated-news-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px 18px;text-decoration:none;display:block;color:inherit;}
+  .curated-news-card:hover{border-color:var(--hdr-navy);}
+  .curated-news-card .cn-meta{font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .curated-news-card .cn-title{font-size:0.875rem;font-weight:700;color:var(--ink);line-height:1.4;}
+  .role-tiles-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
+  @media (max-width:900px){ .role-tiles-grid{grid-template-columns:repeat(2,1fr);} }
+  .role-tile{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;}
+  .role-tile:hover{border-color:var(--hdr-navy);}
+  .role-tile .rt-icon{width:32px;height:32px;border-radius:9px;background:var(--paper-dim);display:flex;align-items:center;justify-content:center;margin-bottom:10px;color:var(--hdr-navy);}
+  .role-tile .rt-label{font-weight:700;font-size:0.8125rem;color:var(--ink);}
+  .role-tile .rt-desc{font-size:0.6875rem;color:var(--muted);margin-top:4px;line-height:1.4;}
+  .ai-partner-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+  .ai-partner-tile{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;}
+  .ai-partner-tile:hover{border-color:var(--hdr-navy);}
+  .ai-partner-tile.is-pending{opacity:0.65;cursor:default;}
+  .ai-partner-tile .ap-icon{width:28px;height:28px;border-radius:8px;background:var(--paper-dim);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--hdr-navy);}
+  .ai-partner-tile .ap-body{flex:1;min-width:0;}
+  .ai-partner-tile .ap-label{font-weight:700;font-size:0.8438rem;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .ai-partner-tile .ap-desc{font-size:0.75rem;color:var(--muted);margin-top:2px;line-height:1.45;}
+  .ai-partner-tile .ap-go{font-size:0.75rem;font-weight:700;color:var(--hdr-navy);flex-shrink:0;}
 
   /* Function group nav */
   .group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:36px;}
@@ -2472,18 +2533,33 @@
          Working Dashboard (key metrics + workstream picker + full account
          access, conversational box present but collapsed since Start of
          Day already gave it first billing). See switchDashboardTab(). -->
-    <div class="dash-tab-nav" role="tablist">
+    <!-- 2026-08-24 (nav redesign, round 17 continued) — per direct
+         instruction to match the comps exactly and "finish everything":
+         the Start of Day / Working Dashboard toggle isn't in any comp —
+         every tab (including Daily Brief) now always shows one unified
+         panel (#dashPanel-working). #dashPanel-startOfDay and its own
+         toggle button are kept in the DOM (cfdModule/cfdSkip/cfdReopen
+         etc. still work if ever re-enabled) but permanently hidden via
+         CSS rather than deleted, so this stays a reversible content
+         swap, not a rewrite of the Conversational Front Door feature
+         itself. -->
+    <div class="dash-tab-nav" role="tablist" style="display:none;">
       <button type="button" class="dash-tab-btn active" id="dashTabBtn-startOfDay" onclick="switchDashboardTab('startOfDay')">Start of Day</button>
       <button type="button" class="dash-tab-btn" id="dashTabBtn-working" onclick="switchDashboardTab('working')">Working Dashboard</button>
     </div>
 
-    <div class="dash-tab-panel" id="dashPanel-startOfDay">
+    <div class="dash-tab-panel" id="dashPanel-startOfDay" style="display:none;">
       <!-- Round 132[cfd] (2026-08-12) — Conversational Front Door. See the
            CSS block's own comment above (.cfd) for the full rationale.
            cfdRender() (see JS) fills #cfdStandupBubble and swaps this whole
            block for #cfdCollapsedBar once sessionStorage's skip counter
            reaches 3, per the roadmap's "remembers after 3, self-select to
-           bring it back" decision. -->
+           bring it back" decision.
+           2026-08-24 (round 17) — permanently hidden (see the toggle's own
+           comment above): the persistent Ask Verilume bar at the top of
+           every page now covers this box's job ("type or talk — routes to
+           the right function"), and no comp shows a second conversational
+           input lower on the page. Left in the DOM, not deleted. -->
       <div class="cfd" id="cfdModule">
         <div class="cfd-standup">
           <div class="cfd-avatar">✦</div>
@@ -2512,7 +2588,12 @@
            review comment's proposed solution ("key observations based on
            collective workstreams and curated news"). Same module, same
            computeConnectedSignals()/renderConnectedSignals() as before —
-           renamed here to match the reviewed language, not rebuilt. -->
+           renamed here to match the reviewed language, not rebuilt.
+           2026-08-24 (round 17) — superseded on-screen by Daily Brief's
+           own new Key Observations panel (dailyBriefExtraHtml(), simple
+           one-line items per the comp) — this richer cross-workstream
+           version stays in the DOM/hidden rather than deleted, since it's
+           real, more sophisticated logic that may resurface later. -->
       <div style="margin-bottom:30px;">
         <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">🔗 Key Observations</div>
         <p class="hint" style="margin:0 0 12px;max-width:760px;">What's connected across workstreams right now — the kind of thing only visible by looking at more than one at a time.</p>
@@ -2535,17 +2616,7 @@
       </div>
     </div>
 
-    <div class="dash-tab-panel" id="dashPanel-working" style="display:none;">
-      <!-- Round 132bx (2026-08-15) — Your Access, per direct instruction:
-           "recognize the role based on user profile who logged in... They
-           should have access via CTA to Analytics to everything licensed
-           in the account except for the team member education section."
-           Reads state.userProfile (the account's own login — see that
-           field's own comment for why this isn't sourced from Team & Org
-           Chart's actingAsId). Not an access-control gate (this prototype
-           has no real per-person auth to enforce one) — an honest CTA
-           surface naming what this profile can reach. -->
-
+    <div class="dash-tab-panel" id="dashPanel-working">
       <!-- 2026-08-23 (nav redesign, round 16), per nav-structure.html §6
            (round 11 of the design review) — a short "AI Agent Thoughts"
            preview card under the page title on every tab, summarizing
@@ -2555,7 +2626,9 @@
            bubble treatment matches the approved mockup exactly (its own
            literal palette, not this app's shared token set — a small,
            self-contained callout, same posture as the illustrative-tag
-           spans elsewhere in this file). -->
+           spans elsewhere in this file). Round 17 — now shown on Daily
+           Brief too (title/abstract already tab-scoped; see
+           AI_THOUGHTS_TAB_TITLES/AI_THOUGHTS_TAB_ABSTRACTS). -->
       <div class="ai-thoughts-preview" id="aiThoughtsPreviewCard" role="button" tabindex="0" onclick="openAiThoughtsPreviewDrawer()" onkeydown="if(event.key==='Enter')openAiThoughtsPreviewDrawer()">
         <div class="ic">💭</div>
         <div class="body">
@@ -2565,33 +2638,26 @@
         <div class="go">Open →</div>
       </div>
 
-      <div class="dash-tile" id="workingAccessCard" style="margin-bottom:24px;"></div>
+      <!-- 2026-08-24 (round 17) — "Your Access" (CMO/Admin capability
+           card) isn't in any comp; hidden rather than deleted, same
+           reversible-swap posture as the rest of this round's changes.
+           renderWorkingDashboardAccess() (JS) still populates it if ever
+           re-shown. -->
+      <div class="dash-tile" id="workingAccessCard" style="display:none;"></div>
 
-      <div class="module open accent-media" id="execChartsModule">
-        <div class="module-head" onclick="toggleModule('execChartsModule')">
-          <span class="modnum">01</span>
-          <div class="titles">
-            <span class="tag">Section 1</span>
-            <h2>Executive snapshot</h2>
-          </div>
-          <span class="chevron">▸</span>
+      <!-- 2026-08-24 (round 17) — the old "Executive snapshot" donut-chart
+         accordion module is replaced with a clean 3-stat-card row per the
+         comps (see renderStatCards() / STAT_CARD_META). renderExecCharts()
+         and its donut/CSV/expand code are left intact but no longer
+         called from here — real code, not deleted, just unused now that
+         the comps call for a simpler stat card instead. Module id kept
+         so renderExecChartsVisibility() (hides this on Account
+         Management) still works unchanged. -->
+      <div id="execChartsModule">
+        <div class="stat-card-row-head">
+          <button type="button" class="customize-kpis-btn" onclick="goToStep('pendingFeature','Customize KPIs','Stat cards')">⚙ Customize KPIs</button>
         </div>
-        <div class="module-body">
-          <p class="lede" style="margin-bottom:16px;">Sample figures for this demo account. <span class="illustrative-tag">placeholder data</span> Expand any chart to look closer.</p>
-          <div class="exec-chart-grid three-up" id="execChartGrid">
-            <div class="exec-chart-card" id="impressionsChartCard"></div>
-            <div class="exec-chart-card" id="campaignsChartCard"></div>
-            <!-- Round 23 (2026-08-05), per direct instruction: "other sections
-                 within the Portal should include the top 3 items as visual
-                 charts/graphs not text" — the same 3 headline KPIs the CMO
-                 View leads Analysis with (AOV/CX, ROAS/Media
-                 Science, Net FIT Revenue/Combined), shown here as 3 small
-                 bar-style visual meters rather than paragraph stat tiles, so
-                 the Dashboard gets the glance version and Analysis
-                 gets the full depth (every KPI + Monthly Trendline). -->
-            <div class="exec-chart-card" id="efficiencyChartCard"></div>
-          </div>
-        </div>
+        <div class="stat-card-grid" id="tabStatCardGrid"></div>
       </div>
 
       <!-- 2026-08-23 (nav redesign, round 15) — Top 5 Most Urgent, per
@@ -2601,49 +2667,28 @@
            account-wide, not tab-specific)." Reuses cmpCreativeGridRows()'s
            existing soonest-due-first sort (the same sort Campaign
            Management's own Creative grid already uses) rather than
-           inventing new due-date logic — see renderTopUrgentModule(). -->
+           inventing new due-date logic — see renderTopUrgentModule().
+           Round 17 — accordion chrome (module-head/chevron/"—" tag)
+           stripped to a plain heading + inline meta tag, matching the
+           comps' simpler "Top 5 Most Urgent · Account-wide · sorted
+           soonest-due-first" presentation. -->
       <div class="module open accent-cx" id="topUrgentModule" style="display:none;">
-        <div class="module-head" onclick="toggleModule('topUrgentModule')">
-          <span class="modnum">—</span>
-          <div class="titles">
-            <span class="tag">Across every active campaign</span>
-            <h2>Top 5 Most Urgent</h2>
-          </div>
-          <span class="chevron">▸</span>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+          <h2 style="margin:0;font-size:1.0625rem;">🔴 Top 5 Most Urgent</h2>
+          <span class="tag" style="margin:0;">Account-wide · sorted soonest-due-first</span>
         </div>
-        <div class="module-body">
-          <p class="lede" style="margin-bottom:16px;">The 5 campaigns with the soonest creative-asset due date, account-wide — same list regardless of which tab you're on.</p>
-          <div id="topUrgentBody"></div>
-        </div>
+        <div id="topUrgentBody"></div>
       </div>
 
-      <div class="module open accent-cx" id="taskChipsModule">
-        <div class="module-head" onclick="toggleModule('taskChipsModule')">
-          <span class="modnum">02</span>
-          <div class="titles">
-            <span class="tag">Section 2</span>
-            <h2>What do you want to do?</h2>
-          </div>
-          <span class="chevron">▸</span>
-        </div>
-        <div class="module-body">
-          <p class="lede" style="margin-bottom:16px;">Pick a workstream to jump straight to it, instead of scanning every module below by default.</p>
-          <div class="group-grid" id="workstreamGrid"></div>
-        </div>
-      </div>
-
-      <p class="lede" style="margin:4px 0 32px;font-size:0.8125rem;">
-        Not one of the workstreams above:
-        <a class="flink" onclick="goToStep('voice')">Brand Voice guide</a> ·
-        <a class="flink" onclick="goToStep('searchSocial')">Search Everywhere &amp; Organic Social</a> ·
-        <a class="flink" onclick="goToStep('monitor')">Continuous Monitoring</a> ·
-        <a class="flink" id="secondaryTeamLink" onclick="goToStep('team')">Team &amp; Org Chart</a> ·
-        <a class="flink" onclick="goAdHoc();">Ad Hoc Project (not tied to a campaign)</a>
-      </p>
-
-      <p class="lede" style="margin:0 0 4px;font-size:0.8125rem;">
-        <a class="flink" onclick="switchDashboardTab('startOfDay')">🎙 Ask Verilume anything — back to Start of Day →</a>
-      </p>
+      <!-- 2026-08-24 (round 17) — "What do you want to do?" accordion
+           chrome removed; the tile grid now sits directly under Top 5
+           Most Urgent, matching the comps. For every tab except Daily
+           Brief, #workstreamGrid still holds the real per-tab tile shell
+           (renderWorkstreams()); for Daily Brief it now holds the new
+           Generative Commentary/Key Observations/Curated
+           News/Key-Tiles-Per-Role/AI-Partner-Routing content instead (see
+           dailyBriefExtraHtml()). -->
+      <div class="group-grid" id="workstreamGrid"></div>
     </div>
   </div>
 
@@ -7736,7 +7781,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-24-navy-header-nav-rebuild';
+const CXMEDIA_BUILD_STAMP = '2026-08-24-daily-brief-stat-cards-rebuild';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14556,11 +14601,11 @@ function toggleAskVerilumeVoiceNote(){
 // note as BP_FAQ_TOPIC_TAB's own comment) — its abstract says so honestly
 // rather than listing something that doesn't apply.
 // 2026-08-24 (nav redesign, round 17) — per-tab eyebrow/H1, sourced
-// verbatim from the approved comps. dailyBrief isn't listed: its H1 stays
-// the existing CMO Dashboard copy (already in the DOM) rather than the
-// comp's "Good morning, {name}." greeting — that's a further content
-// change (personalization + a different module stack below it) tracked
-// separately, not done this round.
+// verbatim from the approved comps. dailyBrief's H1 is now also dynamic
+// (round 17 continued, per "finish everything and test") — a personalized
+// "Good morning, {first name}." greeting, sourced from state.userName
+// (the account's real login name where set) with a name-less fallback
+// rather than fabricating one.
 const PRIMARY_TAB_HEADER_META = {
   strategy: { eyebrow: 'Planning · Where Are We Going', h1: 'Strategy' },
   brand: { eyebrow: 'Creative & Brand', h1: 'Brand & Voice Experiences' },
@@ -14568,7 +14613,10 @@ const PRIMARY_TAB_HEADER_META = {
   dataScientist: { eyebrow: 'Measurement & Analysis', h1: 'Data Scientist' },
   accountManagement: { eyebrow: 'Setup · All Optional', h1: 'Account Management' }
 };
-const DAILY_BRIEF_H1_TEXT = "The experience, working — and here's the proof.";
+function dailyBriefGreeting(){
+  const first = (state.userName || '').trim().split(/\s+/)[0];
+  return first ? `Good morning, ${first}.` : 'Good morning.';
+}
 function renderPrimaryTabHeaderText(){
   const eyebrowEl = document.getElementById('dashboardEyebrow');
   const h1El = document.getElementById('dashboardH1');
@@ -14577,17 +14625,15 @@ function renderPrimaryTabHeaderText(){
   if (!eyebrowEl || !h1El) return;
   const tab = activePrimaryTab || 'dailyBrief';
   const meta = PRIMARY_TAB_HEADER_META[tab];
+  if (subEl) subEl.style.display = 'none';
+  if (ledeEl) ledeEl.style.display = 'none';
   if (meta){
     eyebrowEl.textContent = meta.eyebrow;
     h1El.childNodes[0].nodeValue = meta.h1;
-    if (subEl) subEl.style.display = 'none';
-    if (ledeEl) ledeEl.style.display = 'none';
   } else {
-    // dailyBrief — restore the CMO Dashboard copy this element always had.
-    h1El.childNodes[0].nodeValue = DAILY_BRIEF_H1_TEXT;
-    renderDashboardLabel();
-    if (subEl) subEl.style.display = '';
-    if (ledeEl) ledeEl.style.display = '';
+    // dailyBrief
+    eyebrowEl.textContent = 'Daily Brief · Home';
+    h1El.childNodes[0].nodeValue = dailyBriefGreeting();
   }
 }
 const AI_THOUGHTS_TAB_ABSTRACTS = {
@@ -14599,6 +14645,7 @@ const AI_THOUGHTS_TAB_ABSTRACTS = {
   accountManagement: 'The audience baseline data — wealth tier, generation, company profile — that every AI-generated recommendation across the portal reads from.'
 };
 const AI_THOUGHTS_TAB_TITLES = {
+  dailyBrief: 'AI Agent Thoughts — Daily Brief',
   strategy: 'AI Agent Thoughts — Strategy',
   brand: 'AI Agent Thoughts — Brand',
   marketer: 'AI Agent Thoughts — Marketer',
@@ -14723,6 +14770,16 @@ function renderWorkstreams(){
   // link points right back here) — suppressed only on this tab.
   const banner = (activePrimaryTab && activePrimaryTab !== 'dailyBrief' && activePrimaryTab !== 'accountManagement' && !accountIsConfigured())
     ? accountNotConfiguredBannerHtml() : '';
+  if (activePrimaryTab === 'dailyBrief' || !activePrimaryTab){
+    // 2026-08-24 (round 17) — Daily Brief's own content, replacing the
+    // generic per-tab tile shell with the comp's bespoke module stack:
+    // Generative Summarized Commentary + Key Observations, Curated News,
+    // Key Tiles Per Role, AI Partner — Text Routing. See
+    // dailyBriefExtraHtml().
+    grid.innerHTML = dailyBriefExtraHtml();
+    renderCuratedNewsCards();
+    return;
+  }
   if (activePrimaryTab === 'strategy'){
     // Strategy has no workstream card of its own yet (see WORKSTREAMS'
     // comment above) — a real shell of functional links instead of a
@@ -14889,6 +14946,151 @@ function cfdReopen(){
 // dashboards from the mockups, the Top 5 Most Urgent module, Account
 // Management's tile grid, mobile breakpoints) are later phases — not yet
 // built here.
+// 2026-08-24 (nav redesign, round 17 continued) — per-tab stat cards,
+// replacing the old "Executive snapshot" donut-chart module. Sample
+// figures for this demo account, same "placeholder data" honesty
+// convention the donut module used — a real build would source these
+// from each workstream's own live numbers (Impressions/Active Campaigns
+// from Campaign Management, Measurement Coverage from Media Science,
+// etc.), not invent new plumbing here. Values/labels sourced verbatim
+// from the approved comps. `bars`: 7 slots, 1 = amber/highlighted bar,
+// 0 = neutral gray — a small decorative sparkline row, not a real chart.
+const STAT_CARD_META = {
+  dailyBrief: [
+    { label: 'Impressions (7D)', value: '4.82M', delta: '▲ 6% vs prior week', good: true, bars: [0,0,1,0,1,0,0] },
+    { label: 'Active Campaigns', value: '14', delta: '• 2 need approval', good: false, bars: [0,0,1,0,1,1,0] },
+    { label: 'Media Efficiency', value: '3.4x', delta: '▲ On track vs. plan', good: true, bars: [0,0,0,1,1,0,1] }
+  ],
+  strategy: [
+    { label: 'Budget Pacing', value: '97%', delta: '▲ On track vs. annual plan', good: true, bars: [0,0,0,1,0,1,0] },
+    { label: 'MMM Allocation Confidence', value: 'High', delta: '▲ Last refreshed 3 days ago', good: true, bars: [0,0,1,0,1,0,0] },
+    { label: 'Media Plans Audited', value: '6 / 6', delta: '▲ All agency plans finalized', good: true, bars: [0,0,1,0,0,1,0] }
+  ],
+  brand: [
+    { label: 'Brand Sentiment', value: '82', delta: '▲ +4 pts vs last month', good: true, bars: [0,0,0,1,0,1,0] },
+    { label: 'Creative in Review', value: '5', delta: '• Awaiting approval', good: false, bars: [0,0,1,0,1,0,0] },
+    { label: 'Reputation Score', value: '4.6 / 5', delta: '▲ Stable, no flags this week', good: true, bars: [0,0,1,0,0,1,0] }
+  ],
+  marketer: [
+    { label: 'Active Campaigns', value: '14', delta: '▲ 2 vs last month', good: true, bars: [0,0,1,0,1,0,0] },
+    { label: 'Creative in QA', value: '6', delta: '• Awaiting approval', good: false, bars: [0,0,1,0,1,0,0] },
+    { label: 'Budget Pacing', value: '92%', delta: '▲ On track', good: true, bars: [0,0,0,1,1,0,1] }
+  ],
+  dataScientist: [
+    { label: 'Measurement Coverage', value: '88%', delta: '▲ +5 pts vs last quarter', good: true, bars: [0,0,0,1,0,0,1] },
+    { label: 'Match Market Confidence', value: 'High', delta: '▲ 3 markets validated this month', good: true, bars: [0,0,1,0,1,0,0] },
+    { label: 'KPI Actuals vs. Target', value: '104%', delta: '▲ Ahead of target', good: true, bars: [0,0,0,1,0,1,0] }
+  ]
+};
+function renderStatCards(){
+  const el = document.getElementById('tabStatCardGrid');
+  if (!el) return;
+  const tab = activePrimaryTab || 'dailyBrief';
+  const cards = STAT_CARD_META[tab];
+  if (!cards){ el.innerHTML = ''; return; }
+  el.innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="sc-label">${escapeHtml(c.label)}</div>
+      <div class="sc-value">${escapeHtml(c.value)}</div>
+      <div class="sc-delta ${c.good ? 'good' : 'neutral'}">${escapeHtml(c.delta)}</div>
+      <div class="sc-spark">${c.bars.map(b => `<span class="${b ? 'hi' : ''}" style="height:${8 + b * 12}px;"></span>`).join('')}</div>
+    </div>`).join('');
+}
+
+// 2026-08-24 (round 17) — Curated News restyled as a 3-card grid for
+// Daily Brief, per the comps. Reuses the real DAILY_NEWS_ITEMS array
+// (same hand-curated headlines the old accordion module showed, see that
+// array's own comment for why these are real, not invented) — top 3
+// only, matching the comp's 3-card layout, rather than all 5.
+function renderCuratedNewsCards(){
+  const el = document.getElementById('curatedNewsCardGrid');
+  if (!el) return;
+  el.innerHTML = DAILY_NEWS_ITEMS.slice(0, 3).map(item => `
+    <a class="curated-news-card" href="${item.url}" target="_blank" rel="noopener">
+      <div class="cn-meta">${escapeHtml(item.meta)}</div>
+      <div class="cn-title">${escapeHtml(item.title)}</div>
+    </a>`).join('');
+}
+
+// 2026-08-24 (round 17) — Daily Brief's own module stack, replacing the
+// generic workstream tile shell (see renderWorkstreams()'s 'dailyBrief'
+// branch). Generative Summarized Commentary and Key Observations are
+// simple, illustrative sample content for this demo account — same
+// "placeholder data" honesty convention as the stat cards above, not a
+// claim that real generative summarization runs today (see the daily
+// standup/CFD module's own real, more sophisticated
+// computeConnectedSignals() for the actual cross-workstream signal logic
+// this simpler comp version doesn't replace, just sits alongside).
+// Key Tiles Per Role routes straight into switchPrimaryTab() for each of
+// the other five tabs — same navigation the primary nav itself uses.
+// AI Partner — Text Routing reuses the real 'collaboration' workstream
+// entry (WORKSTREAMS array) for its Enterprise-badged tile; "Team
+// collaboration" ('Slack-type' comments) has no real destination yet — a
+// new, honestly Pending Development concept per the comp, not a relabel
+// of something that already exists.
+const ROLE_TILES = [
+  { tab: 'strategy', label: 'Strategy', desc: 'Budget pacing, competitive intel, planning' },
+  { tab: 'brand', label: 'Brand', desc: 'Creative production, sentiment, reputation' },
+  { tab: 'marketer', label: 'Marketer', desc: 'Campaign status, calendar, testing' },
+  { tab: 'dataScientist', label: 'Data Scientist', desc: 'Measurement, match markets, KPIs' },
+  { tab: 'accountManagement', label: 'Account Management', desc: 'Setup — all optional, any order' }
+];
+function dailyBriefExtraHtml(){
+  return `
+    <div class="db-section">
+      <div class="gen-commentary-grid">
+        <div class="gen-commentary-card">
+          <span class="badge-ai-generated">AI-Generated</span>
+          <p>Impressions are up 6% week-over-week, driven mostly by the fall sailings push on paid social — efficiency held at 3.4x, comfortably above the 2.8x plan floor. Two campaigns (Mediterranean Late-Season, Alaska Repositioning) are sitting in creative approval and are the only thing between you and full pacing this week.</p>
+          <p>Nothing in market needs your attention today outside those two approvals. Budget pacing across all active campaigns is within 3% of plan. <span class="illustrative-tag">sample summary for this demo account — not a live generative pull</span></p>
+        </div>
+        <div>
+          <div class="db-section-title">Key Observations</div>
+          <div class="key-obs-list">
+            <div class="key-obs-item warn"><b>2 campaigns awaiting creative approval</b> — Mediterranean Late-Season, Alaska Repositioning</div>
+            <div class="key-obs-item good"><b>Budget pacing</b> within 3% of plan across all active campaigns</div>
+            <div class="key-obs-item info"><b>Competitor activity</b> up on paid social this week — see Battle Brief in <a class="flink" onclick="switchPrimaryTab('strategy')">Strategy</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="db-section">
+      <div class="db-section-title">Curated News</div>
+      <div class="curated-news-grid" id="curatedNewsCardGrid"></div>
+    </div>
+    <div class="db-section">
+      <div class="db-section-title">Key Tiles Per Role</div>
+      <div class="role-tiles-grid">
+        ${ROLE_TILES.map(t => `
+          <div class="role-tile" onclick="switchPrimaryTab('${t.tab}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')switchPrimaryTab('${t.tab}')">
+            <div class="rt-icon">▤</div>
+            <div class="rt-label">${escapeHtml(t.label)}</div>
+            <div class="rt-desc">${escapeHtml(t.desc)}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="db-section" style="margin-bottom:0;">
+      <div class="db-section-title">AI Partner — Text Routing</div>
+      <div class="ai-partner-grid">
+        <div class="ai-partner-tile" onclick="openWorkstream('collaboration')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openWorkstream('collaboration')">
+          <div class="ap-icon">💬</div>
+          <div class="ap-body">
+            <div class="ap-label">Collaboration${tileBadgeHtml('enterprise')}</div>
+            <div class="ap-desc">Describe what you need in plain language — your AI Partner routes it to the right function instead of you clicking through the org chart.</div>
+          </div>
+          <div class="ap-go">Open →</div>
+        </div>
+        <div class="ai-partner-tile is-pending">
+          <div class="ap-icon">💬</div>
+          <div class="ap-body">
+            <div class="ap-label">Team collaboration${tileBadgeHtml('pending')}</div>
+            <div class="ap-desc">"Slack-type" comments — a third, distinct concept</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function switchPrimaryTab(tab){
   activePrimaryTab = tab;
   try { sessionStorage.setItem('primaryTab', tab); } catch (e) {}
@@ -14896,12 +15098,13 @@ function switchPrimaryTab(tab){
     el.classList.toggle('active', el.dataset.tab === tab);
   });
   goToStep('dashboard');
-  if (tab === 'dailyBrief'){
-    switchDashboardTab('startOfDay');
-  } else {
-    switchDashboardTab('working');
-    renderWorkstreams();
-  }
+  // 2026-08-24 (round 17) — every tab, including Daily Brief, now shows
+  // the one unified panel (see that panel's own comment for why the old
+  // Start of Day/Working Dashboard split is gone). renderWorkstreams()
+  // has its own 'dailyBrief' branch (dailyBriefExtraHtml()) so this call
+  // is unconditional now, same as every other tab.
+  renderWorkstreams();
+  renderStatCards();
   renderTopUrgentModule();
   renderExecChartsVisibility();
   renderAskVerilumeBar();
@@ -41234,16 +41437,12 @@ async function saveCompetitivePositioning(){
   cfdRender();
   renderConnectedSignals(); // Round 132bx (2026-08-15) — Connected Signals module ("Key Observations")
 
-  // Round 132bx (2026-08-15) — restore the Portal Home tab choice for this
-  // session (same persistence convention as the CFD skip counter). Defaults
-  // to Start of Day, the lean landing view, on a fresh session.
-  // 2026-08-23 (nav redesign, round 12) — if a non-Daily-Brief primary tab
-  // was restored above, land on Working Dashboard (where the filtered
-  // workstream grid lives) instead of Start of Day, so the restored tab
-  // and the restored panel never disagree with each other.
-  let savedDashboardTab = activePrimaryTab === 'dailyBrief' ? 'startOfDay' : 'working';
-  try { savedDashboardTab = sessionStorage.getItem('dashboardTab') || savedDashboardTab; } catch (e) {}
-  switchDashboardTab(savedDashboardTab);
+  // 2026-08-24 (round 17, Daily Brief unification) — the old Start of
+  // Day/Working Dashboard split is gone (see dashPanel-working's own
+  // comment); switchDashboardTab() is dead now, so this init call that
+  // used to restore/toggle between the two panels is removed too. Every
+  // tab, including Daily Brief, renders the single unified panel via
+  // switchPrimaryTab() -> renderWorkstreams()/renderStatCards()/etc.
 
   accResyncAll();
 
