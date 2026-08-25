@@ -1745,7 +1745,7 @@
            the data sources." -->
       <h2 style="font-size:1.25rem;margin-top:32px;">Your company profile</h2>
       <div class="recap-card">
-        <span class="recap-tag">Brand description — pulled from your website, or add your own</span>
+        <span class="recap-tag" id="recapDescTag">Brand description — pulled from your website, or add your own</span>
         <div class="field-hint">Update this any time. If you left Step 2's description blank, this starts as a placeholder built from your company URL — replace it with your own copy whenever you're ready.</div>
         <textarea id="recapDescInput" oninput="updateRecapDescription()"></textarea>
       </div>
@@ -2599,6 +2599,17 @@ const INDUSTRY_KEYWORDS = {
 // (enterProfileGuess()) is responsible for showing an honest "we couldn't
 // confidently guess this" state rather than silently defaulting — a false
 // guess erodes trust faster than admitting the limits of a website-only read.
+// 2026-08-25 — real fetch result from POST /api/assessment/website-scan,
+// captured by startSiteReview() below and read here and (later, once the
+// rubric is done) by the AI-generated readout call in renderReportSynthesis().
+// Session-only, deliberately NOT part of `state`/buildScorecardPayload() —
+// this is raw scraped page content, not a visitor-entered profile field.
+// See cxmedia-assessment-inputs-status-audit-2026-08-25.md for why this
+// exists: before this change, nothing in the assessment ever actually read
+// a visitor's website — this is the real thing, not a second guess layered
+// on top of the old one.
+let assessmentWebsiteContext = null;
+
 function guessProfileFromInput(){
   const domain = normalizeDomain(document.getElementById('inUrl').value);
   const known = KNOWN_BRAND_OVERVIEWS[domain];
@@ -2613,7 +2624,16 @@ function guessProfileFromInput(){
       source: `Brand overview pulled from public sources for ${known.company} — this build's demo account.`
     };
   }
-  const haystack = `${state.company} ${domain}`.toLowerCase();
+  // 2026-08-25 — startSiteReview() now runs a real website fetch before
+  // this is called. When it succeeded, match against the page's own
+  // title/meta description/headings/excerpt too, not just the company
+  // name and URL — a real signal instead of a name-only guess, and a real
+  // description to show even when no industry keyword matches anything.
+  // Falls straight through to the exact name/URL-only match this always
+  // did when the fetch failed, timed out, or the site had nothing usable.
+  const site = assessmentWebsiteContext;
+  const siteText = site ? `${site.title || ''} ${site.metaDescription || ''} ${(site.headings || []).join(' ')} ${site.excerpt || ''}` : '';
+  const haystack = `${state.company} ${domain} ${siteText}`.toLowerCase();
   let industryIdx = -1;
   for (const [label, keywords] of Object.entries(INDUSTRY_KEYWORDS)){
     if (keywords.some(k => haystack.includes(k))){
@@ -2621,24 +2641,41 @@ function guessProfileFromInput(){
       break;
     }
   }
+  let source;
+  if (site && industryIdx !== -1){
+    source = `Matched from your website's own content (${site.url}) — a real read, worth double-checking against your Step 5 recap.`;
+  } else if (site){
+    source = `We read your website but didn't find enough signal there to confidently guess your industry — pick what's right below.`;
+  } else if (industryIdx !== -1){
+    source = `Guessed from your company name/URL — a name-only match, not a real site read. Worth double-checking.`;
+  } else {
+    source = `Not enough signal in a name/URL-only read to guess this confidently — pick what's right below.`;
+  }
   return {
-    confident: false,
+    confident: industryIdx !== -1,
     industryIdx,
-    description: '',
+    description: (site && site.metaDescription) ? site.metaDescription : '',
     productThemes: '',
     audience: [],
     wealth: [],
-    source: industryIdx !== -1
-      ? `Guessed from your company name/URL — a name-only match, not a real site read. Worth double-checking.`
-      : `Not enough signal in a name/URL-only read to guess this confidently — pick what's right below.`
+    source
   };
 }
 
 // Round 105 — Step 1's Continue button. Locks in company/url/region (already
 // mirrored into `state` by checkCompanyReady() as the visitor typed), shows
 // the "Reviewing your site…" interstitial, and staggers the 4 checklist rows
-// to .done over a fixed ~1.8s timer standing in for what an actual
-// enrichment/crawl call would do, then hands off to enterProfileGuess().
+// to .done as it actually progresses.
+//
+// 2026-08-25 — the fixed ~1.8s timer that used to stand in for a crawl is
+// gone. This now fires a real fetch (POST /api/assessment/website-scan) in
+// parallel with the checklist animation and waits on whichever finishes
+// last of (a) that real fetch, bounded by the endpoint's own 8s timeout,
+// and (b) the same short animation floor as before, so the checklist never
+// just flashes and vanishes on a fast response. A failed or unreachable
+// site never blocks the flow — it falls straight through to the honest
+// name/URL-only guess in guessProfileFromInput(), exactly as before this
+// change; the only difference is a real attempt happens first.
 function startSiteReview(){
   checkCompanyReady();
   goToStep('site-review');
@@ -2650,7 +2687,21 @@ function startSiteReview(){
   items.forEach((li, i) => {
     setTimeout(() => li.classList.add('done'), stagger * (i + 1));
   });
-  setTimeout(enterProfileGuess, stagger * items.length + 350);
+
+  assessmentWebsiteContext = null;
+  const minFloor = new Promise(resolve => setTimeout(resolve, stagger * items.length + 350));
+  const fetchUrl = (state.url || '').trim();
+  const fetchPromise = /^https?:\/\/.+/i.test(fetchUrl)
+    ? fetch(`${BACKEND_URL}/api/assessment/website-scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: fetchUrl })
+      }).then(r => r.json()).then(data => {
+        if (data && !data.error) assessmentWebsiteContext = data;
+      }).catch(() => {})
+    : Promise.resolve();
+
+  Promise.all([minFloor, fetchPromise]).then(enterProfileGuess);
 }
 
 // Round 105 — populates Step 2 ("profile-guess") from guessProfileFromInput(),
@@ -3869,8 +3920,19 @@ function renderJourneyBP(){
 
   const target = document.getElementById('journeyBP');
   if (!target) return;
+  // 2026-08-25 — this opening clause used to unconditionally claim "based
+  // on your website" even when no real fetch ever happened (pre-real-fetch,
+  // that was true for every domain except the one demo account). Now that
+  // startSiteReview() runs a real POST /api/assessment/website-scan, say so
+  // only when assessmentWebsiteContext actually holds a successful read —
+  // otherwise this honestly names what it's actually grounded in (the
+  // profile fields the visitor entered), matching the same per-field
+  // honesty convention as guessProfileFromInput()'s own source labels.
+  const websiteReadClause = assessmentWebsiteContext
+    ? `based on your website and the profile you just gave us`
+    : `based on the profile you just gave us`;
   target.innerHTML = bpPanel(`Optimizing the journey for ${company}`,
-    `Here's our first read on ${company}, based on your website and the profile you just gave us — a seasoned outside view, not an audit of your internal data. ${genSentence} ${wealthSentence} ${footprintSentence}${buyerSentence} Treat this as a starting hypothesis: pick the stages and products below where it's right, and tell us where it's off — we'd rather hear that now than build your program on a bad assumption.`);
+    `Here's our first read on ${company}, ${websiteReadClause} — a seasoned outside view, not an audit of your internal data. ${genSentence} ${wealthSentence} ${footprintSentence}${buyerSentence} Treat this as a starting hypothesis: pick the stages and products below where it's right, and tell us where it's off — we'd rather hear that now than build your program on a bad assumption.`);
 }
 
 // Shared short-phrase clauses (generation skew, wealth tone, footprint bar)
@@ -4433,6 +4495,18 @@ function renderRecapDescription(){
   const el = document.getElementById('recapDescInput');
   if (!el.dataset.userEdited){
     el.value = state.description || descriptionPlaceholderFromUrl();
+  }
+  // 2026-08-25 — this tag used to unconditionally say "pulled from your
+  // website," which was only ever true for the one demo account before the
+  // real fetch existed. Now it reflects what actually happened for this
+  // visitor: a real successful read, a real read that came up empty, or no
+  // fetch attempted (e.g. no URL entered) — same three-way honesty as
+  // guessProfileFromInput()'s own source label.
+  const tagEl = document.getElementById('recapDescTag');
+  if (tagEl){
+    tagEl.textContent = assessmentWebsiteContext
+      ? 'Brand description — pulled from your website, or add your own'
+      : 'Brand description — add your own (we couldn\'t pull one from your website)';
   }
 }
 function updateRecapDescription(){
@@ -5347,6 +5421,64 @@ function renderReportSynthesis(){
     </div>`).join('');
 }
 
+// 2026-08-25 — the AI-generated version of the "here's what we learned"
+// synthesis plus a new "how Verilume fits" opportunity panel, per direct
+// instruction that the free report's readout should sound like a senior
+// consultant presenting the opportunity, not a templated checklist (see
+// buildAssessmentReadoutPrompt()'s own comment in server.js for the full
+// framing rationale — consultant voice, never criticizes the room, value
+// language only, no tier names). Called from renderInitialReport() right
+// after renderReportSynthesis()/renderJourneyBP() already rendered their
+// templated versions synchronously — this runs async and OVERWRITES those
+// two spots (#reportSynthesisText and #journeyBP) only on a real success.
+// On any failure — ANTHROPIC_API_KEY not configured (true in production
+// today), rate-limited, network error, malformed response — the endpoint
+// itself returns { synthesis: null, opportunity: null, note } rather than
+// an HTTP error, and this function just leaves the templated copy already
+// on screen exactly as it is. The free tool never shows a blank or broken
+// state over this either way.
+async function applyAiGeneratedReadout(){
+  try {
+    const s = activeScores();
+    const stages = RUBRIC.map(r => ({
+      stage: r.stage,
+      sub: r.sub,
+      rating: state.stageEffectiveness[r.stage] || null,
+      ratingLabel: state.stageEffectiveness[r.stage] ? STAGE_EFF_LABEL[state.stageEffectiveness[r.stage]] : null
+    }));
+    const resp = await fetch(`${BACKEND_URL}/api/assessment/generate-readout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: state.company || '',
+        industryLabel: industryOf().label || '',
+        footprint: state.region || '',
+        audience: audienceLabels(),
+        wealth: wealthLabels(),
+        buyerType: state.buyerType || '',
+        websiteContext: assessmentWebsiteContext,
+        stages,
+        mediaPct: s.mediaPct,
+        cxPct: s.cxPct
+      })
+    });
+    const result = await resp.json();
+    if (result && result.synthesis){
+      const introEl = document.getElementById('reportSynthesisText');
+      if (introEl) introEl.textContent = result.synthesis;
+    }
+    if (result && result.opportunity){
+      const target = document.getElementById('journeyBP');
+      if (target) target.innerHTML = bpPanel(`How Verilume fits for ${state.company || 'this brand'}`, result.opportunity);
+    }
+  } catch (e){
+    // Silent by design — the templated synthesis/journeyBP content already
+    // rendered synchronously in renderInitialReport() before this was
+    // called stays exactly as-is. Nothing user-facing to report here that
+    // the standard reading doesn't already cover.
+  }
+}
+
 // Round 122 — generations/wealth recap, split out from the detailed Census
 // table (still shown inside the Company Profile accordion item) into a
 // quick-scan chip row for the first deliverable. Reuses the same
@@ -5377,6 +5509,14 @@ function renderInitialReport(){
   renderReportSynthesis();
   renderAudienceRecapChips();
   renderFullReport();
+  // 2026-08-25 — fires the AI-generated readout (see
+  // applyAiGeneratedReadout()'s own comment below) after the templated
+  // synthesis/journeyBP content above has already rendered synchronously,
+  // so the page never shows a blank or loading state while this is
+  // in flight. Deliberately not awaited here — it overwrites the two
+  // targeted spots in place on success and leaves everything else, and
+  // everything already on screen, exactly as-is on any failure.
+  applyAiGeneratedReadout();
   // 2026-08-21, per direct instruction — visitors who already have a real
   // Verilume account (created via the Save & Schedule modal, then chose
   // "Keep going with the assessment" instead of going straight to the

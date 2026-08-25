@@ -4083,6 +4083,78 @@
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('styleAssets')">← Back: Style Guide — Colors &amp; Fonts</a>
       <span class="seq-spacer"></span>
+      <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
+    </div>
+  </div>
+
+  <!-- ================= WEBSITE EXAMPLES (Brand Foundations, 2026-08-25) ================= -->
+  <!-- Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
+       client include/exclude specific pages, whole directories, or their
+       entire site as copywriting inputs, separate from (but a sibling
+       step to) Sample Writings & Presentations above. Backed by
+       POST/GET/DELETE /api/accounts/:id/brand-copy-website-examples. -->
+  <div class="step" id="step-websiteExamples">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Website Examples</div>
+    <div class="eyebrow">Brand Groundwork · Website Examples</div>
+    <h1>Website Examples</h1>
+    <p class="lede">Point the copywriter at real pages on your own site — a whole directory, your entire site, or specific pages you pick. Query strings are always stripped. Up to 5 directory/site entries and 20 page entries, counted together across includes and excludes. Directory and site rules are resolved from your site's <code>sitemap.xml</code> — sites without one, or with a multi-file sitemap index, aren't supported yet; add specific pages instead.</p>
+
+    <div class="module open accent-media" id="wsAddModule">
+      <div class="module-head" onclick="toggleModule('wsAddModule')">
+        <span class="modnum">A</span>
+        <div class="titles">
+          <span class="tag">Add a rule</span>
+          <h2>Include or exclude</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <div class="field-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div class="field" style="flex:1;min-width:160px;">
+            <label>Mode</label>
+            <select id="wsMode">
+              <option value="include">Include</option>
+              <option value="exclude">Exclude</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:160px;">
+            <label>Scope</label>
+            <select id="wsScope" onchange="wsUpdatePathField()">
+              <option value="page">Specific page</option>
+              <option value="directory">Directory</option>
+              <option value="site">Entire site</option>
+            </select>
+          </div>
+          <div class="field" style="flex:2;min-width:240px;" id="wsPathField">
+            <label>Path</label>
+            <input type="text" id="wsPath" placeholder="/brand/product/ or /about-us">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="wsAddRule()">Add rule</button>
+        </div>
+        <div class="hint" id="wsAddStatus" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <div class="module open" id="wsListModule">
+      <div class="module-head" onclick="toggleModule('wsListModule')">
+        <span class="modnum">B</span>
+        <div class="titles">
+          <span class="tag">Rules</span>
+          <h2>Your include/exclude list</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <div class="hint" id="wsCapUsage" style="margin-bottom:10px;"></div>
+        <div id="wsListBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
+    <div class="seq-nav">
+      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings &amp; Presentations</a>
+      <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('competitivePositioning')">Next: Competitive Positioning →</a>
     </div>
   </div>
@@ -4222,7 +4294,7 @@
     <div id="positioningSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings &amp; Presentations</a>
+      <a class="btn-ghost" onclick="goToStep('websiteExamples')">← Back: Website Examples</a>
       <span class="seq-spacer"></span>
       <!-- 2026-08-23 — Competitive Positioning used to be the last step in
            Brand Groundwork ("Done — Back to Dashboard"); it's now step 5 of
@@ -8364,6 +8436,7 @@ const FUNCTION_GROUPS = [
     // Brand Style column; net new, not previously part of this group.
     { name: 'Style Guide — Logo', tier: 'integration', built: false, note: 'Logo files and usage rules — not a generative task.' },
     { name: 'Sample Writings & Presentations', tier: 'integration', built: true, route: 'brandWritingSamples', note: 'Managed under Brand Groundwork (Dashboard) — upload real writing/presentation samples (Word, PDF, PowerPoint) or link a Google Doc/Slides, always categorized by purpose (Standard Presentation Template, Sales, PR, Consumer Marketing) and date. Reference storage, not a generative task — files route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload.' },
+    { name: 'Website Examples', tier: 'integration', built: true, route: 'websiteExamples', note: 'Managed under Brand Groundwork (Dashboard) — include/exclude real pages, directories, or your entire site (resolved via sitemap.xml) as copy examples for the copywriter. Up to 5 directory/site entries and 20 page entries, counted together across includes and excludes.' },
     { name: 'Creative — Print / Digital / Video / DAM-MAM', tier: 'hybrid', note: 'A creative brief per format is prompt-ready; the finished asset is not.' },
     { name: 'Messaging — Ad Copy, Email, Brochures, Training Guides, SEO/GEO/AEO, Video script', tier: 'ready', built: false },
     { name: 'Campaign-Specific Brief & Longform Copy', tier: 'ready', built: true, route: 'brandCampaignBrief', note: 'Write the creative brief and master longform copy a specific campaign\'s creative draws from. Confirmed hard gate — Marketing Ops creates the campaign first; this opens straight to that campaign\'s Brand card once one exists.' }
@@ -14570,6 +14643,7 @@ const ACCOUNT_MGMT_TILE_GROUPS = [
   { label: 'Brand Foundation', items: [
     { label: 'Style Guide — Colors & Fonts', step: 'styleAssets' },
     { label: 'Sample Writings & Presentations', step: 'brandWritingSamples' },
+    { label: 'Website Examples', step: 'websiteExamples', desc: 'Real pages from your own site as copy examples' },
     { label: 'Competitive Positioning', step: 'competitivePositioning', desc: 'Initial setup — ongoing tracking lives in Strategy' }
   ]},
   { label: 'Budget & Taxonomy', items: [
@@ -23805,6 +23879,109 @@ async function bwsDeleteSample(id){
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (resp.ok) bwsLoadLibrary();
   } catch (e){ /* no-op — history refresh will show current state on next load */ }
+}
+
+// ---------- Website Examples (Brand Groundwork, 2026-08-25) ----------
+// Per cxmedia-brand-copy-website-examples-design-2026-08-25.md. Backed by
+// POST/GET/DELETE /api/accounts/:id/brand-copy-website-examples. Same
+// load-on-step-entry pattern as bwsInit()/bwsLoadLibrary() above.
+let wsRules = [];
+function wsInit(){
+  wsUpdatePathField();
+  const status = document.getElementById('wsAddStatus'); if (status) status.textContent = '';
+  wsLoadList();
+}
+// scope='site' has no meaningful path — hide the field and show a fixed
+// note instead of an editable input, since the rule always applies to '/'.
+function wsUpdatePathField(){
+  const scope = document.getElementById('wsScope').value;
+  const field = document.getElementById('wsPathField');
+  if (!field) return;
+  if (scope === 'site'){
+    field.innerHTML = `<label>Path</label><div class="hint" style="padding-top:8px;">Applies to your entire site — no path needed.</div>`;
+  } else {
+    field.innerHTML = `<label>Path</label><input type="text" id="wsPath" placeholder="${scope === 'directory' ? '/brand/product/' : '/about-us'}">`;
+  }
+}
+async function wsAddRule(){
+  const statusEl = document.getElementById('wsAddStatus');
+  if (!state.companyId) return;
+  const mode = document.getElementById('wsMode').value;
+  const scope = document.getElementById('wsScope').value;
+  const pathInput = document.getElementById('wsPath');
+  const path = pathInput ? pathInput.value.trim() : '';
+  if (scope !== 'site' && !path){
+    statusEl.textContent = 'A path is required for a directory or page rule.';
+    return;
+  }
+  statusEl.textContent = scope === 'site' || scope === 'directory' ? 'Resolving pages from your sitemap…' : 'Adding…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-copy-website-examples`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, scope, path })
+    });
+    const data = await resp.json();
+    if (!resp.ok){
+      statusEl.textContent = data.error || 'Could not add that rule.';
+      return;
+    }
+    let msg = data.status === 'failed'
+      ? `Added, but couldn't resolve it: ${data.error || 'unknown error'}`
+      : (typeof data.resolvedCount === 'number' ? `Resolved ${data.resolvedCount} page(s).` : 'Added.');
+    if (data.truncatedNote) msg += ` ${data.truncatedNote}`;
+    if (data.warning) msg += ` ${data.warning}`;
+    statusEl.textContent = msg;
+    if (pathInput) pathInput.value = '';
+    wsLoadList();
+  } catch (e){
+    statusEl.textContent = 'Backend unreachable — could not add that rule.';
+  }
+}
+async function wsLoadList(){
+  const body = document.getElementById('wsListBody');
+  const usageEl = document.getElementById('wsCapUsage');
+  if (!body || !state.companyId) return;
+  body.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-copy-website-examples`);
+    if (!resp.ok){ body.innerHTML = '<p class="hint">Couldn\'t load your rules right now.</p>'; return; }
+    const data = await resp.json();
+    wsRules = data.rules || [];
+    if (usageEl) usageEl.textContent = `${data.directoriesUsed}/${data.directoriesCap} directory/site entries · ${data.pagesUsed}/${data.pagesCap} page entries (counted across include and exclude)`;
+    wsRenderList();
+  } catch (e){
+    body.innerHTML = '<p class="hint">Backend unreachable — can\'t load your rules.</p>';
+  }
+}
+function wsScopeLabel(scope){ return scope === 'site' ? 'Entire site' : scope === 'directory' ? 'Directory' : 'Page'; }
+function wsStatusLabel(status){
+  return { active: 'Active', excluded: 'Excluded', failed: 'Failed to resolve', 'capped-out': 'Capped out' }[status] || status;
+}
+function wsRenderList(){
+  const body = document.getElementById('wsListBody');
+  if (!body) return;
+  if (!wsRules.length){
+    body.innerHTML = '<p class="hint">No rules yet — add an include or exclude rule above.</p>';
+    return;
+  }
+  body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
+    <thead><tr><th>Mode</th><th>Scope</th><th>Path</th><th>Status</th><th>Resolved pages</th><th></th></tr></thead>
+    <tbody>${wsRules.map(r => `
+      <tr>
+        <td>${escapeHtml(r.mode === 'exclude' ? 'Exclude' : 'Include')}</td>
+        <td>${escapeHtml(wsScopeLabel(r.scope))}</td>
+        <td>${escapeHtml(r.path)}</td>
+        <td>${escapeHtml(wsStatusLabel(r.status))}</td>
+        <td>${r.resolvedPages ? `${r.resolvedPages.filter(p => p.status === 'active').length} of ${r.resolvedPages.length}` : (r.scope === 'page' ? '—' : '')}</td>
+        <td><button type="button" class="btn-ghost" onclick="wsDeleteRule('${r.id}')">Remove</button></td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+async function wsDeleteRule(id){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-copy-website-examples/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (resp.ok) wsLoadList();
+  } catch (e){ /* no-op — next load will show current state */ }
 }
 
 // ---------- Marketing Budget Upload (format-flexibility ingestion test) ----------
@@ -35701,6 +35878,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'brandWritingSamples'){
     bwsInit();
     document.getElementById('step-brandWritingSamples').classList.add('active');
+  } else if (step === 'websiteExamples'){
+    wsInit();
+    document.getElementById('step-websiteExamples').classList.add('active');
   } else if (step === 'competitivePositioning'){
     renderPositioningStep();
     document.getElementById('step-competitivePositioning').classList.add('active');
