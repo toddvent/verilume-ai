@@ -7915,7 +7915,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-25-fullscreen-load-cover';
+const CXMEDIA_BUILD_STAMP = '2026-08-25-pending-feature-breadcrumb-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14480,7 +14480,7 @@ function tileBadgeHtml(kind){
   if (kind === 'enterprise') return '<span class="badge-enterprise">Enterprise</span>';
   return '';
 }
-function renderTileShellGroups(groups, topNote){
+function renderTileShellGroups(groups, topNote, originTab){
   const top = topNote ? `<p class="tile-shell-note">${escapeHtml(topNote)}</p>` : '';
   return top + groups.map(g => `
     <div class="tile-shell-group">
@@ -14489,7 +14489,16 @@ function renderTileShellGroups(groups, topNote){
         ${g.items.map(item => {
           const onclick = item.step
             ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
-            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}')`;
+            // 2026-08-25, per direct report ("AOV and Creative Production
+            // takes the user back to the same [Dashboard] page") — the 3rd
+            // arg here is the originating primary tab (Strategy/Brand/
+            // Marketer/Data Scientist/Account Management), threaded through
+            // so the pending-feature page's own "back to <group>" crumb
+            // link can return to the tab this tile actually lives under,
+            // instead of always jumping to the Daily Brief dashboard. See
+            // renderPendingFeatureStep()'s own comment for the rest of the
+            // fix.
+            : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}','${jsStrEscape(originTab || '')}')`;
           return `<div class="tile-card${item.badge === 'pending' ? ' is-pending' : ''}" onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')${onclick}">
             <div class="tc-label">${escapeHtml(item.label)}${tileBadgeHtml(item.badge)}</div>
             ${item.desc ? `<div class="tc-desc">${escapeHtml(item.desc)}</div>` : ''}
@@ -14527,7 +14536,7 @@ const STRATEGY_SHELL_GROUPS = [
   ], note: "Website traffic comparisons live under Data Scientist → Media Science → Website Traffic Analysis — split out of Research, not dropped, since it's a measurement tool, not a planning input." }
 ];
 function strategyShellHtml(){
-  return renderTileShellGroups(STRATEGY_SHELL_GROUPS);
+  return renderTileShellGroups(STRATEGY_SHELL_GROUPS, null, 'strategy');
 }
 // 2026-08-23 (nav redesign, round 15), per directive 1 (nav-structure.html
 // §1/§2) and Todd's direct instruction to prioritize the front-end build
@@ -14578,7 +14587,7 @@ const ACCOUNT_MGMT_TILE_GROUPS = [
   ]}
 ];
 function accountManagementTileGridHtml(){
-  return renderTileShellGroups(ACCOUNT_MGMT_TILE_GROUPS, 'A tile grid, not a step sequence. Everything here is optional, with no required order and no single required owner — different team members can complete different tiles.');
+  return renderTileShellGroups(ACCOUNT_MGMT_TILE_GROUPS, 'A tile grid, not a step sequence. Everything here is optional, with no required order and no single required owner — different team members can complete different tiles.', 'accountManagement');
 }
 // 2026-08-23 (nav redesign, round 16) — Brand/Marketer/Data Scientist real
 // designed shells, same pattern as STRATEGY_SHELL_GROUPS and
@@ -14614,7 +14623,7 @@ const BRAND_SHELL_GROUPS = [
   ]}
 ];
 function brandShellHtml(){
-  return renderTileShellGroups(BRAND_SHELL_GROUPS);
+  return renderTileShellGroups(BRAND_SHELL_GROUPS, null, 'brand');
 }
 // Marketer shell. "From AI Agent Training" group (Performance Marketing /
 // Lifecycle Marketing) is explicitly marked Pending Development in the
@@ -14647,7 +14656,7 @@ const MARKETER_SHELL_GROUPS = [
   ]}
 ];
 function marketerShellHtml(){
-  return renderTileShellGroups(MARKETER_SHELL_GROUPS);
+  return renderTileShellGroups(MARKETER_SHELL_GROUPS, null, 'marketer');
 }
 // Descriptions added round 17, sourced verbatim from the approved comps —
 // no badges on this tab (matches the comps: Data Scientist has none).
@@ -14669,7 +14678,7 @@ const DATA_SCIENTIST_SHELL_GROUPS = [
   ]}
 ];
 function dataScientistShellHtml(){
-  return renderTileShellGroups(DATA_SCIENTIST_SHELL_GROUPS);
+  return renderTileShellGroups(DATA_SCIENTIST_SHELL_GROUPS, null, 'dataScientist');
 }
 // 2026-08-23 (nav redesign, round 15) — Top 5 Most Urgent, per
 // nav-structure.html's callout spec: Campaign Code, Campaign Name, Assets
@@ -14881,7 +14890,7 @@ function renderTopUrgentModule(){
 // before this round) as a generic "this link is real, the page behind it
 // isn't built yet" landing, per direct instruction that every functional
 // link should be in place even when its destination is still pending.
-function renderPendingFeatureStep(title, groupLabel){
+function renderPendingFeatureStep(title, groupLabel, originTab){
   const eyebrowEl = document.getElementById('placeholderEyebrow');
   const titleEl = document.getElementById('placeholderTitle');
   const nameEl = document.getElementById('placeholderName');
@@ -14892,8 +14901,19 @@ function renderPendingFeatureStep(title, groupLabel){
   if (nameEl) nameEl.textContent = title || '';
   if (tierNoteEl) tierNoteEl.textContent = 'This page is on the roadmap and not yet built in this prototype.';
   if (groupLinkEl){
+    // 2026-08-25, per direct report — this link used to always jump to
+    // goToStep('dashboard') (Daily Brief) regardless of which tab's tile
+    // grid the visitor actually came from, so e.g. Brand's "Creative
+    // Production" group and the top "Atlas Ocean Voyages Dashboard" crumb
+    // both landed on the same page — one of them was redundant/wrong.
+    // originTab (threaded from renderTileShellGroups() -> goToStep's 4th
+    // arg) is the real primary tab this tile lives under; falls back to
+    // the dashboard only for the (currently nonexistent) case of no tab
+    // being passed at all, not as the routine behavior.
     groupLinkEl.textContent = groupLabel || 'Dashboard';
-    groupLinkEl.onclick = function(){ goToStep('dashboard'); };
+    groupLinkEl.onclick = function(){
+      if (originTab) switchPrimaryTab(originTab); else goToStep('dashboard');
+    };
   }
 }
 // 2026-08-23 (nav redesign, round 13), per direct instruction — every
@@ -35647,7 +35667,7 @@ function jumpToCampaignSection(sectionId){
 }
 
 let lastGroup = 'Brand';
-function goToStep(step, arg, arg2){
+function goToStep(step, arg, arg2, arg3){
   document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
   // Round 16, point 2 — the best-practices drawer only makes sense on the
   // Add Campaign Details form; hide its fixed tab (and close it if open)
@@ -35859,7 +35879,7 @@ function goToStep(step, arg, arg2){
     // markup as a generic "this isn't built yet" landing for any shell
     // link that doesn't have a real destination step yet, rather than
     // hiding the link or leaving it dead.
-    renderPendingFeatureStep(arg, arg2);
+    renderPendingFeatureStep(arg, arg2, arg3);
     document.getElementById('step-placeholder').classList.add('active');
   } else {
     // Round 19 (2026-08-05) — the Dashboard itself only renders its own
