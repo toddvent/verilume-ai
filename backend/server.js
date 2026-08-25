@@ -1539,6 +1539,84 @@ db.exec(`
     FOREIGN KEY (campaignId) REFERENCES campaigns(id)
   );
 `);
+// 2026-08-25 — Contest-Winner Priority Model, per
+// cxmedia-contest-winner-priority-model-design-2026-08-25.md. When a client
+// runs a blind-test contest and selects a winner, that model becomes the
+// PRIORITY MODEL for that task type on their account — used automatically
+// for future single-draft generation of that task, until they run another
+// contest and pick a new winner. One row per account+taskType(+loopStage);
+// a plain upsert on each new contest win, so "until they run another
+// contest" falls out naturally — the prior winner's full history stays
+// intact on its own interview row (campaign_copy_interviews.selectedCandidateKey
+// etc.), just no longer the active one.
+//
+// loopStage uses the sentinel '__all__' rather than NULL, per the design
+// doc's own note: SQLite treats NULL as distinct from any other value in a
+// PRIMARY KEY, so a plain composite key with a nullable loopStage would NOT
+// reliably enforce "one row per account+taskType" when loopStage is unset.
+// Per-loop-stage priority itself is NOT built in this round (analytics_readout
+// is also deferred) — this column exists now specifically so that future
+// slice doesn't require a schema migration; every row this round writes
+// uses PRIORITY_MODEL_ALL_STAGES and every lookup ignores loopStage.
+const PRIORITY_MODEL_ALL_STAGES = '__all__';
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_priority_models (
+    accountId TEXT NOT NULL,
+    taskType TEXT NOT NULL,
+    loopStage TEXT NOT NULL,
+    candidateKey TEXT NOT NULL,
+    vendor TEXT NOT NULL,
+    model TEXT NOT NULL,
+    sourceInterviewTable TEXT NOT NULL,
+    sourceInterviewId TEXT NOT NULL,
+    setBy TEXT,
+    setAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, taskType, loopStage)
+  );
+`);
+// Upserts the active priority model for an account+taskType from a winning
+// contest candidate. `chosen` is one entry from a candidatesJson array
+// (shape: {key, label, vendor, model, ...}) — the same object every
+// .../select endpoint already looks up before applying its own winner
+// logic, so callers pass it straight through with no extra lookup.
+function upsertPriorityModelFromCandidate(accountId, taskType, chosen, sourceTable, sourceInterviewId, setBy){
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO account_priority_models (accountId, taskType, loopStage, candidateKey, vendor, model, sourceInterviewTable, sourceInterviewId, setBy, setAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(accountId, taskType, loopStage) DO UPDATE SET
+      candidateKey = excluded.candidateKey,
+      vendor = excluded.vendor,
+      model = excluded.model,
+      sourceInterviewTable = excluded.sourceInterviewTable,
+      sourceInterviewId = excluded.sourceInterviewId,
+      setBy = excluded.setBy,
+      setAt = excluded.setAt
+  `).run(accountId, taskType, PRIORITY_MODEL_ALL_STAGES, chosen.key, chosen.vendor, chosen.model || '', sourceTable, sourceInterviewId, setBy, now);
+}
+// Reads the active priority model for an account+taskType, ignoring
+// loopStage (per PRIORITY_MODEL_ALL_STAGES above — not built yet). Returns
+// null when the client has never run a contest for this task type, OR when
+// the winning vendor is Anthropic itself (nothing to dispatch differently —
+// the default path below already calls Anthropic), so callers only need to
+// branch on a non-null, non-Anthropic result.
+function getDispatchablePriorityModel(accountId, taskType){
+  const row = db.prepare('SELECT * FROM account_priority_models WHERE accountId = ? AND taskType = ? AND loopStage = ?')
+    .get(accountId, taskType, PRIORITY_MODEL_ALL_STAGES);
+  if (!row || row.vendor === 'Anthropic') return null;
+  const vendorEntry = INTERVIEW_VENDOR_REGISTRY.find(v => v.key === row.candidateKey);
+  if (!vendorEntry || !process.env[vendorEntry.envVar]){
+    // Stale key: the winning vendor was pulled from the deployment since
+    // this account's last contest. Per design doc open item 3, the caller
+    // falls back to default (Anthropic/template) silently — but returns a
+    // stale marker so callers CAN surface an honest note if they choose to,
+    // without ever naming which vendor (the standing "never reveal the
+    // actual model" policy from the contest panels themselves applies here
+    // too).
+    return { stale: true, row };
+  }
+  return { stale: false, row, vendorEntry };
+}
 // Shared logger — both the existing creative-jobs score endpoint and the
 // new campaign-copy score endpoint below call this after scoreDraftCopy()
 // returns, so history is complete regardless of which surface produced it.
@@ -2630,6 +2708,187 @@ db.exec(`
     FOREIGN KEY (uploadedFileId) REFERENCES uploaded_files(id)
   );
 `);
+
+// ---------- Brand Copy Website Examples (2026-08-25) ----------
+// Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
+// client include/exclude specific website pages, directories, or their
+// entire site as copywriting inputs, alongside (not replacing)
+// brand_writing_samples above. One row per RULE a client declares
+// (site/directory/page, include/exclude) plus one row per PAGE actually
+// resolved from a directory/site rule (parentRuleId links a resolved page
+// back to the rule that discovered it; NULL for a client-entered specific
+// page). status: 'active' | 'excluded' | 'failed' | 'capped-out'.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS brand_copy_website_examples (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    path TEXT NOT NULL,
+    status TEXT NOT NULL,
+    title TEXT,
+    metaDescription TEXT,
+    headingsJson TEXT,
+    excerpt TEXT,
+    parentRuleId TEXT,
+    fetchedAt TEXT,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const WEBSITE_EXAMPLE_MAX_DIRECTORIES = 5;
+const WEBSITE_EXAMPLE_MAX_PAGES = 20;
+// Strips query strings (always, per spec — every include/exclude/discovered
+// URL) and normalizes a directory path to a trailing-slash form so
+// '/brand/product' and '/brand/product/' compare as the same rule.
+function normalizeWebsiteExamplePath(rawPath, scope){
+  let p = (rawPath || '').split('?')[0].split('#')[0].trim();
+  if (!p.startsWith('/')) p = '/' + p;
+  if (scope === 'directory' && !p.endsWith('/')) p += '/';
+  if (scope === 'site') p = '/';
+  return p;
+}
+function stripUrlQueryString(rawUrl){
+  try {
+    const u = new URL(rawUrl);
+    u.search = '';
+    u.hash = '';
+    return u.toString();
+  } catch (e){ return (rawUrl || '').split('?')[0].split('#')[0]; }
+}
+// Combined include+exclude cap usage for an account, per spec ("counted
+// combined across include and exclude"). directoriesUsed counts top-level
+// directory/site RULES only (a directory rule is 1 slot regardless of how
+// many pages it resolves to). pagesUsed counts every scope='page' row —
+// both client-declared page rules (parentRuleId NULL) AND pages actually
+// resolved from a directory/site rule (parentRuleId set) — since the
+// sitemap-discovery section of the design doc explicitly caps resolved
+// pages against the same 20-page budget, not a separate one.
+function websiteExampleCapUsage(accountId){
+  const directoriesUsed = db.prepare(`SELECT COUNT(*) as c FROM brand_copy_website_examples WHERE accountId = ? AND parentRuleId IS NULL AND scope IN ('directory','site')`).get(accountId).c;
+  const pagesUsed = db.prepare(`SELECT COUNT(*) as c FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page'`).get(accountId).c;
+  return { directoriesUsed, pagesUsed };
+}
+// Duplicate/conflict rejection per the design doc's table — checked BEFORE
+// touching the sitemap or the cap budget. Returns a { status, error } object
+// to reject with, or null to proceed. `warning` (non-blocking) is set for
+// the "redundant, not rejected" case.
+function checkWebsiteExampleConflict(accountId, mode, scope, normalizedPath){
+  const existing = db.prepare(`SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND parentRuleId IS NULL`).all(accountId);
+  const exactSame = existing.find(r => r.path === normalizedPath && r.scope === scope && r.mode === mode);
+  if (exactSame){
+    return { status: 400, error: `"${normalizedPath}" is already on your ${mode} list.` };
+  }
+  const oppositeMode = existing.find(r => r.path === normalizedPath && r.scope === scope && r.mode !== mode);
+  if (oppositeMode){
+    const otherLabel = oppositeMode.mode === 'exclude' ? 'excluded' : 'included';
+    return { status: 400, error: `"${normalizedPath}" is already ${otherLabel}. Remove it from ${oppositeMode.mode === 'exclude' ? 'Excludes' : 'Includes'} first if you want to ${mode} it.` };
+  }
+  if (scope === 'page' && mode === 'include'){
+    const coveringDir = existing.find(r => (r.scope === 'directory' || r.scope === 'site') && r.mode === 'include' && r.status === 'active' && normalizedPath.startsWith(r.path));
+    if (coveringDir){
+      return { status: 400, error: `"${normalizedPath}" is already included via your ${coveringDir.path} ${coveringDir.scope} rule — no need to add it separately.` };
+    }
+  }
+  let warning = null;
+  if (scope === 'directory' || scope === 'site'){
+    const coveredPages = existing.filter(r => r.scope === 'page' && r.path.startsWith(normalizedPath));
+    if (coveredPages.length){
+      warning = `This will also cover ${coveredPages.map(p => p.path).join(', ')}, already on your list individually — you can remove the individual page entry if you like.`;
+    }
+  }
+  return { warning };
+}
+
+// Fetches {origin}/sitemap.xml and returns its <loc> URLs. Honest failure
+// on every real way this can fail — no sitemap, non-2xx, timeout, or a
+// sitemap-INDEX file (one that itself lists other sitemap files) — per the
+// design doc's "single-file sitemaps only for the initial build" decision.
+async function fetchSitemapUrls(origin){
+  let resp;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    resp = await fetch(`${origin}/sitemap.xml`, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
+    clearTimeout(timeout);
+  } catch (e){
+    throw new Error(`Could not fetch ${origin}/sitemap.xml (${e.name === 'AbortError' ? 'timed out after 8s' : e.message}). Add specific pages instead.`);
+  }
+  if (!resp.ok){
+    throw new Error(`${origin}/sitemap.xml responded with ${resp.status} ${resp.statusText} — this site may not have a sitemap at the standard location. Add specific pages instead.`);
+  }
+  const xml = await resp.text();
+  if (/<sitemapindex[\s>]/i.test(xml)){
+    throw new Error(`${origin}/sitemap.xml is a multi-file sitemap index, which isn't supported yet — add specific pages instead.`);
+  }
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1].trim());
+}
+// The full sitemap-discovery flow for a newly-created scope='directory'/'site'
+// rule: fetch sitemap → same-origin filter → strip query strings → dedupe →
+// filter to the requested prefix → apply the cap (truncate + say so
+// explicitly, never a silent partial include) → apply existing exclude
+// rules → fetchAndExtractPage() each surviving page and insert it as a
+// child row of `ruleId`. Returns a summary the caller turns into the
+// endpoint response.
+async function resolveWebsiteExampleDirectoryRule(accountId, ruleId, originUrl, prefixPath, scope, createdBy){
+  let origin;
+  try { origin = new URL(originUrl).origin; } catch (e){
+    return { ok: false, error: 'No valid website URL on file for this account to resolve a sitemap against.' };
+  }
+  let rawUrls;
+  try {
+    rawUrls = await fetchSitemapUrls(origin);
+  } catch (e){
+    return { ok: false, error: e.message };
+  }
+  const seen = new Set();
+  let candidates = [];
+  for (const raw of rawUrls){
+    let u;
+    try { u = new URL(raw, origin); } catch (e){ continue; }
+    if (u.origin !== origin) continue;
+    u.search = ''; u.hash = '';
+    const pathOnly = u.pathname;
+    if (seen.has(pathOnly)) continue;
+    seen.add(pathOnly);
+    candidates.push(pathOnly);
+  }
+  if (scope === 'directory'){
+    candidates = candidates.filter(p => p.startsWith(prefixPath));
+  }
+  // Apply existing exclude rules already on file — a directory/site rule
+  // never resolves pages its own account has already excluded.
+  const excludes = db.prepare(`SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND mode = 'exclude' AND parentRuleId IS NULL`).all(accountId);
+  candidates = candidates.filter(p => !excludes.some(ex =>
+    (ex.scope === 'page' && ex.path === p) || ((ex.scope === 'directory' || ex.scope === 'site') && p.startsWith(ex.path))
+  ));
+  const totalFound = candidates.length;
+  const usage = websiteExampleCapUsage(accountId);
+  const remaining = Math.max(0, WEBSITE_EXAMPLE_MAX_PAGES - usage.pagesUsed);
+  let truncatedNote = null;
+  if (candidates.length > remaining){
+    truncatedNote = `Furnished ${remaining} of ${totalFound} pages found under ${prefixPath} — 0 page slots remaining on this account.`;
+    candidates = candidates.slice(0, remaining);
+  }
+  const now = new Date().toISOString();
+  const resolved = [];
+  for (const pagePath of candidates){
+    const pageId = generateId('BCWE');
+    let status = 'active', title = null, metaDescription = null, headingsJson = null, excerpt = null, fetchedAt = null;
+    try {
+      const ctx = await fetchAndExtractPage(origin + pagePath);
+      title = ctx.title; metaDescription = ctx.metaDescription; headingsJson = JSON.stringify(ctx.headings || []); excerpt = ctx.excerpt; fetchedAt = ctx.fetchedAt;
+    } catch (e){
+      status = 'failed';
+    }
+    db.prepare(`INSERT INTO brand_copy_website_examples (id, accountId, mode, scope, path, status, title, metaDescription, headingsJson, excerpt, parentRuleId, fetchedAt, createdBy, createdAt)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(pageId, accountId, 'include', 'page', pagePath, status, title, metaDescription, headingsJson, excerpt, ruleId, fetchedAt, createdBy, now);
+    resolved.push({ id: pageId, path: pagePath, status });
+  }
+  return { ok: true, totalFound, resolvedCount: resolved.length, truncatedNote, resolved };
+}
 
 // ---------- PR & Corporate Communications real backend (round 132c22b) ----------
 // Replaces the previously 100%-mocked REPUTATION_DATA.pressReleases /
@@ -3958,6 +4217,35 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+
+// Added 2026-08-25 — rate-limit log backing the free assessment's two new
+// public, unauthenticated endpoints (real website fetch + AI-generated
+// readout, both below). No account exists yet at assessment time, so
+// there's no accountId to scope by — this is keyed by requesting IP
+// instead, same convention as POST /api/auth/request-signup-verification's
+// phone/email rate limit, just a different target type.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS assessment_ai_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+`);
+
+// Returns true (caller should reject with 429) when this IP has already hit
+// maxPerHour calls of this `kind` in the last hour; otherwise records this
+// call and returns false. Two kinds use this: 'website-scan' (5/hr — a
+// plain fetch) and 'generate-readout' (3/hr, tighter — it spends real
+// Anthropic API cost per call, not just a network round trip).
+function assessmentRateLimitExceeded(req, kind, maxPerHour){
+  const ip = getClientIp(req) || 'unknown';
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const row = db.prepare('SELECT COUNT(*) AS c FROM assessment_ai_calls WHERE ip = ? AND kind = ? AND createdAt > ?').get(ip, kind, oneHourAgo);
+  if (row && row.c >= maxPerHour) return true;
+  db.prepare('INSERT INTO assessment_ai_calls (ip, kind, createdAt) VALUES (?,?,?)').run(ip, kind, new Date().toISOString());
+  return false;
+}
 
 // 2026-08-21 fix -- sitewide camelCase column casing repair.
 //
@@ -6138,6 +6426,32 @@ async function brandWritingSampleContext(accountId){
     return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
+
+// 2026-08-25 — sibling of brandWritingSampleContext() above, reading
+// brand_copy_website_examples instead of brand_writing_samples. Same
+// 2-most-recent/900-char-cap discipline, same honest-empty-string
+// convention on any failure. Only ACTIVE resolved pages count (status
+// filter excludes 'excluded'/'failed'/'capped-out' rows) — most-recently-
+// fetched first, since a fresher fetch is more likely to reflect the site's
+// current copy.
+async function brandCopyWebsiteExampleContext(accountId){
+  try {
+    const pages = db.prepare(
+      `SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' AND excerpt IS NOT NULL ORDER BY fetchedAt DESC`
+    ).all(accountId);
+    if (!pages.length) return '';
+    const blocks = [];
+    for (const page of pages){
+      if (blocks.length >= 2) break;
+      const bits = [page.title, page.metaDescription, (page.excerpt || '')].filter(Boolean).join(' — ');
+      if (bits.trim()){
+        blocks.push(`--- ${page.path} ---\n${bits.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+      }
+    }
+    if (!blocks.length) return '';
+    return `\nREAL PAGES FROM THIS BRAND'S OWN WEBSITE (client-selected as copy examples — a genuine reference for vocabulary and how this brand actually presents itself online, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers/prices as still current):\n${blocks.join('\n\n')}\n`;
+  } catch (e){ return ''; }
+}
 async function generateMessagingCopyViaAI(campaign, account, opts){
   opts = opts || {};
   if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI copy generation requires ANTHROPIC_API_KEY to be configured. Falling back to the deterministic template draft (see the Long Form Copy field) until one is set.' };
@@ -6157,7 +6471,12 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
     // 2026-08-22 — real brand writing samples (see brandWritingSampleContext()
     // above), the fix for "upload sample copy to help our models learn."
-    const sampleContext = await brandWritingSampleContext(account.accountId);
+    // 2026-08-25 — plus real pages from the brand's own website, when the
+    // client has added any as copy examples (see brandCopyWebsiteExampleContext()
+    // and the brand_copy_website_examples feature) — a second, independent
+    // source of real brand-voice grounding, appended rather than replacing
+    // the writing-samples context above.
+    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -6190,6 +6509,30 @@ ${campaignTypeBriefContext(campaign)}
 Write 3-5 short paragraphs of real Long Form Copy (120-220 words). It must read as something a real luxury travel brand would actually publish — specific, sensory where appropriate, never generic "unforgettable journey" language, and it must end with a call to action that genuinely serves the stated Primary KPI for this Loop Stage.
 
 Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs separated by \\n\\n>", "sourcesUsed": ["<short phrase naming a specific real fact/voice element you actually used from the material above>", "..."]}`;
+    // 2026-08-25 — Contest-Winner Priority Model. If this account has run a
+    // marketing_copy contest and picked a non-Anthropic winner whose vendor
+    // key is still configured on this deployment, dispatch through that
+    // vendor's callVendorForText() path instead of the hardcoded Anthropic
+    // call below — same prompt/brand-context depth either way, only the
+    // vendor changes. Any dispatch failure (bad response, unparseable JSON,
+    // vendor error) falls straight through to the Anthropic path beneath
+    // it rather than surfacing an error — the account never loses the
+    // ability to generate copy over a stale or flaky priority-model pick.
+    const priority = getDispatchablePriorityModel(account.accountId, 'marketing_copy');
+    if (priority && !priority.stale){
+      try {
+        const vendorText = await callVendorForText(priority.row.candidateKey, prompt);
+        const vendorParsed = parseJsonBlock(vendorText);
+        if (vendorParsed && typeof vendorParsed.copy === 'string'){
+          return {
+            copy: vendorParsed.copy,
+            sourcesUsed: Array.isArray(vendorParsed.sourcesUsed) ? vendorParsed.sourcesUsed : [],
+            note: null
+          };
+        }
+        // fall through to Anthropic below on an unparseable/empty response
+      } catch (e){ /* fall through to Anthropic below */ }
+    }
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -6209,6 +6552,139 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
   }
 }
 
+// ---------- Free assessment: real website fetch + AI-generated readout (2026-08-25) ----------
+// Shared single-page fetch/extract, factored out of what was
+// POST /api/accounts/:id/website-scan's inline logic (unchanged behavior —
+// same 8s timeout, same User-Agent, same title/meta-description/headings/
+// excerpt extraction) so the portal's account-level scan and the free
+// assessment's new public scan (see the two /api/assessment/* routes
+// above) share one real scraper. Throws with a specific, user-facing
+// reason on every real way this can fail (network error, timeout, non-2xx)
+// rather than returning a silent empty result — callers turn that message
+// straight into their own honest-failure response.
+async function fetchAndExtractPage(url){
+  let resp;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    resp = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
+    clearTimeout(timeout);
+  } catch (e){
+    throw new Error(`Could not reach ${url} right now (${e.name === 'AbortError' ? 'timed out after 8s' : e.message}).`);
+  }
+  if (!resp.ok){
+    throw new Error(`${url} responded with ${resp.status} ${resp.statusText} — the site may be blocking automated requests, or the URL may be stale.`);
+  }
+  const html = await resp.text();
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  // Backreference on the quote character (not [^"'] ) so an apostrophe
+  // inside a double-quoted attribute (e.g. content="...world's...") doesn't
+  // truncate the match early.
+  const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=(["'])([\s\S]*?)\1/i)
+                  || html.match(/<meta[^>]+content=(["'])([\s\S]*?)\1[^>]+name=["']description["']/i);
+  const descText = descMatch ? descMatch[2] : null;
+  const headings = [];
+  const hRe = /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi;
+  let m;
+  while ((m = hRe.exec(html)) && headings.length < 15){
+    const text = stripTags(m[1]).trim();
+    if (text) headings.push(text);
+  }
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const bodyText = stripTags(bodyMatch ? bodyMatch[1] : html);
+  return {
+    url,
+    title: titleMatch ? stripTags(titleMatch[1]).trim() : null,
+    metaDescription: descText ? stripTags(descText).trim() : null,
+    headings,
+    excerpt: bodyText.slice(0, 800),
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+// Per direct instruction: the free assessment's end-of-flow readout should
+// read like a senior consultant from a top-tier marketing/CX advisory firm
+// briefing a room on the opportunity — a room that may include the
+// client's own marketing team, so nothing here may land as a criticism of
+// decisions or capability that team already has. Every finding is framed
+// as opportunity, never deficiency. The "how Verilume fits" half explains
+// value across a range — organizational-efficiency framing where scores
+// are already mostly strong (a good team, made faster and more
+// consistent), complementary-capacity framing where several stages are
+// weak across the board (real coverage gaps, framed as headroom to close,
+// never as "your team failed to...") — blended proportionally to the
+// actual mix of strong/weak stages found, and written in pure value
+// language: it deliberately never names AI Automate / AI + Human Hybrid /
+// Full Service Human. That tri-select was removed from the visitor-facing
+// product in round 104 ("Verilume is Human + AI by default, not a menu of
+// service tiers to pick from") — this stays consistent with that decision;
+// it explains fit, it doesn't offer a menu. Reuses the same "senior
+// consultant, no acronyms, leaves room for correction" voice already
+// established for renderJourneyBP()'s panel in assessment.html.
+function buildAssessmentReadoutPrompt(input){
+  const stageLines = (input.stages || []).map(s =>
+    `- ${s.stage}: self-rated "${s.ratingLabel || 'not yet rated'}"${typeof s.rating === 'number' ? ` (${s.rating}/5)` : ''}${s.sub ? ` — ${s.sub}` : ''}`
+  ).join('\n');
+  const site = input.websiteContext;
+  const siteBlock = site
+    ? `REAL CONTENT PULLED FROM THE COMPANY'S OWN WEBSITE (${site.url}) — treat this as ground truth about how they present themselves, not a guess:
+Title: ${site.title || '(none found)'}
+Meta description: ${site.metaDescription || '(none found)'}
+Headings: ${(site.headings || []).slice(0, 10).join(' | ') || '(none found)'}
+Excerpt: ${(site.excerpt || '').slice(0, 600) || '(none found)'}`
+    : `No real website content was available for this read (the site could not be reached, or no URL was supplied) — do not claim to have read their website; work only from the profile answers below.`;
+
+  return `You are a senior consultant from a top-tier marketing and customer-experience advisory firm, presenting a first-look assessment readout to a company's leadership. This readout may be read aloud in a room that includes the client's own marketing team — every sentence must land as constructive and forward-looking, never as a criticism of decisions this team has already made or capability they lack. Frame every finding as an opportunity, never a deficiency.
+
+COMPANY PROFILE:
+Company: ${input.company || '(not provided)'}
+Industry: ${input.industryLabel || '(not provided)'}
+Footprint: ${input.footprint || '(not provided)'}
+Target generations: ${(input.audience || []).join(', ') || '(not provided)'}
+Target wealth tier: ${(input.wealth || []).join(', ') || '(not provided)'}
+Business model: ${input.buyerType || '(not provided)'}
+
+${siteBlock}
+
+MARKETING LOOP SELF-RATINGS (Behind / On par / Ahead, per stage, as this company rated itself):
+${stageLines || '(no stage ratings yet)'}
+Overall Media Strength: ${typeof input.mediaPct === 'number' ? input.mediaPct + '%' : 'not yet scored'}
+Overall CX Strength: ${typeof input.cxPct === 'number' ? input.cxPct + '%' : 'not yet scored'}
+
+Write two things:
+
+1. A "here's what we learned" synthesis (3-5 sentences): a confident, specific first read on this brand, grounded in the real website content above where it exists (never claim to have read the website if none was provided) and the profile they gave us. No acronyms — spell everything out in full (e.g. "point of sale," not POS; "business-to-business," not B2B). Close by explicitly inviting correction — this is an outside first read, not an audit of their internal data.
+
+2. An "opportunity" paragraph (3-5 sentences) explaining, in plain value language, how Verilume would actually help THIS company given the specific pattern of strong vs. weak stages above — never naming a tier, package, or model by name. Where most stages are already strong, frame Verilume's role as making a good team faster and more consistent (organizational efficiency) — the team stays the team, Verilume removes friction. Where several stages are weak across the board, frame Verilume's role as covering real gaps where no function is running today (complementary capacity) — never phrase this as "your team failed to..." or "you're missing..."; phrase it as "there's real headroom here, and here's specifically how we'd close it." Blend both framings proportionally to the actual mix of strong/weak stages found above — don't force it to one extreme.
+
+Respond with ONLY a JSON object: {"synthesis": "<text for item 1>", "opportunity": "<text for item 2>"}`;
+}
+
+async function generateAssessmentReadout(input){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return { synthesis: null, opportunity: null, note: 'AI-generated readout requires ANTHROPIC_API_KEY to be configured. Showing the standard reading until one is set.' };
+  }
+  try {
+    const prompt = buildAssessmentReadoutPrompt(input);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 900, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!resp.ok) return { synthesis: null, opportunity: null, note: `AI readout generation failed (HTTP ${resp.status}). Showing the standard reading.` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    return {
+      synthesis: typeof parsed.synthesis === 'string' ? parsed.synthesis : null,
+      opportunity: typeof parsed.opportunity === 'string' ? parsed.opportunity : null,
+      note: null
+    };
+  } catch (e){
+    return { synthesis: null, opportunity: null, note: 'AI readout generation failed: ' + e.message + '. Showing the standard reading.' };
+  }
+}
+
 // ---------- PR & Corp Comm AI drafting (round 132c22b) ----------
 // Same honest-fallback / real-brand-context convention as
 // generateMessagingCopyViaAI above (Voice Guide, Vision Statement, longform
@@ -6216,32 +6692,40 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
 // the three PR & Corp Comm content types. Deliberately a single shared
 // helper — the three call sites differ only in the docType label and the
 // brief fields — rather than three near-duplicate prompt builders.
-async function draftPrCorpCommCopyViaAI(account, docType, brief){
-  if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI drafting requires ANTHROPIC_API_KEY to be configured. Draft the copy manually below until one is set.' };
-  try {
-    const voiceGuide = (account.voiceGuideText || '').slice(0, 2500);
-    const visionStatement = (account.visionStatement || '').trim();
-    const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
-    const sampleContext = await brandWritingSampleContext(account.accountId);
-    const docSpec = {
-      press_release: {
-        label: 'a real, publish-ready press release',
-        brief: `Headline/Title: ${brief.title || '(not set)'}\nKey facts/announcement this release is built around: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts, dates, or figures)'}`,
-        format: 'Standard press release format: a dateline-style opening paragraph (who/what/when/where), 2-4 body paragraphs with real supporting detail, one quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied), and a boilerplate-style closing line about the brand. 250-400 words.'
-      },
-      editorial_pitch: {
-        label: 'a real, send-ready editorial pitch email to a journalist/outlet contact',
-        brief: `Outlet: ${brief.outlet || '(not set)'}\nStory topic/angle: ${brief.topic || '(not set)'}`,
-        format: 'A short pitch email: a subject line, then 2-3 tight paragraphs — the hook, why it fits this specific outlet, and a clear ask (interview, exclusive, etc). Under 200 words total, no generic PR-speak.'
-      },
-      corporate_comms: {
-        label: 'a real, ready-to-circulate internal or external corporate communication',
-        brief: `Title: ${brief.title || '(not set)'}\nAudience: ${brief.audience || '(not set)'}\nContext/situation this communication addresses: ${brief.context || '(none supplied — use only what is in the brand context above; do not invent facts)'}`,
-        format: 'Format the communication appropriately for the stated audience (talking points for a leadership audience, a holding statement for external/customer-facing, etc). Real, finished, ready-to-circulate language — never a placeholder or outline.'
-      }
-    }[docType];
-    if (!docSpec) return { copy: null, note: `Unknown docType "${docType}".` };
-    const prompt = `You are an expert corporate communications and PR writer for a luxury travel brand. Write ${docSpec.label} — not a summary, not a template, not placeholder language. Write the way a senior comms professional briefed on this brand's actual voice would write.
+// 2026-08-25 — factored the docType->docSpec mapping and prompt assembly
+// out of draftPrCorpCommCopyViaAI into its own function so the new PR
+// contest panel (runPrCandidateInterview below) can build the EXACT same
+// prompt for its vendor candidates that the default Anthropic path uses —
+// a real cross-vendor comparison needs identical brief-and-context depth,
+// same reasoning as buildInterviewPrompt() for the marketing-copy panel.
+// Returns { prompt, docSpec } or { error } for an unknown docType.
+async function buildPrCorpCommPrompt(account, docType, brief){
+  const voiceGuide = (account.voiceGuideText || '').slice(0, 2500);
+  const visionStatement = (account.visionStatement || '').trim();
+  const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
+  // 2026-08-25 — same website-examples addition as generateMessagingCopyViaAI
+  // above, so both PR-copy generation paths (single-shot and the contest
+  // panel, which both call this same builder) draw from it too.
+  const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
+  const docSpec = {
+    press_release: {
+      label: 'a real, publish-ready press release',
+      brief: `Headline/Title: ${brief.title || '(not set)'}\nKey facts/announcement this release is built around: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts, dates, or figures)'}`,
+      format: 'Standard press release format: a dateline-style opening paragraph (who/what/when/where), 2-4 body paragraphs with real supporting detail, one quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied), and a boilerplate-style closing line about the brand. 250-400 words.'
+    },
+    editorial_pitch: {
+      label: 'a real, send-ready editorial pitch email to a journalist/outlet contact',
+      brief: `Outlet: ${brief.outlet || '(not set)'}\nStory topic/angle: ${brief.topic || '(not set)'}`,
+      format: 'A short pitch email: a subject line, then 2-3 tight paragraphs — the hook, why it fits this specific outlet, and a clear ask (interview, exclusive, etc). Under 200 words total, no generic PR-speak.'
+    },
+    corporate_comms: {
+      label: 'a real, ready-to-circulate internal or external corporate communication',
+      brief: `Title: ${brief.title || '(not set)'}\nAudience: ${brief.audience || '(not set)'}\nContext/situation this communication addresses: ${brief.context || '(none supplied — use only what is in the brand context above; do not invent facts)'}`,
+      format: 'Format the communication appropriately for the stated audience (talking points for a leadership audience, a holding statement for external/customer-facing, etc). Real, finished, ready-to-circulate language — never a placeholder or outline.'
+    }
+  }[docType];
+  if (!docSpec) return { error: `Unknown docType "${docType}".` };
+  const prompt = `You are an expert corporate communications and PR writer for a luxury travel brand. Write ${docSpec.label} — not a summary, not a template, not placeholder language. Write the way a senior comms professional briefed on this brand's actual voice would write.
 
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
 ${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
@@ -6254,6 +6738,33 @@ FORMAT: ${docSpec.format}
 Never invent facts, figures, dates, or quotes not present in the brief or brand context above — where a real detail is missing, write around it (e.g. a bracketed placeholder like [Title Placeholder]) rather than fabricating one.
 
 Respond with ONLY a JSON object: {"copy": "<the full drafted text>", "sourcesUsed": ["<short phrase naming a specific real fact/voice element you actually used from the material above>", "..."]}`;
+  return { prompt, docSpec };
+}
+async function draftPrCorpCommCopyViaAI(account, docType, brief){
+  if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI drafting requires ANTHROPIC_API_KEY to be configured. Draft the copy manually below until one is set.' };
+  try {
+    const built = await buildPrCorpCommPrompt(account, docType, brief);
+    if (built.error) return { copy: null, note: built.error };
+    const { prompt } = built;
+    // 2026-08-25 — Contest-Winner Priority Model, pr_copy task type. Same
+    // dispatch-then-fallback shape as generateMessagingCopyViaAI above:
+    // route through the account's winning vendor when one is on file and
+    // still configured, otherwise (including on any dispatch failure) fall
+    // straight through to the Anthropic call below.
+    const priority = getDispatchablePriorityModel(account.accountId, 'pr_copy');
+    if (priority && !priority.stale){
+      try {
+        const vendorText = await callVendorForText(priority.row.candidateKey, prompt);
+        const vendorParsed = parseJsonBlock(vendorText);
+        if (vendorParsed && typeof vendorParsed.copy === 'string'){
+          return {
+            copy: vendorParsed.copy,
+            sourcesUsed: Array.isArray(vendorParsed.sourcesUsed) ? vendorParsed.sourcesUsed : [],
+            note: null
+          };
+        }
+      } catch (e){ /* fall through to Anthropic below */ }
+    }
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -6271,6 +6782,148 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted text>", "sourcesUse
   } catch (e){
     return { copy: null, sourcesUsed: [], note: 'AI drafting failed: ' + e.message };
   }
+}
+
+// ---------- PR Copy Contest (2026-08-25) ----------
+// Per cxmedia-contest-winner-priority-model-design-2026-08-25.md's Open
+// Item 1: PR copy had no contest/blind-test mechanism at all before this —
+// draftPrCorpCommCopyViaAI above was single-shot Anthropic-only, so there
+// was nothing for a "winner becomes the priority model" rule to select
+// FROM for pr_copy. This is that missing surface, modeled on the existing
+// Brand Voice contest's shape (account_voice_interviews) rather than the
+// 3-angle marketing-copy panel — a press release/pitch/comms brief doesn't
+// naturally decompose into 3 distinct strategic angles the way campaign
+// copy does (direct-response vs. brand-story vs. proof-and-trust), so this
+// compares ONE shared brief across Anthropic + every configured vendor,
+// exactly like the Brand Voice panel compares one voice brief across
+// vendors. No automated relevance/compliance scoring — scoreDraftCopy() is
+// built around campaign KPI/stage context that doesn't apply to a press
+// release or pitch email, so recommendedKey is always null here and every
+// candidate is shown for a human to read and pick, same honest-no-score
+// treatment already used for an unconfigured vendor's placeholder entry.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pr_copy_interviews (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    docType TEXT NOT NULL,
+    sourceId TEXT NOT NULL,
+    requestedBy TEXT,
+    candidatesJson TEXT NOT NULL,
+    selectedCandidateKey TEXT,
+    selectedBy TEXT,
+    selectedAt TEXT,
+    createdAt TEXT NOT NULL
+  );
+`);
+// One vendor's PR-copy candidate, sharing buildPrCorpCommPrompt()'s exact
+// prompt with the Anthropic baseline candidate below — same brief/context
+// depth compared across vendors, same convention as generateVendorInterviewCopy.
+async function generateVendorPrCopy(vendorKey, prompt){
+  try {
+    const text = await callVendorForText(vendorKey, prompt);
+    const parsed = parseJsonBlock(text);
+    if (!parsed) return { copy: null, error: 'Generation returned no parseable JSON.' };
+    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
+  } catch (e){
+    return { copy: null, error: 'Generation failed: ' + e.message };
+  }
+}
+// The PR panel itself — POST .../interview (press-releases, editorial-pitches,
+// corporate-comms — see the shared handler further down) calls this.
+// Requires ANTHROPIC_API_KEY, same gate as every interview panel in this
+// build (Anthropic supplies the baseline every alternate is measured
+// against). Runs Anthropic + every INTERVIEW_VENDOR_REGISTRY vendor whose
+// env var is set, in parallel, unscored (see table comment above).
+async function runPrCandidateInterview(account, docType, brief){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return {
+      available: false,
+      note: 'The PR contest panel requires ANTHROPIC_API_KEY to be configured — without it there is no real draft to run multiple ways. Set the key to enable this panel.',
+      recommendedKey: null,
+      candidates: []
+    };
+  }
+  const built = await buildPrCorpCommPrompt(account, docType, brief);
+  if (built.error){
+    return { available: false, note: built.error, recommendedKey: null, candidates: [] };
+  }
+  const { prompt } = built;
+  const anthropicResp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
+  }).then(async r => {
+    if (!r.ok) return { copy: null, error: `Generation failed (HTTP ${r.status}).` };
+    const data = await r.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const parsed = parseJsonBlock(text);
+    return { copy: parsed && typeof parsed.copy === 'string' ? parsed.copy : null, error: parsed ? null : 'Generation returned no parseable JSON.' };
+  }).catch(e => ({ copy: null, error: 'Generation failed: ' + e.message }));
+
+  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, prompt)));
+
+  const buildCandidate = (key, label, vendor, model, configured, gen) => ({
+    key, label, vendor, model, configured,
+    copy: gen ? gen.copy : null, error: gen ? gen.error : null,
+    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
+  });
+  const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', 'claude-sonnet-4-5', true, anthropicResp);
+  const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, true, vendorGenerated[i]));
+  const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => buildCandidate(v.key, v.label, v.vendor, null, false, { copy: null, error: `${v.envVar} not configured on this deployment.` }));
+
+  return {
+    available: true, note: null, recommendedKey: null,
+    candidates: [anthropicCandidate, ...liveVendorCandidates, ...unconfiguredCandidates]
+  };
+}
+// Shared handler bodies for the 3 PR doc types' interview/select endpoints
+// (press_release -> press_releases table, editorial_pitch -> editorial_pitches,
+// corporate_comms -> corporate_comms) — same brief-field shape each type's
+// own generate-draft endpoint already builds, just run through the panel
+// above instead of a single Anthropic call.
+const PR_DOC_TYPE_CONFIG = {
+  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || '' }) },
+  editorial_pitch: { table: 'editorial_pitches', briefFromRow: (row) => ({ outlet: row.outlet, topic: row.topic }) },
+  corporate_comms: { table: 'corporate_comms', briefFromRow: (row, body) => ({ title: row.title, audience: row.audience, context: body.context || '' }) }
+};
+async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, session){
+  const cfg = PR_DOC_TYPE_CONFIG[docType];
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  if (!account) return { status: 404, body: { error: 'account not found' } };
+  const row = db.prepare(`SELECT * FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(sourceId, accountId);
+  if (!row) return { status: 404, body: { error: 'item not found' } };
+  const capCheck = checkInterviewWeeklyCap(accountId);
+  if (capCheck) return { status: 429, body: capCheck };
+  const brief = cfg.briefFromRow(row, body);
+  const result = await runPrCandidateInterview(account, docType, brief);
+  if (!result.available){
+    return { status: 200, body: { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] } };
+  }
+  const now = new Date().toISOString();
+  const interviewId = generateId('PCI');
+  const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+  db.prepare(`INSERT INTO pr_copy_interviews (id, accountId, docType, sourceId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?,?,?)`)
+    .run(interviewId, accountId, docType, sourceId, requestedBy, JSON.stringify(result.candidates), now);
+  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now } };
+}
+function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session){
+  const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+  if (!interview) return { status: 404, body: { error: 'PR contest not found for this account' } };
+  let candidates = [];
+  try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+  const chosen = candidates.find(c => c.key === candidateKey);
+  if (!chosen || !chosen.copy){
+    return { status: 400, body: { error: 'candidateKey does not match a candidate with real copy on this contest' } };
+  }
+  const now = new Date().toISOString();
+  const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+  db.prepare('UPDATE pr_copy_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+    .run(candidateKey, selectedBy, now, interviewId);
+  try {
+    upsertPriorityModelFromCandidate(accountId, 'pr_copy', chosen, 'pr_copy_interviews', interviewId, selectedBy);
+  } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+  return { status: 200, body: { interviewId, selectedCandidateKey: candidateKey, selectedAt: now, copy: chosen.copy } };
 }
 
 // A short, generic list of absolute/risky claim patterns that show up
@@ -6670,7 +7323,7 @@ Respond with ONLY a JSON object with two fields:
 const INTERVIEW_WEEKLY_CAP = parseInt(process.env.INTERVIEW_WEEKLY_CAP, 10) || 20;
 function countInterviewRunsThisWeek(accountId){
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const tables = ['creative_job_interviews', 'campaign_copy_interviews', 'account_voice_interviews'];
+  const tables = ['creative_job_interviews', 'campaign_copy_interviews', 'account_voice_interviews', 'pr_copy_interviews'];
   let total = 0;
   for (const t of tables){
     const row = db.prepare(`SELECT COUNT(*) as c FROM ${t} WHERE accountId = ? AND createdAt >= ?`).get(accountId, since);
@@ -7842,6 +8495,12 @@ async function handleRequest(req, res) {
     // network unreachable, timeout, or a non-2xx response — never a silent
     // empty success, and a failed scan never overwrites a previously good
     // context.
+    //
+    // 2026-08-25 — the actual fetch/extract logic below was factored out
+    // into the shared fetchAndExtractPage() helper (defined above this
+    // route table), so this endpoint and the free assessment's new
+    // POST /api/assessment/website-scan (also below) share one real
+    // scraper instead of maintaining two copies of the same regexes.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-scan'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -7849,46 +8508,76 @@ async function handleRequest(req, res) {
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const url = (account.websiteUrl || '').trim();
       if (!url) return sendJson(res, 400, { error: 'This account has no website URL on file — add one under Company Profile first.' });
-      let resp;
+      let context;
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        resp = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
-        clearTimeout(timeout);
+        context = await fetchAndExtractPage(url);
       } catch (e){
-        return sendJson(res, 502, { error: `Could not reach ${url} right now (${e.name === 'AbortError' ? 'timed out after 8s' : e.message}). Try again, or check the URL on file under Company Profile.` });
+        return sendJson(res, 502, { error: `${e.message} Try again, or check the URL on file under Company Profile.` });
       }
-      if (!resp.ok){
-        return sendJson(res, 502, { error: `${url} responded with ${resp.status} ${resp.statusText} — the site may be blocking automated requests, or the URL on file may be stale.` });
-      }
-      const html = await resp.text();
-      const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-      // Backreference on the quote character (not [^"'] ) so an apostrophe
-      // inside a double-quoted attribute (e.g. content="...world's...")
-      // doesn't truncate the match early.
-      const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=(["'])([\s\S]*?)\1/i)
-                      || html.match(/<meta[^>]+content=(["'])([\s\S]*?)\1[^>]+name=["']description["']/i);
-      const descText = descMatch ? descMatch[2] : null;
-      const headings = [];
-      const hRe = /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi;
-      let m;
-      while ((m = hRe.exec(html)) && headings.length < 15){
-        const text = stripTags(m[1]).trim();
-        if (text) headings.push(text);
-      }
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-      const bodyText = stripTags(bodyMatch ? bodyMatch[1] : html);
-      const context = {
-        url,
-        title: titleMatch ? stripTags(titleMatch[1]).trim() : null,
-        metaDescription: descText ? stripTags(descText).trim() : null,
-        headings,
-        excerpt: bodyText.slice(0, 800),
-        fetchedAt: new Date().toISOString()
-      };
       db.prepare('UPDATE accounts SET websiteContextJson = ?, websiteContextFetchedAt = ? WHERE accountId = ?')
         .run(JSON.stringify(context), context.fetchedAt, accountId);
       return sendJson(res, 200, context);
+    }
+
+    // POST /api/assessment/website-scan — 2026-08-25, per direct follow-up
+    // on cxmedia-assessment-inputs-status-audit-2026-08-25.md's finding
+    // that the free assessment never actually reads a visitor's website
+    // (the old Step 1 "Reviewing your site…" animation was a fixed timer
+    // standing in for a real crawl, per that doc). This is the real thing —
+    // public and unauthenticated by necessity (no account exists yet at
+    // assessment time), using the exact same fetchAndExtractPage() helper
+    // the portal's own website-scan endpoint above uses. Rate-limited by IP
+    // (5/hr) since anyone can reach it. Doesn't persist anything server-side
+    // (no account row to attach to yet) — the frontend holds the result in
+    // session state and forwards it into generate-readout below once the
+    // visitor finishes the rubric.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'assessment' && parts[2] === 'website-scan'){
+      if (assessmentRateLimitExceeded(req, 'website-scan', 5)){
+        return sendJson(res, 429, { error: 'Too many website checks from this connection in the last hour — try again later.' });
+      }
+      const body = await readBody(req);
+      const url = (body.url || '').trim();
+      if (!url || !/^https?:\/\//i.test(url)){
+        return sendJson(res, 400, { error: 'A valid http(s) website URL is required.' });
+      }
+      try {
+        const context = await fetchAndExtractPage(url);
+        return sendJson(res, 200, context);
+      } catch (e){
+        return sendJson(res, 502, { error: e.message });
+      }
+    }
+
+    // POST /api/assessment/generate-readout — 2026-08-25, the free
+    // assessment's AI-generated readout. See buildAssessmentReadoutPrompt()
+    // above for the full framing rationale (consultant voice, never
+    // criticizes the room, value language only — no tier names). Public/
+    // pre-account like website-scan just above, so it's rate-limited by IP
+    // too — capped tighter (3/hr vs. 5/hr) since this one spends real
+    // Anthropic API cost per call, not just a network fetch. Always
+    // returns 200 with null text + a note on any failure (missing key,
+    // vendor error, malformed response) rather than an error status — the
+    // frontend's job is to fall back to its existing templated synthesis/
+    // opportunity copy unchanged whenever note is non-null, so the free
+    // tool never breaks for a visitor over this.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'assessment' && parts[2] === 'generate-readout'){
+      if (assessmentRateLimitExceeded(req, 'generate-readout', 3)){
+        return sendJson(res, 200, { synthesis: null, opportunity: null, note: 'Too many readout requests from this connection in the last hour — showing the standard reading.' });
+      }
+      const body = await readBody(req);
+      const result = await generateAssessmentReadout({
+        company: typeof body.company === 'string' ? body.company.slice(0, 200) : '',
+        industryLabel: typeof body.industryLabel === 'string' ? body.industryLabel.slice(0, 200) : '',
+        footprint: typeof body.footprint === 'string' ? body.footprint.slice(0, 50) : '',
+        audience: Array.isArray(body.audience) ? body.audience.slice(0, 10) : [],
+        wealth: Array.isArray(body.wealth) ? body.wealth.slice(0, 5) : [],
+        buyerType: typeof body.buyerType === 'string' ? body.buyerType.slice(0, 50) : '',
+        websiteContext: body.websiteContext && typeof body.websiteContext === 'object' ? body.websiteContext : null,
+        stages: Array.isArray(body.stages) ? body.stages.slice(0, 10) : [],
+        mediaPct: typeof body.mediaPct === 'number' ? body.mediaPct : null,
+        cxPct: typeof body.cxPct === 'number' ? body.cxPct : null
+      });
+      return sendJson(res, 200, result);
     }
 
     // POST /api/accounts/:id/rerate — Continuous Monitoring, persisted for real
@@ -10144,6 +10833,14 @@ async function handleRequest(req, res) {
       const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
       db.prepare('UPDATE campaign_copy_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
         .run(body.candidateKey, selectedBy, now, interviewId);
+      // 2026-08-25 — Contest-Winner Priority Model: this winner becomes the
+      // account's priority model for marketing_copy generation going
+      // forward, until a future contest overwrites it. Additive only — the
+      // interview row above already recorded the win; this just also makes
+      // it the standing default. Never blocks the response on failure.
+      try {
+        upsertPriorityModelFromCandidate(campaign.accountId, 'marketing_copy', chosen, 'campaign_copy_interviews', interviewId, selectedBy);
+      } catch (e){ /* priority-model bookkeeping should never break the select response */ }
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy });
     }
 
@@ -11137,6 +11834,135 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { deleted: true });
     }
 
+    // ---------- Brand Copy Website Examples (2026-08-25) ----------
+    // POST /api/accounts/:id/brand-copy-website-examples — add a rule.
+    // Body: { mode: 'include'|'exclude', scope: 'site'|'directory'|'page', path }
+    // (path ignored/forced to '/' for scope='site'). Validates against every
+    // existing rule (checkWebsiteExampleConflict) and the combined 5-directory/
+    // 20-page cap BEFORE touching the sitemap, per the design doc's explicit
+    // "reject with a specific reason, never silently dedupe or accept a
+    // contradiction" rule. For scope in ('site','directory') this
+    // synchronously runs the sitemap resolution flow and returns the
+    // resolved page set (or an honest failure reason).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-copy-website-examples'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      const mode = body.mode;
+      const scope = body.scope;
+      if (!['include', 'exclude'].includes(mode)) return sendJson(res, 400, { error: "mode must be 'include' or 'exclude'" });
+      if (!['site', 'directory', 'page'].includes(scope)) return sendJson(res, 400, { error: "scope must be 'site', 'directory', or 'page'" });
+      if (scope === 'site' && mode === 'exclude') return sendJson(res, 400, { error: "excluding your entire site isn't offered — that just means including nothing. Remove your include rules instead." });
+      const normalizedPath = normalizeWebsiteExamplePath(body.path, scope);
+      if (scope === 'page' && normalizedPath === '/') return sendJson(res, 400, { error: 'A specific page path is required.' });
+
+      const conflict = checkWebsiteExampleConflict(accountId, mode, scope, normalizedPath);
+      if (conflict.status) return sendJson(res, conflict.status, { error: conflict.error });
+
+      const usage = websiteExampleCapUsage(accountId);
+      if ((scope === 'directory' || scope === 'site') && usage.directoriesUsed >= WEBSITE_EXAMPLE_MAX_DIRECTORIES){
+        return sendJson(res, 400, { error: `You've reached the limit of ${WEBSITE_EXAMPLE_MAX_DIRECTORIES} directory/site entries (counted across include and exclude). Remove one before adding another.` });
+      }
+      if (scope === 'page' && usage.pagesUsed >= WEBSITE_EXAMPLE_MAX_PAGES){
+        return sendJson(res, 400, { error: `You've reached the limit of ${WEBSITE_EXAMPLE_MAX_PAGES} page entries (counted across include and exclude). Remove one before adding another.` });
+      }
+
+      const now = new Date().toISOString();
+      const ruleId = generateId('BCWR');
+      const createdBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+
+      if (scope === 'page'){
+        let status = mode === 'exclude' ? 'excluded' : 'active';
+        let title = null, metaDescription = null, headingsJson = null, excerpt = null, fetchedAt = null;
+        if (mode === 'include'){
+          const websiteOrigin = (() => { try { return new URL(account.websiteUrl).origin; } catch (e){ return null; } })();
+          if (websiteOrigin){
+            try {
+              const ctx = await fetchAndExtractPage(websiteOrigin + normalizedPath);
+              title = ctx.title; metaDescription = ctx.metaDescription; headingsJson = JSON.stringify(ctx.headings || []); excerpt = ctx.excerpt; fetchedAt = ctx.fetchedAt;
+            } catch (e){ status = 'failed'; }
+          } else {
+            status = 'failed';
+          }
+        }
+        db.prepare(`INSERT INTO brand_copy_website_examples (id, accountId, mode, scope, path, status, title, metaDescription, headingsJson, excerpt, parentRuleId, fetchedAt, createdBy, createdAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(ruleId, accountId, mode, scope, normalizedPath, status, title, metaDescription, headingsJson, excerpt, null, fetchedAt, createdBy, now);
+        return sendJson(res, 200, { id: ruleId, mode, scope, path: normalizedPath, status, warning: conflict.warning || null });
+      }
+
+      // scope is 'directory' or 'site' — persist the rule row first, then
+      // resolve (mode='exclude' rules don't resolve pages of their own;
+      // they just re-filter existing includes going forward — see the
+      // exclude-application step inside resolveWebsiteExampleDirectoryRule
+      // and the re-filter-on-new-exclude step below).
+      db.prepare(`INSERT INTO brand_copy_website_examples (id, accountId, mode, scope, path, status, title, metaDescription, headingsJson, excerpt, parentRuleId, fetchedAt, createdBy, createdAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(ruleId, accountId, mode, scope, normalizedPath, 'active', null, null, null, null, null, null, createdBy, now);
+
+      if (mode === 'exclude'){
+        // Re-filter existing resolved include pages against this new exclude
+        // rule immediately, per the design doc ("any excludes added later
+        // re-filter existing includes before finalizing which pages are
+        // active").
+        const toExclude = db.prepare(`SELECT id FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' AND (path = ? OR path LIKE ?)`)
+          .all(accountId, normalizedPath, normalizedPath + '%');
+        toExclude.forEach(r => db.prepare(`UPDATE brand_copy_website_examples SET status = 'excluded' WHERE id = ?`).run(r.id));
+        return sendJson(res, 200, { id: ruleId, mode, scope, path: normalizedPath, status: 'active', reFilteredCount: toExclude.length, warning: conflict.warning || null });
+      }
+
+      const websiteUrl = (account.websiteUrl || '').trim();
+      if (!websiteUrl){
+        db.prepare(`UPDATE brand_copy_website_examples SET status = 'failed' WHERE id = ?`).run(ruleId);
+        return sendJson(res, 200, { id: ruleId, mode, scope, path: normalizedPath, status: 'failed', error: 'This account has no website URL on file — add one under Company Profile first, then re-add this rule.', resolved: [] });
+      }
+      const resolution = await resolveWebsiteExampleDirectoryRule(accountId, ruleId, websiteUrl, normalizedPath, scope, createdBy);
+      if (!resolution.ok){
+        db.prepare(`UPDATE brand_copy_website_examples SET status = 'failed' WHERE id = ?`).run(ruleId);
+        return sendJson(res, 200, { id: ruleId, mode, scope, path: normalizedPath, status: 'failed', error: resolution.error, resolved: [] });
+      }
+      return sendJson(res, 200, {
+        id: ruleId, mode, scope, path: normalizedPath, status: 'active',
+        totalFound: resolution.totalFound, resolvedCount: resolution.resolvedCount,
+        truncatedNote: resolution.truncatedNote, resolved: resolution.resolved, warning: conflict.warning || null
+      });
+    }
+
+    // GET /api/accounts/:id/brand-copy-website-examples — list all rules
+    // and resolved pages, plus current cap usage.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-copy-website-examples'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rules = db.prepare(`SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND parentRuleId IS NULL ORDER BY createdAt DESC`).all(accountId);
+      const rows = rules.map(r => ({
+        ...r,
+        headingsJson: undefined,
+        headings: r.headingsJson ? JSON.parse(r.headingsJson) : [],
+        resolvedPages: (r.scope === 'directory' || r.scope === 'site')
+          ? db.prepare(`SELECT id, path, status, title, fetchedAt FROM brand_copy_website_examples WHERE parentRuleId = ? ORDER BY path ASC`).all(r.id)
+          : undefined
+      }));
+      const usage = websiteExampleCapUsage(accountId);
+      return sendJson(res, 200, { rules: rows, directoriesUsed: usage.directoriesUsed, directoriesCap: WEBSITE_EXAMPLE_MAX_DIRECTORIES, pagesUsed: usage.pagesUsed, pagesCap: WEBSITE_EXAMPLE_MAX_PAGES });
+    }
+
+    // DELETE /api/accounts/:id/brand-copy-website-examples/:id — remove a
+    // rule; if it's a directory/site rule, its resolved child pages cascade
+    // (freeing their cap slots).
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-copy-website-examples'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const ruleId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM brand_copy_website_examples WHERE id = ? AND accountId = ?').get(ruleId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'rule not found' });
+      db.prepare('DELETE FROM brand_copy_website_examples WHERE parentRuleId = ?').run(ruleId);
+      db.prepare('DELETE FROM brand_copy_website_examples WHERE id = ?').run(ruleId);
+      return sendJson(res, 200, { deleted: true });
+    }
+
     // ---------- PR & Corp Comm real backend (round 132c22b) ----------
     // Press Releases: POST create / GET list / PATCH update / DELETE /
     // POST :id/generate-draft (AI drafts into workingCopy, honest fallback
@@ -11205,6 +12031,40 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, result);
     }
 
+    // POST /api/accounts/:id/press-releases/:prId/interview — 2026-08-25,
+    // the new PR Copy Contest (see runPrCandidateInterview() above). Same
+    // shape as the marketing-copy interview endpoint: logs the full panel,
+    // returns a redacted view for the client.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases' && parts[5] === 'interview'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const session = authenticate(req);
+      const prId = decodeURIComponent(parts[4]);
+      const body = await readBody(req);
+      const result = await handlePrCopyInterviewRequest('press_release', accountId, prId, body, session);
+      return sendJson(res, result.status, result.body);
+    }
+    // POST /api/accounts/:id/press-releases/:prId/interview/:interviewId/select
+    // — winner selection: applies the copy to the press release's workingCopy
+    // (same explicit-click-only apply discipline as generate-draft above)
+    // AND upserts this account's pr_copy priority model (see
+    // handlePrCopySelectRequest()).
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases' && parts[5] === 'interview' && parts[7] === 'select'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const prId = decodeURIComponent(parts[4]);
+      const interviewId = decodeURIComponent(parts[6]);
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey) return sendJson(res, 400, { error: 'candidateKey is required' });
+      const result = handlePrCopySelectRequest(accountId, interviewId, body.candidateKey, session);
+      if (result.status === 200 && result.body.copy){
+        db.prepare('UPDATE press_releases SET workingCopy = ?, updatedAt = ? WHERE id = ? AND accountId = ?')
+          .run(result.body.copy, new Date().toISOString(), prId, accountId);
+      }
+      return sendJson(res, result.status, result.body);
+    }
+
     // Editorial Pitches: POST create / GET list / PATCH update / DELETE /
     // POST :id/generate-draft.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches'){
@@ -11267,6 +12127,33 @@ async function handleRequest(req, res) {
         db.prepare('UPDATE editorial_pitches SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, pitchId);
       }
       return sendJson(res, 200, result);
+    }
+
+    // POST /api/accounts/:id/editorial-pitches/:pitchId/interview + .../select
+    // — PR Copy Contest for editorial pitches. Same shape as press-releases above.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches' && parts[5] === 'interview'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const session = authenticate(req);
+      const pitchId = decodeURIComponent(parts[4]);
+      const body = await readBody(req);
+      const result = await handlePrCopyInterviewRequest('editorial_pitch', accountId, pitchId, body, session);
+      return sendJson(res, result.status, result.body);
+    }
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'editorial-pitches' && parts[5] === 'interview' && parts[7] === 'select'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const pitchId = decodeURIComponent(parts[4]);
+      const interviewId = decodeURIComponent(parts[6]);
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey) return sendJson(res, 400, { error: 'candidateKey is required' });
+      const result = handlePrCopySelectRequest(accountId, interviewId, body.candidateKey, session);
+      if (result.status === 200 && result.body.copy){
+        db.prepare('UPDATE editorial_pitches SET workingCopy = ?, updatedAt = ? WHERE id = ? AND accountId = ?')
+          .run(result.body.copy, new Date().toISOString(), pitchId, accountId);
+      }
+      return sendJson(res, result.status, result.body);
     }
 
     // Corporate Communications: POST create / GET list / PATCH update /
@@ -11332,6 +12219,33 @@ async function handleRequest(req, res) {
         db.prepare('UPDATE corporate_comms SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, commId);
       }
       return sendJson(res, 200, result);
+    }
+
+    // POST /api/accounts/:id/corporate-comms/:commId/interview + .../select
+    // — PR Copy Contest for corporate comms. Same shape as press-releases above.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms' && parts[5] === 'interview'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const session = authenticate(req);
+      const commId = decodeURIComponent(parts[4]);
+      const body = await readBody(req);
+      const result = await handlePrCopyInterviewRequest('corporate_comms', accountId, commId, body, session);
+      return sendJson(res, result.status, result.body);
+    }
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms' && parts[5] === 'interview' && parts[7] === 'select'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const commId = decodeURIComponent(parts[4]);
+      const interviewId = decodeURIComponent(parts[6]);
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey) return sendJson(res, 400, { error: 'candidateKey is required' });
+      const result = handlePrCopySelectRequest(accountId, interviewId, body.candidateKey, session);
+      if (result.status === 200 && result.body.copy){
+        db.prepare('UPDATE corporate_comms SET workingCopy = ?, updatedAt = ? WHERE id = ? AND accountId = ?')
+          .run(result.body.copy, new Date().toISOString(), commId, accountId);
+      }
+      return sendJson(res, result.status, result.body);
     }
 
     // POST /api/market-population-master — CX Ops bulk-loads real

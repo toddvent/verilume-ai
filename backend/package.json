@@ -10,7 +10,9 @@
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "mammoth": "^1.12.1",
+    "pdf-parse": "^1.1.1"
   },
   "license": "UNLICENSED"
 }
