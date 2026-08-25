@@ -110,6 +110,24 @@
   } else {
     vlUtilityNavInit();
   }
+  // 2026-08-24, per direct report ("Access My Portal takes me to the
+  // wrong account, even after logging in as the right one") — this only
+  // ever ran once, on initial load. Two real ways that goes stale: (1)
+  // the browser restores this exact page from bfcache on Back/Forward
+  // navigation, which does NOT re-fire DOMContentLoaded, so the link's
+  // href keeps whatever account (or none) was active when this page was
+  // first painted, even if a login happened after that in this same tab
+  // via a different page; (2) this page was left open in one tab while
+  // login happened in another tab/window — localStorage changed, but
+  // this tab's DOM never re-read it. 'pageshow' fires on both a normal
+  // load AND a bfcache restore (check event.persisted to tell them
+  // apart, though re-running is harmless either way); the 'storage'
+  // event fires in OTHER tabs of the same origin when localStorage
+  // changes in one tab, so both close the gap.
+  window.addEventListener('pageshow', function(e){ vlUtilityNavInit(); });
+  window.addEventListener('storage', function(e){
+    if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit();
+  });
   window.vlUtilityNavInit = vlUtilityNavInit;
 })();
 </script>
