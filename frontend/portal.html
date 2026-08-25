@@ -944,6 +944,36 @@
   .link-btn:hover{color:var(--advocacy);}
   .flink:hover{text-decoration:underline;}
   .module-head .flink{font-size:0.7188rem;}
+  /* 2026-08-25 — full-screen load cover, per direct instruction: "I want
+     that copy gone forever never to be seen again... I'd prefer to have a
+     full screen loading screen if we need a few seconds." Root cause of
+     the recurring "old copy" reports: the real content (header company
+     name, the Daily Brief greeting, stat cards, etc.) only replaces the
+     markup's static placeholder text once loadAccountData() and the rest
+     of the Init IIFE finish — until now, that placeholder text (and the
+     "Loading…" header) was sitting in plain view on screen the entire
+     time, which is what kept reading as "old"/"cached" copy no matter how
+     many times the underlying data actually got fixed. This cover sits
+     above literally everything (z-index above .login-gate, the highest
+     prior overlay in this file) and is the very first thing painted —
+     first child of <body>, before the header markup below it — so nothing
+     underneath is ever visible while it's up, regardless of what that
+     markup says. hidePortalLoadCover()/showPortalLoadCoverError() (see the
+     Init IIFE) remove it once real data lands, or swap it to a retry state
+     if the watchdog timer (also in the Init IIFE) fires first. */
+  .portal-load-cover{position:fixed;inset:0;z-index:900;background:var(--hdr-navy);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;transition:opacity 0.25s ease;}
+  .portal-load-cover.fading{opacity:0;pointer-events:none;}
+  .portal-load-cover-mark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;font-weight:650;color:#fff;letter-spacing:-0.01em;}
+  .portal-load-cover-mark b{color:var(--hdr-amber);font-weight:650;}
+  .portal-load-cover-spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,0.22);border-top-color:var(--hdr-amber);animation:portalLoadSpin 0.85s linear infinite;}
+  @media (prefers-reduced-motion: reduce){ .portal-load-cover-spinner{animation-duration:2.4s;} }
+  @keyframes portalLoadSpin{ to{ transform:rotate(360deg); } }
+  .portal-load-cover-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;color:rgba(255,255,255,0.68);}
+  .portal-load-cover-error{display:none;text-align:center;max-width:360px;padding:0 24px;}
+  .portal-load-cover-error.show{display:block;}
+  .portal-load-cover-error p{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;color:rgba(255,255,255,0.85);line-height:1.5;margin:0 0 14px;}
+  .portal-load-cover-retry{display:inline-block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:700;color:#2A1B05;background:var(--hdr-amber);padding:9px 20px;border-radius:999px;text-decoration:none;}
+  .portal-load-cover-retry:hover{background:var(--hdr-amber-dim);}
   /* Round 60 — login gate (Deliverable 14/auth). */
   .login-gate{position:fixed;inset:0;z-index:500;background:rgba(29,29,31,0.92);display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-gate-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:36px 32px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.35);}
@@ -2326,6 +2356,21 @@
 </style>
 </head>
 <body>
+<!-- 2026-08-25 — full-screen load cover, first thing in <body> on purpose
+     (see the .portal-load-cover CSS comment above for the full rationale).
+     Everything else on this page — including the placeholder "Loading…"
+     header and the default H1 copy further down — stays hidden behind
+     this until the Init IIFE either finishes loading real data or the
+     watchdog timer decides it's stuck. -->
+<div class="portal-load-cover" id="portalLoadCover">
+  <div class="portal-load-cover-mark">Veri<b>lume</b></div>
+  <div class="portal-load-cover-spinner" id="portalLoadCoverSpinner"></div>
+  <div class="portal-load-cover-note" id="portalLoadCoverNote">Loading your Portal…</div>
+  <div class="portal-load-cover-error" id="portalLoadCoverError">
+    <p id="portalLoadCoverErrorText">This is taking longer than expected. The Portal didn't finish loading your account.</p>
+    <a href="#" class="portal-load-cover-retry" id="portalLoadCoverRetry">Retry</a>
+  </div>
+</div>
 <div class="utility-nav" id="utilityNav">
   <div class="utility-nav-inner">
     <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
@@ -2488,20 +2533,16 @@
         <div class="acct-header-subtitle">Verilume Portal</div>
       </div>
     </div>
-    <!-- 2026-08-25 — watchdog banner, per Todd's repeated "It's still
-         happending" reports of the header sitting on "Loading…" forever
-         with no visible error. Hidden by default; the Init IIFE's
-         standalone watchdog timer (independent of the loadAccountData()
-         await chain, so it fires even if that chain is truly hung — see
-         that timer's own comment for why) reveals this and fills in
-         #portalLoadWatchdogDetail if the header is still stuck after ~15s.
-         Not tied to any specific root cause — surfaces whatever state the
-         page is actually in instead of an unbounded silent spinner. -->
-    <div id="portalLoadWatchdogBanner" style="display:none;width:100%;margin-top:10px;padding:12px 16px;background:#FEF3E2;border:1px solid #E8A33D;border-radius:8px;color:#7A4A00;font-size:0.8125rem;line-height:1.5;">
-      <strong>This is taking longer than expected.</strong>
-      <span id="portalLoadWatchdogDetail">The portal didn't finish loading your account.</span>
-      <a href="#" id="portalLoadWatchdogRetry" style="margin-left:8px;font-weight:700;color:#7A4A00;text-decoration:underline;">Retry</a>
-    </div>
+    <!-- 2026-08-25 — the small in-header watchdog banner that lived here
+         (shown after ~15s stuck on "Loading…") is retired, superseded by
+         the full-screen #portalLoadCover (see that div's own comment,
+         right after <body>). Per direct instruction ("I want that copy
+         gone forever... I'd prefer to have a full screen loading screen"):
+         a banner sitting NEXT TO the stuck placeholder copy still let that
+         placeholder copy be seen; the full-screen cover hides this entire
+         header (and everything below it) until real data is ready or the
+         watchdog gives up, so the placeholder is never on screen at all,
+         and there's exactly one loading/error mechanism instead of two. -->
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
       <!-- #orgModelRow / #acctTag stay in the DOM (JS at loadAccountData()'s
            completion still writes acctTag's text, and switchPrimaryTab()
@@ -7874,7 +7915,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-25-remove-old-workstream-voice-widget';
+const CXMEDIA_BUILD_STAMP = '2026-08-25-fullscreen-load-cover';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -41517,38 +41558,48 @@ async function saveCompetitivePositioning(){
   const urlToken = params.get('token');
   if (urlToken) persistSessionToken(urlToken);
 
-  // 2026-08-25 — watchdog, per Todd's repeated "It's still happending"
-  // reports of the header sitting on "Loading…" indefinitely with no
-  // visible error. This setTimeout is deliberately NOT inside the
-  // `await loadAccountData()` chain below — it's a plain, independent
-  // timer, so it still fires even if that chain is genuinely stuck (the
-  // leading suspect is requireLogin()'s intentionally-never-resolving
-  // Promise, a few lines up, if the 401 branch fires and the
-  // `location.href` navigation it triggers doesn't complete). After ~15s,
-  // if the header still reads "Loading…" — the neutral placeholder set in
-  // the markup, never overwritten until loadAccountData() actually
-  // finishes — this surfaces a visible banner with a Retry link instead of
-  // leaving the page silently spinning forever. It self-cancels the moment
-  // loadAccountData() finishes normally, so it never shows on a healthy
-  // load, however slow the network legitimately is.
-  const portalLoadWatchdog = setTimeout(() => {
-    const nameEl = document.getElementById('acctCompanyName');
-    const bannerEl = document.getElementById('portalLoadWatchdogBanner');
-    const detailEl = document.getElementById('portalLoadWatchdogDetail');
-    if (!nameEl || nameEl.textContent !== 'Loading…' || !bannerEl) return;
-    console.error('portal.html: watchdog fired — the header is still on "Loading…" after 15s. loadAccountData() has not resolved. Check the console above for the last "portal.html:" log line to see which branch it stalled in (most likely: a 401 redirect to login.html that did not complete navigation).');
-    if (detailEl) detailEl.textContent = 'The portal didn\'t finish loading your account. This can happen if a login redirect didn\'t complete.';
-    bannerEl.style.display = 'block';
-  }, 15000);
-  const portalLoadWatchdogRetryLink = document.getElementById('portalLoadWatchdogRetry');
-  if (portalLoadWatchdogRetryLink){
-    portalLoadWatchdogRetryLink.onclick = function(e){ e.preventDefault(); location.reload(); };
+  // 2026-08-25 — the full-screen #portalLoadCover (see its own markup
+  // comment right after <body>) is up covering the whole page right now.
+  // hidePortalLoadCoverFn() fades it out once this whole IIFE finishes —
+  // real data loaded AND rendered, not just loadAccountData() resolved —
+  // so nothing is revealed half-ready. showPortalLoadCoverErrorFn() swaps
+  // it to a Retry state instead, used by both the watchdog below (still
+  // covered after 15s — most likely requireLogin()'s intentionally-never-
+  // resolving Promise if a 401 fires and the login.html redirect doesn't
+  // complete) and the catch block further down (something threw partway
+  // through init) — either way, the visitor gets a real, actionable state
+  // instead of an indefinite spinner or a flash of stale placeholder copy.
+  const hidePortalLoadCoverFn = () => {
+    const coverEl = document.getElementById('portalLoadCover');
+    if (!coverEl) return;
+    coverEl.classList.add('fading');
+    setTimeout(() => { coverEl.style.display = 'none'; }, 260);
+  };
+  const showPortalLoadCoverErrorFn = (message) => {
+    const coverEl = document.getElementById('portalLoadCover');
+    const spinnerEl = document.getElementById('portalLoadCoverSpinner');
+    const noteEl = document.getElementById('portalLoadCoverNote');
+    const errorEl = document.getElementById('portalLoadCoverError');
+    const errorTextEl = document.getElementById('portalLoadCoverErrorText');
+    if (!coverEl) return;
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    if (noteEl) noteEl.style.display = 'none';
+    if (errorTextEl && message) errorTextEl.textContent = message;
+    if (errorEl) errorEl.classList.add('show');
+  };
+  const portalLoadCoverRetryLink = document.getElementById('portalLoadCoverRetry');
+  if (portalLoadCoverRetryLink){
+    portalLoadCoverRetryLink.onclick = function(e){ e.preventDefault(); location.reload(); };
   }
+  const portalLoadWatchdog = setTimeout(() => {
+    const coverEl = document.getElementById('portalLoadCover');
+    if (!coverEl || coverEl.style.display === 'none') return;
+    console.error('portal.html: watchdog fired — still on the load cover after 15s. The Init sequence has not finished. Check the console above for the last "portal.html:" log line to see which branch it stalled in (most likely: a 401 redirect to login.html that did not complete navigation).');
+    showPortalLoadCoverErrorFn('This is taking longer than expected. The Portal didn\'t finish loading your account. This can happen if a login redirect didn\'t complete.');
+  }, 15000);
 
-  await loadAccountData();
-  clearTimeout(portalLoadWatchdog);
-  const portalLoadWatchdogBannerEl = document.getElementById('portalLoadWatchdogBanner');
-  if (portalLoadWatchdogBannerEl) portalLoadWatchdogBannerEl.style.display = 'none';
+  try {
+    await loadAccountData();
   // 2026-08-23 — these five were previously awaited one at a time, so the
   // header (#acctCompanyName) and the Start-of-Day standup bubble — both
   // of which only render after this whole block finishes, further down —
@@ -41660,6 +41711,23 @@ async function saveCompetitivePositioning(){
     goToStep(stepParam);
   } else {
     goToStep('dashboard');
+  }
+
+    // 2026-08-25 — everything above has now actually rendered (not just
+    // loadAccountData() resolving), so it's safe to reveal the page and
+    // retire both the watchdog and the load cover.
+    clearTimeout(portalLoadWatchdog);
+    hidePortalLoadCoverFn();
+  } catch (e){
+    // 2026-08-25 — belt-and-suspenders: loadAccountData() already has its
+    // own internal fallback chain (backend → handoff → mock, see that
+    // function's own comment), so this catch is for anything AFTER it —
+    // one of the render calls above throwing partway through — which
+    // would otherwise leave the load cover up forever with no watchdog
+    // firing for another 15s. Surface it immediately instead of waiting.
+    clearTimeout(portalLoadWatchdog);
+    console.error('portal.html: Init sequence threw before finishing — the page did not load correctly.', e);
+    showPortalLoadCoverErrorFn('Something went wrong while loading the Portal.');
   }
 })();
 </script>

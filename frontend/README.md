@@ -1,24 +1,20 @@
-# Round 18 — "stuck on Loading" watchdog + old voice widget removed from deeper pages
+# Round 19 — full-screen load cover: the old copy is never on screen again
 
-Two fixes, both in `portal.html` only.
+Per your direct instruction: "I want that copy gone forever never to be seen again... I'd prefer to have a full screen loading screen if we need a few seconds."
 
-## 1. The "stuck on Loading…" hang now surfaces a visible error
+## What changed
 
-Your last two screenshots showed the header still stuck on "Loading…" even after the "Access My Portal" link fix. That earlier fix was real and verified, but it wasn't the whole story — this is the deeper issue.
+The root problem across every "old copy" / "stuck on Loading" report was the same thing: the page's real content only replaces its placeholder text once loading finishes. Until now, that placeholder text (and the "Loading…" header) sat in plain view the whole time it was loading — which is exactly what kept reading as "old" or "cached," no matter how many times the underlying data issue got fixed.
 
-**What's going on:** the account-loading sequence, if the backend says you're not logged in, redirects you to the login page and then waits — by design, on a promise that only ends when that redirect actually completes. If that navigation stalls for any reason, everything downstream just sits there forever with no error shown. That matches your symptom exactly.
+This round removes that placeholder text from view entirely, structurally, rather than trying to make it finish loading faster:
 
-**What this fix does**, since I don't yet have a console/network screenshot to confirm the exact trigger:
-- Console logging at every decision point in the account-loading logic, so if this happens again, a console screenshot will show exactly where it's stuck.
-- A 15-second watchdog: if the header is still on "Loading…" after 15 seconds, a banner now appears with a **Retry** link. Verified via Playwright on both a healthy load (banner never appears) and a forced hang (banner appears with the right diagnostic log).
+- A full-screen cover (Verilume mark + spinner, "Loading your Portal…") is now the very first thing on the page — it paints before anything else, sitting above every other element. **Nothing underneath it is ever visible while it's up** — not the "Loading…" header, not the default placeholder headline, nothing.
+- It only lifts once the page has real content ready to show — not the moment the account data technically arrives, but after everything on screen has actually rendered.
+- If something goes wrong — the same hang from the last round, or anything else that stops the page from finishing — the cover itself switches to a plain, honest message with a **Retry** button, instead of a banner sitting next to stale content. There is exactly one loading/error state now, not two overlapping ones.
 
-## 2. Removed the old conversational/voice widget from deeper pages
+## What this means for you
 
-Per your note: "We have pages with the correct new Eleven Labs experience under the navigation and the old footprint on some deeper pages... The old experience should be deleted."
-
-That old footprint was a leftover per-workstream widget — the gold avatar bubble, "Ask about this workstream…" input, mic button, and suggested-prompt chips — that showed up on six pages: Strategy/Brand/Marketing group pages, Experience Management, Campaign Management, Search Optimization, Reputation, and Manage Account. It predates the persistent "Ask Verilume" bar now pinned under the nav on every page (mic icon, "Voice · Enterprise" badge) and did the exact same job. A prior round already hid this same widget on the main Dashboard page, but missed these six workstream-level copies — that gap is what you were seeing.
-
-It's removed from all six pages now. The "new" Ask Verilume bar under the nav is untouched — that one stays, since it's the correct current experience.
+Reload the portal and you'll either see the cover with a spinner for a moment, then the real page — or, if something's genuinely wrong, a clear "this is taking longer than expected" message with a Retry button. You will not see "The experience, working — and here's the proof." or any other placeholder text flash on screen again, regardless of how long the actual load takes.
 
 ## Files in this delivery
 
@@ -27,7 +23,9 @@ It's removed from all six pages now. The "new" Ask Verilume bar under the nav is
 ## Testing performed before this delivery
 
 - JS syntax check across the full file (clean)
-- Playwright: forced-hang scenario (401 + a login redirect that never completes) confirmed the watchdog banner and diagnostic console logs both fire correctly at 15s
-- Playwright: healthy load confirmed the banner never appears
-- Playwright: visited all six workstream/group pages and confirmed no old mic button or conversational box renders on any of them, while the new Ask Verilume bar's own mic (in the header) is unaffected
-- Build stamp: `2026-08-25-remove-old-workstream-voice-widget`
+- Playwright: confirmed the cover is already up the instant the page starts loading (before any data arrives)
+- Playwright: confirmed a healthy load fades the cover out only after the real "Good morning" greeting and content have rendered — placeholder text never appears
+- Playwright: confirmed a forced hang (the same 401 + stalled-redirect scenario from the last round) correctly drives the cover into the Retry state after 15 seconds
+- Visual screenshots of both the loading state and the Retry state — both included below
+- `<div>` balance re-checked against this file's known +2 baseline (unchanged)
+- Build stamp: `2026-08-25-fullscreen-load-cover`
