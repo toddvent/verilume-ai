@@ -2488,6 +2488,20 @@
         <div class="acct-header-subtitle">Verilume Portal</div>
       </div>
     </div>
+    <!-- 2026-08-25 — watchdog banner, per Todd's repeated "It's still
+         happending" reports of the header sitting on "Loading…" forever
+         with no visible error. Hidden by default; the Init IIFE's
+         standalone watchdog timer (independent of the loadAccountData()
+         await chain, so it fires even if that chain is truly hung — see
+         that timer's own comment for why) reveals this and fills in
+         #portalLoadWatchdogDetail if the header is still stuck after ~15s.
+         Not tied to any specific root cause — surfaces whatever state the
+         page is actually in instead of an unbounded silent spinner. -->
+    <div id="portalLoadWatchdogBanner" style="display:none;width:100%;margin-top:10px;padding:12px 16px;background:#FEF3E2;border:1px solid #E8A33D;border-radius:8px;color:#7A4A00;font-size:0.8125rem;line-height:1.5;">
+      <strong>This is taking longer than expected.</strong>
+      <span id="portalLoadWatchdogDetail">The portal didn't finish loading your account.</span>
+      <a href="#" id="portalLoadWatchdogRetry" style="margin-left:8px;font-weight:700;color:#7A4A00;text-decoration:underline;">Retry</a>
+    </div>
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
       <!-- #orgModelRow / #acctTag stay in the DOM (JS at loadAccountData()'s
            completion still writes acctTag's text, and switchPrimaryTab()
@@ -7860,7 +7874,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-24-remove-ai-thoughts-preview-card';
+const CXMEDIA_BUILD_STAMP = '2026-08-25-remove-old-workstream-voice-widget';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12915,6 +12929,13 @@ async function loadAccountData(){
       // login succeeds (or the visitor explicitly opts into the
       // illustrative-preview escape hatch) rather than silently falling
       // through to mock data, which would defeat the point of gating.
+      // 2026-08-25 — logged per Todd's repeated "stuck on Loading" reports:
+      // requireLogin() deliberately never resolves (it navigates away via
+      // location.href instead), so if that navigation stalls for any
+      // reason, this is the last line that runs before the whole init
+      // sequence hangs. This log is the one piece of evidence that
+      // distinguishes "hung here" from every other possible cause.
+      console.warn('portal.html: account fetch returned 401 — redirecting to login.html via requireLogin(). If the page is still stuck on "Loading…" after this line, the location.href navigation below did not complete.', { companyId: state.companyId });
       const loggedIn = await requireLogin();
       if (loggedIn){
         resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
@@ -12923,6 +12944,7 @@ async function loadAccountData(){
     if (resp.ok){
       const record = await resp.json();
       dataSourceLabel = 'backend';
+      console.log('portal.html: loadAccountData() resolved from the backend.', { companyId: state.companyId, company: record.account.company });
       state.company = record.account.company || state.company;
       state.industry = record.account.industry || state.industry;
       state.footprint = record.account.footprint || state.footprint;
@@ -13121,6 +13143,7 @@ async function loadAccountData(){
   trackedCellKeys = RUBRIC_CELLS
     .filter(c => snapshot[cellKey(c.stage, c.layer)] < 2.5)
     .map(c => cellKey(c.stage, c.layer));
+  console.log('portal.html: loadAccountData() resolved from a fallback source (backend either unreachable or returned a non-OK status other than 401).', { dataSourceLabel, companyId: state.companyId });
   loadDailyBrief();
 }
 
@@ -15721,6 +15744,28 @@ function cfdWsConfig(key, groupKey){
   return key === 'group' ? (WORKSTREAM_CFD.group[groupKey] || null) : (WORKSTREAM_CFD[key] || null);
 }
 
+// 2026-08-25 — no longer called anywhere (see each call site's own
+// "removed" comment), per direct instruction: "We have pages with the
+// correct new Eleven Labs experience under the navigation and the old
+// footprint on some deeper pages... The old experience should be
+// deleted." This per-workstream conversational box (avatar + reply bubble
+// + text input + 🎙 mic button + suggested-prompt chips, rendered into
+// #cfdWsModule-<key> on the group/experienceManagement/campaignMgmt/
+// searchOptimization/reputation/manageAccount pages) was the OLD
+// experience — it predates the persistent "Ask Verilume" bar (round 16,
+// see that bar's own markup comment) and duplicates the exact same job
+// ("type or talk — routes to the right function, wherever you are") that
+// bar already does on every page, including these ones. Round 17 hid the
+// Dashboard's own copy of this same widget (#dashPanel-startOfDay /
+// #cfdModule) for the same reason but missed these six per-workstream
+// copies — that gap is what was still showing up on the "deeper pages" in
+// the reports.
+//
+// The #cfdWsModule-<key> container divs stay in the markup (never
+// populated, so effectively empty/invisible) and this function stays
+// defined but unused, same reversible-swap posture as the rest of this
+// codebase — nothing here was deleted outright in case any of this needs
+// to resurface.
 function renderCfdWs(key, groupKey){
   const containerId = `cfdWsModule-${key}`;
   const container = document.getElementById(containerId);
@@ -35571,7 +35616,9 @@ function goToStep(step, arg, arg2){
   if (step === 'group'){
     if (arg && arg !== '__back') lastGroup = arg;
     renderGroup(lastGroup);
-    renderCfdWs('group', lastGroup);
+    // renderCfdWs() call removed 2026-08-25 — see this file's "old
+    // conversational-widget footprint" comment further down (search
+    // cfdWsModule) for the full explanation.
     document.getElementById('step-group').classList.add('active');
   } else if (step === 'voice'){
     renderVoiceStep();
@@ -35607,7 +35654,7 @@ function goToStep(step, arg, arg2){
     document.getElementById('step-teamDevelopment').classList.add('active');
   } else if (step === 'experienceManagement'){
     renderExperienceManagementStep();
-    renderCfdWs('experienceManagement');
+    // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-experienceManagement').classList.add('active');
   } else if (step === 'mediaScience'){
     renderMediaScienceStep();
@@ -35617,7 +35664,7 @@ function goToStep(step, arg, arg2){
     document.getElementById('step-customerExperiences').classList.add('active');
   } else if (step === 'campaignMgmt'){
     renderCampaignMgmtStep();
-    renderCfdWs('campaignMgmt');
+    // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     if (!cmgmtDueDatesLoaded) cmgmtLoadDueDates();
     document.getElementById('step-campaignMgmt').classList.add('active');
   } else if (step === 'collaboration'){
@@ -35625,15 +35672,15 @@ function goToStep(step, arg, arg2){
     document.getElementById('step-collaboration').classList.add('active');
   } else if (step === 'searchOptimization'){
     renderSearchOptimizationStep();
-    renderCfdWs('searchOptimization');
+    // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-searchOptimization').classList.add('active');
   } else if (step === 'reputation'){
     renderReputationStep();
-    renderCfdWs('reputation');
+    // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-reputation').classList.add('active');
   } else if (step === 'manageAccount'){
     renderAiPartnerOnboardingHub();
-    renderCfdWs('manageAccount');
+    // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-manageAccount').classList.add('active');
     // Round 132c[6] (2026-08-17) — the hub's "Business & Revenue Profile"
     // card status (onboardingSurveyCoreAnsweredCount()) needs the account's
@@ -41470,7 +41517,38 @@ async function saveCompetitivePositioning(){
   const urlToken = params.get('token');
   if (urlToken) persistSessionToken(urlToken);
 
+  // 2026-08-25 — watchdog, per Todd's repeated "It's still happending"
+  // reports of the header sitting on "Loading…" indefinitely with no
+  // visible error. This setTimeout is deliberately NOT inside the
+  // `await loadAccountData()` chain below — it's a plain, independent
+  // timer, so it still fires even if that chain is genuinely stuck (the
+  // leading suspect is requireLogin()'s intentionally-never-resolving
+  // Promise, a few lines up, if the 401 branch fires and the
+  // `location.href` navigation it triggers doesn't complete). After ~15s,
+  // if the header still reads "Loading…" — the neutral placeholder set in
+  // the markup, never overwritten until loadAccountData() actually
+  // finishes — this surfaces a visible banner with a Retry link instead of
+  // leaving the page silently spinning forever. It self-cancels the moment
+  // loadAccountData() finishes normally, so it never shows on a healthy
+  // load, however slow the network legitimately is.
+  const portalLoadWatchdog = setTimeout(() => {
+    const nameEl = document.getElementById('acctCompanyName');
+    const bannerEl = document.getElementById('portalLoadWatchdogBanner');
+    const detailEl = document.getElementById('portalLoadWatchdogDetail');
+    if (!nameEl || nameEl.textContent !== 'Loading…' || !bannerEl) return;
+    console.error('portal.html: watchdog fired — the header is still on "Loading…" after 15s. loadAccountData() has not resolved. Check the console above for the last "portal.html:" log line to see which branch it stalled in (most likely: a 401 redirect to login.html that did not complete navigation).');
+    if (detailEl) detailEl.textContent = 'The portal didn\'t finish loading your account. This can happen if a login redirect didn\'t complete.';
+    bannerEl.style.display = 'block';
+  }, 15000);
+  const portalLoadWatchdogRetryLink = document.getElementById('portalLoadWatchdogRetry');
+  if (portalLoadWatchdogRetryLink){
+    portalLoadWatchdogRetryLink.onclick = function(e){ e.preventDefault(); location.reload(); };
+  }
+
   await loadAccountData();
+  clearTimeout(portalLoadWatchdog);
+  const portalLoadWatchdogBannerEl = document.getElementById('portalLoadWatchdogBanner');
+  if (portalLoadWatchdogBannerEl) portalLoadWatchdogBannerEl.style.display = 'none';
   // 2026-08-23 — these five were previously awaited one at a time, so the
   // header (#acctCompanyName) and the Start-of-Day standup bubble — both
   // of which only render after this whole block finishes, further down —

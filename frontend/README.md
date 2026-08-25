@@ -1,49 +1,33 @@
-# CXMedia.AI Portal — AI Agent Thoughts Card Removed
+# Round 18 — "stuck on Loading" watchdog + old voice widget removed from deeper pages
 
-Build stamp: `2026-08-24-remove-ai-thoughts-preview-card`
-(check the browser console after deploy — it logs this on load)
+Two fixes, both in `portal.html` only.
 
-## What's in this package
+## 1. The "stuck on Loading…" hang now surfaces a visible error
 
-One file: `portal.html`. Upload it to the existing frontend folder on
-GitHub, replacing the current file.
+Your last two screenshots showed the header still stuck on "Loading…" even after the "Access My Portal" link fix. That earlier fix was real and verified, but it wasn't the whole story — this is the deeper issue.
 
-## What changed
+**What's going on:** the account-loading sequence, if the backend says you're not logged in, redirects you to the login page and then waits — by design, on a promise that only ends when that redirect actually completes. If that navigation stalls for any reason, everything downstream just sits there forever with no error shown. That matches your symptom exactly.
 
-The green "AI Agent Thoughts" card that sat under the page title on
-Daily Brief is removed completely, per direct feedback: it was wired to
-open the FAQ topics drawer (the 17-topic reference panel), but that's
-not what this section is supposed to be. The real thing — generative
-copy summarizing the account's current activity for the active role,
-eventually readable/voice-activated once the real ElevenLabs voice
-integration is built — already exists on the page as the Generative
-Commentary card (the "AI-Generated" badge card right under Top 5 Most
-Urgent). No merge was needed; the green card is just gone.
+**What this fix does**, since I don't yet have a console/network screenshot to confirm the exact trigger:
+- Console logging at every decision point in the account-loading logic, so if this happens again, a console screenshot will show exactly where it's stuck.
+- A 15-second watchdog: if the header is still on "Loading…" after 15 seconds, a banner now appears with a **Retry** link. Verified via Playwright on both a healthy load (banner never appears) and a forced hang (banner appears with the right diagnostic log).
 
-The FAQ topics drawer itself is untouched — it's still reachable through
-the per-field 💭 icons elsewhere in the app (forms, etc.). Only this one
-dashboard entry point into it was removed.
+## 2. Removed the old conversational/voice widget from deeper pages
 
-**On voice/read-aloud:** per direct instruction, nothing was built for
-this now — no placeholder button, no UI shell. When the real ElevenLabs
-integration is scoped, it should be able to activate a readout of the
-Generative Commentary content on request; that's a note for that future
-work, not something in this delivery.
+Per your note: "We have pages with the correct new Eleven Labs experience under the navigation and the old footprint on some deeper pages... The old experience should be deleted."
 
-## Also resolved this round (no code change needed)
+That old footprint was a leftover per-workstream widget — the gold avatar bubble, "Ask about this workstream…" input, mic button, and suggested-prompt chips — that showed up on six pages: Strategy/Brand/Marketing group pages, Experience Management, Campaign Management, Search Optimization, Reputation, and Manage Account. It predates the persistent "Ask Verilume" bar now pinned under the nav on every page (mic icon, "Voice · Enterprise" badge) and did the exact same job. A prior round already hid this same widget on the main Dashboard page, but missed these six workstream-level copies — that gap is what you were seeing.
 
-The "wrong account / stuck loading" issue from the live-site screenshot
-turned out to be a stale login session, not a bug — logging out and back
-in landed correctly on the Atlas account. Worth knowing for next time:
-if the portal seems to hang on "Loading…" or shows the wrong account,
-try logging out/in before assuming it's a deploy or caching issue.
+It's removed from all six pages now. The "new" Ask Verilume bar under the nav is untouched — that one stays, since it's the correct current experience.
+
+## Files in this delivery
+
+- `portal.html` — overwrite in place at `frontend/portal.html`.
 
 ## Testing performed before this delivery
 
-- JS syntax check across every `<script>` block — clean
-- A fresh-load Playwright test confirming `#aiThoughtsPreviewCard` no
-  longer exists in the DOM at all
-- Click-through of all 6 nav tabs — zero console errors
-- Confirmed the Generative Commentary card, Key Observations, Curated
-  News, Key Tiles Per Role, and AI Partner Routing sections all still
-  render correctly on Daily Brief with the green card gone
+- JS syntax check across the full file (clean)
+- Playwright: forced-hang scenario (401 + a login redirect that never completes) confirmed the watchdog banner and diagnostic console logs both fire correctly at 15s
+- Playwright: healthy load confirmed the banner never appears
+- Playwright: visited all six workstream/group pages and confirmed no old mic button or conversational box renders on any of them, while the new Ask Verilume bar's own mic (in the header) is unaffected
+- Build stamp: `2026-08-25-remove-old-workstream-voice-widget`
