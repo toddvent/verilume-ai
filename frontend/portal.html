@@ -3534,12 +3534,20 @@
          upload here now feeds both sections' extraction — colors/fonts as
          before, plus a Voice/Tone excerpt (if the document has one) into
          the Voice draft below, when that field is still empty. -->
+    <!-- 2026-08-26 follow-up, per direct comment: "Accepts ..." moved to sit
+         to the right of the upload button (was its own full-width line
+         below); the "Please verify..." sentence kept as its own paragraph,
+         explicitly left-justified and capped at the same max-width as this
+         page's own lede (640px, see p.lede in the stylesheet) so it wraps
+         inside the page's own measure instead of stretching edge-to-edge —
+         class="hint" alone carries no width/alignment rule of its own here. -->
     <div class="btn-row" style="margin:14px 0 4px;">
       <label class="btn-primary" for="saFileInput" style="cursor:pointer;">Upload Brand Guide</label>
+      <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);">Accepts .docx, .doc, .pdf, .txt, or .md.</span>
       <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
     </div>
     <input type="file" id="saFileInput" accept=".txt,.md,.docx,.doc,.pdf" onchange="handleStyleAssetFile(event)" style="display:none;">
-    <p class="hint" style="margin:0 0 8px;">Accepts .docx, .doc, .pdf, .txt, or .md. Please verify how we mapped your document to the fields below — Save Draft to keep working, or Save For AI Assistance once you're ready.</p>
+    <p class="hint" style="margin:0 0 8px;max-width:640px;text-align:left;">Please verify how we mapped your document to the fields below — Save Draft to keep working, or Save For AI Assistance once you're ready.</p>
     <div class="hint" id="saFileNote" style="margin:0 0 28px;"></div>
 
     <h2 style="margin:0 0 4px;">Voice</h2>
@@ -3550,15 +3558,13 @@
       <span id="voiceApprovedText"></span>
     </div>
 
-    <div class="field">
-      <div class="fld-label-row">
-        <label style="margin:0;">Sample writing</label>
-        <span class="fld-optional-badge">Optional</span>
-        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipVoiceSamples')" aria-label="What goes here">i</button>
-      </div>
-      <div class="fld-tip" id="tipVoiceSamples">Paste 1-3 short examples the team likes — an email, a social caption, a past headline. The generated draft keeps this register instead of a generic tone-of-voice template.</div>
-      <textarea id="voiceSamples" placeholder="e.g. an email, a social caption, a past headline..."></textarea>
-    </div>
+    <!-- 2026-08-26 follow-up, per direct instruction: removed this page's
+         own short "Sample writing" field — this brand's real sample-writing
+         workstream is the fuller Sample Writings & Presentations page
+         (uploads, purpose/date categorization), now the very next step
+         after this one (see the seq-nav below). Keeping both was
+         duplicative; this points to the real one instead. -->
+    <p class="hint" style="margin:0 0 20px;">Sample writing for this brand lives on the <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> page (next step) — upload real examples there, categorized by purpose and date.</p>
 
     <!-- Round 132rr — inline style overrides display:block with flex
          directly (rather than relying on the stylesheet's
@@ -3679,8 +3685,16 @@
       <input type="text" id="voiceAntiExample" placeholder="e.g. not a budget airline's chipper, exclamation-point voice">
     </div>
 
+    <!-- 2026-08-26 follow-up, per direct question ("What purpose does
+         generate draft in this section serve"): this button sat directly
+         under the anti-example field with nothing separating them, reading
+         as if it belonged only to that one field. It's actually the single
+         generator for the whole Voice Guide draft above — Sample writing,
+         Tone anchors, Words to avoid, and this anti-example all feed it.
+         Relabeled and given its own hint line to make that scope explicit. -->
+    <p class="hint" style="margin:0 0 8px;">Draws on everything above — Tone anchors, Words to avoid, and the anti-example — to draft the full Voice Guide below.</p>
     <div class="btn-row">
-      <button class="btn-primary" onclick="generateVoiceDraft()">Generate draft →</button>
+      <button class="btn-primary" onclick="generateVoiceDraft()">Generate Voice Draft →</button>
     </div>
 
     <div class="draft-panel" id="voiceDraftPanel">
@@ -3831,7 +3845,7 @@
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('voiceContest')">Next: Voice Contest →</a>
+      <a class="btn-primary" onclick="goToStep('brandWritingSamples')">Next: Sample Writings &amp; Presentations →</a>
     </div>
   </div>
 
@@ -3843,8 +3857,8 @@
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
   <div class="step" id="step-voiceContest">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / Voice Contest</div>
-    <div class="eyebrow">Brand Groundwork · Brand Book · Voice Contest</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> / Voice Contest</div>
+    <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations · Voice Contest</div>
     <h1>Voice contest — Vision Statement &amp; Longform Example</h1>
     <p class="lede">Runs your brand through three genuinely distinct voice directions at once — Confident Authority, Warm Storyteller, Bold Modern — each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Compare them side by side and pick the one that's actually you — nothing is applied until you choose.</p>
 
@@ -3881,9 +3895,9 @@
     <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Book</a>
+      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings &amp; Presentations</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('brandWritingSamples')">Next: Sample Writings &amp; Presentations →</a>
+      <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
     </div>
   </div>
 
@@ -4122,8 +4136,8 @@
 
   <!-- ================= SAMPLE WRITINGS & PRESENTATIONS (Brand Foundations, round 132bp) ================= -->
   <div class="step" id="step-brandWritingSamples">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Sample Writings &amp; Presentations</div>
-    <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / Sample Writings &amp; Presentations</div>
+    <div class="eyebrow">Brand Groundwork · Brand Book · Sample Writings &amp; Presentations</div>
     <h1>Sample Writings &amp; Presentations</h1>
     <p class="lede">Reference library of real writing and presentation samples for this brand — always categorized by purpose and date, so every Campaign/Project can pull the right precedent instead of guessing which file is current. Files (Word, PDF, PowerPoint) route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload before they're stored. Google Docs and Google Slides aren't files this prototype can fetch, so those go in as a labeled reference link instead.</p>
 
@@ -4224,9 +4238,9 @@
     </div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('voiceContest')">← Back: Voice Contest</a>
+      <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Book</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
+      <a class="btn-primary" onclick="goToStep('voiceContest')">Next: Voice Contest →</a>
     </div>
   </div>
 
@@ -4296,7 +4310,7 @@
     </div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings &amp; Presentations</a>
+      <a class="btn-ghost" onclick="goToStep('voiceContest')">← Back: Voice Contest</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('competitivePositioning')">Next: Competitive Positioning →</a>
     </div>
@@ -41446,7 +41460,11 @@ function cmpSaveLifecycleAndContinue(){
 // prompt + this function's user-turn template in
 // cxmedia-client-portal-structure.md Section 3, worked example 2.
 function generateVoiceDraft(){
-  const samples = document.getElementById('voiceSamples').value.trim();
+  // 2026-08-26 — the "Sample writing" textarea that used to live on this
+  // page was removed (duplicated the real Sample Writings & Presentations
+  // page, now the very next step); this generator no longer reads a
+  // samples value, so the "why" disclosure below always explains the
+  // example sentences the same way rather than branching on it.
   const avoid = document.getElementById('voiceAvoidWords').value.trim();
   const antiExample = document.getElementById('voiceAntiExample').value.trim();
   const tones = [...state.toneAnchors];
@@ -41467,7 +41485,6 @@ function generateVoiceDraft(){
   });
   if (avoid) draft += `\nWords to avoid: ${avoid}.\n`;
   if (antiExample) draft += `\nWhat this voice is not: ${antiExample}\n`;
-  if (samples) draft += `\n(Drafted with the team's own sample writing in mind — kept the same register, not a generic tone-of-voice template.)\n`;
   draft += `\nExample sentences in this voice:\n`;
   draft += `- "Your room's ready two hours before the posted time if you'd rather skip the wait — just say so at check-in."\n`;
   draft += `- "We got the small things wrong for you last time. Here's exactly what changed before you arrive again."\n`;
@@ -41490,9 +41507,7 @@ function generateVoiceDraft(){
   whyParts.push(`Industry set to ${state.industry || 'not set'} — the one-line description names your account's own industry, not a generic travel/hospitality default.`);
   if (avoid) whyParts.push(`Excluded the words you listed to avoid: ${avoid}.`);
   if (antiExample) whyParts.push(`Steered away from: "${antiExample}" — your own anti-example, not an assumption.`);
-  whyParts.push(samples
-    ? `Your pasted sample writing was in context while drafting, so the register should match what your team already writes — check the example sentences against it.`
-    : `No sample writing was pasted, so the example sentences are templated to the tone rules above, not calibrated to your team's actual writing yet — pasting 1-3 samples would sharpen this.`);
+  whyParts.push(`No sample writing is pulled into this generator — the example sentences below are templated to the tone rules above. Real samples now live on the Sample Writings & Presentations page.`);
   whyParts.push(`Confidence: high on tone-rule structure (directly computed from your picks above); lower on the two example sentences specifically, since those are illustrative, not drawn from your real content — edit them before saving if they don't sound right.`);
   document.getElementById('voiceWhyText').textContent = whyParts.join('\n\n');
   document.getElementById('voiceWhyPanel').classList.remove('visible');
@@ -41759,9 +41774,26 @@ async function runBrandVoiceContest(){
   if (!holder || !state.companyId) return;
   holder.innerHTML = renderAiStatusBubble("Drafting three distinct brand voice directions — Confident Authority, Warm Storyteller, Bold Modern — each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
   try {
+    // 2026-08-26 fix, per direct report ("Running the contest could not
+    // reach the backend" — screenshot showing "Backend unreachable —
+    // couldn't run the contest."): this almost certainly wasn't a real
+    // outage. authedFetch() defaults to a 12s abort timeout (added
+    // 2026-08-23 for ordinary data reads — see cxmedia-header-standup-load-
+    // fix-2026-08-23.md), but runBrandVoiceContest() on the backend fans
+    // out to multiple REAL model calls (BRAND_VOICE_SUBAGENT_ANGLES, plus
+    // every additionally-configured vendor) across two sequential
+    // Promise.all batches — routinely well past 12s, and vercel.json's own
+    // api/[...path].js already budgets 30s (maxDuration) for exactly this
+    // reason. The 12s client-side timeout was firing and aborting the
+    // request while the backend was still legitimately working, and the
+    // catch block below then mislabeled that abort as "Backend
+    // unreachable." Raised this call's own timeout to 35s — just past the
+    // backend's 30s budget, so the backend's own limit is what actually
+    // decides the failure, not an unrelated client default sized for
+    // simple reads.
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: document.getElementById('voiceAvoidWords').value.trim(), antiExample: document.getElementById('voiceAntiExample').value.trim() })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 35000,
+      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], antiExample: document.getElementById('voiceAntiExample').value.trim() })
     });
     if (!resp.ok){
       holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the contest — try again.</div>`;
@@ -41775,7 +41807,8 @@ async function runBrandVoiceContest(){
     lastVoiceContestCache = result;
     holder.innerHTML = renderBrandVoiceContestPanel(result);
   } catch (e){
-    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the contest.</div>`;
+    const timedOut = e && e.name === 'AbortError';
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">${timedOut ? 'The contest is taking longer than expected (it runs several AI models) and timed out — try again; if it keeps happening, the backend itself may be slow.' : 'Backend unreachable — couldn\'t run the contest.'}</div>`;
   }
 }
 function renderBrandVoiceContestPanel(result){
