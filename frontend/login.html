@@ -29,28 +29,51 @@
     --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
     --radius-sm:12px; --radius-pill:980px;
     --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    /* 2026-08-26 (login redesign, split-screen) — dark-panel variants of the
+       same brand hues, lightened just enough to read on near-black. Same
+       family as --cx/--media, not new colors. See the "Truth & Light" panel
+       below and the approved design mockup this was built from. */
+    --cx-night:#4CD4E8; --media-night:#7DA6FF;
   }
   *{box-sizing:border-box;}
-  body{margin:0;min-height:100vh;background:
-      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.08) 0%, rgba(8,145,178,0) 58%),
-      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0) 60%),
-      var(--paper);
-    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
   a{color:inherit;}
 
-  .back-nav{font-size:12px;letter-spacing:0.04em;padding:20px 28px;}
-  .back-nav a.wordmark{font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
-  .back-nav a.wordmark b{color:var(--media);font-weight:500;}
+  /* 2026-08-26 (login redesign) — split-screen layout: a dark brand/story
+     panel beside the functional sign-in form, replacing the single
+     centered card. "Veri, Latin for truth. Lume, light." reads as a
+     duality, so the split literalizes it — light (the form, clarity,
+     action) beside dark (the story) — rather than reskinning the whole
+     page dark. Approved from a design mockup before this was built. */
+  .split-wrap{display:flex;min-height:calc(100vh - 41px);}
 
-  .center-wrap{min-height:calc(100vh - 90px);display:flex;align-items:center;justify-content:center;padding:24px;}
-  .login-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:40px 36px;max-width:420px;width:100%;box-shadow:var(--shadow-lg);}
-  .login-card h1{margin:0 0 8px;font-size:24px;font-weight:600;}
-  .login-card .lede{margin:0 0 24px;font-size:14px;line-height:1.55;color:var(--muted);}
+  .login-brand-panel{position:relative;width:42%;min-width:440px;flex-shrink:0;background:#0A0F1A;overflow:hidden;display:flex;flex-direction:column;padding:44px 48px;}
+  .login-brand-panel .glow{position:absolute;border-radius:50%;filter:blur(10px);}
+  .login-brand-panel .wordmark{font-size:20px;font-weight:500;color:#FFFFFF;text-decoration:none;position:relative;}
+  .login-brand-panel .wordmark b{color:var(--cx-night);font-weight:500;}
+  .login-brand-panel .brand-body{position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;max-width:460px;}
+  .login-brand-panel .eyebrow{display:flex;align-items:center;gap:9px;margin:0 0 22px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:rgba(255,255,255,0.68);font-weight:600;}
+  .login-brand-panel .eyebrow span.dot{width:7px;height:7px;border-radius:50%;background:var(--media-night);flex-shrink:0;}
+  .login-brand-panel h1{margin:0 0 20px;font-size:36px;line-height:1.18;font-weight:700;color:#FFFFFF;text-wrap:balance;}
+  .login-brand-panel h1 .hl-cx{color:var(--cx-night);}
+  .login-brand-panel h1 .hl-media{color:var(--media-night);}
+  .login-brand-panel .brand-sub{margin:0;font-size:15px;line-height:1.65;color:rgba(255,255,255,0.72);max-width:420px;}
+  .login-brand-panel .brand-footnote{position:relative;margin:0;font-size:12.5px;font-style:italic;color:rgba(255,255,255,0.42);line-height:1.5;}
+
+  .login-form-panel{flex:1;display:flex;align-items:center;justify-content:center;background:var(--paper);padding:24px;}
+  .login-card{width:100%;max-width:360px;}
+  .login-card h1{margin:0 0 6px;font-size:24px;font-weight:600;}
+  .login-card .lede{margin:0 0 28px;font-size:14px;line-height:1.55;color:var(--muted);}
 
   .field{margin-bottom:16px;}
   .field label{display:block;font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px;}
   .field input{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14.5px;background:var(--paper);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
   .field input:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  .field.has-icon{position:relative;}
+  .field.has-icon input{padding-left:38px;}
+  .field.has-icon .field-icon{position:absolute;left:13px;top:38px;pointer-events:none;}
+  .field.has-toggle input{padding-right:38px;}
+  .field .field-toggle{position:absolute;right:13px;top:38px;cursor:pointer;background:none;border:none;padding:0;line-height:0;}
 
   .btn-primary{background:var(--ink);color:var(--white);font-weight:600;font-size:14px;padding:12px 20px;border-radius:999px;border:none;cursor:pointer;width:100%;transition:transform 0.15s ease,background 0.15s ease;}
   .btn-primary:hover{background:#1c2d54;transform:translateY(-1px);}
@@ -61,8 +84,17 @@
   .link-row{display:flex;justify-content:space-between;align-items:center;margin-top:20px;flex-wrap:wrap;gap:8px 16px;}
   .link-row a{font-size:12.5px;color:var(--cx);text-decoration:none;font-weight:600;}
   .link-row a:hover{text-decoration:underline;}
+  .link-row.align-right{justify-content:flex-end;margin-top:0;margin-bottom:22px;}
+  .signup-note{margin:22px 0 0;text-align:center;font-size:13px;color:var(--muted);}
+  .signup-note a{font-weight:600;color:var(--cx);text-decoration:none;}
+  .signup-note a:hover{text-decoration:underline;}
 
-  #passwordChangeStep{display:none;}
+  #passwordChangeStep, #loginMfaStep{display:none;}
+
+  @media (max-width:900px){
+    .login-brand-panel{display:none;}
+    .split-wrap{min-height:auto;}
+  }
 
   /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
      should have a utility nav above the main nav that includes Access My
@@ -196,40 +228,76 @@
 </script>
 
 
-<div class="back-nav"><a class="wordmark" href="index.html">Veri<b>lume</b></a></div>
+<div class="split-wrap">
 
-<div class="center-wrap">
+  <!-- LEFT — brand/story panel. Real Verilume copy and tokens; not a
+       generic reskin. Hidden under 900px (see media query) — the form
+       panel below still carries the wordmark and full functionality on
+       its own at that width. -->
+  <div class="login-brand-panel">
+    <div class="glow" style="left:-160px;top:-140px;width:560px;height:560px;background:radial-gradient(circle, rgba(8,145,178,0.32) 0%, rgba(8,145,178,0) 70%);"></div>
+    <div class="glow" style="right:-220px;top:280px;width:640px;height:640px;background:radial-gradient(circle, rgba(37,99,235,0.28) 0%, rgba(37,99,235,0) 68%);"></div>
+    <div class="glow" style="left:-120px;bottom:-200px;width:520px;height:520px;background:radial-gradient(circle, rgba(79,70,229,0.24) 0%, rgba(79,70,229,0) 70%);"></div>
+
+    <a class="wordmark" href="index.html">Veri<b>lume</b></a>
+
+    <div class="brand-body">
+      <p class="eyebrow"><span class="dot"></span> Truth &amp; Light</p>
+      <h1>The clarity to see what's <span class="hl-cx">working</span> — and what <span class="hl-media">isn't yet</span>.</h1>
+      <p class="brand-sub">Human + AI Agents, working together — the same people doing the work that matters, with nothing falling through the gaps.</p>
+    </div>
+
+    <p class="brand-footnote">Veri, Latin for truth. Lume, light.</p>
+  </div>
+
+  <!-- RIGHT — the actual sign-in form. Same three steps and IDs as
+       before (login, forced password change, step-up MFA); just
+       re-hosted in this split layout instead of a centered card. -->
+  <div class="login-form-panel">
   <div class="login-card">
 
     <div id="loginStep">
       <h1>Sign in to Verilume</h1>
       <p class="lede">Use the email and password for your Verilume account.</p>
-      <div class="field">
+      <div class="field has-icon">
         <label for="loginEmail">Email</label>
-        <input type="email" id="loginEmail" autocomplete="username" onkeydown="if(event.key==='Enter')submitLogin();">
+        <svg class="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg>
+        <input type="email" id="loginEmail" autocomplete="username" placeholder="you@company.com" onkeydown="if(event.key==='Enter')submitLogin();">
       </div>
-      <div class="field">
+      <div class="field has-icon has-toggle">
         <label for="loginPassword">Password</label>
+        <svg class="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
         <input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin();">
+        <button type="button" class="field-toggle" aria-label="Show password" onclick="togglePasswordVisibility('loginPassword', this)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+      </div>
+      <div class="link-row align-right">
+        <a href="#" id="forgotPasswordLink">Forgot Your Password?</a>
       </div>
       <button class="btn-primary" id="loginBtn" onclick="submitLogin()">Log in</button>
       <div class="error-note" id="loginError"></div>
-      <div class="link-row">
-        <a href="assessment.html">Create New Registration →</a>
-        <a href="#" id="forgotPasswordLink">Forgot Password?</a>
-      </div>
+      <p class="signup-note">New to Verilume? <a href="assessment.html">Create your account →</a></p>
     </div>
 
     <div id="passwordChangeStep">
       <h1>Set your password</h1>
       <p class="lede">You signed in with a temporary password. Set a real one now (at least 8 characters) — this only happens once.</p>
-      <div class="field">
+      <div class="field has-icon has-toggle">
         <label for="newPassword">New password</label>
+        <svg class="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
         <input type="password" id="newPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
+        <button type="button" class="field-toggle" aria-label="Show password" onclick="togglePasswordVisibility('newPassword', this)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
       </div>
-      <div class="field">
+      <div class="field has-icon has-toggle">
         <label for="newPasswordConfirm">Confirm new password</label>
+        <svg class="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
         <input type="password" id="newPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPasswordChange();">
+        <button type="button" class="field-toggle" aria-label="Show password" onclick="togglePasswordVisibility('newPasswordConfirm', this)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
       </div>
       <button class="btn-primary" id="passwordChangeBtn" onclick="submitPasswordChange()">Set password and continue</button>
       <div class="error-note" id="passwordChangeError"></div>
@@ -242,7 +310,7 @@
          completed MFA for this member within the last 30 days. Same
          "verify by email/text instead" pattern as the assessment.html
          signup-verification modal, promoted to this page. -->
-    <div id="loginMfaStep" style="display:none;">
+    <div id="loginMfaStep">
       <h1>Verify it's you</h1>
       <p class="lede" id="loginMfaIntro">We sent a 6-digit code.</p>
       <div class="field">
@@ -268,12 +336,24 @@
     </div>
 
   </div>
+  </div>
 </div>
 
 <script>
 const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
   ? ''
   : 'http://localhost:8787';
+
+// 2026-08-26 (login redesign) — eye-icon toggle added on each password
+// field in the split-screen redesign; purely a show/hide convenience, no
+// bearing on session/auth logic below.
+function togglePasswordVisibility(inputId, btn){
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+}
 
 const params = new URLSearchParams(location.search);
 // Optional — set when a protected page (account.html/portal.html) redirects
