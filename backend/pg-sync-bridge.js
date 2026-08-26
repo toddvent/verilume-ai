@@ -68,7 +68,22 @@ function createSyncDb(connectionString) {
     }
   });
 
+  // 2026-08-26 diagnostic addition, per direct report — repeated real
+  // process crashes (Vercel: INTERNAL_FUNCTION_INVOCATION_FAILED) on
+  // requests that all pass through this bridge, but every crash so far has
+  // shown ZERO logs for the request (not even the module's own top-level
+  // BUILD MARKER line), so there's been no way to tell whether the crash
+  // happens before postMessage, while blocked in Atomics.wait, or after.
+  // Disabling Vercel's Fluid Compute (ruling out the concurrent-thread-
+  // collision theory this was originally built to test) did NOT stop the
+  // crash, so this is now pure instrumentation to find where it actually
+  // dies, not a fix. Every call gets a short id so overlapping calls (if
+  // any) are distinguishable in the logs. If a crash still shows none of
+  // these lines, that's real evidence too — it would mean the process dies
+  // somewhere between the request arriving and callWorker() ever running.
+  let callWorkerSeq = 0;
   function callWorker(sql, params, mode) {
+    const callId = `pgw${++callWorkerSeq}-${Date.now().toString(36)}`;
     if (closed) throw new Error('pg-sync-bridge: database already closed');
     // A worker that already died (see the 'error'/'exit' listeners above)
     // would otherwise hang every subsequent call for the full
@@ -76,13 +91,17 @@ function createSyncDb(connectionString) {
     // reason, so one bad connection doesn't turn into a string of slow
     // 500s on the same warm container.
     if (workerFailure) {
+      console.error(`[pg-sync-bridge] ${callId} worker already dead before this call started (mode=${mode})`);
       throw new Error(`pg-sync-bridge: worker thread is dead (${workerFailure.message}) — this container needs a fresh invocation`);
     }
     const { port1, port2 } = new MessageChannel();
     const signal = new Int32Array(new SharedArrayBuffer(4));
+    console.error(`[pg-sync-bridge] ${callId} posting to worker (mode=${mode}): ${sql.slice(0, 100)}`);
     worker.postMessage({ sql, params, mode, signal, port: port2 }, [port2]);
 
+    console.error(`[pg-sync-bridge] ${callId} entering Atomics.wait (timeout ${WAIT_TIMEOUT_MS}ms)`);
     const status = Atomics.wait(signal, 0, 0, WAIT_TIMEOUT_MS);
+    console.error(`[pg-sync-bridge] ${callId} Atomics.wait returned: ${status}`);
     if (status === 'timed-out') {
       port1.close();
       throw new Error(`pg-sync-bridge: query timed out after ${WAIT_TIMEOUT_MS}ms: ${sql.slice(0, 120)}`);
@@ -90,14 +109,17 @@ function createSyncDb(connectionString) {
     const msg = receiveMessageOnPort(port1);
     port1.close();
     if (!msg) {
+      console.error(`[pg-sync-bridge] ${callId} no message received from worker after wait resolved`);
       throw new Error('pg-sync-bridge: no response received from worker (it may have crashed)');
     }
     const response = msg.message;
     if (!response.ok) {
+      console.error(`[pg-sync-bridge] ${callId} worker replied with an error: ${response.error}`);
       const err = new Error(`Postgres query failed: ${response.error}\nSQL: ${sql}`);
       err.code = response.code;
       throw err;
     }
+    console.error(`[pg-sync-bridge] ${callId} completed ok`);
     return response.value;
   }
 
