@@ -373,7 +373,16 @@
 
   .step{display:none;}
   .step.active{display:block;}
-  .crumb{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin-bottom:18px;}
+  /* 2026-08-26, per direct instruction: "We really don't need breadcrumbs
+     in the Portal at this point... Linking from the navigation works
+     fine." Hidden via display:none rather than deleting the ~36 .crumb
+     divs (and the #groupCrumb/#campaignCrumb/#mbuCrumb/#projectCrumb/
+     #placeholderName spans several of them contain) — those spans are
+     still written to by JS elsewhere (e.g. cmpManageExistingCampaign(),
+     mbuRenderCrumb()) and removing the elements outright risked breaking
+     those writers. Same reversible-swap posture as the rest of this
+     codebase. */
+  .crumb{display:none;}
   .crumb a{color:var(--cx);text-decoration:none;cursor:pointer;}
   .crumb a:hover{text-decoration:underline;}
 
@@ -3811,17 +3820,10 @@
          their original names (Campaign ID generation and the DB schema
          already depend on them); only the user-facing label changed. -->
 
-    <!-- Round 32, follow-on (2026-08-05), per direct instruction: "Companies
-         do not use all of the channels that we have available... providing
-         the opportunity to activate during brand setup might make sense." -->
-    <div class="field">
-      <label>Active channels <span style="font-weight:400;text-transform:none;color:var(--muted);">(only active channels are offered on Campaign Creation and recommended on the Media Plan)</span></label>
-      <div class="btn-row" style="margin:0 0 8px;">
-        <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="setAllCompanyActiveChannels(true)">Activate all →</button>
-        <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="setAllCompanyActiveChannels(false)">Deactivate all →</button>
-      </div>
-      <div class="select-tile-row" id="cpActiveChannelsRow"></div>
-    </div>
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Activate channels should be part of the overall budget setup." Moved
+         to Marketing Budget Upload (step-marketingBudgetUpload) — see
+         mbuActiveChannelsRow there. -->
 
     <!-- Round 132zz (2026-08-11), per direct instruction: "Partners will be
          a drop-down based on account setup values." No account-level
@@ -3930,46 +3932,29 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Style Guide — Colors &amp; Fonts</div>
     <div class="eyebrow">Brand Groundwork · Style Guide</div>
     <h1>Colors &amp; Fonts</h1>
-    <p class="lede">Reference asset storage, not a generative task — this prototype doesn't parse an uploaded document's contents, so upload it for the record and copy the key details into the fields below, or skip straight to entering them manually. Either path saves to the same place, and every Campaign/Project reads it from here.</p>
 
-    <!-- Round 21 point 3 — Option A and Option B are now full .module
-         sections (modnum badge + accent border + collapsible body), the
-         exact pattern the CMO Dashboard uses to separate Analytics Summary
-         / Campaigns / Create Campaign — rather than a lighter .dash-tile +
-         .field-divider treatment, so this page reads as consistent with
-         the home page's section language. -->
-    <div class="module open accent-media" id="styleAssetsUploadModule">
-      <div class="module-head" onclick="toggleModule('styleAssetsUploadModule')">
-        <span class="modnum">A</span>
-        <div class="titles">
-          <span class="tag">Option A</span>
-          <h2>Upload an existing style guide</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <p>Accepts a brand/creative standard document (.docx, .pdf, .txt, .md). Plain text/markdown files are read directly into the Style Notes field below for you to review and trim; other formats are recorded by filename only — this prototype has no live document-parsing call wired up yet (see <code>cxmedia-brand-foundations-plan.md</code>).</p>
-        <div class="btn-row">
-          <label class="btn-ghost" for="saFileInput" style="cursor:pointer;">Choose File</label>
-          <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
-        </div>
-        <input type="file" id="saFileInput" accept=".txt,.md,.docx,.doc,.pdf" onchange="handleStyleAssetFile(event)" style="display:none;">
-        <div class="hint" id="saFileNote" style="margin-top:8px;"></div>
-      </div>
+    <!-- 2026-08-26, per direct instruction: "streamlined... show the manual
+         fields that can be added with an Upload Brand Guide button located
+         left justified below the section page title. The only copy needed
+         is the formatting that we accept." Replaces the old Option A/Option
+         B module scaffolding (a collapsible upload section above a
+         collapsible manual-entry section, each with its own framing
+         paragraph) — the manual fields are now just the page's main
+         content, with a single upload entry point above them instead of a
+         parallel path. Same #saFileInput/handleStyleAssetFile() this always
+         used; this prototype still doesn't parse an uploaded document's
+         contents (see cxmedia-brand-foundations-plan.md), so it's recorded
+         for the record while the fields below stay the source of truth —
+         just said in the accepted-formats line now, not a full paragraph. -->
+    <div class="btn-row" style="margin:14px 0 4px;">
+      <label class="btn-primary" for="saFileInput" style="cursor:pointer;">Upload Brand Guide</label>
+      <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
     </div>
+    <input type="file" id="saFileInput" accept=".txt,.md,.docx,.doc,.pdf" onchange="handleStyleAssetFile(event)" style="display:none;">
+    <p class="hint" style="margin:0 0 8px;">Accepts .docx, .doc, .pdf, .txt, or .md.</p>
+    <div class="hint" id="saFileNote" style="margin:0 0 24px;"></div>
 
-    <div class="module open accent-cx" id="styleAssetsManualModule">
-      <div class="module-head" onclick="toggleModule('styleAssetsManualModule')">
-        <span class="modnum">B</span>
-        <div class="titles">
-          <span class="tag">Option B</span>
-          <h2>Enter manually</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <p>Fill in the fields below directly — either path saves to the same place, and every Campaign/Project reads it from here.</p>
-
+    <div id="styleAssetsManualFields">
         <!-- Round 130 (2026-08-08), per direct instruction — real logo file
              upload, so the portal header (see .account-summary) can carry the
              client's actual mark instead of just a text reference. Max specs
@@ -4061,7 +4046,6 @@
           <textarea id="saStyleNotes" rows="6"></textarea>
           <div class="hint">This is the field with the most leverage on this page — a real photography/creative direction here (what to shoot, what to avoid, staged vs. candid) shapes every future creative brief far more than the colors and fonts above. A blank field here means every brief defaults to generic guidance.</div>
         </div>
-      </div>
     </div>
 
     <div class="btn-row">
@@ -5300,106 +5284,6 @@
        exactly which columns/rows got auto-recognized vs. need a human to
        confirm — never a false "imported successfully" on a file that
        needed help. -->
-  <div class="step" id="step-marketingBudgetUpload">
-    <!-- Round 132bx follow-on (2026-08-15), per direct correction: this
-         crumb always pointed back to Analysis, even when reached from the
-         Media Plan page's own "Upload budget →" entry point (added in an
-         earlier same-day round) — landing someone back in the wrong section
-         of the nav after they finish. Now set dynamically by mbuRenderCrumb()
-         based on which entry point was actually used; this static markup is
-         just the pre-JS-render fallback (same shape as the old always-
-         Analysis crumb). -->
-    <div class="crumb" id="mbuCrumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Marketing Budget Upload</div>
-    <div class="eyebrow">Analysis</div>
-    <h1>Marketing Budget Upload</h1>
-    <p class="lede lede-full">Upload your annual marketing budget in whatever format it's already in — the platform tries to auto-recognize a standard layout (Category, Working/Non-Working, Jan–Dec, Total) and tells you plainly what it found: a clean match, or specific columns/rows that need you to confirm before anything is saved.</p>
-
-    <div class="cfd cfd-ws" style="margin-bottom:18px;">
-      <div class="cfd-standup" style="margin-bottom:0;">
-        <div class="cfd-avatar">✦</div>
-        <div class="cfd-bubble">
-          This looks for month names (Jan–Dec) across every row to find your file's header(s) — if it finds exactly one, that's a standard flat table. If it finds several (a client export that repeats a header block per category, like a real Print/Direct Mail/Digital/Trade section layout), that's reported as a multi-block file: month and total columns still auto-recognize from their own header text, but the category-name and Working/Non-Working columns usually aren't labeled clearly enough to guess, so you confirm those. It also checks the math — if one row's total equals the sum of the others in its block, that's very likely a subtotal, not its own line item, and gets flagged so it isn't double-counted (or silently dropped).
-        </div>
-      </div>
-    </div>
-
-    <div class="sk-card" id="mbuUploadCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Step 1</div><h3>Upload your budget file</h3></div>
-        <div class="hicon">📤</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Accepts .csv or .xlsx, any layout — standard flat table or a multi-section export like a real annual budget workbook.</p>
-        <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
-             "Uploads should be single year only with user selecting year
-             before uploading file. A budget year can't be uploaded again."
-             Year comes first, before the file picker — the backend rejects
-             an upload with no year, and rejects a second upload for a year
-             that already has a CONFIRMED budget (see mbuHandleFile()'s 409
-             handling below, which points at that year's existing upload
-             instead of letting a duplicate through). -->
-        <div class="field" style="max-width:420px;">
-          <label>Budget year</label>
-          <div class="stage-row" id="mbuYearRow"></div>
-          <div class="hint" id="mbuYearHint" style="margin-top:6px;"></div>
-        </div>
-        <div id="mbuDuplicateYearNotice"></div>
-        <div class="field" style="max-width:320px;">
-          <label for="mbuUploadedBy">Uploaded by (optional, for the record)</label>
-          <input type="text" id="mbuUploadedBy" placeholder="Your name">
-        </div>
-        <label class="btn-ghost" for="mbuFileInput" style="cursor:pointer;display:inline-block;">📤 Choose file to upload…</label>
-        <input type="file" id="mbuFileInput" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleFile(event)">
-        <p class="hint" id="mbuStatus" style="margin-top:8px;"></p>
-        <div id="mbuMappingPanel"></div>
-      </div>
-    </div>
-
-    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Step 2</div><h3>Imported budget</h3></div>
-        <div class="hicon">📊</div>
-      </div>
-      <div class="sk-card-body" id="mbuResultsBody"></div>
-    </div>
-
-    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: with
-         uploads now single-year-only and blocked from re-uploading over a
-         confirmed year, there needs to be somewhere to see every year's
-         budget at a glance and act on it — review/adjust its category
-         totals in place, or delete it (last resort) to free that year up
-         again. Distinct from the raw file-scan "Upload history" table below
-         (accepted/rejected file attempts, no year/budget context) — this is
-         the confirmed-budget-per-year view. See renderMbuYearsList(). -->
-    <div class="sk-card" id="mbuYearsCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">By year</div><h3>Budgets on file</h3></div>
-        <div class="hicon">📅</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">One confirmed (or in-progress) budget per year. Adjust a category total in place from Review, rather than re-uploading — a year with a confirmed budget can't accept a new file until its old one is deleted.</p>
-        <div id="mbuYearsBody"><p class="hint">Loading…</p></div>
-      </div>
-    </div>
-
-    <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
-        <div class="hicon">🗂</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Every attempt on this account, accepted or rejected — a rejection is a real event worth being able to see, not something this build hides.</p>
-        <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
-      </div>
-    </div>
-
-    <!-- 2026-08-23 — seq-nav only rendered (by mbuRenderCrumb(), which sets
-         both this and #mbuCrumb from the same returnTo argument) when this
-         step is reached as part of the Configuration workstream sequence;
-         empty/hidden for the pre-existing Analysis and Media Plan entry
-         points, which have no "next step" of their own to send someone to. -->
-    <div class="seq-nav" id="mbuSeqNav" style="display:none;"></div>
-  </div>
 
   <!-- Round 99 (2026-08-06) — Omni-Channel Creative: the account-wide
        aggregate view, per direct instruction, of every open deliverable
@@ -7291,6 +7175,147 @@
     <div class="eyebrow">Media Plan</div>
     <h1>Annual Media Plan</h1>
     <p class="lede lede-full">Built from what the brand needs on an ongoing basis — not a response to any one campaign. Allocates the annual budget across the Media Loop stages, then across channels within each stage, with a recommended starting split you can adjust anywhere. Campaigns can draw against these allocations, or run Unplanned, outside the plan entirely — see <code>cxmedia-media-plan-budget-scope.md</code> for the full design.</p>
+
+    <!-- 2026-08-26 account-management reorg, round 2, per direct
+         instruction: "one location to manage the budget account
+         creation to include channel activation, uploads, manual channel
+         adds and the media mix allocations." This block (Active
+         Channels, Upload, Budgets on file, Upload history) moved here
+         verbatim from the old step-marketingBudgetUpload — same ids,
+         same functions (mbuRenderActiveChannels()/mbuResetImport()/
+         mbuLoadYearsList()/mbuLoadHistory(), all now called from this
+         step's own goToStep('mediaplan') branch instead of a separate
+         step). Every old entry point that used to navigate to
+         'marketingBudgetUpload' still works — goToStep() aliases that
+         step name straight to 'mediaplan' now, so nothing needed to
+         change at the many call sites (Configuration workstream
+         Back/Next, the old "Upload budget \u2192" button, the Analysis
+         tools list) except this hub's own card, which now points
+         directly at 'mediaplan'. -->
+    <!-- Round 132bx follow-on (2026-08-15), per direct correction: this
+         crumb always pointed back to Analysis, even when reached from the
+         Media Plan page's own "Upload budget →" entry point (added in an
+         earlier same-day round) — landing someone back in the wrong section
+         of the nav after they finish. Now set dynamically by mbuRenderCrumb()
+         based on which entry point was actually used; this static markup is
+         just the pre-JS-render fallback (same shape as the old always-
+         Analysis crumb). -->
+    <!-- 2026-08-26 account-management reorg, round 2 — this used to be its
+         own page's <h1>; now that it's a section within Media Plan, it's a
+         section heading instead, same weight as "Recommended Media Mix —
+         review & confirm" further down this page, not a second page title
+         stacked under "Annual Media Plan." -->
+    <div style="margin:24px 0 4px;">
+      <h3 style="margin:0 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);">Budget upload</h3>
+      <p class="hint" style="margin:0;">Upload your annual marketing budget in whatever format it's already in — the platform tries to auto-recognize a standard layout (Category, Working/Non-Working, Jan–Dec, Total) and tells you plainly what it found: a clean match, or specific columns/rows that need you to confirm before anything is saved.</p>
+    </div>
+
+    <div class="cfd cfd-ws" style="margin-bottom:18px;">
+      <div class="cfd-standup" style="margin-bottom:0;">
+        <div class="cfd-avatar">✦</div>
+        <div class="cfd-bubble">
+          This looks for month names (Jan–Dec) across every row to find your file's header(s) — if it finds exactly one, that's a standard flat table. If it finds several (a client export that repeats a header block per category, like a real Print/Direct Mail/Digital/Trade section layout), that's reported as a multi-block file: month and total columns still auto-recognize from their own header text, but the category-name and Working/Non-Working columns usually aren't labeled clearly enough to guess, so you confirm those. It also checks the math — if one row's total equals the sum of the others in its block, that's very likely a subtotal, not its own line item, and gets flagged so it isn't double-counted (or silently dropped).
+        </div>
+      </div>
+    </div>
+
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Activate channels should be part of the overall budget setup."
+         Moved here from Account Setup — see mbuToggleActiveChannel()'s own
+         comment. Account-level, not tied to any one year's upload, so it
+         sits ahead of Step 1 rather than inside it. -->
+    <div class="sk-card" id="mbuActiveChannelsCard" style="margin-bottom:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting</div><h3>Active channels</h3></div>
+        <div class="hicon">📡</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
+        <div class="btn-row" style="margin:0 0 8px;">
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
+        </div>
+        <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
+        <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mbuUploadCard">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Step 1</div><h3>Upload your budget file</h3></div>
+        <div class="hicon">📤</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Accepts .csv or .xlsx, any layout — standard flat table or a multi-section export like a real annual budget workbook.</p>
+        <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
+             "Uploads should be single year only with user selecting year
+             before uploading file. A budget year can't be uploaded again."
+             Year comes first, before the file picker — the backend rejects
+             an upload with no year, and rejects a second upload for a year
+             that already has a CONFIRMED budget (see mbuHandleFile()'s 409
+             handling below, which points at that year's existing upload
+             instead of letting a duplicate through). -->
+        <div class="field" style="max-width:420px;">
+          <label>Budget year</label>
+          <div class="stage-row" id="mbuYearRow"></div>
+          <div class="hint" id="mbuYearHint" style="margin-top:6px;"></div>
+        </div>
+        <div id="mbuDuplicateYearNotice"></div>
+        <div class="field" style="max-width:320px;">
+          <label for="mbuUploadedBy">Uploaded by (optional, for the record)</label>
+          <input type="text" id="mbuUploadedBy" placeholder="Your name">
+        </div>
+        <label class="btn-ghost" for="mbuFileInput" style="cursor:pointer;display:inline-block;">📤 Choose file to upload…</label>
+        <input type="file" id="mbuFileInput" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleFile(event)">
+        <p class="hint" id="mbuStatus" style="margin-top:8px;"></p>
+        <div id="mbuMappingPanel"></div>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Step 2</div><h3>Imported budget</h3></div>
+        <div class="hicon">📊</div>
+      </div>
+      <div class="sk-card-body" id="mbuResultsBody"></div>
+    </div>
+
+    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: with
+         uploads now single-year-only and blocked from re-uploading over a
+         confirmed year, there needs to be somewhere to see every year's
+         budget at a glance and act on it — review/adjust its category
+         totals in place, or delete it (last resort) to free that year up
+         again. Distinct from the raw file-scan "Upload history" table below
+         (accepted/rejected file attempts, no year/budget context) — this is
+         the confirmed-budget-per-year view. See renderMbuYearsList(). -->
+    <div class="sk-card" id="mbuYearsCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">By year</div><h3>Budgets on file</h3></div>
+        <div class="hicon">📅</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">One confirmed (or in-progress) budget per year. Adjust a category total in place from Review, rather than re-uploading — a year with a confirmed budget can't accept a new file until its old one is deleted.</p>
+        <div id="mbuYearsBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
+        <div class="hicon">🗂</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Every attempt on this account, accepted or rejected — a rejection is a real event worth being able to see, not something this build hides.</p>
+        <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
+    <!-- 2026-08-23 — seq-nav only rendered (by mbuRenderCrumb(), which sets
+         both this and #mbuCrumb from the same returnTo argument) when this
+         step is reached as part of the Configuration workstream sequence;
+         empty/hidden for the pre-existing Analysis and Media Plan entry
+         points, which have no "next step" of their own to send someone to. -->
+    <div class="seq-nav" id="mbuSeqNav" style="display:none;"></div>
 
     <!-- Round 27 (2026-08-05), per direct instruction: 3 charts lead the
          Budget screens, ahead of Plan setup — a) Plan Pacing (donut,
@@ -15342,28 +15367,20 @@ function renderWorkstreams(){
     grid.innerHTML = banner + strategyShellHtml();
     return;
   }
-  if (activePrimaryTab === 'accountManagement'){
-    // 2026-08-26 account-management reorg, per direct instruction: "We need
-    // to reorganize account managment... AI Partner Onboarding & Training...
-    // is a better default experience and more complete experience than
-    // Account Management" plus the follow-up confirming the AI Partner
-    // Onboarding & Training hub (step-manageAccount) should become the one
-    // consolidated Account Management page. Previously this tab showed the
-    // flat ACCOUNT_MGMT_TILE_GROUPS tile grid (2026-08-23 round 15) while
-    // the hub sat one click deeper, reachable only via the "Configure your
-    // account first" banner or a Manage Account tile — two incomplete,
-    // overlapping surfaces (see AI_PARTNER_ONBOARDING_GROUPS' own comment
-    // for what moved into the hub to close that gap: Partner Integrations,
-    // Website Examples, Sample Writings & Presentations, Marketing Budget
-    // Upload, Team & Org Chart, Team Experiences). Now the tab goes straight
-    // to the hub; the tile grid (accountManagementTileGridHtml(),
-    // ACCOUNT_MGMT_TILE_GROUPS) stays defined but is no longer routed to —
-    // left in place rather than deleted, same reversible-swap posture as
-    // the rest of this codebase, in case content still needs it as
-    // reference while the hub's card list is finished out.
-    goToStep('manageAccount');
-    return;
-  }
+  // 2026-08-26 — Account Management no longer has a branch here. It's a
+  // real step page (step-manageAccount), not a grid this function draws
+  // into, so switchPrimaryTab('accountManagement') short-circuits straight
+  // to goToStep('manageAccount') before this function is ever called for
+  // that tab (see switchPrimaryTab()'s own comment — this used to also
+  // call goToStep('manageAccount') here, a redundant second render every
+  // click, removed as a real source of risk after a reported nav/content
+  // desync). goToStep()'s own top-of-function redirect
+  // (`step === 'dashboard' && activePrimaryTab === 'accountManagement'`)
+  // still covers any other direct goToStep('dashboard') call reached while
+  // this tab is active (e.g. a "Back to Dashboard" button) — that path
+  // never reaches this function's body either, since it resolves to
+  // goToStep('manageAccount') before the 'dashboard' branch that calls
+  // renderWorkstreams() would run.
   if (activePrimaryTab === 'brand'){
     // 2026-08-23 (round 16) — real designed shell replacing the old
     // filtered flat-card grid, same pattern as Strategy/Account Management.
@@ -15673,6 +15690,24 @@ function switchPrimaryTab(tab){
   // buttons, the dropdown itself, or a role-tile click on Daily Brief.
   const mobileSelect = document.getElementById('primaryNavMobileSelect');
   if (mobileSelect && mobileSelect.value !== tab) mobileSelect.value = tab;
+  // 2026-08-26 fix, per direct report of nav/content desync ("06 Account
+  // Management" highlighted in the nav while the page still showed Data
+  // Scientist's tile shell underneath) — Account Management is a real step
+  // page (step-manageAccount), not one of this function's own dashboard-tab
+  // grid renders, so it gets its own short-circuit here instead of going
+  // through goToStep('dashboard') + renderWorkstreams() like every other
+  // tab. Previously this ran goToStep('dashboard') (redirected internally to
+  // 'manageAccount' — see goToStep()'s own comment) and THEN unconditionally
+  // called renderWorkstreams() again right after, which re-entered
+  // goToStep('manageAccount') a second time via its own now-removed
+  // accountManagement branch — two full re-renders of the same page, every
+  // click, for no reason. Removing the redundant second pass removes a real
+  // source of risk even though the exact trigger for the reported desync
+  // wasn't pinned down from code reading alone.
+  if (tab === 'accountManagement'){
+    goToStep('manageAccount');
+    return;
+  }
   goToStep('dashboard');
   // 2026-08-24 (round 17) — every tab, including Daily Brief, now shows
   // the one unified panel (see that panel's own comment for why the old
@@ -17471,13 +17506,30 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
           return { text: `${c.answered}/${c.total} core questions answered${state.onboardingSurvey && state.onboardingSurvey.industryCode ? ' + industry module' : ''}`, tone: c.answered >= c.total ? 'ok' : 'pending' };
         }
       },
+      // 2026-08-26 account-management reorg, round 2, per direct
+      // instruction: "one location to manage the budget — account
+      // creation to include channel activation, uploads, manual channel
+      // adds and the media mix allocations... the budgets, CPM changes by
+      // client and channel allocations." Media Plan already owned the
+      // allocation grid (per-channel Annual $ + Est. CPM, both saved per
+      // account/year) — this card now folds in what used to be two
+      // separate cards (MMM Model Allocations + Marketing Budget Upload)
+      // pointing at two separate pages, since that upload workflow and
+      // the Active Channels toggle both physically moved onto
+      // step-mediaplan itself (see that step's own HTML comment). One
+      // card, one page, everything budget-related.
       {
-        title: 'MMM Model Allocations',
+        title: 'Budget &amp; Channel Management',
         category: 'manual',
         source: 'Manage Budgets',
         route: 'mediaplan',
-        desc: 'A real, fitted model\'s recommended budget split, flowing from the Annual Marketing Budget you enter — distinct from the Data Scientist\'s MMM Data Inputs, which is the raw history a model would train on. Today\'s "Recommended default split" is an editorial heuristic, not a live model.',
-        status(){ return { text: 'Not built yet — today\'s recommended split is an editorial heuristic, not a fitted model', tone: 'notbuilt' }; }
+        desc: 'The single home for this account\'s budget: which channels are active, this year\'s budget upload (or manual entry), the recommended media mix, and per-channel Annual $ / Est. CPM — all editable in place, plus every prior year on file. Today\'s "Recommended default split" is an editorial heuristic, not a fitted model yet.',
+        status(){
+          const hasAllocations = !!(state.mediaPlan && state.mediaPlan.allocations && state.mediaPlan.allocations.length);
+          return hasAllocations
+            ? { text: `${state.mediaPlan.allocations.length} channel${state.mediaPlan.allocations.length === 1 ? '' : 's'} allocated`, tone: 'ok' }
+            : { text: 'No allocations yet', tone: 'pending' };
+        }
       },
       {
         title: 'Finalized / Audited Agency Media Plans',
@@ -17486,14 +17538,6 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         route: 'bulkUpload',
         desc: 'Signed-off, audited historical media plans from a prior agency of record — the deepest form of "what this account has actually spent and where." Nearest real thing today is the Ops Team\'s row-level Marketing Calendar Bulk Upload.',
         status(){ return { text: 'Not built yet — no document-upload model exists for this today', tone: 'notbuilt' }; }
-      },
-      {
-        title: 'Marketing Budget Upload',
-        category: 'bulk',
-        source: 'Manage Account',
-        route: 'marketingBudgetUpload',
-        desc: 'The annual marketing budget itself, in whatever layout it\'s already in — auto-recognizes month/total columns and flags subtotal/grand-total rows. Upfront upload only; ongoing allocation lives in Strategy.',
-        status(){ return { text: 'Open to review upload history', tone: 'pending' }; }
       },
       // 2026-08-26 account-management reorg, per direct instruction: "It's
       // better experience than account management but now missing partner
@@ -17771,6 +17815,28 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         route: 'teamDevelopment',
         desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.',
         status(){ return { text: 'Open to manage', tone: 'pending' }; }
+      },
+      // 2026-08-26 account-management reorg, round 2, per direct
+      // instruction: "The client level assessment rankings should be
+      // developed and added to the team section." This is Continuous
+      // Monitoring (step-monitor, renderMonitorCards()) — it already lets
+      // the client re-rate any cell the free assessment flagged weak,
+      // Behind/On par/Ahead, timestamped and persisted to the backend
+      // (see submitRerate()). It was already fully built, just never
+      // reachable from this hub — only from a Daily Brief chat suggestion
+      // and a link buried in the task list. Nothing new to build here
+      // except this card.
+      {
+        title: 'Assessment Rankings',
+        category: 'manual',
+        source: 'Continuous Monitoring',
+        route: 'monitor',
+        desc: 'Re-rate any Media CX Index cell the free assessment flagged weak — Behind / On par / Ahead, same scale as the assessment itself, timestamped and compared back against the original intake score.',
+        status(){
+          if (!trackedCellKeys.length) return { text: 'No cells flagged weak at intake', tone: 'pending' };
+          const rerated = trackedCellKeys.filter(k => scoreHistory[k] && scoreHistory[k].length > 1).length;
+          return { text: `${rerated} of ${trackedCellKeys.length} re-rated since intake`, tone: rerated ? 'ok' : 'pending' };
+        }
       }
     ]
   },
@@ -22374,7 +22440,7 @@ function renderMediaPlanGrid(){
   const hasAllocations = !!(plan && plan.allocations && plan.allocations.length);
   if (controlsCard) controlsCard.style.display = hasAllocations ? '' : 'none';
   if (!hasAllocations){
-    el.innerHTML = `<p class="lede">No allocations yet — enter an annual marketing budget above and click "Apply recommended mix" to seed a starting split, or add allocations by hand once that's built out further.</p>`;
+    el.innerHTML = `<p class="lede">No allocations yet — enter an annual marketing budget above and click "Apply recommended mix" to seed a starting split, or add a channel by hand below.</p>` + mpRenderAddChannelCard();
     renderMpFooter();
     return;
   }
@@ -22502,8 +22568,73 @@ function renderMediaPlanGrid(){
       </div>
       <div class="sk-card-footer">Humans can adjust any amount here — the recommended split is a starting point, not a constraint.</div>
     </div>`;
-  }).join('') + excludedHtml;
+  }).join('') + excludedHtml + mpRenderAddChannelCard();
   renderMpFooter();
+}
+
+// 2026-08-26 account-management reorg, round 2, per direct instruction:
+// "one location to manage the budget... to include channel activation,
+// uploads, manual channel adds and the media mix allocations." Every
+// existing row here (from "Apply recommended mix") is already editable —
+// this is the missing piece, a way to add a channel that isn't offered by
+// the recommendation at all, or was excluded (see "Not recommended this
+// pass" above). Same allocation shape applyRecommendedMix() builds, so the
+// new row behaves identically to every other one — editable Annual $/Est.
+// CPM, included in Save plan, shows up in the charts above.
+function mpRenderAddChannelCard(){
+  const stageOptions = MEDIA_LOOP_STAGES.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  const channelOptions = MMM_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  return `
+    <div class="sk-card" id="mpAddChannelCard" style="margin-top:16px;">
+      <div class="sk-card-head ink"><div class="htext"><h3>Add a channel by hand</h3><div class="kicker">Manual allocation</div></div></div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin:0 0 10px;">Not offered by the recommended mix, or want to run something outside it? Add any channel with a starting Annual $ — it becomes a normal, fully editable row above once added.</p>
+        <div class="field" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:0;">
+          <div style="flex:1 1 160px;"><label>Stage</label><select id="mpAddChannelStage">${stageOptions}</select></div>
+          <div style="flex:1 1 200px;"><label>Channel</label><select id="mpAddChannelName">${channelOptions}</select></div>
+          <div style="flex:0 0 140px;">
+            <label>Annual $</label>
+            <div style="position:relative;">
+              <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
+              <input type="number" min="0" step="100" id="mpAddChannelAmount" value="0" style="padding-left:24px;">
+            </div>
+          </div>
+          <div><button type="button" class="btn-ghost" onclick="mpAddManualChannel()">+ Add channel</button></div>
+        </div>
+        <p class="hint" id="mpAddChannelStatus" style="margin-top:8px;"></p>
+      </div>
+    </div>`;
+}
+function mpAddManualChannel(){
+  const stage = document.getElementById('mpAddChannelStage')?.value;
+  const channel = document.getElementById('mpAddChannelName')?.value;
+  const amount = Number(document.getElementById('mpAddChannelAmount')?.value) || 0;
+  const statusEl = document.getElementById('mpAddChannelStatus');
+  if (!stage || !channel) return;
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: 0, allocations: [] };
+  const plan = state.mediaPlan;
+  const dup = plan.allocations.find(a => a.stage === stage && a.channel === channel);
+  if (dup){
+    if (statusEl) statusEl.textContent = `${channel} is already in ${stage} — edit its Annual $ in the grid above instead of adding it twice.`;
+    return;
+  }
+  ensurePlanMonthlyDefaults();
+  const id = `alloc-${mpSelectedYear}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const periods = computePlanMonthlyPeriods(amount);
+  const cpm = ILLUSTRATIVE_CHANNEL_CPM[channel] || DEFAULT_BLENDED_CPM;
+  const audienceType = defaultAudienceTypeForChannel(channel);
+  plan.allocations.push({ id, stage, channel, recommendedAmount: 0, approvedAmount: amount, cpm, audienceType, periods });
+  renderMediaPlanGrid();
+  renderMpFooter();
+  renderPlanPacingChart();
+  renderBudgetTrackingChart();
+  renderChannelMixChart();
+  // renderMediaPlanGrid() just rebuilt #mpAddChannelStatus fresh (via
+  // mpRenderAddChannelCard()), so the confirmation is set after, not before.
+  const freshStatus = document.getElementById('mpAddChannelStatus');
+  if (freshStatus) freshStatus.textContent = `Added ${channel} to ${stage} — edit its Annual $/Est. CPM above, then Save plan.`;
+  const grid = document.getElementById('mediaPlanGrid');
+  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Round 132bx (2026-08-15) — jumps to Manage Existing Campaigns pre-filtered
@@ -25670,18 +25801,14 @@ async function mbuConfirmDeleteUpload(uploadId, confirmDelete){
 // goToStep(route) calls, which pass nothing and so fall through to the
 // Analysis default below).
 function mbuRenderCrumb(returnTo){
-  const el = document.getElementById('mbuCrumb');
-  if (!el) return;
-  // 2026-08-23 — added the 'configuration' case: Marketing Budget Upload is
-  // now also step 6 of 8 in the Configuration workstream (reused as-is, not
-  // rebuilt — see the seq-nav at the bottom of this step and Competitive
-  // Positioning's own "Next" link). The Analysis and Media Plan entry
-  // points/crumbs above are unchanged — this is purely additive.
-  el.innerHTML = returnTo === 'mediaplan'
-    ? `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('mediaplan')">Media Plan</a> / Marketing Budget Upload`
-    : returnTo === 'configuration'
-      ? `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Marketing Budget Upload`
-      : `<a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Marketing Budget Upload`;
+  // 2026-08-26 account-management reorg, round 2 — #mbuCrumb (the on-page
+  // breadcrumb text) no longer exists; it moved away with the rest of the
+  // old marketingBudgetUpload step, and breadcrumbs are hidden site-wide
+  // anyway (see .crumb{display:none}). This function's OTHER job — driving
+  // #mbuSeqNav, the real Back/Next stepper for the Configuration workstream
+  // — still matters and used to be skipped whenever #mbuCrumb was missing,
+  // because of an early `if (!el) return`. That guard is gone; the crumb
+  // half is simply a no-op now instead of bailing out the whole function.
   const navEl = document.getElementById('mbuSeqNav');
   if (navEl){
     if (returnTo === 'configuration'){
@@ -36403,6 +36530,31 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  // 2026-08-26 fix, per direct report ("Select the Atlas Ocean Voyages
+  // dashboard links to a different Account Management experience above the
+  // content area") — a real bug from the same day's routing change (see
+  // renderWorkstreams()'s accountManagement branch). Any direct
+  // goToStep('dashboard') call (breadcrumbs, "Back to Dashboard" buttons,
+  // etc.) used to fall into this function's own default branch below, which
+  // calls renderWorkstreams() partway through and THEN unconditionally
+  // re-activates step-dashboard at the end — so when renderWorkstreams()
+  // reacted to activePrimaryTab === 'accountManagement' by calling
+  // goToStep('manageAccount') internally, that inner call correctly
+  // activated step-manageAccount, but the outer call's own trailing
+  // `classList.add('active')` on step-dashboard ran right after, leaving
+  // BOTH steps active/visible at once (the hub's header stacked above the
+  // Dashboard's own content). Redirecting here, before any step activates,
+  // means only one step ever gets marked active for this call.
+  if (step === 'dashboard' && activePrimaryTab === 'accountManagement') step = 'manageAccount';
+  // 2026-08-26 account-management reorg, round 2 — Marketing Budget Upload
+  // no longer has its own step; its whole card set (Active Channels,
+  // Upload, Budgets on file, Upload history) physically moved into
+  // step-mediaplan (see that step's own HTML comment). Every existing
+  // caller that still passes 'marketingBudgetUpload' (Configuration
+  // workstream Back/Next, the old "Upload budget →" button, the Analysis
+  // tools list, etc.) keeps working unchanged — it just lands on Media
+  // Plan now, same redirect pattern as the accountManagement alias above.
+  if (step === 'marketingBudgetUpload') step = 'mediaplan';
   document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
   // Round 16, point 2 — the best-practices drawer only makes sense on the
   // Add Campaign Details form; hide its fixed tab (and close it if open)
@@ -36530,12 +36682,6 @@ function goToStep(step, arg, arg2, arg3){
     mouResetImport();
     mouLoadHistory();
     document.getElementById('step-marketOptimization').classList.add('active');
-  } else if (step === 'marketingBudgetUpload'){
-    mbuResetImport();
-    mbuLoadHistory();
-    if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
-    if (typeof mbuRenderCrumb === 'function') mbuRenderCrumb(arg);
-    document.getElementById('step-marketingBudgetUpload').classList.add('active');
   } else if (step === 'taxonomyManager'){
     // 2026-08-23 — Product & Campaign Groups, moved here from Marketing
     // Calendar as part of the Configuration workstream — see
@@ -36599,6 +36745,19 @@ function goToStep(step, arg, arg2, arg3){
     document.getElementById('step-campaigns').classList.add('active');
   } else if (step === 'mediaplan'){
     renderMediaPlanStep(arg === 'fromUpload');
+    // 2026-08-26 account-management reorg, round 2 — Active Channels,
+    // Upload, and Budgets/Upload-history now live physically inside
+    // step-mediaplan (folded in from the old marketingBudgetUpload step),
+    // so their own init calls run here too. mbuRenderCrumb(arg) still
+    // drives the real Back/Next stepper (#mbuSeqNav) for the Configuration
+    // workstream when arg === 'configuration' — that's a functional
+    // prev/next control, not decorative breadcrumb text, so it's kept
+    // even though the on-page .crumb div itself is hidden site-wide.
+    mbuResetImport();
+    mbuLoadHistory();
+    if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
+    if (typeof mbuRenderCrumb === 'function') mbuRenderCrumb(arg);
+    mbuRenderActiveChannels();
     document.getElementById('step-mediaplan').classList.add('active');
   } else if (step === 'campaign'){
     if (arg && arg !== '__current') currentCampaignId = arg;
@@ -41595,11 +41754,6 @@ function renderCompanyProfileStep(){
       : '<p class="hint" style="margin:0;">Nothing on file yet — this fills in once the free assessment collects it.</p>';
   }
 
-  document.getElementById('cpActiveChannelsRow').innerHTML = MMM_CATEGORIES.map(ch => `
-    <button type="button" class="select-tile${state.activeChannels.has(ch) ? ' selected' : ''}" onclick="toggleCompanyActiveChannel('${ch}')">
-      <span class="indicator">✓</span><span class="label">${ch}</span>
-    </button>`).join('');
-
   // Round 132zz (2026-08-11) — Partners list (see the field's own comment).
   const partnersListEl = document.getElementById('cpPartnersList');
   if (partnersListEl){
@@ -41755,13 +41909,47 @@ async function obsSaveClientCode(value){
       + ` Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.`;
   }
 }
-function toggleCompanyActiveChannel(ch){
-  if (state.activeChannels.has(ch)) state.activeChannels.delete(ch); else state.activeChannels.add(ch);
-  renderCompanyProfileStep();
+// 2026-08-26 account-management reorg, per direct instruction: "The
+// Activate channels should be part of the overall budget setup." Moved
+// from Account Setup to Marketing Budget Upload (step-marketingBudgetUpload)
+// — see mbuActiveChannelsCard in that step's markup. Unlike the old Account
+// Setup copy (which only saved when the page's own Save button was clicked),
+// this saves immediately on toggle via the same /api/accounts/{id}/profile
+// endpoint, matching Marketing Budget Upload's own "nothing here waits for
+// a separate Save" convention (uploads/years/history all act immediately).
+function mbuRenderActiveChannels(){
+  const row = document.getElementById('mbuActiveChannelsRow');
+  if (!row) return;
+  row.innerHTML = MMM_CATEGORIES.map(ch => `
+    <button type="button" class="select-tile${state.activeChannels.has(ch) ? ' selected' : ''}" onclick="mbuToggleActiveChannel('${ch}')">
+      <span class="indicator">✓</span><span class="label">${ch}</span>
+    </button>`).join('');
 }
-function setAllCompanyActiveChannels(allActive){
+async function mbuSaveActiveChannels(){
+  const status = document.getElementById('mbuActiveChannelsStatus');
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveActiveChannels: backend write failed, saved locally only.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+}
+function mbuToggleActiveChannel(ch){
+  if (state.activeChannels.has(ch)) state.activeChannels.delete(ch); else state.activeChannels.add(ch);
+  mbuRenderActiveChannels();
+  mbuSaveActiveChannels();
+}
+function mbuSetAllActiveChannels(allActive){
   state.activeChannels = allActive ? new Set(MMM_CATEGORIES) : new Set();
-  renderCompanyProfileStep();
+  mbuRenderActiveChannels();
+  mbuSaveActiveChannels();
 }
 // Round 132zz (2026-08-11) — Partners list add/remove, same simple pattern
 // as the rest of Company Profile's account-setup fields.
@@ -42391,6 +42579,38 @@ async function saveCompetitivePositioning(){
 
   try {
     await loadAccountData();
+    // 2026-08-26 fix, per direct report: "I was logged in as Atlas and then
+    // went to the public page and then selected Access Portal. Acme is now
+    // the active experience." Root cause, found by reading
+    // loadAccountData(): a non-401 account-fetch failure (network error,
+    // timeout, cold-start 500 — anything except "not logged in") silently
+    // falls through to this file's built-in illustrative mock data, which
+    // includes the hardcoded placeholder company name "Acme Hospitality
+    // Group." Nothing distinguished that state from a real account on
+    // screen — the one honest indicator that does exist (#acctTag,
+    // "Prototype — Client Portal, post-authentication") is deliberately
+    // hidden per the current header design (see .app-header-hidden-meta).
+    // The result: a real, valid session (sessionToken set from this
+    // account's own localStorage entry) hits a transient backend failure
+    // and the visitor sees a completely different, plausible-looking
+    // company's data with no error, no retry, nothing — indistinguishable
+    // from being logged into the wrong account. This violates this
+    // project's own standing rule (never fabricate/misrepresent live
+    // data or connection status) worse than any other instance of it
+    // caught so far, so it gets the strongest treatment available: when
+    // there WAS a real session for this exact account and the fetch still
+    // didn't succeed, refuse to render the mock fallback at all and show
+    // the existing honest connection-error state instead (same
+    // Retry-button UI the 15s watchdog below already uses). A visitor with
+    // no session yet (a fresh/never-logged-in link) is unaffected — that
+    // case still falls through to mock/handoff data same as before, since
+    // there's no real account being misrepresented in that case.
+    if (dataSourceLabel === 'mock' && sessionToken){
+      console.error('portal.html: had a valid session token for this account but the account fetch still failed (non-401) — refusing to silently render mock/placeholder data as if it were this account\'s real data.', { companyId: state.companyId });
+      clearTimeout(portalLoadWatchdog);
+      showPortalLoadCoverErrorFn('Couldn’t load your account just now — the connection to the backend failed. Your session is still valid; this is very likely transient (a cold-start backend). Try again in a moment.');
+      return;
+    }
   // 2026-08-23 — these five were previously awaited one at a time, so the
   // header (#acctCompanyName) and the Start-of-Day standup bubble — both
   // of which only render after this whole block finishes, further down —
