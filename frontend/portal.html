@@ -41859,7 +41859,20 @@ async function runBrandVoiceContest(){
       body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
-      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the contest — try again.</div>`;
+      // 2026-08-26 fix, per direct question ("What does this message
+      // indicate? Can't run the contest") — this branch used to show the
+      // same generic "Couldn't run the contest — try again." for every
+      // non-2xx response, discarding the real reason. The backend actually
+      // returns a specific, useful error for at least two real cases: 429
+      // when the weekly interview-panel cap is hit (a safety limit on AI
+      // usage — see INTERVIEW_WEEKLY_CAP / checkInterviewWeeklyCap in
+      // server.js, default 20 runs/7 days) and 401 when the session has
+      // expired. Now reads data.error off the response body and shows it
+      // when present, so which one it was is visible instead of guessed at.
+      const errData = await resp.json().catch(() => ({}));
+      let msg = errData.error || `Couldn't run the contest (${resp.status}) — try again.`;
+      if (resp.status === 401) msg = 'Your session has expired — sign in again and retry.';
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">${escapeHtml(msg)}</div>`;
       return;
     }
     const result = await resp.json();
