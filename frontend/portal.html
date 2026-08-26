@@ -3563,8 +3563,9 @@
          workstream is the fuller Sample Writings & Presentations page
          (uploads, purpose/date categorization), now the very next step
          after this one (see the seq-nav below). Keeping both was
-         duplicative; this points to the real one instead. -->
-    <p class="hint" style="margin:0 0 20px;">Sample writing for this brand lives on the <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> page (next step) — upload real examples there, categorized by purpose and date.</p>
+         duplicative. Follow-up instruction the same day: also drop the
+         pointer sentence that used to sit here explaining the removal —
+         nothing to say about it, just move straight to Tone anchors. -->
 
     <!-- Round 132rr — inline style overrides display:block with flex
          directly (rather than relying on the stylesheet's
@@ -3658,7 +3659,27 @@
            guardrail checks (see cmpBrandVoiceAvoidWords()). The old "pull
            in from Words to Avoid" convenience button is gone since there's
            no longer a separate field to pull from — this list is now the
-           only place to edit it. -->
+           only place to edit it.
+           2026-08-26 follow-up, per direct instruction ("merge the
+           functionality under Terms to Avoid to remove the redundancy" /
+           "make sure we have not lost any functionality... one location
+           that includes what both areas are planned to do"): the separate
+           "Who this brand should NOT sound like" free-text anti-example
+           field was removed — Todd flagged it read as the same feature as
+           this one. Merging the FIELD isn't enough on its own to preserve
+           the CAPABILITY, since this input already does one job (literal
+           exclusion: kept out of copy, checked by the compliance
+           guardrail) and the anti-example did a different one (a tonal/
+           stylistic reference to steer the draft away from, e.g. "not a
+           budget airline's chipper, exclamation-point voice" — not
+           something you'd want checked for literal presence in campaign
+           copy). addBrandKeywordChip() already accepts any text, spaces
+           included, so this one list can hold both short forbidden terms
+           AND short avoid-this-tone phrases side by side — copy below
+           updated to invite both, and generateVoiceDraft() now feeds this
+           same list into the draft's "what this voice is not" framing (not
+           just the "words to avoid" line) so the tonal-steering job isn't
+           lost, just folded into the one list. -->
       <div class="module open accent-advocacy" id="negativeKeywordsModule" style="margin-top:14px;">
         <div class="module-head" onclick="toggleModule('negativeKeywordsModule')">
           <span class="modnum">2</span>
@@ -3670,37 +3691,20 @@
         </div>
         <div class="module-body">
           <div class="fld-label-row" style="margin-bottom:2px;">
-            <p class="lede" style="margin:0;">Enter keywords that are not consistent with your product mission and positioning.</p>
+            <p class="lede" style="margin:0;">Enter words or short phrases that are not consistent with your product mission and positioning — specific terms to exclude (e.g. "cheap," "hack") as well as tones or styles to avoid sounding like (e.g. "budget airline chipper," "corporate jargon").</p>
             <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipTermsToAvoid')" aria-label="Where this is used">i</button>
           </div>
-          <div class="fld-tip" id="tipTermsToAvoid" style="margin-bottom:10px;">This list drives real exclusions, not just a record: it's kept out of the generated Voice draft and the Brand &amp; Product Keywords above, and it's what campaign copy is checked against for the Brand Voice guardrail/compliance flag shown in campaign briefs and the Daily Brief.</div>
+          <div class="fld-tip" id="tipTermsToAvoid" style="margin-bottom:10px;">This list drives real exclusions, not just a record: it's kept out of the generated Voice draft and the Brand &amp; Product Keywords above, and it's what campaign copy is checked against for the Brand Voice guardrail/compliance flag shown in campaign briefs and the Daily Brief. Add a short tone/style phrase (not just single words) to also steer the Voice draft's "what this voice is not" framing.</div>
           <div id="brandKeywordsNegativeList"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
-            <input type="text" id="brandKeywordsNegativeInput" placeholder="Add a negative keyword..." style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandKeywordChip('negative');}">
+            <input type="text" id="brandKeywordsNegativeInput" placeholder="e.g. &quot;hack&quot; or &quot;budget airline chipper&quot;..." style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandKeywordChip('negative');}">
             <button type="button" class="btn-ghost" style="padding:8px 14px;" onclick="addBrandKeywordChip('negative')">Add</button>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="field">
-      <div class="fld-label-row">
-        <label style="margin:0;">Who this brand should NOT sound like</label>
-        <span class="fld-optional-badge">Optional</span>
-        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipAntiExample')" aria-label="What this affects">i</button>
-      </div>
-      <div class="fld-tip" id="tipAntiExample">One sentence. A concrete wrong-tone example steers the generated Voice draft away from something specific — more useful than a vague "don't sound corporate."</div>
-      <input type="text" id="voiceAntiExample" placeholder="e.g. not a budget airline's chipper, exclamation-point voice">
-    </div>
-
-    <!-- 2026-08-26 follow-up, per direct question ("What purpose does
-         generate draft in this section serve"): this button sat directly
-         under the anti-example field with nothing separating them, reading
-         as if it belonged only to that one field. It's actually the single
-         generator for the whole Voice Guide draft above — Sample writing,
-         Tone anchors, Words to avoid, and this anti-example all feed it.
-         Relabeled and given its own hint line to make that scope explicit. -->
-    <p class="hint" style="margin:0 0 8px;">Draws on everything above — Tone anchors, Words to avoid, and the anti-example — to draft the full Voice Guide below.</p>
+    <p class="hint" style="margin:0 0 8px;max-width:640px;">Draws on everything above — Tone anchors and Terms to avoid — to draft the full Voice Guide below.</p>
     <div class="btn-row">
       <button class="btn-primary" onclick="generateVoiceDraft()">Generate Voice Draft →</button>
     </div>
@@ -41516,7 +41520,6 @@ function generateVoiceDraft(){
   // "Words to avoid" field; see cmpBrandVoiceAvoidWords()'s own comment.
   const avoidList = cmpBrandVoiceAvoidWords();
   const avoid = avoidList.join(', ');
-  const antiExample = document.getElementById('voiceAntiExample').value.trim();
   const tones = [...state.toneAnchors];
   const toneClause = tones.length ? tones.join(', ').toLowerCase() : 'direct and unadorned';
 
@@ -41534,7 +41537,14 @@ function generateVoiceDraft(){
     else if (t === 'Reassuring') draft += `name the actual concern before addressing it — reassurance without naming the worry reads hollow.\n`;
   });
   if (avoid) draft += `\nWords to avoid: ${avoid}.\n`;
-  if (antiExample) draft += `\nWhat this voice is not: ${antiExample}\n`;
+  // 2026-08-26 follow-up, per direct instruction ("make sure we have not
+  // lost any functionality... one location that includes what both areas
+  // are planned to do") — this "what this voice is not" line used to be
+  // fed by the separate anti-example field; now that Terms to Avoid is the
+  // one place to enter both literal terms and tone/style phrases, the same
+  // list feeds this line too, so the tonal-steering job isn't lost, just
+  // folded into the one input.
+  if (avoid) draft += `\nWhat this voice is not: ${avoid}.\n`;
   draft += `\nExample sentences in this voice:\n`;
   draft += `- "Your room's ready two hours before the posted time if you'd rather skip the wait — just say so at check-in."\n`;
   draft += `- "We got the small things wrong for you last time. Here's exactly what changed before you arrive again."\n`;
@@ -41555,8 +41565,7 @@ function generateVoiceDraft(){
     ? `Pulled the tone rules from your ${tones.length} selected Tone ${tones.length === 1 ? 'Anchor' : 'Anchors'} (${tones.join(', ')}) — not a generic default.`
     : `No Tone Anchors are picked yet, so this fell back to "direct and unadorned" rather than guessing a tone for you.`);
   whyParts.push(`Industry set to ${state.industry || 'not set'} — the one-line description names your account's own industry, not a generic travel/hospitality default.`);
-  if (avoid) whyParts.push(`Excluded your Terms to Avoid list: ${avoid}.`);
-  if (antiExample) whyParts.push(`Steered away from: "${antiExample}" — your own anti-example, not an assumption.`);
+  if (avoid) whyParts.push(`Excluded your Terms to Avoid list: ${avoid} — this same list also shaped the "what this voice is not" line above, so it's doing double duty: literal exclusion and tonal steering.`);
   whyParts.push(`No sample writing is pulled into this generator — the example sentences below are templated to the tone rules above. Real samples now live on the Sample Writings & Presentations page.`);
   whyParts.push(`Confidence: high on tone-rule structure (directly computed from your picks above); lower on the two example sentences specifically, since those are illustrative, not drawn from your real content — edit them before saving if they don't sound right.`);
   document.getElementById('voiceWhyText').textContent = whyParts.join('\n\n');
@@ -41843,7 +41852,11 @@ async function runBrandVoiceContest(){
       // avoidWords now sourced from Terms to Avoid (cmpBrandVoiceAvoidWords())
       // instead of the removed standalone field — backend param name kept
       // as-is, it already just treats this as a display string.
-      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: cmpBrandVoiceAvoidWords().join(', '), antiExample: document.getElementById('voiceAntiExample').value.trim() })
+      // 2026-08-26 follow-up — antiExample dropped entirely (the field it
+      // read from was merged into Terms to Avoid, see negativeKeywordsModule's
+      // comment above); the backend already treats antiExample as optional
+      // (server.js ~line 8761), so simply not sending it is safe.
+      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
       holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the contest — try again.</div>`;
