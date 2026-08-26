@@ -351,6 +351,7 @@
   .account-summary .logo-and-name{display:flex;align-items:center;gap:14px;}
   .account-summary .co-logo{max-height:36px;max-width:160px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
   .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.1875rem;font-weight:700;margin:0;color:var(--hdr-ink-on-navy);}
+  .account-summary .co-code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;color:var(--hdr-muted-on-navy);background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);border-radius:6px;padding:2px 7px;}
   .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);}
   .account-summary .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--hdr-muted-on-navy);}
   .acct-header-brand-avatar{width:40px;height:40px;border-radius:10px;background:var(--hdr-amber);color:#2A1B05;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -372,7 +373,16 @@
 
   .step{display:none;}
   .step.active{display:block;}
-  .crumb{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin-bottom:18px;}
+  /* 2026-08-26, per direct instruction: "We really don't need breadcrumbs
+     in the Portal at this point... Linking from the navigation works
+     fine." Hidden via display:none rather than deleting the ~36 .crumb
+     divs (and the #groupCrumb/#campaignCrumb/#mbuCrumb/#projectCrumb/
+     #placeholderName spans several of them contain) — those spans are
+     still written to by JS elsewhere (e.g. cmpManageExistingCampaign(),
+     mbuRenderCrumb()) and removing the elements outright risked breaking
+     those writers. Same reversible-swap posture as the rest of this
+     codebase. */
+  .crumb{display:none;}
   .crumb a{color:var(--cx);text-decoration:none;cursor:pointer;}
   .crumb a:hover{text-decoration:underline;}
 
@@ -2030,6 +2040,11 @@
   .partner-card-name{font-weight:700;color:var(--ink);font-size:0.9375rem;}
   .partner-card-desc{font-size:0.8125rem;color:var(--muted);line-height:1.5;flex:1;}
   .partner-status-pill{align-self:flex-start;font-size:0.6875rem;font-weight:600;letter-spacing:0.02em;color:#8A6A1E;background:#FBF1D9;border:1px solid #E4C97A;border-radius:20px;padding:3px 10px;white-space:nowrap;}
+  /* 2026-08-25 — real "connected" state for the 4 Analytics & Optimization
+     cards (see partnerStatusFor()) — a distinct green from the amber
+     "not connected/requested" pill above, so a genuinely live connection
+     reads differently at a glance from a pending one. */
+  .partner-status-pill.is-connected{color:#1F5C3D;background:#E5F3EA;border-color:#9FCFB2;}
 
   /* Round 16, point 2 — the round-14 two-column layout (form left, FAQ
      sticky right) read as cluttered once the form itself grew long, so the
@@ -2548,7 +2563,19 @@
              "Acme Hospitality Group," even briefly, is a real trust problem,
              not just a cosmetic one. "Loading…" is a neutral placeholder that
              never claims to be any specific account. -->
-        <div class="co-name" id="acctCompanyName">Loading…</div>
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <div class="co-name" id="acctCompanyName">Loading…</div>
+          <!-- 2026-08-26 account-management reorg, per direct instruction:
+               "The Partner Code should be client code and be adjacent to
+               the company name wherever it is in the portal... This is
+               used to create the 3 letter code in the client header."
+               Distinct from the longer #acctClientIdDisplay pill below
+               (that's state.companyId, an internal record ID) — this is
+               the 3-letter state.partnerCode, set on Business & Revenue
+               Profile (see obsClientCodeCard), populated by
+               renderAccountLogo(). -->
+          <div class="co-code" id="acctClientCodeDisplay" style="display:none;"></div>
+        </div>
         <div class="acct-header-subtitle">Verilume Portal</div>
       </div>
     </div>
@@ -3211,8 +3238,21 @@
          new), and this spot is now just a real H3 heading over the table
          itself, naming which view you're looking at rather than repeating
          entry points that already live above. -->
+    <!-- 2026-08-25, per direct instruction: "We don't have a link to Create
+         Campaign on the Campaign Management page. We used to have a static
+         link." Create Campaign lived only as a chip inside the
+         natural-language ask module above (WORKSTREAM_CFD.campaignMgmt),
+         which reads as buried compared to the static link/button this used
+         to be. Fix: the title slot below, which showed plain text "Manage
+         Existing Campaigns" for the default (no-filter) view, now renders a
+         real "+ Create New Campaign" button in that same default state
+         instead — startNewCampaign() is the exact same function the chip
+         already called, no new creation path. Every other filter state
+         (Completed/Active/Starting Soon/Cancelled) still shows its own
+         plain-text title, since those aren't the "nothing filtered" case
+         this button replaces. See renderCampaignMgmtStep(). -->
     <div style="margin:24px 0 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <h3 id="campaignMgmtTableTitle" style="margin:0;">Manage Existing Campaigns</h3>
+      <div id="campaignMgmtTableTitle" style="margin:0;"></div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <!-- Round 132bx (2026-08-15), per direct review comment (Aug 15
              tracker row 25): "110 TOTAL CAMPAIGNS LOOKS LOST ON PORTAL
@@ -3260,6 +3300,19 @@
          (cfdWsSubmit()'s name-match fallback) and just filters this same
          table in place. This banner is the only remaining on-page sign that
          a name filter is active, plus a one-click way to clear it. -->
+    <!-- 2026-08-25, per direct instruction: "add a search feature centered
+         across the table for someone to type in a campaign code or name to
+         view campaign options that can be selected." Reuses cmgmtSetSearch()
+         (already wired to cmgmtSearch/renderCampaignMgmtStep() — round 132bv
+         built this exact filter for the natural-language ask box's
+         name-match fallback, see cfdWsSubmit()) rather than a new search
+         path; typing here filters the table in place the same way, and each
+         matching row's own "Manage Campaign" link is the "select it" step —
+         no separate dropdown/typeahead needed since the table below IS the
+         result list. -->
+    <div style="display:flex;justify-content:center;margin:4px 0 14px;">
+      <input type="text" id="campaignMgmtSearchInput" class="cmgmt-search-input" placeholder="Search by campaign code or name…" value="" oninput="cmgmtSetSearch(this.value)" style="width:100%;max-width:420px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;padding:9px 14px;border-radius:20px;border:1px solid var(--line);background:var(--white);color:var(--ink);">
+    </div>
     <div class="cmgmt-search-banner" id="campaignMgmtSearchBanner" style="display:none;"></div>
     <!-- Round 132bx (2026-08-13) — the Cancel report, shown only while
          viewing the Cancelled filter (see renderCampaignMgmtStep()). -->
@@ -3304,6 +3357,20 @@
         </thead>
         <tbody id="campaignMgmtList"></tbody>
       </table>
+    </div>
+    <!-- 2026-08-25, per direct instruction: "A View All campaigns link below
+         the table when it has active campaigns can also open the entire
+         campaign list sorted based on ascending date range from the current
+         date of the session." Only shown when activeCampaignCount() > 0 (see
+         renderCampaignMgmtStep()); clicking clears every filter/search back
+         to "All Campaigns" and sorts by Start Date ascending — soonest
+         start-date-from-today first — reusing the exact same
+         cmgmtSetStatusFilter/cmgmtSetAllocationFilter/cmgmtSetSearch/
+         cmgmtToggleColumnSort state this page's column-header sorting
+         already uses, not a new sort mechanism. See
+         cmgmtViewAllSortedByDate(). -->
+    <div style="text-align:center;margin-top:10px;display:none;" id="campaignMgmtViewAllRow">
+      <a class="flink" onclick="cmgmtViewAllSortedByDate()">View All Campaigns →</a>
     </div>
   </div>
 
@@ -3742,30 +3809,21 @@
       <div id="cpAssessmentSummaryBody" style="font-size:0.875rem;color:var(--ink);line-height:1.6;"></div>
     </div>
 
-    <!-- Round 132c17 (2026-08-17), per direct instruction: "the campaign id
-         includes a 3 letter code for each partner defined during setup" —
-         a one-time-per-account code (e.g. AOV for Atlas Ocean Voyages),
-         distinct from the "Partners" vendor list below (that's production
-         partners for Creative Asset Selection, unrelated). Feeds
-         generateCampaignCode() on Campaign Creation; a campaign can't get a
-         real Campaign Code until this is set. -->
-    <div class="field">
-      <label>Partner Code <span style="font-weight:400;text-transform:none;color:var(--muted);">(3 letters — this account's code in every Campaign ID, e.g. AOV)</span></label>
-      <input type="text" id="cpPartnerCode" maxlength="3" style="text-transform:uppercase;width:120px;" placeholder="AOV" oninput="updateCompanyPartnerCode(this.value)">
-      <div class="hint">Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
-    </div>
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Partner Code should be client code and be adjacent to the company
+         name wherever it is in the portal... It should be a field next to
+         the Company Name in the profile section. This is used to create the
+         3 letter code in the client header." Moved to Business & Revenue
+         Profile (step-onboardingSurvey), next to the company name there, and
+         renamed Client Code throughout the UI — see obsClientCodeCard.
+         state.partnerCode and the backend accounts.partnerCode column keep
+         their original names (Campaign ID generation and the DB schema
+         already depend on them); only the user-facing label changed. -->
 
-    <!-- Round 32, follow-on (2026-08-05), per direct instruction: "Companies
-         do not use all of the channels that we have available... providing
-         the opportunity to activate during brand setup might make sense." -->
-    <div class="field">
-      <label>Active channels <span style="font-weight:400;text-transform:none;color:var(--muted);">(only active channels are offered on Campaign Creation and recommended on the Media Plan)</span></label>
-      <div class="btn-row" style="margin:0 0 8px;">
-        <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="setAllCompanyActiveChannels(true)">Activate all →</button>
-        <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="setAllCompanyActiveChannels(false)">Deactivate all →</button>
-      </div>
-      <div class="select-tile-row" id="cpActiveChannelsRow"></div>
-    </div>
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Activate channels should be part of the overall budget setup." Moved
+         to Marketing Budget Upload (step-marketingBudgetUpload) — see
+         mbuActiveChannelsRow there. -->
 
     <!-- Round 132zz (2026-08-11), per direct instruction: "Partners will be
          a drop-down based on account setup values." No account-level
@@ -3827,6 +3885,30 @@
     <div class="eyebrow">Manage Account · Onboarding Survey</div>
     <h1>Business &amp; Revenue Profile</h1>
     <p class="lede lede-full">How this account actually converts revenue — this feeds the recommended Media Plan stage-budget split (see Stage Weighting on the Media Plan page) and every alternative-approach recommendation that reasons about your real sales cycle. Editable any time. Already have your measurement setup on file? That lives at <a onclick="goToStep('measurementCoverage')" style="cursor:pointer;">Analysis → Measurement Coverage</a> instead of here, so it's never asked twice.</p>
+
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Partner Code should be client code and be adjacent to the company
+         name wherever it is in the portal... It should be a field next to
+         the Company Name in the profile section. This is used to create the
+         3 letter code in the client header." Moved here from Account Setup
+         (see that step's own comment). Company Name itself has no edit
+         surface anywhere in the app today (it's set at account creation) —
+         shown read-only rather than fabricating an edit capability that
+         doesn't exist elsewhere. Client Code stays a plain input, same
+         3-letter convention as before, still the source for
+         generateCampaignCode() on Campaign Creation and now also for the
+         header badge next to the company name (see acctClientCodeDisplay). -->
+    <div class="field" id="obsClientCodeCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:18px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label style="margin-bottom:8px;">Company name</label>
+        <div id="obsCompanyNameDisplay" style="font-size:1rem;font-weight:600;color:var(--ink);">—</div>
+      </div>
+      <div>
+        <label>Partner Code <span style="font-weight:400;text-transform:none;color:var(--muted);">(3 letters — shown next to the company name in the header, and used in every Campaign ID, e.g. AOV)</span></label>
+        <input type="text" id="obsClientCode" maxlength="3" style="text-transform:uppercase;width:120px;" placeholder="AOV" onblur="obsSaveClientCode(this.value)">
+        <div class="hint" id="obsClientCodeSaveStatus" style="margin-top:6px;">Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
+      </div>
+    </div>
 
     <div class="sk-card" id="obsCoreCard">
       <div class="sk-card-head cx">
@@ -5240,6 +5322,27 @@
         <div class="cfd-bubble">
           This looks for month names (Jan–Dec) across every row to find your file's header(s) — if it finds exactly one, that's a standard flat table. If it finds several (a client export that repeats a header block per category, like a real Print/Direct Mail/Digital/Trade section layout), that's reported as a multi-block file: month and total columns still auto-recognize from their own header text, but the category-name and Working/Non-Working columns usually aren't labeled clearly enough to guess, so you confirm those. It also checks the math — if one row's total equals the sum of the others in its block, that's very likely a subtotal, not its own line item, and gets flagged so it isn't double-counted (or silently dropped).
         </div>
+      </div>
+    </div>
+
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Activate channels should be part of the overall budget setup."
+         Moved here from Account Setup — see mbuToggleActiveChannel()'s own
+         comment. Account-level, not tied to any one year's upload, so it
+         sits ahead of Step 1 rather than inside it. -->
+    <div class="sk-card" id="mbuActiveChannelsCard" style="margin-bottom:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting</div><h3>Active channels</h3></div>
+        <div class="hicon">📡</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
+        <div class="btn-row" style="margin:0 0 8px;">
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
+        </div>
+        <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
+        <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
       </div>
     </div>
 
@@ -7160,6 +7263,46 @@
         </div>
         <div class="faq-body" id="bpFaqBodyV">
           <p id="bpFaqTextV"></p>
+        </div>
+      </div>
+      <!-- 2026-08-25 — W-Z, one per Analytics & Optimization card (see
+           PARTNER_INTEGRATIONS_GROUPS/renderPartnerIntegrationsStep() and
+           renderFaqW()-renderFaqZ() below). Fixed copy, same convention as
+           Q-V above. -->
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadW" onclick="toggleFaqItem('W')">
+          <span class="faq-label">Connecting Snowflake</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyW">
+          <p id="bpFaqTextW"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadX" onclick="toggleFaqItem('X')">
+          <span class="faq-label">Connecting Google Analytics 4</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyX">
+          <p id="bpFaqTextX"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadY" onclick="toggleFaqItem('Y')">
+          <span class="faq-label">Google Ads — analysis &amp; human-approved optimization</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyY">
+          <p id="bpFaqTextY"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadZ" onclick="toggleFaqItem('Z')">
+          <span class="faq-label">Meta — analysis &amp; human-approved optimization</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyZ">
+          <p id="bpFaqTextZ"></p>
         </div>
       </div>
     </div>
@@ -14784,12 +14927,45 @@ const PARTNER_INTEGRATIONS_GROUPS = [
     { name: 'Google Ads', letter: 'R', desc: 'Search, Display, YouTube, and Performance Max campaigns.' },
     { name: 'The Trade Desk', letter: 'S', desc: 'Programmatic display, video, CTV, and audio.' }
   ]},
+  // 2026-08-25, per direct instruction: "Any Google or Meta product that we
+  // can integrate with to help us with a) analysis b) campaign optimizations
+  // w/ human approvals should be part of the portal interface. Snowflake was
+  // included in a prior session." These 4 map onto real, already-scoped
+  // work — cxmedia-data-integration-architecture.md (Sections 3/4a) and its
+  // Section 11 companion, cxmedia-agentic-media-optimization-pilot-2026-08-08.md
+  // — not new research. Unlike every other card on this page, these 4 use
+  // `pathwayKey` (matching the real `state.analyticsPathway` values the
+  // Analytics Integrations setup page already writes — see
+  // VALID_ANALYTICS_PATHWAYS in server.js) so their status pill reflects
+  // this account's REAL on-file pathway/status instead of a blanket "Not
+  // connected yet" — GA4 in particular has real connector code (dormant only
+  // for lack of a production credential, not a placeholder). See
+  // cmgmtPartnerStatusFor... no — see partnerStatusFor() below.
+  { label: 'Analytics & Optimization Partners', sub: 'Read-side analysis (GA4, Snowflake) and — for Google Ads/Meta — a human-approved optimization pilot: the agent proposes a bid/budget/pause change, nothing executes until someone clicks approve. Status below reflects this account\'s real Analytics Integrations setup, not a placeholder.', partners: [
+    { name: 'Snowflake', letter: 'W', desc: 'Read-only warehouse connector — one connector, reused for every client on Fivetran → Snowflake.', pathwayKey: 'snowflake' },
+    { name: 'Google Analytics 4', letter: 'X', desc: 'Website traffic & conversions — the one platform with a real, working connector already built.', pathwayKey: 'ga4' },
+    { name: 'Google Ads', letter: 'Y', desc: 'Analysis (spend/clicks/conversions) today; human-approved bid/budget/pause optimization scoped.', pathwayKey: 'google_ads' },
+    { name: 'Meta', letter: 'Z', desc: 'Analysis (ads_read) today; human-approved bid/budget/pause optimization scoped.', pathwayKey: 'meta' }
+  ]},
   { label: 'Reputation & Listening Partners', sub: 'Optional add-on vendors — none are connected today; Reputation Monitoring currently shows illustrative data pending this decision.', partners: [
     { name: 'Brandwatch', letter: 'T', desc: 'Deepest coverage — trillions of indexed conversations, real-time streaming, trend/spike detection.' },
     { name: 'Meltwater', letter: 'U', desc: 'Media-monitoring-flavored listening — PR/news-heavy, plus owned social.' },
     { name: 'Mention', letter: 'V', desc: 'Lightest, cheapest option — alerting and a mention feed, 250-character excerpts only.' }
   ]}
 ];
+// 2026-08-25 — real status for the 4 Analytics & Optimization cards
+// (pathwayKey set), reusing the exact same state.analyticsPathway/
+// state.analyticsStatus fields the Analytics Integrations setup page and
+// dashAnalyticsStatusText() already read (never re-derived). Every other
+// card (no pathwayKey — the 3 ad partners, 3 listening vendors) keeps the
+// static, honest "Not connected yet" pill, since none of those 6 have any
+// backend state to read at all.
+function partnerStatusFor(p){
+  if (!p.pathwayKey) return { text: 'Not connected yet', tone: 'pending' };
+  if (state.analyticsPathway !== p.pathwayKey) return { text: 'Not connected yet', tone: 'pending' };
+  const tone = state.analyticsStatus === 'connected' ? 'ok' : (state.analyticsStatus === 'requested' ? 'pending' : 'pending');
+  return { text: dashAnalyticsStatusText(), tone };
+}
 function renderPartnerIntegrationsStep(){
   const el = document.getElementById('partnerIntegrationsGrid');
   if (!el) return;
@@ -14798,15 +14974,18 @@ function renderPartnerIntegrationsStep(){
       <div class="partner-group-label">${escapeHtml(g.label)}</div>
       <p class="partner-group-sub">${escapeHtml(g.sub)}</p>
       <div class="partner-grid">
-        ${g.partners.map(p => `
+        ${g.partners.map(p => {
+          const status = partnerStatusFor(p);
+          return `
           <div class="partner-card">
             <div class="partner-card-head">
               <span class="partner-card-name">${escapeHtml(p.name)}</span>
               ${aiThoughtIconHtml(p.letter)}
             </div>
             <div class="partner-card-desc">${escapeHtml(p.desc)}</div>
-            <span class="partner-status-pill">Not connected yet</span>
-          </div>`).join('')}
+            <span class="partner-status-pill${status.tone === 'ok' ? ' is-connected' : ''}">${escapeHtml(status.text)}</span>
+          </div>`;
+        }).join('')}
       </div>
     </div>`).join('');
 }
@@ -15187,10 +15366,25 @@ function renderWorkstreams(){
     return;
   }
   if (activePrimaryTab === 'accountManagement'){
-    // 2026-08-23 (round 15), directive 1 — a flat tile grid replaces the
-    // old filtered-card entry point into the Round-58 sequential checklist.
-    // See ACCOUNT_MGMT_TILE_GROUPS above for what's real vs. pending.
-    grid.innerHTML = accountManagementTileGridHtml();
+    // 2026-08-26 account-management reorg, per direct instruction: "We need
+    // to reorganize account managment... AI Partner Onboarding & Training...
+    // is a better default experience and more complete experience than
+    // Account Management" plus the follow-up confirming the AI Partner
+    // Onboarding & Training hub (step-manageAccount) should become the one
+    // consolidated Account Management page. Previously this tab showed the
+    // flat ACCOUNT_MGMT_TILE_GROUPS tile grid (2026-08-23 round 15) while
+    // the hub sat one click deeper, reachable only via the "Configure your
+    // account first" banner or a Manage Account tile — two incomplete,
+    // overlapping surfaces (see AI_PARTNER_ONBOARDING_GROUPS' own comment
+    // for what moved into the hub to close that gap: Partner Integrations,
+    // Website Examples, Sample Writings & Presentations, Marketing Budget
+    // Upload, Team & Org Chart, Team Experiences). Now the tab goes straight
+    // to the hub; the tile grid (accountManagementTileGridHtml(),
+    // ACCOUNT_MGMT_TILE_GROUPS) stays defined but is no longer routed to —
+    // left in place rather than deleted, same reversible-swap posture as
+    // the rest of this codebase, in case content still needs it as
+    // reference while the hub's card list is finished out.
+    goToStep('manageAccount');
     return;
   }
   if (activePrimaryTab === 'brand'){
@@ -17315,6 +17509,35 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         route: 'bulkUpload',
         desc: 'Signed-off, audited historical media plans from a prior agency of record — the deepest form of "what this account has actually spent and where." Nearest real thing today is the Ops Team\'s row-level Marketing Calendar Bulk Upload.',
         status(){ return { text: 'Not built yet — no document-upload model exists for this today', tone: 'notbuilt' }; }
+      },
+      {
+        title: 'Marketing Budget Upload',
+        category: 'bulk',
+        source: 'Manage Account',
+        route: 'marketingBudgetUpload',
+        desc: 'The annual marketing budget itself, in whatever layout it\'s already in — auto-recognizes month/total columns and flags subtotal/grand-total rows — plus this account\'s Active Channels toggle. Upfront upload only; ongoing allocation lives in Strategy.',
+        status(){ return { text: 'Open to review upload history', tone: 'pending' }; }
+      },
+      // 2026-08-26 account-management reorg, per direct instruction: "It's
+      // better experience than account management but now missing partner
+      // integration and option to support website pages as options for
+      // content improvements." Reuses PARTNER_INTEGRATIONS_GROUPS/
+      // partnerStatusFor() (built 2026-08-25) for a real count rather than
+      // a static line — same honest-status convention as every other card
+      // here.
+      {
+        title: 'Partner Integrations',
+        category: 'reference',
+        source: 'Manage Account',
+        route: 'partnerIntegrations',
+        desc: 'Ad platforms (Meta, Google Ads, The Trade Desk), analytics & optimization partners (Snowflake, GA4, Google Ads, Meta), and reputation/listening add-ons (Brandwatch, Meltwater, Mention) — every partner this account could connect, in one place.',
+        status(){
+          const all = PARTNER_INTEGRATIONS_GROUPS.flatMap(g => g.partners);
+          const connected = all.filter(p => partnerStatusFor(p).tone === 'ok').length;
+          return connected
+            ? { text: `${connected} of ${all.length} connected`, tone: 'ok' }
+            : { text: `0 of ${all.length} connected`, tone: 'pending' };
+        }
       }
     ]
   },
@@ -17346,6 +17569,28 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         route: 'competitivePositioning',
         desc: 'Who you’re actually up against and how you’re different — grounds every recommendation in your real competitive set, not a generic one.',
         status(){ return state.positioning.approved ? { text: 'Approved', tone: 'ok' } : { text: 'Not yet approved', tone: 'pending' }; }
+      },
+      // 2026-08-26 account-management reorg — see this hub's own comment
+      // for why Partner Integrations/Website Examples/Sample Writings were
+      // missing. wsRules is the same module-level array wsInit()/
+      // wsLoadList() populate on that page (Website Examples), read
+      // directly here rather than re-fetched — real count once that page's
+      // been visited this session, honest "Not started" before that.
+      {
+        title: 'Website Examples',
+        category: 'manual',
+        source: 'Brand Groundwork',
+        route: 'websiteExamples',
+        desc: 'Real pages from your own site, marked as copy reference — content improvement examples the AI Copywriter reads directly instead of writing from a generic brief.',
+        status(){ return wsRules.length ? { text: `${wsRules.length} rule${wsRules.length === 1 ? '' : 's'} on file`, tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
+      },
+      {
+        title: 'Sample Writings &amp; Presentations',
+        category: 'manual',
+        source: 'Brand Groundwork',
+        route: 'brandWritingSamples',
+        desc: 'Reference documents and linked docs/slides that show your existing brand voice in practice — the AI Copywriter and Brand Voice guide both draw on these as real examples.',
+        status(){ return bwsSamples.length ? { text: `${bwsSamples.length} sample${bwsSamples.length === 1 ? '' : 's'} on file`, tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
       },
       {
         title: 'Ad Copy Samples &amp; Copy Versions Library',
@@ -17524,6 +17769,34 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
       }
     ]
   },
+  // 2026-08-26 account-management reorg — Team & Org Chart / Team
+  // Experiences didn't map cleanly onto any of the 7 role groups above (the
+  // original direct instruction's own list doesn't name a Team role), so
+  // this is a new 8th group rather than forcing them into Ops Team. Same
+  // routes the tile grid's old Team group used.
+  {
+    label: 'The Team',
+    sub: 'People & Development',
+    desc: 'Who\'s on the account and how the team itself is growing — distinct from any one seat\'s AI training inputs above.',
+    cards: [
+      {
+        title: 'Team &amp; Org Chart',
+        category: 'manual',
+        source: 'Manage Account',
+        route: 'team',
+        desc: 'Who\'s on this account and their reporting structure — canonical here, account.html links back to this page. Admin-only.',
+        status(){ return state.team.length ? { text: `${state.team.length} member${state.team.length === 1 ? '' : 's'} on file`, tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
+      },
+      {
+        title: 'Team Experiences',
+        category: 'manual',
+        source: 'Manage Account',
+        route: 'teamDevelopment',
+        desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.',
+        status(){ return { text: 'Open to manage', tone: 'pending' }; }
+      }
+    ]
+  },
   {
     label: 'Account Administration',
     sub: 'Not an AI Partner role',
@@ -17621,6 +17894,12 @@ async function loadOnboardingSurvey(){
   } catch (e){ /* leaves state.onboardingSurvey as whatever it was — render function shows its own error */ }
 }
 async function renderOnboardingSurveyStep(){
+  // 2026-08-26 account-management reorg — Company Name + Client Code, moved
+  // here from Account Setup. See obsClientCodeCard's own comment in the HTML.
+  const nameDisplayEl = document.getElementById('obsCompanyNameDisplay');
+  if (nameDisplayEl) nameDisplayEl.textContent = state.company || '—';
+  const clientCodeEl = document.getElementById('obsClientCode');
+  if (clientCodeEl) clientCodeEl.value = state.partnerCode || '';
   const coreBody = document.getElementById('obsCoreBody');
   const industryBody = document.getElementById('obsIndustryBody');
   if (coreBody) coreBody.innerHTML = '<p class="hint">Loading…</p>';
@@ -18356,6 +18635,25 @@ function cmgmtSetSearch(v){
   cmgmtSearch = v;
   renderCampaignMgmtStep();
 }
+// 2026-08-25, per direct instruction: "View All campaigns link... open the
+// entire campaign list sorted based on ascending date range from the
+// current date of the session." Clears every filter/search back to "All
+// Campaigns" (so it's genuinely the entire list, not whatever view was
+// active) and sorts by Start Date ascending — every campaign's start date is
+// a fixed real value, so "ascending from the current date of the session"
+// reads as: whichever campaign starts soonest relative to today sorts
+// first, same real cmgmtSortValue('startDate') the Start Date column header
+// already sorts by, not a new date-math sort.
+function cmgmtViewAllSortedByDate(){
+  cmgmtStatusFilter = 'all';
+  cmgmtAllocationFilter = 'all';
+  cmgmtSearch = '';
+  cmgmtSortKey = 'startDate';
+  cmgmtSortDir = 'asc';
+  renderCampaignMgmtStep();
+  const table = document.getElementById('campaignMgmtTable');
+  if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 function cmgmtClearSearch(){
   cmgmtSetSearch('');
 }
@@ -18576,7 +18874,29 @@ function renderCampaignMgmtStep(){
   const CMGMT_TITLE_BY_FILTER = { historical: 'View Completed Campaigns', cancelled: 'Cancel Report', active: 'Active Campaigns (In Market)', startingSoon: 'Starting Soon (Next 14 Days)' };
   const CMGMT_ALLOCATION_SUFFIX = { allocated: ' — Allocated', unallocated: ' — Unallocated' };
   const titleEl = document.getElementById('campaignMgmtTableTitle');
-  if (titleEl) titleEl.textContent = (CMGMT_TITLE_BY_FILTER[cmgmtStatusFilter] || 'Manage Existing Campaigns') + (CMGMT_ALLOCATION_SUFFIX[cmgmtAllocationFilter] || '');
+  // 2026-08-25, per direct instruction — the default (no-filter, no-search)
+  // state is now a real "+ Create New Campaign" button instead of the plain
+  // "Manage Existing Campaigns" text, restoring the static entry point this
+  // page used to have. Every other filter still gets its own plain-text
+  // title (CMGMT_TITLE_BY_FILTER above) — those views ARE informative
+  // headings, not the "nothing filtered yet" case the button replaces.
+  if (titleEl){
+    const filterTitle = CMGMT_TITLE_BY_FILTER[cmgmtStatusFilter];
+    const isDefaultView = !filterTitle && cmgmtAllocationFilter === 'all' && !cmgmtSearch.trim();
+    if (isDefaultView){
+      titleEl.innerHTML = `<button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button>`;
+    } else {
+      titleEl.innerHTML = `<h3 style="margin:0;">${escapeHtml((filterTitle || 'Manage Existing Campaigns') + (CMGMT_ALLOCATION_SUFFIX[cmgmtAllocationFilter] || ''))}</h3>`;
+    }
+  }
+  const searchInputEl = document.getElementById('campaignMgmtSearchInput');
+  if (searchInputEl && searchInputEl.value !== cmgmtSearch && document.activeElement !== searchInputEl) searchInputEl.value = cmgmtSearch;
+  // 2026-08-25, per direct instruction — "View All Campaigns" link only
+  // shown when there's at least one real active campaign to see (matches
+  // this page's own activeCampaignCount() definition used everywhere else,
+  // e.g. the count chip above and WORKSTREAM_CFD.campaignMgmt.status()).
+  const viewAllRowEl = document.getElementById('campaignMgmtViewAllRow');
+  if (viewAllRowEl) viewAllRowEl.style.display = activeCampaignCount() > 0 ? 'block' : 'none';
   // Round 132bx (2026-08-15) — the status <select> next to the title is now
   // the on-page indicator of an active filter; keeps its displayed value in
   // sync with cmgmtStatusFilter regardless of how it was set (the dropdown
@@ -27245,7 +27565,19 @@ const BP_FAQ_TOPICS = [
   { letter: 'S', label: 'Connecting The Trade Desk', keywords: ['trade desk','programmatic','ctv','seat'] },
   { letter: 'T', label: 'Connecting Brandwatch', keywords: ['brandwatch','listening','reputation','sentiment','analysis api','consumer research api'] },
   { letter: 'U', label: 'Connecting Meltwater', keywords: ['meltwater','listening','reputation','media monitoring','press'] },
-  { letter: 'V', label: 'Connecting Mention', keywords: ['mention','listening','reputation','alerts','mentions api'] }
+  { letter: 'V', label: 'Connecting Mention', keywords: ['mention','listening','reputation','alerts','mentions api'] },
+  // 2026-08-25, per direct instruction: "Any Google or Meta product that we
+  // can integrate with to help us with a) analysis b) campaign optimizations
+  // w/ human approvals should be part of the portal interface. Snowflake was
+  // included in a prior session." W-Z, one per Analytics & Optimization
+  // card (see PARTNER_INTEGRATIONS_GROUPS). Grounded in real prior scoping
+  // docs (cxmedia-data-integration-architecture.md,
+  // cxmedia-agentic-media-optimization-pilot-2026-08-08.md), not new
+  // research — see renderFaqW()-renderFaqZ() below for the sourced detail.
+  { letter: 'W', label: 'Connecting Snowflake', keywords: ['snowflake','warehouse','fivetran','secure data share','read-only'] },
+  { letter: 'X', label: 'Connecting Google Analytics 4', keywords: ['ga4','google analytics','website traffic','service account','data api'] },
+  { letter: 'Y', label: 'Google Ads — analysis & optimization', keywords: ['google ads','analysis','optimization','human approved','developer token','bid','budget'] },
+  { letter: 'Z', label: 'Meta — analysis & optimization', keywords: ['meta','facebook','instagram','ads_read','ads_management','business verification','app review','optimization'] }
 ];
 
 // Round 132ll (2026-08-10), per direct instruction: "we should tag the
@@ -27329,7 +27661,8 @@ const BP_FAQ_TOPIC_TAB = {
   M: 'marketer', B: 'marketer', G: 'marketer', L: 'marketer', N: 'marketer',
   D: 'dataScientist', E: 'dataScientist',
   H: 'accountManagement', Q: 'accountManagement', R: 'accountManagement', S: 'accountManagement',
-  T: 'accountManagement', U: 'accountManagement', V: 'accountManagement'
+  T: 'accountManagement', U: 'accountManagement', V: 'accountManagement',
+  W: 'accountManagement', X: 'accountManagement', Y: 'accountManagement', Z: 'accountManagement'
 };
 
 function renderFaqTopicChips(){
@@ -27517,7 +27850,11 @@ const AI_THOUGHT_PREVIEWS = {
   S: 'What connecting The Trade Desk actually requires — and why it isn\'t self-serve.',
   T: 'What Brandwatch would add over what we can already pull ourselves — and why it isn\'t self-serve.',
   U: 'What Meltwater would add over what we can already pull ourselves — and why it isn\'t self-serve.',
-  V: 'What Mention would add over what we can already pull ourselves — and its one real limitation.'
+  V: 'What Mention would add over what we can already pull ourselves — and its one real limitation.',
+  W: 'How the Snowflake warehouse connector actually works — and how close it is to real.',
+  X: 'The one partner here with a real, working connector already built — what\'s left before it goes live.',
+  Y: 'Google Ads: what\'s built for analysis today, and what\'s scoped for human-approved optimization.',
+  Z: 'Meta: what\'s built for analysis today, and what\'s scoped for human-approved optimization.'
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -27725,6 +28062,11 @@ function renderBestPracticeFaq(){
   renderFaqT();
   renderFaqU();
   renderFaqV();
+  // 2026-08-25 — W-Z (Analytics & Optimization cards), static like Q-V.
+  renderFaqW();
+  renderFaqX();
+  renderFaqY();
+  renderFaqZ();
 }
 
 // (f) Round 29 — "Learned from your past campaigns" (see
@@ -28155,6 +28497,32 @@ function renderFaqV(){
   const el = document.getElementById('bpFaqTextV');
   if (!el) return;
   el.textContent = 'Mention is the lightest and cheapest of the three — a JSON REST API for managing alerts and pulling/streaming mentions, billed as an extra-cost add-on on top of a base Mention plan. Its one real limitation: mention text is capped at 250 characters per Mention\'s own licensing terms, so it\'s useful for a live feed or alerting layer, not for capturing full article or post content.';
+}
+// 2026-08-25 — W-Z, one per Analytics & Optimization card. Fixed copy,
+// grounded in cxmedia-data-integration-architecture.md (Sections 3/4a) and
+// cxmedia-agentic-media-optimization-pilot-2026-08-08.md — real prior
+// scoping, not new research. State each platform's real build status
+// plainly (GA4 is the one with real connector code; the others are scoped,
+// not built) rather than implying more progress than exists.
+function renderFaqW(){
+  const el = document.getElementById('bpFaqTextW');
+  if (!el) return;
+  el.textContent = 'Snowflake is the preferred path for any client already running Fivetran (or similar) into a warehouse — a single read-only connector, credentialed per account, rather than a separate connector per ad platform or CRM. The client provisions a read-only Snowflake role or a Secure Data Share of their own choosing (campaign spend, impressions, conversions by channel/date/segment); Verilume never gets raw, unrestricted access. The setup page already captures a real request — Snowflake account ID, Secure Data Share name, your data team\'s contact — but submitting it hands off to Verilume\'s team to actually provision the connector; it isn\'t a live pull yet.';
+}
+function renderFaqX(){
+  const el = document.getElementById('bpFaqTextX');
+  if (!el) return;
+  el.textContent = 'GA4 is the furthest along of every partner on this page — a real service-account connector already exists (sessions, users, and conversions by channel, last 30 days), not just a request form. It\'s dormant only because no production GA4 service-account credential is configured yet; a real key was tested and reached the point of exchanging it with Google before being blocked purely by network access in the environment it was tested from, not by the code or the credential itself. Once a credential is live and the service account has Viewer access on this account\'s GA4 property, Website Traffic Analysis shows real numbers with no further build needed.';
+}
+function renderFaqY(){
+  const el = document.getElementById('bpFaqTextY');
+  if (!el) return;
+  el.textContent = 'Two separate capabilities, both scoped, neither built yet. Analysis: the Google Ads API pulls campaign/ad group/keyword-level spend, clicks, and conversions — free to call, needs a developer token (Explorer tier is enough at this scale, review runs days to weeks) plus the client granting read access to their Ads account. Human-approved optimization: the agent proposes a specific, bounded action — a bid change, a budget shift, a pause recommendation — and nothing executes until someone explicitly approves it in a shared review queue; every proposal and decision gets logged. Same access requirements as the analysis path, since it uses the same API with write scope added.';
+}
+function renderFaqZ(){
+  const el = document.getElementById('bpFaqTextZ');
+  if (!el) return;
+  el.textContent = 'Two separate capabilities, both scoped, neither built yet. Analysis: the Meta Marketing API pulls campaign/ad set/ad-level spend, impressions, and Meta\'s own attributed conversions — free to call, needs the client granting Verilume\'s app \'ads_read\' on their Business Manager. Human-approved optimization: same proposal → shared review queue → gated execution model as Google Ads, but Meta\'s write access (\'ads_management\') requires Business Verification plus App Review — realistically 1-2 weeks, the slower of the two platforms to get approved. File both platforms\' access requests in parallel; neither blocks the other.';
 }
 
 // Round 132bx (2026-08-15), per direct instruction: the campaign header's
@@ -36058,6 +36426,22 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  // 2026-08-26 fix, per direct report ("Select the Atlas Ocean Voyages
+  // dashboard links to a different Account Management experience above the
+  // content area") — a real bug from the same day's routing change (see
+  // renderWorkstreams()'s accountManagement branch). Any direct
+  // goToStep('dashboard') call (breadcrumbs, "Back to Dashboard" buttons,
+  // etc.) used to fall into this function's own default branch below, which
+  // calls renderWorkstreams() partway through and THEN unconditionally
+  // re-activates step-dashboard at the end — so when renderWorkstreams()
+  // reacted to activePrimaryTab === 'accountManagement' by calling
+  // goToStep('manageAccount') internally, that inner call correctly
+  // activated step-manageAccount, but the outer call's own trailing
+  // `classList.add('active')` on step-dashboard ran right after, leaving
+  // BOTH steps active/visible at once (the hub's header stacked above the
+  // Dashboard's own content). Redirecting here, before any step activates,
+  // means only one step ever gets marked active for this call.
+  if (step === 'dashboard' && activePrimaryTab === 'accountManagement') step = 'manageAccount';
   document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
   // Round 16, point 2 — the best-practices drawer only makes sense on the
   // Add Campaign Details form; hide its fixed tab (and close it if open)
@@ -36190,6 +36574,7 @@ function goToStep(step, arg, arg2, arg3){
     mbuLoadHistory();
     if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
     if (typeof mbuRenderCrumb === 'function') mbuRenderCrumb(arg);
+    mbuRenderActiveChannels();
     document.getElementById('step-marketingBudgetUpload').classList.add('active');
   } else if (step === 'taxonomyManager'){
     // 2026-08-23 — Product & Campaign Groups, moved here from Marketing
@@ -41250,14 +41635,6 @@ function renderCompanyProfileStep(){
       : '<p class="hint" style="margin:0;">Nothing on file yet — this fills in once the free assessment collects it.</p>';
   }
 
-  const partnerCodeEl = document.getElementById('cpPartnerCode');
-  if (partnerCodeEl) partnerCodeEl.value = state.partnerCode || '';
-
-  document.getElementById('cpActiveChannelsRow').innerHTML = MMM_CATEGORIES.map(ch => `
-    <button type="button" class="select-tile${state.activeChannels.has(ch) ? ' selected' : ''}" onclick="toggleCompanyActiveChannel('${ch}')">
-      <span class="indicator">✓</span><span class="label">${ch}</span>
-    </button>`).join('');
-
   // Round 132zz (2026-08-11) — Partners list (see the field's own comment).
   const partnersListEl = document.getElementById('cpPartnersList');
   if (partnersListEl){
@@ -41384,21 +41761,76 @@ async function saveMediaCxIndexGaps(){
   }
   renderMediaCxIndexPanel();
 }
-// Round 132c17 (2026-08-17) — see the field's own comment above. Letters
-// only, capped at 3, uppercased live (matches how it's used inside every
-// generated Campaign Code).
-function updateCompanyPartnerCode(value){
+// Round 132c17 (2026-08-17), moved to Business & Revenue Profile 2026-08-26
+// (see obsClientCodeCard's own comment) — letters only, capped at 3,
+// uppercased live (matches how it's used inside every generated Campaign
+// Code). Unlike the Universal Core fields on this same page, this one still
+// goes through the accounts/profile endpoint (same one Account Setup's Save
+// used) since that's where partnerCode already lives server-side.
+async function obsSaveClientCode(value){
   state.partnerCode = (value || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
-  const el = document.getElementById('cpPartnerCode');
+  const el = document.getElementById('obsClientCode');
   if (el && el.value !== state.partnerCode) el.value = state.partnerCode;
+  renderAccountLogo(); // refreshes the header's Client Code badge, see acctClientCodeDisplay
+  const status = document.getElementById('obsClientCodeSaveStatus');
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('obsSaveClientCode: backend write failed, saved locally only.', e); }
+  }
+  if (status){
+    status.innerHTML = (persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`)
+      + ` Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.`;
+  }
 }
-function toggleCompanyActiveChannel(ch){
+// 2026-08-26 account-management reorg, per direct instruction: "The
+// Activate channels should be part of the overall budget setup." Moved
+// from Account Setup to Marketing Budget Upload (step-marketingBudgetUpload)
+// — see mbuActiveChannelsCard in that step's markup. Unlike the old Account
+// Setup copy (which only saved when the page's own Save button was clicked),
+// this saves immediately on toggle via the same /api/accounts/{id}/profile
+// endpoint, matching Marketing Budget Upload's own "nothing here waits for
+// a separate Save" convention (uploads/years/history all act immediately).
+function mbuRenderActiveChannels(){
+  const row = document.getElementById('mbuActiveChannelsRow');
+  if (!row) return;
+  row.innerHTML = MMM_CATEGORIES.map(ch => `
+    <button type="button" class="select-tile${state.activeChannels.has(ch) ? ' selected' : ''}" onclick="mbuToggleActiveChannel('${ch}')">
+      <span class="indicator">✓</span><span class="label">${ch}</span>
+    </button>`).join('');
+}
+async function mbuSaveActiveChannels(){
+  const status = document.getElementById('mbuActiveChannelsStatus');
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveActiveChannels: backend write failed, saved locally only.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+}
+function mbuToggleActiveChannel(ch){
   if (state.activeChannels.has(ch)) state.activeChannels.delete(ch); else state.activeChannels.add(ch);
-  renderCompanyProfileStep();
+  mbuRenderActiveChannels();
+  mbuSaveActiveChannels();
 }
-function setAllCompanyActiveChannels(allActive){
+function mbuSetAllActiveChannels(allActive){
   state.activeChannels = allActive ? new Set(MMM_CATEGORIES) : new Set();
-  renderCompanyProfileStep();
+  mbuRenderActiveChannels();
+  mbuSaveActiveChannels();
 }
 // Round 132zz (2026-08-11) — Partners list add/remove, same simple pattern
 // as the rest of Company Profile's account-setup fields.
@@ -41665,6 +42097,18 @@ function renderAccountLogo(){
   }
   const clientIdEl = document.getElementById('acctClientIdDisplay');
   if (clientIdEl) clientIdEl.textContent = `Client ID · ${state.companyId || '—'}`;
+  // 2026-08-26 account-management reorg — see acctClientCodeDisplay's own
+  // comment in the HTML. Hidden entirely until a Client Code is actually
+  // set, rather than showing an empty badge next to the company name.
+  const clientCodeEl = document.getElementById('acctClientCodeDisplay');
+  if (clientCodeEl){
+    if (state.partnerCode){
+      clientCodeEl.textContent = state.partnerCode;
+      clientCodeEl.style.display = '';
+    } else {
+      clientCodeEl.style.display = 'none';
+    }
+  }
   const userAvatarEl = document.getElementById('acctUserAvatar');
   if (userAvatarEl){
     const uname = (state.userName || '').trim();
