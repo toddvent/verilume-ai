@@ -41837,18 +41837,20 @@ async function runBrandVoiceContest(){
     // 2026-08-23 for ordinary data reads — see cxmedia-header-standup-load-
     // fix-2026-08-23.md), but runBrandVoiceContest() on the backend fans
     // out to multiple REAL model calls (BRAND_VOICE_SUBAGENT_ANGLES, plus
-    // every additionally-configured vendor) across two sequential
-    // Promise.all batches — routinely well past 12s, and vercel.json's own
-    // api/[...path].js already budgets 30s (maxDuration) for exactly this
-    // reason. The 12s client-side timeout was firing and aborting the
-    // request while the backend was still legitimately working, and the
-    // catch block below then mislabeled that abort as "Backend
-    // unreachable." Raised this call's own timeout to 35s — just past the
-    // backend's 30s budget, so the backend's own limit is what actually
-    // decides the failure, not an unrelated client default sized for
-    // simple reads.
+    // every additionally-configured vendor). The 12s client-side timeout
+    // was firing and aborting the request while the backend was still
+    // legitimately working, and the catch block below then mislabeled that
+    // abort as "Backend unreachable." Raised this call's own timeout to
+    // 35s at the time — just past the backend's then-30s budget.
+    // 2026-08-26 follow-up, per direct report of a real 504 ("Couldn't run
+    // the contest (504)"): 30s still wasn't enough headroom even after the
+    // two Promise.all batches above were combined into one to cut
+    // wall-clock roughly in half — vercel.json's maxDuration raised 30s ->
+    // 60s, so this client-side timeout is raised to 65s to match (just past
+    // the backend's own budget, so the backend's limit is what actually
+    // decides a genuine failure, not an unrelated client default).
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 35000,
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 65000,
       // avoidWords now sourced from Terms to Avoid (cmpBrandVoiceAvoidWords())
       // instead of the removed standalone field — backend param name kept
       // as-is, it already just treats this as a display string.
