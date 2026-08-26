@@ -488,6 +488,17 @@
   .cfd-ws{padding:16px 20px 14px;margin-bottom:20px;}
   .cfd-ws .cfd-avatar{width:28px;height:28px;font-size:0.75rem;}
   .cfd-ws .cfd-bubble{font-size:0.8125rem;padding:11px 14px;}
+  /* 2026-08-26: compact on-demand field guidance — a small "i" toggle next
+     to a stripped-down label, opening a speech-bubble tooltip with the
+     explanatory copy that used to sit inline under every field. Replaces
+     always-visible .hint paragraphs on the Colors & Fonts page (and reusable
+     anywhere else a field needs guidance without permanent page weight). */
+  .fld-label-row{display:flex;align-items:center;gap:7px;}
+  .fld-tip-btn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--paper-dim);border:1px solid var(--line);color:var(--muted);font-size:0.6875rem;font-weight:700;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;cursor:pointer;flex-shrink:0;line-height:1;padding:0;}
+  .fld-tip-btn:hover{background:var(--line-hairline);color:var(--ink);}
+  .fld-optional-badge{font-size:0.6875rem;font-weight:600;letter-spacing:0.02em;color:var(--muted);text-transform:uppercase;}
+  .fld-tip{display:none;background:var(--white);border:1px solid var(--line-hairline);border-radius:10px;border-top-left-radius:3px;padding:10px 12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;line-height:1.5;color:var(--ink);box-shadow:var(--shadow-sm);margin:6px 0 2px;max-width:560px;}
+  .fld-tip.open{display:block;}
   /* Round 132bx (2026-08-15) — Portal Home tab nav (Start of Day / Working
      Dashboard), per the Aug 15 review comment. Same pill-button visual
      language as .cfd-suggest, just persistent selection state instead of
@@ -3933,19 +3944,17 @@
     <div class="eyebrow">Brand Groundwork · Style Guide</div>
     <h1>Colors &amp; Fonts</h1>
 
-    <!-- 2026-08-26, per direct instruction: "streamlined... show the manual
-         fields that can be added with an Upload Brand Guide button located
-         left justified below the section page title. The only copy needed
-         is the formatting that we accept." Replaces the old Option A/Option
-         B module scaffolding (a collapsible upload section above a
-         collapsible manual-entry section, each with its own framing
-         paragraph) — the manual fields are now just the page's main
-         content, with a single upload entry point above them instead of a
-         parallel path. Same #saFileInput/handleStyleAssetFile() this always
-         used; this prototype still doesn't parse an uploaded document's
-         contents (see cxmedia-brand-foundations-plan.md), so it's recorded
-         for the record while the fields below stay the source of truth —
-         just said in the accepted-formats line now, not a full paragraph. -->
+    <!-- 2026-08-26, per direct instruction: strip every field on this page
+         down to just its defining label, move all guidance copy into
+         on-demand "i" tooltips (.fld-tip, see CSS above) instead of
+         always-visible paragraphs, and remove the Silver Trident Winery
+         reference plus the internal dev-note that had leaked into the Logo
+         upload field's hint text — none of that belongs in front of a
+         client, and it was factually about a different account regardless.
+         Fields stay genuinely empty until populated by upload or manual
+         entry — no example values presented as real. Upload now also drives
+         real extraction for .docx/.pdf via POST /api/style-assets/extract
+         (see handleStyleAssetFile()), not just a filename record. -->
     <div class="btn-row" style="margin:14px 0 4px;">
       <label class="btn-primary" for="saFileInput" style="cursor:pointer;">Upload Brand Guide</label>
       <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
@@ -3955,21 +3964,14 @@
     <div class="hint" id="saFileNote" style="margin:0 0 24px;"></div>
 
     <div id="styleAssetsManualFields">
-        <!-- Round 130 (2026-08-08), per direct instruction — real logo file
-             upload, so the portal header (see .account-summary) can carry the
-             client's actual mark instead of just a text reference. Max specs
-             below are grounded in one confirmed reference point (Silver
-             Trident Winery's shipped asset is a PNG named "...logox400.png",
-             i.e. sized to a ~400px long side) plus general web-logo best
-             practice, disclosed honestly — Atlas Ocean Voyages' own source
-             asset couldn't be pixel-verified through available research
-             tools this round (their live site's header markup wasn't
-             retrievable). Stored as a base64 data URI on the account record
-             (logoDataUrl) since this prototype has no separate file/blob
-             storage service — same pattern as everywhere else here. -->
         <div class="field">
-          <label>Logo upload (optional — the actual file, so it can appear in the portal header)</label>
-          <div class="btn-row">
+          <div class="fld-label-row">
+            <label style="margin:0;">Logo upload</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoUpload')" aria-label="Accepted formats and sizing">i</button>
+          </div>
+          <div class="fld-tip" id="tipLogoUpload">The actual logo file, so it can appear in the portal header. SVG (preferred, scales cleanly) or transparent PNG/WebP — no JPG. Long side roughly 400-1200px. Aspect ratio close to 1:1 up to about 4:1 wide; very tall or very narrow marks tend to crop oddly at the 44px display height used here. Under 2MB, transparent background preferred.</div>
+          <div class="btn-row" style="margin-top:8px;">
             <label class="btn-ghost" for="saLogoFileInput" style="cursor:pointer;">Choose Logo File</label>
             <span id="saLogoFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
           </div>
@@ -3979,72 +3981,101 @@
             <img id="saLogoPreviewImg" alt="Logo preview" style="max-height:52px;max-width:220px;width:auto;height:auto;object-fit:contain;">
             <button type="button" class="btn-ghost" onclick="removeLogoUpload()" style="margin-left:auto;">Remove</button>
           </div>
-          <div class="hint" style="margin-top:8px;">
-            <strong>Max specs:</strong> SVG (preferred, scales cleanly) or transparent PNG/WebP — no JPG, since a white or colored box behind the mark won't sit cleanly on an unknown header background. Long side roughly 400-1200px (400px is the size Silver Trident Winery ships its own mark at — a reasonable floor for a header this size). Aspect ratio close to 1:1 up to about 4:1 wide; very tall or very narrow marks tend to crop oddly at the 44px display height used here. Keep the file under 2MB. Transparent background strongly preferred, since the header itself no longer assumes a fixed color behind it.
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Logo reference</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoRef')" aria-label="When to use this">i</button>
           </div>
-          <div class="hint">Honest disclosure: these specs are grounded in one confirmed reference (Silver Trident Winery's shipped asset) plus general web-logo practice — Atlas Ocean Voyages was the second reference requested, but its exact source-file specs couldn't be pixel-verified through available research tools this round.</div>
+          <div class="fld-tip" id="tipLogoRef">A URL or file path, if you'd rather link than upload — only needed if you're not uploading the file above.</div>
+          <input type="text" id="saLogoUrl" placeholder="https://...">
         </div>
 
         <div class="field">
-          <label>Logo reference (optional — a URL or file path, if you'd rather link than upload)</label>
-          <input type="text" id="saLogoUrl" placeholder="e.g. https://... or /brand/logo.svg">
-          <div class="hint">Only needed if you're not uploading the file above — a link is enough for now, every Campaign/Project just needs to know where the current logo lives.</div>
+          <div class="fld-label-row">
+            <label style="margin:0;">Logo usage rules</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoRules')" aria-label="What to include">i</button>
+          </div>
+          <div class="fld-tip" id="tipLogoRules">Approved colorways, exclusion zone, minimum size, and what this brand says never to do to its mark.</div>
+          <textarea id="saLogoUsageNotes" rows="4"></textarea>
         </div>
 
         <div class="field">
-          <label>Logo usage rules (optional — approved colorways, exclusion zone, minimum size, misuse)</label>
-          <textarea id="saLogoUsageNotes" rows="4" placeholder="e.g. Full-color, all-purple, all-white, and all-black colorways only. Keep 1/3-the-mark-height clear space on every side. Never below 120px / .375in. Never rotate, stretch, recolor outside the palette, or place in color on a photo."></textarea>
-          <div class="hint">Real brand guides spend a whole section on this because logo misuse is the fastest way to look off-brand — list the approved colorways, the minimum clear space, the minimum size, and the specific things this brand says never to do to its mark.</div>
-        </div>
-
-        <div class="field">
-          <label>Primary color</label>
+          <div class="fld-label-row">
+            <label style="margin:0;">Primary color</label>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipPrimaryColor')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipPrimaryColor">The one color every generated creative brief should default to — the color this brand is recognized by at a glance.</div>
           <div style="display:flex;gap:10px;align-items:center;">
-            <input type="text" id="saPrimaryColorName" placeholder="e.g. Atlas Deep Purple" style="flex:1;">
-            <input type="text" id="saPrimaryColorHex" placeholder="#2F0D4D" style="width:120px;" oninput="updateColorSwatch()">
+            <input type="text" id="saPrimaryColorName" placeholder="Color name" style="flex:1;">
+            <input type="text" id="saPrimaryColorHex" placeholder="#000000" style="width:120px;" oninput="updateColorSwatch()">
             <div id="saPrimarySwatch" style="width:32px;height:32px;border-radius:4px;border:1px solid var(--line);flex-shrink:0;"></div>
           </div>
-          <div class="hint">The one color every generated creative brief should default to — pick the color this brand is recognized by at a glance, not just whatever's used most.</div>
         </div>
 
         <div class="field">
-          <label>Secondary palette (optional — one color per line, e.g. "Atlas Gold — #CEA552")</label>
-          <textarea id="saSecondaryPalette" rows="4" placeholder="Atlas Gold — #CEA552&#10;Dark Gold — #A77810&#10;Light Purple — #B69ED9"></textarea>
-          <div class="hint">Accent and supporting colors only — list them in the order you'd want a designer to reach for them, since that order is what a generated brief will suggest first.</div>
+          <div class="fld-label-row">
+            <label style="margin:0;">Secondary palette</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipSecondaryPalette')" aria-label="How to list this">i</button>
+          </div>
+          <div class="fld-tip" id="tipSecondaryPalette">One color per line — name and hex, e.g. "Accent Gold — #CEA552" — in the order you'd want a designer to reach for them.</div>
+          <textarea id="saSecondaryPalette" rows="4"></textarea>
         </div>
 
         <div class="field">
-          <label>Color hierarchy &amp; misuse (optional — which colors are backgrounds vs. accents vs. rare, and what to avoid)</label>
-          <textarea id="saColorHierarchyNotes" rows="4" placeholder="e.g. White is the primary background. Primary color is for small brand-forward elements (navbar, primary buttons). Accent color can be used for CTA buttons. Everything else is for secondary backgrounds only (cards, hover states), or rare small graphics (dividers, tags) — never a large background. Never use gradients, transparency, low-contrast combinations, or colors outside this palette."></textarea>
-          <div class="hint">A palette alone doesn't say which color should dominate a layout — this is what stops every generated brief from treating all listed colors as equally usable everywhere.</div>
+          <div class="fld-label-row">
+            <label style="margin:0;">Color hierarchy &amp; misuse</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipColorHierarchy')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipColorHierarchy">Which colors are backgrounds vs. accents vs. rare, and what to avoid — stops a generated brief from treating every listed color as equally usable everywhere.</div>
+          <textarea id="saColorHierarchyNotes" rows="4"></textarea>
         </div>
 
         <div class="field">
-          <label>Heading font</label>
+          <div class="fld-label-row">
+            <label style="margin:0;">Heading font</label>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipHeadingFont')" aria-label="What goes in notes">i</button>
+          </div>
+          <div class="fld-tip" id="tipHeadingFont">What makes this brand's headlines recognizable — italic, all-caps, tight tracking — since a brief can't infer it from the font name alone.</div>
           <select id="saHeadingFontSelect" onchange="handleFontSelectChange('heading')"></select>
-          <input type="text" id="saHeadingFontCustom" placeholder="Type the custom font name" style="margin-top:8px;display:none;">
-          <textarea id="saHeadingFontNotes" rows="2" style="margin-top:8px;" placeholder="Use for, tracking, line height, etc."></textarea>
-          <div class="hint">What makes this brand's headlines instantly recognizable — italic for editorial warmth, all-caps for authority, tight tracking for density? Say it here, since a generated brief can't infer it from the font name alone.</div>
+          <input type="text" id="saHeadingFontCustom" placeholder="Custom font name" style="margin-top:8px;display:none;">
+          <textarea id="saHeadingFontNotes" rows="2" style="margin-top:8px;"></textarea>
         </div>
 
         <div class="field">
-          <label>Body font</label>
+          <div class="fld-label-row">
+            <label style="margin:0;">Body font</label>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipBodyFont')" aria-label="What goes in notes">i</button>
+          </div>
+          <div class="fld-tip" id="tipBodyFont">Legibility rules more than personality here — anything that keeps long-form copy readable at small sizes.</div>
           <select id="saBodyFontSelect" onchange="handleFontSelectChange('body')"></select>
-          <input type="text" id="saBodyFontCustom" placeholder="Type the custom font name" style="margin-top:8px;display:none;">
-          <textarea id="saBodyFontNotes" rows="2" style="margin-top:8px;" placeholder="Use for, spacing guidance, etc."></textarea>
-          <div class="hint">Legibility rules more than personality here — note anything that keeps long-form copy (itinerary detail, booking terms) readable at small sizes.</div>
+          <input type="text" id="saBodyFontCustom" placeholder="Custom font name" style="margin-top:8px;display:none;">
+          <textarea id="saBodyFontNotes" rows="2" style="margin-top:8px;"></textarea>
         </div>
 
         <div class="field">
-          <label>Typography hierarchy (optional — H1-H4/body/caption: weight, case, tracking, line height)</label>
-          <textarea id="saTypographyHierarchyNotes" rows="4" placeholder="e.g. H1 (big brand moments only): heading font medium weight, all caps, 20% tracking, 110% line height. H2-H4 (everyday headers): heading font bold, all caps, 10% tracking, 110-120% line height. Body: body font regular/semibold, 140% line height. Caption/label: mono font, all caps, 130% line height."></textarea>
-          <div class="hint">A font name alone doesn't tell a designer which weight and case to reach for at each level — this turns "use the heading font" into an actual hierarchy a generated brief can follow.</div>
+          <div class="fld-label-row">
+            <label style="margin:0;">Typography hierarchy</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipTypographyHierarchy')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipTypographyHierarchy">H1-H4, body, and caption: weight, case, tracking, line height — turns "use the heading font" into an actual hierarchy a brief can follow.</div>
+          <textarea id="saTypographyHierarchyNotes" rows="4"></textarea>
         </div>
 
         <div class="field">
-          <label>Style notes (optional — photography direction, creative principles, do's/don'ts)</label>
+          <div class="fld-label-row">
+            <label style="margin:0;">Style notes</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipStyleNotes')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipStyleNotes">Photography direction, creative principles, do's/don'ts — the field with the most leverage on this page. A blank field means every brief defaults to generic guidance.</div>
           <textarea id="saStyleNotes" rows="6"></textarea>
-          <div class="hint">This is the field with the most leverage on this page — a real photography/creative direction here (what to shoot, what to avoid, staged vs. candid) shapes every future creative brief far more than the colors and fonts above. A blank field here means every brief defaults to generic guidance.</div>
         </div>
     </div>
 
@@ -42080,12 +42111,26 @@ function updateColorSwatch(){
   swatch.style.backgroundColor = /^#([0-9a-fA-F]{3}){1,2}$/.test(hex) ? hex : '#e5e5e5';
 }
 
-// Round 20 — Option A (upload). This prototype has no live document-parsing
-// pipeline (see cxmedia-brand-foundations-plan.md), so the honest behavior
-// is: plain text/markdown files get read client-side and dropped into Style
-// Notes for the team member to review/trim; every other format (docx, doc,
-// pdf) is recorded by filename only, with a plain note that content wasn't
-// extracted and to copy the key details into the manual fields below.
+// Compact on-demand field guidance (.fld-tip, see CSS) — one open at a
+// time, same lightweight toggle pattern used nowhere else yet on this page
+// before 2026-08-26's Colors & Fonts cleanup.
+function toggleFieldTip(id){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.fld-tip.open').forEach(t => t.classList.remove('open'));
+  if (!isOpen) el.classList.add('open');
+}
+
+// Round 20 — Upload Brand Guide. Plain text/markdown files are read
+// client-side and dropped into Style Notes for review/trim, same as
+// always. .docx/.pdf now go through real server-side extraction (POST
+// .../style-assets/extract — mammoth/pdf-parse, same pipeline as Sample
+// Writings' extractSampleText()) followed by a heuristic best-effort field
+// mapper — see applyExtractedStyleAssetFields() below, which only ever
+// fills fields that are still empty. Legacy .doc still isn't parsed (no
+// extraction library covers it here), disclosed honestly in the resulting
+// note rather than silently claimed as covered.
 function handleStyleAssetFile(event){
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -42101,9 +42146,87 @@ function handleStyleAssetFile(event){
       note.textContent = `Read "${file.name}" — its text was added to Style Notes below. Review and trim as needed, then Save.`;
     };
     reader.readAsText(file);
+  } else if (lowerName.endsWith('.docx') || lowerName.endsWith('.pdf')){
+    note.textContent = `Reading "${file.name}"…`;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (dataSourceLabel !== 'backend'){
+        note.textContent = `"${file.name}" received and recorded by filename — parsing this format needs the backend, which isn't connected in this session. Copy the key colors, fonts, and style notes from it into the fields below, then Save.`;
+        return;
+      }
+      try {
+        const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/style-assets/extract`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl: reader.result, fileName: file.name, mimeType: file.type })
+        });
+        const result = await resp.json().catch(() => null);
+        if (!resp.ok || !result || !result.extracted){
+          const reason = result && result.reason ? result.reason : "its content couldn't be read";
+          note.textContent = `"${file.name}" received — ${reason}. Copy the key colors, fonts, and style notes from it into the fields below, then Save.`;
+          return;
+        }
+        const filled = applyExtractedStyleAssetFields(result.mapped || {});
+        note.textContent = filled.length
+          ? `Read "${file.name}" — filled in ${filled.join(', ')} below from its content. This is a best-effort read, not guaranteed complete or exact, so review each before Save.`
+          : `Read "${file.name}", but didn't find anything this prototype's heuristics could confidently map to a field — copy the key colors, fonts, and style notes from it into the fields below, then Save.`;
+      } catch (e){
+        note.textContent = `"${file.name}" received, but reading its content failed — copy the key colors, fonts, and style notes from it into the fields below, then Save.`;
+      }
+    };
+    reader.readAsDataURL(file);
   } else {
     note.textContent = `"${file.name}" received and recorded by filename — this prototype doesn't parse ${lowerName.split('.').pop().toUpperCase()} content yet, so copy the key colors, fonts, and style notes from it into the fields below, then Save.`;
   }
+}
+
+// Fills only fields on this page that are still empty, from the `mapped`
+// object POST .../style-assets/extract returns — never overwrites
+// something a human already typed. A Voice/Tone excerpt (if the document
+// had one) is appended to Style Notes as a clearly labeled excerpt rather
+// than written to the separate Brand Voice page: that page's save endpoint
+// always marks Voice approved on any write, so silently cross-writing
+// unreviewed extracted text there would falsely mark it "approved" before
+// a human ever saw it. Returns the list of human-readable field names it
+// actually filled, for the status note.
+function applyExtractedStyleAssetFields(mapped){
+  const filled = [];
+  const setIfEmpty = (id, value, label) => {
+    if (!value) return;
+    const el = document.getElementById(id);
+    if (!el || el.value.trim()) return;
+    el.value = value;
+    filled.push(label);
+  };
+  setIfEmpty('saPrimaryColorName', mapped.primaryColorName, 'Primary color name');
+  if (mapped.primaryColorHex && !document.getElementById('saPrimaryColorHex').value.trim()){
+    document.getElementById('saPrimaryColorHex').value = mapped.primaryColorHex;
+    updateColorSwatch();
+    filled.push('Primary color');
+  }
+  setIfEmpty('saSecondaryPalette', mapped.secondaryPaletteText, 'Secondary palette');
+  setIfEmpty('saColorHierarchyNotes', mapped.colorHierarchyNotes, 'Color hierarchy');
+  if (mapped.headingFontName && !readFontFieldValue('heading')){
+    setFontFieldValue('heading', mapped.headingFontName);
+    filled.push('Heading font');
+  }
+  if (mapped.bodyFontName && !readFontFieldValue('body')){
+    setFontFieldValue('body', mapped.bodyFontName);
+    filled.push('Body font');
+  }
+  setIfEmpty('saTypographyHierarchyNotes', mapped.typographyHierarchyNotes, 'Typography hierarchy');
+
+  const styleNotesEl = document.getElementById('saStyleNotes');
+  const extraNotes = [];
+  if (mapped.styleNotes) extraNotes.push(mapped.styleNotes);
+  if (mapped.voiceToneExcerpt) extraNotes.push(`Voice/Tone excerpt from the uploaded brand guide (for reference — transfer anything relevant to the Brand Voice page manually, then review and approve it there):\n${mapped.voiceToneExcerpt}`);
+  if (extraNotes.length && !styleNotesEl.value.trim()){
+    styleNotesEl.value = extraNotes.join('\n\n');
+    filled.push(mapped.styleNotes ? 'Style notes' : 'Voice/Tone excerpt (added to Style Notes)');
+  } else if (extraNotes.length){
+    styleNotesEl.value = `${styleNotesEl.value.trim()}\n\n${extraNotes.join('\n\n')}`;
+    filled.push(mapped.styleNotes ? 'Style notes (appended)' : 'Voice/Tone excerpt (appended to Style Notes)');
+  }
+  return filled;
 }
 
 // Round 130 (2026-08-08), per direct instruction — real logo file upload.
