@@ -42936,12 +42936,31 @@ async function saveCompetitivePositioning(){
   if (portalLoadCoverRetryLink){
     portalLoadCoverRetryLink.onclick = function(e){ e.preventDefault(); location.reload(); };
   }
+  // 2026-08-26 fix, per direct report ("Still timing out accessing my
+  // portal after closing my browser and returning within 15 minutes.
+  // Retry works.") — found by tracing why the round-7 fetchAccountRecord()
+  // retry (worst case: 15s first attempt + 3s pause + 20s second attempt =
+  // 38s) wasn't actually preventing this screen from showing. It WAS still
+  // firing, because this watchdog was never raised to match: it was
+  // written on 2026-08-25, a day before that retry existed, sized for a
+  // single un-retried fetch. Since 2026-08-25 this fired at a flat 15s
+  // regardless of what loadAccountData() was doing underneath — so on any
+  // load where the account fetch needed its retry (which is exactly the
+  // post-idle cold-start case this error screen's own text describes),
+  // this watchdog was cutting off a fetchAccountRecord() call that was
+  // still legitimately in flight and would very plausibly have succeeded
+  // on its own, same as a manual Retry (a fresh reload) then does. Raised
+  // to 42s — just past fetchAccountRecord()'s 38s worst case — so the
+  // retry actually gets to finish before the user sees an error, which was
+  // always the intent of adding it. Still catches a genuinely hung 401
+  // redirect (this watchdog's other, unrelated job), just after a longer
+  // wait.
   const portalLoadWatchdog = setTimeout(() => {
     const coverEl = document.getElementById('portalLoadCover');
     if (!coverEl || coverEl.style.display === 'none') return;
-    console.error('portal.html: watchdog fired — still on the load cover after 15s. The Init sequence has not finished. Check the console above for the last "portal.html:" log line to see which branch it stalled in (most likely: a 401 redirect to login.html that did not complete navigation).');
+    console.error('portal.html: watchdog fired — still on the load cover after 42s. The Init sequence has not finished. Check the console above for the last "portal.html:" log line to see which branch it stalled in (most likely: a 401 redirect to login.html that did not complete navigation, or an account fetch that failed even after its retry).');
     showPortalLoadCoverErrorFn('This is taking longer than expected. The Portal didn\'t finish loading your account. This can happen if a login redirect didn\'t complete.');
-  }, 15000);
+  }, 42000);
 
   try {
     await loadAccountData();
