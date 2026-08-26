@@ -3520,10 +3520,30 @@
 
   <!-- ================= STYLE GUIDE > VOICE (fully built) ================= -->
   <div class="step" id="step-voice">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Voice</div>
-    <div class="eyebrow">Brand · Style Guide · Voice</div>
-    <h1>Brand Voice guide</h1>
-    <p class="lede">Once approved, this becomes the shared reference every Messaging and Creative-brief prompt reads first — see <code>cxmedia-client-portal-structure.md</code> Section 3's worked example. This is the only fully built function in this prototype; everything else is honestly labeled as not-yet-built.</p>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Brand Book</div>
+    <div class="eyebrow">Brand Groundwork · Brand Book</div>
+    <h1>Brand Book</h1>
+    <p class="lede">Voice, colors, and fonts together, the way a real brand book presents them — approved once and inherited by every Messaging and Creative-brief prompt from here forward. The Voice contest (multi-model Vision Statement &amp; Longform Example) has its own page — see Next below.</p>
+
+    <!-- 2026-08-26, per direct instruction: merge Brand Voice and Colors &
+         Fonts onto one page ("more efficient... align with a typical brand
+         book"), keep the Voice contest as its own separate path (it's a
+         heavier, occasional AI tool, not a field to fill in), and add
+         explicit Save Draft / Save For AI Assistance actions to each
+         section instead of one save that always marks approved. One shared
+         upload here now feeds both sections' extraction — colors/fonts as
+         before, plus a Voice/Tone excerpt (if the document has one) into
+         the Voice draft below, when that field is still empty. -->
+    <div class="btn-row" style="margin:14px 0 4px;">
+      <label class="btn-primary" for="saFileInput" style="cursor:pointer;">Upload Brand Guide</label>
+      <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
+    </div>
+    <input type="file" id="saFileInput" accept=".txt,.md,.docx,.doc,.pdf" onchange="handleStyleAssetFile(event)" style="display:none;">
+    <p class="hint" style="margin:0 0 8px;">Accepts .docx, .doc, .pdf, .txt, or .md — fills in whatever below it can confidently read (colors, fonts, style notes, and voice/tone), never overwriting a field you've already filled in.</p>
+    <div class="hint" id="saFileNote" style="margin:0 0 28px;"></div>
+
+    <h2 style="margin:0 0 4px;">Voice</h2>
+    <p class="lede" style="margin:0 0 16px;">Your approved tone, word choices, and do/don't list — see <code>cxmedia-client-portal-structure.md</code> Section 3's worked example.</p>
 
     <div class="approved-banner" id="voiceApprovedBanner">
       <span>✓</span>
@@ -3649,33 +3669,171 @@
         <span id="voiceWhyText"></span>
       </div>
       <div class="btn-row">
-        <button class="btn-primary" onclick="saveVoiceDraft()">Save — mark approved →</button>
+        <button class="btn-ghost" onclick="saveVoiceDraft(false)">Save Draft</button>
+        <button class="btn-primary" onclick="saveVoiceDraft(true)">Save For AI Assistance →</button>
         <button class="btn-ghost" onclick="generateVoiceDraft()">Regenerate</button>
       </div>
+      <div class="hint" id="voiceDraftSaveFlag" style="margin-top:6px;"></div>
       <div class="feeds-note">
-        <strong>Feeds forward:</strong> once approved, this doc is what every Messaging (Ad Copy, Email Copy, Brochures, Team Training Guides) and Creative-brief prompt in this Portal would read as shared context — the concrete mechanism behind "enhancing the model's future outputs." No other function reads it live in this prototype yet; this note is here so the intent is visible even before that wiring exists.
+        <strong>Feeds forward:</strong> once saved for AI Assistance, this doc is what every Messaging (Ad Copy, Email Copy, Brochures, Team Training Guides) and Creative-brief prompt in this Portal would read as shared context — the concrete mechanism behind "enhancing the model's future outputs." Save Draft keeps your edits without changing that approval state, so you can leave and come back before it goes live. No other function reads it live in this prototype yet; this note is here so the intent is visible even before that wiring exists.
       </div>
     </div>
 
-    <!-- 2026-08-22 — the multi-model Brand Voice contest, per direct
-         instruction: "add a multi-model contest in the brand setup section
-         that presents an overall voice theme to include a vision statement
-         and longform copy example that incorporates the critical customer
-         facing messages." Deliberately alongside the single-draft generator
-         above, not replacing it — this is a heavier, real-AI-call action a
-         team would reach for when they want to compare genuinely distinct
-         directions, not the default first step. -->
-    <div class="module open accent-cx" id="voiceContestModule" style="margin-top:24px;">
+    <h2 style="margin:32px 0 4px;">Colors &amp; Fonts</h2>
+    <p class="lede" style="margin:0 0 16px;">Logo, palette, and typography — the visual half of brand identity, alongside Voice above.</p>
+
+    <div id="styleAssetsManualFields">
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Logo upload</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoUpload')" aria-label="Accepted formats and sizing">i</button>
+          </div>
+          <div class="fld-tip" id="tipLogoUpload">The actual logo file, so it can appear in the portal header. SVG (preferred, scales cleanly) or transparent PNG/WebP — no JPG. Long side roughly 400-1200px. Aspect ratio close to 1:1 up to about 4:1 wide; very tall or very narrow marks tend to crop oddly at the 44px display height used here. Under 2MB, transparent background preferred.</div>
+          <div class="btn-row" style="margin-top:8px;">
+            <label class="btn-ghost" for="saLogoFileInput" style="cursor:pointer;">Choose Logo File</label>
+            <span id="saLogoFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
+          </div>
+          <input type="file" id="saLogoFileInput" accept=".svg,.png,.webp" onchange="handleLogoFileUpload(event)" style="display:none;">
+          <div class="hint" id="saLogoFileNote" style="margin-top:8px;color:var(--advocacy);"></div>
+          <div id="saLogoPreviewWrap" style="display:none;margin-top:12px;padding:16px;background:var(--paper-dim);border:1px solid var(--line);border-radius:10px;align-items:center;gap:14px;">
+            <img id="saLogoPreviewImg" alt="Logo preview" style="max-height:52px;max-width:220px;width:auto;height:auto;object-fit:contain;">
+            <button type="button" class="btn-ghost" onclick="removeLogoUpload()" style="margin-left:auto;">Remove</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Logo reference</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoRef')" aria-label="When to use this">i</button>
+          </div>
+          <div class="fld-tip" id="tipLogoRef">A URL or file path, if you'd rather link than upload — only needed if you're not uploading the file above.</div>
+          <input type="text" id="saLogoUrl" placeholder="https://...">
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Logo usage rules</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoRules')" aria-label="What to include">i</button>
+          </div>
+          <div class="fld-tip" id="tipLogoRules">Approved colorways, exclusion zone, minimum size, and what this brand says never to do to its mark.</div>
+          <textarea id="saLogoUsageNotes" rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Primary color</label>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipPrimaryColor')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipPrimaryColor">The one color every generated creative brief should default to — the color this brand is recognized by at a glance.</div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input type="text" id="saPrimaryColorName" placeholder="Color name" style="flex:1;">
+            <input type="text" id="saPrimaryColorHex" placeholder="#000000" style="width:120px;" oninput="updateColorSwatch()">
+            <div id="saPrimarySwatch" style="width:32px;height:32px;border-radius:4px;border:1px solid var(--line);flex-shrink:0;"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Secondary palette</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipSecondaryPalette')" aria-label="How to list this">i</button>
+          </div>
+          <div class="fld-tip" id="tipSecondaryPalette">One color per line — name and hex, e.g. "Accent Gold — #CEA552" — in the order you'd want a designer to reach for them.</div>
+          <textarea id="saSecondaryPalette" rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Color hierarchy &amp; misuse</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipColorHierarchy')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipColorHierarchy">Which colors are backgrounds vs. accents vs. rare, and what to avoid — stops a generated brief from treating every listed color as equally usable everywhere.</div>
+          <textarea id="saColorHierarchyNotes" rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Heading font</label>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipHeadingFont')" aria-label="What goes in notes">i</button>
+          </div>
+          <div class="fld-tip" id="tipHeadingFont">What makes this brand's headlines recognizable — italic, all-caps, tight tracking — since a brief can't infer it from the font name alone.</div>
+          <select id="saHeadingFontSelect" onchange="handleFontSelectChange('heading')"></select>
+          <input type="text" id="saHeadingFontCustom" placeholder="Custom font name" style="margin-top:8px;display:none;">
+          <textarea id="saHeadingFontNotes" rows="2" style="margin-top:8px;"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Body font</label>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipBodyFont')" aria-label="What goes in notes">i</button>
+          </div>
+          <div class="fld-tip" id="tipBodyFont">Legibility rules more than personality here — anything that keeps long-form copy readable at small sizes.</div>
+          <select id="saBodyFontSelect" onchange="handleFontSelectChange('body')"></select>
+          <input type="text" id="saBodyFontCustom" placeholder="Custom font name" style="margin-top:8px;display:none;">
+          <textarea id="saBodyFontNotes" rows="2" style="margin-top:8px;"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Typography hierarchy</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipTypographyHierarchy')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipTypographyHierarchy">H1-H4, body, and caption: weight, case, tracking, line height — turns "use the heading font" into an actual hierarchy a brief can follow.</div>
+          <textarea id="saTypographyHierarchyNotes" rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="fld-label-row">
+            <label style="margin:0;">Style notes</label>
+            <span class="fld-optional-badge">Optional</span>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipStyleNotes')" aria-label="What goes here">i</button>
+          </div>
+          <div class="fld-tip" id="tipStyleNotes">Photography direction, creative principles, do's/don'ts — the field with the most leverage on this page. A blank field means every brief defaults to generic guidance.</div>
+          <textarea id="saStyleNotes" rows="6"></textarea>
+        </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="saveStyleAssets(false)">Save Draft</button>
+      <button class="btn-primary" onclick="saveStyleAssets(true)">Save For AI Assistance →</button>
+    </div>
+    <div id="styleAssetsSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
+
+    <div class="seq-nav">
+      <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
+      <span class="seq-spacer"></span>
+      <a class="btn-primary" onclick="goToStep('voiceContest')">Next: Voice Contest →</a>
+    </div>
+  </div>
+
+  <!-- ================= VOICE CONTEST — Vision Statement & Longform Example (Brand Foundations) ================= -->
+  <!-- 2026-08-26, per direct instruction: pulled out of the merged Brand
+       Book page above and kept as its own path — this is a heavier,
+       occasional multi-model AI tool a team reaches for deliberately, not
+       a field to fill in alongside Voice/Colors/Fonts. Still writes to the
+       same account.visionStatement/longformVoiceExample columns via the
+       same saveVisionLongformEdits(), unchanged. -->
+  <div class="step" id="step-voiceContest">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / Voice Contest</div>
+    <div class="eyebrow">Brand Groundwork · Brand Book · Voice Contest</div>
+    <h1>Voice contest — Vision Statement &amp; Longform Example</h1>
+    <p class="lede">Runs your brand through three genuinely distinct voice directions at once — Confident Authority, Warm Storyteller, Bold Modern — each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Compare them side by side and pick the one that's actually you — nothing is applied until you choose.</p>
+
+    <div class="module open accent-cx" id="voiceContestModule">
       <div class="module-head" onclick="toggleModule('voiceContestModule')">
-        <span class="modnum">2</span>
+        <span class="modnum">1</span>
         <div class="titles">
           <span class="tag">Multi-model</span>
-          <h2>Voice contest — Vision Statement &amp; Longform Example</h2>
+          <h2>Run the contest</h2>
         </div>
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <p class="lede" style="margin:2px 0 12px;">Runs your brand through three genuinely distinct voice directions at once — Confident Authority, Warm Storyteller, Bold Modern — each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Compare them side by side and pick the one that's actually you — nothing is applied until you choose.</p>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Run contest →</button>
         </div>
@@ -3699,9 +3857,9 @@
     <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
+      <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Book</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('styleAssets')">Next: Style Guide — Colors &amp; Fonts →</a>
+      <a class="btn-primary" onclick="goToStep('brandWritingSamples')">Next: Sample Writings &amp; Presentations →</a>
     </div>
   </div>
 
@@ -3719,7 +3877,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Search Everywhere &amp; Organic Social</div>
     <div class="eyebrow">Discoverability</div>
     <h1>Search Everywhere &amp; Organic Social</h1>
-    <p class="lede">Findability across traditional search, AI answer engines, and generative-engine citations (SEO/AEO/GEO) — plus, eventually, organic social content development. Both read from this account's approved Brand &amp; Product Keywords (<a onclick="goToStep('voice')">Brand Voice page</a>) rather than Industry, so the terms actually sound like this brand instead of a generic category list.</p>
+    <p class="lede">Findability across traditional search, AI answer engines, and generative-engine citations (SEO/AEO/GEO) — plus, eventually, organic social content development. Both read from this account's approved Brand &amp; Product Keywords (<a onclick="goToStep('voice')">Brand Book page</a>) rather than Industry, so the terms actually sound like this brand instead of a generic category list.</p>
 
     <div class="module open accent-media" id="searchKeywordsModule">
       <div class="module-head" onclick="toggleModule('searchKeywordsModule')">
@@ -3938,159 +4096,6 @@
     </div>
   </div>
 
-  <!-- ================= STYLE GUIDE — COLORS & FONTS (Brand Foundations) ================= -->
-  <div class="step" id="step-styleAssets">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Style Guide — Colors &amp; Fonts</div>
-    <div class="eyebrow">Brand Groundwork · Style Guide</div>
-    <h1>Colors &amp; Fonts</h1>
-
-    <!-- 2026-08-26, per direct instruction: strip every field on this page
-         down to just its defining label, move all guidance copy into
-         on-demand "i" tooltips (.fld-tip, see CSS above) instead of
-         always-visible paragraphs, and remove the Silver Trident Winery
-         reference plus the internal dev-note that had leaked into the Logo
-         upload field's hint text — none of that belongs in front of a
-         client, and it was factually about a different account regardless.
-         Fields stay genuinely empty until populated by upload or manual
-         entry — no example values presented as real. Upload now also drives
-         real extraction for .docx/.pdf via POST /api/style-assets/extract
-         (see handleStyleAssetFile()), not just a filename record. -->
-    <div class="btn-row" style="margin:14px 0 4px;">
-      <label class="btn-primary" for="saFileInput" style="cursor:pointer;">Upload Brand Guide</label>
-      <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
-    </div>
-    <input type="file" id="saFileInput" accept=".txt,.md,.docx,.doc,.pdf" onchange="handleStyleAssetFile(event)" style="display:none;">
-    <p class="hint" style="margin:0 0 8px;">Accepts .docx, .doc, .pdf, .txt, or .md.</p>
-    <div class="hint" id="saFileNote" style="margin:0 0 24px;"></div>
-
-    <div id="styleAssetsManualFields">
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Logo upload</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoUpload')" aria-label="Accepted formats and sizing">i</button>
-          </div>
-          <div class="fld-tip" id="tipLogoUpload">The actual logo file, so it can appear in the portal header. SVG (preferred, scales cleanly) or transparent PNG/WebP — no JPG. Long side roughly 400-1200px. Aspect ratio close to 1:1 up to about 4:1 wide; very tall or very narrow marks tend to crop oddly at the 44px display height used here. Under 2MB, transparent background preferred.</div>
-          <div class="btn-row" style="margin-top:8px;">
-            <label class="btn-ghost" for="saLogoFileInput" style="cursor:pointer;">Choose Logo File</label>
-            <span id="saLogoFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
-          </div>
-          <input type="file" id="saLogoFileInput" accept=".svg,.png,.webp" onchange="handleLogoFileUpload(event)" style="display:none;">
-          <div class="hint" id="saLogoFileNote" style="margin-top:8px;color:var(--advocacy);"></div>
-          <div id="saLogoPreviewWrap" style="display:none;margin-top:12px;padding:16px;background:var(--paper-dim);border:1px solid var(--line);border-radius:10px;align-items:center;gap:14px;">
-            <img id="saLogoPreviewImg" alt="Logo preview" style="max-height:52px;max-width:220px;width:auto;height:auto;object-fit:contain;">
-            <button type="button" class="btn-ghost" onclick="removeLogoUpload()" style="margin-left:auto;">Remove</button>
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Logo reference</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoRef')" aria-label="When to use this">i</button>
-          </div>
-          <div class="fld-tip" id="tipLogoRef">A URL or file path, if you'd rather link than upload — only needed if you're not uploading the file above.</div>
-          <input type="text" id="saLogoUrl" placeholder="https://...">
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Logo usage rules</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoRules')" aria-label="What to include">i</button>
-          </div>
-          <div class="fld-tip" id="tipLogoRules">Approved colorways, exclusion zone, minimum size, and what this brand says never to do to its mark.</div>
-          <textarea id="saLogoUsageNotes" rows="4"></textarea>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Primary color</label>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipPrimaryColor')" aria-label="What goes here">i</button>
-          </div>
-          <div class="fld-tip" id="tipPrimaryColor">The one color every generated creative brief should default to — the color this brand is recognized by at a glance.</div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <input type="text" id="saPrimaryColorName" placeholder="Color name" style="flex:1;">
-            <input type="text" id="saPrimaryColorHex" placeholder="#000000" style="width:120px;" oninput="updateColorSwatch()">
-            <div id="saPrimarySwatch" style="width:32px;height:32px;border-radius:4px;border:1px solid var(--line);flex-shrink:0;"></div>
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Secondary palette</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipSecondaryPalette')" aria-label="How to list this">i</button>
-          </div>
-          <div class="fld-tip" id="tipSecondaryPalette">One color per line — name and hex, e.g. "Accent Gold — #CEA552" — in the order you'd want a designer to reach for them.</div>
-          <textarea id="saSecondaryPalette" rows="4"></textarea>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Color hierarchy &amp; misuse</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipColorHierarchy')" aria-label="What goes here">i</button>
-          </div>
-          <div class="fld-tip" id="tipColorHierarchy">Which colors are backgrounds vs. accents vs. rare, and what to avoid — stops a generated brief from treating every listed color as equally usable everywhere.</div>
-          <textarea id="saColorHierarchyNotes" rows="4"></textarea>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Heading font</label>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipHeadingFont')" aria-label="What goes in notes">i</button>
-          </div>
-          <div class="fld-tip" id="tipHeadingFont">What makes this brand's headlines recognizable — italic, all-caps, tight tracking — since a brief can't infer it from the font name alone.</div>
-          <select id="saHeadingFontSelect" onchange="handleFontSelectChange('heading')"></select>
-          <input type="text" id="saHeadingFontCustom" placeholder="Custom font name" style="margin-top:8px;display:none;">
-          <textarea id="saHeadingFontNotes" rows="2" style="margin-top:8px;"></textarea>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Body font</label>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipBodyFont')" aria-label="What goes in notes">i</button>
-          </div>
-          <div class="fld-tip" id="tipBodyFont">Legibility rules more than personality here — anything that keeps long-form copy readable at small sizes.</div>
-          <select id="saBodyFontSelect" onchange="handleFontSelectChange('body')"></select>
-          <input type="text" id="saBodyFontCustom" placeholder="Custom font name" style="margin-top:8px;display:none;">
-          <textarea id="saBodyFontNotes" rows="2" style="margin-top:8px;"></textarea>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Typography hierarchy</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipTypographyHierarchy')" aria-label="What goes here">i</button>
-          </div>
-          <div class="fld-tip" id="tipTypographyHierarchy">H1-H4, body, and caption: weight, case, tracking, line height — turns "use the heading font" into an actual hierarchy a brief can follow.</div>
-          <textarea id="saTypographyHierarchyNotes" rows="4"></textarea>
-        </div>
-
-        <div class="field">
-          <div class="fld-label-row">
-            <label style="margin:0;">Style notes</label>
-            <span class="fld-optional-badge">Optional</span>
-            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipStyleNotes')" aria-label="What goes here">i</button>
-          </div>
-          <div class="fld-tip" id="tipStyleNotes">Photography direction, creative principles, do's/don'ts — the field with the most leverage on this page. A blank field means every brief defaults to generic guidance.</div>
-          <textarea id="saStyleNotes" rows="6"></textarea>
-        </div>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn-primary" onclick="saveStyleAssets()">Save — mark approved →</button>
-    </div>
-    <div id="styleAssetsSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-
-    <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Voice</a>
-      <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('brandWritingSamples')">Next: Sample Writings &amp; Presentations →</a>
-    </div>
-  </div>
-
   <!-- ================= SAMPLE WRITINGS & PRESENTATIONS (Brand Foundations, round 132bp) ================= -->
   <div class="step" id="step-brandWritingSamples">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Sample Writings &amp; Presentations</div>
@@ -4195,7 +4200,7 @@
     </div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('styleAssets')">← Back: Style Guide — Colors &amp; Fonts</a>
+      <a class="btn-ghost" onclick="goToStep('voiceContest')">← Back: Voice Contest</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
     </div>
@@ -8703,8 +8708,9 @@ const FUNCTION_GROUPS = [
     { name: 'Monitor News', tier: 'hybrid', note: 'Needs a live media-monitoring feed, same dependency as Reputation Monitoring above.' }
   ]},
   { key: 'Brand', label: 'Brand', campaignDesc: 'Campaign Messaging, Creative Briefs and Channel Versioning.', desc: 'Style guide, positioning, creative, and messaging.', sections: [
-    { name: 'Style Guide — Voice', tier: 'ready', built: true, route: 'voice', note: 'Managed under Brand Groundwork (Dashboard) — every Campaign inherits it automatically once approved.' },
-    { name: 'Style Guide — Colors & Fonts', tier: 'integration', built: true, route: 'styleAssets', note: 'Managed under Brand Groundwork (Dashboard).' },
+    { name: 'Brand Book — Voice', tier: 'ready', built: true, route: 'voice', note: 'Managed under Brand Groundwork (Dashboard), on one merged Brand Book page with Colors & Fonts — every Campaign inherits it automatically once approved.' },
+    { name: 'Brand Book — Colors & Fonts', tier: 'integration', built: true, route: 'styleAssets', note: 'Managed under Brand Groundwork (Dashboard), on the same Brand Book page as Voice.' },
+    { name: 'Voice Contest — Vision Statement & Longform Example', tier: 'integration', built: true, route: 'voiceContest', note: 'Managed under Brand Groundwork (Dashboard) — its own page, kept separate from the Brand Book fields above.' },
     { name: 'Competitive Positioning', tier: 'ready', built: true, route: 'competitivePositioning', note: 'Managed under Brand Groundwork (Dashboard) — covers Industry Trends and Direct Competitors on one page. Also reachable from AI Agent Training → Research.', capNote: 'Direct Competitors holds up to 5 named companies at a time' },
     { name: 'Style Guide — Music', tier: 'hybrid', note: 'A sonic-brand brief is prompt-ready; the audio asset itself is not. Not yet in scope for Brand Groundwork — see cxmedia-brand-foundations-plan.md.' },
     // Round 131 — Logo and Presentation Templates, from WORKSTREAMS.xlsx's
@@ -14066,8 +14072,8 @@ function renderBrandFoundationsModule(){
     return;
   }
   const rows = [
-    { name: 'Style Guide — Voice', done: state.voice.approved, builtYet: true, step: 'voice' },
-    { name: 'Style Guide — Colors & Fonts', done: state.styleAssets.approved, builtYet: true, step: 'styleAssets' },
+    { name: 'Brand Book — Voice', done: state.voice.approved, builtYet: true, step: 'voice' },
+    { name: 'Brand Book — Colors & Fonts', done: state.styleAssets.approved, builtYet: true, step: 'styleAssets' },
     { name: 'Competitive Positioning', done: state.positioning.approved, builtYet: true, step: 'competitivePositioning' }
   ];
   el.className = `module module-rendered accent-advocacy${isOpen ? ' open' : ''}`;
@@ -16340,7 +16346,7 @@ function cfdWsAction(key, action){
       say(`<strong>${c.name}</strong> starts soonest (${c.startDate || '—'}) among campaigns still missing copy — opening its Brand Messaging stage now.`, () => cfdGoToCampaignAdCopy(c.id));
     }
   } else if (action === 'voice'){
-    say('Opening Style Guide — Voice now.', () => goToStep('voice'));
+    say('Opening the Brand Book now.', () => goToStep('voice'));
   } else if (action === 'positioning'){
     say('Opening Competitive Positioning now.', () => goToStep('competitivePositioning'));
   } else if (action === 'approvals'){
@@ -17599,20 +17605,25 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
     desc: 'What "sounds like you" — approved once, inherited by every draft from here forward.',
     cards: [
       {
-        title: 'Brand Voice',
+        title: 'Brand Book — Voice, Colors &amp; Fonts',
         category: 'manual',
         source: 'Brand Groundwork',
         route: 'voice',
-        desc: 'Your approved tone, word choices, and do/don’t list.',
-        status(){ return state.voice.approved ? { text: 'Approved', tone: 'ok' } : { text: 'Not yet approved', tone: 'pending' }; }
+        desc: 'Your approved tone, word choices, and do/don’t list, plus logo, palette, and typography — one page, two independent approvals.',
+        status(){
+          const voiceOk = state.voice.approved, styleOk = state.styleAssets.approved;
+          if (voiceOk && styleOk) return { text: 'Approved', tone: 'ok' };
+          if (voiceOk || styleOk) return { text: 'Partially approved', tone: 'pending' };
+          return { text: 'Not yet approved', tone: 'pending' };
+        }
       },
       {
-        title: 'Style Assets — Colors &amp; Fonts',
+        title: 'Voice Contest',
         category: 'manual',
         source: 'Brand Groundwork',
-        route: 'styleAssets',
-        desc: 'Logo, palette, and typography — the visual half of brand identity, alongside Voice.',
-        status(){ return state.styleAssets.approved ? { text: 'Approved', tone: 'ok' } : { text: 'Not yet approved', tone: 'pending' }; }
+        route: 'voiceContest',
+        desc: 'Multi-model Vision Statement &amp; Longform Example — compare distinct AI-generated voice directions and pick one, or write your own.',
+        status(){ return (state.voice.visionStatement || state.voice.longformExample) ? { text: 'On file', tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
       },
       {
         title: 'Competitive Positioning',
@@ -33738,7 +33749,7 @@ function renderSearchKeywordsList(){
     const hasProductKeywords = !!(state.brandKeywords && state.brandKeywords.product && state.brandKeywords.product.length);
     el.innerHTML = hasProductKeywords
       ? `<p class="hint">No keywords yet — click "Generate recommendations" above.</p>`
-      : `<p class="hint">No approved Product Keywords yet to build recommendations from — draft and save some on the <a onclick="goToStep('voice')">Brand Voice page</a>'s Brand &amp; Product Keywords section first.</p>`;
+      : `<p class="hint">No approved Product Keywords yet to build recommendations from — draft and save some on the <a onclick="goToStep('voice')">Brand Book page</a>'s Brand &amp; Product Keywords section first.</p>`;
     return;
   }
   el.innerHTML = state.searchKeywords.map((k, i) => `
@@ -33823,7 +33834,7 @@ function renderSearchAdCopy(){
   if (!el) return;
   const ads = generateSearchAdCopy();
   if (!ads.length){
-    el.innerHTML = `<p class="hint">No approved Product Keywords yet to build ad copy from — draft and save some on the <a onclick="goToStep('voice')">Brand Voice page</a>'s Brand &amp; Product Keywords section first.</p>`;
+    el.innerHTML = `<p class="hint">No approved Product Keywords yet to build ad copy from — draft and save some on the <a onclick="goToStep('voice')">Brand Book page</a>'s Brand &amp; Product Keywords section first.</p>`;
     return;
   }
   el.innerHTML = `
@@ -36586,6 +36597,13 @@ function goToStep(step, arg, arg2, arg3){
   // tools list, etc.) keeps working unchanged — it just lands on Media
   // Plan now, same redirect pattern as the accountManagement alias above.
   if (step === 'marketingBudgetUpload') step = 'mediaplan';
+  // 2026-08-26 — Brand Book merge: Voice and Colors & Fonts are now one
+  // page (step-voice, retitled "Brand Book"), so 'styleAssets' is kept as
+  // a working alias rather than touched everywhere it's still referenced
+  // (hub cards, Brand Groundwork checklist, etc.) — same redirect pattern
+  // as the marketingBudgetUpload alias above. The Colors & Fonts fields
+  // still live under their original saXxx element ids on that same page.
+  if (step === 'styleAssets') step = 'voice';
   document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
   // Round 16, point 2 — the best-practices drawer only makes sense on the
   // Add Campaign Details form; hide its fixed tab (and close it if open)
@@ -36602,6 +36620,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'voice'){
     renderVoiceStep();
     document.getElementById('step-voice').classList.add('active');
+  } else if (step === 'voiceContest'){
+    renderVoiceContestStep();
+    document.getElementById('step-voiceContest').classList.add('active');
   } else if (step === 'searchSocial'){
     // Round 32, follow-on — Search Everywhere's own top-level step again
     // (it moved into Brand Voice at round 66, now moves back out — into a
@@ -36613,9 +36634,6 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'companyProfile'){
     renderCompanyProfileStep();
     document.getElementById('step-companyProfile').classList.add('active');
-  } else if (step === 'styleAssets'){
-    renderStyleAssetsStep();
-    document.getElementById('step-styleAssets').classList.add('active');
   } else if (step === 'brandWritingSamples'){
     bwsInit();
     document.getElementById('step-brandWritingSamples').classList.add('active');
@@ -41454,35 +41472,59 @@ function toggleVoiceWhy(){
   document.getElementById('voiceWhyPanel').classList.toggle('visible');
 }
 
-// Round 18, Brand Foundations (Voice) — Save now persists to the backend
-// (POST /api/accounts/:id/voice) instead of only updating in-memory state,
-// so "approved" survives a page reload — the prerequisite for this to
-// meaningfully gate Campaign/Ad Hoc creation. Falls back to the same
-// "local only, this session" honesty convention used everywhere else in
-// this file if the backend write fails or no real account record exists.
-async function saveVoiceDraft(){
-  const text = document.getElementById('voiceDraftText').value;
+// Round 18, Brand Foundations (Voice) — Save persists to the backend
+// (POST /api/accounts/:id/voice). 2026-08-26, per direct instruction ("Save
+// Draft and Save For AI Assistance options"): now takes an explicit
+// `approved` flag instead of always marking approved on any write — a
+// genuine draft save (approved=false) persists the text so nothing is lost
+// on a reload, without changing the account's approval state; Save For AI
+// Assistance (approved=true) is what actually makes this the shared
+// reference every Messaging/Creative-brief prompt reads. The backend is the
+// source of truth for the resulting approved state (it preserves whatever
+// was already approved on a draft-only save — see that endpoint's own
+// comment) — this always adopts its response rather than assuming.
+async function saveVoiceDraft(approved){
+  const text = document.getElementById('voiceDraftText').value.trim();
+  const flag = document.getElementById('voiceDraftSaveFlag');
+  if (!text){
+    if (flag) flag.textContent = 'Write or generate a draft before saving.';
+    return;
+  }
   state.voice.draft = text;
-  state.voice.approved = true;
+  if (approved) state.voice.approved = true; // honored even in the no-backend fallback below
   state.voice.version += 1;
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voiceGuideText: text })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voiceGuideText: text, approved: !!approved })
       });
       if (resp.ok){
-        const { voiceVersion } = await resp.json();
-        state.voice.version = voiceVersion;
+        const result = await resp.json();
+        state.voice.version = result.voiceVersion;
+        state.voice.approved = !!result.approved;
         persisted = true;
       }
     } catch (e){ console.warn('saveVoiceDraft: backend write failed, saved locally only.', e); }
   }
+  if (flag){
+    flag.textContent = approved
+      ? (persisted
+          ? `Saved for AI Assistance ✓ (v${state.voice.version}) — available as context to Messaging and Creative-brief prompts once those are built.`
+          : `Saved for AI Assistance ✓ (v${state.voice.version}) — local only, this session (no backend record for this account, or the backend is unreachable).`)
+      : (persisted
+          ? `Draft saved (v${state.voice.version}) — not yet approved for AI Assistance.`
+          : `Draft saved locally only, this session (no backend record for this account, or the backend is unreachable).`);
+  }
   const banner = document.getElementById('voiceApprovedBanner');
-  document.getElementById('voiceApprovedText').textContent = persisted
-    ? `Voice Guide: Approved ✓ (v${state.voice.version}) — saved to the backend, available as context to Messaging and Creative-brief prompts once those are built.`
-    : `Voice Guide: Approved ✓ (v${state.voice.version}) — local only, this session (no backend record for this account, or the backend is unreachable).`;
-  banner.classList.add('visible');
+  if (state.voice.approved){
+    document.getElementById('voiceApprovedText').textContent = persisted
+      ? `Voice Guide: Approved ✓ (v${state.voice.version}) — saved to the backend, available as context to Messaging and Creative-brief prompts once those are built.`
+      : `Voice Guide: Approved ✓ (v${state.voice.version}) — local only, this session (no backend record for this account, or the backend is unreachable).`;
+    banner.classList.add('visible');
+  } else {
+    banner.classList.remove('visible');
+  }
   renderBrandFoundationsModule();
 }
 
@@ -41624,24 +41666,43 @@ async function saveBrandKeywords(){
 // loadAccountData()), show the approved banner and the existing draft
 // immediately instead of requiring Generate draft to be clicked again just
 // to see what's already there.
+// 2026-08-26 — Brand Book merge: this now renders both the Voice section
+// and the Colors & Fonts section on the same page (step-voice). The
+// draft-panel visibility check used to require state.voice.approved, which
+// meant a draft that was saved-but-not-approved would vanish from view on
+// reload — a real bug now that Save Draft is a genuine no-approval save
+// (see saveVoiceDraft()). Now shows the panel whenever a draft exists at
+// all, and reports the Approved banner separately based on the approval
+// flag alone.
 function renderVoiceStep(){
   renderBrandKeywordChips();
   const banner = document.getElementById('voiceApprovedBanner');
-  if (state.voice.approved && state.voice.draft){
+  if (state.voice.draft){
     document.getElementById('voiceDraftText').value = state.voice.draft;
     document.getElementById('voiceDraftPanel').classList.add('visible');
+  }
+  if (state.voice.approved){
     document.getElementById('voiceApprovedText').textContent =
       `Voice Guide: Approved ✓ (v${state.voice.version}) — available as context to Messaging and Creative-brief prompts once those are built.`;
     banner.classList.add('visible');
   } else {
     banner.classList.remove('visible');
   }
-  // 2026-08-22 — Vision Statement / Longform Example fields, same
-  // "show what's already there instead of requiring a re-run" treatment.
+  renderStyleAssetsStep();
+}
+
+// 2026-08-26 — the Voice contest (Vision Statement & Longform Example) now
+// lives on its own page (step-voiceContest), kept separate from the merged
+// Brand Book page per direct instruction ("keep the contest as its own
+// path") since it's a heavier, occasional multi-model tool, not a field to
+// fill in alongside Voice/Colors/Fonts.
+function renderVoiceContestStep(){
   const visionEl = document.getElementById('voiceVisionStatement');
   const longformEl = document.getElementById('voiceLongformExample');
   if (visionEl) visionEl.value = state.voice.visionStatement || '';
   if (longformEl) longformEl.value = state.voice.longformExample || '';
+  const flag = document.getElementById('voiceVisionLongformSaveFlag');
+  if (flag) flag.textContent = '';
 }
 
 // 2026-08-22 — the multi-model Brand Voice contest. Same real-AI-call,
@@ -42182,12 +42243,12 @@ function handleStyleAssetFile(event){
 // Fills only fields on this page that are still empty, from the `mapped`
 // object POST .../style-assets/extract returns — never overwrites
 // something a human already typed. A Voice/Tone excerpt (if the document
-// had one) is appended to Style Notes as a clearly labeled excerpt rather
-// than written to the separate Brand Voice page: that page's save endpoint
-// always marks Voice approved on any write, so silently cross-writing
-// unreviewed extracted text there would falsely mark it "approved" before
-// a human ever saw it. Returns the list of human-readable field names it
-// actually filled, for the status note.
+// had one) goes into the Voice draft field below (see the 2026-08-26 Brand
+// Book merge — Voice and Colors & Fonts now share this page), and lands as
+// a draft only: it's the human's Save Draft/Save For AI Assistance choice
+// that decides whether it ever counts as approved, never this function.
+// Returns the list of human-readable field names it actually filled, for
+// the status note.
 function applyExtractedStyleAssetFields(mapped){
   const filled = [];
   const setIfEmpty = (id, value, label) => {
@@ -42215,16 +42276,28 @@ function applyExtractedStyleAssetFields(mapped){
   }
   setIfEmpty('saTypographyHierarchyNotes', mapped.typographyHierarchyNotes, 'Typography hierarchy');
 
-  const styleNotesEl = document.getElementById('saStyleNotes');
-  const extraNotes = [];
-  if (mapped.styleNotes) extraNotes.push(mapped.styleNotes);
-  if (mapped.voiceToneExcerpt) extraNotes.push(`Voice/Tone excerpt from the uploaded brand guide (for reference — transfer anything relevant to the Brand Voice page manually, then review and approve it there):\n${mapped.voiceToneExcerpt}`);
-  if (extraNotes.length && !styleNotesEl.value.trim()){
-    styleNotesEl.value = extraNotes.join('\n\n');
-    filled.push(mapped.styleNotes ? 'Style notes' : 'Voice/Tone excerpt (added to Style Notes)');
-  } else if (extraNotes.length){
-    styleNotesEl.value = `${styleNotesEl.value.trim()}\n\n${extraNotes.join('\n\n')}`;
-    filled.push(mapped.styleNotes ? 'Style notes (appended)' : 'Voice/Tone excerpt (appended to Style Notes)');
+  if (mapped.styleNotes){
+    const styleNotesEl = document.getElementById('saStyleNotes');
+    if (!styleNotesEl.value.trim()){
+      styleNotesEl.value = mapped.styleNotes;
+      filled.push('Style notes');
+    } else {
+      styleNotesEl.value = `${styleNotesEl.value.trim()}\n\n${mapped.styleNotes}`;
+      filled.push('Style notes (appended)');
+    }
+  }
+
+  // 2026-08-26 — Voice is now on this same page (the Brand Book merge), so
+  // a Voice/Tone excerpt can go straight into the Voice draft field instead
+  // of the old "copy it to the Brand Voice page yourself" hand-off.
+  if (mapped.voiceToneExcerpt){
+    const voiceDraftEl = document.getElementById('voiceDraftText');
+    if (voiceDraftEl && !voiceDraftEl.value.trim()){
+      voiceDraftEl.value = `Voice/Tone excerpt from the uploaded brand guide (best-effort read — review and edit before saving):\n${mapped.voiceToneExcerpt}`;
+      const panel = document.getElementById('voiceDraftPanel');
+      if (panel) panel.classList.add('visible');
+      filled.push('Voice draft (from its Voice/Tone section)');
+    }
   }
   return filled;
 }
@@ -42359,13 +42432,22 @@ function renderAccountLogo(){
   }
 }
 
-// Round 20 — Save. Unlike Voice's "all-or-nothing" approve, this component
-// approves once at least one meaningful field has been filled in rather
-// than requiring every field — real style guide documents vary widely in
-// what they actually specify (see cxmedia-brand-foundations-plan.md's open
-// question, resolved this way given the uploaded example's own partial,
-// varied structure).
-async function saveStyleAssets(){
+// Round 20 — Save. Unlike Voice's original "all-or-nothing" approve, this
+// component approves once at least one meaningful field has been filled in
+// rather than requiring every field — real style guide documents vary
+// widely in what they actually specify (see
+// cxmedia-brand-foundations-plan.md's open question, resolved this way
+// given the uploaded example's own partial, varied structure). 2026-08-26,
+// per direct instruction ("Save Draft and Save For AI Assistance
+// options"): now takes an explicit `approved` flag. A draft save persists
+// every field (so nothing typed is lost) without changing the approval
+// state or leaving this page — the backend already preserved a prior
+// approval on a non-approving write (see POST .../style-assets), this just
+// exposes that as an explicit, honestly-labeled action instead of Save
+// always approving. Only Save For AI Assistance still redirects back to
+// the Brand Groundwork checklist, matching the old "approve returns to
+// dashboard" behavior.
+async function saveStyleAssets(approved){
   const sa = state.styleAssets;
   sa.logoUrl = document.getElementById('saLogoUrl').value.trim();
   sa.logoUsageNotes = document.getElementById('saLogoUsageNotes').value.trim();
@@ -42387,7 +42469,6 @@ async function saveStyleAssets(){
     document.getElementById('styleAssetsSaveFlag').textContent = 'Enter at least one field (or upload a document) before saving.';
     return;
   }
-  sa.approved = true;
 
   let persisted = false;
   if (dataSourceLabel === 'backend'){
@@ -42399,22 +42480,34 @@ async function saveStyleAssets(){
           secondaryPaletteText: sa.secondaryPaletteText, colorHierarchyNotes: sa.colorHierarchyNotes,
           headingFontName: sa.headingFontName, headingFontNotes: sa.headingFontNotes,
           bodyFontName: sa.bodyFontName, bodyFontNotes: sa.bodyFontNotes, typographyHierarchyNotes: sa.typographyHierarchyNotes,
-          styleNotes: sa.styleNotes, styleSourceFileName: sa.styleSourceFileName, approved: true
+          styleNotes: sa.styleNotes, styleSourceFileName: sa.styleSourceFileName, approved: !!approved
         })
       });
-      if (resp.ok) persisted = true;
+      if (resp.ok){
+        const result = await resp.json();
+        sa.approved = !!result.approved;
+        persisted = true;
+      }
     } catch (e){ console.warn('saveStyleAssets: backend write failed, saved locally only.', e); }
+  } else if (approved){
+    sa.approved = true; // local-only fallback still honors an explicit approve
   }
-  document.getElementById('styleAssetsSaveFlag').textContent = persisted
-    ? `Style Guide — Colors & Fonts: Approved ✓ — saved to the backend, available as reference to Creative-brief prompts once those are built.`
-    : `Style Guide — Colors & Fonts: Approved ✓ — local only, this session (no backend record for this account, or the backend is unreachable).`;
+  document.getElementById('styleAssetsSaveFlag').textContent = approved
+    ? (persisted
+        ? `Colors & Fonts: Saved for AI Assistance ✓ — available as reference to Creative-brief prompts once those are built.`
+        : `Colors & Fonts: Saved for AI Assistance ✓ — local only, this session (no backend record for this account, or the backend is unreachable).`)
+    : (persisted
+        ? `Colors & Fonts: Draft saved — not yet approved for AI Assistance.`
+        : `Colors & Fonts: Draft saved locally only, this session (no backend record for this account, or the backend is unreachable).`);
   renderBrandFoundationsModule();
   renderAccountLogo(); // Round 130 — reflect the (possibly just-uploaded) logo in the header immediately
-  // Per direct instruction — approving Style Assets returns to the CMO
-  // Dashboard so the team member lands straight back on the Brand
-  // Foundations checklist to pick up whichever gate component is next,
-  // rather than staying on a page that's now done.
-  goToStep('dashboard');
+  if (approved){
+    // Per direct instruction — approving Style Assets returns to the CMO
+    // Dashboard so the team member lands straight back on the Brand
+    // Foundations checklist to pick up whichever gate component is next.
+    // A draft save deliberately stays on this page instead.
+    goToStep('dashboard');
+  }
 }
 
 // Small utility — user-entered competitor names/notes get rendered back
