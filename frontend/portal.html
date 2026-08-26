@@ -3522,8 +3522,8 @@
   <div class="step" id="step-voice">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Brand Book</div>
     <div class="eyebrow">Brand Groundwork · Brand Book</div>
-    <h1>Brand Book</h1>
-    <p class="lede">Voice, colors, and fonts together, the way a real brand book presents them — approved once and inherited by every Messaging and Creative-brief prompt from here forward. The Voice contest (multi-model Vision Statement &amp; Longform Example) has its own page — see Next below.</p>
+    <h1>Brand Book AI Assistant</h1>
+    <p class="lede">Set the rules for your AI Assistants. Upload and add the key branding elements that drive your customer engagement — your colors, fonts, voice, tones, and sample writing — before you interview AI Assistants from Anthropic, OpenAI, xAI, Perplexity, and Gemini in the Voice contest. Pick the winner and see the benefits throughout your experience.</p>
 
     <!-- 2026-08-26, per direct instruction: merge Brand Voice and Colors &
          Fonts onto one page ("more efficient... align with a typical brand
@@ -3539,11 +3539,11 @@
       <span id="saFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
     </div>
     <input type="file" id="saFileInput" accept=".txt,.md,.docx,.doc,.pdf" onchange="handleStyleAssetFile(event)" style="display:none;">
-    <p class="hint" style="margin:0 0 8px;">Accepts .docx, .doc, .pdf, .txt, or .md — fills in whatever below it can confidently read (colors, fonts, style notes, and voice/tone), never overwriting a field you've already filled in.</p>
+    <p class="hint" style="margin:0 0 8px;">Accepts .docx, .doc, .pdf, .txt, or .md. Please verify how we mapped your document to the fields below — Save Draft to keep working, or Save For AI Assistance once you're ready.</p>
     <div class="hint" id="saFileNote" style="margin:0 0 28px;"></div>
 
     <h2 style="margin:0 0 4px;">Voice</h2>
-    <p class="lede" style="margin:0 0 16px;">Your approved tone, word choices, and do/don't list — see <code>cxmedia-client-portal-structure.md</code> Section 3's worked example.</p>
+    <p class="lede" style="margin:0 0 16px;">Verify your approved tone, word choices, and do/don't list.</p>
 
     <div class="approved-banner" id="voiceApprovedBanner">
       <span>✓</span>
@@ -3551,7 +3551,12 @@
     </div>
 
     <div class="field">
-      <label>Sample writing the team likes (optional — paste 1-3 short examples)</label>
+      <div class="fld-label-row">
+        <label style="margin:0;">Sample writing</label>
+        <span class="fld-optional-badge">Optional</span>
+        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipVoiceSamples')" aria-label="What goes here">i</button>
+      </div>
+      <div class="fld-tip" id="tipVoiceSamples">Paste 1-3 short examples the team likes — an email, a social caption, a past headline. The generated draft keeps this register instead of a generic tone-of-voice template.</div>
       <textarea id="voiceSamples" placeholder="e.g. an email, a social caption, a past headline..."></textarea>
     </div>
 
@@ -3559,12 +3564,23 @@
          directly (rather than relying on the stylesheet's
          `label:has(.ai-thought-icon)` rule, which an inline style would
          otherwise out-specificity) so the new AI Thought icon lands
-         right-aligned like every other mounted icon. -->
-    <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#3A3428;margin-bottom:8px;">Tone anchors — pick up to 3 <span class="ai-thought-mount" data-topic="I"></span></label>
+         right-aligned like every other mounted icon. 2026-08-26 — added the
+         same "i" tooltip pattern as Colors & Fonts, per direct instruction
+         to keep this page's UI consistent across both sections. -->
+    <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#3A3428;margin-bottom:8px;">
+      <span style="display:flex;align-items:center;gap:7px;">Tone anchors <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipToneAnchors')" aria-label="What this drives" style="text-transform:none;letter-spacing:normal;">i</button></span>
+      <span class="ai-thought-mount" data-topic="I"></span>
+    </label>
+    <div class="fld-tip" id="tipToneAnchors" style="margin:-4px 0 10px;">Pick up to 3 — these drive the tone rules in your generated Voice draft and the emotional Brand Keywords suggested below.</div>
     <div class="select-tile-row" id="toneAnchorRow" style="margin-bottom:18px;"></div>
 
     <div class="field">
-      <label>Words to avoid (optional)</label>
+      <div class="fld-label-row">
+        <label style="margin:0;">Words to avoid</label>
+        <span class="fld-optional-badge">Optional</span>
+        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipWordsToAvoid')" aria-label="What this affects">i</button>
+      </div>
+      <div class="fld-tip" id="tipWordsToAvoid">Comma-separated words this brand never wants associated with it — excluded from the generated Voice draft and from the Brand Keyword suggestions below. Separate from Negative Keywords/Terms to Avoid below, which is its own editable list rather than a single sentence.</div>
       <input type="text" id="voiceAvoidWords" placeholder="e.g. cheap, discount, hustle">
     </div>
 
@@ -3581,8 +3597,11 @@
          offering phrases drafted from Company Profile's Products &
          Services field. -->
     <div class="field">
-      <label>Brand &amp; Product Keywords</label>
-      <p class="lede" style="margin:2px 0 12px;">A first draft, not a finished list — edit it directly (add or remove any chip), then Save. Brand keywords are emotional, voice, and style words drafted from the Tone Anchors picked above; Product keywords are drafted from the Products &amp; Services you gave in the free assessment. Deliberately not based on Industry.</p>
+      <div class="fld-label-row">
+        <label style="margin:0;font-size:1.0625rem;text-transform:none;letter-spacing:normal;color:var(--ink);">Brand &amp; Product Keywords</label>
+        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipBrandKeywords')" aria-label="Where these come from">i</button>
+      </div>
+      <div class="fld-tip" id="tipBrandKeywords" style="margin-bottom:12px;">Brand keywords are emotional, voice, and style words drafted from the Tone Anchors picked above; Product keywords are drafted from the Products &amp; Services you gave in the free assessment — deliberately not based on Industry. Shown automatically below; edit directly (add or remove any chip), then Save.</div>
 
       <div class="module open accent-media" id="brandKeywordsModule">
         <div class="module-head" onclick="toggleModule('brandKeywordsModule')">
@@ -3595,8 +3614,8 @@
         </div>
         <div class="module-body">
           <div class="btn-row" style="margin-top:0;">
-            <button type="button" class="btn-primary" onclick="generateAndRenderBrandKeywords()">Generate draft →</button>
-            <button type="button" class="btn-ghost" onclick="saveBrandKeywords()">Save →</button>
+            <button type="button" class="btn-ghost" onclick="generateAndRenderBrandKeywords()">Refresh suggestions →</button>
+            <button type="button" class="btn-primary" onclick="saveBrandKeywords()">Save →</button>
           </div>
 
           <div style="margin-top:16px;">
@@ -3637,7 +3656,7 @@
           <span class="chevron">▸</span>
         </div>
         <div class="module-body">
-          <p class="lede" style="margin:2px 0 12px;">Human-entered — no auto-draft here, since nothing on this account implies what should be excluded. Reinforces content-development standards the same way the list above does, just in the negative direction.</p>
+          <p class="lede" style="margin:2px 0 12px;">Enter keywords that are not consistent with your product mission and positioning.</p>
           <div id="brandKeywordsNegativeList"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <input type="text" id="brandKeywordsNegativeInput" placeholder="Add a negative keyword..." style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandKeywordChip('negative');}">
@@ -3651,7 +3670,12 @@
     </div>
 
     <div class="field">
-      <label>Who this brand should NOT sound like (optional, one sentence)</label>
+      <div class="fld-label-row">
+        <label style="margin:0;">Who this brand should NOT sound like</label>
+        <span class="fld-optional-badge">Optional</span>
+        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipAntiExample')" aria-label="What this affects">i</button>
+      </div>
+      <div class="fld-tip" id="tipAntiExample">One sentence. A concrete wrong-tone example steers the generated Voice draft away from something specific — more useful than a vague "don't sound corporate."</div>
       <input type="text" id="voiceAntiExample" placeholder="e.g. not a budget airline's chipper, exclamation-point voice">
     </div>
 
@@ -8434,14 +8458,18 @@ const state = {
   budgetChartExpanded: null,
   budgetMixRange: 'ytd',
   toneAnchors: new Set(),
-  // Round 101 (2026-08-06), per direct instruction: brand approval state
-  // (voice/styleAssets/positioning) isn't persisted to the backend yet —
-  // it's in-memory only and resets every session. Defaulting to approved
-  // here is a testing convenience so the brand gate doesn't need to be
-  // re-cleared on every reload; flip back to false to test the gate itself
-  // (Marketing Ops's Campaign Creation & Editing tile/banner, and the
-  // campaign form's own banner — see campaignCreationBlockedByBrand()).
-  voice: { draft: '', approved: true, version: 0 },
+  // 2026-08-26 fix, per direct report (Brand Book screenshot showing "Voice
+  // Guide: Approved ✓ (v0)" on what should read as a fresh, unapproved
+  // account): this used to default to approved:true as a Round 101
+  // (2026-08-06) testing convenience, back when brand approval state
+  // "isn't persisted to the backend yet." That's no longer true — Voice,
+  // Style Assets, and Positioning all persist their approval flag for real
+  // now (see POST .../voice, .../style-assets, .../positioning) — so this
+  // stale default was silently claiming every fresh account, and any
+  // account whose real backend record has approved=false, as "Approved."
+  // Defaults to false now; loadAccountData() below sets the real value
+  // explicitly (both true AND false) instead of only ever setting true.
+  voice: { draft: '', approved: false, version: 0 },
   // Round 20 — Style Guide: Colors & Fonts (Brand Foundations). Reference
   // asset storage, not generated content — every field starts blank and is
   // either typed in manually or copied over from an uploaded document (this
@@ -8449,7 +8477,7 @@ const state = {
   styleAssets: {
     logoUrl: '', logoUsageNotes: '', logoDataUrl: '', logoFileName: '', primaryColorName: '', primaryColorHex: '', secondaryPaletteText: '',
     colorHierarchyNotes: '', headingFontName: '', headingFontNotes: '', bodyFontName: '', bodyFontNotes: '',
-    typographyHierarchyNotes: '', styleNotes: '', styleSourceFileName: '', approved: true // Round 101 — see voice.approved comment above
+    typographyHierarchyNotes: '', styleNotes: '', styleSourceFileName: '', approved: false // 2026-08-26 — see voice.approved comment above
   },
   // Round 22 — Competitive Positioning (Brand Foundations), the third and
   // final gate component. Industry Trends is a generated draft (same shape
@@ -8457,7 +8485,7 @@ const state = {
   // positioningText} each — scoped conceptually to the account's own
   // industry (state.industry), not a real company database lookup (this
   // prototype has none — see cxmedia-brand-foundations-plan.md).
-  positioning: { industryTrendsText: '', competitors: [], approved: true }, // Round 101 — see voice.approved comment above
+  positioning: { industryTrendsText: '', competitors: [], approved: false }, // 2026-08-26 — see voice.approved comment above
   // Round 132bx (2026-08-15) — Specialty Partners activation requests,
   // session-only (no backend persistence for this prototype, same
   // convention as most of this build's session-only state). Each entry:
@@ -13417,11 +13445,15 @@ async function loadAccountData(){
       // back from the account record, so "approved" survives a reload
       // instead of resetting every page load (a prerequisite for it to
       // meaningfully gate anything — see cxmedia-brand-foundations-plan.md).
-      if (record.account.voiceApproved){
-        state.voice.approved = true;
-        state.voice.draft = record.account.voiceGuideText || '';
-        state.voice.version = record.account.voiceVersion || 0;
-      }
+      // 2026-08-26 fix — this used to only ever set approved to true and
+      // leave the (then-defaulted-true) in-memory value alone otherwise, so
+      // a real unapproved account never actually read as unapproved. Now
+      // sets the real value explicitly either way, and the draft/version
+      // read back regardless of approval state (a genuine unapproved draft
+      // is still worth showing — see renderVoiceStep()'s own 2026-08-26 fix).
+      state.voice.approved = !!record.account.voiceApproved;
+      state.voice.draft = record.account.voiceGuideText || '';
+      state.voice.version = record.account.voiceVersion || 0;
       // 2026-08-22 — the multi-model Brand Voice contest's two dedicated
       // fields, read back the same way the draft above is — independent of
       // voiceApproved, since a Vision Statement/Longform Example can exist
@@ -13431,10 +13463,9 @@ async function loadAccountData(){
       state.voice.longformExample = record.account.longformVoiceExample || '';
       // Round 20, Brand Foundations (Style Guide — Colors & Fonts) — read the
       // persisted style assets back the same way Voice does above, so
-      // "approved" and every field survive a reload.
-      if (record.account.styleAssetsApproved){
-        state.styleAssets.approved = true;
-      }
+      // "approved" and every field survive a reload. 2026-08-26 fix — same
+      // explicit-either-way assignment as Voice above, see that comment.
+      state.styleAssets.approved = !!record.account.styleAssetsApproved;
       state.styleAssets.logoUrl = record.account.logoUrl || state.styleAssets.logoUrl;
       state.styleAssets.logoDataUrl = record.account.logoDataUrl || state.styleAssets.logoDataUrl;
       state.styleAssets.logoFileName = record.account.logoFileName || state.styleAssets.logoFileName;
@@ -13451,10 +13482,9 @@ async function loadAccountData(){
       state.styleAssets.styleNotes = record.account.styleNotes || state.styleAssets.styleNotes;
       state.styleAssets.styleSourceFileName = record.account.styleSourceFileName || state.styleAssets.styleSourceFileName;
       // Round 22, Brand Foundations (Competitive Positioning) — read back the
-      // same way Voice/Style Assets do above.
-      if (record.account.competitivePositioningApproved){
-        state.positioning.approved = true;
-      }
+      // same way Voice/Style Assets do above. 2026-08-26 fix — same
+      // explicit-either-way assignment, see the Voice comment above.
+      state.positioning.approved = !!record.account.competitivePositioningApproved;
       state.positioning.industryTrendsText = record.account.industryTrendsText || state.positioning.industryTrendsText;
       if (record.account.competitorsJson){
         try {
@@ -41675,6 +41705,15 @@ async function saveBrandKeywords(){
 // all, and reports the Approved banner separately based on the approval
 // flag alone.
 function renderVoiceStep(){
+  // 2026-08-26, per direct feedback ("We should automatically show chips
+  // vs. asking the user"): auto-draft Brand & Product Keywords on first
+  // entry to this page if the chip lists are still empty, instead of
+  // requiring a click just to see anything. "Refresh suggestions →" (the
+  // renamed Generate draft button) stays available to pull in anything new
+  // later — same merge-in, don't-re-add-what-was-removed behavior either way.
+  if (!state.brandKeywords.brand.length && !state.brandKeywords.product.length){
+    generateAndRenderBrandKeywords();
+  }
   renderBrandKeywordChips();
   const banner = document.getElementById('voiceApprovedBanner');
   if (state.voice.draft){
