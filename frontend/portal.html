@@ -3580,15 +3580,15 @@
     <div class="fld-tip" id="tipToneAnchors" style="margin:-4px 0 10px;">Pick up to 3 — these drive the tone rules in your generated Voice draft and the emotional Brand Keywords suggested below.</div>
     <div class="select-tile-row" id="toneAnchorRow" style="margin-bottom:18px;"></div>
 
-    <div class="field">
-      <div class="fld-label-row">
-        <label style="margin:0;">Words to avoid</label>
-        <span class="fld-optional-badge">Optional</span>
-        <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipWordsToAvoid')" aria-label="What this affects">i</button>
-      </div>
-      <div class="fld-tip" id="tipWordsToAvoid">Comma-separated words this brand never wants associated with it — excluded from the generated Voice draft and from the Brand Keyword suggestions below. Separate from Negative Keywords/Terms to Avoid below, which is its own editable list rather than a single sentence.</div>
-      <input type="text" id="voiceAvoidWords" placeholder="e.g. cheap, discount, hustle">
-    </div>
+    <!-- 2026-08-26 follow-up, per direct instruction ("Wire the terms to
+         avoid with the words to avoid functionality"): the standalone
+         "Words to avoid" field is removed — Terms to Avoid below (the
+         Negative Keywords chip list) is now the single source for
+         everything this field used to drive: the Voice draft's excluded-
+         words line, the Brand Keyword suggestion filter just below, AND
+         (new） the campaign-copy compliance/guardrail checks that used to
+         read this field's text back out of the approved Voice Guide via
+         cmpBrandVoiceAvoidWords() (new) — see that function's own comment. -->
 
     <!-- Round 32, follow-on (2026-08-05) — Brand & Product Keywords, per
          direct instruction: a first draft of keyword chips that reinforces
@@ -3649,9 +3649,16 @@
       <!-- Round 32, follow-on — a separate section for Negative Keywords,
            per direct instruction. Purely human-entered (nothing on this
            account implies what should be excluded), so there's no
-           "Generate draft" here — just a "pull in from Words to Avoid"
-           convenience action, since that field already holds human-entered
-           words this brand doesn't want associated with it. -->
+           "Generate draft" here.
+           2026-08-26 follow-up, per direct instruction ("Wire the terms to
+           avoid with the words to avoid functionality"): this list is now
+           THE source everywhere the old standalone "Words to avoid" field
+           used to feed — the Voice draft's excluded-words line, the Brand
+           Keyword suggestion filter, and the campaign-copy compliance/
+           guardrail checks (see cmpBrandVoiceAvoidWords()). The old "pull
+           in from Words to Avoid" convenience button is gone since there's
+           no longer a separate field to pull from — this list is now the
+           only place to edit it. -->
       <div class="module open accent-advocacy" id="negativeKeywordsModule" style="margin-top:14px;">
         <div class="module-head" onclick="toggleModule('negativeKeywordsModule')">
           <span class="modnum">2</span>
@@ -3662,14 +3669,15 @@
           <span class="chevron">▸</span>
         </div>
         <div class="module-body">
-          <p class="lede" style="margin:2px 0 12px;">Enter keywords that are not consistent with your product mission and positioning.</p>
+          <div class="fld-label-row" style="margin-bottom:2px;">
+            <p class="lede" style="margin:0;">Enter keywords that are not consistent with your product mission and positioning.</p>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipTermsToAvoid')" aria-label="Where this is used">i</button>
+          </div>
+          <div class="fld-tip" id="tipTermsToAvoid" style="margin-bottom:10px;">This list drives real exclusions, not just a record: it's kept out of the generated Voice draft and the Brand &amp; Product Keywords above, and it's what campaign copy is checked against for the Brand Voice guardrail/compliance flag shown in campaign briefs and the Daily Brief.</div>
           <div id="brandKeywordsNegativeList"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <input type="text" id="brandKeywordsNegativeInput" placeholder="Add a negative keyword..." style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandKeywordChip('negative');}">
             <button type="button" class="btn-ghost" style="padding:8px 14px;" onclick="addBrandKeywordChip('negative')">Add</button>
-          </div>
-          <div class="btn-row" style="margin-top:10px;">
-            <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="seedNegativeKeywordsFromAvoidWords()">Pull in from Words to Avoid →</button>
           </div>
         </div>
       </div>
@@ -13355,11 +13363,44 @@ let scoreHistory = {};
 let trackedCellKeys = [];
 let dataSourceLabel = 'mock';
 
+// 2026-08-26 fix, per direct report: "This is the 3-4th time today that
+// I've timed out selecting Access My Portal" — the honest cold-start error
+// screen further down (added the same day, see its own comment) was
+// working as designed, but was firing on the FIRST cold hit of the account
+// endpoint with no retry, pushing the manual "click Retry" burden onto
+// Todd every single time — even though the backend's own retry-with-
+// backoff (pg-sync-worker.js, cxmedia-cold-start-db-retry-2026-08-23.md)
+// and this file's 12s default authedFetch timeout were both already
+// designed around exactly this scenario. One request landing inside a
+// still-waking Supabase/Vercel cold-start window doesn't mean a second
+// request moments later will too — the documented pattern is "failed,
+// worked a minute later." This wraps the account-record fetch in one
+// automatic retry (longer timeout on the second attempt, since a fully
+// cold Vercel function + a cold Supabase pool wake can plausibly exceed
+// the ordinary 12s default) before falling through to the error screen, so
+// a routine cold start self-resolves without a manual click.
+async function fetchAccountRecord(){
+  const url = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`;
+  try {
+    const resp = await authedFetch(url, { timeoutMs: 15000 });
+    if (resp.status !== 401 && !resp.ok){
+      // Non-401 failure status (e.g. a cold-start 500) — worth one retry,
+      // same reasoning as the caught-exception branch below.
+      throw new Error(`account fetch returned ${resp.status}`);
+    }
+    return resp;
+  } catch (e){
+    console.warn('portal.html: account fetch failed on first attempt — retrying once after a short pause (likely cold-start backend).', e);
+    await new Promise(r => setTimeout(r, 3000));
+    return authedFetch(url, { timeoutMs: 20000 });
+  }
+}
+
 async function loadAccountData(){
   restoreSessionToken();
   // 1. Real backend, real account-record lookup.
   try {
-    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
+    let resp = await fetchAccountRecord();
     if (resp.status === 401){
       // Round 60 — the backend confirmed this account is real and
       // protected, just not by this browser session yet. Block here until
@@ -13375,7 +13416,7 @@ async function loadAccountData(){
       console.warn('portal.html: account fetch returned 401 — redirecting to login.html via requireLogin(). If the page is still stuck on "Loading…" after this line, the location.href navigation below did not complete.', { companyId: state.companyId });
       const loggedIn = await requireLogin();
       if (loggedIn){
-        resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
+        resp = await fetchAccountRecord();
       }
     }
     if (resp.ok){
@@ -37065,14 +37106,19 @@ function generateCampaignBriefExpanded(){
 // segments when present — regex quote-matching can't misparse a comma
 // inside quotes the way a manual alternation can — falling back to a plain
 // comma-split only when there are no quotes at all.
+// 2026-08-26 rewrite, per direct instruction ("Wire the terms to avoid with
+// the words to avoid functionality"): this used to regex-parse a "Words to
+// avoid: ..." line back out of the approved Voice draft's free-text prose —
+// the fragile quoted-list parsing above (132aq/132bi fixes) was all working
+// around the fact that the source of truth was unstructured text. The
+// standalone "Words to avoid" field is gone now; Terms to Avoid
+// (state.brandKeywords.negative, the Negative Keywords chip list on the
+// Brand Book page) is the real structured list, so this just reads it
+// directly — no parsing, no fragility, and it stays live even before the
+// Voice draft is regenerated/saved (the old version only ever reflected
+// whatever was baked into the draft text at last-save time).
 function cmpBrandVoiceAvoidWords(){
-  const draft = (state.voice && state.voice.draft) || '';
-  const m = draft.match(/Words to avoid:\s*([^\n]+)/i);
-  if (!m) return [];
-  const text = m[1].replace(/\([^)]*\)\s*\.?\s*$/, '').replace(/\.\s*$/, '').trim();
-  const quoted = [...text.matchAll(/"([^"]*)"/g)].map(mm => mm[1].trim()).filter(Boolean);
-  if (quoted.length) return quoted.map(s => s.replace(/,+$/, '').trim()).filter(Boolean);
-  return text.split(',').map(s => s.trim().replace(/^"+|"+$/g, '')).filter(Boolean);
+  return (state.brandKeywords && Array.isArray(state.brandKeywords.negative)) ? state.brandKeywords.negative.filter(Boolean) : [];
 }
 // Shared display formatting for an avoid-words (or similar) list — quotes
 // each word individually, comma-separated, e.g. "unparalleled," "world-
@@ -41465,7 +41511,11 @@ function generateVoiceDraft(){
   // page, now the very next step); this generator no longer reads a
   // samples value, so the "why" disclosure below always explains the
   // example sentences the same way rather than branching on it.
-  const avoid = document.getElementById('voiceAvoidWords').value.trim();
+  // Same date, follow-up — "avoid" now comes from Terms to Avoid
+  // (state.brandKeywords.negative) instead of the removed standalone
+  // "Words to avoid" field; see cmpBrandVoiceAvoidWords()'s own comment.
+  const avoidList = cmpBrandVoiceAvoidWords();
+  const avoid = avoidList.join(', ');
   const antiExample = document.getElementById('voiceAntiExample').value.trim();
   const tones = [...state.toneAnchors];
   const toneClause = tones.length ? tones.join(', ').toLowerCase() : 'direct and unadorned';
@@ -41505,7 +41555,7 @@ function generateVoiceDraft(){
     ? `Pulled the tone rules from your ${tones.length} selected Tone ${tones.length === 1 ? 'Anchor' : 'Anchors'} (${tones.join(', ')}) — not a generic default.`
     : `No Tone Anchors are picked yet, so this fell back to "direct and unadorned" rather than guessing a tone for you.`);
   whyParts.push(`Industry set to ${state.industry || 'not set'} — the one-line description names your account's own industry, not a generic travel/hospitality default.`);
-  if (avoid) whyParts.push(`Excluded the words you listed to avoid: ${avoid}.`);
+  if (avoid) whyParts.push(`Excluded your Terms to Avoid list: ${avoid}.`);
   if (antiExample) whyParts.push(`Steered away from: "${antiExample}" — your own anti-example, not an assumption.`);
   whyParts.push(`No sample writing is pulled into this generator — the example sentences below are templated to the tone rules above. Real samples now live on the Sample Writings & Presentations page.`);
   whyParts.push(`Confidence: high on tone-rule structure (directly computed from your picks above); lower on the two example sentences specifically, since those are illustrative, not drawn from your real content — edit them before saving if they don't sound right.`);
@@ -41605,7 +41655,10 @@ function currentOrApprovedTones(){
 
 function generateBrandProductKeywords(){
   const tones = currentOrApprovedTones();
-  const avoidWords = new Set((document.getElementById('voiceAvoidWords').value || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean));
+  // 2026-08-26 — sourced from Terms to Avoid (state.brandKeywords.negative)
+  // now instead of the removed standalone "Words to avoid" field; see
+  // cmpBrandVoiceAvoidWords()'s own comment for the full context.
+  const avoidWords = new Set(cmpBrandVoiceAvoidWords().map(w => w.toLowerCase()));
 
   const brandCandidates = [];
   tones.forEach(t => (TONE_EMOTIONAL_KEYWORDS[t] || []).forEach(w => brandCandidates.push(w)));
@@ -41676,16 +41729,10 @@ function removeBrandKeywordChip(group, i){
   renderBrandKeywordChips();
 }
 
-// A convenience action, not an auto-draft — Words to Avoid is already a
-// human-entered list of words this brand doesn't want associated with it,
-// so it's a reasonable starting point for Negative Keywords without
-// inventing anything new.
-function seedNegativeKeywordsFromAvoidWords(){
-  const words = (document.getElementById('voiceAvoidWords').value || '').split(',').map(s => s.trim()).filter(Boolean);
-  const list = state.brandKeywords.negative;
-  words.forEach(w => { if (!list.some(kw => kw.toLowerCase() === w.toLowerCase())) list.push(w); });
-  renderBrandKeywordChips();
-}
+// 2026-08-26 — removed: seedNegativeKeywordsFromAvoidWords() used to pull
+// words in from the standalone "Words to avoid" field, which is gone now
+// that Terms to Avoid (this same negative list) IS the source everywhere
+// that field used to feed. Nothing left to pull in from.
 
 async function saveBrandKeywords(){
   const flag = document.getElementById('brandKeywordsSaveFlag');
@@ -41793,7 +41840,10 @@ async function runBrandVoiceContest(){
     // simple reads.
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 35000,
-      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], antiExample: document.getElementById('voiceAntiExample').value.trim() })
+      // avoidWords now sourced from Terms to Avoid (cmpBrandVoiceAvoidWords())
+      // instead of the removed standalone field — backend param name kept
+      // as-is, it already just treats this as a display string.
+      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: cmpBrandVoiceAvoidWords().join(', '), antiExample: document.getElementById('voiceAntiExample').value.trim() })
     });
     if (!resp.ok){
       holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the contest — try again.</div>`;
