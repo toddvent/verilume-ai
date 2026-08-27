@@ -7985,6 +7985,26 @@ async function handleRequest(req, res) {
       // existing free/unassigned state).
       const paidTier = (body.tier && PAID_TIERS.some(t => t.key === body.tier)) ? body.tier : null;
       const paidTierActivatedAt = paidTier ? now : null;
+      // 2026-08-27 fix — the free assessment already runs its own website
+      // scan (assessment.html's assessmentWebsiteContext, via POST
+      // /api/assessment/website-scan) before this account ever exists, but
+      // that real scan result was being discarded at account-creation time
+      // instead of seeding accounts.websiteContextJson. That left the Voice
+      // Contest's website-aware copy generation (see
+      // brandVoiceCriticalMessagesContext()) permanently empty for every
+      // new account until someone manually re-ran a scan from the Portal.
+      // body.websiteContext is the same {title, metaDescription, headings,
+      // url, fetchedAt} shape POST /api/accounts/:id/website-scan writes —
+      // store it here too so a brand-new account arrives with its
+      // assessment-time scan already on file.
+      let websiteContextJson = null;
+      let websiteContextFetchedAt = null;
+      if (body.websiteContext && typeof body.websiteContext === 'object'){
+        try {
+          websiteContextJson = JSON.stringify(body.websiteContext);
+          websiteContextFetchedAt = body.websiteContext.fetchedAt || now;
+        } catch (e){ /* malformed websiteContext from the client — skip it, not fatal */ }
+      }
       // 2026-08-20 fix — retry with a freshly generated accountId on a
       // duplicate-key collision instead of letting the request fail. The
       // 6-digit widening above (generateAccountId()) makes this rare, but
@@ -7992,7 +8012,7 @@ async function handleRequest(req, res) {
       // this loop is the actual guarantee. Bounded at 5 attempts so a
       // genuinely broken database (not just an unlucky roll) still fails
       // loudly instead of retrying forever.
-      const insertAccount = db.prepare('INSERT INTO accounts (accountId, company, industry, footprint, audience, wealth, competitorsJson, assessedStagesJson, websiteUrl, assessmentDescription, productsServices, accessCodeHash, accessCodeSalt, paidTier, paidTierActivatedAt, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+      const insertAccount = db.prepare('INSERT INTO accounts (accountId, company, industry, footprint, audience, wealth, competitorsJson, assessedStagesJson, websiteUrl, assessmentDescription, productsServices, accessCodeHash, accessCodeSalt, paidTier, paidTierActivatedAt, websiteContextJson, websiteContextFetchedAt, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
       const MAX_ACCOUNT_ID_ATTEMPTS = 5;
       for (let attempt = 1; ; attempt++){
         accountId = generateAccountId(body.footprint);
@@ -8009,6 +8029,8 @@ async function handleRequest(req, res) {
             accessCodeSalt,
             paidTier,
             paidTierActivatedAt,
+            websiteContextJson,
+            websiteContextFetchedAt,
             now);
           break; // inserted successfully
         } catch (e){
