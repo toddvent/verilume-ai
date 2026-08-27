@@ -5476,15 +5476,48 @@ function generateTempPassword(){
 // valid and unexpired, otherwise null. Expired sessions are deleted lazily
 // here rather than needing a separate cleanup job — there's no cron in
 // this vanilla-Node backend to run one anyway.
+// 2026-08-27 fix, per direct report (login crashed again, alongside GET
+// /api/accounts/:id 500ing repeatedly in the same burst, both with zero
+// function logs — INTERNAL_FUNCTION_INVOCATION_FAILED) — this is very
+// likely the REAL, systemic root cause behind the whole crash pattern, not
+// just a login-specific bug. authenticate() runs on EVERY authenticated
+// request in this app — every requireAccount()/requireAdminMember() call
+// site, which is nearly the entire route table — and until now had no
+// try/catch, going through the synchronous Atomics.wait()-based
+// pg-sync-bridge exactly like every other unconverted route. A single
+// cold/suspended-Supabase hiccup here didn't just fail one request — it
+// crashed the WHOLE function invocation with no catchable error and no log
+// line, taking down every OTHER concurrent authenticated request sharing
+// that same invocation with it. That's exactly the pattern in the logs:
+// several different endpoints 500ing together in one tight burst,
+// immediately followed by login-user itself crashing the same way — not a
+// coincidence, the same shared-process crash surfacing on whichever
+// requests happened to be in flight.
+// Treating a DB error here as "not authenticated" isn't perfectly
+// accurate (a real outage will look like a logged-out session rather than
+// a clear "try again" message), but it is categorically safer than
+// crashing the shared process and silently taking every other in-flight
+// request down with it — same real-results discipline as the original
+// login-route fix: never let a DB failure escape uncaught.
 function authenticate(req){
   const header = req.headers['authorization'] || '';
   const match = header.match(/^Bearer\s+(.+)$/);
   if (!match) return null;
   const token = match[1].trim();
-  const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
+  let session;
+  try {
+    session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
+  } catch (e){
+    console.error('[authenticate] session lookup failed:', e.message);
+    return null;
+  }
   if (!session) return null;
   if (new Date(session.expiresAt).getTime() < Date.now()){
-    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    try {
+      db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    } catch (e){
+      console.error('[authenticate] expired-session cleanup failed:', e.message);
+    }
     return null;
   }
   return session;
@@ -7604,11 +7637,20 @@ function countInterviewRunsThisWeek(accountId){
 // over it — callers check `if (capCheck) return sendJson(res, 429, capCheck);`
 // BEFORE calling runCandidateInterview()/runBrandVoiceContest(), so a
 // blocked request never spends a single real AI call.
+// 2026-08-27 fix, per direct report ("I only ran this 3 times. How did we
+// max out?") — the message below used to say "Weekly interview-panel limit
+// reached" with no explanation that this ONE cap is shared across all FOUR
+// interview-style panels (Creative Job draft interviews, Campaign Copy
+// interviews, PR Copy interviews, and the Voice Contest — see
+// countInterviewRunsThisWeek() above), so a client running only the Voice
+// Contest a few times had no way to know the other 17 counted runs came
+// from elsewhere in the account. Same cap and same count, just spelled out
+// now so this doesn't read as a bug next time.
 function checkInterviewWeeklyCap(accountId){
   const used = countInterviewRunsThisWeek(accountId);
   if (used < INTERVIEW_WEEKLY_CAP) return null;
   return {
-    error: `Weekly interview-panel limit reached (${used}/${INTERVIEW_WEEKLY_CAP} runs in the last 7 days). This is a safety cap on AI usage, not a quality limit — it resets on a rolling 7-day window. Contact your account team if you need this raised.`,
+    error: `Weekly interview-panel limit reached (${used}/${INTERVIEW_WEEKLY_CAP} runs in the last 7 days). This cap is shared across every multi-model AI panel on this account — Creative Job draft interviews, Campaign Copy interviews, PR Copy interviews, and the Voice Contest all count toward the same total, not just whichever one you're running now. It's a safety cap on AI usage, not a quality limit, and it resets on a rolling 7-day window. Contact your account team if you need this raised.`,
     used, limit: INTERVIEW_WEEKLY_CAP
   };
 }
@@ -8910,10 +8952,33 @@ async function handleRequest(req, res) {
     }
 
     // GET /api/accounts/:id — real account-record lookup
+    // 2026-08-27 fix, per direct report (this route showing repeated 500s
+    // with zero function logs — INTERNAL_FUNCTION_INVOCATION_FAILED —
+    // clustered right alongside a login-user crash) — this handler had NO
+    // try/catch at all, unlike the 3 auth routes fixed earlier this month.
+    // getAccountRecord() still goes through the synchronous
+    // Atomics.wait()-based pg-sync-bridge (it wasn't one of the 3 routes
+    // moved to the async getAuthPgPool() path), and it's a heavier compound
+    // of many sync queries in one request than any single auth route — so
+    // it's the most likely single call site to hit the bridge's 20s
+    // WAIT_TIMEOUT_MS on a cold/suspended Supabase connection. An uncaught
+    // throw there crashes the whole function invocation with no catchable
+    // error and no log line, exactly this symptom. This is this portal's
+    // single most-hit endpoint (loads on every account page view), so
+    // wrapping it is the highest-leverage next step short of migrating it
+    // to the async pool outright — same real-results discipline as the
+    // auth-route fix: never let a DB failure here take down the whole
+    // function, always return a clean, logged JSON error instead.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'accounts'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const record = getAccountRecord(accountId);
+      let record;
+      try {
+        record = getAccountRecord(accountId);
+      } catch (e){
+        console.error('[GET /api/accounts/:id] getAccountRecord failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not load this account right now — try again in a moment.' });
+      }
       if (!record) return sendJson(res, 404, { error: 'account not found' });
       return sendJson(res, 200, record);
     }
@@ -14219,3 +14284,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
