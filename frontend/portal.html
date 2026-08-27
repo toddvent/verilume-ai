@@ -3900,6 +3900,7 @@
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
         </div>
+        <div class="hint" id="voiceContestUsageFlag" style="margin-top:8px;"></div>
         <div id="voiceContestPanel" style="margin-top:14px;"></div>
       </div>
     </div>
@@ -41827,6 +41828,28 @@ function renderVoiceContestStep(){
   const flag = document.getElementById('voiceVisionLongformSaveFlag');
   if (flag) flag.textContent = '';
   renderVoiceContestInputsPanel();
+  loadInterviewUsage();
+}
+
+// 2026-08-27, Phase 1 of the scoring/legitimacy build (per direct
+// instruction) — shows current position against the shared weekly AI-run
+// cap (INTERVIEW_WEEKLY_CAP on the backend, spanning Creative Job, Campaign
+// Copy, PR Copy, and this Voice Contest) BEFORE a client clicks Run, so the
+// "am I about to lock myself out of other panels" question is answered up
+// front instead of surfacing as a surprise 429 later. Read-only lookup,
+// cheap, no AI call involved.
+async function loadInterviewUsage(){
+  const el = document.getElementById('voiceContestUsageFlag');
+  if (!el || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/interview-usage`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const pct = data.limit ? Math.min(100, Math.round((data.used / data.limit) * 100)) : 0;
+    const near = pct >= 80;
+    el.innerHTML = `${data.used} of ${data.limit} weekly AI runs used across all panels (Creative Job, Campaign Copy, PR Copy, and this Voice Contest all share the same total)${near ? ' — getting close to the limit.' : '.'}`;
+    el.style.color = near ? 'var(--advocacy)' : '';
+  } catch (e){ /* usage display is a nice-to-have — a failed read shouldn't block the rest of the page */ }
 }
 
 // 2026-08-27, per direct instruction — "show in a clever way what the
@@ -42005,6 +42028,10 @@ async function runBrandVoiceContest(){
     const timedOut = e && e.name === 'AbortError';
     holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">${timedOut ? 'The contest is taking longer than expected (it runs several AI models) and timed out — try again; if it keeps happening, the backend itself may be slow.' : 'Backend unreachable — couldn\'t run the contest.'}</div>`;
   }
+  // 2026-08-27 — refresh the usage counter after every run attempt
+  // (success, cap-blocked, or error all change or reveal the real count),
+  // so it never shows a stale number from before this click.
+  loadInterviewUsage();
 }
 // 2026-08-27 rework, per direct instruction — four changes to the contest
 // panel: (1) candidates are already fully blind by the time they reach here
@@ -42050,6 +42077,11 @@ function renderBrandVoiceContestPanel(result){
         <button type="button" class="btn-ghost" id="toggle-${safeId}" style="font-size:0.75rem;padding:4px 10px;" onclick="toggleContestCopy('${safeId}')">View Contest Copy ▾</button>
         <div id="copy-${safeId}" style="display:none;font-size:0.8125rem;margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
         ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:8px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+        <div class="hint" style="margin-top:12px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Your rating</div>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="Rate this option ${n} of 5">${n}</button>`).join('')}
+        </div>
+        <button type="button" class="btn-ghost" style="margin-top:8px;font-size:0.75rem;padding:5px 10px;width:100%;${c.nailedIt ? 'background:#ffd54f;border-color:#ffd54f;color:#1a1a1a;font-weight:700;' : ''}" onclick="toggleNailedItCandidate('${result.interviewId}', '${c.key}')">${c.nailedIt ? 'Nailed It! — This is my AI Agent (selected)' : 'Nailed It! — This is my AI Agent'}</button>
       </div>
       <div class="btn-row" style="margin-top:auto;padding-top:14px;gap:8px;flex-wrap:wrap;justify-content:center;">
         <button type="button" class="btn-ghost" onclick="applyBrandVoiceCandidateForEdit('${result.interviewId}', '${c.key}')">Select Winner and Edit</button>
@@ -42070,6 +42102,37 @@ function toggleContestCopy(safeId){
   const showing = el.style.display !== 'none';
   el.style.display = showing ? 'none' : 'block';
   if (btn) btn.textContent = showing ? 'View Contest Copy ▾' : 'Hide Contest Copy ▴';
+}
+// 2026-08-27, Phase 1 of the scoring/legitimacy build (per direct
+// instruction) — a 1-5 rating and an exclusive "Nailed It!" golden buzzer
+// per candidate, independent of selecting a winner (applyBrandVoiceCandidate/
+// applyBrandVoiceCandidateForEdit above are unaffected by either of these).
+// This is the first thing this build persists about WHY a draft did or
+// didn't land — the foundation for any future proprietary scoring on top of
+// the raw vendor output. Both handlers full-re-render the panel afterward
+// since the golden buzzer is exclusive across the WHOLE contest run, not
+// just the one card clicked — a click on one card can change what another
+// card shows.
+async function rateBrandVoiceCandidate(interviewId, candidateKey, rating){
+  await sendBrandVoiceRating(interviewId, { candidateKey, rating });
+}
+async function toggleNailedItCandidate(interviewId, candidateKey){
+  const current = lastVoiceContestCache && (lastVoiceContestCache.candidates || []).find(c => c.key === candidateKey);
+  await sendBrandVoiceRating(interviewId, { candidateKey, nailedIt: !(current && current.nailedIt) });
+}
+async function sendBrandVoiceRating(interviewId, body){
+  const holder = document.getElementById('voiceContestPanel');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/rate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (!resp.ok) return;
+    const result = await resp.json();
+    if (lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId){
+      lastVoiceContestCache.candidates = result.candidates;
+      if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
+    }
+  } catch (e){ /* rating is a nice-to-have — a failed save here shouldn't block the rest of the panel */ }
 }
 // "Select Winner for AI Assistance" — records this candidate as the contest
 // winner and immediately applies it to Vision Statement / Longform Example
