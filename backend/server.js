@@ -1785,10 +1785,30 @@ function brandVoiceCriticalMessagesContext(account, extra){
   } catch (e){ /* malformed/legacy JSON — fall through without it */ }
   if (Array.isArray(brandKeywords) && brandKeywords.length) lines.push(`Approved Brand Keywords (emotional/voice signal): ${brandKeywords.join(', ')}`);
   if (Array.isArray(productKeywords) && productKeywords.length) lines.push(`Approved Product Keywords (what this brand sells): ${productKeywords.join(', ')}`);
+  // 2026-08-27 fix, per direct report — the account's own scanned website
+  // (accounts.websiteContextJson, populated by POST /api/accounts/:id/
+  // website-scan, run from Company Profile) used to sit completely unused
+  // by this contest even when a scan existed on file. Included here for
+  // BRAND UNDERSTANDING ONLY — same "understand the brand, never copy
+  // verbatim" discipline as cmpBrandUnderstandingSummary() in portal.html
+  // (round 132bh direct correction: "We shouldn't be using anything from
+  // the website specifically beyond understanding the brand better.") —
+  // title/meta description/headings as reference facts, with the model
+  // explicitly told below not to quote them directly into the drafted copy.
+  // This is deliberately separate from the Website Examples feature
+  // (specific include/exclude page rules, brand-copy-website-examples
+  // table) — that's a deeper per-page layer, not wired into this contest.
+  try {
+    if (account.websiteContextJson){
+      const ctx = JSON.parse(account.websiteContextJson);
+      const siteFacts = [ctx.title, ctx.metaDescription, ...(Array.isArray(ctx.headings) ? ctx.headings : [])].filter(Boolean).slice(0, 12).join(' | ').slice(0, 600);
+      if (siteFacts) lines.push(`This brand's own website (${ctx.url || account.websiteUrl || 'on file'}) — for UNDERSTANDING the brand only, never to be quoted verbatim in the drafted copy: ${siteFacts}`);
+    }
+  } catch (e){ /* malformed/legacy websiteContextJson — fall through without it */ }
   if (extra && Array.isArray(extra.toneAnchors) && extra.toneAnchors.length) lines.push(`Tone Anchors picked for this account: ${extra.toneAnchors.join(', ')}`);
   if (extra && extra.avoidWords) lines.push(`Words to avoid: ${extra.avoidWords}`);
   if (extra && extra.antiExample) lines.push(`What this voice is NOT: ${extra.antiExample}`);
-  return lines.length ? lines.join('\n') : '(No Products & Services, approved Brand/Product Keywords, or Tone Anchors on file yet for this account — draft from the account\'s Industry alone.)';
+  return lines.length ? lines.join('\n') : '(No Products & Services, approved Brand/Product Keywords, scanned website, or Tone Anchors on file yet for this account — draft from the account\'s Industry alone.)';
 }
 async function generateBrandVoiceCandidate(angle, account, extra){
   try {
@@ -1901,6 +1921,21 @@ async function runBrandVoiceContest(account, extra){
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
+  // 2026-08-27 fix, per direct report ("we presented Option 1, Option 5,
+  // Option 4, Option 3, Option 2 — is there a reason we're not using
+  // 1,2,3,4,5?") — the shuffle above only randomized WHICH candidate got
+  // which number; it never reordered the array those numbers get returned
+  // in, so the client rendered candidates in registry order (Anthropic,
+  // then OpenAI/Google/xAI/Perplexity) with scrambled-looking labels on
+  // top. Sorting the returned array by its own blindLabel here makes the
+  // cards always render left-to-right as Option 1, 2, 3, 4, 5 — the
+  // vendor-to-number assignment is still randomized fresh every run, only
+  // the DISPLAY order is now sequential.
+  allCandidates.sort((a, b) => {
+    const na = parseInt(String(a.blindLabel).replace(/\D/g, ''), 10) || 0;
+    const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
+    return na - nb;
+  });
   return { available: true, note: null, recommendedKey, candidates: allCandidates };
 }
 // Same allowlist discipline as redactCandidatesForClient() above — strips
@@ -1916,7 +1951,16 @@ function redactBrandVoiceCandidatesForClient(candidates){
   return (candidates || []).map(c => ({
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
     visionStatement: c.visionStatement, longformExample: c.longformExample,
-    error: c.error && !c.configured ? 'This contestant is not available for this contest.' : c.error,
+    // 2026-08-27 fix — vendorHttpError() (in callVendorForText, above) now
+    // folds the vendor's actual API error BODY into c.error for real
+    // debugging value in the staff-only ops view — but several vendors'
+    // error bodies name their own model/product directly (e.g. Google's 404
+    // body literally says "models/gemini-2.5-flash is not found..."), which
+    // would blow the blind test wide open if sent to the client as-is. Every
+    // error shown to the client is now a single generic message regardless
+    // of vendor or failure reason — the real detail stays server-side,
+    // visible only via GET /api/ops/accounts/:id/voice-contests.
+    error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
     complianceScore: c.complianceScore, flags: c.flags
   }));
 }
@@ -7348,13 +7392,26 @@ const INTERVIEW_VENDOR_REGISTRY = [
 async function callVendorForText(vendorKey, prompt){
   const v = INTERVIEW_VENDOR_REGISTRY.find(x => x.key === vendorKey);
   if (!v) throw new Error('unknown vendor');
+  // 2026-08-27 fix, per direct report (Gemini candidate showing "Generation
+  // failed: HTTP 404" with no further detail) — every vendor branch below
+  // used to throw just the bare status code, discarding whatever the
+  // vendor's own error body said (e.g. Google's "model not found" body would
+  // name the exact bad model string). vendorHttpError() below reads that
+  // body (truncated, since some vendors return large HTML error pages) and
+  // folds it into the thrown message so the candidate card actually shows
+  // the real cause instead of a bare code the next round has to guess at.
+  async function vendorHttpError(resp){
+    let bodyText = '';
+    try { bodyText = (await resp.text()).slice(0, 300); } catch (e){ /* body unreadable — status code alone is still useful */ }
+    return new Error(bodyText ? `HTTP ${resp.status}: ${bodyText}` : `HTTP ${resp.status}`);
+  }
   if (vendorKey === 'openai-gpt'){
     const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
       body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }] })
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     return (data.choices && data.choices[0] && data.choices[0].message) ? (data.choices[0].message.content || '') : '';
   }
@@ -7363,12 +7420,18 @@ async function callVendorForText(vendorKey, prompt){
     // query param — this is a server-to-server call, the key never reaches
     // a browser, so this isn't the "never put sensitive data in a URL"
     // concern that applies to client-facing URLs elsewhere in this file.
+    // A 404 here almost always means the MODEL name in the URL path isn't
+    // recognized by the Generative Language API (a deprecated/renamed/
+    // mistyped model, not an auth problem — a bad key is a 400/401/403).
+    // GEMINI_MODEL is env-overridable specifically so this can be corrected
+    // without a code change once vendorHttpError()'s response body below
+    // names the actual bad model string.
     const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(v.model)}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
     return Array.isArray(parts) ? parts.map(p => p.text || '').join('') : '';
@@ -7383,7 +7446,7 @@ async function callVendorForText(vendorKey, prompt){
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.XAI_API_KEY}` },
       body: JSON.stringify({ model: v.model, input: prompt })
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     if (typeof data.output_text === 'string') return data.output_text;
     if (Array.isArray(data.output)) return data.output.map(o => (o.content || []).map(c => c.text || '').join('')).join('');
@@ -7395,7 +7458,7 @@ async function callVendorForText(vendorKey, prompt){
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
       body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }] })
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     return (data.choices && data.choices[0] && data.choices[0].message) ? (data.choices[0].message.content || '') : '';
   }
@@ -14156,4 +14219,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
