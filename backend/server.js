@@ -1978,7 +1978,14 @@ function redactBrandVoiceCandidatesForClient(candidates){
     // of vendor or failure reason — the real detail stays server-side,
     // visible only via GET /api/ops/accounts/:id/voice-contests.
     error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
-    complianceScore: c.complianceScore, flags: c.flags
+    complianceScore: c.complianceScore, flags: c.flags,
+    // 2026-08-27, Phase 1 of the scoring roadmap (per direct instruction) —
+    // a 1-5 human rating and an exclusive "Nailed It!" golden buzzer per
+    // candidate, set via POST .../voice-contest/:interviewId/rate below.
+    // Neither field identifies the vendor, so both are safe to send to the
+    // client unlike label/vendor/model.
+    rating: (typeof c.rating === 'number') ? c.rating : null,
+    nailedIt: !!c.nailedIt
   }));
 }
 
@@ -7420,7 +7427,14 @@ const INTERVIEW_SUBAGENT_ANGLES = [
 // not a crash.
 const INTERVIEW_VENDOR_REGISTRY = [
   { key: 'openai-gpt', label: 'GPT (OpenAI)', vendor: 'OpenAI', envVar: 'OPENAI_API_KEY', model: process.env.OPENAI_MODEL || 'gpt-4o' },
-  { key: 'google-gemini', label: 'Gemini (Google)', vendor: 'Google', envVar: 'GEMINI_API_KEY', model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' },
+  // 2026-08-27 fix — gemini-2.5-flash was retired by Google ("no longer
+  // available to new users"), confirmed via the actual 404 response body
+  // pulled from GET /api/ops/accounts/:id/voice-contests (the response
+  // literally names the replacement: "Please update your code to use
+  // models/gemini-3.6-flash"). Trusting Google's own named replacement over
+  // a guess, same as xai-grok's model string below was trusted from Todd's
+  // supplied curl example.
+  { key: 'google-gemini', label: 'Gemini (Google)', vendor: 'Google', envVar: 'GEMINI_API_KEY', model: process.env.GEMINI_MODEL || 'gemini-3.6-flash' },
   // Model name per Todd's own supplied curl example (the x.ai Responses
   // API) — 'grok-4.6' is what he showed actually working against his key,
   // trusted over a guess.
@@ -9348,6 +9362,71 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?')
         .run(chosen.visionStatement, chosen.longformExample, accountId);
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, visionStatement: chosen.visionStatement, longformVoiceExample: chosen.longformExample });
+    }
+
+    // POST /api/accounts/:id/voice-contest/:interviewId/rate — 2026-08-27,
+    // Phase 1 of the scoring/legitimacy build discussed with Todd: lets a
+    // team member score an individual candidate 1-5 and/or hit the
+    // "Nailed It!" golden buzzer, independently of selecting it as the
+    // winner (you can rate all 5 before deciding which one to apply via the
+    // existing /select endpoint above — rating never applies anything to
+    // the account). This is the first place this build persists WHY a draft
+    // did or didn't land, tied to the account's real brand context — the
+    // foundation the "Verilume Result" proprietary-scoring roadmap item
+    // depends on; nothing downstream can be built without this data
+    // existing first. The golden buzzer is deliberately EXCLUSIVE per
+    // contest run (setting it on one candidate clears every other
+    // candidate's in the same interview) — it's meant to mean "this is the
+    // one," not a second like button.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'rate'){
+      const accountId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+      if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey){
+        return sendJson(res, 400, { error: 'candidateKey is required' });
+      }
+      let rating = null;
+      if (body.rating !== null && body.rating !== undefined){
+        rating = parseInt(body.rating, 10);
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5){
+          return sendJson(res, 400, { error: 'rating must be an integer 1-5, or null to clear it' });
+        }
+      }
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const target = candidates.find(c => c.key === body.candidateKey);
+      if (!target) return sendJson(res, 400, { error: 'candidateKey does not match a candidate on this contest' });
+      const now = new Date().toISOString();
+      const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      if (body.rating !== undefined) target.rating = rating;
+      if (body.nailedIt !== undefined){
+        const nailedIt = body.nailedIt === true;
+        if (nailedIt) candidates.forEach(c => { if (c.key !== target.key) c.nailedIt = false; }); // exclusive per run
+        target.nailedIt = nailedIt;
+      }
+      target.ratedBy = ratedBy;
+      target.ratedAt = now;
+      db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?')
+        .run(JSON.stringify(candidates), interviewId);
+      return sendJson(res, 200, { interviewId, candidates: redactBrandVoiceCandidatesForClient(candidates) });
+    }
+
+    // GET /api/accounts/:id/interview-usage — 2026-08-27, Phase 1 build.
+    // Cheap, read-only lookup of this account's current position against
+    // INTERVIEW_WEEKLY_CAP (see checkInterviewWeeklyCap above) so the
+    // frontend can show usage ("X of Y weekly AI runs used") BEFORE a
+    // client clicks Run and gets surprised by a 429 — addresses the "am I
+    // about to block myself out of other panels" anxiety Todd flagged when
+    // discussing repeat-run behavior on the Voice Contest specifically.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'interview-usage'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const used = countInterviewRunsThisWeek(accountId);
+      return sendJson(res, 200, { used, limit: INTERVIEW_WEEKLY_CAP });
     }
 
     // GET /api/accounts/:id/voice-contest — history of past contests for
@@ -14349,3 +14428,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
