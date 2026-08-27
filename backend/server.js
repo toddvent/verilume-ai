@@ -207,6 +207,43 @@ function getAuthPgPool(){
   return authPgPool;
 }
 
+// 2026-08-27 — async-pg equivalents of checkTrustedDevice() and
+// insertLoginMfaVerification() (see their sync originals further down),
+// used by login-user and request-login-mfa below via the same
+// useAsyncPg/getAuthPgPool() pattern as verify-login-code, for the same
+// reason: these routes are hit on every single login, including right
+// after a cold start, which is exactly when the synchronous
+// Atomics.wait bridge was crashing the process outright.
+async function checkTrustedDeviceViaPg(pool, memberId, token){
+  if (!token) return false;
+  const r = await pool.query('SELECT * FROM trusted_devices WHERE token = $1 AND "memberId" = $2', [token, memberId]);
+  const row = r.rows[0];
+  if (!row) return false;
+  if (new Date(row.expiresAt).getTime() < Date.now()){
+    await pool.query('DELETE FROM trusted_devices WHERE token = $1', [token]);
+    return false;
+  }
+  await pool.query('UPDATE trusted_devices SET "lastUsedAt" = $1 WHERE token = $2', [new Date().toISOString(), token]);
+  return true;
+}
+async function insertLoginMfaVerificationViaPg(pool, member, channel, target, sendResult){
+  const verificationId = generateId('VERIFY');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 min
+  let codeHash = null, codeSalt = null;
+  if (sendResult.provider === 'interim' || channel === 'email'){
+    const hashed = hashAccessCode(sendResult.code);
+    codeHash = hashed.hash; codeSalt = hashed.salt;
+  }
+  await pool.query(
+    `INSERT INTO phone_verifications
+      (id, "memberId", phone, purpose, "codeHash", "codeSalt", provider, channel, "createdAt", "expiresAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [verificationId, member.id, target, 'login-mfa', codeHash, codeSalt, sendResult.provider, channel, now.toISOString(), expiresAt]
+  );
+  return verificationId;
+}
+
 // 2026-08-27 fix — same shape of bug as ensureColumn() (see the long
 // comment above ensureColumnBulkPrecheck): 53 `db.exec("CREATE TABLE IF
 // NOT EXISTS ...")` calls run unconditionally at every module load/cold
@@ -8061,6 +8098,15 @@ async function handleRequest(req, res) {
       if (!body.email || !body.password){
         return sendJson(res, 400, { error: 'email and password are required' });
       }
+
+      // 2026-08-27 fix — same reasoning as verify-login-code just below:
+      // every db call in this route now goes through a real async Postgres
+      // connection instead of the synchronous Atomics.wait bridge, because
+      // this route is hit on every login attempt, cold start included —
+      // exactly the condition that was intermittently crashing the process
+      // with no catchable error and no logs.
+      const useAsyncPg = !!process.env.DATABASE_URL;
+
       // 2026-08-21 fix — team_members has no UNIQUE constraint on email, and
       // this lookup previously had no ORDER BY. If duplicate rows exist for
       // the same email (legacy/test data), an unordered SELECT can
@@ -8071,15 +8117,59 @@ async function handleRequest(req, res) {
       // successful-looking reset. ORDER BY createdAt DESC LIMIT 1 makes both
       // lookups deterministically agree on "the most recently created
       // matching row," regardless of any pre-existing duplicates.
-      const member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
+      let member;
+      try {
+        if (useAsyncPg){
+          const r = await getAuthPgPool().query(
+            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin" FROM team_members WHERE lower(email) = lower($1) ORDER BY "createdAt" DESC LIMIT 1',
+            [body.email]
+          );
+          member = r.rows[0];
+        } else {
+          member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
+        }
+      } catch (e){
+        console.error('login-user: member lookup failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not sign in right now — try again shortly.' });
+      }
+
       if (!member || !member.passwordHash || !verifyAccessCode(body.password, member.passwordHash, member.passwordSalt)){
         return sendJson(res, 401, { error: 'incorrect email or password' });
       }
       if (member.status === 'inactive'){
         return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
       }
-      if (checkTrustedDevice(member.id, body.deviceToken)){
-        const session = createSession(member.accountId, member.id);
+
+      let deviceTrusted = false;
+      try {
+        deviceTrusted = useAsyncPg
+          ? await checkTrustedDeviceViaPg(getAuthPgPool(), member.id, body.deviceToken)
+          : checkTrustedDevice(member.id, body.deviceToken);
+      } catch (e){
+        // A failed trust check just means "don't skip MFA" — never block
+        // the whole login over it.
+        console.error('login-user: trusted device check failed (treating as not trusted):', e.message);
+      }
+
+      if (deviceTrusted){
+        let session;
+        try {
+          if (useAsyncPg){
+            const token = crypto.randomBytes(32).toString('hex');
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
+            await getAuthPgPool().query(
+              'INSERT INTO sessions (token, "accountId", "memberId", "createdAt", "expiresAt") VALUES ($1,$2,$3,$4,$5)',
+              [token, member.accountId, member.id || null, now.toISOString(), expiresAt]
+            );
+            session = { token, expiresAt };
+          } else {
+            session = createSession(member.accountId, member.id);
+          }
+        } catch (e){
+          console.error('login-user: session creation failed:', e.message);
+          return sendJson(res, 502, { error: 'Could not sign in right now — try again shortly.' });
+        }
         return sendJson(res, 200, {
           token: session.token,
           expiresAt: session.expiresAt,
@@ -8090,6 +8180,7 @@ async function handleRequest(req, res) {
           mustChangePassword: !!member.mustChangePassword
         });
       }
+
       let sendResult;
       const channel = member.phone ? 'sms' : 'email';
       const target = member.phone || member.email;
@@ -8099,7 +8190,17 @@ async function handleRequest(req, res) {
         console.warn('login-user: sendLoginMfaCode failed', e.message);
         return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
       }
-      const verificationId = insertLoginMfaVerification(member, channel, target, sendResult);
+
+      let verificationId;
+      try {
+        verificationId = useAsyncPg
+          ? await insertLoginMfaVerificationViaPg(getAuthPgPool(), member, channel, target, sendResult)
+          : insertLoginMfaVerification(member, channel, target, sendResult);
+      } catch (e){
+        console.error('login-user: could not record verification code:', e.message);
+        return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+      }
+
       const response = {
         mfaRequired: true,
         verificationId,
@@ -8126,7 +8227,25 @@ async function handleRequest(req, res) {
       if (!body.memberId || (body.channel !== 'sms' && body.channel !== 'email')){
         return sendJson(res, 400, { error: 'memberId and channel ("sms" or "email") are required' });
       }
-      const member = db.prepare('SELECT id, phone, email, status FROM team_members WHERE id = ?').get(body.memberId);
+
+      // 2026-08-27 fix — same real-async-Postgres treatment as login-user
+      // and verify-login-code above, for the same reason: this route can
+      // be hit right after a cold start (someone tapping "Resend code").
+      const useAsyncPg = !!process.env.DATABASE_URL;
+
+      let member;
+      try {
+        if (useAsyncPg){
+          const r = await getAuthPgPool().query('SELECT id, phone, email, status FROM team_members WHERE id = $1', [body.memberId]);
+          member = r.rows[0];
+        } else {
+          member = db.prepare('SELECT id, phone, email, status FROM team_members WHERE id = ?').get(body.memberId);
+        }
+      } catch (e){
+        console.error('request-login-mfa: member lookup failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+      }
+
       if (!member) return sendJson(res, 404, { error: 'user not found' });
       if (member.status === 'inactive'){
         return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
@@ -8137,10 +8256,24 @@ async function handleRequest(req, res) {
       }
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
-      const recentCount = db.prepare(
-        `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = ? AND purpose = 'login-mfa' AND createdAt > ?`
-      ).get(target, oneHourAgo);
-      if (recentCount && recentCount.c >= 5){
+      let recentCount;
+      try {
+        if (useAsyncPg){
+          const r = await getAuthPgPool().query(
+            `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = $1 AND purpose = 'login-mfa' AND "createdAt" > $2`,
+            [target, oneHourAgo]
+          );
+          recentCount = r.rows[0];
+        } else {
+          recentCount = db.prepare(
+            `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = ? AND purpose = 'login-mfa' AND createdAt > ?`
+          ).get(target, oneHourAgo);
+        }
+      } catch (e){
+        console.error('request-login-mfa: rate-limit check failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+      }
+      if (recentCount && Number(recentCount.c) >= 5){
         return sendJson(res, 429, { error: 'too many verification requests for this ' + (body.channel === 'sms' ? 'phone number' : 'email address') + ' — try again in an hour' });
       }
       let sendResult;
@@ -8154,7 +8287,15 @@ async function handleRequest(req, res) {
             : 'Could not send an email verification code right now — try again shortly.'
         });
       }
-      const verificationId = insertLoginMfaVerification(member, body.channel, target, sendResult);
+      let verificationId;
+      try {
+        verificationId = useAsyncPg
+          ? await insertLoginMfaVerificationViaPg(getAuthPgPool(), member, body.channel, target, sendResult)
+          : insertLoginMfaVerification(member, body.channel, target, sendResult);
+      } catch (e){
+        console.error('request-login-mfa: could not record verification code:', e.message);
+        return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+      }
       const response = {
         ok: true,
         verificationId,
@@ -13991,3 +14132,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
