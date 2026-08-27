@@ -1871,6 +1871,39 @@ Respond with ONLY a JSON object with two fields:
 // other configured candidate — a tie means no honest winner to declare, so
 // recommendedKey stays null and a human decides, same as the copy panel's
 // null-degradation path when scoring can't distinguish candidates.
+// 2026-08-27, Phase 1 follow-up — per direct feedback that rating a
+// candidate 1-5 or hitting "Nailed It!" visibly did NOTHING (the winner
+// border was set once at generation time from complianceScore alone, and
+// never recalculated after a /rate call), this is the single source of
+// truth for which candidate is currently recommended, called fresh every
+// time candidates are returned to the client — the initial contest
+// response, every /rate response, and contest history. Three tiers, each
+// requiring an UNAMBIGUOUS single leader before falling through to the
+// next (a tie decides nothing rather than guessing):
+//   1. Nailed It! — a human declared this one outright. Always wins.
+//   2. Highest 1-5 rating — human judgment, once any rating exists.
+//   3. Compliance score — the original automated signal (fewest Voice
+//      Guide avoid-word flags), used only when no human input exists yet.
+// Returns { key, reason } — reason lets the client explain WHY a card is
+// highlighted instead of just showing an unexplained border.
+function pickRecommendedCandidate(candidates){
+  const list = (candidates || []).filter(c => c.visionStatement && c.longformExample);
+  if (!list.length) return { key: null, reason: null };
+  const nailed = list.filter(c => c.nailedIt);
+  if (nailed.length === 1) return { key: nailed[0].key, reason: 'nailed-it' };
+  const rated = list.filter(c => typeof c.rating === 'number');
+  if (rated.length){
+    const sorted = [...rated].sort((a, b) => b.rating - a.rating);
+    const top = sorted[0];
+    const tiedWithTop = sorted.filter(c => c.rating === top.rating);
+    if (tiedWithTop.length === 1) return { key: top.key, reason: 'rating' };
+  }
+  const sorted = [...list].sort((a, b) => (b.complianceScore || 0) - (a.complianceScore || 0));
+  const top = sorted[0];
+  const tiedWithTop = sorted.filter(c => c.complianceScore === top.complianceScore);
+  if (tiedWithTop.length === 1) return { key: top.key, reason: 'compliance' };
+  return { key: null, reason: null };
+}
 async function runBrandVoiceContest(account, extra){
   if (!process.env.ANTHROPIC_API_KEY){
     return {
@@ -1914,14 +1947,6 @@ async function runBrandVoiceContest(account, extra){
     complianceScore: null, flags: []
   }));
   const allLive = [anthropicCandidate, ...liveVendorCandidates];
-  const scored = allLive.filter(c => c.visionStatement && c.longformExample);
-  let recommendedKey = null;
-  if (scored.length){
-    const sorted = [...scored].sort((a, b) => (b.complianceScore || 0) - (a.complianceScore || 0));
-    const top = sorted[0];
-    const tiedWithTop = sorted.filter(c => c.complianceScore === top.complianceScore);
-    if (tiedWithTop.length === 1) recommendedKey = top.key;
-  }
   const allCandidates = [...allLive, ...unconfiguredCandidates];
   // 2026-08-27 fix, per direct report — "You should never list the source
   // of the output." The client-facing label used to be the vendor/style
@@ -1953,7 +1978,8 @@ async function runBrandVoiceContest(account, extra){
     const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
     return na - nb;
   });
-  return { available: true, note: null, recommendedKey, candidates: allCandidates };
+  const recommended = pickRecommendedCandidate(allCandidates);
+  return { available: true, note: null, recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates };
 }
 // Same allowlist discipline as redactCandidatesForClient() above — strips
 // vendor/model before anything reaches the client, per the standing "never
@@ -9405,14 +9431,29 @@ async function handleRequest(req, res) {
       if (body.rating !== undefined) target.rating = rating;
       if (body.nailedIt !== undefined){
         const nailedIt = body.nailedIt === true;
-        if (nailedIt) candidates.forEach(c => { if (c.key !== target.key) c.nailedIt = false; }); // exclusive per run
+        if (nailedIt){
+          candidates.forEach(c => { if (c.key !== target.key) c.nailedIt = false; }); // exclusive per run
+          // 2026-08-27 fix, per direct feedback ("the top score will always
+          // be Nailed It" — read as: these two controls feel redundant and
+          // can disagree in a confusing way) — Nailed It is a stronger,
+          // rarer claim than a 5-star rating ("ship this as-is"), so it
+          // should never leave a LOWER rating sitting next to it. Only
+          // raises the rating, never lowers an existing 5.
+          if (!(typeof target.rating === 'number') || target.rating < 5) target.rating = 5;
+        }
         target.nailedIt = nailedIt;
       }
       target.ratedBy = ratedBy;
       target.ratedAt = now;
       db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?')
         .run(JSON.stringify(candidates), interviewId);
-      return sendJson(res, 200, { interviewId, candidates: redactBrandVoiceCandidatesForClient(candidates) });
+      // 2026-08-27 fix, per direct feedback that rating/Nailed It visibly
+      // did nothing — recompute the live recommendation (see
+      // pickRecommendedCandidate above) on every rating change and return
+      // it, so the winner border actually reacts to human input instead of
+      // staying frozen on the original compliance-only pick.
+      const recommended = pickRecommendedCandidate(candidates);
+      return sendJson(res, 200, { interviewId, candidates: redactBrandVoiceCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
     }
 
     // GET /api/accounts/:id/interview-usage — 2026-08-27, Phase 1 build.
@@ -9438,8 +9479,15 @@ async function handleRequest(req, res) {
       const interviews = rows.map(r => {
         let candidates = [];
         try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        // 2026-08-27 fix — history previously never returned recommendedKey
+        // at all (only the initial POST response carried it, computed once
+        // and never updated), so reopening a past contest's history lost
+        // the highlight entirely and any later rating/Nailed It never
+        // reflected here either. Recompute live via pickRecommendedCandidate.
+        const recommended = pickRecommendedCandidate(candidates);
         return {
           id: r.id, requestedBy: r.requestedBy, candidates: redactBrandVoiceCandidatesForClient(candidates),
+          recommendedKey: recommended.key, recommendedReason: recommended.reason,
           selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
           feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, createdAt: r.createdAt
         };
@@ -14428,4 +14476,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
