@@ -173,6 +173,40 @@ if (process.env.DATABASE_URL) {
   console.log('CXMedia.AI backend: using local SQLite file (no DATABASE_URL set)');
 }
 
+// 2026-08-27 — dedicated real async Postgres connection, used only by the
+// POST /api/auth/verify-login-code route further down (see that route's
+// own comment for the full story). Every other query in this file goes
+// through the synchronous worker-thread bridge (`db`, above) so that
+// ~400 existing call sites can stay written in a simple synchronous
+// style — but that bridge blocks the main thread with Atomics.wait(),
+// which is fundamentally incompatible with Vercel's ability to
+// suspend/resume a function mid-request: a suspend while genuinely
+// blocked in Atomics.wait can kill the whole process before any of this
+// file's own error handling gets a chance to run. verify-login-code kept
+// crashing that way (INTERNAL_FUNCTION_INVOCATION_FAILED, zero logs, no
+// catchable error) even after the cold-start fixes above were confirmed
+// working elsewhere, so that one route now bypasses the bridge and talks
+// to Postgres with a real async client — nothing here the runtime can
+// kill mid-block. `pg` is already a project dependency (pg-sync-worker.js
+// uses it identically); lazily created on first use and reused for the
+// life of this warm container.
+let authPgPool = null;
+function getAuthPgPool(){
+  if (!authPgPool){
+    const { Pool } = require('pg');
+    authPgPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 3,
+    });
+    authPgPool.on('error', (err) => {
+      // A background idle-client error must not crash the process.
+      console.error('[auth-pg-pool] idle client error:', err.message);
+    });
+  }
+  return authPgPool;
+}
+
 // 2026-08-27 fix — same shape of bug as ensureColumn() (see the long
 // comment above ensureColumnBulkPrecheck): 53 `db.exec("CREATE TABLE IF
 // NOT EXISTS ...")` calls run unconditionally at every module load/cold
@@ -8133,19 +8167,49 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, response);
     }
 
-    // POST /api/auth/verify-login-code — { verificationId, code,
-    // rememberDevice? } -> checks a code from login-user/request-login-mfa
-    // above (purpose='login-mfa'). Same expiry/attempt-limit rules as
-    // verify-signup-code. On success this is what actually issues the
-    // session — login-user itself never did, once MFA was required — and,
-    // unless rememberDevice is explicitly false, also issues a new 30-day
-    // trusted_devices token so this same browser skips MFA next time.
+    // 2026-08-27 fix — this route was the one still crashing
+    // (INTERNAL_FUNCTION_INVOCATION_FAILED, zero logs) after the cold-start
+    // schema-setup fix above was already deployed and confirmed working for
+    // login-user. Root cause: every db.prepare()/db.exec() call blocks the
+    // main thread with Atomics.wait() while a worker thread does the real
+    // (async) Postgres query — a shim that lets ~400 other call sites in
+    // this file stay synchronous (see pg-sync-bridge.js). That block is
+    // fundamentally incompatible with Vercel's ability to suspend/resume a
+    // function mid-request: a suspend while genuinely blocked in
+    // Atomics.wait can kill the whole process before this function's own
+    // error handling — including the outer try/catch around all of
+    // handleRequest — ever runs. That's why every crash here showed zero
+    // logs and no catchable error, no matter what instrumentation was
+    // added. Fix: this route now talks to Postgres with a real async
+    // client directly, no worker thread and no Atomics.wait, so there is
+    // nothing here the runtime can kill mid-block. `pg` is already a
+    // project dependency (pg-sync-worker.js uses it identically). Local
+    // SQLite dev (no DATABASE_URL) is unaffected — it never went through
+    // the worker-thread bridge and keeps using `db` directly below.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'verify-login-code'){
       const body = await readBody(req);
       if (!body.verificationId || !body.code){
         return sendJson(res, 400, { error: 'verificationId and code are required' });
       }
-      const row = db.prepare(`SELECT * FROM phone_verifications WHERE id = ? AND purpose = 'login-mfa'`).get(body.verificationId);
+
+      const useAsyncPg = !!process.env.DATABASE_URL;
+      let row, member;
+
+      try {
+        if (useAsyncPg){
+          const r = await getAuthPgPool().query(
+            `SELECT * FROM phone_verifications WHERE id = $1 AND purpose = 'login-mfa'`,
+            [body.verificationId]
+          );
+          row = r.rows[0];
+        } else {
+          row = db.prepare(`SELECT * FROM phone_verifications WHERE id = ? AND purpose = 'login-mfa'`).get(body.verificationId);
+        }
+      } catch (e){
+        console.error('verify-login-code: phone_verifications lookup failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not verify that code right now — try again shortly.' });
+      }
+
       if (!row) return sendJson(res, 404, { error: 'verification not found or already used' });
       if (row.verified) return sendJson(res, 409, { error: 'this verification was already completed' });
       if (new Date(row.expiresAt).getTime() < Date.now()){
@@ -8167,16 +8231,60 @@ async function handleRequest(req, res) {
         return sendJson(res, 502, { error: 'Could not verify that code right now — try again shortly.' });
       }
       if (!ok){
-        db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id);
+        try {
+          if (useAsyncPg){
+            await getAuthPgPool().query('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = $1', [row.id]);
+          } else {
+            db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id);
+          }
+        } catch (e){
+          console.error('verify-login-code: attempts increment failed (non-fatal):', e.message);
+        }
         return sendJson(res, 401, { error: 'incorrect code' });
       }
-      db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
-      const member = db.prepare('SELECT id, accountId, name, mustChangePassword, status, isAdmin FROM team_members WHERE id = ?').get(row.memberId);
+
+      try {
+        if (useAsyncPg){
+          const pool = getAuthPgPool();
+          await pool.query('UPDATE phone_verifications SET verified = 1 WHERE id = $1', [row.id]);
+          const r = await pool.query(
+            'SELECT id, "accountId", name, "mustChangePassword", status, "isAdmin" FROM team_members WHERE id = $1',
+            [row.memberId]
+          );
+          member = r.rows[0];
+        } else {
+          db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
+          member = db.prepare('SELECT id, accountId, name, mustChangePassword, status, isAdmin FROM team_members WHERE id = ?').get(row.memberId);
+        }
+      } catch (e){
+        console.error('verify-login-code: post-verify member lookup failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not complete sign-in right now — try again shortly.' });
+      }
+
       if (!member) return sendJson(res, 404, { error: 'user not found' });
       if (member.status === 'inactive'){
         return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
       }
-      const session = createSession(member.accountId, member.id);
+
+      let session;
+      try {
+        if (useAsyncPg){
+          const token = crypto.randomBytes(32).toString('hex');
+          const now = new Date();
+          const expiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
+          await getAuthPgPool().query(
+            'INSERT INTO sessions (token, "accountId", "memberId", "createdAt", "expiresAt") VALUES ($1,$2,$3,$4,$5)',
+            [token, member.accountId, member.id || null, now.toISOString(), expiresAt]
+          );
+          session = { token, expiresAt };
+        } else {
+          session = createSession(member.accountId, member.id);
+        }
+      } catch (e){
+        console.error('verify-login-code: session creation failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not complete sign-in right now — try again shortly.' });
+      }
+
       const response = {
         token: session.token,
         expiresAt: session.expiresAt,
@@ -8186,10 +8294,30 @@ async function handleRequest(req, res) {
         isAdmin: !!member.isAdmin,
         mustChangePassword: !!member.mustChangePassword
       };
+
       if (body.rememberDevice !== false){
-        const device = createTrustedDevice(member.id);
-        response.deviceToken = device.token;
-        response.deviceTrustExpiresAt = device.expiresAt;
+        try {
+          let device;
+          if (useAsyncPg){
+            const dToken = crypto.randomBytes(32).toString('hex');
+            const now = new Date();
+            const dExpiresAt = new Date(now.getTime() + DEVICE_TRUST_LIFETIME_MS).toISOString();
+            await getAuthPgPool().query(
+              'INSERT INTO trusted_devices (token, "memberId", "createdAt", "expiresAt", "lastUsedAt") VALUES ($1,$2,$3,$4,$5)',
+              [dToken, member.id, now.toISOString(), dExpiresAt, now.toISOString()]
+            );
+            device = { token: dToken, expiresAt: dExpiresAt };
+          } else {
+            device = createTrustedDevice(member.id);
+          }
+          response.deviceToken = device.token;
+          response.deviceTrustExpiresAt = device.expiresAt;
+        } catch (e){
+          // Trusting this device is a convenience, not required for login to
+          // succeed — log it and let the response go out without it rather
+          // than failing the whole sign-in over it.
+          console.error('verify-login-code: trusted device creation failed (non-fatal):', e.message);
+        }
       }
       return sendJson(res, 200, response);
     }
@@ -13863,4 +13991,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
