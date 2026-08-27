@@ -374,7 +374,24 @@ function ensureColumnBulkPrecheck(){
 }
 function ensureColumn(table, col, decl){
   const existing = ensureColumnBulkPrecheck();
-  if (existing && existing.has(`${table}.${col.toLowerCase()}`)) return; // confirmed present — no round trip spent
+  // 2026-08-27 fix, per direct report — traced from a real Postgres log
+  // showing "column \"memberId\" of relation \"sessions\" already exists"
+  // firing on every cold start. Root cause: this lookup lowercased `col`
+  // ("memberId" -> "memberid") before checking the cache, but the cache is
+  // built from information_schema.columns, which returns Postgres's actual
+  // stored (quoted, case-preserved) column names — "memberId", not
+  // "memberid". Every camelCase column (nearly all of them in this schema)
+  // never matched, so the bulk precheck added on 2026-08-24 to eliminate
+  // ~184 blocking round trips per cold start was silently doing almost
+  // nothing — nearly every column still ran its real ALTER TABLE, hit a
+  // real Postgres error (caught and ignored below, but only after paying
+  // for the synchronous Atomics.wait() round trip and the error itself),
+  // on every single cold start. That's real, measurable extra time and
+  // extra synchronous-bridge exposure on every wake-up — directly in the
+  // path of "it took 3 attempts to load" and every login/portal-load
+  // crash risk this session has been chasing. Comparing exact case (no
+  // .toLowerCase()) makes this match correctly.
+  if (existing && existing.has(`${table}.${col}`)) return; // confirmed present — no round trip spent
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`); }
   catch (e) { /* column already exists — fine */ }
 }
