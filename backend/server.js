@@ -8609,7 +8609,17 @@ async function handleRequest(req, res) {
       if (!session || !session.memberId){
         return sendJson(res, 401, { error: 'unauthorized — a valid per-person session token is required' });
       }
-      const member = db.prepare('SELECT id, accountId, name, email, isAdmin, status FROM team_members WHERE id = ?').get(session.memberId);
+      // 2026-08-27 fix, per direct report (this route showing 500s with
+      // zero function logs, same signature/timing as the GET /api/accounts/:id
+      // and login crashes) — same missing try/catch pattern as those, now
+      // fixed the same way here.
+      let member;
+      try {
+        member = db.prepare('SELECT id, accountId, name, email, isAdmin, status FROM team_members WHERE id = ?').get(session.memberId);
+      } catch (e){
+        console.error('[GET /api/auth/me] lookup failed:', e.message);
+        return sendJson(res, 502, { error: 'Could not verify your session right now — try again in a moment.' });
+      }
       if (!member || member.status === 'inactive'){
         return sendJson(res, 401, { error: 'unauthorized — this user no longer has access' });
       }
@@ -8947,7 +8957,23 @@ async function handleRequest(req, res) {
     // caller has no real way to check in advance.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'logout'){
       const body = await readBody(req);
-      if (body.token) db.prepare('DELETE FROM sessions WHERE token = ?').run(body.token);
+      // 2026-08-27 fix, per direct report ("Logout not working" — Vercel
+      // logs showed this route 500ing with zero function logs). Logging out
+      // is explicitly meant to always succeed from the client's point of
+      // view (see this route's own comment above), so a DB failure here is
+      // swallowed rather than surfaced — the client-side handler
+      // (index.html's utility-nav logout()) already clears local session
+      // storage and redirects regardless of what this endpoint returns, so
+      // the only thing an uncaught crash here was accomplishing was taking
+      // down the whole function invocation (and any other concurrent
+      // request riding it) instead of just quietly no-op'ing.
+      if (body.token){
+        try {
+          db.prepare('DELETE FROM sessions WHERE token = ?').run(body.token);
+        } catch (e){
+          console.error('[POST /api/auth/logout] session delete failed (non-fatal):', e.message);
+        }
+      }
       return sendJson(res, 200, { loggedOut: true });
     }
 
@@ -14284,4 +14310,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
