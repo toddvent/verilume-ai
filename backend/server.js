@@ -1872,25 +1872,31 @@ Respond with ONLY a JSON object with two fields:
 // recommendedKey stays null and a human decides, same as the copy panel's
 // null-degradation path when scoring can't distinguish candidates.
 // 2026-08-27, Phase 1 follow-up — per direct feedback that rating a
-// candidate 1-5 or hitting "Nailed It!" visibly did NOTHING (the winner
-// border was set once at generation time from complianceScore alone, and
-// never recalculated after a /rate call), this is the single source of
-// truth for which candidate is currently recommended, called fresh every
-// time candidates are returned to the client — the initial contest
-// response, every /rate response, and contest history. Three tiers, each
-// requiring an UNAMBIGUOUS single leader before falling through to the
-// next (a tie decides nothing rather than guessing):
-//   1. Nailed It! — a human declared this one outright. Always wins.
-//   2. Highest 1-5 rating — human judgment, once any rating exists.
-//   3. Compliance score — the original automated signal (fewest Voice
+// candidate 1-5 visibly did NOTHING (the winner border was set once at
+// generation time from complianceScore alone, and never recalculated after
+// a /rate call), this is the single source of truth for which candidate is
+// currently recommended, called fresh every time candidates are returned to
+// the client — the initial contest response, every /rate response, and
+// contest history. Two tiers, each requiring an UNAMBIGUOUS single leader
+// before falling through to the next (a tie decides nothing rather than
+// guessing):
+//   1. Highest 1-5 rating — human judgment, once any rating exists. This is
+//      now also literally what the single "Submit for AI Agent Updates"
+//      button (below the grid, portal.html) acts on — per direct
+//      instruction ("isn't the top score the winner?"), rating IS the
+//      selection mechanism now, not a separate signal alongside a per-card
+//      pick button.
+//   2. Compliance score — the original automated signal (fewest Voice
 //      Guide avoid-word flags), used only when no human input exists yet.
+// 2026-08-27 fix, per direct instruction ("we don't need Nailed It — it
+// really only adds value if we were to keep the multi-round evaluation," and
+// we aren't) — removed the "Nailed It!" tier and field entirely; rating
+// alone now drives both the highlight and the submit action.
 // Returns { key, reason } — reason lets the client explain WHY a card is
 // highlighted instead of just showing an unexplained border.
 function pickRecommendedCandidate(candidates){
   const list = (candidates || []).filter(c => c.visionStatement && c.longformExample);
   if (!list.length) return { key: null, reason: null };
-  const nailed = list.filter(c => c.nailedIt);
-  if (nailed.length === 1) return { key: nailed[0].key, reason: 'nailed-it' };
   const rated = list.filter(c => typeof c.rating === 'number');
   if (rated.length){
     const sorted = [...rated].sort((a, b) => b.rating - a.rating);
@@ -2006,12 +2012,15 @@ function redactBrandVoiceCandidatesForClient(candidates){
     error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
     complianceScore: c.complianceScore, flags: c.flags,
     // 2026-08-27, Phase 1 of the scoring roadmap (per direct instruction) —
-    // a 1-5 human rating and an exclusive "Nailed It!" golden buzzer per
-    // candidate, set via POST .../voice-contest/:interviewId/rate below.
-    // Neither field identifies the vendor, so both are safe to send to the
-    // client unlike label/vendor/model.
-    rating: (typeof c.rating === 'number') ? c.rating : null,
-    nailedIt: !!c.nailedIt
+    // a 1-5 human rating per candidate, set via POST
+    // .../voice-contest/:interviewId/rate below. This field doesn't
+    // identify the vendor, so it's safe to send to the client unlike
+    // label/vendor/model. ("Nailed It!" was built the same round, then
+    // removed per direct instruction — it only earns its keep with
+    // multi-round evaluation, which this build doesn't do; rating alone now
+    // drives both the highlight and the single "Select Contest Winner"
+    // action, see pickRecommendedCandidate above.)
+    rating: (typeof c.rating === 'number') ? c.rating : null
   }));
 }
 
@@ -9392,18 +9401,18 @@ async function handleRequest(req, res) {
 
     // POST /api/accounts/:id/voice-contest/:interviewId/rate — 2026-08-27,
     // Phase 1 of the scoring/legitimacy build discussed with Todd: lets a
-    // team member score an individual candidate 1-5 and/or hit the
-    // "Nailed It!" golden buzzer, independently of selecting it as the
-    // winner (you can rate all 5 before deciding which one to apply via the
-    // existing /select endpoint above — rating never applies anything to
-    // the account). This is the first place this build persists WHY a draft
-    // did or didn't land, tied to the account's real brand context — the
-    // foundation the "Verilume Result" proprietary-scoring roadmap item
-    // depends on; nothing downstream can be built without this data
-    // existing first. The golden buzzer is deliberately EXCLUSIVE per
-    // contest run (setting it on one candidate clears every other
-    // candidate's in the same interview) — it's meant to mean "this is the
-    // one," not a second like button.
+    // team member score an individual candidate 1-5, independently of
+    // selecting it as the winner (rate all 5 before the single "Select
+    // Contest Winner" action, further down in portal.html, applies whichever
+    // one currently has the top rating — rating never applies anything to
+    // the account by itself). This is the first place this build persists
+    // WHY a draft did or didn't land, tied to the account's real brand
+    // context — the foundation the "Verilume Result" proprietary-scoring
+    // roadmap item depends on; nothing downstream can be built without this
+    // data existing first. (This endpoint also accepted a "Nailed It!"
+    // golden buzzer for one round — removed per direct instruction, since
+    // it only earns its keep with multi-round evaluation, which this build
+    // doesn't do; rating alone now drives selection.)
     if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'rate'){
       const accountId = decodeURIComponent(parts[2]);
       const interviewId = decodeURIComponent(parts[4]);
@@ -9429,20 +9438,6 @@ async function handleRequest(req, res) {
       const now = new Date().toISOString();
       const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
       if (body.rating !== undefined) target.rating = rating;
-      if (body.nailedIt !== undefined){
-        const nailedIt = body.nailedIt === true;
-        if (nailedIt){
-          candidates.forEach(c => { if (c.key !== target.key) c.nailedIt = false; }); // exclusive per run
-          // 2026-08-27 fix, per direct feedback ("the top score will always
-          // be Nailed It" — read as: these two controls feel redundant and
-          // can disagree in a confusing way) — Nailed It is a stronger,
-          // rarer claim than a 5-star rating ("ship this as-is"), so it
-          // should never leave a LOWER rating sitting next to it. Only
-          // raises the rating, never lowers an existing 5.
-          if (!(typeof target.rating === 'number') || target.rating < 5) target.rating = 5;
-        }
-        target.nailedIt = nailedIt;
-      }
       target.ratedBy = ratedBy;
       target.ratedAt = now;
       db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?')
@@ -14476,5 +14471,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
 
