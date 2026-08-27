@@ -1729,6 +1729,153 @@ function upsertPriorityModelFromCandidate(accountId, taskType, chosen, sourceTab
       setAt = excluded.setAt
   `).run(accountId, taskType, PRIORITY_MODEL_ALL_STAGES, chosen.key, chosen.vendor, chosen.model || '', sourceTable, sourceInterviewId, setBy, now);
 }
+// 2026-08-27, per direct instruction — "all contests should use the same
+// ranking system and we should be capturing the type of contest, subtype,
+// ranking per model and winner model" (example: type Campaign / subtype
+// Offer; type Corporate / subtype Press Release). account_priority_models
+// above already tracks the CURRENT winner per account+taskType (and only for
+// 2 of the 4 contest surfaces), but it's an upsert — it overwrites, so it
+// can't hold a per-run history or a full best-to-worst order. This is a
+// separate, append-only ledger: one row per CANDIDATE per contest run, so a
+// 5-way Voice Contest run writes 5 rows, a 3-way Blind Test Interview writes
+// 3. Explicitly built to support future modeling ("why would we rank 1-5 if
+// we didn't build anything to support it" — direct feedback) even though
+// nothing reads this table yet beyond the ranking capture itself.
+//
+// contestType/contestSubtype are wired per source at each /select call site:
+//   Voice Contest        -> 'Brand Voice' / null (one flow, no subtype today)
+//   Creative Job Interview-> 'Creative Job' / the job's productType label
+//   Campaign Copy Interview-> 'Campaign' / the campaign's Message Type
+//                            (Offer / Brand Campaign / Launch / General)
+//   PR & Corporate Copy   -> 'Corporate' / the doc type label (Press
+//                            Release / Editorial Pitch / Corporate Comms)
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS contest_rankings (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    contestType TEXT NOT NULL,
+    contestSubtype TEXT,
+    sourceTable TEXT NOT NULL,
+    sourceInterviewId TEXT NOT NULL,
+    candidateKey TEXT NOT NULL,
+    vendor TEXT,
+    model TEXT,
+    rank INTEGER,
+    isWinner INTEGER NOT NULL DEFAULT 0,
+    rankBasis TEXT,
+    createdAt TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_contest_rankings_account_type ON contest_rankings(accountId, contestType, contestSubtype);`);
+// Turns a contest's candidates array into a full best-to-worst rank order,
+// using whichever comparison basis that contest type actually has — rating
+// (Voice Contest, human 1-5) > combinedScore (Creative Job/Campaign Copy —
+// the existing relevance+compliance average already computed at generation)
+// > complianceScore alone > no basis at all (PR & Corporate Copy, which has
+// no automated scoring — see runPrCandidateInterview's own comment). Ties
+// share a rank number (1, 1, 3 — not 1, 2, 3) since nothing in the data
+// actually orders them; unconfigured/errored candidates (no real output)
+// are excluded entirely rather than ranked last.
+function rankContestCandidates(candidates){
+  const list = (candidates || []).filter(c => c.configured !== false && (c.copy || c.longformExample));
+  let basis = null;
+  let getScore = null;
+  if (list.some(c => typeof c.rating === 'number')){
+    basis = 'rating'; getScore = c => c.rating;
+  } else if (list.some(c => typeof c.combinedScore === 'number')){
+    basis = 'combined_score'; getScore = c => c.combinedScore;
+  } else if (list.some(c => typeof c.complianceScore === 'number')){
+    basis = 'compliance_score'; getScore = c => c.complianceScore;
+  }
+  if (!getScore){
+    return list.map(c => ({ key: c.key, vendor: c.vendor, model: c.model, rank: null, rankBasis: null }));
+  }
+  const sorted = [...list].sort((a, b) => {
+    const av = getScore(a), bv = getScore(b);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return bv - av;
+  });
+  let rank = 0, lastVal = null, seen = 0;
+  return sorted.map(c => {
+    seen++;
+    const val = getScore(c);
+    if (val == null) return { key: c.key, vendor: c.vendor, model: c.model, rank: null, rankBasis: basis };
+    if (val !== lastVal){ rank = seen; lastVal = val; }
+    return { key: c.key, vendor: c.vendor, model: c.model, rank, rankBasis: basis };
+  });
+}
+// Writes the full ranking ledger for one contest run — called once, at
+// winner-selection time (not at generation, and not on every /rate call —
+// see rankContestCandidates' own comment on why select-time is the one
+// consistent moment across all 4 contest surfaces). Never throws into the
+// caller's response; ranking bookkeeping should never break a /select call.
+function logContestRanking(accountId, contestType, contestSubtype, sourceTable, sourceInterviewId, candidates, winnerKey){
+  try {
+    const now = new Date().toISOString();
+    const ranking = rankContestCandidates(candidates);
+    if (!ranking.length) return;
+    const insert = db.prepare(`
+      INSERT INTO contest_rankings (id, accountId, contestType, contestSubtype, sourceTable, sourceInterviewId, candidateKey, vendor, model, rank, isWinner, rankBasis, createdAt)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `);
+    ranking.forEach(r => {
+      insert.run(generateId('CRK'), accountId, contestType, contestSubtype || null, sourceTable, sourceInterviewId, r.key, r.vendor || null, r.model || null, r.rank, r.key === winnerKey ? 1 : 0, r.rankBasis, now);
+    });
+  } catch (e){ /* ranking bookkeeping should never break the select response */ }
+}
+// 2026-08-27, per direct instruction — "all contests, whether it exists
+// today or not, need to have the same structure when recording results, or
+// we can't scale the data." This registry is that enforced structure: the
+// canonical list of every contest type in the app, its account_priority_models
+// taskType, and its known subtypes. A NEW contest feature registers here
+// (one entry) and calls recordContestResult() (below) from its /select
+// endpoint — that's the whole integration, not a bespoke implementation per
+// feature. subtypes is documentation/validation, not a hard allowlist (a
+// legitimately new subtype value — e.g. a 4th Message Type — should still
+// record, just won't match anything here yet; keep this list updated when
+// that happens).
+const CONTEST_TYPE_REGISTRY = {
+  'Brand Voice': {
+    taskType: 'brand_voice',
+    subtypes: [],
+    description: 'Account-level Voice Contest — the winning Vision Statement + Longform Example become accounts.visionStatement/longformVoiceExample, which every other generation prompt in this file already reads as brand context (see buildInterviewPrompt, generateMessagingCopyViaAI, draftPrCorpCommCopyViaAI, scoreDraftCopy). No per-request vendor dispatch consumer today — recorded for consistency and future reporting regardless.'
+  },
+  'Creative Job': {
+    taskType: 'creative_job',
+    subtypes: ['Copywriting'],
+    description: 'Per-creative-job Blind Test Interview (3 angles + configured vendors). No single-draft (non-contest) creative-job generator exists yet, so there is no dispatch consumer today — same "capture ahead of the consumer" posture as contest_rankings itself.'
+  },
+  'Campaign': {
+    taskType: 'marketing_copy',
+    subtypes: ['Offer', 'Brand Campaign', 'Launch', 'General'],
+    description: 'Campaign Copy Interview, subtyped by the campaign\'s Message Type. Dispatch-consumed: generateMessagingCopyViaAI() checks getDispatchablePriorityModel(accountId, \'marketing_copy\') for single-draft (non-contest) generation.'
+  },
+  'Corporate': {
+    taskType: 'pr_copy',
+    subtypes: ['Press Release', 'Editorial Pitch', 'Corporate Comms'],
+    description: 'PR & Corporate Copy contest, subtyped by document type. Dispatch-consumed: draftPrCorpCommCopyViaAI() checks getDispatchablePriorityModel(accountId, \'pr_copy\') for single-draft (non-contest) generation.'
+  }
+};
+// The one call every contest's /select endpoint makes — replaces separately
+// calling logContestRanking() and upsertPriorityModelFromCandidate() so the
+// two can never drift apart (a future contest that only does one of them is
+// exactly the inconsistency direct instruction called out). Looks up
+// taskType from CONTEST_TYPE_REGISTRY so callers pass the same human-
+// readable contestType string everywhere (e.g. 'Campaign'), not a second,
+// easy-to-typo taskType string. Logs (not throws) on an unregistered
+// contestType — the ranking still gets recorded either way, never lost.
+function recordContestResult(accountId, contestType, contestSubtype, chosen, allCandidates, sourceTable, sourceInterviewId, setBy){
+  const reg = CONTEST_TYPE_REGISTRY[contestType];
+  if (!reg){
+    console.error(`recordContestResult: unregistered contestType "${contestType}" — add it to CONTEST_TYPE_REGISTRY so future contests stay on the same structure.`);
+  }
+  logContestRanking(accountId, contestType, contestSubtype, sourceTable, sourceInterviewId, allCandidates, chosen.key);
+  try {
+    upsertPriorityModelFromCandidate(accountId, (reg && reg.taskType) || contestType, chosen, sourceTable, sourceInterviewId, setBy);
+  } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+}
 // Reads the active priority model for an account+taskType, ignoring
 // loopStage (per PRIORITY_MODEL_ALL_STAGES above — not built yet). Returns
 // null when the client has never run a contest for this task type, OR when
@@ -7229,6 +7376,15 @@ const PR_DOC_TYPE_CONFIG = {
   editorial_pitch: { table: 'editorial_pitches', briefFromRow: (row) => ({ outlet: row.outlet, topic: row.topic }) },
   corporate_comms: { table: 'corporate_comms', briefFromRow: (row, body) => ({ title: row.title, audience: row.audience, context: body.context || '' }) }
 };
+// 2026-08-27 — human-readable subtype labels for the contest_rankings ledger
+// (see its own comment) — "Corporate" is this whole table's contestType,
+// these are the contestSubtype per Todd's own example ("Corporate Copy
+// would be Corporate and Press Release as another [subtype]").
+const PR_DOC_TYPE_LABELS = {
+  press_release: 'Press Release',
+  editorial_pitch: 'Editorial Pitch',
+  corporate_comms: 'Corporate Comms'
+};
 async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, session){
   const cfg = PR_DOC_TYPE_CONFIG[docType];
   const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
@@ -7262,9 +7418,10 @@ function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session
   const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
   db.prepare('UPDATE pr_copy_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
     .run(candidateKey, selectedBy, now, interviewId);
-  try {
-    upsertPriorityModelFromCandidate(accountId, 'pr_copy', chosen, 'pr_copy_interviews', interviewId, selectedBy);
-  } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+  // 2026-08-27 — one shared call for the ranking ledger + priority-model
+  // upsert, per CONTEST_TYPE_REGISTRY's own comment (same structure every
+  // contest uses, not a bespoke pair of calls per surface).
+  recordContestResult(accountId, 'Corporate', PR_DOC_TYPE_LABELS[interview.docType] || interview.docType, chosen, candidates, 'pr_copy_interviews', interviewId, selectedBy);
   return { status: 200, body: { interviewId, selectedCandidateKey: candidateKey, selectedAt: now, copy: chosen.copy } };
 }
 
@@ -9396,6 +9553,21 @@ async function handleRequest(req, res) {
         .run(body.candidateKey, selectedBy, now, interviewId);
       db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?')
         .run(chosen.visionStatement, chosen.longformExample, accountId);
+      // 2026-08-27 — recordContestResult() (ranking ledger + priority-model
+      // upsert in one call, see CONTEST_TYPE_REGISTRY's own comment). No
+      // subtype today (this is a single account-level flow, not split into
+      // sub-categories the way Campaign/Corporate Copy are) — ranked by
+      // rating when any candidate has one, else compliance score, same
+      // basis pickRecommendedCandidate() above already uses for the winner
+      // highlight (see rankContestCandidates' own comment). The winning
+      // CONTENT (visionStatement/longformVoiceExample, saved to the account
+      // two lines above) already feeds every other generation prompt in
+      // this file as brand context — that's the real "voice contest
+      // influences all copy" loop, live today; this call additionally
+      // records WHICH VENDOR won, for consistency with the other 3 contests
+      // and for future reporting, even though nothing dispatches by vendor
+      // for Voice Contest specifically (see the registry entry's own note).
+      recordContestResult(accountId, 'Brand Voice', null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, visionStatement: chosen.visionStatement, longformVoiceExample: chosen.longformExample });
     }
 
@@ -9529,6 +9701,49 @@ async function handleRequest(req, res) {
         };
       });
       return sendJson(res, 200, { accountId, interviews });
+    }
+
+    // GET /api/ops/contest-rankings — staff-only, the first real reader of
+    // the contest_rankings ledger (see recordContestResult/CONTEST_TYPE_REGISTRY's
+    // own comments). Per direct instruction: "how does continuous learning
+    // happen if it's not considering the client data and/or preferences
+    // captured through the various contests" — this is that consideration
+    // made visible today, not deferred to a future modeling pass: per
+    // contestType/contestSubtype/vendor, how often that vendor appeared vs.
+    // won. Optional ?accountId= narrows to one account (cross-account by
+    // default — vendor performance patterns are most useful in aggregate);
+    // optional ?contestType= narrows to one of CONTEST_TYPE_REGISTRY's keys.
+    // Same ADMIN_API_TOKEN gate as every other /api/ops/... endpoint — this
+    // names real vendors, which the client-facing surfaces never do.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'contest-rankings'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = url.searchParams.get('accountId');
+      const contestType = url.searchParams.get('contestType');
+      const clauses = [];
+      const args = [];
+      if (accountId){ clauses.push('accountId = ?'); args.push(accountId); }
+      if (contestType){ clauses.push('contestType = ?'); args.push(contestType); }
+      const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+      const summary = db.prepare(`
+        SELECT contestType, contestSubtype, vendor,
+               COUNT(*) AS appearances,
+               SUM(isWinner) AS wins
+        FROM contest_rankings
+        ${where}
+        GROUP BY contestType, contestSubtype, vendor
+        ORDER BY contestType, contestSubtype, wins DESC
+      `).all(...args).map(r => ({
+        contestType: r.contestType, contestSubtype: r.contestSubtype,
+        vendor: r.vendor, appearances: r.appearances, wins: r.wins,
+        winRate: r.appearances ? Math.round((r.wins / r.appearances) * 100) : 0
+      }));
+      const totalRuns = db.prepare(`SELECT COUNT(DISTINCT sourceInterviewId) AS n FROM contest_rankings ${where}`).get(...args).n;
+      return sendJson(res, 200, {
+        registeredContestTypes: Object.keys(CONTEST_TYPE_REGISTRY),
+        totalRuns, summary, generatedAt: new Date().toISOString()
+      });
     }
 
     // POST /api/accounts/:id/profile — round 19, Brand Foundations (Company
@@ -11616,9 +11831,14 @@ async function handleRequest(req, res) {
       // forward, until a future contest overwrites it. Additive only — the
       // interview row above already recorded the win; this just also makes
       // it the standing default. Never blocks the response on failure.
-      try {
-        upsertPriorityModelFromCandidate(campaign.accountId, 'marketing_copy', chosen, 'campaign_copy_interviews', interviewId, selectedBy);
-      } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+      // 2026-08-27 — folded into recordContestResult() (see
+      // CONTEST_TYPE_REGISTRY's own comment), which does this AND writes the
+      // contest_rankings ledger row in one call, same structure every
+      // contest now uses. campaign.messageType is the exact field behind the
+      // "Offer / Brand Campaign / Launch" selector (cmpKeyMessageType in
+      // portal.html) — 'General' when unset, matching the same fallback
+      // label campaignTypeDetailsJson's own "no type selected" case uses.
+      recordContestResult(campaign.accountId, 'Campaign', campaign.messageType || 'General', chosen, candidates, 'campaign_copy_interviews', interviewId, selectedBy);
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy });
     }
 
@@ -11772,6 +11992,15 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE creative_job_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
         .run(body.candidateKey, selectedBy, now, interviewId);
       db.prepare('UPDATE creative_jobs SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(chosen.copy, now, jobId);
+      // 2026-08-27 — recordContestResult() (ranking ledger + priority-model
+      // upsert in one call, see CONTEST_TYPE_REGISTRY's own comment). This
+      // table's own productType/INTERVIEW_PRODUCT_TYPES registry (see its
+      // definition above) already exists for exactly this purpose — reused
+      // as the contestSubtype rather than inventing a second taxonomy. No
+      // single-draft creative-job generator reads 'creative_job' priority
+      // models today (see the registry entry's own note) — recorded anyway,
+      // same capture-ahead-of-the-consumer posture as the ledger itself.
+      recordContestResult(job.accountId, 'Creative Job', (INTERVIEW_PRODUCT_TYPES[interview.productType || 'copywriting'] || {}).label || interview.productType, chosen, candidates, 'creative_job_interviews', interviewId, selectedBy);
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, workingCopy: chosen.copy });
     }
 
