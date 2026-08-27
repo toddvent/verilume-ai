@@ -3872,7 +3872,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> / Voice Contest</div>
     <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations · Voice Contest</div>
     <h1>Voice contest — Vision Statement &amp; Longform Example</h1>
-    <p class="lede">Runs your brand through three genuinely distinct voice directions at once — Confident Authority, Warm Storyteller, Bold Modern — each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Compare them side by side and pick the one that's actually you — nothing is applied until you choose.</p>
+    <p class="lede">Runs your brand through a blind panel of voice options at once, each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Options are unlabeled by design — compare them purely on the writing and pick the one that's actually you. Nothing is applied until you choose.</p>
 
     <div class="module open accent-cx" id="voiceContestModule">
       <div class="module-head" onclick="toggleModule('voiceContestModule')">
@@ -41871,8 +41871,32 @@ async function runBrandVoiceContest(){
       // server.js, default 20 runs/7 days) and 401 when the session has
       // expired. Now reads data.error off the response body and shows it
       // when present, so which one it was is visible instead of guessed at.
-      const errData = await resp.json().catch(() => ({}));
-      let msg = errData.error || `Couldn't run the contest (${resp.status}) — try again.`;
+      // 2026-08-26 follow-up, per direct report of a plain "(500) — try
+      // again" with no further detail: the backend's own catch block DOES
+      // return { error: 'server error', detail: e.message } as JSON on a
+      // normal caught exception, so a blank message here means resp.json()
+      // itself failed — the body wasn't valid JSON at all. That's the
+      // signature of a Vercel-platform-level function crash (e.g.
+      // INTERNAL_FUNCTION_INVOCATION_FAILED, which returns its own
+      // plain-text/HTML page, not this app's JSON) rather than a normal
+      // in-request exception — a different, more serious failure mode this
+      // couldn't previously distinguish. Reading resp.text() first (instead
+      // of resp.json() directly) so a non-JSON body is visible — as a
+      // truncated snippet in the UI and in full in the console — instead of
+      // silently collapsing to the generic fallback, which was hiding
+      // exactly the evidence needed to tell these two cases apart.
+      const rawBody = await resp.text().catch(() => '');
+      let errData = {};
+      try { errData = JSON.parse(rawBody); } catch (e){ /* not JSON — see rawBody handling below */ }
+      let msg;
+      if (errData.detail) msg = `${errData.error || 'Server error'}: ${errData.detail}`;
+      else if (errData.error) msg = errData.error;
+      else if (rawBody.trim()){
+        console.error('portal.html: voice-contest returned a non-JSON error body — likely a Vercel platform-level crash, not this app\'s own error handler.', { status: resp.status, rawBody });
+        msg = `Couldn't run the contest (${resp.status}) — the server sent back something unexpected rather than a normal error (${rawBody.trim().slice(0, 120)}${rawBody.trim().length > 120 ? '…' : ''}). This looks like a backend crash, not a routine failure — worth checking the Vercel function logs directly.`;
+      } else {
+        msg = `Couldn't run the contest (${resp.status}) — try again.`;
+      }
       if (resp.status === 401) msg = 'Your session has expired — sign in again and retry.';
       holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">${escapeHtml(msg)}</div>`;
       return;
@@ -41889,14 +41913,25 @@ async function runBrandVoiceContest(){
     holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">${timedOut ? 'The contest is taking longer than expected (it runs several AI models) and timed out — try again; if it keeps happening, the backend itself may be slow.' : 'Backend unreachable — couldn\'t run the contest.'}</div>`;
   }
 }
+// 2026-08-27 rework, per direct instruction — four changes to the contest
+// panel: (1) candidates are already fully blind by the time they reach here
+// (server sends `label` as a randomized "Option N" — see
+// redactBrandVoiceCandidatesForClient() in server.js), so nothing here shows
+// vendor/model/style info; (2) exactly one card per contestant now (server-
+// side change, not this file); (3) Vision Statement and Longform Example are
+// visually separated, with the longform collapsed behind a "View Contest
+// Copy" toggle — mobile-first, so the card opens short; (4) two action
+// buttons replace the old single "Use this →": "Select Winner and Edit"
+// (below) and "Select Winner for AI Assistance" (applyBrandVoiceCandidate()).
 function renderBrandVoiceContestPanel(result){
   const cards = (result.candidates || []).map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    const safeId = String(c.key).replace(/[^a-zA-Z0-9_-]/g, '');
     if (!c.configured){
       return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
       </div>`;
     }
     if (!c.visionStatement || !c.longformExample){
@@ -41907,16 +41942,34 @@ function renderBrandVoiceContestPanel(result){
     }
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— fewest compliance flags</span>' : ''}</div>
-      <div style="font-size:0.8125rem;font-style:italic;margin:8px 0;">"${escapeHtml(c.visionStatement)}"</div>
-      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
-      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="applyBrandVoiceCandidate('${result.interviewId}', '${c.key}')">Use this →</button>
+      <div class="hint" style="margin-top:6px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Voice approach</div>
+      <div style="font-size:0.8125rem;font-style:italic;margin:4px 0 10px;">"${escapeHtml(c.visionStatement)}"</div>
+      <button type="button" class="btn-ghost" id="toggle-${safeId}" style="font-size:0.75rem;padding:4px 10px;" onclick="toggleContestCopy('${safeId}')">View Contest Copy ▾</button>
+      <div id="copy-${safeId}" style="display:none;font-size:0.8125rem;margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:8px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <div class="btn-row" style="margin-top:10px;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" onclick="applyBrandVoiceCandidateForEdit('${result.interviewId}', '${c.key}')">Select Winner and Edit</button>
+        <button type="button" class="btn-primary" onclick="applyBrandVoiceCandidate('${result.interviewId}', '${c.key}')">Select Winner for AI Assistance</button>
+      </div>
     </div>`;
   }).join('');
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;">${cards}</div>
     <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(VOICE_CONTEST_STATUS_TIPS)}`;
 }
+// Mobile-first: the Vision Statement (short) shows by default; the Longform
+// Example (long) stays collapsed until the client explicitly asks for it.
+function toggleContestCopy(safeId){
+  const el = document.getElementById('copy-' + safeId);
+  const btn = document.getElementById('toggle-' + safeId);
+  if (!el) return;
+  const showing = el.style.display !== 'none';
+  el.style.display = showing ? 'none' : 'block';
+  if (btn) btn.textContent = showing ? 'View Contest Copy ▾' : 'Hide Contest Copy ▴';
+}
+// "Select Winner for AI Assistance" — records this candidate as the contest
+// winner and immediately applies it to Vision Statement / Longform Example
+// below, saved automatically. Same behavior this panel has always had.
 async function applyBrandVoiceCandidate(interviewId, candidateKey){
   const flag = document.getElementById('voiceContestSelectFlag');
   try {
@@ -41935,9 +41988,41 @@ async function applyBrandVoiceCandidate(interviewId, candidateKey){
     const longformEl = document.getElementById('voiceLongformExample');
     if (visionEl) visionEl.value = result.visionStatement;
     if (longformEl) longformEl.value = result.longformVoiceExample;
-    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to Vision Statement and Longform Example below — saved automatically.'; }
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected for AI Assistance — applied to Vision Statement and Longform Example below and saved automatically.'; }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not applied.'; }
+  }
+}
+// "Select Winner and Edit" — per direct instruction: "will replicate the
+// full manual option that we have below the contest. The client can edit
+// the vision statement and longform from the winning model to save as
+// final. This maintains the winning model status as the copywriting agent
+// overall." Records the same winner selection as the button above (so the
+// winning model status is captured either way), loads it into the manual
+// fields below, and scrolls there so the client can edit before finalizing
+// with the existing "Save Vision & Longform Example →" button.
+async function applyBrandVoiceCandidateForEdit(interviewId, candidateKey){
+  const flag = document.getElementById('voiceContestSelectFlag');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't select this — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    state.voice.visionStatement = result.visionStatement;
+    state.voice.longformExample = result.longformVoiceExample;
+    const visionEl = document.getElementById('voiceVisionStatement');
+    const longformEl = document.getElementById('voiceLongformExample');
+    if (visionEl) visionEl.value = result.visionStatement;
+    if (longformEl) longformEl.value = result.longformVoiceExample;
+    if (visionEl && visionEl.scrollIntoView) visionEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected as the winning voice — now loaded into Vision Statement and Longform Example below. Edit as needed, then click "Save Vision & Longform Example →" to finalize.'; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not selected.'; }
   }
 }
 async function saveVisionLongformEdits(){
