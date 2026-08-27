@@ -41956,7 +41956,6 @@ const BRAND_VOICE_RATING_RUBRIC = [
   'Ready to use as-is'
 ];
 const RECOMMENDED_REASON_LABEL = {
-  'nailed-it': '— Nailed It!',
   'rating': '— highest rated',
   'compliance': '— fewest compliance flags'
 };
@@ -42112,16 +42111,21 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
   }
   return false;
 }
-// 2026-08-27 rework, per direct instruction — four changes to the contest
+// 2026-08-27 rework, per direct instruction — three changes to the contest
 // panel: (1) candidates are already fully blind by the time they reach here
 // (server sends `label` as a randomized "Option N" — see
 // redactBrandVoiceCandidatesForClient() in server.js), so nothing here shows
-// vendor/model/style info; (2) exactly one card per contestant now (server-
-// side change, not this file); (3) Vision Statement and Longform Example are
-// visually separated, with the longform collapsed behind a "View Contest
-// Copy" toggle — mobile-first, so the card opens short; (4) two action
-// buttons replace the old single "Use this →": "Select Winner and Edit"
-// (below) and "Select Winner for AI Assistance" (applyBrandVoiceCandidate()).
+// vendor/model/style info; (2) exactly one card per contestant, with a 1-5
+// rating (rubric-anchored, see BRAND_VOICE_RATING_RUBRIC) and nothing else to
+// click per card — no Nailed It, no per-card select buttons; (3) a single
+// "Select Contest Winner" button below the whole grid acts on whichever
+// option currently has the top rating (pickRecommendedCandidate() in
+// server.js — recomputed on every /rate call), loading it into the Vision
+// Statement / Longform Example fields further down for the client to review
+// and edit before separately clicking "Save Vision & Longform Example →" —
+// per direct instruction, this is a deliberate two-step so the client always
+// gets "a final focused review before it's added to their client database"
+// rather than a one-click apply straight into their brand data.
 function renderBrandVoiceContestPanel(result){
   const cards = (result.candidates || []).map(c => {
     const isWinner = c.key === result.recommendedKey;
@@ -42161,16 +42165,27 @@ function renderBrandVoiceContestPanel(result){
           ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="${escapeHtml(BRAND_VOICE_RATING_RUBRIC[n - 1])}">${n}</button>`).join('')}
         </div>
         ${typeof c.rating === 'number' ? `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">${escapeHtml(BRAND_VOICE_RATING_RUBRIC[c.rating - 1])}</div>` : `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">1 = off-brand, 5 = ready to use as-is</div>`}
-        <button type="button" class="btn-ghost" style="margin-top:8px;font-size:0.75rem;padding:5px 10px;width:100%;${c.nailedIt ? 'background:#ffd54f;border-color:#ffd54f;color:#1a1a1a;font-weight:700;' : ''}" onclick="toggleNailedItCandidate('${result.interviewId}', '${c.key}')" title="A rarer, stronger claim than a 5 rating — this exact draft is ready to ship as-is">${c.nailedIt ? 'Nailed It! — This is my AI Agent (selected)' : 'Nailed It! — This is my AI Agent'}</button>
-      </div>
-      <div class="btn-row" style="margin-top:auto;padding-top:14px;gap:8px;flex-wrap:wrap;justify-content:center;">
-        <button type="button" class="btn-ghost" onclick="applyBrandVoiceCandidateForEdit('${result.interviewId}', '${c.key}')">Select Winner and Edit</button>
-        <button type="button" class="btn-primary" onclick="applyBrandVoiceCandidate('${result.interviewId}', '${c.key}')">Select Winner for AI Assistance</button>
       </div>
     </div>`;
   }).join('');
+  // 2026-08-27, per direct instruction — one action for the whole contest,
+  // not one per card: "Isn't the top score the winner? ... we just need a
+  // single submit top score button under the table." Disabled with a
+  // specific reason when there's no unambiguous top rating yet, so the
+  // client always understands why rather than seeing a dead button.
+  const ratedCount = (result.candidates || []).filter(c => typeof c.rating === 'number').length;
+  const hasWinner = !!result.recommendedKey;
+  let selectWinnerHint = '';
+  if (!hasWinner){
+    selectWinnerHint = ratedCount === 0
+      ? 'Rate at least one option above to select a winner.'
+      : 'Two or more options are tied at the top rating — adjust a rating to break the tie before selecting a winner.';
+  }
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;align-items:stretch;">${cards}</div>
-    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;"></div>
+    <div style="display:flex;justify-content:center;margin-top:16px;">
+      <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectContestWinner('${result.interviewId}')">Select Contest Winner</button>
+    </div>
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>
     ${renderAiStatusTip(VOICE_CONTEST_STATUS_TIPS)}`;
 }
 // Mobile-first: the Vision Statement (short) shows by default; the Longform
@@ -42184,21 +42199,15 @@ function toggleContestCopy(safeId){
   if (btn) btn.textContent = showing ? 'View Contest Copy ▾' : 'Hide Contest Copy ▴';
 }
 // 2026-08-27, Phase 1 of the scoring/legitimacy build (per direct
-// instruction) — a 1-5 rating and an exclusive "Nailed It!" golden buzzer
-// per candidate, independent of selecting a winner (applyBrandVoiceCandidate/
-// applyBrandVoiceCandidateForEdit above are unaffected by either of these).
-// This is the first thing this build persists about WHY a draft did or
-// didn't land — the foundation for any future proprietary scoring on top of
-// the raw vendor output. Both handlers full-re-render the panel afterward
-// since the golden buzzer is exclusive across the WHOLE contest run, not
-// just the one card clicked — a click on one card can change what another
-// card shows.
+// instruction) — a 1-5 rating per candidate, independent of selecting a
+// winner. This is the first thing this build persists about WHY a draft did
+// or didn't land — the foundation for any future proprietary scoring on top
+// of the raw vendor output. Full re-renders the panel afterward since a
+// rating change can move which card is the unambiguous top rating (and
+// therefore what the single "Select Contest Winner" button below the grid
+// will act on) — not just the one card clicked.
 async function rateBrandVoiceCandidate(interviewId, candidateKey, rating){
   await sendBrandVoiceRating(interviewId, { candidateKey, rating });
-}
-async function toggleNailedItCandidate(interviewId, candidateKey){
-  const current = lastVoiceContestCache && (lastVoiceContestCache.candidates || []).find(c => c.key === candidateKey);
-  await sendBrandVoiceRating(interviewId, { candidateKey, nailedIt: !(current && current.nailedIt) });
 }
 async function sendBrandVoiceRating(interviewId, body){
   const holder = document.getElementById('voiceContestPanel');
@@ -42210,54 +42219,39 @@ async function sendBrandVoiceRating(interviewId, body){
     const result = await resp.json();
     if (lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId){
       lastVoiceContestCache.candidates = result.candidates;
-      // 2026-08-27 fix, per direct feedback that rating/Nailed It visibly
-      // did nothing — the backend now recomputes and returns the live
-      // recommendation on every /rate call (see pickRecommendedCandidate in
-      // server.js); without updating these two fields here, the winner
-      // border would keep showing the ORIGINAL compliance-only pick from
-      // the initial run forever, no matter what got rated or buzzed.
+      // 2026-08-27 fix, per direct feedback that rating visibly did nothing
+      // — the backend now recomputes and returns the live recommendation on
+      // every /rate call (see pickRecommendedCandidate in server.js);
+      // without updating these two fields here, the winner border would
+      // keep showing the ORIGINAL compliance-only pick from the initial run
+      // forever, no matter what got rated.
       lastVoiceContestCache.recommendedKey = result.recommendedKey;
       lastVoiceContestCache.recommendedReason = result.recommendedReason;
       if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
     }
   } catch (e){ /* rating is a nice-to-have — a failed save here shouldn't block the rest of the panel */ }
 }
-// "Select Winner for AI Assistance" — records this candidate as the contest
-// winner and immediately applies it to Vision Statement / Longform Example
-// below, saved automatically. Same behavior this panel has always had.
-async function applyBrandVoiceCandidate(interviewId, candidateKey){
+// "Select Contest Winner" — per direct correction to an earlier one-click
+// auto-apply design: "The button is Select Contest Winner that takes the
+// user to the fields below with the winner voice and longform copy. Users
+// can edit this section and then Submit For AI Optimization. We're
+// separating them to give the user the option to edit and have a final
+// focused review before it's added to their client database." Records
+// whichever candidate currently has the unambiguous top rating
+// (result.recommendedKey, from pickRecommendedCandidate() in server.js) as
+// the contest winner, loads it into the manual Vision Statement / Longform
+// Example fields below, and scrolls there — the client reviews/edits and
+// then separately clicks the existing "Save Vision & Longform Example →"
+// button (saveVisionLongformEdits()) to actually commit it. This function
+// never writes to the account by itself.
+async function selectContestWinner(interviewId){
   const flag = document.getElementById('voiceContestSelectFlag');
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
-    });
-    if (!resp.ok){
-      const err = await resp.json().catch(() => ({}));
-      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this — try again."; }
-      return;
-    }
-    const result = await resp.json();
-    state.voice.visionStatement = result.visionStatement;
-    state.voice.longformExample = result.longformVoiceExample;
-    const visionEl = document.getElementById('voiceVisionStatement');
-    const longformEl = document.getElementById('voiceLongformExample');
-    if (visionEl) visionEl.value = result.visionStatement;
-    if (longformEl) longformEl.value = result.longformVoiceExample;
-    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected for AI Assistance — applied to Vision Statement and Longform Example below and saved automatically.'; }
-  } catch (e){
-    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not applied.'; }
+  const candidateKey = lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId
+    ? lastVoiceContestCache.recommendedKey : null;
+  if (!candidateKey){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'No unambiguous top-rated option yet — rate the options above first.'; }
+    return;
   }
-}
-// "Select Winner and Edit" — per direct instruction: "will replicate the
-// full manual option that we have below the contest. The client can edit
-// the vision statement and longform from the winning model to save as
-// final. This maintains the winning model status as the copywriting agent
-// overall." Records the same winner selection as the button above (so the
-// winning model status is captured either way), loads it into the manual
-// fields below, and scrolls there so the client can edit before finalizing
-// with the existing "Save Vision & Longform Example →" button.
-async function applyBrandVoiceCandidateForEdit(interviewId, candidateKey){
-  const flag = document.getElementById('voiceContestSelectFlag');
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
