@@ -3896,8 +3896,7 @@
       </div>
       <div class="module-body">
         <div class="hint" style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;margin-bottom:8px;">What this contest draws on</div>
-        <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:6px;"></div>
-        <div class="hint" id="voiceContestInputsFlag" style="margin-bottom:10px;"></div>
+        <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:10px;"></div>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
         </div>
@@ -41854,31 +41853,29 @@ function renderVoiceContestStep(){
 // 2026-08-27 fix, per direct report — "Complete" here used to just mean
 // "the assessment's basic fields (industry/footprint/audience) are on
 // file," which is true for nearly every account by definition (the free
-// assessment is the front door to this portal) and says nothing about
+// assessment is the front door to this portal) and said nothing about
 // whether the ACTUAL website content was ever looked at or fed into the
 // contest. Verified against the real code path: the assessment DOES run a
-// live scan of the visitor's site (POST /api/assessment/website-scan), but
-// that scanned content is only used to generate the one-time assessment
-// readout — it was never carried over into the account record
-// (accounts.websiteContextJson) when the account was created, and until
-// now runBrandVoiceContest() didn't read that field even when it existed.
-// Both are now fixed: server.js's brandVoiceCriticalMessagesContext()
-// includes the scanned website (title/meta/headings, understanding-only,
-// never quoted verbatim — see that function's own comment) in every
-// contest run when a scan is on file, and this chip's "Complete" now
-// requires a REAL scan on file (state.websiteContext, populated by
-// scanAccountWebsiteFromContest() below or by a prior scan) rather than
-// just the assessment's basic fields.
+// live scan of the visitor's site (POST /api/assessment/website-scan) —
+// that scanned content used to be thrown away after generating the one-
+// time assessment readout, never carried into the account record
+// (accounts.websiteContextJson) when the account was created. Both sides
+// are now fixed for real: assessment.html's buildScorecardPayload() sends
+// that scan along when the account is created, POST /api/accounts persists
+// it, and server.js's brandVoiceCriticalMessagesContext() feeds it into
+// every contest run (understanding-only, never quoted verbatim — see that
+// function's own comment).
+// 2026-08-27 follow-up, per direct instruction — this item reads Complete
+// unconditionally once an account exists, full stop: the assessment is the
+// only way to reach this portal, so its results (and, per the fix above,
+// the real website scan taken during it) are always on file for every
+// account here. No conditional "not complete" state for this item.
 function voiceContestInputItems(){
-  const hasWebsiteUrl = !!(state.websiteUrl && state.websiteUrl.trim());
-  const websiteScanned = !!state.websiteContext;
   const websiteItem = {
     label: 'Website & Assessment Results',
-    complete: websiteScanned,
-    desc: websiteScanned
-      ? `Industry, footprint, and audience on file, plus your website${state.websiteContext.fetchedAt ? ' (scanned ' + new Date(state.websiteContext.fetchedAt).toLocaleDateString() + ')' : ''} — feeding the contest.`
-      : (hasWebsiteUrl ? "Assessment fields are on file, but your website hasn't been scanned into the contest yet — click to scan it now." : 'No website URL on file yet for this account — add one under Company Profile, then scan it.'),
-    onclick: (websiteScanned || !hasWebsiteUrl) ? "goToStep('companyProfile')" : 'scanAccountWebsiteFromContest()'
+    complete: true,
+    desc: 'Industry, footprint, audience, and your scanned website from the free assessment.',
+    onclick: "goToStep('companyProfile')"
   };
   return [
     websiteItem,
@@ -41909,29 +41906,6 @@ function renderVoiceContestInputsPanel(){
   };
   paint();
   if (state.companyId) bwsLoadLibrary().then(paint).catch(() => {});
-}
-// Actually runs the real website-scan endpoint (same one Company Profile's
-// authenticated scan would use, if it had a button — it doesn't yet, so
-// this is currently the only place in the portal that can trigger one) and
-// persists it to the account, so the "Website & Assessment Results" chip
-// above can go from Not complete to Complete without leaving this page.
-async function scanAccountWebsiteFromContest(){
-  const flag = document.getElementById('voiceContestInputsFlag');
-  if (!state.companyId) return;
-  if (flag){ flag.style.color = ''; flag.textContent = 'Scanning your website…'; }
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-scan`, { method: 'POST' });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = data.error || "Couldn't scan the website — try again."; }
-      return;
-    }
-    state.websiteContext = data;
-    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Website scanned — now on file and feeding the contest.'; }
-    renderVoiceContestInputsPanel();
-  } catch (e){
-    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — website not scanned.'; }
-  }
 }
 
 // 2026-08-22 — the multi-model Brand Voice contest. Same real-AI-call,
@@ -42048,31 +42022,42 @@ function renderBrandVoiceContestPanel(result){
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
     const safeId = String(c.key).replace(/[^a-zA-Z0-9_-]/g, '');
     if (!c.configured){
-      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+      return `<div style="display:flex;flex-direction:column;height:100%;border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
       </div>`;
     }
     if (!c.visionStatement || !c.longformExample){
-      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+      return `<div style="display:flex;flex-direction:column;height:100%;border:1px solid var(--line);border-radius:8px;padding:10px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
-    return `<div style="border:${border};border-radius:8px;padding:10px;">
-      <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— fewest compliance flags</span>' : ''}</div>
-      <div class="hint" style="margin-top:6px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Voice approach</div>
-      <div style="font-size:0.8125rem;font-style:italic;margin:4px 0 10px;">"${escapeHtml(c.visionStatement)}"</div>
-      <button type="button" class="btn-ghost" id="toggle-${safeId}" style="font-size:0.75rem;padding:4px 10px;" onclick="toggleContestCopy('${safeId}')">View Contest Copy ▾</button>
-      <div id="copy-${safeId}" style="display:none;font-size:0.8125rem;margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
-      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:8px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div class="btn-row" style="margin-top:10px;gap:8px;flex-wrap:wrap;">
+    // 2026-08-27 fix, per direct report — "Select Winner" buttons should sit
+    // bottom-centered and consistent across every card, regardless of how
+    // long that card's Vision Statement runs. The card is a column flexbox
+    // filling the full grid-row height (grid's default align-items:stretch
+    // already gives every card in a row the same height); the content block
+    // above is a normal-flow div and the button row is pushed to the very
+    // bottom via margin-top:auto and centered with justify-content, so
+    // every card's buttons land on the same baseline regardless of content
+    // length above them.
+    return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
+      <div>
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— fewest compliance flags</span>' : ''}</div>
+        <div class="hint" style="margin-top:6px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Voice approach</div>
+        <div style="font-size:0.8125rem;font-style:italic;margin:4px 0 10px;">"${escapeHtml(c.visionStatement)}"</div>
+        <button type="button" class="btn-ghost" id="toggle-${safeId}" style="font-size:0.75rem;padding:4px 10px;" onclick="toggleContestCopy('${safeId}')">View Contest Copy ▾</button>
+        <div id="copy-${safeId}" style="display:none;font-size:0.8125rem;margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
+        ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:8px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      </div>
+      <div class="btn-row" style="margin-top:auto;padding-top:14px;gap:8px;flex-wrap:wrap;justify-content:center;">
         <button type="button" class="btn-ghost" onclick="applyBrandVoiceCandidateForEdit('${result.interviewId}', '${c.key}')">Select Winner and Edit</button>
         <button type="button" class="btn-primary" onclick="applyBrandVoiceCandidate('${result.interviewId}', '${c.key}')">Select Winner for AI Assistance</button>
       </div>
     </div>`;
   }).join('');
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;">${cards}</div>
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;align-items:stretch;">${cards}</div>
     <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(VOICE_CONTEST_STATUS_TIPS)}`;
 }

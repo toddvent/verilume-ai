@@ -5906,6 +5906,23 @@ function buildScorecardPayload(){
     url: state.url || '',
     description: state.description || '',
     productThemes: state.productThemes || '',
+    // 2026-08-27 fix, per direct report ("the contest tells the client
+    // their website hasn't been scanned — that's not true, we scanned it
+    // during the assessment") — startSiteReview() already runs a real scan
+    // of state.url early in the assessment (see assessmentWebsiteContext's
+    // own declaration comment above) and that result was already being
+    // sent to POST /api/assessment/generate-readout for the AI synthesis
+    // text, but it was never included in THIS payload — the one that
+    // actually creates the account — so the real scan the client just
+    // watched happen was silently thrown away the moment the account was
+    // saved, and the Portal had no record it ever occurred. Sending it here
+    // too means a new account arrives with its website scan already on
+    // file, same as its other assessment-derived fields (url, description,
+    // productThemes) above. Only a genuine successful read populates this
+    // (assessmentWebsiteContext stays null on any failure — see
+    // startSiteReview()), so a failed/skipped scan correctly sends null
+    // rather than fabricating one.
+    websiteContext: assessmentWebsiteContext,
     // Round 19 — Step 1's target audience (generations) and wealth tier
     // were collected but never actually sent to the Portal/backend before
     // this round; the Portal's new Company Profile (Brand Foundations)
