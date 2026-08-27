@@ -3884,6 +3884,8 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;margin-bottom:8px;">What this contest draws on</div>
+        <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:16px;"></div>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Run contest →</button>
         </div>
@@ -41813,6 +41815,64 @@ function renderVoiceContestStep(){
   if (longformEl) longformEl.value = state.voice.longformExample || '';
   const flag = document.getElementById('voiceVisionLongformSaveFlag');
   if (flag) flag.textContent = '';
+  renderVoiceContestInputsPanel();
+}
+
+// 2026-08-27, per direct instruction — "show in a clever way what the
+// contest uses and can use to improve the results," so the client sees at a
+// glance what's actually feeding the contest before spending a run on thin
+// inputs, and can jump straight to whatever's missing. Same card/pill visual
+// language as the Partner Integrations grid, same Complete/Not complete
+// signal each item already uses elsewhere in this file (Brand Groundwork
+// checklist etc.) — nothing new invented here, just surfaced on this page
+// too:
+//   1) Website & Assessment Results — the free assessment is the front door
+//      to this portal, so this reads Complete for essentially every real
+//      account; only flags Not complete if the underlying fields are
+//      somehow empty.
+//   2) Brand Voice — state.voice.approved, same signal as
+//      companyProfileSummary()'s "Brand Book — Voice" checklist item.
+//   3) Sample Writings — bwsSamples.length, same signal as the Brand
+//      Groundwork checklist's "Sample Writings & Presentations" item.
+//      bwsSamples is only populated once bwsLoadLibrary() has run, so this
+//      calls it here too in case the client lands on Voice Contest without
+//      visiting Sample Writings first this session — the panel renders once
+//      immediately from whatever's cached, then again once that fetch
+//      resolves.
+function voiceContestInputItems(){
+  return [
+    {
+      label: 'Website & Assessment Results', step: 'companyProfile',
+      desc: 'Industry, footprint, audience, and any Website Examples on file for this account.',
+      complete: !!(state.industry || state.assessmentDescription || state.footprint)
+    },
+    {
+      label: 'Brand Voice', step: 'voice',
+      desc: 'Tone Anchors, avoid-words, and the approved Voice Guide.',
+      complete: !!state.voice.approved
+    },
+    {
+      label: 'Sample Writings', step: 'brandWritingSamples',
+      desc: bwsSamples.length ? `${bwsSamples.length} sample${bwsSamples.length === 1 ? '' : 's'} on file.` : 'Real writing/presentation samples for this brand.',
+      complete: bwsSamples.length > 0
+    }
+  ];
+}
+function renderVoiceContestInputsPanel(){
+  const grid = document.getElementById('voiceContestInputsGrid');
+  if (!grid) return;
+  const paint = () => {
+    grid.innerHTML = voiceContestInputItems().map(item => `
+      <div class="partner-card" style="cursor:pointer;" onclick="goToStep('${item.step}')" title="Go to ${escapeHtml(item.label)}">
+        <div class="partner-card-head">
+          <span class="partner-card-name">${escapeHtml(item.label)}</span>
+        </div>
+        <div class="partner-card-desc">${escapeHtml(item.desc)}</div>
+        <span class="partner-status-pill${item.complete ? ' is-connected' : ''}">${item.complete ? 'Complete' : 'Not complete'}</span>
+      </div>`).join('');
+  };
+  paint();
+  if (state.companyId) bwsLoadLibrary().then(paint).catch(() => {});
 }
 
 // 2026-08-22 — the multi-model Brand Voice contest. Same real-AI-call,
@@ -41820,15 +41880,15 @@ function renderVoiceContestStep(){
 // in the copy workspace, applied at the account level instead of a specific
 // creative job.
 const VOICE_CONTEST_STATUS_TIPS = [
-  "A voice direction that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products & Services, not just how it reads.",
+  "A voice option that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products & Services, not just how it reads.",
   "The Vision Statement is the north star, not a tagline — it should still make sense a year from now, even as individual campaigns change.",
-  "If none of the three feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above need a second look before trying again."
+  "If none of the options feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above (or the inputs checklist above the button) need a second look before trying again."
 ];
 let lastVoiceContestCache = null;
 async function runBrandVoiceContest(){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder || !state.companyId) return;
-  holder.innerHTML = renderAiStatusBubble("Drafting three distinct brand voice directions — Confident Authority, Warm Storyteller, Bold Modern — each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
+  holder.innerHTML = renderAiStatusBubble("Drafting a blind panel of brand voice options, each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
   try {
     // 2026-08-26 fix, per direct report ("Running the contest could not
     // reach the backend" — screenshot showing "Backend unreachable —
