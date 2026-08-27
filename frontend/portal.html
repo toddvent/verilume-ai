@@ -41944,6 +41944,7 @@ let lastVoiceContestCache = null;
 async function runBrandVoiceContest(){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder || !state.companyId) return;
+  const clickStartedAt = new Date().toISOString();
   holder.innerHTML = renderAiStatusBubble("Drafting a blind panel of brand voice options, each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
   try {
     // 2026-08-26 fix, per direct report ("Running the contest could not
@@ -41966,7 +41967,17 @@ async function runBrandVoiceContest(){
     // the backend's own budget, so the backend's limit is what actually
     // decides a genuine failure, not an unrelated client default).
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 65000,
+      // 2026-08-27 fix, per direct report — this timeout was raised to 65s
+      // to match vercel.json's maxDuration at the time (60s), but that has
+      // since been raised again to 120s without this client-side value
+      // following. With every vendor actually succeeding now (Gemini's
+      // billing fixed), real generation across 5 models can genuinely run
+      // past 65s — the browser gave up and showed "timed out" while the
+      // backend kept working uninterrupted (aborting a fetch doesn't kill
+      // a Vercel function mid-flight) and saved a full, real result nobody
+      // was left to receive. Raised to 125s to clear the 120s backend
+      // budget with the same ~5s margin the original 60s/65s pairing used.
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 125000,
       // avoidWords now sourced from Terms to Avoid (cmpBrandVoiceAvoidWords())
       // instead of the removed standalone field — backend param name kept
       // as-is, it already just treats this as a display string.
@@ -42026,12 +42037,60 @@ async function runBrandVoiceContest(){
     holder.innerHTML = renderBrandVoiceContestPanel(result);
   } catch (e){
     const timedOut = e && e.name === 'AbortError';
-    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">${timedOut ? 'The contest is taking longer than expected (it runs several AI models) and timed out — try again; if it keeps happening, the backend itself may be slow.' : 'Backend unreachable — couldn\'t run the contest.'}</div>`;
+    if (timedOut){
+      // 2026-08-27 fix, per direct report — a client-side timeout does NOT
+      // mean the run failed. Vercel functions keep running after a fetch is
+      // aborted client-side, so a slow-but-real run (every vendor actually
+      // succeeding now that Gemini's billing is fixed, so real generation
+      // can genuinely run long) can finish and save a full result with
+      // nobody left to receive the response — exactly what happened here:
+      // the newest interview in the ops view had 5/5 real candidates, no
+      // errors, while this panel showed a scary "timed out" message. Poll
+      // history for a few minutes before giving up, and show the real
+      // result the moment it shows up instead of leaving a false failure
+      // message on screen.
+      holder.innerHTML = renderAiStatusBubble("Still working — this run is taking longer than usual. Checking whether it finished in the background instead of making you re-run it...", []);
+      const recovered = await recoverBrandVoiceContestAfterTimeout(clickStartedAt);
+      if (!recovered){
+        holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">This run is taking unusually long and hasn't shown up yet — it may still finish in the background. Wait a minute and check again before re-running (running it again while the first one is still working just spends AI usage twice).</div>`;
+      }
+    } else {
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the contest.</div>`;
+    }
   }
   // 2026-08-27 — refresh the usage counter after every run attempt
   // (success, cap-blocked, or error all change or reveal the real count),
   // so it never shows a stale number from before this click.
   loadInterviewUsage();
+}
+// 2026-08-27 fix, per direct report (see runBrandVoiceContest's catch block
+// above) — polls the contest history endpoint after a client-side timeout,
+// looking for an interview created after this click started. If one shows
+// up, the backend actually finished the run; render it instead of leaving a
+// false "failed" message on screen. Gives up after ~40s of polling (5
+// attempts, 8s apart) — a run that hasn't appeared by then genuinely may
+// still be running or may have hit a real backend problem, and either way
+// re-polling forever isn't the right call inside one page load.
+async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
+  const holder = document.getElementById('voiceContestPanel');
+  for (let attempt = 0; attempt < 5; attempt++){
+    await new Promise(r => setTimeout(r, 8000));
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const fresh = (data.interviews || []).find(iv => iv.createdAt > clickStartedAt);
+      if (fresh){
+        // GET history doesn't carry recommendedKey (only the POST response
+        // does) — recovered results simply show no highlighted winner
+        // border, a minor cosmetic gap versus a false failure message.
+        lastVoiceContestCache = { available: true, interviewId: fresh.id, recommendedKey: null, candidates: fresh.candidates };
+        if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
+        return true;
+      }
+    } catch (e){ /* transient read failure — just keep polling */ }
+  }
+  return false;
 }
 // 2026-08-27 rework, per direct instruction — four changes to the contest
 // panel: (1) candidates are already fully blind by the time they reach here
