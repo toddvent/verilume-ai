@@ -3871,8 +3871,19 @@
   <div class="step" id="step-voiceContest">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> / Voice Contest</div>
     <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations · Voice Contest</div>
-    <h1>Voice contest — Vision Statement &amp; Longform Example</h1>
-    <p class="lede">Runs your brand through a blind panel of voice options at once, each producing its own Vision Statement and a real longform example built from your Products &amp; Services and approved Brand &amp; Product Keywords, so it actually incorporates what customers need to hear, not generic tone-of-voice filler. Options are unlabeled by design — compare them purely on the writing and pick the one that's actually you. Nothing is applied until you choose.</p>
+    <h1>Voice Contest: Where the Models Compete</h1>
+    <!-- 2026-08-27, per direct instruction — hero copy naming the 5
+         contestants up front is intentional and does NOT conflict with the
+         blind-test requirement above: it's fine for the client to know
+         Anthropic/OpenAI/Google/Perplexity/xAI are all in the running in
+         general, since that's true of every contest run — what stays
+         blind is WHICH option (1-5) came from which one, which is the
+         actual comparison being made. "SpaceX" in Todd's pasted copy was
+         corrected to "xAI" here — xAI (Elon Musk's AI company, maker of
+         Grok, the actual configured vendor per INTERVIEW_VENDOR_REGISTRY
+         in server.js) rather than SpaceX (the rocket company, not an AI
+         vendor and not one of the five integrated here). -->
+    <p class="lede">Anthropic, OpenAI, Gemini, Perplexity &amp; xAI are competing for your copywriting business. Select the winner based on how well they understand your brand. Results are based on your brand guide, sample writings, website, and overall assessment.</p>
 
     <div class="module open accent-cx" id="voiceContestModule">
       <div class="module-head" onclick="toggleModule('voiceContestModule')">
@@ -3885,9 +3896,10 @@
       </div>
       <div class="module-body">
         <div class="hint" style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;margin-bottom:8px;">What this contest draws on</div>
-        <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:16px;"></div>
+        <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:6px;"></div>
+        <div class="hint" id="voiceContestInputsFlag" style="margin-bottom:10px;"></div>
         <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Run contest →</button>
+          <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
         </div>
         <div id="voiceContestPanel" style="margin-top:14px;"></div>
       </div>
@@ -41839,20 +41851,44 @@ function renderVoiceContestStep(){
 //      visiting Sample Writings first this session — the panel renders once
 //      immediately from whatever's cached, then again once that fetch
 //      resolves.
+// 2026-08-27 fix, per direct report — "Complete" here used to just mean
+// "the assessment's basic fields (industry/footprint/audience) are on
+// file," which is true for nearly every account by definition (the free
+// assessment is the front door to this portal) and says nothing about
+// whether the ACTUAL website content was ever looked at or fed into the
+// contest. Verified against the real code path: the assessment DOES run a
+// live scan of the visitor's site (POST /api/assessment/website-scan), but
+// that scanned content is only used to generate the one-time assessment
+// readout — it was never carried over into the account record
+// (accounts.websiteContextJson) when the account was created, and until
+// now runBrandVoiceContest() didn't read that field even when it existed.
+// Both are now fixed: server.js's brandVoiceCriticalMessagesContext()
+// includes the scanned website (title/meta/headings, understanding-only,
+// never quoted verbatim — see that function's own comment) in every
+// contest run when a scan is on file, and this chip's "Complete" now
+// requires a REAL scan on file (state.websiteContext, populated by
+// scanAccountWebsiteFromContest() below or by a prior scan) rather than
+// just the assessment's basic fields.
 function voiceContestInputItems(){
+  const hasWebsiteUrl = !!(state.websiteUrl && state.websiteUrl.trim());
+  const websiteScanned = !!state.websiteContext;
+  const websiteItem = {
+    label: 'Website & Assessment Results',
+    complete: websiteScanned,
+    desc: websiteScanned
+      ? `Industry, footprint, and audience on file, plus your website${state.websiteContext.fetchedAt ? ' (scanned ' + new Date(state.websiteContext.fetchedAt).toLocaleDateString() + ')' : ''} — feeding the contest.`
+      : (hasWebsiteUrl ? "Assessment fields are on file, but your website hasn't been scanned into the contest yet — click to scan it now." : 'No website URL on file yet for this account — add one under Company Profile, then scan it.'),
+    onclick: (websiteScanned || !hasWebsiteUrl) ? "goToStep('companyProfile')" : 'scanAccountWebsiteFromContest()'
+  };
   return [
+    websiteItem,
     {
-      label: 'Website & Assessment Results', step: 'companyProfile',
-      desc: 'Industry, footprint, audience, and any Website Examples on file for this account.',
-      complete: !!(state.industry || state.assessmentDescription || state.footprint)
-    },
-    {
-      label: 'Brand Voice', step: 'voice',
+      label: 'Brand Voice', onclick: "goToStep('voice')",
       desc: 'Tone Anchors, avoid-words, and the approved Voice Guide.',
       complete: !!state.voice.approved
     },
     {
-      label: 'Sample Writings', step: 'brandWritingSamples',
+      label: 'Sample Writings', onclick: "goToStep('brandWritingSamples')",
       desc: bwsSamples.length ? `${bwsSamples.length} sample${bwsSamples.length === 1 ? '' : 's'} on file.` : 'Real writing/presentation samples for this brand.',
       complete: bwsSamples.length > 0
     }
@@ -41863,7 +41899,7 @@ function renderVoiceContestInputsPanel(){
   if (!grid) return;
   const paint = () => {
     grid.innerHTML = voiceContestInputItems().map(item => `
-      <div class="partner-card" style="cursor:pointer;" onclick="goToStep('${item.step}')" title="Go to ${escapeHtml(item.label)}">
+      <div class="partner-card" style="cursor:pointer;" onclick="${item.onclick}" title="${escapeHtml(item.label)}">
         <div class="partner-card-head">
           <span class="partner-card-name">${escapeHtml(item.label)}</span>
         </div>
@@ -41873,6 +41909,29 @@ function renderVoiceContestInputsPanel(){
   };
   paint();
   if (state.companyId) bwsLoadLibrary().then(paint).catch(() => {});
+}
+// Actually runs the real website-scan endpoint (same one Company Profile's
+// authenticated scan would use, if it had a button — it doesn't yet, so
+// this is currently the only place in the portal that can trigger one) and
+// persists it to the account, so the "Website & Assessment Results" chip
+// above can go from Not complete to Complete without leaving this page.
+async function scanAccountWebsiteFromContest(){
+  const flag = document.getElementById('voiceContestInputsFlag');
+  if (!state.companyId) return;
+  if (flag){ flag.style.color = ''; flag.textContent = 'Scanning your website…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-scan`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = data.error || "Couldn't scan the website — try again."; }
+      return;
+    }
+    state.websiteContext = data;
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Website scanned — now on file and feeding the contest.'; }
+    renderVoiceContestInputsPanel();
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — website not scanned.'; }
+  }
 }
 
 // 2026-08-22 — the multi-model Brand Voice contest. Same real-AI-call,
