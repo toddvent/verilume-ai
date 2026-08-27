@@ -41941,6 +41941,25 @@ const VOICE_CONTEST_STATUS_TIPS = [
   "If none of the options feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above (or the inputs checklist above the button) need a second look before trying again."
 ];
 let lastVoiceContestCache = null;
+// 2026-08-27, per direct feedback that a bare 1-5 scale has "no science
+// behind it" — a number without a defined meaning isn't comparable across
+// options, across runs, or across different people rating them. Anchoring
+// each number to a specific claim about USABILITY (not just "how much I
+// like it") is what makes the scale mean the same thing every time it's
+// used, which is required for it to ever feed something more automated
+// later (see the scoring roadmap doc).
+const BRAND_VOICE_RATING_RUBRIC = [
+  'Off-brand — do not use',
+  'Weak fit — major rework needed',
+  'Usable with edits',
+  'Strong fit — minor edits only',
+  'Ready to use as-is'
+];
+const RECOMMENDED_REASON_LABEL = {
+  'nailed-it': '— Nailed It!',
+  'rating': '— highest rated',
+  'compliance': '— fewest compliance flags'
+};
 async function runBrandVoiceContest(){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder || !state.companyId) return;
@@ -42081,10 +42100,11 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
       const data = await resp.json();
       const fresh = (data.interviews || []).find(iv => iv.createdAt > clickStartedAt);
       if (fresh){
-        // GET history doesn't carry recommendedKey (only the POST response
-        // does) — recovered results simply show no highlighted winner
-        // border, a minor cosmetic gap versus a false failure message.
-        lastVoiceContestCache = { available: true, interviewId: fresh.id, recommendedKey: null, candidates: fresh.candidates };
+        // 2026-08-27 fix — GET history now returns recommendedKey/
+        // recommendedReason too (see pickRecommendedCandidate in
+        // server.js), so a recovered result shows the real winner
+        // highlight instead of silently losing it.
+        lastVoiceContestCache = { available: true, interviewId: fresh.id, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates };
         if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
         return true;
       }
@@ -42130,7 +42150,7 @@ function renderBrandVoiceContestPanel(result){
     // length above them.
     return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
       <div>
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— fewest compliance flags</span>' : ''}</div>
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ` <span class="hint" style="color:var(--cx);font-weight:700;">${escapeHtml(RECOMMENDED_REASON_LABEL[result.recommendedReason] || '— recommended')}</span>` : ''}</div>
         <div class="hint" style="margin-top:6px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Voice approach</div>
         <div style="font-size:0.8125rem;font-style:italic;margin:4px 0 10px;">"${escapeHtml(c.visionStatement)}"</div>
         <button type="button" class="btn-ghost" id="toggle-${safeId}" style="font-size:0.75rem;padding:4px 10px;" onclick="toggleContestCopy('${safeId}')">View Contest Copy ▾</button>
@@ -42138,9 +42158,10 @@ function renderBrandVoiceContestPanel(result){
         ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:8px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
         <div class="hint" style="margin-top:12px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Your rating</div>
         <div style="display:flex;gap:4px;margin-top:4px;">
-          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="Rate this option ${n} of 5">${n}</button>`).join('')}
+          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="${escapeHtml(BRAND_VOICE_RATING_RUBRIC[n - 1])}">${n}</button>`).join('')}
         </div>
-        <button type="button" class="btn-ghost" style="margin-top:8px;font-size:0.75rem;padding:5px 10px;width:100%;${c.nailedIt ? 'background:#ffd54f;border-color:#ffd54f;color:#1a1a1a;font-weight:700;' : ''}" onclick="toggleNailedItCandidate('${result.interviewId}', '${c.key}')">${c.nailedIt ? 'Nailed It! — This is my AI Agent (selected)' : 'Nailed It! — This is my AI Agent'}</button>
+        ${typeof c.rating === 'number' ? `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">${escapeHtml(BRAND_VOICE_RATING_RUBRIC[c.rating - 1])}</div>` : `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">1 = off-brand, 5 = ready to use as-is</div>`}
+        <button type="button" class="btn-ghost" style="margin-top:8px;font-size:0.75rem;padding:5px 10px;width:100%;${c.nailedIt ? 'background:#ffd54f;border-color:#ffd54f;color:#1a1a1a;font-weight:700;' : ''}" onclick="toggleNailedItCandidate('${result.interviewId}', '${c.key}')" title="A rarer, stronger claim than a 5 rating — this exact draft is ready to ship as-is">${c.nailedIt ? 'Nailed It! — This is my AI Agent (selected)' : 'Nailed It! — This is my AI Agent'}</button>
       </div>
       <div class="btn-row" style="margin-top:auto;padding-top:14px;gap:8px;flex-wrap:wrap;justify-content:center;">
         <button type="button" class="btn-ghost" onclick="applyBrandVoiceCandidateForEdit('${result.interviewId}', '${c.key}')">Select Winner and Edit</button>
@@ -42189,6 +42210,14 @@ async function sendBrandVoiceRating(interviewId, body){
     const result = await resp.json();
     if (lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId){
       lastVoiceContestCache.candidates = result.candidates;
+      // 2026-08-27 fix, per direct feedback that rating/Nailed It visibly
+      // did nothing — the backend now recomputes and returns the live
+      // recommendation on every /rate call (see pickRecommendedCandidate in
+      // server.js); without updating these two fields here, the winner
+      // border would keep showing the ORIGINAL compliance-only pick from
+      // the initial run forever, no matter what got rated or buzzed.
+      lastVoiceContestCache.recommendedKey = result.recommendedKey;
+      lastVoiceContestCache.recommendedReason = result.recommendedReason;
       if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
     }
   } catch (e){ /* rating is a nice-to-have — a failed save here shouldn't block the rest of the panel */ }
