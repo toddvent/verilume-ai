@@ -1722,11 +1722,21 @@ async function runBrandVoiceContest(account, extra){
       candidates: []
     };
   }
-  const generated = await Promise.all(
-    BRAND_VOICE_SUBAGENT_ANGLES.map(angle => generateBrandVoiceCandidate(angle, account, extra))
-  );
+  // 2026-08-26 fix, per direct report (504 from Vercel on "Run contest" —
+  // screenshot showing "Couldn't run the contest (504)"): these two
+  // Promise.all batches used to run SEQUENTIALLY (await one, then await the
+  // other), so total wall-clock was angle-time + vendor-time even though
+  // neither batch depends on the other's output. Combined into one
+  // Promise.all so every angle AND every configured vendor call fires at
+  // once — wall-clock is now bounded by the single slowest call instead of
+  // the sum, which is the actual fix for a 504 (a real infra-level timeout,
+  // not a client-side abort — see vercel.json's maxDuration, raised
+  // alongside this from 30s to 60s for headroom on top of this speedup).
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorBrandVoiceCopy(v.key, account, extra)));
+  const [generated, vendorGenerated] = await Promise.all([
+    Promise.all(BRAND_VOICE_SUBAGENT_ANGLES.map(angle => generateBrandVoiceCandidate(angle, account, extra))),
+    Promise.all(configuredVendors.map(v => generateVendorBrandVoiceCopy(v.key, account, extra)))
+  ]);
 
   const buildCandidate = (key, label, vendor, model, gen) => {
     const combinedText = [gen.visionStatement, gen.longformExample].filter(Boolean).join('\n\n');
@@ -6396,6 +6406,60 @@ async function extractSampleText(uploadedFile){
   } catch (e){ return null; }
   return null; // legacy .doc, .ppt/.pptx, or an unrecognized mimeType — not parsed yet
 }
+// extractBrandGuideFields() — 2026-08-26, per direct instruction: "some
+// brand books will include comprehensive information... we should populate
+// all fields we can map to, to reduce unnecessary manual client work."
+// Heuristic, best-effort regex mapping from a brand guide's extracted plain
+// text (mammoth/pdf-parse have already flattened the file to text — no
+// layout/formatting awareness survives that, so this is not a real
+// document-structure parser). It looks for common brand-guide phrasing
+// ("Primary Color:", "Heading Font:", hex codes, a Voice/Tone section) and
+// returns only what it's reasonably confident about. Never fabricates a
+// value — any field it can't find stays absent from the returned object,
+// and the caller (POST .../style-assets/extract, and portal.html's
+// handleStyleAssetFile()) only uses this to fill fields that are still
+// empty, never to overwrite something a human already entered.
+function extractBrandGuideFields(text){
+  const out = {};
+  const norm = String(text || '').replace(/\r\n/g, '\n');
+  if (!norm.trim()) return out;
+
+  // Hex colors, in first-appearance order, deduped.
+  const hexMatches = [...new Set((norm.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || []))];
+  if (hexMatches.length){
+    out.primaryColorHex = hexMatches[0];
+    if (hexMatches.length > 1) out.secondaryPaletteText = hexMatches.slice(1, 8).join('\n');
+  }
+
+  const labeledLine = (labels) => {
+    for (const label of labels){
+      const re = new RegExp(`${label}\\s*[:\\-–]\\s*([^\\n]{2,80})`, 'i');
+      const m = norm.match(re);
+      if (m && m[1].trim()) return m[1].trim();
+    }
+    return null;
+  };
+  const primaryColorName = labeledLine(['primary colou?r(?:\\s*name)?']);
+  if (primaryColorName) out.primaryColorName = primaryColorName.replace(/#[0-9a-fA-F]{3,6}\b/, '').trim();
+  const headingFont = labeledLine(['heading font', 'display font', 'headline font']);
+  if (headingFont) out.headingFontName = headingFont;
+  const bodyFont = labeledLine(['body font', 'text font', 'paragraph font']);
+  if (bodyFont) out.bodyFontName = bodyFont;
+
+  // Section-style capture: a heading-like line, then the text up to the
+  // next heading-like line or a blank-line break.
+  const section = (headingPattern) => {
+    const re = new RegExp(`(?:^|\\n)\\s*${headingPattern}\\s*[:\\n]([\\s\\S]{0,600}?)(?:\\n\\s*\\n|\\n[A-Z][A-Za-z /&]{2,40}\\s*\\n|$)`, 'i');
+    const m = norm.match(re);
+    return m && m[1].trim() ? m[1].trim().replace(/\s+/g, ' ') : null;
+  };
+  const voiceSection = section('(?:brand\\s+)?voice(?:\\s*(?:&|and)\\s*tone)?') || section('tone of voice');
+  if (voiceSection) out.voiceToneExcerpt = voiceSection.slice(0, 900);
+  const styleSection = section('(?:photography|imagery|style)(?:\\s+(?:direction|guidelines|notes))?');
+  if (styleSection) out.styleNotes = styleSection.slice(0, 900);
+
+  return out;
+}
 // brandWritingSampleContext() — the actual prompt-context builder. Scoped to
 // the two categories closest to real customer-facing/persuasive writing
 // (consumer_marketing, sales) rather than every category (standard
@@ -8652,22 +8716,36 @@ async function handleRequest(req, res) {
     }
 
     // POST /api/accounts/:id/voice — round 18, Brand Foundations (Voice).
-    // Saves the approved voice guide text and bumps its version. Unlike
-    // POST /api/campaigns/:id, this always writes all four fields together
-    // (Save always sets the full guide + approved + version at once — there
-    // is no partial-field update case for Voice today).
+    // Saves the voice guide text and bumps its version. 2026-08-26, per
+    // direct instruction ("we should also have a Save Draft and Save For AI
+    // Assistance options"): this used to always set voiceApproved = 1 on any
+    // write, with no way to persist an in-progress draft without also
+    // marking it approved — the frontend's own "Save Draft" button was a
+    // misnomer (see saveVoiceDraft()'s old comment). Now matches the same
+    // `approved` body-flag convention POST .../style-assets already used:
+    // approved is set true only when the caller explicitly asks for it
+    // (Save For AI Assistance); a plain Save Draft call still persists the
+    // text and bumps the version (so nothing is lost), but leaves whatever
+    // the approval state already was untouched rather than forcing it on.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId, voiceVersion FROM accounts WHERE accountId = ?').get(accountId);
+      const account = db.prepare('SELECT accountId, voiceVersion, voiceApproved FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const body = await readBody(req);
       if (!body.voiceGuideText) return sendJson(res, 400, { error: 'voiceGuideText is required' });
       const now = new Date().toISOString();
       const nextVersion = (account.voiceVersion || 0) + 1;
-      db.prepare('UPDATE accounts SET voiceGuideText = ?, voiceApproved = 1, voiceVersion = ?, voiceApprovedAt = ? WHERE accountId = ?')
-        .run(body.voiceGuideText, nextVersion, now, accountId);
-      return sendJson(res, 200, { voiceVersion: nextVersion, voiceApprovedAt: now });
+      const approved = body.approved ? 1 : (account.voiceApproved || 0);
+      const approvedAt = body.approved ? now : undefined;
+      db.prepare(
+        approvedAt !== undefined
+          ? 'UPDATE accounts SET voiceGuideText = ?, voiceApproved = ?, voiceVersion = ?, voiceApprovedAt = ? WHERE accountId = ?'
+          : 'UPDATE accounts SET voiceGuideText = ?, voiceApproved = ?, voiceVersion = ? WHERE accountId = ?'
+      ).run(...(approvedAt !== undefined
+        ? [body.voiceGuideText, approved, nextVersion, approvedAt, accountId]
+        : [body.voiceGuideText, approved, nextVersion, accountId]));
+      return sendJson(res, 200, { voiceVersion: nextVersion, approved: !!approved, approvedAt: approvedAt || null });
     }
 
     // POST /api/accounts/:id/voice-contest — 2026-08-22, the multi-model
@@ -9187,6 +9265,51 @@ async function handleRequest(req, res) {
         merged.styleSourceFileName, approved, approvedAt, accountId
       );
       return sendJson(res, 200, { approved: !!approved, approvedAt });
+    }
+
+    // POST /api/accounts/:id/style-assets/extract — 2026-08-26, per direct
+    // instruction: real document parsing for the Upload Brand Guide button
+    // above, not just recording the filename. Reuses the same
+    // decodeDataUrlBuffer/mammoth/pdf-parse pipeline as extractSampleText()
+    // (Sample Writings), then runs extractBrandGuideFields() — a heuristic,
+    // best-effort mapper — over the extracted text. Read-only: this
+    // endpoint never writes to the account record. The frontend
+    // (handleStyleAssetFile()) fills only fields that are currently empty
+    // and still requires a human Save; nothing here is auto-approved.
+    // Voice/Tone content comes back as a labeled excerpt for Style Notes
+    // rather than being written to POST /api/accounts/:id/voice, because
+    // that endpoint always sets voiceApproved=1 on any write — silently
+    // cross-writing unreviewed extracted text there would mark it
+    // "approved" before a human ever saw it.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'style-assets' && parts[4] === 'extract'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      if (!body.dataUrl) return sendJson(res, 400, { error: 'dataUrl is required' });
+      const decoded = decodeDataUrlBuffer(body.dataUrl);
+      if (!decoded) return sendJson(res, 400, { error: 'dataUrl could not be decoded' });
+      const filename = String(body.fileName || '').toLowerCase();
+      const mime = String(body.mimeType || decoded.mimeType || '').toLowerCase();
+      let rawText = null;
+      try {
+        if (mime.includes('wordprocessingml') || filename.endsWith('.docx')){
+          const result = await mammoth.extractRawText({ buffer: decoded.buffer });
+          rawText = (result && result.value) || null;
+        } else if (mime.includes('pdf') || filename.endsWith('.pdf')){
+          const result = await pdfParse(decoded.buffer);
+          rawText = (result && result.text) || null;
+        }
+      } catch (e){ rawText = null; }
+      if (!rawText || !rawText.trim()){
+        const reason = filename.endsWith('.doc')
+          ? 'legacy .doc files are not parsed by this prototype — try re-saving as .docx or .pdf'
+          : 'no text could be extracted from this file';
+        return sendJson(res, 200, { extracted: false, reason, mapped: {} });
+      }
+      const mapped = extractBrandGuideFields(rawText);
+      return sendJson(res, 200, { extracted: true, mapped, rawTextLength: rawText.length });
     }
 
     // POST /api/accounts/:id/positioning — round 22, Brand Foundations
@@ -13693,3 +13816,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
