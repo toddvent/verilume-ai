@@ -158,6 +158,13 @@ function wrapDbForInit(rawDb) {
 let db;
 if (process.env.DATABASE_URL) {
   const { createSyncDb } = require('./pg-sync-bridge');
+  // 2026-08-27 diagnostic marker — isolates "pg-sync-bridge.js was required
+  // successfully" from "createSyncDb() / the worker thread actually started
+  // without crashing the process." If BUILD MARKER (line ~101) shows in the
+  // logs but this one never does, the crash is inside createSyncDb() itself
+  // (spawning the Worker, or the synchronous Atomics.wait it sets up) —
+  // not in schema setup or in requiring the file.
+  console.log('[server.js] pg-sync-bridge required OK, about to call createSyncDb()');
   db = wrapDbForInit(createSyncDb(process.env.DATABASE_URL));
   console.log('CXMedia.AI backend: using Supabase/Postgres (DATABASE_URL set)');
 } else {
@@ -13816,4 +13823,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
