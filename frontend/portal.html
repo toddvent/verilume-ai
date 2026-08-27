@@ -372,7 +372,14 @@
      silently deleted. */
 
   .step{display:none;}
-  .step.active{display:block;}
+  /* 2026-08-27, per direct instruction — two rows of breathing room between
+     the eyebrow line (the visible "breadcrumb-like" text, e.g. "Brand
+     Groundwork · Sample Writings & Presentations · Voice Contest" — the
+     actual .crumb links are hidden portal-wide, see that rule's own
+     comment) and the Ask Verilume bar's bottom border above it. Portal-wide
+     on .step.active rather than any one page, since the Ask Verilume bar
+     sits above every .step as a persistent sibling. */
+  .step.active{display:block;margin-top:48px;}
   /* 2026-08-26, per direct instruction: "We really don't need breadcrumbs
      in the Portal at this point... Linking from the navigation works
      fine." Hidden via display:none rather than deleting the ~36 .crumb
@@ -989,6 +996,23 @@
   .portal-load-cover-spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,0.22);border-top-color:var(--hdr-amber);animation:portalLoadSpin 0.85s linear infinite;}
   @media (prefers-reduced-motion: reduce){ .portal-load-cover-spinner{animation-duration:2.4s;} }
   @keyframes portalLoadSpin{ to{ transform:rotate(360deg); } }
+  /* 2026-08-27, per direct instruction ("this does take a while so I would
+     incorporate a smaller version of our loading screen above the area that
+     will reveal the submissions") — a page-embedded, light-background sibling
+     of .portal-load-cover, reusing the same portalLoadSpin keyframe rather
+     than the full-screen navy takeover (which is reserved for initial Portal
+     load). */
+  .mini-load-cover{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:26px 10px;}
+  .mini-load-spinner{width:28px;height:28px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ink);animation:portalLoadSpin 0.85s linear infinite;}
+  @media (prefers-reduced-motion: reduce){ .mini-load-spinner{animation-duration:2.4s;} }
+  .mini-load-text{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink);}
+  /* 2026-08-27 — the weekly-usage counter, moved out of a sentence-style
+     .hint line into its own small stat tile per direct instruction, shown
+     beside the Voice Contest page header. font-variant-numeric keeps the
+     zero-padded digits from jittering in width as they change. */
+  .contest-usage-counter{border:1px solid var(--line);border-radius:12px;padding:12px 18px;text-align:center;min-width:230px;}
+  .contest-usage-counter-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:4px;}
+  .contest-usage-counter-value{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;}
   .portal-load-cover-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;color:rgba(255,255,255,0.68);}
   .portal-load-cover-error{display:none;text-align:center;max-width:360px;padding:0 24px;}
   .portal-load-cover-error.show{display:block;}
@@ -1021,6 +1045,13 @@
   .module.accent-media{border-top-color:var(--media-tint);}
   .module.accent-cx{border-top-color:var(--cx-tint);}
   .module.accent-advocacy{border-top-color:var(--advocacy-tint);}
+  /* 2026-08-27, per direct instruction ("Add some borders per our design to
+     make it a section") — a static, non-collapsible bordered section using
+     the same card language as .module (border/radius/padding) without the
+     module-head/chevron collapse machinery, which relies on JS-driven
+     max-height and would otherwise render permanently collapsed if reused
+     bare on always-visible content. */
+  .section-card{background:var(--white);border:1px solid var(--line);border-top-width:2px;border-radius:14px;padding:22px 26px;margin-top:20px;}
   .module-head{display:flex;align-items:center;gap:16px;padding:22px 26px;cursor:pointer;user-select:none;flex-wrap:wrap;}
   .module-head .modnum{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7812rem;font-weight:600;color:var(--muted);background:var(--paper-dim);border-radius:50%;width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
   .module.accent-media .module-head .modnum{background:var(--media-tint);color:var(--media);}
@@ -3871,7 +3902,25 @@
   <div class="step" id="step-voiceContest">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> / Voice Contest</div>
     <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations · Voice Contest</div>
-    <h1>Voice Contest: Where the Models Compete</h1>
+    <!-- 2026-08-27, per direct instruction — the weekly usage counter moves
+         out of a sentence-style .hint line (still fetched by
+         loadInterviewUsage(), see the JS) and into its own small stat tile,
+         positioned beside the page header and vertically centered with the
+         H1. The 💭 bubble on the counter's label opens AI Agent Thoughts
+         scoped to the Blind Test Interview topic (closest existing topic to
+         this multi-model panel) — also this page's answer to "why don't we
+         have AI Thoughts here," per direct instruction that every Portal
+         page should have an entry point into it. A full sweep of every OTHER
+         page for the same gap is a bigger follow-up, not attempted here. -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+      <div style="flex:1 1 320px;min-width:260px;">
+        <h1 style="margin-bottom:0;">Voice Contest: Where the Models Compete <span class="ai-thought-mount" data-topic="P"></span></h1>
+      </div>
+      <div class="contest-usage-counter" id="voiceContestUsageCounter" style="display:none;">
+        <div class="contest-usage-counter-label">Weekly AI Training Runs <button type="button" class="ai-thought-icon" aria-label="How weekly AI runs are counted" onmouseenter="showContestUsageTip(event)" onmouseleave="aiThoughtPreviewHide()" onfocus="showContestUsageTip(event)" onblur="aiThoughtPreviewHide()" onclick="event.stopPropagation();aiThoughtPreviewHide();aiThoughtOpen('P')">💭</button></div>
+        <div class="contest-usage-counter-value" id="voiceContestUsageCounterValue">— of —</div>
+      </div>
+    </div>
     <!-- 2026-08-27, per direct instruction — hero copy naming the 5
          contestants up front is intentional and does NOT conflict with the
          blind-test requirement above: it's fine for the client to know
@@ -3885,45 +3934,55 @@
          vendor and not one of the five integrated here). -->
     <p class="lede">Anthropic, OpenAI, Gemini, Perplexity &amp; xAI are competing for your copywriting business. Select the winner based on how well they understand your brand. Results are based on your brand guide, sample writings, website, and overall assessment.</p>
 
-    <div class="module open accent-cx" id="voiceContestModule">
+    <!-- 2026-08-27, per direct instruction — accent-cx (the teal-blue
+         module accent) and the "1" modnum badge are dropped: this is the
+         only module on this page, so a numbered, colored-accent header
+         reads as a leftover from the multi-module page this was split out
+         of, not a real second module. Plain, unaccented module border (our
+         typical outline) instead. Copy changed from "Run the contest" to
+         "Your Contestants Will Review" to match the contestant framing used
+         throughout this page. -->
+    <div class="module open" id="voiceContestModule">
       <div class="module-head" onclick="toggleModule('voiceContestModule')">
-        <span class="modnum">1</span>
         <div class="titles">
           <span class="tag">Multi-model</span>
-          <h2>Run the contest</h2>
+          <h2>Your Contestants Will Review</h2>
         </div>
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;margin-bottom:8px;">What this contest draws on</div>
+        <!-- 2026-08-27, per direct instruction — replaced the "What this
+             contest draws on" label with the actual best-practice guidance
+             it existed to set up for. -->
+        <p class="lede" style="margin:0 0 10px;">A voice option that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products &amp; Services, not just how it reads.</p>
         <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:10px;"></div>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
         </div>
-        <div class="hint" id="voiceContestUsageFlag" style="margin-top:8px;"></div>
         <div id="voiceContestPanel" style="margin-top:14px;"></div>
       </div>
     </div>
 
-    <div class="field" style="margin-top:20px;">
-      <label>Vision Statement</label>
-      <p class="lede" style="margin:2px 0 8px;">A single, memorable north-star line for this brand's voice — from the contest above, or written directly.</p>
-      <textarea id="voiceVisionStatement" rows="2" placeholder="Run the contest above, or write your own."></textarea>
-    </div>
-    <div class="field">
-      <label>Longform Example</label>
-      <p class="lede" style="margin:2px 0 8px;">Real, finished copy in this voice — the reference example every future longform draft gets measured against.</p>
-      <textarea id="voiceLongformExample" rows="6" placeholder="Run the contest above, or write your own."></textarea>
-    </div>
-    <div class="btn-row">
-      <button type="button" class="btn-ghost" onclick="saveVisionLongformEdits()">Save Vision &amp; Longform Example →</button>
-    </div>
-    <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
-
-    <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings &amp; Presentations</a>
-      <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
+    <!-- 2026-08-27, per direct instruction — "H3 size section header, add
+         some borders per our design to make it a section" — .section-card
+         (see its own CSS comment) instead of reusing .module bare, since
+         .module-body's collapse relies on JS-driven max-height that only
+         toggleModule() sets. -->
+    <div class="section-card" id="voiceContestWinnerModule">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Your Winning AI Model Is Below</h3>
+      <p class="lede" style="margin:2px 0 16px;">Please review the copy below and edit as needed. Select Submit to AI Agent University when you want to apply the copy to future campaign, PR, and internal copy projects.</p>
+      <div class="field">
+        <label>Vision Statement</label>
+        <textarea id="voiceVisionStatement" rows="2" placeholder="Run the contest above, or write your own."></textarea>
+      </div>
+      <div class="field">
+        <label>Longform Example</label>
+        <textarea id="voiceLongformExample" rows="6" placeholder="Run the contest above, or write your own."></textarea>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn-primary" onclick="saveVisionLongformEdits()">Submit to AI Agent University →</button>
+      </div>
+      <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
     </div>
   </div>
 
@@ -28209,6 +28268,24 @@ function aiThoughtPreviewHide(){
   const tip = document.getElementById('aiThoughtTip');
   if (tip) tip.classList.remove('visible');
 }
+// 2026-08-27, per direct instruction — "add a speech bubble that includes
+// how they are used" for the Voice Contest weekly usage counter. Reuses the
+// shared #aiThoughtTip element/positioning aiThoughtPreview() already
+// established, but with fixed copy instead of a BP_FAQ_TOPICS lookup — this
+// explains the shared cap across all 4 interview-style panels, which isn't
+// any single existing AI Agent Thoughts topic's job. Clicking the icon (see
+// its onclick) still opens AI Agent Thoughts itself, scoped to the closest
+// real topic (P — Blind Test Interview).
+function showContestUsageTip(evt){
+  const tip = aiThoughtTipEl();
+  tip.innerHTML = `<div>Weekly AI Training Runs is one shared total, not a per-panel one — Creative Job, Campaign Copy, PR Copy, and this Voice Contest all draw from and count against the same weekly number.</div><div class="ai-thought-tip-cta">Click for more →</div>`;
+  const rect = evt.currentTarget.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 268)) + 'px';
+  const top = rect.bottom + 8;
+  const wouldOverflowBottom = top + 90 > window.innerHeight;
+  tip.style.top = (wouldOverflowBottom ? rect.top - 96 : top) + 'px';
+  tip.classList.add('visible');
+}
 // Click (mouse) or tap (touch, which never fires hover) both land here —
 // opens AI Agent Thoughts and deep-links straight to the topic the icon is
 // tagged with, reusing selectFaqTopicChip() (already built for the topic
@@ -32794,6 +32871,16 @@ function renderAiStatusBubble(doingText, tips){
     <div class="doing"><span class="thinking-dots"><span></span><span></span><span></span></span><span class="doing-text">${escapeHtml(doingText)}</span></div>
     ${tip ? `<div class="tip"><b>Best practice:</b> ${escapeHtml(tip)}</div>` : ''}
   </div>`;
+}
+// 2026-08-27, per direct instruction — "this does take a while so I would
+// incorporate a smaller version of our loading screen above the area that
+// will reveal the submissions." A page-embedded sibling of the full-screen
+// #portalLoadCover (see .mini-load-cover's own CSS comment) rather than a
+// second use of that full takeover, meant to sit ABOVE an existing
+// renderAiStatusBubble()/renderAiStatusTip() call, not replace it — so the
+// best-practice tip underneath still shows while this spins.
+function renderMiniLoadCover(text){
+  return `<div class="mini-load-cover"><div class="mini-load-spinner"></div><div class="mini-load-text">${escapeHtml(text)}</div></div>`;
 }
 function renderAiStatusTip(tips){
   const tip = pickAiStatusTip(tips);
@@ -41838,17 +41925,25 @@ function renderVoiceContestStep(){
 // "am I about to lock myself out of other panels" question is answered up
 // front instead of surfacing as a surprise 429 later. Read-only lookup,
 // cheap, no AI call involved.
+// 2026-08-27 rework, per direct instruction — the sentence-style flag became
+// a simple zero-padded counter tile ("000140 of 100000") beside the page
+// header; the explanation of what shares the cap moved into the 💭 bubble's
+// hover tip (showContestUsageTip()) and into AI Agent Thoughts (click),
+// rather than being spelled out in the tile itself every time.
 async function loadInterviewUsage(){
-  const el = document.getElementById('voiceContestUsageFlag');
-  if (!el || !state.companyId) return;
+  const wrap = document.getElementById('voiceContestUsageCounter');
+  const valueEl = document.getElementById('voiceContestUsageCounterValue');
+  if (!wrap || !valueEl || !state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/interview-usage`);
     if (!resp.ok) return;
     const data = await resp.json();
     const pct = data.limit ? Math.min(100, Math.round((data.used / data.limit) * 100)) : 0;
     const near = pct >= 80;
-    el.innerHTML = `${data.used} of ${data.limit} weekly AI runs used across all panels (Creative Job, Campaign Copy, PR Copy, and this Voice Contest all share the same total)${near ? ' — getting close to the limit.' : '.'}`;
-    el.style.color = near ? 'var(--advocacy)' : '';
+    const pad = n => String(n ?? 0).padStart(6, '0');
+    valueEl.textContent = `${pad(data.used)} of ${pad(data.limit)}`;
+    valueEl.style.color = near ? 'var(--advocacy)' : '';
+    wrap.style.display = '';
   } catch (e){ /* usage display is a nice-to-have — a failed read shouldn't block the rest of the page */ }
 }
 
@@ -41963,7 +42058,7 @@ async function runBrandVoiceContest(){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder || !state.companyId) return;
   const clickStartedAt = new Date().toISOString();
-  holder.innerHTML = renderAiStatusBubble("Drafting a blind panel of brand voice options, each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
+  holder.innerHTML = renderMiniLoadCover('YOUR AI CONTESTANTS ARE THINKING') + renderAiStatusBubble("Drafting a blind panel of brand voice options, each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
   try {
     // 2026-08-26 fix, per direct report ("Running the contest could not
     // reach the backend" — screenshot showing "Backend unreachable —
@@ -42143,25 +42238,27 @@ function renderBrandVoiceContestPanel(result){
         <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
-    // 2026-08-27 fix, per direct report — "Select Winner" buttons should sit
-    // bottom-centered and consistent across every card, regardless of how
-    // long that card's Vision Statement runs. The card is a column flexbox
-    // filling the full grid-row height (grid's default align-items:stretch
-    // already gives every card in a row the same height); the content block
-    // above is a normal-flow div and the button row is pushed to the very
-    // bottom via margin-top:auto and centered with justify-content, so
-    // every card's buttons land on the same baseline regardless of content
-    // length above them.
+    // 2026-08-27 rework, per direct instruction — two alignment fixes: (1)
+    // the rating row sits bottom-centered in every card via margin-top:auto
+    // on its own wrapper (the card is a column flexbox filling the full
+    // grid-row height, same as before); (2) the Vision Statement quote is
+    // clamped to a fixed 4 lines with a matching min-height (-webkit-line-
+    // clamp + min-height together), so "View Contest Copy" lands at the same
+    // y position on every card regardless of how long any one card's Vision
+    // Statement actually is — effectively "aligned to the lowest position"
+    // without needing to measure rendered heights across cards at runtime.
     return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
       <div>
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ` <span class="hint" style="color:var(--cx);font-weight:700;">${escapeHtml(RECOMMENDED_REASON_LABEL[result.recommendedReason] || '— recommended')}</span>` : ''}</div>
         <div class="hint" style="margin-top:6px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Voice approach</div>
-        <div style="font-size:0.8125rem;font-style:italic;margin:4px 0 10px;">"${escapeHtml(c.visionStatement)}"</div>
+        <div style="font-size:0.8125rem;font-style:italic;line-height:1.4;margin:4px 0 10px;min-height:5.6em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;">"${escapeHtml(c.visionStatement)}"</div>
         <button type="button" class="btn-ghost" id="toggle-${safeId}" style="font-size:0.75rem;padding:4px 10px;" onclick="toggleContestCopy('${safeId}')">View Contest Copy ▾</button>
         <div id="copy-${safeId}" style="display:none;font-size:0.8125rem;margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(c.longformExample)}</div>
         ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:8px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-        <div class="hint" style="margin-top:12px;text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Your rating</div>
-        <div style="display:flex;gap:4px;margin-top:4px;">
+      </div>
+      <div style="margin-top:auto;padding-top:12px;display:flex;flex-direction:column;align-items:center;text-align:center;">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.6875rem;">Your rating</div>
+        <div style="display:flex;gap:4px;margin-top:4px;justify-content:center;">
           ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="${escapeHtml(BRAND_VOICE_RATING_RUBRIC[n - 1])}">${n}</button>`).join('')}
         </div>
         ${typeof c.rating === 'number' ? `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">${escapeHtml(BRAND_VOICE_RATING_RUBRIC[c.rating - 1])}</div>` : `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">1 = off-brand, 5 = ready to use as-is</div>`}
