@@ -1749,14 +1749,17 @@ function logScoreHistory(accountId, campaignId, sourceType, sourceKey, result){
 // prompt, same "real subagents" discipline as INTERVIEW_SUBAGENT_ANGLES
 // above. Each is a full personality a brand could plausibly commit to, not a
 // minor wording variation of the others.
-const BRAND_VOICE_SUBAGENT_ANGLES = [
-  { key: 'confident-authority', label: 'Confident Authority', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
-    brief: 'A voice that leads with the plain claim, then the reasoning — never hedges with "we strive to" or "we believe." Speaks like the expert in the room. Short, declarative sentences. Confidence comes from specificity, not volume.' },
-  { key: 'warm-storyteller', label: 'Warm Storyteller', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
-    brief: 'A voice that opens with a specific, sensory moment — never a generic greeting — and lets the point arrive as the natural next beat of the story, not a hard pivot to a sales line. Warmth comes from specificity (a real detail), never from generic friendliness.' },
-  { key: 'bold-modern', label: 'Bold Modern', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
-    brief: 'A voice that is energetic and contemporary without being juvenile — punchy sentence rhythm, confident fragments where they earn their place, zero corporate hedging. Reads like a brand that knows exactly who it is and isn\'t trying to please everyone.' }
-];
+// 2026-08-27 fix, per direct report — this used to be THREE Anthropic
+// "angle" candidates (Confident Authority / Warm Storyteller / Bold Modern)
+// competing alongside one candidate per other vendor, which meant Anthropic
+// dominated the panel 3-to-1 and the contest wasn't a fair one-per-contestant
+// comparison. Collapsed to a single, well-rounded Anthropic brief so
+// Anthropic is exactly one contestant among the (up to) five, same as every
+// other vendor — a real "one per contestant" panel, never inflated.
+const BRAND_VOICE_PRIMARY_BRIEF = {
+  key: 'anthropic-brand-voice', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+  brief: 'A voice that leads with the plain claim, then the reasoning — never hedges with "we strive to" or "we believe." Confident and specific, not generic-friendly; short declarative sentences with room for one real, sensory detail where it earns its place. Reads like a brand that knows exactly who it is and isn\'t trying to please everyone.'
+};
 // Shares INTERVIEW_VENDOR_REGISTRY (defined further down, alongside
 // runCandidateInterview) — the same vendor pool, same per-vendor
 // configured/not-configured check, reused rather than duplicated since it's
@@ -1851,8 +1854,8 @@ async function runBrandVoiceContest(account, extra){
   // not a client-side abort — see vercel.json's maxDuration, raised
   // alongside this from 30s to 60s for headroom on top of this speedup).
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const [generated, vendorGenerated] = await Promise.all([
-    Promise.all(BRAND_VOICE_SUBAGENT_ANGLES.map(angle => generateBrandVoiceCandidate(angle, account, extra))),
+  const [anthropicGenerated, vendorGenerated] = await Promise.all([
+    generateBrandVoiceCandidate(BRAND_VOICE_PRIMARY_BRIEF, account, extra),
     Promise.all(configuredVendors.map(v => generateVendorBrandVoiceCopy(v.key, account, extra)))
   ]);
 
@@ -1865,7 +1868,7 @@ async function runBrandVoiceContest(account, extra){
       complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : []
     };
   };
-  const liveCandidates = BRAND_VOICE_SUBAGENT_ANGLES.map((angle, i) => buildCandidate(angle.key, angle.label, angle.vendor, angle.model, generated[i]));
+  const anthropicCandidate = buildCandidate(BRAND_VOICE_PRIMARY_BRIEF.key, BRAND_VOICE_PRIMARY_BRIEF.label, BRAND_VOICE_PRIMARY_BRIEF.vendor, BRAND_VOICE_PRIMARY_BRIEF.model, anthropicGenerated);
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
 
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
@@ -1873,7 +1876,7 @@ async function runBrandVoiceContest(account, extra){
     visionStatement: null, longformExample: null, error: `${v.envVar} not configured on this deployment.`,
     complianceScore: null, flags: []
   }));
-  const allLive = [...liveCandidates, ...liveVendorCandidates];
+  const allLive = [anthropicCandidate, ...liveVendorCandidates];
   const scored = allLive.filter(c => c.visionStatement && c.longformExample);
   let recommendedKey = null;
   if (scored.length){
@@ -1882,17 +1885,38 @@ async function runBrandVoiceContest(account, extra){
     const tiedWithTop = sorted.filter(c => c.complianceScore === top.complianceScore);
     if (tiedWithTop.length === 1) recommendedKey = top.key;
   }
-  return { available: true, note: null, recommendedKey, candidates: [...allLive, ...unconfiguredCandidates] };
+  const allCandidates = [...allLive, ...unconfiguredCandidates];
+  // 2026-08-27 fix, per direct report — "You should never list the source
+  // of the output." The client-facing label used to be the vendor/style
+  // name itself (e.g. "GPT (OpenAI)"), which defeats the blind test even
+  // though vendor/model fields were already stripped. Every contestant now
+  // gets a randomized "Option N" label assigned fresh per contest run and
+  // persisted on the stored candidate (so re-viewing this same contest's
+  // history later shows the same option numbers) — `blindLabel` is the ONLY
+  // label redactBrandVoiceCandidatesForClient() below sends to the client;
+  // `label`/`vendor`/`model` stay on the record for the staff-only ops view.
+  const shuffled = [...allCandidates];
+  for (let i = shuffled.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
+  return { available: true, note: null, recommendedKey, candidates: allCandidates };
 }
 // Same allowlist discipline as redactCandidatesForClient() above — strips
 // vendor/model before anything reaches the client, per the standing "never
 // reveal the actual model" rule. A parallel function rather than reusing
 // redactCandidatesForClient() directly since the candidate shape is
 // different (visionStatement/longformExample, not copy/relevanceScore).
+// Uses c.blindLabel (the randomized "Option N" assigned in
+// runBrandVoiceContest above) instead of c.label, which names the vendor or
+// style — and generic-izes the not-configured error text, which otherwise
+// named the missing env var (and therefore the vendor) directly.
 function redactBrandVoiceCandidatesForClient(candidates){
   return (candidates || []).map(c => ({
-    key: c.key, label: c.label, configured: c.configured,
-    visionStatement: c.visionStatement, longformExample: c.longformExample, error: c.error,
+    key: c.key, label: c.blindLabel || c.label, configured: c.configured,
+    visionStatement: c.visionStatement, longformExample: c.longformExample,
+    error: c.error && !c.configured ? 'This contestant is not available for this contest.' : c.error,
     complianceScore: c.complianceScore, flags: c.flags
   }));
 }
