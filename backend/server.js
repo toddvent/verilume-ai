@@ -173,7 +173,47 @@ if (process.env.DATABASE_URL) {
   console.log('CXMedia.AI backend: using local SQLite file (no DATABASE_URL set)');
 }
 
-db.exec(`
+// 2026-08-27 fix — same shape of bug as ensureColumn() (see the long
+// comment above ensureColumnBulkPrecheck): 53 `db.exec("CREATE TABLE IF
+// NOT EXISTS ...")` calls run unconditionally at every module load/cold
+// start, each paying a full blocking round trip through the synchronous
+// worker-thread bridge to Postgres — even though in steady state (a
+// database that already has all its tables) every single one of these is
+// a no-op. Combined with the 184 ensureColumn() calls (already fixed
+// 2026-08-23) and Postgres's own cold-start connection latency, this was
+// the remaining, previously-unmeasured chunk of the ~1m5s cold-start
+// duration that pushed login-user and verify-login-code past their
+// function timeout. Same fix as ensureColumn(): one bulk
+// information_schema.tables lookup, cached for the rest of this cold
+// start, so a table that already exists skips its CREATE TABLE (and the
+// round trip) entirely. Falls back to always running the CREATE TABLE
+// (old behavior) if the bulk check itself fails — e.g. local SQLite dev
+// (no information_schema), or a genuinely brand-new database where the
+// bulk query might behave unexpectedly — so this can only ever remove
+// unnecessary round trips, never skip real schema work.
+let createTableExistingCache = null; // Set of table names, or false if the bulk check is unusable
+function createTableBulkPrecheck(){
+  if (createTableExistingCache) return createTableExistingCache;
+  try {
+    const rows = db.prepare(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+    ).all();
+    createTableExistingCache = new Set(rows.map((r) => r.table_name));
+  } catch (e) {
+    console.error('[createTableIfNeeded] bulk information_schema pre-check failed, falling back to running every CREATE TABLE:', (e && e.message) || e);
+    createTableExistingCache = false;
+  }
+  return createTableExistingCache;
+}
+function createTableIfNeeded(sql){
+  const match = /CREATE TABLE IF NOT EXISTS\s+([a-zA-Z_][a-zA-Z0-9_]*)/.exec(sql);
+  const existing = createTableBulkPrecheck();
+  if (match && existing && existing.has(match[1])) return; // confirmed present — no round trip spent
+  db.exec(sql);
+  if (match && existing) existing.add(match[1]);
+}
+
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS accounts (
     accountId TEXT PRIMARY KEY,
     company TEXT NOT NULL,
@@ -182,7 +222,7 @@ db.exec(`
     createdAt TEXT NOT NULL
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS score_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     accountId TEXT NOT NULL,
@@ -194,7 +234,7 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -206,7 +246,7 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     campaignId TEXT NOT NULL,
@@ -515,7 +555,7 @@ ensureColumn('accounts', 'typographyHierarchyNotes', 'TEXT');
 // since an account can have many team members — same shape as campaigns/
 // projects above. reportsToId is a self-referencing FK (nullable — the CMO
 // reports to no one in this account's chart).
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS team_members (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -592,7 +632,7 @@ const PAID_TIERS = [
 // checkVerificationCode() below); until then, requestCode is generated
 // locally and returned once in the API response (interim on-screen code,
 // per direct instruction) instead of actually being texted anywhere.
-db.exec(`CREATE TABLE IF NOT EXISTS phone_verifications (
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS phone_verifications (
   id TEXT PRIMARY KEY,
   memberId TEXT,
   phone TEXT NOT NULL,
@@ -626,7 +666,7 @@ ensureColumn('phone_verifications', 'consumedAt', 'TEXT');
 // a verified phone_verifications row for the same memberId within the
 // last 15 minutes before the reset itself is allowed to complete — see
 // POST /api/auth/reset-password.
-db.exec(`CREATE TABLE IF NOT EXISTS password_resets (
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS password_resets (
   token TEXT PRIMARY KEY,
   memberId TEXT NOT NULL,
   createdAt TEXT NOT NULL,
@@ -653,7 +693,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS password_resets (
 // sessionStorage-for-security-tokens convention) keyed by the login
 // email, so it can be sent back on the next login attempt from the same
 // browser before a session even exists.
-db.exec(`CREATE TABLE IF NOT EXISTS trusted_devices (
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS trusted_devices (
   token TEXT PRIMARY KEY,
   memberId TEXT NOT NULL,
   createdAt TEXT NOT NULL,
@@ -670,7 +710,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS trusted_devices (
 // static in-file object, not a backend-owned resource — same
 // hand-kept-in-sync convention already used for RUBRIC_CELLS/FUNCTION_GROUPS
 // elsewhere in this build.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS self_ratings (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -697,7 +737,7 @@ db.exec(`
 // to — this is provisional (assumed-on-save) pending a formal legal
 // opinion, per direct instruction, so acceptanceMethod is what lets that
 // change later without a schema migration.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS legal_acceptances (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -794,7 +834,7 @@ ensureColumn('accounts', 'assessedStagesJson', 'TEXT');
 // campaign_allocation_draws join table the doc sketches for a campaign that
 // spans several channels — same "one flat field now, normalize later"
 // shortcut this build already used for segment/functions.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS media_plans (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -806,7 +846,7 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS media_plan_allocations (
     id TEXT PRIMARY KEY,
     mediaPlanId TEXT NOT NULL,
@@ -824,7 +864,7 @@ db.exec(`
 // off, but the table has no such constraint itself (an account that
 // switches tranches off keeps its period rows on file rather than losing
 // them, in case it switches back on).
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS media_plan_periods (
     id TEXT PRIMARY KEY,
     allocationId TEXT NOT NULL,
@@ -1104,7 +1144,7 @@ ensureColumn('accounts', 'utmAutoGclidEnabled', 'INTEGER DEFAULT 1');
 // (Analysis step, pacing math) — draws are the new source of truth for HOW
 // that total breaks down across allocations, not a replacement for budget
 // itself.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS campaign_allocation_draws (
     id TEXT PRIMARY KEY,
     campaignId TEXT NOT NULL,
@@ -1129,7 +1169,7 @@ db.exec(`
 // One row per (accountId, taxonomyKey); label lets an account rename the
 // generic slot to match its own vocabulary (e.g. "Product Line" instead of
 // "Product Group") without touching the key the rest of the app reads by.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_taxonomies (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -1210,7 +1250,7 @@ const TAXONOMY_TEMPLATES = [
 // insertionCost) are the "sensitive vendor economics" Section 2 restricts to
 // CX Experiences Media Ops only — enforced in the POST/PATCH routes below,
 // not just left to the front end to hide.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS channel_planning_details (
     id TEXT PRIMARY KEY,
     campaignId TEXT NOT NULL,
@@ -1253,7 +1293,7 @@ db.exec(`
 // (a publication's trim size gets revised, a format gets retired) without
 // silently rewriting what a creative team was actually asked to build
 // against.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS creative_jobs (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -1358,7 +1398,7 @@ ensureColumn('creative_jobs', 'cxRelevanceNotes', 'TEXT');
 // decidedBy is the session's accountId/memberId pair rendered as a single
 // string (best-effort attribution — not a foreign key, since a decision
 // should stay on the record even if the deciding member is later removed).
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS creative_job_decisions (
     id TEXT PRIMARY KEY,
     jobId TEXT NOT NULL,
@@ -1396,7 +1436,7 @@ db.exec(`
 // selectedCandidateKey/selectedBy/selectedAt are filled in later, once, by
 // the separate /select endpoint below (an interview can be run without ever
 // being acted on — that's fine, it's just not reflected in workingCopy).
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS creative_job_interviews (
     id TEXT PRIMARY KEY,
     jobId TEXT NOT NULL,
@@ -1462,7 +1502,7 @@ const INTERVIEW_PRODUCT_TYPES = {
 // everywhere else. Same append-only-row convention, same feedback-loop shape
 // (feedbackNote/Type/By/At) as creative_job_interviews, just without the
 // job-scoped fields that don't apply here.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_voice_interviews (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -1499,7 +1539,7 @@ db.exec(`
 // returns every score that piece of copy has ever gotten, in order, so a
 // revision's scores can actually be compared over time instead of only
 // ever showing the latest number.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS content_score_history (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -1531,7 +1571,7 @@ db.exec(`
 // content lives entirely client-side in `project` state — so /select on
 // this table only records the choice and returns the winning candidate's
 // text for the frontend to apply itself.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS campaign_copy_interviews (
     id TEXT PRIMARY KEY,
     campaignId TEXT NOT NULL,
@@ -1566,7 +1606,7 @@ db.exec(`
 // slice doesn't require a schema migration; every row this round writes
 // uses PRIORITY_MODEL_ALL_STAGES and every lookup ignores loopStage.
 const PRIORITY_MODEL_ALL_STAGES = '__all__';
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_priority_models (
     accountId TEXT NOT NULL,
     taskType TEXT NOT NULL,
@@ -1834,7 +1874,7 @@ function mapChannelToSkill(channel){
 // requirements — same reasoning as not storing campaign.status separately
 // from its own derived state elsewhere in this file: one source of truth,
 // no drift.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS creative_collections (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -1846,7 +1886,7 @@ db.exec(`
     FOREIGN KEY (campaignId) REFERENCES campaigns(id)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS creative_requirements (
     id TEXT PRIMARY KEY,
     collectionId TEXT NOT NULL,
@@ -1901,7 +1941,7 @@ function getCreativeCollectionsForCampaign(campaignId){
 // would violate this build's no-fabricated-numbers rule. This table exists
 // so that decision, whenever it's made, has real history to start from
 // instead of nothing.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS mmm_inputs (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2212,7 +2252,7 @@ const MEASUREMENT_CHANNEL_CAPABILITIES = {
 // a real history — an account can submit more than one note over time
 // (e.g. "revisit in Q3 once Q2 budget is confirmed") without losing the
 // earlier ones.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS partner_capability_requests (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2317,7 +2357,7 @@ function computeMeasurementConfidence(category, coverage){
 // bucket label it should roll up into. Defaults to the raw category's own
 // name (no consolidation) until explicitly remapped — see
 // getMmmPartnerBucket() below.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS mmm_category_mappings (
     accountId TEXT NOT NULL,
     rawCategory TEXT NOT NULL,
@@ -2349,7 +2389,7 @@ function getMmmCategoryMapping(accountId, includedCategories){
 // date" stand-in, since no separate such column exists or was asked for.
 // One row per (campaign, category); a category with nothing reported yet
 // simply has no row (never a padded zero) — see recomputeCampaignActuals().
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS campaign_mmm_line_items (
     id TEXT PRIMARY KEY,
     campaignId TEXT NOT NULL,
@@ -2543,7 +2583,7 @@ function computeAdstockLagEstimate(accountId, category){
 // category); mmm_adstock_lag_decision_log is the append-only audit trail —
 // same "never silently overwritten" pattern the app already uses for
 // invoice status and copy approval history.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS mmm_adstock_lag_decisions (
     accountId TEXT NOT NULL,
     category TEXT NOT NULL,
@@ -2554,7 +2594,7 @@ db.exec(`
     PRIMARY KEY (accountId, category)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS mmm_adstock_lag_decision_log (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2665,7 +2705,7 @@ const TEST_DESIGNS_BY_CATEGORY = {
 // NOT yet migrated onto this pipeline; flagged as a known follow-up rather
 // than silently rewritten in this round.
 const crypto_uploads = crypto; // reuse the crypto already required above
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS uploaded_files (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2708,7 +2748,7 @@ const BRAND_WRITING_SAMPLE_CATEGORIES = [
   { id: 'consumer_marketing', label: 'Consumer Marketing' }
 ];
 const BRAND_WRITING_SAMPLE_FILE_MIME_RE = /^(application\/(msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.openxmlformats-officedocument\.presentationml\.presentation|vnd\.ms-powerpoint|pdf))$/i;
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS brand_writing_samples (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2735,7 +2775,7 @@ db.exec(`
 // resolved from a directory/site rule (parentRuleId links a resolved page
 // back to the rule that discovered it; NULL for a client-entered specific
 // page). status: 'active' | 'excluded' | 'failed' | 'capped-out'.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS brand_copy_website_examples (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2940,7 +2980,7 @@ async function resolveWebsiteExampleDirectoryRule(accountId, ruleId, originUrl, 
 // already single-statement; this was the only exception, and this is the
 // same "must never carry params into a multi-statement exec" rule
 // documented in the LEGACY_CASING_COLUMNS comment's neighboring context.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS press_releases (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2954,7 +2994,7 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS editorial_pitches (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -2969,7 +3009,7 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS corporate_comms (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -3118,7 +3158,7 @@ async function scanFileForThreats(buffer){
 // below, not be typed in by an AI). Every index computed against an empty
 // master honestly reports 'no_population_data' rather than a fabricated
 // number.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS zip_population_master (
     zip TEXT PRIMARY KEY,
     population INTEGER NOT NULL,
@@ -3131,7 +3171,7 @@ db.exec(`
 // this starts as a generic "attribute: value per zip" shape so it can hold
 // whatever's decided (Census ACS pull, account-supplied file, or both)
 // without a schema change later.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS zip_demographic_master (
     zip TEXT NOT NULL,
     attribute TEXT NOT NULL,
@@ -3146,7 +3186,7 @@ db.exec(`
 // and was then parsed and committed here — mirrors the confirm-then-commit
 // two-step already used by the Track 4 bulk channel-planning upload
 // (parse client-side, validate, POST structured rows only after review).
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS market_customer_uploads (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -3157,7 +3197,7 @@ db.exec(`
     FOREIGN KEY (uploadedFileId) REFERENCES uploaded_files(id)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS market_customer_rows (
     id TEXT PRIMARY KEY,
     marketUploadId TEXT NOT NULL,
@@ -3386,7 +3426,7 @@ function computeMatchedMarketPairs(penetrationRows, demographicResult, holdoutZi
 // a multi-block file with repeating section headers (the real client file
 // this was built against) is reported as needing manual confirmation on the
 // category-name and status columns, not silently guessed.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS marketing_budget_uploads (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -3403,7 +3443,7 @@ db.exec(`
     FOREIGN KEY (uploadedFileId) REFERENCES uploaded_files(id)
   );
 `);
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS marketing_budget_line_items (
     id TEXT PRIMARY KEY,
     uploadId TEXT NOT NULL,
@@ -3442,7 +3482,7 @@ ensureColumn('marketing_budget_uploads', 'year', 'INTEGER');
 // items themselves — an override replaces what's DISPLAYED and what's
 // FINAL for that category, but never rewrites the underlying uploaded
 // numbers, so "what did the file actually say" is always still there.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS marketing_budget_category_overrides (
     uploadId TEXT NOT NULL,
     verilumeCategory TEXT NOT NULL,
@@ -3465,7 +3505,7 @@ db.exec(`
 // Campaign Creation channel stays selectable) rather than "everything
 // inactive" — otherwise every existing seeded account/campaign would break
 // the moment this shipped.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_active_channels (
     accountId TEXT NOT NULL,
     channel TEXT NOT NULL,
@@ -3761,7 +3801,7 @@ function mbuSuggestVerilumeCategory(rawCategory){
 // without a human having chosen it at least once, and re-confirming a
 // different mapping for the same raw text simply overwrites the memory
 // going forward.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_category_mapping_memory (
     accountId TEXT NOT NULL,
     rawCategoryNormalized TEXT NOT NULL,
@@ -4095,7 +4135,7 @@ function analyzeMarketingBudgetGrid(grid){
 // record of a real business fact — an invoice got paid — not an instruction
 // to move money; that stays firmly out of scope for this build, same as
 // the account.html card explicitly still being a mock for card/ACH capture).
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS invoices (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -4118,7 +4158,7 @@ const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue'];
 // not scoped to a single campaign (campaignId is stored for context/filter
 // but a saved snippet is meant to be reusable across campaigns), same
 // pattern as print_specs_custom's account-scoped saves.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS copy_library (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -4140,7 +4180,7 @@ db.exec(`
 // (HubSpot was configured but the call failed — hubspotError set). A lead
 // is never lost because HubSpot isn't reachable or isn't set up yet; this
 // table is always the durable record, HubSpot sync is best-effort on top.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL,
@@ -4183,7 +4223,7 @@ try { db.exec(`ALTER TABLE leads ADD COLUMN assessmentDataJson TEXT`); } catch (
 // Not a JWT — a real opaque, server-checked token, so revoking one is a
 // single DELETE rather than needing a blocklist the way a stateless JWT
 // would.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -4210,7 +4250,7 @@ ensureColumn('sessions', 'memberId', 'TEXT');
 // account-specific is a team adding a publication the master catalog is
 // missing, so THAT gets a real table, scoped by accountId exactly like
 // team_members above.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS print_specs_custom (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -4241,7 +4281,7 @@ db.exec(`
 // there's no accountId to scope by — this is keyed by requesting IP
 // instead, same convention as POST /api/auth/request-signup-verification's
 // phone/email rate limit, just a different target type.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS assessment_ai_calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ip TEXT NOT NULL,
@@ -6872,7 +6912,7 @@ async function draftPrCorpCommCopyViaAI(account, docType, brief){
 // release or pitch email, so recommendedKey is always null here and every
 // candidate is shown for a human to read and pick, same honest-no-score
 // treatment already used for an unconfigured vendor's placeholder entry.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS pr_copy_interviews (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -13823,3 +13863,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
