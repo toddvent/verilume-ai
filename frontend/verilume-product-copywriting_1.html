@@ -1,0 +1,565 @@
+<title>Copywriting — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0 8px;}
+.product-card{border:1px solid var(--line);border-radius:12px;padding:20px 22px;background:var(--paper-sunk);text-decoration:none;display:block;transition:border-color .15s;}
+.product-card:hover{border-color:var(--brand);}
+.product-card.disabled{opacity:0.55;pointer-events:none;}
+.product-card .pc-group{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate-soft);margin-bottom:8px;}
+.product-card h3{font-size:17px;margin:0 0 8px;color:var(--ink);}
+.product-card p{font-size:13px;color:var(--slate);margin:0 0 12px;max-width:none;}
+</style>
+
+<div class="shell">
+  
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Copywriting</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+    <div class="toc-sub" style="margin-top:-14px;">Group 03 &middot; Copywriting</div>
+    <div class="toc-sub" style="margin-top:-14px;">Group 03 &middot; Copywriting</div>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#surfaces">The four contest surfaces</a>
+      <a href="#vendors">Vendor dispatch &amp; the AI panel</a>
+      <a href="#registry">Registry &amp; single entry point</a>
+      <a href="#ledger">Ranking ledger</a>
+      <a href="#priority-cache">Priority-model cache</a>
+      <a href="#single-draft">Single-draft generation</a>
+      <a href="#content-loop">The content loop</a>
+      <a href="#usage-cap">Weekly usage cap</a>
+      <a href="#reader">Ops reader endpoint</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#data-model">Data model reference</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#log">Decision log — this cycle</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Copywriting</h1>
+      <p class="doc-dek">
+        The AI copywriting engine behind every generated word in the portal: Brand
+        Voice, Creative Job, Campaign Copy, and PR &amp; Corporate Copy. Two
+        mechanisms share the same generation surface — a blind multi-vendor panel
+        ("interview" a contest of AI candidates, pick a winner) and single-draft
+        generation for everyday requests. This document is the current-state
+        reference for that Product — what's actually built and running today,
+        verified against the live codebase, written to be absorbable by engineering
+        leadership without prior context.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>backend/server.js</code></span>
+        <span><b>Verified against</b> production code, 2026-08-27</span>
+        <span><b>Status</b> Live in production</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">requested this cycle</span></h2>
+      <p class="lede">
+        What was explicitly asked to be validated: that all contest surfaces share
+        one structure, that ranking captures more than the winner, and that the
+        recorded data is actually read by something. Checked directly against the
+        code.
+      </p>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>One structure, four surfaces</h4>
+          <p>All four contest types call a single <code>recordContestResult()</code>,
+          resolved against one <code>CONTEST_TYPE_REGISTRY</code>. See &sect; Registry.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>Full rank order captured</h4>
+          <p>Every candidate's rank, best-to-worst, for every run — not just the
+          winner. See &sect; Ranking ledger.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Working as designed</span>
+          <h4>"Never reveal the model" policy</h4>
+          <p>Contest panels never disclose which vendor produced which draft to the
+          client, by design — enforced consistently across all four panels and the
+          priority-model fallback logic. See &sect; Vendor dispatch.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Not implemented</span>
+          <h4>No UI on the ranking data</h4>
+          <p><code>GET /api/ops/contest-rankings</code> is a real, working API — but
+          nothing renders it. See &sect; Known gaps.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="surfaces">
+      <h2><span>The four contest surfaces</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">
+        Every AI copy surface in the portal that runs a multi-vendor blind panel
+        ("interview" candidates, review, select a winner) uses the same underlying
+        mechanism. This is the literal product surface a client or team member
+        interacts with.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Surface</th><th>contestType</th><th>Where it lives</th><th>Source table</th></tr></thead>
+          <tbody>
+            <tr><td>Voice Contest</td><td class="mono">Brand Voice</td><td>Portal &gt; Brand &gt; Style Guide &gt; Voice</td><td class="mono">account_voice_interviews</td></tr>
+            <tr><td>Creative Job Interview</td><td class="mono">Creative Job</td><td>Portal &gt; Brand &gt; Messaging / Creative</td><td class="mono">creative_job_interviews</td></tr>
+            <tr><td>Campaign Copy Interview</td><td class="mono">Campaign</td><td>Portal &gt; Brand &gt; Messaging (Ad/Email Copy)</td><td class="mono">campaign_copy_interviews</td></tr>
+            <tr><td>PR &amp; Corporate Copy</td><td class="mono">Corporate</td><td>Portal &gt; PR &gt; Press Release / Editorial Solicitation</td><td class="mono">pr_copy_interviews</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Voice Contest is the flagship and the one that established the pattern: its
+      winning Vision Statement and Longform Example become <code>accounts.visionStatement</code>
+      / <code>accounts.longformVoiceExample</code>, which every other generation
+      prompt in the file already reads as brand context — see &sect; The content loop.</p>
+    </section>
+
+    <section id="vendors">
+      <h2><span>Vendor dispatch &amp; the AI panel</span><span class="num">&sect; 02</span></h2>
+      <p class="lede">
+        Anthropic (Claude) is the default vendor for every surface. Contest
+        panels additionally dispatch to whichever of four other LLM vendors
+        have API keys configured, run in parallel, and returned as blind
+        candidates. Full vendor list, env vars, and licensing status now live
+        in one place — see <a href="verilume-product-licensed-integrations.html">Licensed
+        Integrations</a> — rather than duplicated here where it can drift out
+        of sync.
+      </p>
+      <div class="card card--confirmed">
+        <div class="card-title">Design policy — never reveal the winning model to the client</div>
+        <p>Candidates are shown blind (labeled generically, not by vendor/model)
+        in every client-facing contest panel. This policy is also enforced in
+        the fallback path: when a stored vendor preference references a vendor
+        whose key has since been removed from the deployment, the dispatcher
+        falls back to Anthropic/template silently rather than surfacing which
+        vendor was lost.</p>
+      </div>
+    </section>
+
+    <section id="registry">
+      <h2><span>Registry &amp; single entry point</span><span class="num">&sect; 03</span></h2>
+      <p class="lede">
+        Todd: "all contests whether is exists today or not needs to have the same
+        structure when recording results or we can't scale the data." A new
+        contest feature registers one entry — that's the whole integration point.
+      </p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>A contest's /select endpoint fires</h4>
+          <p>A team member picks a winner from the blind candidate panel, on any
+          of the four surfaces.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>One call: recordContestResult()</h4>
+          <p>Resolves the contest's <code>CONTEST_TYPE_REGISTRY</code> entry (its
+          <code>taskType</code> and known subtypes), then does both things a
+          contest result needs, together, so they can never drift apart.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>Writes the ranking ledger</h4>
+          <p>Full rank order, every candidate, this run — see &sect; Ranking ledger.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Upserts the priority-model cache</h4>
+          <p>Current winning vendor for this account/taskType — see &sect; Priority-model cache.</p></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Contest Type</th><th>taskType</th><th>Subtypes</th></tr></thead>
+          <tbody>
+            <tr><td>Brand Voice</td><td class="mono">brand_voice</td><td>&mdash; (single contest per account)</td></tr>
+            <tr><td>Creative Job</td><td class="mono">creative_job</td><td>Copywriting</td></tr>
+            <tr><td>Campaign</td><td class="mono">marketing_copy</td><td>Offer, Brand Campaign, Launch, General</td></tr>
+            <tr><td>Corporate</td><td class="mono">pr_copy</td><td>Press Release, Editorial Pitch, Corporate Comms</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre>function recordContestResult(accountId, contestType, contestSubtype, chosen, allCandidates, sourceTable, sourceInterviewId, setBy){
+  const reg = CONTEST_TYPE_REGISTRY[contestType];
+  if (!reg){
+    console.error(`recordContestResult: unregistered contestType "${contestType}" — add it to CONTEST_TYPE_REGISTRY so future contests stay on the same structure.`);
+  }
+  logContestRanking(accountId, contestType, contestSubtype, sourceTable, sourceInterviewId, allCandidates, chosen.key);
+  try {
+    upsertPriorityModelFromCandidate(accountId, (reg &amp;&amp; reg.taskType) || contestType, chosen, sourceTable, sourceInterviewId, setBy);
+  } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+}</pre>
+    </section>
+
+    <section id="ledger">
+      <h2><span>Ranking ledger</span><span class="num">&sect; 04</span></h2>
+      <p class="lede">
+        Todd's correction after a first draft tracked only the winner: "I thought
+        the purpose of ranking was to support more advanced modeling in the
+        future. Why would rank 1-5 if we didn't build anything to support it?"
+        Full rank order is now captured for every run.
+      </p>
+      <div class="card card--confirmed">
+        <div class="card-title">Ranking basis, chosen automatically per contest</div>
+        <p>Rating (Voice Contest) &gt; combined score (Creative Job / Campaign Copy)
+        &gt; compliance score alone (PR Copy, where nothing stronger exists yet).
+        Ties share a rank number. Unconfigured or errored candidates are excluded
+        from ranking.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Column</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">id</td><td>TEXT (PK)</td><td>Row identifier</td></tr>
+            <tr><td class="mono">accountId</td><td>TEXT</td><td>Which client account</td></tr>
+            <tr><td class="mono">contestType</td><td>TEXT</td><td>Registry key</td></tr>
+            <tr><td class="mono">contestSubtype</td><td>TEXT</td><td>e.g. Offer, Press Release, Copywriting</td></tr>
+            <tr><td class="mono">sourceTable / sourceInterviewId</td><td>TEXT</td><td>Which contest run produced this row</td></tr>
+            <tr><td class="mono">candidateKey / vendor / model</td><td>TEXT</td><td>Which AI candidate this row scores</td></tr>
+            <tr><td class="mono">rank</td><td>INTEGER</td><td>Full rank order (1 = best) — ties share a rank</td></tr>
+            <tr><td class="mono">isWinner</td><td>INTEGER</td><td>1 for the selected candidate, else 0</td></tr>
+            <tr><td class="mono">rankBasis</td><td>TEXT</td><td>rating / combined_score / compliance_score</td></tr>
+            <tr><td class="mono">createdAt</td><td>TEXT</td><td>Timestamp of the /select action</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Indexed on <code>(accountId, contestType, contestSubtype)</code>. Append-only
+      — one row per candidate per contest run, never overwritten.</p>
+    </section>
+
+    <section id="priority-cache">
+      <h2><span>Priority-model cache</span><span class="num">&sect; 05</span></h2>
+      <span class="pill pill--confirmed" style="margin-bottom:14px;">Gap closed this cycle</span>
+      <p class="lede">
+        <code>account_priority_models</code> is the "current winning vendor per
+        taskType" cache — one row per account/taskType, upserted every time a
+        contest is decided. Before this round, only 2 of 4 contest types ever
+        wrote to it.
+      </p>
+      <div class="two-col">
+        <div>
+          <h3>Has a real dispatch consumer today</h3>
+          <p><code>generateMessagingCopyViaAI()</code> (Campaign Copy single-draft)
+          and <code>draftPrCorpCommCopyViaAI()</code> (PR/Corporate single-draft)
+          both call <code>getDispatchablePriorityModel()</code> and route to the
+          account's winning vendor when one is on file and still configured —
+          falling straight through to Anthropic on any dispatch failure or stale
+          reference.</p>
+        </div>
+        <div>
+          <h3>Recorded, no dispatch consumer yet</h3>
+          <p>Creative Job copy is only ever produced via its own contest panel;
+          Voice Contest is a one-time-per-account comparison, not a per-request
+          draft. Their vendor preference is still recorded for consistency and
+          future reporting — same "capture ahead of the consumer" posture as the
+          ranking ledger itself.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="single-draft">
+      <h2><span>Single-draft generation (non-contest)</span><span class="num">&sect; 06</span></h2>
+      <p class="lede">
+        Not every copy request runs a full multi-vendor panel — most day-to-day
+        drafting is a single call to the account's preferred vendor.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Function</th><th>Used by</th><th>Dispatch behavior</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">generateMessagingCopyViaAI()</td><td>Campaign Copy single-draft</td><td>Checks priority model for <code>marketing_copy</code>, falls back to Anthropic</td></tr>
+            <tr><td class="mono">draftPrCorpCommCopyViaAI()</td><td>PR/Corporate single-draft</td><td>Checks priority model for <code>pr_copy</code>, falls back to Anthropic</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Both functions also read the account's Voice Guide, Style Notes, and (when
+      set) the Voice Contest's <code>visionStatement</code> / <code>longformVoiceExample</code>
+      as additional brand context in the prompt — see &sect; The content loop. Both
+      return a graceful <code>note</code> (not an error) when
+      <code>ANTHROPIC_API_KEY</code> isn't configured, falling back to a
+      deterministic template draft.</p>
+    </section>
+
+    <section id="content-loop">
+      <h2><span>The content loop</span><span class="num">&sect; 07 — already live, clarified not new</span></h2>
+      <span class="pill pill--neutral" style="margin-bottom:14px;">Working as designed</span>
+      <p class="lede">
+        Separate from vendor/model preference: the actual winning content from
+        Voice Contest already feeds every other generation prompt as brand
+        context.
+      </p>
+      <div class="card">
+        <div class="card-title">Confirmed present via direct code search</div>
+        <p><code>account.visionStatement</code> and <code>account.longformVoiceExample</code>
+        (saved to the account on Voice Contest's <code>/select</code>) appear as
+        "BRAND VISION STATEMENT" / "REFERENCE LONGFORM EXAMPLE" blocks inside
+        <code>buildInterviewPrompt()</code> (Creative Job / Campaign Copy contest
+        generation), <code>generateMessagingCopyViaAI()</code> (Campaign Copy
+        single-draft), <code>draftPrCorpCommCopyViaAI()</code> (PR/Corporate
+        single-draft), and the Draft Scoring prompt.</p>
+        <p class="cite">This is the primary way "the ideal voice influences all
+        copy" already works today — the vendor-preference loop is a second,
+        separate lever on top of it (which model does the writing), not the only
+        mechanism.</p>
+      </div>
+    </section>
+
+    <section id="usage-cap">
+      <h2><span>Weekly usage cap</span><span class="num">&sect; 08</span></h2>
+      <p class="lede">
+        A single, shared safety cap on AI panel usage — not a quality limit — sits
+        in front of all four contest surfaces.
+      </p>
+      <div class="env-list">
+        <span class="env-badge">INTERVIEW_WEEKLY_CAP (default 20/week/account)</span>
+      </div>
+      <div class="card">
+        <div class="card-title"><code>checkInterviewWeeklyCap(accountId)</code></div>
+        <p>Rolling 7-day window, counted across Creative Job, Campaign Copy, PR
+        Copy, and Voice Contest together — running one panel on any surface counts
+        against the same shared total. Called at the top of all four contest-run
+        endpoints; when the cap is hit, the request is rejected with a message
+        naming the current usage and reset window rather than a bare error.</p>
+      </div>
+    </section>
+
+    <section id="reader">
+      <h2><span>Ops reader endpoint</span><span class="num">&sect; 09</span></h2>
+      <p class="lede">
+        Todd: "It can't not read anything today beyond there not being any data
+        yet... How does that happen if is not considering the client data and/or
+        preferences captured through the various contests." This endpoint is the
+        direct answer.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Purpose</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/ops/contest-rankings</code></td><td>Win rate per contestType / contestSubtype / vendor</td><td>Staff-only</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="env-list">
+        <span class="env-badge">X-Admin-Token header</span>
+        <span class="env-badge">?accountId= (optional)</span>
+        <span class="env-badge">?contestType= (optional)</span>
+      </div>
+      <div class="card">
+        <div class="card-title">What it returns</div>
+        <p>Aggregated appearances vs. wins per vendor, grouped by contestType and
+        contestSubtype, as a win-rate percentage — the first real consumer of the
+        ledger beyond the priority-model cache. No UI reads it yet; see &sect;
+        Known gaps.</p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">&sect; 10</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Table</th><th>Key fields</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>contest_rankings</code></td><td><code>id</code> (PK), <code>accountId</code>, <code>contestType</code>, <code>rank</code></td><td>Append-only, full rank order — see &sect;04</td></tr>
+            <tr><td><code>account_priority_models</code></td><td><code>accountId</code>, <code>taskType</code>, <code>loopStage</code> (PK)</td><td>Current-winner cache, all 4 types write to it — see &sect;05</td></tr>
+            <tr><td><code>account_voice_interviews</code></td><td><code>accountId</code>, candidate JSON</td><td>Voice Contest source rows</td></tr>
+            <tr><td><code>creative_job_interviews</code></td><td><code>jobId</code>, <code>accountId</code>, <code>productType</code></td><td>Creative Job source rows</td></tr>
+            <tr><td><code>campaign_copy_interviews</code></td><td><code>campaignId</code>, <code>accountId</code></td><td>Campaign Copy source rows; subtype from <code>campaigns.messageType</code></td></tr>
+            <tr><td><code>pr_copy_interviews</code></td><td><code>accountId</code>, <code>docType</code></td><td>PR/Corporate source rows; subtype from <code>PR_DOC_TYPE_LABELS[docType]</code></td></tr>
+            <tr><td><code>content_score_history</code></td><td><code>id</code> (PK), <code>accountId</code>, <code>campaignId</code>, <code>sourceType</code>/<code>sourceKey</code></td><td>Relevance/compliance scoring history, shared by Creative Job and Campaign Copy score endpoints</td></tr>
+            <tr><td><code>CONTEST_TYPE_REGISTRY</code> (in-code)</td><td><code>taskType</code>, <code>subtypes</code></td><td>Not a DB table — the enforced structure every contest registers against — see &sect;03</td></tr>
+            <tr><td><code>INTERVIEW_VENDOR_REGISTRY</code> (in-code)</td><td><code>key</code>, <code>vendor</code>, <code>envVar</code>, <code>model</code></td><td>Not a DB table — the shared vendor pool every panel dispatches to — see &sect;02</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 11 — for product awareness</span></h2>
+      <p class="lede">
+        None of these have been fixed yet — listed here so the product team can
+        prioritize, not because a fix has already shipped.
+      </p>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; No UI for the ops reader</div>
+        <p><code>GET /api/ops/contest-rankings</code> is an API response today, not
+        a dashboard. Building a simple win-rate view on top of it is the natural
+        next step.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No automated action on win-rate data</div>
+        <p>No auto-promotion of a consistently-winning vendor across accounts —
+        current state is visibility and consistent capture, not an automated
+        policy.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Two contest types have no per-request dispatch consumer</div>
+        <p>Voice Contest and Creative Job's recorded vendor preference has no
+        equivalent single-draft generation path to check it yet — recorded for
+        consistency and future reporting, same posture as the ranking data
+        itself.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No automated alerting on vendor-model deprecation</div>
+        <p>The Gemini model retirement this cycle (&sect;02) was caught by reading a
+        live 404 response body, not by any monitoring. A vendor deprecating a
+        model silently degrades that panel candidate until someone notices.</p>
+      </div>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log — this cycle</span><span class="num">&sect; 12</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Ask</th><th>Resolution</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-08-27</td><td>"All contests should use the same ranking system... capturing type, subtype, ranking per model, winner model."</td><td>Built CONTEST_TYPE_REGISTRY + contest_rankings ledger</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"Why would rank 1-5 if we didn't build anything to support it?"</td><td>Switched from winner-only to full rank order, ahead of any consumer</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"All contests... needs to have the same structure... or we can't scale the data."</td><td>Consolidated two hand-wired calls per endpoint into one recordContestResult()</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"How does continuous learning happen if is not considering the client data... captured through the various contests."</td><td>Closed priority-model gap for all 4 types + shipped GET /api/ops/contest-rankings</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"Copywriting is the product... one format for all product groups... a home page that links to product details."</td><td>This document + verilume-product-docs.html home page, built on the Registration &amp; Account Management template</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 13</span></h2>
+      <ol>
+        <li><strong>Build a simple win-rate dashboard</strong> on top of <code>GET /api/ops/contest-rankings</code> — the data exists, no UI reads it yet.</li>
+        <li><strong>Add a dispatch consumer for Voice Contest and Creative Job</strong> vendor preference, if a single-draft generation path for either is ever built.</li>
+        <li><strong>Add monitoring on vendor-model 404s</strong> so a deprecated model (like the Gemini retirement this cycle) is caught proactively instead of by reading an error body during unrelated work.</li>
+        <li><strong>Revisit whether win-rate data should ever drive an automated action</strong> (e.g. auto-promoting a vendor) once enough contest runs have accumulated to make that meaningful.</li>
+        <li><strong>Document the remaining Products</strong> in this same format — see the home page for what's still open.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Reflects the state of
+      <code>backend/server.js</code> as verified on 2026-08-27. Update this
+      document as the Product changes — it's meant to be the living reference,
+      not a point-in-time snapshot.
+    </div>
+
+  </main>
+</div>
