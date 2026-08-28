@@ -61,7 +61,15 @@
   .wrap{max-width:1040px;margin:0 auto;padding:0 32px;}
   img,svg{max-width:100%;}
 
-  header{position:sticky;top:0;left:0;right:0;z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
+  /* 2026-08-27 mobile-nav fix — per direct report ("no login available via
+     mobile"): the utility nav (Log in / Access My Portal) was NOT sticky,
+     only <header> was. Once a visitor scrolled down and opened the
+     hamburger menu, the utility nav (and its Log in link) had already
+     scrolled out of view, leaving no way to log in without scrolling back
+     to the very top first. Wrapping both bars in one sticky container so
+     Log in stays reachable at any scroll position, on every breakpoint. */
+  .sticky-nav-wrap{position:sticky;top:0;left:0;right:0;z-index:100;}
+  header{z-index:100;padding:22px 0;background:rgba(251,251,253,0.72);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--line-hairline);}
     /* Nav-overlap root cause (round 9, 2026-08-03): .nav was capped at
      the same max-width as .wrap (page content). That meant logo+navlinks
      only ever had a few px of real slack on any desktop viewport above the
@@ -243,6 +251,7 @@
 </style>
 </head>
 <body>
+<div class="sticky-nav-wrap">
 <div class="utility-nav" id="utilityNav">
   <div class="utility-nav-inner">
     <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
@@ -362,6 +371,7 @@
     </div>
   </nav>
 </header>
+</div>
 
 <main>
 
