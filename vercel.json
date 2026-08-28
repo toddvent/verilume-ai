@@ -30,7 +30,14 @@
     { "source": "/solution-retail-apparel.html", "destination": "/frontend/solution-retail-apparel.html" },
     { "source": "/solution-sporting-goods.html", "destination": "/frontend/solution-sporting-goods.html" },
     { "source": "/solution-wine-spirits.html", "destination": "/frontend/solution-wine-spirits.html" },
-    { "source": "/terms.html", "destination": "/frontend/terms.html" }
+    { "source": "/terms.html", "destination": "/frontend/terms.html" },
+    { "source": "/docs/", "destination": "/docs/verilume-product-docs.html" },
+    { "source": "/docs/copywriting", "destination": "/docs/verilume-product-copywriting.html" },
+    { "source": "/docs/licensed-integrations", "destination": "/docs/verilume-product-licensed-integrations.html" },
+    { "source": "/docs/registration-account-management", "destination": "/docs/registrationaccountmanagementproduct.html" }
+  ],
+  "redirects": [
+    { "source": "/docs", "destination": "/docs/", "permanent": false }
   ],
   "headers": [
     {
