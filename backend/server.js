@@ -2385,6 +2385,23 @@ ensureColumn('accounts', 'minViableSpendCalibrationEnabled', 'INTEGER DEFAULT 0'
 // above — see POST /api/accounts/:id/media-cx-index below.
 ensureColumn('accounts', 'mediaCxIndexGapDataJson', 'TEXT');
 
+// 2026-08-29 — continuous competitor monitoring, per direct instruction:
+// "I wouldn't leave the AOV competitors untouched. Competitive info
+// changes over time. We should continuously monitor defined competitors
+// per paid client and provide updates via the main dashboard via the
+// generative daily brief summary and by adding logic to our curated news
+// logic." One JSON blob per account (accountIntelligenceJson) holding the
+// latest AI-generated read of this account's named Direct Competitors
+// (state.positioning.competitors → accounts.competitorsJson) plus a
+// synthesized Daily Brief — see generateAccountIntelligenceViaAI() below
+// for what's actually in it and the honest-reasoning-not-real-news framing
+// that generation is built around (this backend has no live news/web
+// access, so it must never present invented headlines/dates/sources as
+// real intelligence). Paid-tier gated (accounts.paidTier) at the
+// refresh endpoint, not at read — see POST .../intelligence/refresh.
+ensureColumn('accounts', 'accountIntelligenceJson', 'TEXT');
+ensureColumn('accounts', 'accountIntelligenceGeneratedAt', 'TEXT');
+
 const ONBOARDING_CORE_QUESTIONS = [
   { key: 'primaryTransactionPath', label: 'Primary path to transaction', type: 'select',
     options: ['Call center', 'E-commerce / website', 'Retail / storefront', 'Field sales', 'Third-party channel partner'] },
@@ -3086,13 +3103,198 @@ createTableIfNeeded(`
 // frontend), so they're accepted as a labeled reference link instead of a
 // file — sourceType 'link', sourceUrl required, no scan applicable since
 // nothing is actually transferred to this server.
+// Round 140 (2026-08-29), per direct instruction: "add video script as a
+// content type" — a fifth purpose category, alongside the original four,
+// for scripts written for video production. This is a category on the
+// existing text/deck sample pipeline (a Word/PDF/PPT script document still
+// goes through the normal file-upload path below) — it is NOT the video
+// file itself. The actual video-upload capability (see
+// VIDEO_SAMPLE_MAX_DURATION_SECONDS below) is a separate, ephemeral
+// analysis path: a client can upload a short video for AI tone/visual
+// analysis, but per direct instruction ("consider not saving the video
+// after completing the analysis if it impacts cost") the video's bytes are
+// never written to brand_writing_samples or uploaded_files — only the
+// resulting analysis text is saved, categorized here as 'video_script'
+// alongside any other video-script sample.
 const BRAND_WRITING_SAMPLE_CATEGORIES = [
   { id: 'standard_presentation_template', label: 'Standard Presentation Template' },
   { id: 'sales', label: 'Sales' },
   { id: 'pr', label: 'PR' },
-  { id: 'consumer_marketing', label: 'Consumer Marketing' }
+  { id: 'consumer_marketing', label: 'Consumer Marketing' },
+  { id: 'video_script', label: 'Video Script' }
 ];
 const BRAND_WRITING_SAMPLE_FILE_MIME_RE = /^(application\/(msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.openxmlformats-officedocument\.presentationml\.presentation|vnd\.ms-powerpoint|pdf))$/i;
+
+// ---------- Brand video sample analysis (round 140, 2026-08-29) ----------
+// Per direct instruction, following the "can we infer tone from video"
+// feasibility discussion: add video upload to Sample Writings, scoped to
+// VISUALS + ON-SCREEN TEXT only (explicitly not audio/voice-delivery
+// analysis — Todd is deferring that to an outside partner), capped "up to
+// :30 seconds or the equivalent file size," and NOT persisted after
+// analysis if that reduces cost.
+//
+// Cap design: duration is the real, intended limit (30 seconds). The byte
+// cap is a backstop for when duration can't be verified — e.g. an odd
+// container ffprobe can't parse — sized to roughly what a 30-second clip
+// occupies at a typical consumer phone-camera bitrate (1080p, ~8 Mbps ->
+// ~30MB for 30s; rounded down slightly since this is a style-reference
+// clip, not a video used to check compression) rather than a second,
+// independent allowance. A clip that fails BOTH checks is rejected with
+// the specific reason.
+const VIDEO_SAMPLE_MAX_DURATION_SECONDS = 30;
+const VIDEO_SAMPLE_MAX_BYTES = 25 * 1024 * 1024; // 25MB — see comment above
+const VIDEO_SAMPLE_MIME_RE = /^video\/(mp4|quicktime|webm|x-m4v)$/i;
+const VIDEO_SAMPLE_FRAME_COUNT = 8; // sampled evenly across the clip
+
+// Resolves the ffmpeg/ffprobe binaries to run: prefer the bundled
+// ffmpeg-static/ffprobe-static packages (added round 140 specifically so
+// this works on Vercel's serverless runtime, which has no system ffmpeg),
+// falling back to whatever 'ffmpeg'/'ffprobe' is on PATH for local/dev
+// environments where they're already installed. NOTE: this fallback and
+// the bundled-binary path have only been exercised against the local
+// system ffmpeg in this sandbox — the bundled-binary path on Vercel's
+// actual Linux runtime has NOT been verified end-to-end from here and
+// should be smoke-tested against a real deployment before relying on it.
+function resolveFfmpegBinary(){
+  try { return require('ffmpeg-static'); } catch (e) { return 'ffmpeg'; }
+}
+function resolveFfprobeBinary(){
+  try { return require('ffprobe-static').path; } catch (e) { return 'ffprobe'; }
+}
+
+function runSubprocess(cmd, args, { input } = {}){
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args);
+    let out = Buffer.alloc(0), errOut = '';
+    proc.stdout.on('data', c => { out = Buffer.concat([out, c]); });
+    proc.stderr.on('data', c => { errOut += c; });
+    proc.on('error', reject);
+    proc.on('close', code => {
+      if (code !== 0) return reject(new Error(errOut.slice(-2000) || `${cmd} exited ${code}`));
+      resolve(out);
+    });
+    if (input !== undefined){ proc.stdin.write(input); proc.stdin.end(); }
+  });
+}
+
+// Probes a video file's duration in seconds via ffprobe. Returns null
+// (rather than throwing) when duration can't be determined, so callers can
+// fall back to the byte-size cap instead of hard-failing the request.
+async function probeVideoDurationSeconds(filePath){
+  try {
+    const out = await runSubprocess(resolveFfprobeBinary(), [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', filePath
+    ]);
+    const seconds = parseFloat(out.toString('utf8').trim());
+    return Number.isFinite(seconds) ? seconds : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Extracts VIDEO_SAMPLE_FRAME_COUNT JPEG frames, evenly spaced across the
+// clip, into tmpDir. Returns the list of frame file paths actually written
+// (can be fewer than requested for a very short clip).
+async function extractVideoFrames(filePath, tmpDir, durationSeconds){
+  const seconds = durationSeconds && durationSeconds > 0 ? durationSeconds : VIDEO_SAMPLE_MAX_DURATION_SECONDS;
+  const fps = VIDEO_SAMPLE_FRAME_COUNT / seconds;
+  const outputPattern = path.join(tmpDir, 'frame-%02d.jpg');
+  await runSubprocess(resolveFfmpegBinary(), [
+    '-y', '-i', filePath, '-vf', `fps=${fps}`, '-frames:v', String(VIDEO_SAMPLE_FRAME_COUNT),
+    '-q:v', '3', outputPattern
+  ]);
+  return fs.readdirSync(tmpDir)
+    .filter(f => f.startsWith('frame-') && f.endsWith('.jpg'))
+    .sort()
+    .map(f => path.join(tmpDir, f));
+}
+
+// The core video-sample analysis pipeline: decode -> probe -> extract
+// frames -> score via Anthropic multimodal -> ALWAYS clean up the temp
+// files, whether analysis succeeded or failed. Nothing here ever writes
+// the video (or its frames) to the database or any persistent store — the
+// only thing that survives this function returning is the text it returns,
+// which the caller may choose to save as a brand_writing_samples row.
+async function analyzeVideoSample(dataUrl, mimeType){
+  if (!process.env.ANTHROPIC_API_KEY) return { error: 'Video analysis requires ANTHROPIC_API_KEY to be configured.' };
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl || '');
+  if (!match) return { error: 'dataUrl must be a base64 data URI (data:<mime>;base64,<...>).' };
+  const actualMime = mimeType || match[1];
+  if (!VIDEO_SAMPLE_MIME_RE.test(actualMime)) return { error: `Unsupported video type "${actualMime}" — accepted: MP4, MOV (QuickTime), WebM.` };
+  const buf = Buffer.from(match[2], 'base64');
+  if (buf.length > VIDEO_SAMPLE_MAX_BYTES) {
+    return { error: `Video is too large (${(buf.length / 1024 / 1024).toFixed(1)}MB) — clips are capped at :30 seconds or about ${(VIDEO_SAMPLE_MAX_BYTES / 1024 / 1024).toFixed(0)}MB, whichever is checked first.` };
+  }
+
+  const os = require('os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsample-'));
+  const ext = actualMime.includes('webm') ? 'webm' : actualMime.includes('quicktime') ? 'mov' : 'mp4';
+  const videoPath = path.join(tmpDir, `input.${ext}`);
+  try {
+    fs.writeFileSync(videoPath, buf);
+    const durationSeconds = await probeVideoDurationSeconds(videoPath);
+    if (durationSeconds !== null && durationSeconds > VIDEO_SAMPLE_MAX_DURATION_SECONDS + 0.5){
+      return { error: `Video is ${durationSeconds.toFixed(0)}s long — clips are capped at :${VIDEO_SAMPLE_MAX_DURATION_SECONDS} seconds.` };
+    }
+    // durationSeconds === null (couldn't probe): the byte-size check above
+    // already ran and passed, so we proceed on that basis alone, per the
+    // "30 seconds or the equivalent file size" design.
+
+    let framePaths;
+    try {
+      framePaths = await extractVideoFrames(videoPath, tmpDir, durationSeconds);
+    } catch (e){
+      return { error: 'Could not read this video file (unsupported or corrupt encoding) — try a standard MP4/MOV/WebM export.' };
+    }
+    if (!framePaths.length) return { error: 'No frames could be extracted from this video.' };
+
+    const imageBlocks = framePaths.map(fp => ({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(fp).toString('base64') }
+    }));
+    const prompt = `You are looking at ${imageBlocks.length} frames sampled evenly across a short (${durationSeconds ? durationSeconds.toFixed(0) + 's' : 'up to 30s'}) brand video, submitted as a style/tone reference sample — the same role a written sample plays elsewhere in this brand-voice tool.
+
+Describe, based ONLY on what is visibly present in these frames:
+- Visual style and tone (color palette, pacing/energy implied by the sequence, setting, production polish)
+- Any on-screen text, titles, captions, or graphics you can actually read, quoted as written
+- What overall brand personality these visuals suggest (e.g. "energetic and youthful," "restrained and premium")
+
+Do NOT guess at anything you cannot see in these specific frames — no invented dialogue, no assumed narration, no claims about audio or spoken tone (this analysis is visuals and on-screen text only). If the frames are too ambiguous to say something with confidence, say so plainly rather than filling in a plausible-sounding guess.
+
+Respond with ONLY a JSON object: {"analysis": "<2-4 sentences, written as a usable brand-voice reference note>", "onScreenText": ["<verbatim on-screen text you actually saw, if any>"]}`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5', max_tokens: 600,
+        messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
+      })
+    });
+    if (!resp.ok) return { error: `Video analysis failed (HTTP ${resp.status}).` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { error: 'Video analysis returned an unexpected response.' };
+    const parsed = JSON.parse(jsonMatch[0]);
+    const onScreenText = Array.isArray(parsed.onScreenText) ? parsed.onScreenText.filter(t => typeof t === 'string' && t.trim()) : [];
+    const analysis = (parsed.analysis || '').trim();
+    if (!analysis) return { error: 'Video analysis returned no usable content.' };
+    return {
+      analysis: analysis + (onScreenText.length ? `\n\nOn-screen text noted: ${onScreenText.map(t => `"${t}"`).join('; ')}` : ''),
+      durationSeconds,
+      framesAnalyzed: imageBlocks.length
+    };
+  } catch (e){
+    return { error: 'Video analysis failed: ' + e.message };
+  } finally {
+    // Ephemeral by design, per direct instruction — the video and every
+    // extracted frame are deleted here regardless of outcome. Nothing
+    // above this line writes any of it to the database.
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) { /* best-effort cleanup */ }
+  }
+}
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS brand_writing_samples (
     id TEXT PRIMARY KEY,
@@ -3372,6 +3574,53 @@ createTableIfNeeded(`
 const PRESS_RELEASE_STATUSES = ['draft', 'distributed'];
 const EDITORIAL_PITCH_STATUSES = ['pending', 'placed'];
 const CORPORATE_COMMS_STATUSES = ['draft', 'approved'];
+
+// 2026-08-27 — release type + audience, per direct report (Todd's PR
+// contact's own checklist: "audience (consumer or business network) and
+// type of press release is important"). Every release got the exact same
+// generic format before this — no distinction for an Earnings Announcement
+// (which legally needs its pre-approved boilerplate verbatim, never
+// AI-paraphrased) vs. a Product Launch vs. a Strategic Partnership vs. a
+// Charity/Person partnership vs. a Significant Hire/Departure. See
+// PRESS_RELEASE_TYPE_GUIDANCE below for the per-type prompt guidance this
+// feeds into buildPrCorpCommPrompt().
+const PRESS_RELEASE_TYPES = ['product_launch', 'earnings', 'partnership', 'charity_or_person', 'hire_or_departure'];
+const PRESS_RELEASE_TYPE_LABELS = {
+  product_launch: 'Product Launch / Enhancement',
+  earnings: 'Earnings Announcement',
+  partnership: 'Strategic Partnership',
+  charity_or_person: 'Charity / Person Partnership',
+  hire_or_departure: 'Significant Hire / Departure'
+};
+const PRESS_RELEASE_AUDIENCES = ['consumer', 'business'];
+const PRESS_RELEASE_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network' };
+ensureColumn('press_releases', 'releaseType', 'TEXT');
+ensureColumn('press_releases', 'audience', 'TEXT');
+
+// 2026-08-29 — exact-copy vs. inspiration, per direct report: "Some fields
+// may require us to use exact copy vs direction for inspiration. Next steps
+// is an example. how to book includes a specific process statement." Not
+// every supplied fact is safe to treat the same way — a legal disclosure
+// line must never be paraphrased (already forced verbatim for Earnings,
+// above), but a "how to book" process statement or similar Next-Step
+// instruction is sometimes legally/operationally exact (a real phone
+// number, a real URL, a compliance-reviewed sentence) and sometimes just a
+// starting point the model should write around in its own voice. Rather
+// than guess per release, this is now an explicit per-field control on the
+// one field it was raised about first (the Next Step / CTA text) —
+// generalizable to other supplied-text fields later if the same need shows
+// up elsewhere, not built as a global setting since different fields will
+// likely want different defaults.
+const PRESS_RELEASE_CTA_MODES = ['exact', 'inspiration', 'both'];
+const PRESS_RELEASE_CTA_MODE_LABELS = { exact: 'Use exact copy', inspiration: 'Use for inspiration', both: 'Both — exact copy, framed with room for creativity' };
+ensureColumn('press_releases', 'ctaText', 'TEXT');
+ensureColumn('press_releases', 'ctaMode', "TEXT DEFAULT 'inspiration'");
+// 2026-08-29 — LinkedIn derivative, per direct request. Same "master
+// content, platform-native derivative" pattern already used for Social
+// Content Batch (cxmedia-campaign-project-architecture.md) — the press
+// release's approved workingCopy is the master; this is a short LinkedIn
+// rewrite of it, not a second independently-researched piece of copy.
+ensureColumn('press_releases', 'linkedinCopy', 'TEXT');
 
 // Real, disclosed-as-heuristic PII screening over a text file's contents.
 // Never claims to be exhaustive or a compliance guarantee (a human should
@@ -5192,6 +5441,22 @@ function generateId(prefix){
   return `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 900 + 100)}-${generateIdCounter.toString(36)}`;
 }
 
+// 2026-08-27 fix, per direct report — several AI-copy prompts across this
+// file (Long Form Copy generation and scoring, the copy-interview panel's
+// per-vendor brief, and PR/Corp Comm generation) were hardcoded to "a
+// luxury travel brand" regardless of the account's own industry. That's
+// fine for Atlas Ocean Voyages, wrong for every other vertical this
+// platform serves (wine & spirits, retail apparel, sporting goods, etc.) —
+// a client outside travel would get copy/PR written as if it were a
+// cruise line. account.industry already exists and is stored per-account
+// (see the COMPANY/Industry line already used elsewhere in this file); this
+// helper is the one place every prompt should pull its persona phrase from
+// going forward, rather than each prompt hand-writing its own vertical.
+function industryPersonaPhrase(account){
+  const industry = (account && account.industry || '').trim();
+  return industry ? `a ${industry.toLowerCase()} brand` : 'a brand in this account\'s industry';
+}
+
 // Round 132c17 (2026-08-17), per direct instruction: "the campaign id
 // includes a 3 letter code for each partner defined during setup, three
 // letter product code -last two of start year -last two of month year.
@@ -6424,8 +6689,13 @@ function readBody(req){
     let data = '';
     // Raised from 2MB (round 132bp) — the shared uploads pipeline now also
     // accepts base64-encoded Word/PowerPoint/PDF brand writing samples,
-    // which routinely exceed the original CSV/JSON-sized cap.
-    req.on('data', chunk => { data += chunk; if (data.length > 20_000_000) req.destroy(); });
+    // which routinely exceed the original CSV/JSON-sized cap. Raised again
+    // to 40MB (round 140) — base64 encoding inflates bytes by ~37%, so
+    // VIDEO_SAMPLE_MAX_BYTES's 25MB raw-video cap (see analyze-video)
+    // needed headroom above the prior 20MB ceiling or every video at or
+    // near that cap would hit this connection-reset path before
+    // analyzeVideoSample's own, cleaner error response ever ran.
+    req.on('data', chunk => { data += chunk; if (data.length > 40_000_000) req.destroy(); });
     req.on('end', () => {
       if (!data) return resolve({});
       try { resolve(JSON.parse(data)); }
@@ -6723,12 +6993,12 @@ function campaignTypeBriefContext(campaign){
     .join('\n');
   return `\nCAMPAIGN TYPE: ${def.label}\n${def.promptGuidance}${detailLines ? `\n${detailLines}` : ''}\n`;
 }
-async function scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMessage){
+async function scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMessage, account){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, verdict: null, rationale: null, missingElements: [], note: 'AI business-outcome relevance scoring requires ANTHROPIC_API_KEY to be configured. The deterministic Stage/Objective and Primary KPI checks (see the Messaging QA score above) still run without one.' };
   if (!draftCopy || !draftCopy.trim()) return { score: null, verdict: null, rationale: null, missingElements: [], note: 'No Long Form Copy to score yet.' };
   try {
     const stageJob = MEDIA_LOOP_STAGE_JOB[campaign.stage] || 'No Loop Stage set on this campaign yet — scoring against the copy alone, with no stage-specific business outcome to check against.';
-    const prompt = `You are an expert direct-response marketing reviewer for a luxury travel brand, judging whether a piece of campaign copy will actually achieve its stated business outcome — NOT whether it contains particular words or phrases. Literal phrase-matching is explicitly the wrong approach here; judge substance and likely real-world effect.
+    const prompt = `You are an expert direct-response marketing reviewer for ${industryPersonaPhrase(account)}, judging whether a piece of campaign copy will actually achieve its stated business outcome — NOT whether it contains particular words or phrases. Literal phrase-matching is explicitly the wrong approach here; judge substance and likely real-world effect.
 
 Campaign Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 Campaign Objective: ${campaign.objective || '(not set)'}
@@ -6975,7 +7245,7 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
         }
       } catch (e){ /* leave blank — same honest-skip convention as everywhere else this JSON is parsed */ }
     }
-    const prompt = `You are an expert direct-response copywriter for a luxury travel brand. Write real, finished, publish-ready Long Form Copy for a marketing campaign — not a summary, not a template, not placeholder language. Write the way a senior copywriter briefed on this brand's actual voice and this campaign's actual context would write, weaving in specific, real brand detail rather than generic claims.
+    const prompt = `You are an expert direct-response copywriter for ${industryPersonaPhrase(account)}. Write real, finished, publish-ready Long Form Copy for a marketing campaign — not a summary, not a template, not placeholder language. Write the way a senior copywriter briefed on this brand's actual voice and this campaign's actual context would write, weaving in specific, real brand detail rather than generic claims.
 
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
 ${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
@@ -7188,6 +7458,32 @@ async function generateAssessmentReadout(input){
 // a real cross-vendor comparison needs identical brief-and-context depth,
 // same reasoning as buildInterviewPrompt() for the marketing-copy panel.
 // Returns { prompt, docSpec } or { error } for an unknown docType.
+// 2026-08-27 — per-release-type guidance, per direct report (Todd's PR
+// contact's checklist: Product Launch/Enhancement, Earnings Announcement,
+// Strategic Partnership, Charity/Person Partnership, Significant Hire/
+// Departure each need different emphasis, not one generic format for all
+// of them). Each entry maps onto the same 4-part shape every release
+// should follow (THE NEWS / THE EXPERIENCE / THE DETAILS / THE NEXT STEP —
+// the exact structure the PR contact confirmed he needs), but tells the
+// model what "Experience," "Details," and "Next Step" actually mean for
+// that release type. Deliberately industry-agnostic wording (see
+// industryPersonaPhrase()) — none of this is Atlas/travel-specific.
+const PRESS_RELEASE_TYPE_GUIDANCE = {
+  product_launch: 'THE EXPERIENCE should explain why this product/enhancement is compelling and distinctly this brand\'s, not a generic feature list. THE DETAILS should cover availability, pricing if applicable, and how it works. THE NEXT STEP should be a clear call to action for how a customer engages with or acquires it.',
+  earnings: 'THE EXPERIENCE and THE DETAILS should present the real financial results/metrics supplied in the brief plainly and factually — no promotional language, no "compelling experience" framing; this is a financial disclosure, not a marketing piece. THE NEXT STEP should point to where investors can find the full report/call details. Every number in this release must come from the brief — never estimate, round, or infer a figure that was not supplied.',
+  partnership: 'THE EXPERIENCE should explain what the partnership makes possible for customers that neither party could deliver alone. THE DETAILS should name both parties accurately, the scope of the partnership, and its effective date. THE NEXT STEP should say what customers or partners should expect next.',
+  charity_or_person: 'THE EXPERIENCE should explain the real relationship and shared values between the brand and the named charity or person — grounded in specifics from the brief, never generic goodwill language. THE DETAILS should cover what is actually being done (a donation, a campaign, an appointment) and its scope. THE NEXT STEP should say how the public can get involved or learn more, if applicable.',
+  hire_or_departure: 'THE EXPERIENCE should focus on what this person brings to or leaves behind at the brand — real background and role scope from the brief, not generic praise. THE DETAILS should cover the exact role, effective date, and reporting line if supplied. THE NEXT STEP should name who to contact for further questions (or say a successor process is underway, if that\'s what the brief says).'
+};
+// 2026-08-27 — audience guidance (consumer vs. business/trade network),
+// same direct report. Distinct from PRESS_RELEASE_TYPE_GUIDANCE — a
+// release can be any type AND either audience (an Earnings Announcement is
+// always business-audience by nature, but a Product Launch could be
+// either).
+const PRESS_RELEASE_AUDIENCE_GUIDANCE = {
+  consumer: 'Written for general/consumer media and the public — accessible language, no unexplained industry jargon, benefit-forward.',
+  business: 'Written for trade/business press and industry readers — direct, can assume category-familiar readers, precise on figures/terms/structure rather than benefit-forward.'
+};
 async function buildPrCorpCommPrompt(account, docType, brief){
   const voiceGuide = (account.voiceGuideText || '').slice(0, 2500);
   const visionStatement = (account.visionStatement || '').trim();
@@ -7196,11 +7492,46 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // above, so both PR-copy generation paths (single-shot and the contest
   // panel, which both call this same builder) draw from it too.
   const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
+  // 2026-08-27 — pull this account's saved legal boilerplate library
+  // (contentLibraryJson.legalDisclaimer, round 55) so an Earnings
+  // Announcement can require it verbatim rather than letting the model
+  // draft its own legal/safe-harbor language, which nobody should ever
+  // generate ad hoc.
+  let legalBoilerplateBlock = '';
+  if (docType === 'press_release' && brief.releaseType === 'earnings'){
+    let legalEntries = [];
+    try {
+      const lib = JSON.parse(account.contentLibraryJson || '{}');
+      legalEntries = Array.isArray(lib.legalDisclaimer) ? lib.legalDisclaimer : [];
+    } catch (e){ /* honest-skip, same convention as every other JSON parse in this file */ }
+    const legalText = legalEntries.map(e => (typeof e === 'string' ? e : (e && e.text) || '')).filter(Boolean).join('\n\n');
+    legalBoilerplateBlock = legalText
+      ? `\nPRE-APPROVED LEGAL/DISCLOSURE LANGUAGE (from this account's saved Content Library — this is legal copy, not something you draft or paraphrase. Reproduce it EXACTLY as written, in full, appended near the end of the release):\n${legalText}\n`
+      : `\nNo pre-approved legal/disclosure language is saved in this account's Content Library yet. Do NOT draft safe-harbor, forward-looking-statement, or other financial-disclosure legal language yourself — instead write a bracketed placeholder: [PRE-APPROVED LEGAL LANGUAGE — insert from Legal/Compliance before distribution].\n`;
+  }
+  // 2026-08-29 — exact-copy vs. inspiration for THE NEXT STEP, per direct
+  // report ("how to book includes a specific process statement... use
+  // exact copy vs direction for inspiration"). Three modes: exact (use
+  // ctaText verbatim, no rewriting), inspiration (ctaText is a starting
+  // point/direction only — write an original sentence in the brand voice,
+  // never reuse the literal wording), both (the exact text must appear
+  // verbatim somewhere in THE NEXT STEP, with room for the model to add
+  // brand-voice framing immediately before and/or after it).
+  let ctaGuidanceBlock = '';
+  if (docType === 'press_release' && brief.ctaText && brief.ctaText.trim()){
+    const ctaMode = PRESS_RELEASE_CTA_MODES.includes(brief.ctaMode) ? brief.ctaMode : 'inspiration';
+    const ctaInstruction = {
+      exact: 'Use this text VERBATIM, word for word, as (or within) THE NEXT STEP — do not rewrite, rephrase, or paraphrase it.',
+      inspiration: 'Treat this only as DIRECTION for THE NEXT STEP, not text to reuse — write an original sentence in the brand voice that accomplishes the same thing; do not copy this wording.',
+      both: 'THE NEXT STEP must include this text VERBATIM, word for word, somewhere within it — but you may add original brand-voice framing immediately before and/or after it.'
+    }[ctaMode];
+    ctaGuidanceBlock = `\nSUPPLIED NEXT-STEP / "HOW TO" TEXT (${PRESS_RELEASE_CTA_MODE_LABELS[ctaMode]}): "${brief.ctaText.trim()}"\n${ctaInstruction}\n`;
+  }
   const docSpec = {
     press_release: {
       label: 'a real, publish-ready press release',
-      brief: `Headline/Title: ${brief.title || '(not set)'}\nKey facts/announcement this release is built around: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts, dates, or figures)'}`,
-      format: 'Standard press release format: a dateline-style opening paragraph (who/what/when/where), 2-4 body paragraphs with real supporting detail, one quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied), and a boilerplate-style closing line about the brand. 250-400 words.'
+      brief: `Headline/Title: ${brief.title || '(not set)'}\nRelease type: ${PRESS_RELEASE_TYPE_LABELS[brief.releaseType] || '(not set — write a general-purpose release)'}\nAudience: ${PRESS_RELEASE_AUDIENCE_LABELS[brief.audience] || '(not set — default to consumer-accessible language)'}\nKey facts/announcement this release is built around: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts, dates, or figures)'}${ctaGuidanceBlock}`,
+      format: `Four required parts, in order: (1) THE NEWS — a dateline-style opening paragraph stating what is being announced (who/what/when/where). (2) THE EXPERIENCE — why this is compelling and distinctly this brand's. (3) THE DETAILS — when, where, who, and how it works. (4) THE NEXT STEP — why it matters, and the concrete next action for the reader (see the SUPPLIED NEXT-STEP text in the brief above, if any, and follow its exact/inspiration/both instruction). One quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied) belongs in THE EXPERIENCE or THE DETAILS. Close with a boilerplate-style line about the brand. 250-400 words, longer only if the pre-approved legal language below requires it.${PRESS_RELEASE_TYPE_GUIDANCE[brief.releaseType] ? `\n\nRELEASE-TYPE GUIDANCE (${PRESS_RELEASE_TYPE_LABELS[brief.releaseType]}): ${PRESS_RELEASE_TYPE_GUIDANCE[brief.releaseType]}` : ''}${PRESS_RELEASE_AUDIENCE_GUIDANCE[brief.audience] ? `\n\nAUDIENCE GUIDANCE (${PRESS_RELEASE_AUDIENCE_LABELS[brief.audience]}): ${PRESS_RELEASE_AUDIENCE_GUIDANCE[brief.audience]}` : ''}`
     },
     editorial_pitch: {
       label: 'a real, send-ready editorial pitch email to a journalist/outlet contact',
@@ -7214,11 +7545,11 @@ async function buildPrCorpCommPrompt(account, docType, brief){
     }
   }[docType];
   if (!docSpec) return { error: `Unknown docType "${docType}".` };
-  const prompt = `You are an expert corporate communications and PR writer for a luxury travel brand. Write ${docSpec.label} — not a summary, not a template, not placeholder language. Write the way a senior comms professional briefed on this brand's actual voice would write.
+  const prompt = `You are an expert corporate communications and PR writer for ${industryPersonaPhrase(account)}. Write ${docSpec.label} — not a summary, not a template, not placeholder language. Write the way a senior comms professional briefed on this brand's actual voice would write.
 
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
 ${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
-${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext}
+${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext}${legalBoilerplateBlock}
 BRIEF:
 ${docSpec.brief}
 
@@ -7270,6 +7601,140 @@ async function draftPrCorpCommCopyViaAI(account, docType, brief){
     };
   } catch (e){
     return { copy: null, sourcesUsed: [], note: 'AI drafting failed: ' + e.message };
+  }
+}
+
+// 2026-08-29 — LinkedIn derivative, per direct request ("we should include
+// a LinkedIn copy example"). Same master-content/platform-derivative
+// pattern already used for Social Content Batch
+// (cxmedia-campaign-project-architecture.md) — this rewrites the press
+// release's own APPROVED workingCopy for LinkedIn, it does not
+// independently re-derive facts from the brief, so it can only be run once
+// a working draft actually exists.
+async function draftLinkedInFromPressRelease(account, pressRelease){
+  if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI drafting requires ANTHROPIC_API_KEY to be configured. Draft the copy manually below until one is set.' };
+  if (!pressRelease.workingCopy || !pressRelease.workingCopy.trim()){
+    return { copy: null, note: 'Draft (or write) the press release itself first — the LinkedIn version is a rewrite of that approved copy, not a separate draft from scratch.' };
+  }
+  try {
+    const voiceGuide = (account.voiceGuideText || '').slice(0, 1500);
+    const prompt = `You are a corporate communications writer for ${industryPersonaPhrase(account)}, adapting an already-approved press release into a LinkedIn company-page post. This is a REWRITE for LinkedIn's format and reading pattern, not a new piece — use only the facts already present in the source release below, never add or invent anything new.
+
+BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid):
+${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
+
+SOURCE PRESS RELEASE (the approved copy this LinkedIn post must stay factually grounded in):
+${pressRelease.workingCopy}
+
+FORMAT: A LinkedIn-native post — short punchy opening line (not the press release's dateline lede), 3-5 short paragraphs or a mix of short paragraphs and a brief line-broken list, plain conversational register appropriate for a feed rather than a wire service, ending with a clear call to action. Include 2-4 relevant hashtags on their own line at the end. 100-200 words, not counting hashtags.
+
+Respond with ONLY a JSON object: {"copy": "<the full LinkedIn post text, hashtags included>"}`;
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!resp.ok) return { copy: null, note: `AI drafting failed (HTTP ${resp.status}).` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, note: null };
+  } catch (e){
+    return { copy: null, note: 'AI drafting failed: ' + e.message };
+  }
+}
+
+// 2026-08-29 — continuous competitor monitoring + the generative Daily
+// Brief, per direct instruction: "I wouldn't leave the AOV competitors
+// untouched. Competitive info changes over time. We should continuously
+// monitor defined competitors per paid client and provide updates via the
+// main dashboard via the generative daily brief summary and by adding
+// logic to our curated news logic." Called both from the manual
+// POST .../intelligence/refresh endpoint and from the weekly Vercel Cron
+// job (GET /api/cron/refresh-intelligence) — same function either way, so
+// "refresh now" and "refreshed overnight" never drift apart. Runs
+// Mondays 13:00 UTC (vercel.json), the same schedule as the existing
+// "Weekly Curated News Refresh" scheduled task, per direct instruction.
+//
+// CRITICAL honesty constraint, same anti-fabrication convention as
+// generateCompetitorPositioning()/generateIndustryTrendsDraft() elsewhere
+// in this file: this backend has NO live news feed, web search, or
+// real-time competitive-intelligence source. It must never invent a
+// specific dated event, headline, or claim about what a competitor has
+// "just done" and present it as real — that would be fabricated
+// intelligence handed to a paying client as if it were sourced. The
+// prompt below says this explicitly and asks for reasoning/"worth
+// watching" framing only, built from this account's own on-file context
+// (named competitors, why-they-compete notes, positioning reads, industry
+// trends, Vision Statement) — never a claim that requires a citation this
+// backend can't produce.
+async function generateAccountIntelligenceViaAI(account){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return { intelligence: null, note: 'Continuous competitor monitoring requires ANTHROPIC_API_KEY to be configured.' };
+  }
+  let competitors = [];
+  try { competitors = account.competitorsJson ? JSON.parse(account.competitorsJson) : []; } catch (e){ competitors = []; }
+  competitors = (Array.isArray(competitors) ? competitors : []).filter(c => c && c.name && c.name.trim()).slice(0, 5);
+
+  const visionStatement = (account.visionStatement || '').trim();
+  const industryTrendsText = (account.industryTrendsText || '').trim();
+
+  try {
+    const competitorContext = competitors.length
+      ? competitors.map(c => `- ${c.name}${c.note ? ` — why they compete: ${c.note}` : ''}${c.positioningText ? ` — prior positioning read: ${c.positioningText.slice(0, 400)}` : ''}`).join('\n')
+      : '(no Direct Competitors named for this account yet)';
+
+    const prompt = `You are a competitive-intelligence analyst for ${industryPersonaPhrase(account)} (account: ${account.company || 'this account'}, industry: ${account.industry || 'unspecified'}, footprint: ${account.footprint || 'unspecified'}).
+
+You have NO access to live news, web search, or any real-time data source. You do not know what any competitor has actually done recently. DO NOT invent specific dated events, headlines, article titles, prices, or claims that something "just happened" — that would be fabricated intelligence presented as real, which is never acceptable. Every item you write must be framed as reasoning, a hypothesis, or something "worth watching" based on general category dynamics and the account's own on-file context below — never as an asserted fact about a competitor's actual current activity.
+
+THIS ACCOUNT'S OWN CONTEXT (real, on file):
+Vision Statement: ${visionStatement || '(none on file yet)'}
+Industry trends note on file: ${industryTrendsText || '(none on file yet)'}
+
+NAMED DIRECT COMPETITORS:
+${competitorContext}
+
+TASK — respond with ONLY a JSON object in this exact shape:
+{
+  "competitors": [
+    { "name": "<competitor name, exactly as given above>", "positioningSummary": "<1-2 sentence reasoned read of how they likely position themselves in this category, grounded in the note/positioning read given above if present>", "watchItems": ["<a specific, reasoning-based 'worth watching' pattern or hypothesis — NOT a claimed real event>", "<a second, distinct one>"] }
+  ],
+  "dailyBriefSummary": "<2-3 sentence synthesis for a CMO opening their dashboard today — reference the competitive landscape and this account's own positioning, in plain confident language, no hedging filler>",
+  "dailyBriefObservations": ["<a short, specific observation worth a CMO's attention today>", "<a second one>", "<a third one>"]
+}
+${competitors.length === 0 ? 'No competitors are named for this account, so return an empty "competitors" array — do not invent competitor names.' : `Include exactly one entry per named competitor above, in the same order, using their exact given names.`}`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1400, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!resp.ok) return { intelligence: null, note: `AI generation failed (HTTP ${resp.status}).` };
+    const data = await resp.json();
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return { intelligence: null, note: 'AI generation returned an unparseable response.' };
+    const parsed = JSON.parse(match[0]);
+    const cleanCompetitors = Array.isArray(parsed.competitors)
+      ? parsed.competitors.filter(c => c && typeof c.name === 'string').map(c => ({
+          name: c.name,
+          positioningSummary: typeof c.positioningSummary === 'string' ? c.positioningSummary : '',
+          watchItems: Array.isArray(c.watchItems) ? c.watchItems.filter(w => typeof w === 'string') : []
+        }))
+      : [];
+    return {
+      intelligence: {
+        competitors: cleanCompetitors,
+        dailyBrief: {
+          summary: typeof parsed.dailyBriefSummary === 'string' ? parsed.dailyBriefSummary : '',
+          keyObservations: Array.isArray(parsed.dailyBriefObservations) ? parsed.dailyBriefObservations.filter(o => typeof o === 'string') : []
+        }
+      },
+      note: null
+    };
+  } catch (e){
+    return { intelligence: null, note: 'AI generation failed: ' + e.message };
   }
 }
 
@@ -7372,7 +7837,7 @@ async function runPrCandidateInterview(account, docType, brief){
 // own generate-draft endpoint already builds, just run through the panel
 // above instead of a single Anthropic call.
 const PR_DOC_TYPE_CONFIG = {
-  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || '' }) },
+  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || '', releaseType: row.releaseType || '', audience: row.audience || '', ctaText: row.ctaText || '', ctaMode: row.ctaMode || 'inspiration' }) },
   editorial_pitch: { table: 'editorial_pitches', briefFromRow: (row) => ({ outlet: row.outlet, topic: row.topic }) },
   corporate_comms: { table: 'corporate_comms', briefFromRow: (row, body) => ({ title: row.title, audience: row.audience, context: body.context || '' }) }
 };
@@ -7742,7 +8207,7 @@ function buildInterviewPrompt(brief, campaign, account, sampleContext){
   const styleNotes = (account.styleNotes || '').slice(0, 1200);
   const visionStatement = (account.visionStatement || '').trim();
   const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1000).trim();
-  return `You are a specialist copywriter working one specific strategic angle on a creative team. Write real, finished, publish-ready Long Form Copy (120-220 words, 3-5 short paragraphs) for a luxury travel brand campaign — not a summary, not a template.
+  return `You are a specialist copywriter working one specific strategic angle on a creative team. Write real, finished, publish-ready Long Form Copy (120-220 words, 3-5 short paragraphs) for ${industryPersonaPhrase(account)} campaign — not a summary, not a template.
 
 YOUR ANGLE FOR THIS DRAFT: ${brief}
 
@@ -8156,15 +8621,21 @@ async function handleRequest(req, res) {
       // key or recovery code uses.
       const accessCode = generateAccessCode();
       const { hash: accessCodeHash, salt: accessCodeSalt } = hashAccessCode(accessCode);
-      // Round 25, point c — the free assessment's Step 1 "Top 3 U.S.
-      // competitors" field (real names, user-typed, never invented — see
-      // assessment.html) now travels into the same `competitorsJson` column
-      // Competitive Positioning (round 22) already reads from, so a real
-      // backend-saved account arrives at the Portal with these already
-      // seeded into Direct Competitors instead of starting blank. Shaped to
-      // match that column's object schema ({name, note, sourceFileName,
+      // Round 25, point c introduced this as a pass-through for the free
+      // assessment's Step 1 "Top 3 U.S. competitors" field, shaped to match
+      // the same `competitorsJson` column object schema Competitive
+      // Positioning (round 22) reads from ({name, note, sourceFileName,
       // positioningText}) — note/sourceFileName/positioningText start empty
-      // since the assessment only ever collected a name.
+      // since only a name was ever collected here.
+      // 2026-08-29 — Round 106 removed that field from the assessment
+      // itself, so `body.competitors` is always empty from the real
+      // assessment/onboarding flow today; this stays as a generic, honest
+      // accept-if-sent capability of account creation (any future caller —
+      // a different intake flow, a direct API call) rather than dead-coding
+      // it out, since it does nothing unless a caller actually sends it.
+      // Direct competitors are entered post-creation, in the Portal's Brand
+      // Foundations → Competitive Positioning panel — see the PATCH
+      // /positioning handler below, which is what real accounts use today.
       const competitorsJson = Array.isArray(body.competitors) && body.competitors.length
         ? JSON.stringify(body.competitors.filter(Boolean).slice(0, 5).map(name => ({ name, note: '', sourceFileName: '', positioningText: '' })))
         : null;
@@ -10053,7 +10524,8 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const draftCopy = typeof body.draftCopy === 'string' ? body.draftCopy : (campaign.longformCopy || '');
       const keyMessage = typeof body.keyMessage === 'string' ? body.keyMessage : (campaign.keyMessage || '');
-      const result = await scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMessage);
+      const scoringAccount = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      const result = await scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMessage, scoringAccount);
       const runAt = new Date().toISOString();
       const payload = { ...result, runAt };
       db.prepare('UPDATE campaigns SET messagingRelevanceJson = ?, messagingRelevanceScoredAt = ? WHERE id = ?')
@@ -10206,6 +10678,97 @@ async function handleRequest(req, res) {
          competitivePositioningApprovedAt = ? WHERE accountId = ?`
       ).run(industryTrendsText, competitorsJson, approved, approvedAt, accountId);
       return sendJson(res, 200, { approved: !!approved, approvedAt });
+    }
+
+    // 2026-08-29 — GET /api/accounts/:id/intelligence: read the cached
+    // competitor-monitoring + generative Daily Brief blob (never triggers a
+    // new AI call — see POST .../intelligence/refresh for that). Available
+    // to read at any tier; a non-paid account simply has never had one
+    // generated (accountIntelligenceJson stays null), since generation
+    // itself is what's paid-tier gated below. The front end uses `paidTier`
+    // in this response to decide whether to show an upsell or a Refresh
+    // button.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'intelligence'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      let intelligence = null;
+      if (account.accountIntelligenceJson){
+        try { intelligence = JSON.parse(account.accountIntelligenceJson); } catch (e){ intelligence = null; }
+      }
+      return sendJson(res, 200, { intelligence, generatedAt: account.accountIntelligenceGeneratedAt || null, paidTier: !!account.paidTier });
+    }
+
+    // POST /api/accounts/:id/intelligence/refresh — the manual "Refresh
+    // now" trigger (Dashboard's generative Daily Brief) and the target the
+    // Vercel Cron job below calls, per account, once a week. Paid-tier
+    // gated per direct instruction ("continuously monitor defined
+    // competitors per paid client") — a non-paid account gets an honest
+    // 403 with an upsell message rather than a silent no-op or a
+    // fabricated free preview.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'intelligence' && parts[4] === 'refresh'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      if (!account.paidTier){
+        return sendJson(res, 403, { error: 'Continuous competitor monitoring and the generative Daily Brief are a paid-plan feature. Activate a plan to turn this on for this account.' });
+      }
+      const result = await generateAccountIntelligenceViaAI(account);
+      if (!result.intelligence){
+        return sendJson(res, 200, { intelligence: null, generatedAt: account.accountIntelligenceGeneratedAt || null, note: result.note });
+      }
+      const now = new Date().toISOString();
+      db.prepare('UPDATE accounts SET accountIntelligenceJson = ?, accountIntelligenceGeneratedAt = ? WHERE accountId = ?')
+        .run(JSON.stringify(result.intelligence), now, accountId);
+      return sendJson(res, 200, { intelligence: result.intelligence, generatedAt: now, note: null });
+    }
+
+    // GET /api/cron/refresh-intelligence — the Vercel Cron target (see
+    // vercel.json's `crons` entry: Mondays 13:00 UTC, matching the
+    // existing "Weekly Curated News Refresh" scheduled task's own cadence,
+    // per direct instruction to schedule this the same time). Refreshes
+    // every paid-tier account's competitor monitoring + generative Daily
+    // Brief, so a paid client sees an up-to-date brief on login without
+    // having to click Refresh themselves — same generation this file's
+    // manual .../intelligence/refresh endpoint calls, just looped across
+    // accounts and run on a schedule instead of on demand.
+    //
+    // Fails CLOSED, not open: Vercel automatically sends
+    // `Authorization: Bearer <CRON_SECRET>` on a configured cron job when
+    // the CRON_SECRET env var is set — if it ISN'T set, this endpoint
+    // refuses to run at all (501) rather than sitting exposed as an
+    // unauthenticated endpoint that could be hit to mass-trigger paid AI
+    // generation calls across every account. Todd needs to set
+    // CRON_SECRET in the Vercel project's environment variables for this
+    // to actually run — see the Decision Log entry for this round.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'cron' && parts[2] === 'refresh-intelligence'){
+      if (!process.env.CRON_SECRET){
+        return sendJson(res, 501, { error: 'CRON_SECRET is not configured — refusing to run an unauthenticated cron endpoint. Set CRON_SECRET in the deployment environment to enable this job.' });
+      }
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${process.env.CRON_SECRET}`){
+        return sendJson(res, 401, { error: 'unauthorized' });
+      }
+      const paidAccounts = db.prepare('SELECT * FROM accounts WHERE paidTier IS NOT NULL').all();
+      const results = { processed: paidAccounts.length, succeeded: 0, failed: [] };
+      for (const account of paidAccounts){
+        try {
+          const result = await generateAccountIntelligenceViaAI(account);
+          if (result.intelligence){
+            const now = new Date().toISOString();
+            db.prepare('UPDATE accounts SET accountIntelligenceJson = ?, accountIntelligenceGeneratedAt = ? WHERE accountId = ?')
+              .run(JSON.stringify(result.intelligence), now, account.accountId);
+            results.succeeded++;
+          } else {
+            results.failed.push({ accountId: account.accountId, note: result.note });
+          }
+        } catch (e){
+          results.failed.push({ accountId: account.accountId, note: e.message });
+        }
+      }
+      return sendJson(res, 200, results);
     }
 
     // POST /api/accounts/:id/keywords — round 32, Search Everywhere keyword
@@ -12788,7 +13351,7 @@ async function handleRequest(req, res) {
       if (!validCategory) return sendJson(res, 400, { error: `category must be one of: ${BRAND_WRITING_SAMPLE_CATEGORIES.map(c => c.id).join(', ')}` });
       if (!body.title || !body.title.trim()) return sendJson(res, 400, { error: 'title is required' });
       if (!body.docDate || !body.docDate.trim()) return sendJson(res, 400, { error: 'docDate is required — this feature always categorizes by purpose AND date' });
-      const sourceType = body.sourceType === 'link' ? 'link' : 'file';
+      const sourceType = body.sourceType === 'link' ? 'link' : body.sourceType === 'video_analysis' ? 'video_analysis' : 'file';
 
       let uploadedFileId = null;
       if (sourceType === 'file'){
@@ -12798,8 +13361,15 @@ async function handleRequest(req, res) {
         if (uploadedFile.purpose !== 'brand_writing_sample') return sendJson(res, 400, { error: `uploadedFileId's upload has purpose "${uploadedFile.purpose}", expected "brand_writing_sample"` });
         if (uploadedFile.status !== 'accepted') return sendJson(res, 400, { error: `this upload has status "${uploadedFile.status}" — only an accepted (scanned, clean) upload can be attached as a brand writing sample` });
         uploadedFileId = uploadedFile.id;
-      } else {
+      } else if (sourceType === 'link') {
         if (!body.sourceUrl || !body.sourceUrl.trim()) return sendJson(res, 400, { error: 'sourceUrl is required for sourceType "link" (e.g. a Google Docs or Google Slides share link)' });
+      } else {
+        // 'video_analysis' (round 140) — the video itself was never stored
+        // (see analyzeVideoSample's ephemeral-processing design above); what
+        // gets saved here is the AI-generated analysis text, which the
+        // client is required to pass as notes. No uploadedFileId, no
+        // sourceUrl (there is no durable file to point at).
+        if (!body.notes || !body.notes.trim()) return sendJson(res, 400, { error: 'notes (the video analysis text) is required for sourceType "video_analysis"' });
       }
 
       const id = generateId('BWS');
@@ -12808,6 +13378,26 @@ async function handleRequest(req, res) {
         VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
         .run(id, accountId, uploadedFileId, sourceType, sourceType === 'link' ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now);
       return sendJson(res, 201, { id, status: 'saved' });
+    }
+
+    // POST /api/accounts/:id/brand-writing-samples/analyze-video (round
+    // 140) — the video-upload capability itself. Body: { dataUrl,
+    // mimeType }. Runs analyzeVideoSample() (decode -> duration/size cap ->
+    // ffmpeg frame extraction -> Anthropic multimodal analysis -> temp-file
+    // cleanup) and returns the resulting text WITHOUT saving anything —
+    // the caller then decides whether to keep it, and if so POSTs it to
+    // .../brand-writing-samples with sourceType 'video_analysis' (above).
+    // Kept as two separate calls (analyze, then optionally save) rather
+    // than one combined endpoint so a client can show the analysis for
+    // review/editing before committing it as a saved sample.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-samples' && parts[4] === 'analyze-video'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!body.dataUrl) return sendJson(res, 400, { error: 'dataUrl is required (a base64 video data URI)' });
+      const result = await analyzeVideoSample(body.dataUrl, body.mimeType);
+      if (result.error) return sendJson(res, 422, { error: result.error });
+      return sendJson(res, 200, result);
     }
 
     // GET /api/accounts/:id/brand-writing-samples?category=... — list,
@@ -12980,11 +13570,20 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
       if (!body.title || !body.title.trim()) return sendJson(res, 400, { error: 'title is required' });
+      if (body.releaseType !== undefined && body.releaseType !== '' && !PRESS_RELEASE_TYPES.includes(body.releaseType)){
+        return sendJson(res, 400, { error: `releaseType must be one of: ${PRESS_RELEASE_TYPES.join(', ')}` });
+      }
+      if (body.audience !== undefined && body.audience !== '' && !PRESS_RELEASE_AUDIENCES.includes(body.audience)){
+        return sendJson(res, 400, { error: `audience must be one of: ${PRESS_RELEASE_AUDIENCES.join(', ')}` });
+      }
+      if (body.ctaMode !== undefined && body.ctaMode !== '' && !PRESS_RELEASE_CTA_MODES.includes(body.ctaMode)){
+        return sendJson(res, 400, { error: `ctaMode must be one of: ${PRESS_RELEASE_CTA_MODES.join(', ')}` });
+      }
       const id = generateId('PRL');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt)
-        VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now);
+      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt, releaseType, audience, ctaText, ctaMode)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now, body.releaseType || null, body.audience || null, (body.ctaText || '').trim() || null, body.ctaMode || 'inspiration');
       return sendJson(res, 201, { id, status: 'saved' });
     }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -13001,15 +13600,29 @@ async function handleRequest(req, res) {
       if (!existing) return sendJson(res, 404, { error: 'press release not found' });
       const body = await readBody(req);
       if (body.status !== undefined && !PRESS_RELEASE_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${PRESS_RELEASE_STATUSES.join(', ')}` });
+      if (body.releaseType !== undefined && body.releaseType !== '' && !PRESS_RELEASE_TYPES.includes(body.releaseType)){
+        return sendJson(res, 400, { error: `releaseType must be one of: ${PRESS_RELEASE_TYPES.join(', ')}` });
+      }
+      if (body.audience !== undefined && body.audience !== '' && !PRESS_RELEASE_AUDIENCES.includes(body.audience)){
+        return sendJson(res, 400, { error: `audience must be one of: ${PRESS_RELEASE_AUDIENCES.join(', ')}` });
+      }
+      if (body.ctaMode !== undefined && body.ctaMode !== '' && !PRESS_RELEASE_CTA_MODES.includes(body.ctaMode)){
+        return sendJson(res, 400, { error: `ctaMode must be one of: ${PRESS_RELEASE_CTA_MODES.join(', ')}` });
+      }
       const now = new Date().toISOString();
       const nextTitle = body.title !== undefined ? body.title : existing.title;
       const nextCopy = body.workingCopy !== undefined ? body.workingCopy : existing.workingCopy;
       const nextStatus = body.status !== undefined ? body.status : existing.status;
+      const nextReleaseType = body.releaseType !== undefined ? (body.releaseType || null) : existing.releaseType;
+      const nextAudience = body.audience !== undefined ? (body.audience || null) : existing.audience;
+      const nextCtaText = body.ctaText !== undefined ? ((body.ctaText || '').trim() || null) : existing.ctaText;
+      const nextCtaMode = body.ctaMode !== undefined ? (body.ctaMode || 'inspiration') : (existing.ctaMode || 'inspiration');
+      const nextLinkedinCopy = body.linkedinCopy !== undefined ? (body.linkedinCopy || null) : existing.linkedinCopy;
       // distributedDate follows status the same way copyApprovedAt/etc do elsewhere in this file —
       // stamped the moment status flips to 'distributed', never hand-entered.
       const nextDistributedDate = nextStatus === 'distributed' ? (existing.distributedDate || now) : (nextStatus === existing.status ? existing.distributedDate : null);
-      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ? WHERE id = ?')
-        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, prId);
+      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ? WHERE id = ?')
+        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, prId);
       return sendJson(res, 200, { updated: true });
     }
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -13030,10 +13643,31 @@ async function handleRequest(req, res) {
       const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
       if (!existing) return sendJson(res, 404, { error: 'press release not found' });
       const body = await readBody(req);
-      const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || '' });
+      const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || '', releaseType: existing.releaseType || '', audience: existing.audience || '', ctaText: existing.ctaText || '', ctaMode: existing.ctaMode || 'inspiration' });
       if (result.copy){
         const now = new Date().toISOString();
         db.prepare('UPDATE press_releases SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, prId);
+      }
+      return sendJson(res, 200, result);
+    }
+
+    // POST /api/accounts/:id/press-releases/:prId/generate-linkedin —
+    // 2026-08-29, per direct request. Rewrites the release's own approved
+    // workingCopy into a LinkedIn-native post — see
+    // draftLinkedInFromPressRelease()'s comment for why this is a
+    // derivative of the master, not an independent draft.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases' && parts[5] === 'generate-linkedin'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const prId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'press release not found' });
+      const result = await draftLinkedInFromPressRelease(account, existing);
+      if (result.copy){
+        const now = new Date().toISOString();
+        db.prepare('UPDATE press_releases SET linkedinCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, prId);
       }
       return sendJson(res, 200, result);
     }
@@ -14700,6 +15334,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
 
