@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Account Setup</title>
+<meta name="description" content="Create your free Verilume account — no paperwork required, with an optional NDA if you want extra confidentiality assurance.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    Style note: same diagnostic-instrument register as assessment.html —
+    this is a continuation of that flow (Deliverable 4: paid onboarding
+    pipeline), not the warm marketing site. NDA/contract steps are still
+    in-memory/session-state prototype with no real legal text; account
+    provisioning (round 83) now writes a real backend record, same
+    backend/server.js every other real account in this build uses. See
+    inline notes for where the Sheets-vs-SQLite deviation, e-signature
+    vendor, and HubSpot sync would still plug in.
+
+    Design-system note (2026-07-20): per direction that every area of the
+    site should share the same design elements, this page picks up the
+    same token set and soft gradient-fade background language as
+    index.html and the solution pages — but, like assessment.html and
+    framework.html, deliberately stops there. This is a fast, sequential
+    task flow (sign, sign, wait, done), not a persuasion page, so it does
+    NOT pick up the signature video placement, the .visual-block component,
+    or any card restructuring — only the shared fonts (already identical)
+    and the shared background concept (white base, sparing gradient fades
+    instead of the old flat beige fill). The account-id-card below stays a
+    single deliberate solid-ink moment, consistent with how every other
+    page in this system reserves exactly one full-color moment rather than
+    spreading saturated color throughout.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73; 
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.08) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px;}
+  a{color:inherit;}
+
+  .back-nav{display:flex;justify-content:space-between;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1040px;margin:0 auto;}
+  .back-nav a{color:var(--cx);text-decoration:none;}
+  .back-nav a:hover{text-decoration:underline;}
+  /* Was a plain text link ("← Verilume") with no wordmark treatment — the
+     one page on the site without one. Matches account.html/portal.html's
+     .back-nav .wordmark exactly (20px/500, "lume" in --media gold) so the
+     logo reads the same everywhere. Added 2026-08-07. */
+  .back-nav .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
+  .back-nav .wordmark b{color:var(--media);font-weight:500;}
+  .back-nav .wordmark:hover{text-decoration:none;color:var(--ink);}
+  .back-nav .restart{color:#8a8067;cursor:pointer;background:none;border:none;font-family:inherit;font-size:12px;}
+  .back-nav .restart:hover{color:var(--advocacy);}
+
+  .progress-track{height:3px;background:var(--paper-dim);}
+  .progress-fill{height:100%;background:var(--advocacy);width:0%;transition:width 0.3s ease;}
+
+  main{padding:56px 0 100px;}
+  .step{display:none;}
+  .step.active{display:block;}
+
+  .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:16px;}
+  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(28px,4.4vw,42px);line-height:1.15;margin:0 0 18px;letter-spacing:-0.01em;}
+  h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:26px;margin:0 0 14px;}
+  p.lede{font-size:15.5px;line-height:1.65;color:var(--muted);max-width:620px;margin:0 0 32px;}
+
+  .btn-primary{background:var(--ink);color:var(--white);font-family:'Inter';font-weight:600;font-size:14.5px;padding:14px 26px;border-radius:999px;text-decoration:none;display:inline-block;border:none;cursor:pointer;transition:transform 0.15s ease;}
+  .btn-primary:hover{background:#1c2d54;transform:translateY(-1px);}
+  .btn-primary:disabled{opacity:0.4;cursor:not-allowed;}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink);font-family:'Inter';font-weight:600;font-size:14.5px;padding:13px 24px;border-radius:999px;cursor:pointer;}
+  .btn-ghost:hover{border-color:var(--ink);}
+  .btn-row{display:flex;gap:14px;align-items:center;margin-top:36px;flex-wrap:wrap;}
+
+  /* License callout (intro step) */
+  .license-note{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 22px;max-width:620px;margin:0 0 32px;font-size:16px;line-height:1.6;color:var(--muted);}
+  .license-note a{color:var(--cx);font-weight:600;text-decoration:none;}
+  .license-note a:hover{text-decoration:underline;}
+
+  /* Doc mock */
+  .doc-card{background:var(--white);border:1px solid var(--line);border-radius:18px;max-width:640px;overflow:hidden;}
+  .doc-head{padding:20px 26px;border-bottom:1px solid var(--line);background:var(--paper-dim);}
+  .doc-head .doc-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--advocacy);}
+  .doc-head h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:19px;margin:6px 0 0;}
+  .doc-body{padding:24px 26px;max-height:220px;overflow-y:auto;font-size:12.5px;line-height:1.7;color:var(--muted);border-bottom:1px solid var(--line);}
+  .doc-body p{margin:0 0 12px;}
+  .doc-sign{padding:24px 26px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px;}
+  .field input,.field select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:13.5px;background:var(--paper);color:var(--ink);transition:border-color 0.15s ease, box-shadow 0.15s ease;}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  .field select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%235B5647' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:34px;}
+  .field select:hover{border-color:var(--cx);}
+  .field.sig input{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:20px;}
+  .agree-row{display:flex;align-items:flex-start;gap:10px;margin:18px 0;font-size:12.5px;color:var(--muted);line-height:1.5;}
+  .agree-row input{margin-top:3px;}
+
+  .status-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;color:var(--muted);margin-top:14px;}
+  .status-note.signed{color:var(--cx);}
+
+  /* Provisioning */
+  .provision-list{max-width:520px;}
+  .provision-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);}
+  .provision-item .icon{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:transparent;transition:all 0.3s ease;}
+  .provision-item.done .icon{background:var(--cx);border-color:var(--cx);color:var(--white);}
+  .provision-item .label{font-size:13.5px;color:var(--muted);}
+  .provision-item.done .label{color:var(--ink);}
+
+  .account-id-card{background:var(--ink);color:var(--white);border-radius:16px;padding:28px;margin:28px 0;max-width:520px;}
+  .account-id-card .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9B9684;}
+  .account-id-card .id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:26px;font-weight:500;color:var(--media);margin-top:8px;}
+
+  .plumbing-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;color:var(--muted);line-height:1.6;margin-top:40px;padding-top:20px;border-top:1px dashed var(--line);max-width:700px;}
+
+  footer{margin-top:60px;padding:24px 28px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);text-align:center;}
+
+  @media (max-width:680px){
+    .wrap{padding:0 20px;}
+    .doc-body{padding:20px;}
+    .doc-sign{padding:20px;}
+    .btn-row{flex-direction:column;align-items:stretch;}
+    .btn-row .btn-primary,.btn-row .btn-ghost{text-align:center;}
+  }
+
+  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
+     should have a utility nav above the main nav that includes Access My
+     Portal and the LogIn/Logout function"). One consistent strip, same
+     markup/position on every page (public marketing pages AND the
+     authenticated app pages), sitting above whatever header that page
+     already has. Solves three things raised together: (1) Logout was
+     landing in a different spot on different pages — now it's always
+     here; (2) there was no way back to the Portal once you navigated
+     away from it; (3) auth state (logged in vs not) now reads the same
+     sessionStorage pointer everywhere, so this bar and any page's own
+     logic agree. See the #utilityNav script block for the actual logic. */
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  /* 2026-08-21 fix, per direct correction ("We have a stylized button
+     approach that we perfect in the previous location and used across the
+     website") — the first version of this bar used plain uppercase text
+     links, not the site's actual pill-button convention (the public "Log
+     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
+     8px/16px padding). Rebuilt to match that same pill shape, just with
+     light-on-dark colors instead of dark-on-light, since this bar's
+     background is var(--ink) — same color-inversion approach already used
+     for the dark-header Logout pill on account.html/print-specs.html/
+     ooh-specs.html. border-radius is hardcoded to 999px rather than
+     var(--radius-pill) because several pages this bar lives on
+     (forgot-password.html, select-tier.html, terms.html) never define
+     that variable at all. */
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
+</style>
+</head>
+<body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// 2026-08-21 — shared utility-nav logic, identical on every page (see the
+// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
+// (verilume_active_account) that login.html / assessment.html's Save &
+// Schedule flow set on successful sign-in, and that this same script's own
+// Logout handler (and every page's own logout(), where one exists) clears.
+// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
+// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
+// the backend at all (marketing pages, terms.html, etc.).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+      ? ''
+      : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
+      // already ON portal.html is redundant (you're already there); hide
+      // it there specifically, still show it everywhere else (marketing
+      // pages, assessment.html, account.html, etc.) so there's always a
+      // way back to the Portal from outside it.
+      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
+      if (onPortalPage){
+        portalLink.style.display = 'none';
+      } else {
+        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+        portalLink.style.display = '';
+      }
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+          }).then(finish).catch(finish);
+        } else {
+          finish();
+        }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
+  } else {
+    vlUtilityNavInit();
+  }
+  // 2026-08-24, per direct report ("Access My Portal takes me to the
+  // wrong account, even after logging in as the right one") — this only
+  // ever ran once, on initial load. Two real ways that goes stale: (1)
+  // the browser restores this exact page from bfcache on Back/Forward
+  // navigation, which does NOT re-fire DOMContentLoaded, so the link's
+  // href keeps whatever account (or none) was active when this page was
+  // first painted, even if a login happened after that in this same tab
+  // via a different page; (2) this page was left open in one tab while
+  // login happened in another tab/window — localStorage changed, but
+  // this tab's DOM never re-read it. 'pageshow' fires on both a normal
+  // load AND a bfcache restore (check event.persisted to tell them
+  // apart, though re-running is harmless either way); the 'storage'
+  // event fires in OTHER tabs of the same origin when localStorage
+  // changes in one tab, so both close the gap.
+  window.addEventListener('pageshow', function(e){ vlUtilityNavInit(); });
+  window.addEventListener('storage', function(e){
+    if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit();
+  });
+  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+})();
+</script>
+
+
+<div class="back-nav">
+  <a class="wordmark" href="index.html">Veri<b>lume</b></a>
+  <button class="restart" id="restartBtn" style="display:none;">↺ Start over</button>
+</div>
+<div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+<main>
+<div class="wrap">
+
+  <!-- INTRO -->
+  <section class="step active" data-step="intro">
+    <div class="eyebrow">Verilume — Account Setup</div>
+    <h1>Create your Verilume account.</h1>
+    <p class="lede">No paperwork required — just your company info and you're in. We provision your isolated workbook and Creative Library, and deep intake unlocks right after.</p>
+    <div class="license-note">
+      <strong>Running Verilume under your own agency's brand, for your own clients?</strong> That's a licensing conversation, not a self-serve signup — terms, fee structure, and what the license actually grants get worked out directly. <a href="index.html#license">Reach out about licensing →</a>
+    </div>
+    <!-- 2026-08-19 (Path 4 build) — confirms the level picked on
+         select-tier.html actually carried through, rather than silently
+         disappearing into a query param nobody sees. Only shows when
+         ?tier= is present. -->
+    <div class="license-note" id="tierConfirmNote" style="display:none;background:#EAF6F8;border-color:#BFE3EA;"></div>
+    <!-- Round 83 (Deliverable #4 gap closed) — a real Company name is now
+         collected here and sent to the backend at provisioning, so the
+         account this flow creates is a real database row (see
+         createRealAccount() below), the same as assessment.html's
+         activateInPortal() path, instead of a browser-only Account ID that
+         never existed in the database. -->
+    <div class="field" style="max-width:420px;">
+      <label for="companyName">Company name</label>
+      <input type="text" id="companyName" placeholder="Acme Hospitality Group" oninput="checkIntroReady()">
+    </div>
+    <!-- Added 2026-08-18 (registration rebuild) — the account's first real
+         person, the admin/CMO user, per direct instruction: real,
+         individually memorable username (email) + a system-issued temp
+         password, not the old one-per-account access code. Collected here
+         because this is the earliest point in the flow a real name/email
+         exists — registerAdmin() (below) uses these once Step 3 provisions
+         the account itself. -->
+    <div class="field" style="max-width:420px;">
+      <label for="adminName">Your name</label>
+      <input type="text" id="adminName" placeholder="Jane Doe" oninput="checkIntroReady()">
+    </div>
+    <div class="field" style="max-width:420px;">
+      <label for="adminEmail">Work email</label>
+      <input type="email" id="adminEmail" placeholder="jane@yourcompany.com" oninput="checkIntroReady()">
+    </div>
+    <!-- Added 2026-08-18 (registration rebuild) — NDA is now an optional
+         add-on, not a mandatory gate, per direct instruction. Checking this
+         routes through the existing NDA step before provisioning; leaving
+         it unchecked skips straight to account setup. The old mandatory
+         "contract/SOW" step (engagement tier + fee terms) is no longer
+         part of this self-serve flow at all — a real paid engagement is
+         the licensing conversation linked above, not an in-page signature
+         step, so signContract()/checkContractReady() and the CONTRACT
+         section below are left in the file but no longer reachable from
+         here. -->
+    <label class="agree-row" style="margin:4px 0 8px;">
+      <input type="checkbox" id="wantNda">
+      <span>Add a mutual NDA for extra confidentiality assurance (optional)</span>
+    </label>
+    <!-- Added 2026-08-18 — per direct instruction: registration requires no
+         signature on these, just a visible reference. Completing
+         registration (the "Continue" click below, which provisions the
+         account) is the acceptance — see recordLegalAcceptance() in
+         backend/server.js, called from POST /api/auth/register-admin,
+         for the audit-trail write this produces. -->
+    <p style="font-size:12.5px;color:var(--muted);max-width:480px;line-height:1.6;margin:0 0 22px;">
+      By continuing, you agree to Verilume's <a href="terms.html" target="_blank" style="color:var(--cx);">Terms &amp; Conditions</a> and <a href="terms.html#pricing" target="_blank" style="color:var(--cx);">Pricing Disclosures</a>. No signature needed — creating your account is your acceptance.
+    </p>
+    <div class="btn-row">
+      <button class="btn-primary" id="introNext" disabled onclick="handleIntroContinue()">Continue →</button>
+    </div>
+  </section>
+
+  <!-- 2026-08-20 — email verification, per direct instruction ("Actual
+       accounts can't be created without phone verification for now. Email
+       is also acceptable if we run into issues.") — this flow never
+       collects a phone number (assessment.html's Save Assessment modal
+       does; this one doesn't), so email is the channel here, not a
+       fallback of a fallback. Always reached, right after intro — a real
+       admin/CMO login (registerAdmin() below) will not be created without
+       it, same "actual account" gate as assessment.html's now enforces on
+       POST /api/auth/register-admin server-side. -->
+  <section class="step" data-step="verify">
+    <div class="eyebrow">Verify it's you</div>
+    <h2>Check your email.</h2>
+    <p class="lede" id="verifyIntro">Sending a verification code…</p>
+    <div class="license-note" id="verifyInterimNote" style="display:none;background:#FFF8E1;border-color:#E8DCA8;"></div>
+    <div class="field" style="max-width:260px;">
+      <label for="verifyCode">6-digit code</label>
+      <input type="text" id="verifyCode" inputmode="numeric" maxlength="6" placeholder="123456" oninput="checkVerifyReady()">
+    </div>
+    <div class="status-note" id="verifyStatus" style="color:#B3261E;"></div>
+    <div class="btn-row" style="align-items:center;gap:16px;">
+      <button class="btn-primary" id="verifyNext" disabled onclick="handleVerifyContinue()">Verify &amp; continue →</button>
+      <a href="#" onclick="resendOnboardingVerification();return false;" style="font-size:13px;">Resend code</a>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="goToStep('intro')">← Back</button>
+    </div>
+  </section>
+
+  <!-- NDA — optional, per direct instruction (2026-08-18): reached only if
+       "Add a mutual NDA" was checked on the intro step. Not a gate — the
+       account can be created without ever visiting this step. -->
+  <section class="step" data-step="nda">
+    <div class="eyebrow">Optional — mutual NDA</div>
+    <h2>Sign your NDA.</h2>
+    <p class="lede">You opted in for extra confidentiality assurance. Standard practice for anything touching internal data — sales figures, call-center scripts, CRM exports, brand guidelines.</p>
+    <div class="doc-card">
+      <div class="doc-head">
+        <span class="doc-tag">Mutual NDA — direct-client template</span>
+        <h3>Mutual Non-Disclosure Agreement</h3>
+      </div>
+      <div class="doc-body">
+        <p><span style="font-style:normal;color:#8a8067;">[Placeholder text — real NDA language to be drafted by counsel.]</span></p>
+        <p>This agreement protects confidential information shared between Verilume and the undersigned party in connection with a Verilume engagement, including but not limited to sales figures, call-center scripts, CRM exports, and brand guidelines.</p>
+        <p>Both parties agree not to disclose the other's confidential information to third parties, and to use it solely for the purpose of the Verilume assessment and any resulting engagement.</p>
+      </div>
+      <div class="doc-sign">
+        <div class="field sig">
+          <label for="ndaSig">Type your full legal name to sign</label>
+          <input type="text" id="ndaSig" placeholder="Jane Doe" oninput="checkNdaReady()">
+        </div>
+        <label class="agree-row">
+          <input type="checkbox" id="ndaAgree" onchange="checkNdaReady()">
+          <span>I have authority to bind this organization and agree to the terms above.</span>
+        </label>
+        <button class="btn-primary" id="ndaSignBtn" disabled onclick="signNda()">Sign NDA →</button>
+        <div class="status-note" id="ndaStatus"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="goToStep('intro')">← Back</button>
+    </div>
+  </section>
+
+  <!-- CONTRACT — no longer part of the self-serve flow (2026-08-18); left
+       in place, unreachable, in case paid-tier work resumes it later. -->
+  <section class="step" data-step="contract">
+    <div class="eyebrow">Step 2 of 3 — contract / SOW</div>
+    <h2>Now the scope of work.</h2>
+    <p class="lede">Engagement tier is specified here — a single assessment or an ongoing retainer.</p>
+    <div class="doc-card">
+      <div class="doc-head">
+        <span class="doc-tag">Contract / SOW — direct-client template</span>
+        <h3>Direct-Client Statement of Work</h3>
+      </div>
+      <div class="doc-body">
+        <p><span style="font-style:normal;color:#8a8067;">[Placeholder text — real contract/SOW language and fee schedule to be drafted by counsel.]</span></p>
+        <p>This Statement of Work defines the engagement tier, deliverables, timeline, and fee for Verilume services provided directly to this brand.</p>
+      </div>
+      <div class="doc-sign">
+        <div class="field">
+          <label for="contractTier">Engagement tier</label>
+          <select id="contractTier">
+            <option selected>Single assessment</option>
+            <option>Ongoing retainer</option>
+          </select>
+        </div>
+        <div class="field sig">
+          <label for="contractSig">Type your full legal name to sign</label>
+          <input type="text" id="contractSig" placeholder="Jane Doe" oninput="checkContractReady()">
+        </div>
+        <label class="agree-row">
+          <input type="checkbox" id="contractAgree" onchange="checkContractReady()">
+          <span>I have authority to bind this organization and agree to the scope and fee terms above.</span>
+        </label>
+        <button class="btn-primary" id="contractSignBtn" disabled onclick="signContract()">Sign contract →</button>
+        <div class="status-note" id="contractStatus"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="goToStep('nda')">← Back</button>
+    </div>
+  </section>
+
+  <!-- PROVISION -->
+  <section class="step" data-step="provision">
+    <div class="eyebrow">Account setup</div>
+    <h2>Provisioning your account.</h2>
+    <p class="lede">Every new account starts clean — a fresh workbook and Creative Library, never cloned or extended from any existing account.</p>
+    <div class="provision-list" id="provisionList">
+      <div class="provision-item"><span class="icon"></span><span class="label">Assigning Account ID</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Provisioning a new, isolated Sheets workbook</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Confirming 4 tabs exist and are empty: Account Meta, Intake Responses, Scorecard, SWOT</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Creating a fresh Creative Library folder</span></div>
+      <div class="provision-item"><span class="icon"></span><span class="label">Spot-checking for cross-account references — none found</span></div>
+    </div>
+
+    <div class="account-id-card" id="accountIdCard" style="display:none;">
+      <span class="tag">Your account ID</span>
+      <div class="id" id="generatedAccountId"></div>
+      <!-- Round 83 — the real, one-time access code returned by the
+           backend when this account is genuinely created (see
+           createRealAccount()). Shown exactly once, same convention as
+           assessment.html's activateInPortal() reveal — this build has no
+           email delivery, so this moment is the only chance to hand it to
+           the visitor at all. Hidden entirely on the offline/mock fallback,
+           since there's no real account or access code to show in that case. -->
+      <div id="accessCodeBlock" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.15);">
+        <span class="tag">Temporary password — save this now, it won't be shown again</span>
+        <div class="id" id="generatedAccessCode" style="font-size:20px;color:var(--white);"></div>
+        <div style="font-size:12.5px;color:rgba(255,255,255,0.75);margin-top:8px;max-width:520px;">
+          Sign in with <span id="generatedAdminEmail" style="color:#fff;"></span> and this temporary password — you'll be required to set your own password on first login.
+        </div>
+      </div>
+    </div>
+    <div class="status-note" id="provisionNote"></div>
+
+    <div class="btn-row" id="provisionActions" style="display:none;">
+      <button class="btn-primary" onclick="goToStep('done')">Unlock deep intake →</button>
+    </div>
+  </section>
+
+  <!-- DONE -->
+  <section class="step" data-step="done">
+    <div class="eyebrow">Stage 4 unlocked</div>
+    <h1>Deep intake is next.</h1>
+    <p class="lede">Next is the full survey — connected data, media mix modeling inputs, and a savings baseline — once your account structure here is set.</p>
+    <div class="btn-row">
+      <a class="btn-primary" href="index.html" style="text-decoration:none;">Back to Verilume</a>
+      <a class="btn-ghost" id="manageAccountLink" href="account.html" style="text-decoration:none;">Manage your account →</a>
+    </div>
+    <div class="plumbing-note">
+      Prototype note — updated 2026-08-18 (registration rebuild): the NDA (now optional) is still session-only, in-memory, with no real e-signature vendor chosen yet (DocuSign/HelloSign or similar, in the live build) — the old mandatory contract/SOW step is gone from this flow entirely (a real paid engagement is the licensing conversation linked at the top, not an in-page signature step). <strong>Account provisioning, the real admin/CMO login, and the legal-acceptance audit trail are not simulations</strong> — this calls the same real backend (`backend/server.js`) assessment.html's activateInPortal() uses to create the account, then POST /api/auth/register-admin to create a real, individually-owned username+password login (a system-issued temp password, forced to change on first login) and to log the T&Cs/pricing-disclosure acceptance (and NDA acceptance, if signed) with a timestamp and identifying info. What's still not real: the backend today provisions a SQLite record, not the originally-specified `cxmedia-backend-template.xlsx` Sheets workbook (see Deliverable 4's write-up in the deliverable-status doc for that structural deviation, already true of every other real account in this build); contact info doesn't yet sync to HubSpot Free (Deliverable 13) the way assessment.html's lead capture does; and phone verification (planned as this flow's anti-bot control) isn't built yet — no SMS provider account exists to build it against. "Manage your account" above passes this session's real Account ID through to account.html via ?accountId=, and this page also signs you in there automatically (same session-token handoff activateInPortal() uses) — see account.html's own plumbing note for what that page still needs before it's fully real.
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>Verilume · Account setup · NDA is optional and still session-only (no real e-signature vendor chosen yet); account provisioning and registration write real backend records, including the legal-acceptance audit trail</footer>
+
+<script>
+let state = {
+  region: new URLSearchParams(location.search).get('region') || 'National',
+  // 2026-08-19 (Path 4 build) — select-tier.html's "create a new account
+  // with this level" link carries the chosen placeholder tier key
+  // through here; createRealAccount() below sends it straight through to
+  // POST /api/accounts. Absent entirely for every other entry into this
+  // page (Paths 2/3), same as region.
+  tier: new URLSearchParams(location.search).get('tier') || null
+};
+
+// 2026-08-19 fix — assessment.html's "See the paid program" / "Start
+// onboarding" / "Continue to onboarding" links used to drop everything the
+// free assessment had already collected, so this page's intro step always
+// started from a blank company name. They now carry a base64 "handoff"
+// query param (same JSON shape as buildScorecardPayload() in
+// assessment.html, plus adminName/adminEmail lifted from that session's
+// contact step, if it ran). Decode it here and prefill the intro fields —
+// still fully editable, this is a starting point, not a lock. Anyone who
+// arrives without a handoff (e.g. "Log in" from the homepage, a bookmark)
+// sees the same blank form as before; a malformed/unparseable handoff is
+// swallowed rather than blocking the page.
+function readAssessmentHandoff(){
+  try {
+    const raw = new URLSearchParams(location.search).get('handoff');
+    if (!raw) return null;
+    return JSON.parse(decodeURIComponent(escape(atob(raw))));
+  } catch (e) {
+    console.warn('readAssessmentHandoff: could not decode handoff param', e);
+    return null;
+  }
+}
+const assessmentHandoff = readAssessmentHandoff();
+if (assessmentHandoff) {
+  state.assessmentHandoff = assessmentHandoff;
+  if (assessmentHandoff.company) document.getElementById('companyName').value = assessmentHandoff.company;
+  if (assessmentHandoff.adminName) document.getElementById('adminName').value = assessmentHandoff.adminName;
+  if (assessmentHandoff.adminEmail) document.getElementById('adminEmail').value = assessmentHandoff.adminEmail;
+  checkIntroReady();
+}
+
+// Round 83 (Deliverable #4 gap) — same local demo backend every other real
+// page in this build points at; swapping this one constant is the only
+// change a real deployment needs on this side.
+// Same-origin in production (frontend and API are served from the same
+// Vercel domain), local backend when opened directly as a file:// page
+// during local dev (unchanged behavior from before).
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
+  ? ''
+  : 'http://localhost:8787';
+
+// 2026-08-19 (Path 4 build) — confirms the tier picked on select-tier.html
+// actually carried through to this page (see the tierConfirmNote element
+// above). Fetches the live placeholder-tier list rather than hardcoding
+// tier names a second time here.
+if (state.tier){
+  fetch(`${BACKEND_URL}/api/paid-tiers`)
+    .then(r => r.ok ? r.json() : { tiers: [] })
+    .then(data => {
+      const tier = (data.tiers || []).find(t => t.key === state.tier);
+      const note = document.getElementById('tierConfirmNote');
+      if (tier && note){
+        note.style.display = 'block';
+        note.innerHTML = `<strong>Level selected: ${tier.name}.</strong> This account will be created at that level.`;
+      }
+    })
+    .catch(() => { /* non-critical — the tier still gets sent to createRealAccount() either way */ });
+}
+
+// Same sessionStorage key format as portal.html/account.html
+// (verilume_session_<accountId>) — writing the session token here under
+// this key, before navigating to account.html in the same tab, is what lets
+// that page find it and skip its own access-code login gate, exactly the
+// way portal.html already does when opened from activateInPortal().
+function sessionStorageKey(accountId){
+  return `verilume_session_${accountId}`;
+}
+function persistSessionToken(accountId, token){
+  try { localStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { /* sessionStorage unavailable — skip caching */ }
+}
+
+function checkIntroReady(){
+  const hasCompany = document.getElementById('companyName').value.trim().length > 0;
+  const hasName = document.getElementById('adminName').value.trim().length > 0;
+  const email = document.getElementById('adminEmail').value.trim();
+  const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  document.getElementById('introNext').disabled = !(hasCompany && hasName && hasEmail);
+}
+
+function goToStep(step){
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.querySelector(`.step[data-step="${step}"]`).classList.add('active');
+  document.getElementById('restartBtn').style.display = step === 'intro' ? 'none' : 'inline-block';
+  updateProgress(step);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function updateProgress(step){
+  const order = { intro:8, nda:35, contract:60, provision:85, done:100 };
+  document.getElementById('progressFill').style.width = (order[step] ?? 0) + '%';
+}
+
+document.getElementById('restartBtn').addEventListener('click', () => {
+  location.reload();
+});
+
+function checkNdaReady(){
+  const ready = document.getElementById('ndaSig').value.trim().length > 1 && document.getElementById('ndaAgree').checked;
+  document.getElementById('ndaSignBtn').disabled = !ready;
+}
+
+function signNda(){
+  state.ndaSignedAt = new Date().toISOString().slice(0,10);
+  state.ndaSignatureName = document.getElementById('ndaSig').value.trim();
+  document.getElementById('ndaStatus').textContent = `✓ Signed ${state.ndaSignedAt} — provisioning your account.`;
+  document.getElementById('ndaStatus').classList.add('signed');
+  document.getElementById('ndaSignBtn').disabled = true;
+  // NDA is no longer followed by the contract/SOW step (2026-08-18) — it
+  // was the last optional add-on before account setup, so this goes
+  // straight to provisioning, same as the no-NDA path from the intro step.
+  setTimeout(() => { goToStep('provision'); runProvisioning(); }, 700);
+}
+
+// Added 2026-08-18 (registration rebuild) — the intro step's single
+// Continue button now branches instead of always going to 'nda': NDA is
+// optional (per direct instruction), so only visitors who checked "Add a
+// mutual NDA" see that step at all; everyone else goes straight to account
+// provisioning.
+async function handleIntroContinue(){
+  state.company = document.getElementById('companyName').value.trim();
+  state.adminName = document.getElementById('adminName').value.trim();
+  state.adminEmail = document.getElementById('adminEmail').value.trim();
+  // 2026-08-20 — email verification is now always the next step, before
+  // NDA/provisioning either way (see the 'verify' step's own comment).
+  goToStep('verify');
+  document.getElementById('verifyCode').value = '';
+  document.getElementById('verifyNext').disabled = true;
+  document.getElementById('verifyStatus').textContent = '';
+  await requestOnboardingVerification();
+}
+
+// Fires POST /api/auth/request-signup-verification for this flow's admin
+// email and updates the verify step's copy — same endpoint/table
+// assessment.html's Save Assessment modal uses for its phone/email
+// verification, just always the email channel here since this flow never
+// collects a phone number.
+async function requestOnboardingVerification(){
+  const introEl = document.getElementById('verifyIntro');
+  const statusEl = document.getElementById('verifyStatus');
+  statusEl.textContent = '';
+  introEl.textContent = 'Sending a verification code…';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/request-signup-verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: state.adminEmail })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `responded ${resp.status}`);
+    state.verificationId = data.verificationId;
+    introEl.textContent = `We emailed a 6-digit code to ${data.target}. Enter it below — this confirms you're a real person before your account is created.`;
+    const interimNote = document.getElementById('verifyInterimNote');
+    if (data.interimCode){
+      interimNote.style.display = 'block';
+      interimNote.textContent = `No live email provider configured yet in this environment — your code is ${data.interimCode} (shown here only because there's nowhere else to deliver it right now).`;
+    } else {
+      interimNote.style.display = 'none';
+    }
+  } catch (e){
+    console.warn('requestOnboardingVerification failed', e);
+    introEl.textContent = 'Enter the verification code sent to your email.';
+    statusEl.textContent = `Couldn't send a verification code right now. ${e.message || 'Try Resend in a moment.'}`;
+  }
+}
+
+async function resendOnboardingVerification(){
+  await requestOnboardingVerification();
+}
+
+function checkVerifyReady(){
+  document.getElementById('verifyNext').disabled = !/^\d{6}$/.test(document.getElementById('verifyCode').value.trim());
+}
+
+async function handleVerifyContinue(){
+  const code = document.getElementById('verifyCode').value.trim();
+  const statusEl = document.getElementById('verifyStatus');
+  statusEl.textContent = '';
+  if (!state.verificationId){
+    statusEl.textContent = 'No verification in progress — click Resend code.';
+    return;
+  }
+  const btn = document.getElementById('verifyNext');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/auth/verify-signup-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationId: state.verificationId, code })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `responded ${resp.status}`);
+    if (document.getElementById('wantNda').checked){
+      goToStep('nda');
+    } else {
+      goToStep('provision');
+      runProvisioning();
+    }
+  } catch (e){
+    console.warn('handleVerifyContinue failed', e);
+    statusEl.textContent = e.message || 'Incorrect code — try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+    checkVerifyReady();
+  }
+}
+
+function checkContractReady(){
+  const ready = document.getElementById('contractSig').value.trim().length > 1 && document.getElementById('contractAgree').checked;
+  document.getElementById('contractSignBtn').disabled = !ready;
+}
+
+function signContract(){
+  state.contractSignedAt = new Date().toISOString().slice(0,10);
+  state.contractTier = document.getElementById('contractTier').value;
+  document.getElementById('contractStatus').textContent = `✓ Signed ${state.contractSignedAt} — provisioning your account.`;
+  document.getElementById('contractStatus').classList.add('signed');
+  document.getElementById('contractSignBtn').disabled = true;
+  setTimeout(() => { goToStep('provision'); runProvisioning(); }, 700);
+}
+
+function regionCode(region){
+  return { Local: 'LOC', National: 'NAT', Global: 'GLB' }[region] || 'NAT';
+}
+
+// Round 83 (Deliverable #4) — real path: POST this session's real Company
+// name + region to the backend, which creates a genuine `accounts` row and
+// returns a real accountId/accessCode/session token — same
+// POST /api/accounts endpoint and response shape assessment.html's
+// activateInPortal() already uses, just with an empty cells[] (this flow
+// never ran the assessment instrument, so there are no scorecard cells to
+// send; company/footprint/audience/wealth/assessedStages are exactly the
+// same fields that function sends, just blank where this flow simply never
+// collected them). No fabricated cell scores are invented to fill that gap.
+// 2026-08-19 fix — when this session arrived via assessment.html's handoff
+// link (state.assessmentHandoff), send what the assessment actually
+// learned instead of the blanks this used to send unconditionally, so an
+// account that just came from a completed free assessment isn't
+// provisioned as if none of that happened.
+// 2026-08-29 — competitors is deliberately NOT sent here. Round 106 removed
+// the assessment's competitors field entirely, so h.competitors was always
+// an empty array anyway (dead pass-through) — cleaned up rather than left
+// as stale wiring. Direct competitors are entered later, in the Portal's
+// Brand Foundations → Competitive Positioning panel; the backend's
+// POST /api/accounts still accepts a `competitors` array generically (see
+// its own comment) for that or any future path, it just isn't populated
+// from onboarding/assessment anymore.
+async function createRealAccount(){
+  const h = state.assessmentHandoff;
+  const resp = await fetch(`${BACKEND_URL}/api/accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company: state.company || 'Your Company',
+      industry: (h && h.industry) || '',
+      footprint: state.region || '',
+      url: (h && h.url) || '',
+      description: (h && h.description) || '',
+      productThemes: (h && h.productThemes) || '',
+      audience: (h && h.audience) || [],
+      wealth: (h && h.wealth) || [],
+      assessedStages: (h && h.assessedStages) || [],
+      cells: (h && h.cells) || [],
+      tier: state.tier || undefined
+    })
+  });
+  if (!resp.ok) throw new Error(`Backend responded ${resp.status}`);
+  return resp.json(); // { accountId, accessCode, token, expiresAt }
+}
+
+// Added 2026-08-18 (registration rebuild) — creates this account's real
+// admin/CMO user right after the account itself exists, per direct
+// instruction: a real, individually memorable username (email) + a
+// system-issued temp password, not the account-level access code above.
+// Called from runProvisioning() below, right after createRealAccount()
+// succeeds — this account's accountId has to exist first since
+// register-admin 404s on an unknown one.
+async function registerAdmin(accountId){
+  const resp = await fetch(`${BACKEND_URL}/api/auth/register-admin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      accountId,
+      name: state.adminName || 'Account Admin',
+      email: state.adminEmail,
+      // 2026-08-20 — server.js now requires and consumes this: a verified,
+      // unconsumed signup verification (see the 'verify' step above) is
+      // what makes this an "actual account" per direct instruction. A
+      // missing/expired/reused verificationId 400s here rather than
+      // silently creating an unverified login.
+      verificationId: state.verificationId,
+      // Only present if the optional NDA step was actually visited and
+      // signed — server logs this as a separate 'nda' legal-acceptance
+      // row (method 'signature') alongside the always-present T&Cs/pricing
+      // disclosure rows (method 'assumed-on-save') it writes regardless.
+      nda: state.ndaSignedAt ? { signedAt: state.ndaSignedAt, signatureName: state.ndaSignatureName } : undefined
+    })
+  });
+  if (!resp.ok){
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || `register-admin responded ${resp.status}`);
+  }
+  return resp.json(); // { memberId, email, tempPassword, mustChangePassword, token, expiresAt }
+}
+
+function runProvisioning(){
+  const items = document.querySelectorAll('.provision-item');
+  items.forEach((item, i) => {
+    setTimeout(() => { item.classList.add('done'); }, 500 * (i + 1));
+  });
+  const totalDelay = 500 * items.length;
+  setTimeout(async () => {
+    const note = document.getElementById('provisionNote');
+    try {
+      const { accountId, token } = await createRealAccount();
+      state.accountId = accountId;
+      persistSessionToken(accountId, token);
+      document.getElementById('generatedAccountId').textContent = accountId;
+      document.getElementById('accountIdCard').style.display = 'block';
+      document.getElementById('provisionActions').style.display = 'flex';
+      document.getElementById('manageAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
+      // Registration rebuild (2026-08-18): the account-level access code
+      // above is no longer what a real person signs in with — register
+      // the real admin/CMO user (name/email collected at Step 1) and show
+      // their temp password instead. If this call fails for any reason
+      // (duplicate email, adminEmail missing from an old/resumed session,
+      // etc.), account creation itself still succeeded above — this just
+      // falls back to noting that the admin login couldn't be set up, so
+      // the person isn't left thinking the whole step failed.
+      try {
+        const admin = await registerAdmin(accountId);
+        persistSessionToken(accountId, admin.token);
+        document.getElementById('generatedAccessCode').textContent = admin.tempPassword;
+        document.getElementById('generatedAdminEmail').textContent = admin.email;
+        document.getElementById('accessCodeBlock').style.display = 'block';
+        note.classList.add('signed');
+        note.textContent = `✓ This is a real account record in the local demo backend — "Manage your account" below will open already signed in as ${admin.email}.`;
+      } catch (adminErr){
+        console.warn('registerAdmin failed — account exists, but no admin login was created.', adminErr);
+        document.getElementById('accessCodeBlock').style.display = 'none';
+        note.classList.add('signed');
+        note.textContent = `✓ Account created. Couldn't set up your admin login automatically (${adminErr && adminErr.message ? adminErr.message : (state.adminEmail ? 'that email may already be registered' : 'no email was captured')}) — go back and verify again, or contact Verilume support.`;
+      }
+    } catch (e){
+      // Honest fallback, same convention as every other real-backend page in
+      // this build: the backend wasn't reachable, so this session gets a
+      // browser-only placeholder ID instead of pretending it's a real
+      // account. Clearly labeled as such rather than looking identical to
+      // the real path above.
+      console.warn('createRealAccount: backend not reachable, falling back to a session-only placeholder ID.', e);
+      const year = 2026; // session clock; the real path above stamps the actual create date
+      const seq = String(Math.floor(100 + Math.random() * 900));
+      const id = `CXM-${regionCode(state.region)}-${year}-${seq}`;
+      state.accountId = id;
+      document.getElementById('generatedAccountId').textContent = id;
+      document.getElementById('accessCodeBlock').style.display = 'none';
+      document.getElementById('accountIdCard').style.display = 'block';
+      document.getElementById('provisionActions').style.display = 'flex';
+      document.getElementById('manageAccountLink').href = `account.html?accountId=${encodeURIComponent(id)}`;
+      note.textContent = `The local demo backend wasn't reachable at ${BACKEND_URL}, so this Account ID is a session-only placeholder, not a real saved account.`;
+    }
+  }, totalDelay);
+}
+</script>
+</body>
+</html>
