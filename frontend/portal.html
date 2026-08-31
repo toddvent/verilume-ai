@@ -4284,10 +4284,18 @@
             <label>Date</label>
             <input type="date" id="bwsFileDate">
           </div>
+          <div class="field" style="flex:1;min-width:180px;">
+            <label>Outcome (if known)</label>
+            <select id="bwsFileOutcome">
+              <option value="">Not applicable</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
         </div>
         <div class="field">
           <label>Notes (optional)</label>
-          <textarea id="bwsFileNotes" rows="2" placeholder="Anything worth knowing about this sample — audience, campaign it was used for, why it's a good reference."></textarea>
+          <textarea id="bwsFileNotes" rows="2" placeholder="Anything worth knowing about this sample — audience, campaign it was used for, why it's a good reference. For a rejected sample, note why it was rejected."></textarea>
         </div>
         <div class="btn-row">
           <label class="btn-ghost" for="bwsFileInput" style="cursor:pointer;">Choose File</label>
@@ -4324,6 +4332,14 @@
           <div class="field" style="flex:1;min-width:180px;">
             <label>Date</label>
             <input type="date" id="bwsLinkDate">
+          </div>
+          <div class="field" style="flex:1;min-width:180px;">
+            <label>Outcome (if known)</label>
+            <select id="bwsLinkOutcome">
+              <option value="">Not applicable</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
           </div>
         </div>
         <div class="field">
@@ -4374,6 +4390,14 @@
             <div class="field" style="flex:1;min-width:180px;">
               <label>Date</label>
               <input type="date" id="bwsVideoDate">
+            </div>
+            <div class="field" style="flex:1;min-width:180px;">
+              <label>Outcome (if known)</label>
+              <select id="bwsVideoOutcome">
+                <option value="">Not applicable</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
             </div>
           </div>
           <div class="field">
@@ -24771,12 +24795,29 @@ function mouResetImport(){
 // Market Optimization/Marketing Budget Upload above, purpose
 // 'brand_writing_sample') or a Google Doc/Slides link (no fetch capability
 // in this prototype, so it's stored as a labeled reference, not a file).
+// Round 142 (2026-08-31): expanded taxonomy, mirrors
+// BRAND_WRITING_SAMPLE_CATEGORIES in backend/server.js exactly — keep both
+// lists in sync. The legacy ids (standard_presentation_template, sales,
+// pr, consumer_marketing, video_script) stay so existing saved samples
+// still show correctly; 'internal_comms' and the round-142 categories are
+// new. See sampleWeight()/SAMPLE_CATEGORY_WEIGHT in server.js for how each
+// is weighted when building AI generation context — PR and Internal
+// Communications are weighted to zero there (they have their own
+// generation paths), everything else is ranked, not just included.
 const BWS_CATEGORIES = [
   { id: 'standard_presentation_template', label: 'Standard Presentation Template' },
   { id: 'sales', label: 'Sales' },
   { id: 'pr', label: 'PR' },
+  { id: 'internal_comms', label: 'Internal Communications' },
   { id: 'consumer_marketing', label: 'Consumer Marketing' },
-  { id: 'video_script', label: 'Video Script' }
+  { id: 'video_script', label: 'Video Script (legacy)' },
+  { id: 'website_scraping', label: 'Website Scraping' },
+  { id: 'digital_brochure', label: 'Digital Product Brochures' },
+  { id: 'marketing_campaign_video', label: 'Marketing Campaign Videos' },
+  { id: 'email_template', label: 'Email Templates' },
+  { id: 'direct_mail_template', label: 'Direct Mail Templates' },
+  { id: 'social_post', label: 'Social Posts' },
+  { id: 'approval_rejection', label: 'Approvals & Rejections' }
 ];
 let bwsFileDataUrl = null, bwsFileName = null, bwsSamples = [], bwsFilterCategory = '';
 
@@ -24785,7 +24826,10 @@ function bwsPopulateCategorySelects(){
     const el = document.getElementById(id);
     if (!el || el.options.length) return;
     el.innerHTML = BWS_CATEGORIES.map(c => `<option value="${c.id}">${escapeHtml(c.label)}</option>`).join('');
-    if (id === 'bwsVideoCategory') el.value = 'video_script';
+    // Marketing Campaign Videos is the round-142 primary video category —
+    // video_script stays available in the dropdown as the legacy option,
+    // but a fresh upload defaults to the new one.
+    if (id === 'bwsVideoCategory') el.value = 'marketing_campaign_video';
   });
 }
 
@@ -24890,16 +24934,18 @@ async function bwsAnalyzeVideo(){
 async function bwsSaveVideoAnalysis(){
   const statusEl = document.getElementById('bwsVideoStatus');
   const title = (document.getElementById('bwsVideoTitle') || {}).value || '';
-  const category = (document.getElementById('bwsVideoCategory') || {}).value || 'video_script';
+  const category = (document.getElementById('bwsVideoCategory') || {}).value || 'marketing_campaign_video';
   const docDate = (document.getElementById('bwsVideoDate') || {}).value || '';
   const notes = (document.getElementById('bwsVideoAnalysisText') || {}).value || '';
+  const outcome = (document.getElementById('bwsVideoOutcome') || {}).value || '';
   if (!title.trim()){ if (statusEl) statusEl.textContent = 'Title is required.'; return; }
   if (!docDate){ if (statusEl) statusEl.textContent = 'Date is required — every sample is categorized by purpose AND date.'; return; }
   if (!notes.trim()){ if (statusEl) statusEl.textContent = 'The analysis text is required — run Analyze video again if it\'s empty.'; return; }
+  if (category === 'approval_rejection' && !outcome){ if (statusEl) statusEl.textContent = 'Outcome (Approved or Rejected) is required for the Approvals & Rejections category.'; return; }
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), outcome, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the analysis failed.'; return; }
@@ -24910,6 +24956,7 @@ async function bwsSaveVideoAnalysis(){
     if (analyzeRow) analyzeRow.style.display = 'none';
     const chosen = document.getElementById('bwsVideoChosenName'); if (chosen) chosen.textContent = '';
     const videoInput = document.getElementById('bwsVideoInput'); if (videoInput) videoInput.value = '';
+    const videoOutcome = document.getElementById('bwsVideoOutcome'); if (videoOutcome) videoOutcome.value = '';
     bwsVideoMimeType = null; bwsVideoFileName = null; bwsVideoAnalysisNote = '';
     bwsLoadLibrary();
   } catch (e){
@@ -24931,7 +24978,7 @@ function bwsInit(){
 // too.
 function bwsResetForms({ clearStatus = false } = {}){
   bwsFileDataUrl = null; bwsFileName = null;
-  ['bwsFileTitle','bwsFileDate','bwsFileNotes','bwsLinkTitle','bwsLinkDate','bwsLinkUrl','bwsLinkNotes'].forEach(id => {
+  ['bwsFileTitle','bwsFileDate','bwsFileNotes','bwsFileOutcome','bwsLinkTitle','bwsLinkDate','bwsLinkUrl','bwsLinkNotes','bwsLinkOutcome'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const chosen = document.getElementById('bwsFileChosenName'); if (chosen) chosen.textContent = '';
@@ -24980,9 +25027,11 @@ async function bwsUploadFile(){
   const category = (document.getElementById('bwsFileCategory') || {}).value || '';
   const docDate = (document.getElementById('bwsFileDate') || {}).value || '';
   const notes = (document.getElementById('bwsFileNotes') || {}).value || '';
+  const outcome = (document.getElementById('bwsFileOutcome') || {}).value || '';
   if (!bwsFileDataUrl){ if (statusEl) statusEl.textContent = 'Choose a file first.'; return; }
   if (!title.trim()){ if (statusEl) statusEl.textContent = 'Title is required.'; return; }
   if (!docDate){ if (statusEl) statusEl.textContent = 'Date is required — every sample is categorized by purpose AND date.'; return; }
+  if (category === 'approval_rejection' && !outcome){ if (statusEl) statusEl.textContent = 'Outcome (Approved or Rejected) is required for the Approvals & Rejections category.'; return; }
   if (statusEl) statusEl.textContent = 'Screening file for PII and scanning for threats…';
 
   try {
@@ -25007,7 +25056,7 @@ async function bwsUploadFile(){
     if (statusEl) statusEl.textContent = 'Passed screening — saving…';
     const commitResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'file', uploadedFileId: uploadData.id, title: title.trim(), category, docDate, notes, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'file', uploadedFileId: uploadData.id, title: title.trim(), category, docDate, notes, outcome, uploadedBy: state.userName || '' })
     });
     const commitData = await commitResp.json().catch(() => ({}));
     if (!commitResp.ok){
@@ -25029,14 +25078,16 @@ async function bwsSaveLink(){
   const docDate = (document.getElementById('bwsLinkDate') || {}).value || '';
   const sourceUrl = (document.getElementById('bwsLinkUrl') || {}).value || '';
   const notes = (document.getElementById('bwsLinkNotes') || {}).value || '';
+  const outcome = (document.getElementById('bwsLinkOutcome') || {}).value || '';
   if (!title.trim()){ if (statusEl) statusEl.textContent = 'Title is required.'; return; }
   if (!docDate){ if (statusEl) statusEl.textContent = 'Date is required — every sample is categorized by purpose AND date.'; return; }
   if (!sourceUrl.trim()){ if (statusEl) statusEl.textContent = 'A Google Doc/Slides link is required.'; return; }
+  if (category === 'approval_rejection' && !outcome){ if (statusEl) statusEl.textContent = 'Outcome (Approved or Rejected) is required for the Approvals & Rejections category.'; return; }
   if (statusEl) statusEl.textContent = 'Saving…';
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'link', sourceUrl: sourceUrl.trim(), title: title.trim(), category, docDate, notes, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'link', sourceUrl: sourceUrl.trim(), title: title.trim(), category, docDate, notes, outcome, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the link failed.'; return; }
@@ -25087,20 +25138,62 @@ function bwsRenderLibrary(){
   }
   const catLabel = id => (BWS_CATEGORIES.find(c => c.id === id) || {}).label || id;
   body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-    <thead><tr><th>Title</th><th>Purpose</th><th>Date</th><th>Source</th><th></th></tr></thead>
+    <thead><tr><th>Title</th><th>Purpose</th><th>Date</th><th>Source</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(s => `
-      <tr>
+      <tr${s.excluded ? ' style="opacity:0.65;"' : ''}>
         <td>${escapeHtml(s.title)}${s.notes ? `<div class="hint" style="margin-top:2px;">${escapeHtml(s.notes)}</div>` : ''}</td>
-        <td>${escapeHtml(catLabel(s.category))}</td>
+        <td>${escapeHtml(catLabel(s.category))}${s.outcome === 'approved' ? '<div class="hint" style="margin-top:2px;color:var(--loyalty, #2c5f2d);">Approved</div>' : s.outcome === 'rejected' ? '<div class="hint" style="margin-top:2px;color:var(--advocacy);">Rejected</div>' : ''}</td>
         <td>${escapeHtml(s.docDate)}</td>
         <td>${s.sourceType === 'link'
           ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener">Google link ↗</a>`
           : s.sourceType === 'video_analysis'
           ? '<span class="hint">AI video analysis — video not retained</span>'
           : (s.file ? `${escapeHtml(s.file.originalFilename || 'file')} <span class="hint">(${Math.round((s.file.sizeBytes || 0) / 1024)} KB)</span>` : 'File')}</td>
-        <td><button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
+        <td>${bwsStatusCellHtml(s)}</td>
+        <td>${bwsAdminActionsHtml(s)}<button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
       </tr>`).join('')}</tbody>
   </table></div>`;
+}
+
+// Round 141 (2026-08-31), per direct instruction — Sample Writings needed
+// a way for an account admin to flag a sample as bad ("what impacts our
+// learnings, with an option to remove errors") without permanently
+// deleting it, so there's a record of what was excluded, when, by whom,
+// and why. Soft-remove: excluded=1 just takes the sample out of
+// brandWritingSampleContext()'s query on the backend (see server.js) — the
+// row itself, and this library entry, stay visible to everyone so a
+// non-admin can see WHY a sample stopped feeding generations, even though
+// only an admin can toggle it (portalViewerIsAdmin, the same flag that
+// gates Team's Admin checkbox — see checkPortalViewerAdminStatus()).
+function bwsStatusCellHtml(s){
+  if (!s.excluded) return '<span class="hint">Active</span>';
+  const reasonHtml = s.excludedReason ? `<div class="hint" style="margin-top:2px;">"${escapeHtml(s.excludedReason)}"</div>` : '';
+  return `<span style="color:var(--advocacy);">Excluded${s.excludedBy ? ` by ${escapeHtml(s.excludedBy)}` : ''}${s.excludedAt ? ` (${escapeHtml((s.excludedAt || '').slice(0, 10))})` : ''}</span>${reasonHtml}`;
+}
+function bwsAdminActionsHtml(s){
+  if (!portalViewerIsAdmin) return '';
+  return s.excluded
+    ? `<button type="button" class="btn-ghost" onclick="bwsSetExcluded('${s.id}', false)">Restore</button>`
+    : `<button type="button" class="btn-ghost" onclick="bwsSetExcluded('${s.id}', true)">Flag as error</button>`;
+}
+async function bwsSetExcluded(id, excluded){
+  let reason = '';
+  if (excluded){
+    reason = prompt('Why is this sample being flagged? (required — this stays in the account\'s history, and the sample is kept, just excluded from future AI generations)');
+    if (reason === null) return; // cancelled
+    if (!reason.trim()){ alert('A reason is required to flag a sample as an error.'); return; }
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/${encodeURIComponent(id)}/exclude`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excluded, reason: reason.trim(), excludedBy: state.userName || '' })
+    });
+    if (resp.ok) bwsLoadLibrary();
+    else {
+      const data = await resp.json().catch(() => ({}));
+      alert(data.error || 'That action failed.');
+    }
+  } catch (e){ alert('Backend unreachable — could not update this sample.'); }
 }
 
 async function bwsDeleteSample(id){
