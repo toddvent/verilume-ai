@@ -418,7 +418,12 @@
   .result-band.q4 .quadrant-basis-note{color:rgba(29,29,31,0.75);}
   .result-band.q3{background:linear-gradient(135deg, #4A4438 0%, var(--ink) 100%);}
 
-  .quad-visual{position:relative;background:var(--white);border:1px solid var(--ink);border-radius:12px;aspect-ratio:16/10;margin:28px 0;}
+  /* 2026-08-31 (round 135), per direct instruction — "Reduce the magic
+     quadrant footprint. It's way too big." Capped to a fixed max-width
+     (was: full column width) and centered — aspect-ratio:16/10 still
+     governs height, so this shrinks both dimensions together rather than
+     just squashing it vertically. */
+  .quad-visual{position:relative;background:var(--white);border:1px solid var(--ink);border-radius:12px;aspect-ratio:16/10;margin:20px auto;max-width:420px;}
   .quad-visual .qcell{position:absolute;width:50%;height:50%;padding:14px 16px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;letter-spacing:0.05em;text-transform:uppercase;color:#8a8067;}
   .quad-visual .qcell.q2{top:0;left:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
   .quad-visual .qcell.q1{top:0;right:0;border-bottom:1px solid var(--line);}
@@ -626,6 +631,20 @@
 
   footer{margin-top:60px;padding:24px 28px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;color:#8a8067;text-align:center;}
 
+  /* 2026-08-31, per direct instruction — the report step's "Download
+     Report (PDF)" button is window.print(), same convention as
+     portal.html's .cc-hero-toolbar (no JS library). Scoped to the report
+     step only: hides site chrome (header/nav, the .report-actions button
+     row itself, the free-trial banner) and the parts of the report that
+     are navigation/interaction rather than report content (the "Extended
+     evaluation" accordion, and the paid-program interstitial's CTA cards),
+     so a printed/saved PDF reads as the 3 numbered sections plus the
+     closing CTA band, not the whole live page. */
+  @media print{
+    header, footer, nav, .report-actions, #freeTrialCta, .enhance-section, .product-cta-grid, .paid-interstitial-actions{ display:none !important; }
+    body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+
   /* ---- Step 5 of 6: Solutions Map (process map by funnel stage) ---- */
   .stage-map-card{position:relative;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin-bottom:18px;}
   .stage-map-card.flagged{border-color:var(--advocacy);box-shadow:inset 0 0 0 1px var(--advocacy);background:#FBF3EC;}
@@ -712,13 +731,24 @@
   .value-stat-card .vs-caveat{font-size:0.7188rem;font-style:italic;color:#6E6E73;opacity:0.85;margin:0;}
 
   /* Round 134, 4-section report rebuild, per direct instruction
-     ("Humanizing Agentic Marketing"). .report-main-title is the new page
-     title; .report-section/.section-num/.section-heading give the 4
-     numbered sections a consistent header treatment; .role-grid/.role-card
-     render Section 4's 6 Agentic Team Role cards (see AGENTIC_ROLES/
-     computeFunctionGroupScores()/renderAgenticRoleMapping() in the script
-     below); .report-section-deemph is the lower-visual-weight treatment
-     for the relocated "Your company profile" block. */
+     ("Humanizing Agentic Marketing"). .report-main-title is the page
+     title; .report-section/.section-num/.section-heading give the
+     remaining numbered sections a consistent header treatment; .role-grid/
+     .role-card render Section 3's 6 Agentic Team Role cards (see
+     AGENTIC_ROLES/computeFunctionGroupScores()/renderAgenticRoleMapping()
+     in the script below).
+     Round 135 (2026-08-31), redo per direct instruction: Section 2
+     (generative consulting synthesis), #granularScorecard, and
+     #reportCompanyProfileSection are deleted, so .report-section-deemph
+     (that section's lower-visual-weight treatment) is unused now — left
+     defined rather than removed, since nothing currently references it but
+     a future de-emphasized block may want it again. .glance-grid is
+     Section 1's new single-row, 4-tile layout (Industry Revenue /
+     Estimated Market Size / Verilume Wealth Index / Your Organization
+     Score) — same .stat-grid/.stat-tile classes as elsewhere, just forced
+     to a fixed 4-column, single-row layout instead of stat-grid's default
+     auto-fit wrap, since these 4 tiles should always read as one aligned
+     row on anything wider than a phone. */
   .report-main-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:clamp(28px,4vw,40px);margin:0 0 22px;color:var(--ink);}
   .report-section{margin:0 0 44px;}
   .section-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--advocacy);color:#fff;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.9375rem;margin-right:10px;vertical-align:middle;}
@@ -726,6 +756,8 @@
   .report-section > .lede{margin-top:12px;}
   .report-section-deemph{opacity:0.94;}
   .report-section-deemph .section-heading{font-size:1.1875rem;}
+  .glance-grid{grid-template-columns:repeat(4,1fr);margin-top:18px;}
+  @media (max-width:680px){ .glance-grid{grid-template-columns:repeat(2,1fr);} }
   .role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:18px;}
   .role-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
   .role-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
@@ -1759,18 +1791,22 @@
        Marketing Loop, and the CX/Media Science/Team/Voice maturity
        carousel. This page opens right after with a "first deliverable" —
        a quadrant placement estimated from that self-rated maturity
-       (computeQuickScores()), a "Here's what we learned" synthesis +
-       product-theme grid, the opportunity-size numbers, and the
+       (computeQuickScores()), the opportunity-size numbers, and the
        generations/wealth recap — all real data, no function-by-function
        ratings required yet. Below that, #enhanceAccordion holds only
        Function Groups, Scope Picker, and Assess (the "extended
        evaluation") as inline/expandable sections; completing Assess
        recomputes real scores (computeScores()) and refines the same
-       quadrant in place. #granularScorecard (per-stage positions, the
-       narrative line, and the stage-by-stage breakdown) stays hidden with a
-       placeholder until that real data exists — it depends on cells only
-       Assess can populate and would otherwise fabricate detail nobody
-       actually rated. -->
+       quadrant in place.
+       Round 135 (2026-08-31), per direct instruction (redo of the
+       over-aggressive Round 134 rebuild, which the client rejected): the old
+       Section 2 ("Our read on...", generative consulting synthesis) and the
+       #granularScorecard block (per-stage position legend, narrative line,
+       and stage-by-stage breakdown — all of it downstream of the deep
+       per-product Assess ratings) are DELETED outright, not hidden pending
+       data. Same for #reportCompanyProfileSection (the Company Profile
+       accordion). See renderFullReport()/renderAgenticRoleMapping() further
+       down for what still populates the 4 numbered sections that remain. -->
   <section class="step" data-step="report">
     <div class="eyebrow" style="margin-bottom:8px;">Your free results</div>
     <h1 class="report-main-title">Humanizing Agentic Marketing</h1>
@@ -1789,81 +1825,69 @@
 
     <!-- Round 134 — 4-section report rebuild, per direct client instruction
          ("Objective is to align the organization's challenges with our
-         solutions that fill the gap"). Section numbering/headings below are
-         literal: 1) opportunity + Media/CX Score grid, 2) generative
-         consulting synthesis, 3) Magic Quadrant results, 4) Agentic Team
-         Role mapping. See renderFullReport()/renderReportSynthesis()/
-         renderReportOpportunity()/renderAgenticRoleMapping() further down
-         for what populates each section. -->
+         solutions that fill the gap").
+         Round 135 (2026-08-31), redo per direct instruction — the old
+         Section 2 (generative consulting synthesis) is deleted, so this is
+         now a 3-section report: 1) opportunity glance grid (Industry
+         Revenue / Estimated Market Size / Verilume Wealth Index / Your
+         Organization Score), 2) Magic Quadrant results (internal element
+         IDs still read reportSection3/reportSection4 — see that comment),
+         3) Agentic Team Role mapping. See renderFullReport()/
+         renderAgenticRoleMapping() further down for what populates each
+         section. -->
     <div class="first-deliverable" id="firstDeliverable">
 
-      <!-- SECTION 1 — Population Opportunity Size, Industry Revenue,
-           Verilume Wealth Index, Media/CX Score grid (including the
-           Verilume Media CX Index TOTAL — this is the only place the total
-           renders; Section 3 shows Media/CX individually without it). -->
+      <!-- SECTION 1 — Round 135 (2026-08-31), per direct instruction: a
+           single 4-column, single-row grid, no body copy — Industry
+           Revenue, Estimated Market Size, Verilume Wealth Index, and Your
+           Organization Score (the Verilume Media CX Index total; this is
+           the only place the total renders — Section 3 shows Media/CX
+           individually without it). Each tile's `title` attribute carries
+           the longer explanatory note that used to run as visible copy —
+           a native tooltip, not a paragraph. renderFullReport() populates
+           these 4 values directly from state.opportunity / verilumeWealthIndex()
+           / activeScores(), same underlying data as before, just no longer
+           laid out as separate multi-tile stat grids + a standalone
+           Wealth Index tile + a separate vmcx-index-card. -->
       <div class="report-section" id="reportSection1">
-        <h2><span class="section-num">1</span><span class="section-heading">Your opportunity, at a glance</span></h2>
-        <p class="lede">The size of the market in front of you, how your audience's wealth profile compares to the national average, and where your Media and CX Strength stand today.</p>
+        <h2><span class="section-num">1</span><span class="section-heading">Optimizing The Journey For <span id="reportCompanyNameHeading">Your Company</span></span></h2>
 
-        <div class="stat-grid" id="reportOpportunityStats"></div>
-
-        <div class="stat-grid" style="margin-top:14px;">
-          <div class="stat-tile">
+        <div class="stat-grid glance-grid">
+          <div class="stat-tile" id="glanceIndustryRevenueTile" title="U.S. industry revenue — illustrative, not a live data feed.">
+            <span class="stat-label">Industry Revenue</span>
+            <span class="stat-value" id="glanceIndustryRevenue"></span>
+          </div>
+          <div class="stat-tile" id="glanceMarketSizeTile" title="Population x your selected generation(s) x your selected wealth tier(s) — illustrative approximation.">
+            <span class="stat-label">Estimated Market Size</span>
+            <span class="stat-value" style="color:var(--advocacy);" id="glanceMarketSize"></span>
+          </div>
+          <div class="stat-tile" id="glanceWealthIndexTile" title="100 = the average U.S. household. Your target income relative to that average, adjusted for your selected generation(s).">
             <span class="stat-label">Verilume Wealth Index</span>
-            <span class="stat-value" id="reportWealthIndexVal" style="color:var(--advocacy);"></span>
-            <div class="stat-note" id="reportWealthIndexNote"></div>
+            <span class="stat-value" id="glanceWealthIndex"></span>
+          </div>
+          <div class="stat-tile" id="glanceOrgScoreTile" title="The Verilume Media CX Index — a blend of your Media Strength and CX Strength axes.">
+            <span class="stat-label">Your Organization Score</span>
+            <span class="stat-value" id="glanceOrgScore"></span>
           </div>
         </div>
-
-        <!-- Round 133, per direct instruction — the blended headline metric,
-             marketed as the Verilume Media CX Index: one number, built from
-             the same stage-weighted Media/CX Strength axes, not a separate
-             invented score. See computeQuickScores()/computeScores() for
-             the math and vmcxIndexNote's confidence copy below. IDs
-             unchanged from the pre-Round-134 layout on purpose — this card
-             just relocated into Section 1, renderFullReport() still
-             targets the same elements. -->
-        <div class="vmcx-index-card" style="margin-top:14px;">
-          <div class="lbl">Verilume Media CX Index</div>
-          <div class="val" id="vmcxIndexVal"></div>
-          <div class="vmcx-index-note" id="vmcxIndexNote"></div>
-        </div>
-
-        <div class="score-pair">
-          <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
-          <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreVal"></div></div>
-        </div>
       </div>
 
-      <!-- SECTION 2 — the generative-consulting read on this visitor,
-           built from their assessment answers AND the live URL scan (see
-           applyAiGeneratedReadout(), which overwrites #reportSynthesisText/
-           #journeyBP with the AI-generated version once the server call
-           succeeds — the templated copy from renderReportSynthesis() is
-           what's on screen until then). -->
-      <div class="report-section" id="reportSection2">
-        <h2><span class="section-num">2</span><span class="section-heading">Our read on <span id="reportCompanyNameHeading">your business</span></span></h2>
-        <p class="lede">Not a template — this is built from your assessment answers and a live scan of your own website, read the way a consultant would read a new account.</p>
-        <div class="recap-card">
-          <span class="recap-tag">Generative consulting synthesis</span>
-          <p class="lede" id="reportSynthesisText" style="margin:0 0 18px;"></p>
-          <!-- Round 125, per direct instruction ("Optimizing the Journey for
-               [Company] gets incorporated into the Here's what we learned
-               section"): renderJourneyBP()'s best-practice narrative
-               renders here. -->
-          <div id="journeyBP"></div>
-          <div class="learned-grid" id="reportLearnedGrid"></div>
-        </div>
-      </div>
-
-      <!-- SECTION 3 — Magic Quadrant results. Media/CX shown individually
+      <!-- SECTION 3 (id/element names unchanged; renders as visible "2" —
+           see the section-num span below) — the old Section 2 above it
+           (generative consulting synthesis) is deleted, so the 3 remaining
+           sections are renumbered 1/2/3 for the visible display rather than
+           showing 1/3/4 with a gap where 2 used to be. IDs (reportSection3,
+           reportSection4) are left as-is on purpose — internal names,
+           referenced from JS/comments throughout — only the visible
+           <span class="section-num"> text changes. Magic Quadrant
+           results. Media/CX shown individually
            (mediaScoreValQ/cxScoreValQ, new IDs) — the Index TOTAL already
            lives in Section 1 and is deliberately not repeated here, per
            direct instruction ("Total does not need to be listed again").
            renderFullReport() sets both this pair and Section 1's pair from
            the same activeScores() call, so the two never disagree. -->
       <div class="report-section" id="reportSection3">
-        <h2><span class="section-num">3</span><span class="section-heading">Magic Quadrant Assessment Results</span></h2>
+        <h2><span class="section-num">2</span><span class="section-heading">Magic Quadrant Assessment Results</span></h2>
 
         <div class="result-band" id="resultBand">
           <div class="eyebrow" id="reportQuadrantEyebrow">Your truth, illuminated</div>
@@ -1897,7 +1921,7 @@
            cards always render all 6 roles, ranked weakest-computed-score
            first by computeFunctionGroupScores() (see renderAgenticRoleMapping()). -->
       <div class="report-section" id="reportSection4">
-        <h2><span class="section-num">4</span><span class="section-heading">Where Verilume's Agentic Team Fills Your Gaps</span></h2>
+        <h2><span class="section-num">3</span><span class="section-heading">Where Verilume's Agentic Team Fills Your Gaps</span></h2>
         <p class="lede">Every Verilume account pairs a real person with a standing AI assistant, role by role. Here's what that partnership is worth, and where your own assessment shows the biggest gap for AI to close first.</p>
 
         <div class="value-stats-grid">
@@ -1927,68 +1951,18 @@
 
     </div>
 
-    <!-- "Your company profile" — 2026-08-31, per direct instruction, moved
-         here (after Section 4) and de-emphasized, since the client didn't
-         directly confirm placement when asked. DEFAULT PENDING
-         CONFIRMATION: kept, not deleted (still real, useful data the
-         visitor entered), positioned after the 4 numbered sections so it
-         reads as supporting detail rather than the headline deliverable.
-         Flag this placement to the client for explicit sign-off.
-         All IDs unchanged from the pre-Round-134 layout — same
-         startRecapStep()/renderRecapDescription()/renderRecapProductThemes()/
-         renderRecapIndustry()/renderRecapCensus()/lookupAddress() data
-         sources, untouched. -->
-    <div class="report-section report-section-deemph" id="reportCompanyProfileSection">
-      <h2 style="font-size:1.1875rem;margin:0 0 4px;">Your company profile</h2>
-      <div class="recap-card">
-        <span class="recap-tag" id="recapDescTag">Brand description — pulled from your website, or add your own</span>
-        <div class="field-hint">Update this any time. If you left Step 2's description blank, this starts as a placeholder built from your company URL — replace it with your own copy whenever you're ready.</div>
-        <textarea id="recapDescInput" oninput="updateRecapDescription()"></textarea>
-      </div>
-      <div class="recap-card">
-        <span class="recap-tag">Product themes — grouped, not every SKU</span>
-        <div class="field-hint">Comma-separated. Think categories a customer would recognize (e.g. "Polar Expeditions, Epicurean Expeditions, Cultural Expeditions"), not a line-by-line catalog — this carries forward to the Portal and seeds the Product half of your Brand &amp; Product Keywords draft.</div>
-        <textarea id="recapProductThemesInput" oninput="updateRecapProductThemes()"></textarea>
-      </div>
-      <!-- Address/map/local-market-revenue: Local footprint only, per direct
-           instruction ("We only need the address to support the local
-           path through the site"). display toggled in JS below —
-           #recapMap's own visibility is still separately handled inside
-           startRecapStep() as before. -->
-      <div class="recap-card" id="recapAddressCard" style="display:none;">
-        <span class="recap-tag">Location — enter your primary business address</span>
-        <div class="map-mock" id="recapMap"><span class="pin">📍</span><span class="pin-dot"></span></div>
-        <div class="address-edit-row" id="addressEditRow">
-          <input type="text" id="addressEditInput" placeholder="Street, City, State ZIP">
-          <button type="button" onclick="lookupAddress()">Look up →</button>
-        </div>
-        <div id="recapAddressStatus" class="recap-note"></div>
-        <div class="recap-note">Address is geocoded live via the U.S. Census Bureau's public Geocoder — resolves to a county (and metro area, where one exists), which grounds the local population and revenue figures below in a real place instead of a flat assumption.</div>
-      </div>
-      <div class="recap-card">
-        <span class="recap-tag">Industry &amp; U.S. estimated revenue</span>
-        <div id="recapIndustryBody"></div>
-      </div>
-      <div class="recap-card" id="recapLocalCard" style="display:none;">
-        <span class="recap-tag">Estimated local market revenue</span>
-        <div id="recapLocalBody"></div>
-      </div>
-      <div class="recap-card">
-        <span class="recap-tag">Census snapshot — population &amp; generations (live), income (live), wealth tier (illustrative)</span>
-        <div id="recapCensusBody"></div>
-      </div>
-
-      <div class="audience-recap-grid">
-        <div class="recap-card">
-          <span class="recap-tag">Who you're targeting — generations</span>
-          <div id="genRecapChips"></div>
-        </div>
-        <div class="recap-card">
-          <span class="recap-tag">Who you're targeting — wealth tier</span>
-          <div id="wealthRecapChips"></div>
-        </div>
-      </div>
-    </div>
+    <!-- 2026-08-31, per direct instruction — the old "Your company profile"
+         accordion (#reportCompanyProfileSection: brand description, product
+         themes, address/local-revenue card, industry & Census cards,
+         generation/wealth chip recap) is DELETED outright, not moved or
+         de-emphasized — confirmed scope: Company Profile only, no separate
+         SWOT section exists. Its data sources (startRecapStep()/
+         renderRecapDescription()/renderRecapProductThemes()/
+         renderRecapIndustry()/renderRecapCensus()) are still called — they
+         seed state.opportunity, which Section 1 above still depends on —
+         but every DOM write those functions used to make into this deleted
+         card is now null-guarded rather than removed, so the computation
+         keeps running headlessly. See those functions' own comments. -->
 
     <!-- 2026-08-31, per direct instruction — the old "The Human Agentic
          Agency" headline/subhead/human-ai-note, .value-stats-grid (now
@@ -2131,31 +2105,27 @@
       </div>
     </div>
 
-    <!-- Granular, per-cell scorecard — only meaningful once Assess (above)
-         has produced real ratings; computeScores() populates window.scores,
-         and finishAssess() reveals this container at that point. -->
-    <div id="granularScorecard" style="display:none;">
-      <!-- Round 34, direct instruction — Overall (above) plus a score and
-           quadrant position per Media Loop stage. Each stage dot plots its own
-           Media Strength against the account's one overall CX Strength (a
-           stage's cells don't split into an independent second axis — CX
-           Strength is inherently account-wide, per direct confirmation), so
-           all 6 dots (Overall + 5 stages) share the same chart. Any stage not
-           picked in Step 3 gets no dot and no score — it's flagged in the
-           legend instead of silently defaulting to a perfect, unearned score. -->
-      <h3 style="font-size:1rem;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;text-transform:uppercase;letter-spacing:0.05em;color:#3A3428;margin:24px 0 10px;">Score &amp; position, by stage</h3>
-      <div class="stage-positions" id="stagePositionsList"></div>
-
-      <div class="narrative" id="narrativeText"></div>
-
-      <h2 style="font-size:1.25rem;margin-top:40px;">Stage by stage</h2>
-      <div id="reportStages"></div>
-    </div>
+    <!-- 2026-08-31, per direct instruction — #granularScorecard (the
+         per-stage quadrant-dot legend, the narrative line, and the
+         "Stage by stage" strong/weak breakdown, all downstream of the deep
+         per-product Assess ratings) is DELETED outright. It used to reveal
+         itself once finishAssess() had real per-cell data; that call site
+         is now null-guarded (see finishAssess()) instead of pointing at a
+         real element. renderFullReport()'s equivalent population block
+         (formerly `if (!s.isQuick){...}`, targeting #stagePositionsList/
+         #narrativeText/#reportStages) is removed the same way — see that
+         function's own comment for what stayed (#quadStageMarkers, still
+         real, still used by the Section 2 quadrant plot above). -->
 
     <div class="report-actions">
-      <button class="btn-primary" onclick="downloadReport()">Download report (.txt) ↓</button>
-      <button class="btn-ghost" onclick="copyReport()">Copy summary</button>
-      <button class="btn-ghost" id="portalHandoffBtn" onclick="activateInPortal()">See this scorecard activate in the Portal →</button>
+      <!-- 2026-08-31, per direct instruction — replaces the old .txt
+           download + "Copy summary" buttons with a PDF-via-print button,
+           matching portal.html's exact convention (window.print(), no JS
+           library) — see the @media print rule this step's CSS adds.
+           downloadReport()/copyReport()/reportText() (the old .txt-export
+           helpers) are deleted; nothing else called them. -->
+      <button class="btn-primary" onclick="window.print()">Download Report (PDF) ↓</button>
+      <button class="btn-ghost" id="portalHandoffBtn" onclick="activateInPortal()">Begin Your One Week Free Trial</button>
     </div>
     <!-- 2026-08-19 fix — this note used to describe the old access-code-only
          path, which created an account but no real per-person login and no
@@ -2705,24 +2675,42 @@ function luxuryMassMarketDesignation(){
   return verilumeWealthIndex() >= 65 ? 'luxury' : 'mass-market';
 }
 
-// Renders (or hides) the inline "switch to the Luxury/Mass Market sibling?"
-// note under #inIndustry. Deliberately low-key — a dismissible inline note,
-// not a modal — and never auto-switches the select: Industry may already be
-// a visitor's own manual edit, so this only offers a one-click accept via
-// applyIndustryTierSuggestion() below. Called on every audience/income
-// change (via renderWealthIndex()) and on every #inIndustry change.
+// Auto-applies (rather than asking) the Luxury/Mass Market sibling switch
+// under #inIndustry, per direct instruction (round 135): "Don't ask the
+// question about switch to Cruise lines - Luxury. Just change it based on
+// the answers." Also directly closes the separate "NAICS guess doesn't
+// consider the wealth index" complaint from the same round — since this now
+// runs on every audience/income change (via renderWealthIndex(), including
+// the one enterProfileGuess() fires once audience/income are seeded), the
+// industry select is always corrected to match the wealth-index-informed
+// designation by the time Step 2 finishes populating, not left on
+// enterProfileGuess()'s pre-wealth-index initial guess. Still only a passive
+// informational note after the fact (industryTierSuggestion), never a
+// clickable prompt — the switch itself already happened by the time it
+// renders. Called on every audience/income change (via renderWealthIndex())
+// and on every #inIndustry change.
 function renderIndustryTierSuggestion(){
   const el = document.getElementById('industryTierSuggestion');
-  if (!el) return;
   const sib = industryLuxuryMassSibling();
-  if (!sib){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  if (!sib){ if (el){ el.style.display = 'none'; el.innerHTML = ''; } return; }
   const wantsLuxury = luxuryMassMarketDesignation() === 'luxury';
-  if (wantsLuxury === sib.currentIsLuxury){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  if (wantsLuxury === sib.currentIsLuxury){ if (el){ el.style.display = 'none'; el.innerHTML = ''; } return; }
   const targetIdx = wantsLuxury ? sib.luxuryIdx : sib.massMarketIdx;
   const targetLabel = INDUSTRIES[targetIdx].label;
-  el.style.display = 'block';
-  el.innerHTML = `Based on your audience and wealth tier, this reads as ${wantsLuxury ? 'Luxury' : 'Mass Market'} — <button type="button" onclick="applyIndustryTierSuggestion(${targetIdx})" style="border:none;background:none;color:var(--advocacy);font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font:inherit;">switch to ${targetLabel}?</button>`;
+  const sel = document.getElementById('inIndustry');
+  if (sel){
+    sel.value = targetIdx;
+    markUserEdited(sel);
+    syncProfileGuessState();
+    renderIndustryDesc();
+  }
+  if (el){
+    el.style.display = 'block';
+    el.innerHTML = `Automatically set to <b>${targetLabel}</b> based on your audience and wealth tier.`;
+  }
 }
+// Kept for any other call site still referencing it directly — now just
+// forwards into the same auto-apply path above rather than duplicating it.
 function applyIndustryTierSuggestion(idx){
   const sel = document.getElementById('inIndustry');
   if (!sel) return;
@@ -4267,17 +4255,23 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   if (targetIncomeEl){ targetIncomeEl.value = 75000; delete targetIncomeEl.dataset.userEdited; }
   const industryTierSuggestionEl = document.getElementById('industryTierSuggestion');
   if (industryTierSuggestionEl){ industryTierSuggestionEl.style.display = 'none'; industryTierSuggestionEl.innerHTML = ''; }
-  document.getElementById('addressEditInput').value = '';
-  document.getElementById('recapAddressStatus').textContent = '';
+  // 2026-08-31 — #addressEditInput/#recapAddressStatus/#recapDescInput/
+  // #recapProductThemesInput lived inside #reportCompanyProfileSection, now
+  // deleted; each guarded below so restartBtn's click handler doesn't throw
+  // on a page that no longer has those fields.
+  const addressEditInputEl = document.getElementById('addressEditInput');
+  if (addressEditInputEl) addressEditInputEl.value = '';
+  const recapAddressStatusEl = document.getElementById('recapAddressStatus');
+  if (recapAddressStatusEl) recapAddressStatusEl.textContent = '';
   // 2026-08-20 — Step 1's address block
   document.getElementById('step1AddressBlock').style.display = 'none';
   ['step1AddrStreet','step1AddrCity','step1AddrState','step1AddrZip'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('step1AddressStatus').textContent = '';
   delete document.getElementById('step1AddressStatus').dataset.matched;
-  document.getElementById('recapDescInput').value = '';
-  delete document.getElementById('recapDescInput').dataset.userEdited;
-  document.getElementById('recapProductThemesInput').value = '';
-  delete document.getElementById('recapProductThemesInput').dataset.userEdited;
+  const recapDescInputEl = document.getElementById('recapDescInput');
+  if (recapDescInputEl){ recapDescInputEl.value = ''; delete recapDescInputEl.dataset.userEdited; }
+  const recapProductThemesInputEl = document.getElementById('recapProductThemesInput');
+  if (recapProductThemesInputEl){ recapProductThemesInputEl.value = ''; delete recapProductThemesInputEl.dataset.userEdited; }
   ['inCompany','inContactCompany','inFirst','inLast','inEmail','inPhone'].forEach(id => document.getElementById(id).value = '');
   ['inCompany','inIndustry'].forEach(id => delete document.getElementById(id).dataset.userEdited);
   document.getElementById('inPhoneCode').value = '+1';
@@ -4528,8 +4522,30 @@ function renderAudienceChecks(){
     card.innerHTML = `<span class="indicator">✓</span><span class="body"><h3>${g.label}<span class="info-icon" tabindex="0">i<span class="tip">${g.blurb}</span></span></h3></span>`;
     card.querySelector('.info-icon').addEventListener('click', (e) => { e.stopPropagation(); toggleTip(e.currentTarget); });
     card.addEventListener('click', () => {
+      // 2026-08-31 (round 135), per direct instruction — "Selecting General /
+      // All Ages should just select all regardless of what was selected."
+      // General/all ages is shorthand for the full population, not a
+      // separate category alongside the named generations — so selecting it
+      // selects every generation (including itself), and clicking it again
+      // (i.e., it was already fully selected) clears the whole selection.
+      // Re-renders the whole grid since every tile's selected state changes,
+      // not just this one.
+      if (g.key === 'general'){
+        if (state.audience.has('general')){
+          state.audience.clear();
+        } else {
+          GENERATIONS.forEach(gen => state.audience.add(gen.key));
+        }
+        renderAudienceChecks();
+        checkCompanyReady();
+        renderWealthIndex();
+        return;
+      }
       if (state.audience.has(g.key)) state.audience.delete(g.key);
       else state.audience.add(g.key);
+      // A specific generation was hand-toggled — "general" no longer means
+      // "everything," so drop it if it was set from an earlier select-all.
+      state.audience.delete('general');
       card.classList.toggle('selected');
       checkCompanyReady();
       // 2026-08-31 — generationWealthMultiplier() depends on state.audience,
@@ -5014,12 +5030,15 @@ function startRecapStep(){
   // of asking the visitor to type it again — the input row only shows for
   // a visitor who skipped it at Step 1, or whose Step 1 lookup didn't find
   // a match, both of which fall back to the same input+status UI as before.
+  // 2026-08-31 — #addressEditInput lived inside #reportCompanyProfileSection,
+  // now deleted; guarded rather than removed since the geocode/state-setting
+  // logic elsewhere in this function still needs to run headlessly.
   const addressInputEl = document.getElementById('addressEditInput');
   if (state.geo?.ok && state.address){
-    addressInputEl.value = state.address;
+    if (addressInputEl) addressInputEl.value = state.address;
     renderRecapAddressStatus(`Matched: ${state.geo.matchedAddress} — ${state.geo.countyName}${state.geo.cbsaName ? ' · ' + state.geo.cbsaName : ''}`, 'ok');
   } else {
-    addressInputEl.value = state.address || '';
+    if (addressInputEl) addressInputEl.value = state.address || '';
     renderRecapAddressStatus('');
   }
   renderRecapDescription();
@@ -5059,8 +5078,12 @@ function descriptionPlaceholderFromUrl(){
   return `We couldn't confidently guess this from ${host} — replace this with a few real sentences on what the brand does and who it serves.`;
 }
 function renderRecapDescription(){
+  // 2026-08-31 — #recapDescInput/#recapDescTag lived inside
+  // #reportCompanyProfileSection, now deleted; null-guarded so this can
+  // still be called headlessly (it isn't currently, but keeping the guard
+  // cheap and consistent with the rest of this pass rather than assuming).
   const el = document.getElementById('recapDescInput');
-  if (!el.dataset.userEdited){
+  if (el && !el.dataset.userEdited){
     el.value = state.description || descriptionPlaceholderFromUrl();
   }
   // 2026-08-25 — this tag used to unconditionally say "pulled from your
@@ -5077,7 +5100,11 @@ function renderRecapDescription(){
   }
 }
 function updateRecapDescription(){
+  // 2026-08-31 — dead code now that #recapDescInput's textarea (and its
+  // oninput handler) is gone with #reportCompanyProfileSection; guarded so
+  // it degrades safely instead of throwing if ever called.
   const el = document.getElementById('recapDescInput');
+  if (!el) return;
   el.dataset.userEdited = '1';
   state.description = el.value.trim();
 }
@@ -5088,14 +5115,18 @@ function productThemesPlaceholderFromUrl(){
   const host = (state.url || 'your-site.com').replace(/^https?:\/\//, '').replace(/\/$/, '') || 'your-site.com';
   return `We couldn't confidently guess this — replace with the product or experience categories ${host} groups its offerings under (not every individual item).`;
 }
+// 2026-08-31 — #recapProductThemesInput lived inside
+// #reportCompanyProfileSection, now deleted; both functions below
+// null-guarded so they degrade safely if ever called headlessly or from
+// stale markup.
 function renderRecapProductThemes(){
   const el = document.getElementById('recapProductThemesInput');
-  if (!el.dataset.userEdited){
-    el.value = state.productThemes || productThemesPlaceholderFromUrl();
-  }
+  if (!el || el.dataset.userEdited) return;
+  el.value = state.productThemes || productThemesPlaceholderFromUrl();
 }
 function updateRecapProductThemes(){
   const el = document.getElementById('recapProductThemesInput');
+  if (!el) return;
   el.dataset.userEdited = '1';
   state.productThemes = el.value.trim();
 }
@@ -5121,14 +5152,26 @@ async function primeNationalCensus(){
 }
 
 function renderRecapAddressStatus(msg, kind){
+  // 2026-08-31 — #recapAddressStatus lived inside #reportCompanyProfileSection,
+  // now deleted; guarded since this is still called from startRecapStep()/
+  // lookupAddress() to keep their surrounding logic intact.
   const el = document.getElementById('recapAddressStatus');
+  if (!el) return;
   const color = kind === 'error' ? 'var(--advocacy)' : kind === 'ok' ? 'var(--cx)' : '#8a8067';
   el.style.color = color;
   el.textContent = msg;
 }
 
+// 2026-08-31 — dead code: the "Look up →" button that called this lived
+// inside #reportCompanyProfileSection's address card, now deleted, and
+// nothing else calls lookupAddress(). Left defined (not deleted) since
+// refreshLocalCensusAndCbp()/state.geo are still real and this may be
+// wired back up if the address card returns in some form; guarded so it
+// degrades safely rather than throwing if it ever is called.
 async function lookupAddress(){
-  const input = document.getElementById('addressEditInput').value.trim();
+  const addressEl = document.getElementById('addressEditInput');
+  if (!addressEl) return;
+  const input = addressEl.value.trim();
   if (!input){ renderRecapAddressStatus('Enter an address to look up.', 'error'); return; }
   state.address = input;
   renderRecapAddressStatus('Looking up county and metro area…');
@@ -5271,7 +5314,13 @@ function renderRecapIndustry(){
   // of footprint.
   state.opportunity = state.opportunity || {};
   state.opportunity.industryRevenue = industry.usRevenue;
-  document.getElementById('recapIndustryBody').innerHTML = `
+  // 2026-08-31 — #recapIndustryBody/#recapLocalCard/#recapLocalBody lived
+  // inside #reportCompanyProfileSection, now deleted; guarded below so the
+  // state.opportunity assignments above (and localRevenueEstimate() math)
+  // still run headlessly — Section 1's glance grid depends on
+  // state.opportunity.industryRevenue.
+  const industryBodyEl = document.getElementById('recapIndustryBody');
+  if (industryBodyEl) industryBodyEl.innerHTML = `
     <div class="address-row">
       <span class="address-text">${industry.label} <span style="color:#8a8067;">— NAICS ${industry.naics} / SIC ${industry.sic}</span></span>
       <button type="button" class="address-edit-link" onclick="goToStep('profile-guess')">Not right? Change industry</button>
@@ -5297,11 +5346,12 @@ function renderRecapIndustry(){
 
   const localCard = document.getElementById('recapLocalCard');
   if (state.region === 'Local' && industry.usRevenue != null){
-    localCard.style.display = 'block';
+    if (localCard) localCard.style.display = 'block';
     const est = localRevenueEstimate();
     state.opportunity.local = { base: est.base, refined: est.refined, shareIsLive: est.shareIsLive };
     const cbpLoc = state.cbpLocal;
-    document.getElementById('recapLocalBody').innerHTML = `
+    const localBodyEl = document.getElementById('recapLocalBody');
+    if (localBodyEl) localBodyEl.innerHTML = `
       <div class="stat-grid">
         <div class="stat-tile">
           <span class="stat-label">Estimated local market revenue</span>
@@ -5331,14 +5381,19 @@ function renderRecapIndustry(){
       <div class="recap-note">The population term is real (U.S. Census ACS) once you run the address lookup above; the underlying "U.S. estimated revenue" figure itself is still illustrative, and "local" here means the resolved <strong>county</strong>, not a true media market.</div>
     `;
   } else {
-    localCard.style.display = 'none';
+    if (localCard) localCard.style.display = 'none';
     state.opportunity.local = null;
   }
 }
 
+// 2026-08-31 — dead code: #proofToggle/#proofBox lived inside
+// #reportCompanyProfileSection's local-revenue card, now deleted, and
+// nothing generates that button/box any more. Left defined (not deleted)
+// and guarded so it degrades safely rather than throwing if ever called.
 function toggleProof(){
   const box = document.getElementById('proofBox');
   const btn = document.getElementById('proofToggle');
+  if (!box || !btn) return;
   const nowOpen = btn.classList.toggle('open');
   box.classList.toggle('open', nowOpen);
   box.style.maxHeight = nowOpen ? box.scrollHeight + 'px' : '0px';
@@ -5437,7 +5492,12 @@ function renderRecapCensus(){
   state.opportunity.wealthSharePct = (wealthShare*100).toFixed(0);
   state.opportunity.isLocalPop = isLocal;
 
-  document.getElementById('recapCensusBody').innerHTML = `
+  // 2026-08-31 — #recapCensusBody lived inside #reportCompanyProfileSection,
+  // now deleted; guarded so the state.opportunity assignments above still
+  // run headlessly — Section 1's glance grid depends on
+  // state.opportunity.marketSize.
+  const censusBodyEl = document.getElementById('recapCensusBody');
+  if (censusBodyEl) censusBodyEl.innerHTML = `
     <div class="stat-grid" style="margin-top:0;">
       <div class="stat-tile">
         <span class="stat-label">${popLabel}</span>
@@ -5785,7 +5845,11 @@ function finishAssess(){
   computeScores();
   completeEnhanceStep('assess');
   renderFullReport();
-  document.getElementById('granularScorecard').style.display = 'block';
+  // 2026-08-31 — #granularScorecard was deleted (Round 135 redo); guarded
+  // rather than removed outright so this still degrades safely if that
+  // markup is ever reintroduced.
+  const granularEl = document.getElementById('granularScorecard');
+  if (granularEl) granularEl.style.display = 'block';
   syncEnhancedProfileToBackend();
 }
 
@@ -6095,18 +6159,18 @@ function renderAudienceRecapChips(){
 // score set is authoritative right now (the coarse estimate, since Assess
 // hasn't run yet).
 function renderInitialReport(){
-  startRecapStep(); // seeds state.opportunity + the Company Profile accordion item's fields
-  renderReportSynthesis();
+  startRecapStep(); // seeds state.opportunity + the (now-deleted) Company Profile accordion item's fields
+  // 2026-08-31, per direct instruction — renderReportSynthesis() and
+  // applyAiGeneratedReadout() are no longer called from here: both exist
+  // solely to populate #reportSynthesisText/#journeyBP/#reportLearnedGrid,
+  // all three deleted along with Section 2. Both functions are still
+  // null-guarded and would no-op harmlessly if called (see their own
+  // comments), but applyAiGeneratedReadout() makes a real backend call to
+  // the Anthropic-backed generate-readout endpoint purely to discard the
+  // result — leaving it wired up would spend that real API cost for
+  // nothing, so it's removed from this call site instead of just guarded.
   renderAudienceRecapChips();
   renderFullReport();
-  // 2026-08-25 — fires the AI-generated readout (see
-  // applyAiGeneratedReadout()'s own comment below) after the templated
-  // synthesis/journeyBP content above has already rendered synchronously,
-  // so the page never shows a blank or loading state while this is
-  // in flight. Deliberately not awaited here — it overwrites the two
-  // targeted spots in place on success and leaves everything else, and
-  // everything already on screen, exactly as-is on any failure.
-  applyAiGeneratedReadout();
   // 2026-08-21, per direct instruction — visitors who already have a real
   // Verilume account (created via the Save & Schedule modal, then chose
   // "Keep going with the assessment" instead of going straight to the
@@ -6643,38 +6707,37 @@ function renderFullReport(){
   document.getElementById('resultBand').className = 'result-band ' + q.key;
   document.getElementById('reportQuadrantTitle').textContent = q.name;
   document.getElementById('reportQuadrantDesc').textContent = q.desc;
-  document.getElementById('mediaScoreVal').textContent = s.mediaPct + '%';
-  document.getElementById('cxScoreVal').textContent = s.cxPct + '%';
-  // Round 134 — Section 3's individual Media/CX pair (new IDs, no Index
-  // total alongside them, per direct instruction). Same activeScores()
-  // read as the Section 1 pair right above, so the two can never disagree.
+  // Round 134 — Section 2's (Magic Quadrant) individual Media/CX pair.
+  // Same activeScores() read as Section 1's org score above, so the two
+  // can never disagree.
   const mediaScoreValQ = document.getElementById('mediaScoreValQ');
   const cxScoreValQ = document.getElementById('cxScoreValQ');
   if (mediaScoreValQ) mediaScoreValQ.textContent = s.mediaPct + '%';
   if (cxScoreValQ) cxScoreValQ.textContent = s.cxPct + '%';
-  // Round 134 — Section 1's new Verilume Wealth Index tile. verilumeWealthIndex()/
-  // wealthIndexLabel() are safe to call again here: both just read
-  // state.targetIncome/state.audience, which persist past the profile-guess
-  // step. Note copy echoes wealthIndexBody's disclosure on that step.
-  const wealthValEl = document.getElementById('reportWealthIndexVal');
-  const wealthNoteEl = document.getElementById('reportWealthIndexNote');
-  if (wealthValEl || wealthNoteEl){
+
+  // Round 135 (2026-08-31), per direct instruction — Section 1's single
+  // 4-tile glance grid: Industry Revenue, Estimated Market Size, Verilume
+  // Wealth Index, Your Organization Score. Replaces the old separate
+  // multi-tile #reportOpportunityStats grid + standalone Wealth Index tile
+  // + vmcx-index-card (renderReportOpportunity() is deleted — its two
+  // opportunity figures are read directly from state.opportunity here
+  // instead). No visible body copy per direct instruction — the `title`
+  // attribute set on each tile in the HTML carries the longer note.
+  const companyHeadingEl = document.getElementById('reportCompanyNameHeading');
+  if (companyHeadingEl) companyHeadingEl.textContent = state.company || 'Your Company';
+  const opp = state.opportunity || {};
+  const revEl = document.getElementById('glanceIndustryRevenue');
+  if (revEl) revEl.textContent = opp.industryRevenue != null ? fmtB(opp.industryRevenue) : '—';
+  const marketEl = document.getElementById('glanceMarketSize');
+  if (marketEl) marketEl.textContent = opp.marketSize != null ? opp.marketSize.toLocaleString() : '—';
+  const wealthEl = document.getElementById('glanceWealthIndex');
+  if (wealthEl){
     const wIndex = verilumeWealthIndex();
-    const wLabel = wealthIndexLabel(wIndex);
-    if (wealthValEl) wealthValEl.textContent = `${wIndex} — ${wLabel}`;
-    if (wealthNoteEl) wealthNoteEl.textContent = '100 = the average U.S. household. Your score is your target income relative to that average, adjusted for the wealth profile of your selected generation(s).';
+    wealthEl.textContent = `${wIndex} — ${wealthIndexLabel(wIndex)}`;
   }
-  // Round 133 — Verilume Media CX Index headline stat + confidence note.
-  // Same estimate/measured language convention as quadrantBasisNote just
-  // below, so the two notes never contradict each other.
-  const indexValEl = document.getElementById('vmcxIndexVal');
-  const indexNoteEl = document.getElementById('vmcxIndexNote');
-  if (indexValEl) indexValEl.textContent = (typeof s.index === 'number' ? s.index : Math.round((s.mediaPct + s.cxPct) / 2)) + '%';
-  if (indexNoteEl){
-    indexNoteEl.textContent = s.isQuick
-      ? 'Estimated from your self-ratings above — create an account to refine each stage with real data and sharpen this number.'
-      : 'Measured from your function-by-function ratings — this is your real Index, not an estimate.';
-  }
+  const orgScoreEl = document.getElementById('glanceOrgScore');
+  if (orgScoreEl) orgScoreEl.textContent = (typeof s.index === 'number' ? s.index : Math.round((s.mediaPct + s.cxPct) / 2)) + '%';
+
   const onboardingUrl = buildOnboardingHandoffUrl();
   document.getElementById('paidCtaLink').href = onboardingUrl;
   const interstitialLink = document.getElementById('paidCtaLinkInterstitial');
@@ -6694,97 +6757,38 @@ function renderFullReport(){
   marker.style.bottom = s.cxPct + '%';
   marker.title = `Overall — ${s.mediaPct}% Media Strength / ${s.cxPct}% CX Strength — ${q.name}${s.isQuick ? ' (estimate)' : ''}`;
 
-  // Per-stage dots + legend (round 34, direct instruction) — see
-  // computeScores()'s stagePoints comment for the math. Numbered 1-5 in
+  // Per-stage dots on the quadrant plot (round 34, direct instruction) —
+  // see computeScores()'s stagePoints comment for the math. Numbered 1-5 in
   // RUBRIC order rather than color-coded (only 3 accent colors exist
-  // site-wide, not enough for 6 distinct dots); the legend below the chart
-  // maps number -> stage -> score -> quadrant, and a skipped stage gets a
-  // flagged legend row with no dot and no score, rather than silently
-  // riding in on an unearned default. None of this exists until Assess has
-  // produced real per-cell answers (s.isQuick === true until then).
+  // site-wide, not enough for 6 distinct dots). None of this exists until
+  // Assess has produced real per-cell answers (s.isQuick === true until
+  // then).
+  // Round 135 (2026-08-31), redo per direct instruction — this block used
+  // to ALSO build the #stagePositionsList legend, #narrativeText, and the
+  // #reportStages "Stage by stage" breakdown; all three of those elements
+  // were deleted along with #granularScorecard, so that HTML-building code
+  // is removed here too (not left running against nonexistent elements).
+  // #quadStageMarkers itself stays — it's still real, still part of the
+  // Section 2 quadrant plot above — only the dot-creation half of the old
+  // loop survives; the legend-row half is gone with it.
   const stageMarkersEl = document.getElementById('quadStageMarkers');
-  stageMarkersEl.innerHTML = '';
-  if (!s.isQuick){
-    const legendEl = document.getElementById('stagePositionsList');
-    let legendHtml = '';
-    scores.stagePoints.forEach((sp, i) => {
-      const num = i + 1;
-      if (!sp.assessed) {
-        const note = sp.pickedButUnscored
-          ? 'Picked in the Scope Picker item, but no rated product ended up covering any of its layers — not scored, and excluded from Media/CX Strength above.'
-          : 'Not picked in the Scope Picker item — not rated, not scored, and excluded from Media/CX Strength above.';
-        legendHtml += `<div class="stage-pos-row unassessed">
-          <span class="stage-pos-num">${num}</span>
-          <span class="stage-pos-name">${sp.stage}</span>
-          <span class="stage-pos-note">${note}</span>
-        </div>`;
-        return;
-      }
-      const sq = quadrantFor(sp.pct, scores.cxPct);
-      const dot = document.createElement('div');
-      dot.className = 'quad-marker stage-dot';
-      dot.style.left = sp.pct + '%';
-      dot.style.bottom = scores.cxPct + '%';
-      dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% CX Strength — ${sq.name}`;
-      dot.textContent = String(num);
-      stageMarkersEl.appendChild(dot);
-      legendHtml += `<div class="stage-pos-row">
-        <span class="stage-pos-num">${num}</span>
-        <span class="stage-pos-name">${sp.stage}</span>
-        <span class="stage-pos-score">${sp.pct}%</span>
-        <span class="stage-pos-quad">${sq.name}</span>
-      </div>`;
-    });
-    legendEl.innerHTML = legendHtml;
-
-    document.getElementById('narrativeText').textContent =
-      `${state.firstName ? state.firstName + ', h' : 'H'}ere's the truth, illuminated: you're landing in ${q.name}. ` +
-      `Your strongest read is ${scores.best.stage} — ${scores.best.layer}, where ${scores.best.strong.charAt(0).toLowerCase() + scores.best.strong.slice(1)} ` +
-      `Your weakest is ${scores.worst.stage} — ${scores.worst.layer}, and that's the one worth fixing first.`;
-
-    const stagesEl = document.getElementById('reportStages');
-    stagesEl.innerHTML = '';
-    RUBRIC.forEach((stage, sIdx) => {
-      const block = document.createElement('div');
-      block.className = 'stage-block';
-      let rows = '';
-      stage.rows.forEach((row, lIdx) => {
-        const raw = state.answers[`${sIdx}-${lIdx}`] || 1;
-        // Threshold changed from a hardcoded >=3 to >=2.5 (2026-07-21) so this
-        // per-cell Strong/Weak badge agrees with the same 50%-of-range cutoff
-        // computeScores()'s toPct()/quadrantFor() use for the axis-level
-        // percentages — under the old binary 1-or-4 answers this never mattered
-        // (nothing ever landed between them), but real per-product averaging
-        // can now land a cell exactly at the "on par" midpoint (2.5), and that
-        // should read as Strong, not Weak, to match the quadrant math.
-        const isStrong = raw >= 2.5;
-        rows += `<div class="report-row">
-          <div class="layer">${row.layer}</div>
-          <div class="desc">${isStrong ? row.strong : row.weak}</div>
-          <div><span class="badge ${isStrong ? 'strong' : 'weak'}">${isStrong ? 'Strong' : 'Weak'}</span></div>
-        </div>`;
+  if (stageMarkersEl){
+    stageMarkersEl.innerHTML = '';
+    if (!s.isQuick && scores && scores.stagePoints){
+      scores.stagePoints.forEach((sp, i) => {
+        const num = i + 1;
+        if (!sp.assessed) return;
+        const sq = quadrantFor(sp.pct, scores.cxPct);
+        const dot = document.createElement('div');
+        dot.className = 'quad-marker stage-dot';
+        dot.style.left = sp.pct + '%';
+        dot.style.bottom = scores.cxPct + '%';
+        dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% CX Strength — ${sq.name}`;
+        dot.textContent = String(num);
+        stageMarkersEl.appendChild(dot);
       });
-      block.innerHTML = `
-        <div class="stage-head">
-          <h4>${stage.stage} <span style="font-family:'Inter';font-weight:400;font-size:0.9688rem;color:#6B6350;"> — ${stage.sub}</span></h4>
-          <span class="chevron">▸</span>
-        </div>
-        <div class="stage-body">${rows}</div>
-      `;
-      const stageBody = block.querySelector('.stage-body');
-      block.querySelector('.stage-head').addEventListener('click', () => {
-        const nowOpen = block.classList.toggle('open');
-        stageBody.style.maxHeight = nowOpen ? stageBody.scrollHeight + 'px' : '0px';
-      });
-      stagesEl.appendChild(block);
-    });
-    if (stagesEl.firstChild) {
-      stagesEl.firstChild.classList.add('open');
-      const firstBody = stagesEl.firstChild.querySelector('.stage-body');
-      if (firstBody) firstBody.style.maxHeight = firstBody.scrollHeight + 'px';
     }
   }
-  renderReportOpportunity();
   renderAgenticRoleMapping();
 }
 window.addEventListener('resize', () => {
@@ -6793,44 +6797,14 @@ window.addEventListener('resize', () => {
   });
 });
 
-// Opportunity size reuses the exact numbers already computed and shown at
-// the recap step — captured into state.opportunity at the point they were
-// calculated, not recomputed here, so the report can never drift from what
-// the visitor already saw.
-// Round 106 — competitorReasoning() and the report's named-competitor
-// section were removed per direct instruction: named competitors are moving
-// to a "free 1-week trial" concept after account creation (not yet built),
-// not something collected in this free flow anymore.
-function renderReportOpportunity(){
-  const opp = state.opportunity || {};
-  const statsEl = document.getElementById('reportOpportunityStats');
-  let stats = '';
-  if (opp.marketSize != null){
-    stats += `<div class="stat-tile">
-      <span class="stat-label">Total estimated market size</span>
-      <span class="stat-value" style="color:var(--advocacy);">${opp.marketSize.toLocaleString()}</span>
-      <div class="stat-note">${opp.popLabel || ''} × selected generation(s) (${opp.genSharePct}% combined) × selected wealth tier(s) (${opp.wealthSharePct}% combined). Same figure shown in your company profile below — illustrative approximation, not a licensed audience count.</div>
-    </div>`;
-  }
-  if (opp.industryRevenue != null){
-    stats += `<div class="stat-tile">
-      <span class="stat-label">U.S. industry revenue (illustrative)</span>
-      <span class="stat-value">${fmtB(opp.industryRevenue)}</span>
-      <div class="stat-note">Same figure shown in your company profile below — not a live data feed, verify before use.</div>
-    </div>`;
-  }
-  if (opp.local && opp.local.refined != null){
-    stats += `<div class="stat-tile">
-      <span class="stat-label">Refined local opportunity (target audience &amp; wealth)</span>
-      <span class="stat-value">${fmtB(opp.local.refined)}</span>
-      <div class="stat-note">${opp.local.shareIsLive ? 'Grounded in real Census population share.' : 'Illustrative flat share.'} Same figure shown in your company profile below.</div>
-    </div>`;
-  }
-  statsEl.innerHTML = stats || `<div class="recap-note">Opportunity size wasn't calculated this session — refresh this page to generate it.</div>`;
+// 2026-08-31 — renderReportOpportunity() (the old multi-tile
+// #reportOpportunityStats grid) is DELETED. Section 1's glance grid now
+// reads state.opportunity/verilumeWealthIndex()/activeScores() directly,
+// inline in renderFullReport() above — same underlying numbers, no
+// separate function needed since there's only 4 single values to place,
+// not a variable-length stat-tile list.
 
-}
-
-// Round 134 — Section 4's 6 Agentic Team Roles, per direct client
+// Round 134 — Section 3's 6 Agentic Team Roles, per direct client
 // instruction: "always show the key KPIs that AI adds for all... [and] the
 // Agentic Team Role we provide." This is a condensed, DUPLICATED mirror of
 // human-ai-agents.html's SYM_DATA array (~line 697 there) — title/tier and
@@ -6859,47 +6833,61 @@ const AGENTIC_ROLES = [
     ai: 'Drafts a KPI framework and a structured marketing calendar from a campaign brief.' }
 ];
 
-// Round 134 — maps this visitor's REAL, rated products (Step 9;
-// state.productRatings, only for keys in state.assessProducts) onto the 6
-// AGENTIC_ROLES buckets above, so Section 4 can rank roles by actual,
-// measured gap severity instead of a fabricated or fixed order. Reads
-// PRODUCTS/PRODUCT_RATING_VALUE/state.productRatings/state.assessProducts —
-// does not mutate any of them. A bucket with zero rated products gets no
-// score (null) — never fabricated, same "don't fabricate" rule the rest of
-// the scoring pipeline (buildAnswersFromProductRatings()) already follows.
+// Round 135 (2026-08-31), per direct instruction — REPLACES the old Step 9
+// (Assess/deep per-product ratings) based scoring above. Section 3's role
+// grid must now be computed ONLY from the 6 quick-assessment questions
+// every visitor answers on the Marketing Loop step — the 5 RUBRIC
+// stage-effectiveness self-ratings (state.stageEffectiveness) plus the 6th
+// question, CX consistency (state.cxConsistencyRating) — never from the
+// deep per-product Assess ratings (state.productRatings), which most
+// visitors never reach.
+// STAGE_TO_ROLE is Verilume's own reasoned mapping, one stage (or the CX
+// question) to one of the 6 real AGENTIC_ROLES — NOT a researched or
+// client-confirmed 1:1 correspondence, disclosed as such here: Awareness →
+// Performance Marketing (media selects drive top-of-funnel reach);
+// Consideration → Omni-Channel Creative (the creative/content work that
+// keeps a prospect comparing); Purchase → Media Planning & Ops (the
+// handoff/booking/ops machinery that gets the sale across the line);
+// Loyalty → Brand (voice/relationship consistency that keeps a customer);
+// Advocacy → PR (earned-media/referral amplification); CX Consistency →
+// Advanced Analytics (the cross-channel measurement discipline behind a
+// consistent experience). All 6 AGENTIC_ROLES have exactly one mapped
+// input under this scheme, so every role card still gets a real score (or
+// an honest "not yet self-rated" when that one input is missing) — nothing
+// is fabricated, same "don't fabricate" rule the rest of this file follows.
+const STAGE_TO_ROLE = {
+  Awareness: 'Performance Marketing',
+  Consideration: 'Omni-Channel Creative',
+  Purchase: 'Media Planning & Ops',
+  Loyalty: 'Brand',
+  Advocacy: 'PR'
+};
+const CX_CONSISTENCY_ROLE = 'Advanced Analytics';
+
 function computeFunctionGroupScores(){
-  const buckets = {}; // role title -> array of numeric ratings
-  PRODUCTS.forEach(p => {
-    if (!state.assessProducts.has(p.key)) return;
-    const rating = state.productRatings[p.key];
-    if (rating == null) return;
-    const val = PRODUCT_RATING_VALUE[rating];
-    if (val == null) return;
-    // The 4 omni-* products (omni-print/omni-digital/omni-video/omni-dam-mam)
-    // are tagged functionGroup: "Brand" in PRODUCTS, but their own
-    // `category` field already reads "Omni-Channel Creative" — one of the 6
-    // real agentic roles verilume.ai/human-ai-agents.html actually offers.
-    // Using `category` for just these 4 keeps them out of the Brand bucket
-    // and avoids inventing a 7th product tag that exists nowhere else in
-    // the codebase.
-    const bucket = p.category === 'Omni-Channel Creative' ? 'Omni-Channel Creative' : p.functionGroup;
-    if (!bucket) return;
-    (buckets[bucket] = buckets[bucket] || []).push(val);
+  const scores = {}; // role title -> raw 1-5 self-rating, or null if unrated
+  RUBRIC.forEach(r => {
+    const role = STAGE_TO_ROLE[r.stage];
+    if (!role) return;
+    const v = Number(state.stageEffectiveness?.[r.stage]);
+    scores[role] = v > 0 ? v : null;
   });
-  const scores = {};
-  Object.keys(buckets).forEach(k => {
-    const arr = buckets[k];
-    scores[k] = arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-  });
+  const cx = Number(state.cxConsistencyRating);
+  scores[CX_CONSISTENCY_ROLE] = cx > 0 ? cx : null;
   return scores;
 }
 
-// Round 134 — renders Section 4's role-card grid: the 6 AGENTIC_ROLES,
-// always all 6, ranked weakest/least-covered first (a role with no rated
-// products at all is treated as the biggest visible gap and sorts first,
-// ahead of any real-but-low numeric average) so the report visually
-// prioritizes the real gap Verilume's team can close, without ever hiding
-// a role that simply wasn't assessed this session.
+// Round 134 — renders Section 3's role-card grid: the 6 AGENTIC_ROLES,
+// always all 6, ranked weakest/least-covered first (a role with no rating
+// behind it at all is treated as the biggest visible gap and sorts first,
+// ahead of any real-but-low rating) so the report visually prioritizes the
+// real gap Verilume's team can close, without ever hiding a role that
+// simply wasn't rated this session.
+// Round 135 — score display changed from "average X.X/4" (the old
+// per-product PRODUCT_RATING_VALUE scale) to the 1-5 self-rating scale
+// computeFunctionGroupScores() now returns, reusing the same
+// STAGE_EFF_LABEL wording (renderReportSynthesis() above) so a visitor
+// sees the identical label for the identical rating wherever it appears.
 function renderAgenticRoleMapping(){
   const gridEl = document.getElementById('agenticRoleGrid');
   if (!gridEl) return;
@@ -6914,8 +6902,8 @@ function renderAgenticRoleMapping(){
     });
   gridEl.innerHTML = ranked.map(({ role, score }) => {
     const scoreHtml = score != null
-      ? `<div class="role-score">Your rated products here average ${score.toFixed(1)}/4</div>`
-      : `<div class="role-score role-score-none">Not yet assessed in this function</div>`;
+      ? `<div class="role-score">Self-rated: "${STAGE_EFF_LABEL[score] || score}" (${score}/5)</div>`
+      : `<div class="role-score role-score-none">Not yet self-rated</div>`;
     return `<div class="role-card">
       <div class="role-card-head">
         <h4>${role.title}</h4>
@@ -6926,87 +6914,6 @@ function renderAgenticRoleMapping(){
       <p class="role-ai"><b>Verilume AI:</b> ${role.ai}</p>
     </div>`;
   }).join('');
-}
-
-// Round 122 — reads activeScores() so this works both right after
-// registration (coarse estimate) and after Assess (real, per-cell scores);
-// the per-stage position list and per-cell strong/weak breakdown only exist
-// once real scores do, same "don't fabricate detail nobody rated" rule
-// renderFullReport() follows.
-function reportText(){
-  const s = activeScores();
-  const q = quadrantFor(s.mediaPct, s.cxPct);
-  const industry = industryOf();
-  let out = `Verilume — Scorecard\n`;
-  out += `Company: ${state.company}   URL: ${state.url}\n`;
-  out += `Contact: ${state.firstName} ${state.lastName} <${state.email}> ${state.phoneCountry} ${state.phone}\n`;
-  out += `Consent to contact: ${state.consent ? 'Yes' : 'No'}\n`;
-  out += `Industry: ${industry.label || ''} (NAICS ${industry.naics || '—'} / SIC ${industry.sic || '—'})\n`;
-  out += `Business model: ${state.buyerType || '—'}\n`;
-  out += `Target audience: ${audienceLabels().join(', ') || '—'}\n`;
-  out += `Target wealth tier: ${wealthLabels().join(', ') || '—'}\n`;
-  out += `Footprint: ${state.region}\n`;
-  out += `Address (user-entered, live-geocoded via Census Geocoder): ${state.address || '—'}${state.geo && state.geo.ok ? ` — ${state.geo.countyName}${state.geo.cbsaName ? ', ' + state.geo.cbsaName : ''}` : ''}\n`;
-  out += `Quadrant: ${q.name}${s.isQuick ? ' (starting estimate — based on self-rated maturity, not yet refined)' : ' (measured — refined from function-by-function ratings)'}\n`;
-  out += `Media Strength: ${s.mediaPct}%   CX Strength: ${s.cxPct}%\n`;
-  // Round 34, direct instruction — score and quadrant position per stage in
-  // the downloadable summary too, same data the report screen shows. Only
-  // meaningful once Assess has run (s.isQuick is false by then).
-  if (!s.isQuick){
-    out += `SCORE & POSITION, BY STAGE\n`;
-    scores.stagePoints.forEach(sp => {
-      if (!sp.assessed) {
-        out += sp.pickedButUnscored
-          ? `  ${sp.stage}: picked in the Scope Picker item, but no rated product covered any of its layers — not scored\n`
-          : `  ${sp.stage}: not picked in the Scope Picker item — not rated, not scored\n`;
-        return;
-      }
-      const sq = quadrantFor(sp.pct, scores.cxPct);
-      out += `  ${sp.stage}: ${sp.pct}% — ${sq.name}\n`;
-    });
-  } else {
-    out += `SCORE & POSITION, BY STAGE\n  Not yet refined — complete "Enhance your profile" on the report page for a per-stage breakdown.\n`;
-  }
-  out += `\n`;
-  const opp = state.opportunity || {};
-  out += `OPPORTUNITY SIZE\n`;
-  if (opp.marketSize != null) out += `  Total estimated market size: ${opp.marketSize.toLocaleString()} (${opp.popLabel || ''} x selected generation(s) ${opp.genSharePct}% x selected wealth tier(s) ${opp.wealthSharePct}% — illustrative approximation)\n`;
-  if (opp.industryRevenue != null) out += `  U.S. industry revenue (illustrative): ${fmtB(opp.industryRevenue)}\n`;
-  if (opp.local && opp.local.refined != null) out += `  Refined local opportunity (target audience & wealth): ${fmtB(opp.local.refined)}${opp.local.shareIsLive ? ' (real Census population share)' : ' (illustrative flat share)'}\n`;
-  if (opp.marketSize == null && opp.industryRevenue == null) out += `  Not calculated this session — revisit the Company Profile item.\n`;
-  out += `\n`;
-  if (!s.isQuick){
-    RUBRIC.forEach((stage, sIdx) => {
-      out += `${stage.stage.toUpperCase()}\n`;
-      stage.rows.forEach((row, lIdx) => {
-        const raw = state.answers[`${sIdx}-${lIdx}`] || 1;
-        const isStrong = raw >= 3;
-        out += `  [${isStrong ? 'STRONG' : 'WEAK'}] ${row.layer}: ${isStrong ? row.strong : row.weak}\n`;
-      });
-      out += `\n`;
-    });
-  }
-  out += `Generated by the Verilume free assessment.\n`;
-  return out;
-}
-
-function downloadReport(){
-  const blob = new Blob([reportText()], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'verilume-scorecard.txt';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function copyReport(){
-  navigator.clipboard.writeText(reportText()).then(() => {
-    const btn = event.target;
-    const original = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => btn.textContent = original, 1600);
-  });
 }
 </script>
 <script>
