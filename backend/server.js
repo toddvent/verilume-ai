@@ -3331,6 +3331,18 @@ createTableIfNeeded(`
     FOREIGN KEY (uploadedFileId) REFERENCES uploaded_files(id)
   );
 `);
+// Round 141 (2026-08-31), per direct instruction: Sample Writings needs an
+// admin-only "flag as an error" control, soft-remove rather than a hard
+// delete — a client account admin should be able to exclude a bad sample
+// from ever feeding AI generation again, while keeping the record (who
+// flagged it, when, why) rather than losing it outright. This is
+// deliberately NOT the same thing as the existing DELETE endpoint below
+// (unchanged, ungated, still a real permanent removal) — exclude is the
+// new, reversible, audited action; delete stays as it was.
+ensureColumn('brand_writing_samples', 'excluded', 'INTEGER DEFAULT 0');
+ensureColumn('brand_writing_samples', 'excludedAt', 'TEXT');
+ensureColumn('brand_writing_samples', 'excludedBy', 'TEXT');
+ensureColumn('brand_writing_samples', 'excludedReason', 'TEXT');
 
 // ---------- Brand Copy Website Examples (2026-08-25) ----------
 // Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
@@ -7174,34 +7186,64 @@ function extractBrandGuideFields(text){
 
   return out;
 }
-// brandWritingSampleContext() — the actual prompt-context builder. Scoped to
-// the two categories closest to real customer-facing/persuasive writing
-// (consumer_marketing, sales) rather than every category (standard
-// presentation templates and PR materials are a different register and
-// would blur the "match this brand's actual persuasive voice" signal this
-// is meant to give). Caps at 2 real excerpts, most-recent-by-date first —
-// enough to be a genuine few-shot reference without ballooning the prompt.
-// Never fabricates a section when nothing extracts cleanly: returns '' (the
-// same honest-empty-context convention every other optional prompt section
-// in this file already follows), so a request with no usable samples reads
+// brandWritingSampleContext() — the actual prompt-context builder. Text
+// samples are scoped to the two categories closest to real customer-facing/
+// persuasive writing (consumer_marketing, sales) rather than every category
+// (standard presentation templates and PR materials are a different
+// register and would blur the "match this brand's actual persuasive voice"
+// signal this is meant to give). Caps at 2 real excerpts, most-recent-by-
+// date first, across both sources combined — enough to be a genuine
+// few-shot reference without ballooning the prompt. Never fabricates a
+// section when nothing extracts cleanly: returns '' (the same honest-
+// empty-context convention every other optional prompt section in this
+// file already follows), so a request with no usable samples reads
 // identically to how it did before this feature existed.
+//
+// Round 141 follow-up (2026-08-31), per direct instruction ("Videos should
+// impact outputs") — video-analysis samples (sourceType 'video_analysis',
+// round 140) now feed this too. They're deliberately NOT restricted to the
+// consumer_marketing/sales categories the way text samples are: a video
+// sample almost always saves under the 'video_script' category (see
+// BRAND_WRITING_SAMPLE_CATEGORIES), and gating it on the text-only category
+// list would have silently excluded every video ever uploaded. The
+// analysis text itself (from analyzeVideoSample()) is already scoped to
+// visuals + on-screen text only, with its own anti-fabrication instruction
+// baked in at generation time — this function doesn't need to re-derive
+// that, just label the block honestly as a video analysis so a reader (or
+// a future prompt) doesn't mistake it for a literal writing sample.
 async function brandWritingSampleContext(accountId){
   try {
+    // (excluded IS NULL OR excluded = 0) is the enforcement point for the
+    // admin "flag as an error" control (round 141): a sample an admin has
+    // excluded is skipped here even though it still exists in the library
+    // (see the GET endpoint below, which still returns it so the admin
+    // panel can show/restore it) — this is the one place that actually
+    // decides what reaches a generation prompt.
     const samples = db.prepare(
-      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND category IN ('consumer_marketing', 'sales') AND uploadedFileId IS NOT NULL ORDER BY docDate DESC, createdAt DESC`
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND (excluded IS NULL OR excluded = 0)
+       AND ((category IN ('consumer_marketing', 'sales') AND uploadedFileId IS NOT NULL) OR sourceType = 'video_analysis')
+       ORDER BY docDate DESC, createdAt DESC`
     ).all(accountId);
     if (!samples.length) return '';
+    const categoryLabel = (id) => (BRAND_WRITING_SAMPLE_CATEGORIES.find(c => c.id === id) || {}).label || id;
     const blocks = [];
     for (const sample of samples){
       if (blocks.length >= 2) break;
+      if (sample.sourceType === 'video_analysis'){
+        const text = (sample.notes || '').trim();
+        if (text){
+          blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate} — AI analysis of an uploaded video's VISUALS and on-screen text only, not audio/spoken content; the video itself was not retained) ---\n${text.replace(/\s+/g, ' ').slice(0, 900)}`);
+        }
+        continue;
+      }
       const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
       const text = await extractSampleText(file);
       if (text && text.trim()){
-        blocks.push(`--- "${sample.title}" (${sample.category === 'sales' ? 'Sales' : 'Consumer Marketing'}, ${sample.docDate}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+        blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
       }
     }
     if (!blocks.length) return '';
-    return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
+    return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing and video visuals — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
@@ -13439,6 +13481,36 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { samples, categories: BRAND_WRITING_SAMPLE_CATEGORIES });
     }
 
+    // PATCH /api/accounts/:id/brand-writing-samples/:sampleId/exclude
+    // (round 141) — the admin-only "flag as an error" control. Body:
+    // { excluded: true|false, reason (optional, only meaningful when
+    // excluding), excludedBy (display name, same uploadedBy-style
+    // convention as every other "who did this" field in this file — not
+    // resolved server-side from the session, since team member display
+    // names live client-side in state.userName). requireAdminMember (the
+    // same gate PATCH /api/team/:id uses for isAdmin changes) — a
+    // non-admin team member can still see the library, but only an
+    // account admin can decide something is bad enough to stop it from
+    // feeding future generations. This is a SOFT remove: the row stays,
+    // excluded=1 just takes it out of brandWritingSampleContext()'s query
+    // above. Restoring (excluded: false) is the same endpoint, symmetric.
+    if (req.method === 'PATCH' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-samples' && parts[5] === 'exclude'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const sampleId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM brand_writing_samples WHERE id = ? AND accountId = ?').get(sampleId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'brand writing sample not found' });
+      const body = await readBody(req);
+      const excluded = body.excluded ? 1 : 0;
+      const now = new Date().toISOString();
+      const excludedAt = excluded ? now : null;
+      const excludedBy = excluded ? ((body.excludedBy || '').trim() || null) : null;
+      const excludedReason = excluded ? ((body.reason || '').trim() || null) : null;
+      db.prepare('UPDATE brand_writing_samples SET excluded = ?, excludedAt = ?, excludedBy = ?, excludedReason = ? WHERE id = ?')
+        .run(excluded, excludedAt, excludedBy, excludedReason, sampleId);
+      return sendJson(res, 200, { id: sampleId, excluded: !!excluded, excludedAt, excludedBy, excludedReason });
+    }
+
     // DELETE /api/accounts/:id/brand-writing-samples/:sampleId
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-samples'){
       const accountId = decodeURIComponent(parts[2]);
@@ -15353,5 +15425,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
-
