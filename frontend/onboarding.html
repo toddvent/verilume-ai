@@ -743,15 +743,22 @@ function regionCode(region){
 // POST /api/accounts endpoint and response shape assessment.html's
 // activateInPortal() already uses, just with an empty cells[] (this flow
 // never ran the assessment instrument, so there are no scorecard cells to
-// send; company/footprint/audience/wealth/competitors/assessedStages are
-// exactly the same fields that function sends, just blank where this flow
-// simply never collected them). No fabricated cell scores are invented to
-// fill that gap.
+// send; company/footprint/audience/wealth/assessedStages are exactly the
+// same fields that function sends, just blank where this flow simply never
+// collected them). No fabricated cell scores are invented to fill that gap.
 // 2026-08-19 fix — when this session arrived via assessment.html's handoff
 // link (state.assessmentHandoff), send what the assessment actually
 // learned instead of the blanks this used to send unconditionally, so an
 // account that just came from a completed free assessment isn't
 // provisioned as if none of that happened.
+// 2026-08-29 — competitors is deliberately NOT sent here. Round 106 removed
+// the assessment's competitors field entirely, so h.competitors was always
+// an empty array anyway (dead pass-through) — cleaned up rather than left
+// as stale wiring. Direct competitors are entered later, in the Portal's
+// Brand Foundations → Competitive Positioning panel; the backend's
+// POST /api/accounts still accepts a `competitors` array generically (see
+// its own comment) for that or any future path, it just isn't populated
+// from onboarding/assessment anymore.
 async function createRealAccount(){
   const h = state.assessmentHandoff;
   const resp = await fetch(`${BACKEND_URL}/api/accounts`, {
@@ -766,7 +773,6 @@ async function createRealAccount(){
       productThemes: (h && h.productThemes) || '',
       audience: (h && h.audience) || [],
       wealth: (h && h.wealth) || [],
-      competitors: (h && h.competitors) || [],
       assessedStages: (h && h.assessedStages) || [],
       cells: (h && h.cells) || [],
       tier: state.tier || undefined

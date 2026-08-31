@@ -525,6 +525,13 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
         live 404 response body, not by any monitoring. A vendor deprecating a
         model silently degrades that panel candidate until someone notices.</p>
       </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Corporate Comms' audience field is still free text</div>
+        <p>Press Releases now have a controlled <code>audience</code> taxonomy
+        (Consumer / Business &amp; Trade Network). Corporate Comms kept its
+        original free-text <code>audience</code> field, unchanged — worth
+        unifying if Corporate Comms is ever audited the same way.</p>
+      </div>
     </section>
 
     <section id="log">
@@ -538,6 +545,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td class="mono">2026-08-27</td><td>"All contests... needs to have the same structure... or we can't scale the data."</td><td>Consolidated two hand-wired calls per endpoint into one recordContestResult()</td></tr>
             <tr><td class="mono">2026-08-27</td><td>"How does continuous learning happen if is not considering the client data... captured through the various contests."</td><td>Closed priority-model gap for all 4 types + shipped GET /api/ops/contest-rankings</td></tr>
             <tr><td class="mono">2026-08-27</td><td>"Copywriting is the product... one format for all product groups... a home page that links to product details."</td><td>This document + verilume-product-docs.html home page, built on the Registration &amp; Account Management template</td></tr>
+            <tr><td class="mono">2026-08-29</td><td>"Did we compare X to our capabilities" led to a PR checklist audit — Todd's PR contact's own framework (The News/The Experience/The Details/The Next Step), release-type coverage, and audience targeting, checked against the real generation code.</td><td>Found and fixed 4 prompts hardcoded to "a luxury travel brand" regardless of the account's actual industry (<code>industryPersonaPhrase()</code> now reads <code>account.industry</code>); added a <code>releaseType</code> taxonomy (Product Launch/Enhancement, Earnings Announcement, Strategic Partnership, Charity/Person Partnership, Significant Hire/Departure) and an <code>audience</code> field (Consumer / Business &amp; Trade) to <code>press_releases</code>, each with type/audience-specific prompt guidance; restructured the press release format into the 4 named parts; wired the account's saved legal-boilerplate library (<code>contentLibraryJson.legalDisclaimer</code>) into Earnings Announcement generation as required-verbatim text, never AI-paraphrased</td></tr>
+            <tr><td class="mono">2026-08-29</td><td>"Some fields may require us to use exact copy vs direction for inspiration... how to book includes a specific process statement" — plus "we should include a LinkedIn copy example."</td><td>Added a per-field <code>ctaText</code>/<code>ctaMode</code> control (exact / inspiration / both) for the press release's Next-Step/CTA text, prompted accordingly; added a LinkedIn derivative (<code>linkedinCopy</code>, <code>POST .../generate-linkedin</code>) that rewrites the release's own approved copy for LinkedIn's format, same master/derivative pattern as Social Content Batch</td></tr>
+            <tr><td class="mono">2026-08-29</td><td>"Let's go ahead complete the gaps and republish the consolidated update" — closing the "set-once at creation" gap logged above.</td><td>Added edit controls (release type, audience, CTA text, CTA mode) directly on an existing Press Release's expanded editor in the Portal, wired to the same PATCH endpoint the create form already used. No backend change was needed — the API already validated and persisted all four fields on update; only the front end was missing the control. Verified live against the real dev DB: created a release, PATCHed all four fields, confirmed they persisted, and confirmed the existing ctaMode validation still rejects a bad value.</td></tr>
           </tbody>
         </table>
       </div>
@@ -556,7 +566,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
 
     <div class="foot">
       Verilume — Internal Product Documentation. Reflects the state of
-      <code>backend/server.js</code> as verified on 2026-08-27. Update this
+      <code>backend/server.js</code> as verified on 2026-08-29. Update this
       document as the Product changes — it's meant to be the living reference,
       not a point-in-time snapshot.
     </div>

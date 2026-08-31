@@ -3094,12 +3094,6 @@ let state = {
   // see KNOWN_BRAND_OVERVIEWS' own comment and renderRecapProductThemes()/
   // updateRecapProductThemes() below.
   productThemes: '',
-  // Round 106 — the on-page competitors field was removed per direct
-  // instruction (moving to a post-account-creation "free 1-week trial"
-  // concept, not yet built); state.competitors stays as an always-empty
-  // array so downstream reads (reportText(), the CRM payload) don't need
-  // null-checks, but nothing on this page writes to it anymore.
-  competitors: [],
   buyerType: 'B2C', // B2B | B2C — no longer picked on screen (2026-07-20): Verilume
                      // is B2C-only for now, so this defaults to 'B2C' and the Step 1 tile
                      // group that used to set it was removed. The backend branching that
@@ -3768,7 +3762,7 @@ function finishLoopStep(){
 }
 
 document.getElementById('restartBtn').addEventListener('click', () => {
-  state = { company:'', url:'', industryIdx:'', description:'', productThemes:'', competitors:[], buyerType:'B2C', audience:new Set(), wealth:new Set(), region:null, address:'', geo:null, censusNational:null, censusLocal:null, cbpNational:null, cbpLocal:null, firstName:'', lastName:'', email:'', phoneCountry:'+1', phone:'', consent:false, assessStages:new Set(), assessProducts:new Set(), productRatings:{}, answers:{}, opportunity:null, revenueLevel:2, orgStyle:null, orgChartId:null, stageEffectiveness:{}, cxConsistencyRating:0, fnGroupRatings:{} };
+  state = { company:'', url:'', industryIdx:'', description:'', productThemes:'', buyerType:'B2C', audience:new Set(), wealth:new Set(), region:null, address:'', geo:null, censusNational:null, censusLocal:null, cbpNational:null, cbpLocal:null, firstName:'', lastName:'', email:'', phoneCountry:'+1', phone:'', consent:false, assessStages:new Set(), assessProducts:new Set(), productRatings:{}, answers:{}, opportunity:null, revenueLevel:2, orgStyle:null, orgChartId:null, stageEffectiveness:{}, cxConsistencyRating:0, fnGroupRatings:{} };
   document.querySelectorAll('#orgStyleChips .select-tile').forEach(c => c.classList.remove('selected'));
   document.getElementById('orgChartGrid').innerHTML = '';
   document.getElementById('orgChartSection').style.display = 'none';
@@ -5939,13 +5933,13 @@ function buildScorecardPayload(){
     // reads these back, so they need to travel in this same payload.
     audience: [...state.audience],
     wealth: [...state.wealth],
-    // Round 25, point c — Step 1's "Top 3 U.S. competitors" field (real
-    // names, user-typed, never invented) now travels to the Portal the same
-    // way audience/wealth do — it was being collected and used in this
-    // report (see competitorReasoning()) but never sent to the backend, so
-    // a saved account's Direct Competitors list (Brand Foundations →
-    // Competitive Positioning) started blank even when named here.
-    competitors: (state.competitors || []).map(c => (c || '').trim()).filter(Boolean),
+    // 2026-08-29 — competitors is intentionally NOT part of this payload.
+    // Round 25 once carried a Step 1 "Top 3 U.S. competitors" field here,
+    // but Round 106 removed that field from the assessment (see the removed
+    // competitorReasoning() below); direct competitors are entered later,
+    // in the Portal's Brand Foundations → Competitive Positioning panel,
+    // not collected in this free flow. Sending an always-empty array here
+    // was dead weight — cleaned up rather than left as a stale no-op.
     // Round 34 — which Media Loop stages this session actually picked in
     // Step 3 (state.assessStages), so the Portal's quadrant can flag a
     // stage that was never assessed instead of silently scoring it (see
@@ -5978,7 +5972,8 @@ const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.
 // (same shape buildScorecardPayload() already produces, the "activate in
 // the Portal" flow used to hand to portal.html before that button was
 // rewired to real registration above) so onboarding.html can prefill
-// company/industry/description/productThemes/audience/wealth/competitors
+// company/industry/description/productThemes/audience/wealth (competitors
+// is not part of this payload — see buildScorecardPayload()'s own comment)
 // and (when available) the visitor's own name/email from the contact step
 // — see onboarding.html's own handoff-reading code for the other half of
 // this fix.

@@ -414,6 +414,13 @@
   .news-item .mark-read-btn:hover{border-color:var(--cx);color:var(--cx);}
   .news-item.is-read .mark-read-btn{border-color:var(--line);color:var(--muted);cursor:default;}
   .news-item.is-read .mark-read-btn:hover{color:var(--muted);}
+  /* 2026-08-29 — curated news split into 3 categories (AI & Marketing,
+     Industry News, Client Competitors); .news-group wraps each section
+     within .news-list, .news-item's existing :first-child rule then
+     naturally drops the border on each group's first row too. */
+  .news-group{margin-bottom:6px;}
+  .news-group-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-top:18px;padding-top:14px;border-top:1px solid var(--line);}
+  .news-group:first-child .news-group-title{margin-top:0;padding-top:0;border-top:none;}
 
   .task-chip-row{display:flex;flex-wrap:wrap;gap:10px;}
   .task-chip{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:0.8438rem;padding:13px 20px;border-radius:30px;border:1.5px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;transition:border-color 0.15s ease,transform 0.15s ease;}
@@ -3205,7 +3212,34 @@
       <p class="seo-section-sub">Drafting stays here; a distributed release has already gone out through the wire/distribution service.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcPressNewTitle" placeholder="Press release title" style="flex:1;min-width:200px;">
+        <select id="prcPressNewType" style="min-width:180px;">
+          <option value="">Release type…</option>
+          <option value="product_launch">Product Launch / Enhancement</option>
+          <option value="earnings">Earnings Announcement</option>
+          <option value="partnership">Strategic Partnership</option>
+          <option value="charity_or_person">Charity / Person Partnership</option>
+          <option value="hire_or_departure">Significant Hire / Departure</option>
+        </select>
+        <select id="prcPressNewAudience" style="min-width:170px;">
+          <option value="">Audience…</option>
+          <option value="consumer">Consumer</option>
+          <option value="business">Business / Trade Network</option>
+        </select>
         <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
+      </div>
+      <!-- 2026-08-29, per direct report: "how to book includes a specific
+           process statement... use exact copy vs direction for
+           inspiration." A supplied Next-Step/CTA text needs its own
+           handling mode, separate from the free-text Key Facts field —
+           see PRESS_RELEASE_CTA_MODES (server.js). Optional at creation;
+           feeds the AI draft's THE NEXT STEP section once set. -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <input type="text" id="prcPressNewCtaText" placeholder="Optional: exact Next Step / how-to-book text" style="flex:1;min-width:260px;">
+        <select id="prcPressNewCtaMode" style="min-width:230px;">
+          <option value="inspiration">Use for inspiration</option>
+          <option value="exact">Use exact copy</option>
+          <option value="both">Both — exact copy, framed for creativity</option>
+        </select>
       </div>
       <div id="prcpressNewStatus" class="hint" style="margin-bottom:8px;"></div>
       <div class="seo-card-list" id="repPressList"></div>
@@ -4224,7 +4258,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / Sample Writings &amp; Presentations</div>
     <div class="eyebrow">Brand Groundwork · Brand Book · Sample Writings &amp; Presentations</div>
     <h1>Sample Writings &amp; Presentations</h1>
-    <p class="lede">Reference library of real writing and presentation samples for this brand — always categorized by purpose and date, so every Campaign/Project can pull the right precedent instead of guessing which file is current. Files (Word, PDF, PowerPoint) route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload before they're stored. Google Docs and Google Slides aren't files this prototype can fetch, so those go in as a labeled reference link instead.</p>
+    <p class="lede">Reference library of real writing and presentation samples for this brand — always categorized by purpose and date, so every Campaign/Project can pull the right precedent instead of guessing which file is current. Files (Word, PDF, PowerPoint) route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload before they're stored. Google Docs and Google Slides aren't files this prototype can fetch, so those go in as a labeled reference link instead. A short video (up to :30 seconds) can also be analyzed for visual style and on-screen text — see Option C below; the video itself is never stored, only the written analysis.</p>
 
     <div class="module open accent-media" id="bwsUploadModule">
       <div class="module-head" onclick="toggleModule('bwsUploadModule')">
@@ -4307,9 +4341,55 @@
       </div>
     </div>
 
+    <div class="module accent-cx" id="bwsVideoModule">
+      <div class="module-head" onclick="toggleModule('bwsVideoModule')">
+        <span class="modnum">C</span>
+        <div class="titles">
+          <span class="tag">Option C</span>
+          <h2>Upload a short video for tone analysis</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p>Clips up to :30 seconds (or about 25MB, whichever is checked first) are analyzed for visual style and any on-screen text only — audio/voice delivery isn't analyzed here. The video itself is never stored: it's processed in memory, analyzed, and discarded — only the written analysis below is saved as a sample, under the Video Script category.</p>
+        <div class="btn-row">
+          <label class="btn-ghost" for="bwsVideoInput" style="cursor:pointer;">Choose Video</label>
+          <span id="bwsVideoChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
+        </div>
+        <input type="file" id="bwsVideoInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onchange="bwsHandleVideoFile(event)" style="display:none;">
+        <div class="hint" id="bwsVideoStatus" style="margin-top:8px;"></div>
+        <div id="bwsVideoAnalyzeRow" class="btn-row" style="margin-top:10px;display:none;">
+          <button class="btn-primary" onclick="bwsAnalyzeVideo()">Analyze video</button>
+        </div>
+        <div id="bwsVideoResultBlock" style="display:none;margin-top:14px;">
+          <div class="field">
+            <label>Title</label>
+            <input type="text" id="bwsVideoTitle" placeholder="e.g. Spring Campaign Teaser">
+          </div>
+          <div class="field-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div class="field" style="flex:1;min-width:220px;">
+              <label>Purpose</label>
+              <select id="bwsVideoCategory"></select>
+            </div>
+            <div class="field" style="flex:1;min-width:180px;">
+              <label>Date</label>
+              <input type="date" id="bwsVideoDate">
+            </div>
+          </div>
+          <div class="field">
+            <label>AI analysis (edit before saving if needed)</label>
+            <textarea id="bwsVideoAnalysisText" rows="4"></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="bwsSaveVideoAnalysis()">Save analysis as a sample</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="module open" id="bwsLibraryModule">
       <div class="module-head" onclick="toggleModule('bwsLibraryModule')">
-        <span class="modnum">C</span>
+        <span class="modnum">D</span>
         <div class="titles">
           <span class="tag">Library</span>
           <h2>Saved samples</h2>
@@ -4513,7 +4593,7 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <p>Built directly from the Direct Competitors named above — how each one positions itself, and the specific differentiation angle this account has against them. Feeds directly into campaign planning and messaging, not a general-purpose competitor list.</p>
+        <p>Built directly from the Direct Competitors named above — how each one positions itself, and the specific differentiation angle this account has against them. Feeds directly into campaign planning and messaging, not a general-purpose competitor list. One named competitor gets its own detailed brief; two or more also get a side-by-side positioning table; none named shows this account's own positioning instead. On a paid plan, "Worth watching" items also refresh continuously — see the Daily Brief tab for the same monitoring, plus the Client Competitors curated news category.</p>
         <div id="ctBattleBriefList" class="seo-card-list"></div>
       </div>
     </div>
@@ -8585,6 +8665,16 @@ const state = {
   // industry (state.industry), not a real company database lookup (this
   // prototype has none — see cxmedia-brand-foundations-plan.md).
   positioning: { industryTrendsText: '', competitors: [], approved: false }, // 2026-08-26 — see voice.approved comment above
+  // 2026-08-29 — continuous competitor monitoring + generative Daily
+  // Brief (accounts.accountIntelligenceJson on the backend), per direct
+  // instruction: "continuously monitor defined competitors per paid
+  // client... via the main dashboard['s] generative daily brief... and
+  // curated news logic." `data` is null until loadAccountIntelligence()
+  // (or a manual Refresh) succeeds; `paidTier` gates the Refresh button —
+  // see loadAccountIntelligence()/refreshAccountIntelligence() and
+  // renderGenerativeBrief()/renderDailyNews() for how this actually
+  // renders.
+  accountIntelligence: { data: null, generatedAt: null, paidTier: false, loading: false, refreshing: false, statusMessage: '' },
   // Round 132bx (2026-08-15) — Specialty Partners activation requests,
   // session-only (no backend persistence for this prototype, same
   // convention as most of this build's session-only state). Each entry:
@@ -8843,7 +8933,7 @@ const FUNCTION_GROUPS = [
     // Round 131 — Logo and Presentation Templates, from WORKSTREAMS.xlsx's
     // Brand Style column; net new, not previously part of this group.
     { name: 'Style Guide — Logo', tier: 'integration', built: false, note: 'Logo files and usage rules — not a generative task.' },
-    { name: 'Sample Writings & Presentations', tier: 'integration', built: true, route: 'brandWritingSamples', note: 'Managed under Brand Groundwork (Dashboard) — upload real writing/presentation samples (Word, PDF, PowerPoint) or link a Google Doc/Slides, always categorized by purpose (Standard Presentation Template, Sales, PR, Consumer Marketing) and date. Reference storage, not a generative task — files route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload.' },
+    { name: 'Sample Writings & Presentations', tier: 'integration', built: true, route: 'brandWritingSamples', note: 'Managed under Brand Groundwork (Dashboard) — upload real writing/presentation samples (Word, PDF, PowerPoint) or link a Google Doc/Slides, always categorized by purpose (Standard Presentation Template, Sales, PR, Consumer Marketing, Video Script) and date. Reference storage, not a generative task — files route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload. A short video (up to :30s / ~25MB) can also be analyzed for visual style and on-screen text — the video itself is never stored, only the AI-generated analysis text.' },
     { name: 'Website Examples', tier: 'integration', built: true, route: 'websiteExamples', note: 'Managed under Brand Groundwork (Dashboard) — include/exclude real pages, directories, or your entire site (resolved via sitemap.xml) as copy examples for the copywriter. Up to 5 directory/site entries and 20 page entries, counted together across includes and excludes.' },
     { name: 'Creative — Print / Digital / Video / DAM-MAM', tier: 'hybrid', note: 'A creative brief per format is prompt-ready; the finished asset is not.' },
     { name: 'Messaging — Ad Copy, Email, Brochures, Training Guides, SEO/GEO/AEO, Video script', tier: 'ready', built: false },
@@ -14286,14 +14376,70 @@ function renderBrandFoundationsModule(){
 // not mock vs. live automation. A genuine live news pull would need a real
 // news API/connector (none installed for this account) — flagged as a
 // separate, later decision, not assumed here.
+// 2026-08-29 — `category` added to each item ('ai_marketing' |
+// 'industry_news'), per direct instruction that curated news should cover
+// "AI-Marketing, Industry News, or client's competitors." These 5 stay
+// real, hand-curated, linkable headlines — n1/n2 are travel/hospitality-
+// specific (Industry News), n3-n5 are broader marketing/AI/CMO trend
+// coverage (AI & Marketing). The third category, 'client_competitors', is
+// NOT a static list — it's generated per account from this account's own
+// named Direct Competitors (see curatedNewsCompetitorItems() below), since
+// unlike these two it has to vary account to account and can't be
+// hand-picked once for everyone.
 const DAILY_NEWS_ITEMS = [
-  { id: 'n1', title: 'Minor Hotels Builds AI Stack From Scratch To Improve Personalization', meta: 'Skift · Apr 2026', url: 'https://skift.com/2026/04/09/minor-hotels-ai-stack-personalisation/' },
-  { id: 'n2', title: 'Hotels Are Losing Travelers’ Discovery Window — And Scrambling to Get It Back', meta: 'Skift · Mar 2026', url: 'https://skift.com/2026/03/26/hilton-marriott-tui-minor-kempinski-ai-social-media-travelers/' },
-  { id: 'n3', title: 'CMOs Face a “Reputation and Results” Reckoning According to NIQ’s 2026 Outlook', meta: 'NIQ / Businesswire · Nov 2025', url: 'https://www.businesswire.com/news/home/20251118947080/en/CMOs-Face-a-%E2%80%98Reputation-and-Results%E2%80%99-Reckoning-According-to-NIQ%E2%80%99s-2026-Outlook' },
-  { id: 'n4', title: 'The Top Five Initiatives For B2C CMOs In 2026', meta: 'Forrester', url: 'https://www.forrester.com/blogs/the-top-5-initiatives-for-b2c-cmos-in-2026/' },
-  { id: 'n5', title: 'The 2026 AEO / GEO Benchmarks Report', meta: 'Conductor', url: 'https://www.conductor.com/academy/aeo-geo-benchmarks-report/' }
+  { id: 'n1', category: 'industry_news', title: 'Minor Hotels Builds AI Stack From Scratch To Improve Personalization', meta: 'Skift · Apr 2026', url: 'https://skift.com/2026/04/09/minor-hotels-ai-stack-personalisation/' },
+  { id: 'n2', category: 'industry_news', title: 'Hotels Are Losing Travelers’ Discovery Window — And Scrambling to Get It Back', meta: 'Skift · Mar 2026', url: 'https://skift.com/2026/03/26/hilton-marriott-tui-minor-kempinski-ai-social-media-travelers/' },
+  { id: 'n3', category: 'ai_marketing', title: 'CMOs Face a “Reputation and Results” Reckoning According to NIQ’s 2026 Outlook', meta: 'NIQ / Businesswire · Nov 2025', url: 'https://www.businesswire.com/news/home/20251118947080/en/CMOs-Face-a-%E2%80%98Reputation-and-Results%E2%80%99-Reckoning-According-to-NIQ%E2%80%99s-2026-Outlook' },
+  { id: 'n4', category: 'ai_marketing', title: 'The Top Five Initiatives For B2C CMOs In 2026', meta: 'Forrester', url: 'https://www.forrester.com/blogs/the-top-5-initiatives-for-b2c-cmos-in-2026/' },
+  { id: 'n5', category: 'ai_marketing', title: 'The 2026 AEO / GEO Benchmarks Report', meta: 'Conductor', url: 'https://www.conductor.com/academy/aeo-geo-benchmarks-report/' }
 ];
 
+const CURATED_NEWS_CATEGORY_LABELS = { ai_marketing: 'AI & Marketing', industry_news: 'Industry News', client_competitors: 'Client Competitors' };
+
+// 2026-08-29 — the "client's competitors" curated-news category. Derived
+// from the same real, per-account generative data Battle Brief and the
+// Daily Brief now both read (state.accountIntelligence.data.competitors),
+// not a separate store — one generation feeds all three surfaces. Each
+// watch item becomes one card; these are honest reasoning/"worth
+// watching" notes (see generateAccountIntelligenceViaAI()'s prompt on the
+// backend), never presented as a sourced headline, so they render without
+// a source link or a fake byline — a distinct "AI reasoning" treatment
+// from the real linkable headlines in the other two categories.
+function curatedNewsCompetitorItems(){
+  const intel = state.accountIntelligence.data;
+  if (!intel || !Array.isArray(intel.competitors)) return [];
+  const items = [];
+  intel.competitors.forEach(c => {
+    (c.watchItems || []).forEach((w, i) => {
+      items.push({ id: `cc-${c.name}-${i}`, category: 'client_competitors', competitor: c.name, title: w, meta: `Worth watching — ${c.name}` });
+    });
+  });
+  return items;
+}
+
+// 2026-08-29 — grouped into the 3 curated-news categories (AI & Marketing,
+// Industry News, Client Competitors) instead of one flat list, per direct
+// instruction. A real, linkable headline (has .url) renders as before; a
+// Client Competitors watch item (no .url — it's AI reasoning, not a
+// sourced story, see curatedNewsCompetitorItems()'s own comment) renders
+// without a link and carries its own "AI reasoning" tag so it's never
+// mistaken for a real article. Client Competitors section only appears
+// once this account has generated data — see renderGenerativeBrief() for
+// the paid-gate/empty-state messaging that lives with the Refresh control
+// instead of being duplicated here.
+function newsItemHtml(item){
+  const isRead = state.dailyNewsRead.has(item.id);
+  const body = item.url
+    ? `<a class="news-title" href="${item.url}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+       <div class="news-meta">${escapeHtml(item.meta)}</div>`
+    : `<div class="news-title">${escapeHtml(item.title)}</div>
+       <div class="news-meta">${escapeHtml(item.meta)} <span class="illustrative-tag">AI reasoning — not a live news feed</span></div>`;
+  return `
+    <div class="news-item${isRead ? ' is-read' : ''}">
+      <div class="news-body">${body}</div>
+      <button type="button" class="mark-read-btn" onclick="toggleNewsRead('${item.id}')" ${isRead ? 'disabled' : ''}>${isRead ? 'Read ✓' : 'Mark Read'}</button>
+    </div>`;
+}
 function renderDailyNews(){
   const list = document.getElementById('dailyNewsList');
   if (!list) return;
@@ -14302,16 +14448,26 @@ function renderDailyNews(){
     const role = (state.userProfile && state.userProfile.role) || 'CMO / Admin';
     tagEl.textContent = `Curated News — for your ${role} role`;
   }
-  list.innerHTML = DAILY_NEWS_ITEMS.map(item => {
-    const isRead = state.dailyNewsRead.has(item.id);
-    return `
-      <div class="news-item${isRead ? ' is-read' : ''}">
-        <div class="news-body">
-          <a class="news-title" href="${item.url}" target="_blank" rel="noopener">${item.title}</a>
-          <div class="news-meta">${item.meta}</div>
-        </div>
-        <button type="button" class="mark-read-btn" onclick="toggleNewsRead('${item.id}')" ${isRead ? 'disabled' : ''}>${isRead ? 'Read ✓' : 'Mark Read'}</button>
-      </div>`;
+  const competitorItems = curatedNewsCompetitorItems();
+  const groups = [
+    { key: 'ai_marketing', items: DAILY_NEWS_ITEMS.filter(i => i.category === 'ai_marketing') },
+    { key: 'industry_news', items: DAILY_NEWS_ITEMS.filter(i => i.category === 'industry_news') },
+    { key: 'client_competitors', items: competitorItems }
+  ];
+  list.innerHTML = groups.map(g => {
+    if (g.key === 'client_competitors' && g.items.length === 0){
+      // Honest empty state instead of hiding the category outright — matches
+      // this account's own onboarding/paid-gate messaging pattern elsewhere.
+      const note = state.accountIntelligence.paidTier
+        ? 'No competitor watch items yet — Refresh the Daily Brief above to generate them from this account\'s named Direct Competitors.'
+        : 'Available on a paid plan — see the Daily Brief tab.';
+      return `<div class="news-group"><div class="news-group-title">${CURATED_NEWS_CATEGORY_LABELS[g.key]}</div><p class="hint" style="margin:0 0 10px;">${note}</p></div>`;
+    }
+    if (!g.items.length) return '';
+    return `<div class="news-group">
+      <div class="news-group-title">${CURATED_NEWS_CATEGORY_LABELS[g.key]}</div>
+      ${g.items.map(newsItemHtml).join('')}
+    </div>`;
   }).join('');
 }
 
@@ -14678,8 +14834,66 @@ const COMPETITOR_INTEL_DATA = {
   ]
 };
 
+// getBattleBrief() returns curated demo enrichment ONLY (COMPETITOR_INTEL_DATA
+// above is seeded for the demo "Atlas" account's three named competitors).
+// It is not the primary data source for any real account — see
+// competitorBriefContent() below, which is. Kept as a fallback layer so the
+// existing hand-written Atlas content still renders exactly as before.
 function getBattleBrief(name){
   return COMPETITOR_INTEL_DATA.battleBriefs.find(b => b.competitor === name) || null;
+}
+
+// 2026-08-29 — this account's own positioning, for the "no competitor
+// named" default state and for the comparison table's own row. Reuses
+// Brand Foundations' Vision Statement (state.voice.visionStatement) —
+// already real, per-account, human-approved content — rather than
+// inventing a second positioning field. Returns null (never a fabricated
+// placeholder) when nothing is on file yet.
+function clientPositioningSummary(){
+  const v = (state.voice && state.voice.visionStatement || '').trim();
+  return v || null;
+}
+
+// 2026-08-29 — real, per-account competitor content for the Battle Brief,
+// replacing the old behavior where any competitor not in the hardcoded
+// COMPETITOR_INTEL_DATA demo list (i.e. every real account's own named
+// competitors) got nothing but "No Battle Brief drafted yet." Layering:
+// 1) a curated demo brief (getBattleBrief) if this exact name has one —
+//    keeps the existing Atlas walkthrough content unchanged;
+// 2) otherwise, this account's own Direct Competitors data — the "why
+//    they compete" note and the AI-assisted "positioning read"
+//    (state.positioning.competitors[i].note/.positioningText) — both
+//    already real, per-account content collected above, just never wired
+//    into this section before now;
+// 3) null (rendered as an honest "not enough info yet" state) only when
+//    neither exists.
+// 2026-08-29 — this account's continuously-monitored watch items for one
+// named competitor (state.accountIntelligence.data.competitors), if any
+// have been generated yet. Kept as its own lookup (not folded into
+// competitorBriefContent's curated/note/positioningText layers) since it
+// comes from a different, newer data source and should show up even for a
+// competitor that already has curated demo content or a manual note.
+function competitorWatchItems(name){
+  const intel = state.accountIntelligence.data;
+  if (!intel || !Array.isArray(intel.competitors)) return [];
+  const match = intel.competitors.find(c => c.name === name);
+  return (match && Array.isArray(match.watchItems)) ? match.watchItems : [];
+}
+
+function competitorBriefContent(name){
+  const curated = getBattleBrief(name);
+  if (curated) return curated;
+  const c = state.positioning.competitors.find(x => (x.name || '').trim() === name);
+  if (!c) return null;
+  const note = (c.note || '').trim();
+  const positioningText = (c.positioningText || '').trim();
+  if (!note && !positioningText) return null;
+  return {
+    competitor: name,
+    positioningSummary: note || 'No "why they compete" note on file yet for this competitor — add one in Direct Competitors above.',
+    differentiation: positioningText || null,
+    messagingAngles: []
+  };
 }
 
 // Round 132bx (2026-08-15) — Specialty Partners, per direct instruction:
@@ -14765,26 +14979,81 @@ function renderSpecialtyPartners(workstreamKey){
 // added) gets an honest "no Battle Brief yet" state rather than nothing at
 // all, same anti-silent-gap convention as computeWorkstreamAlert()'s
 // honest zero.
+//
+// 2026-08-29, per direct request — three distinct states, driven by how
+// many competitors are actually named (no separate selector UI; the count
+// itself decides, matching how this list is populated above):
+//   0 named  → default to THIS ACCOUNT's own positioning (clientPositioning
+//              Summary()) rather than a bare "add a competitor" nudge —
+//              there's always something to show, even with zero named.
+//   1 named  → that competitor's own detailed brief only (unchanged shape
+//              from before: position / differentiation / messaging angles).
+//   2+ named → an added side-by-side positioning table (this account's own
+//              row first, so it's clear where the client sits among them)
+//              ABOVE the same per-competitor detailed briefs — the table is
+//              additive, not a replacement for the individual detail.
 function renderBattleBrief(){
   const el = document.getElementById('ctBattleBriefList');
   if (!el) return;
   const named = state.positioning.competitors.map(c => (c.name || '').trim()).filter(Boolean);
+  const clientLabel = `${state.company || 'This account'} (this account)`;
+
   if (named.length === 0){
-    el.innerHTML = `<p class="hint">Add a Direct Competitor above and its Battle Brief will build here.</p>`;
+    const vision = clientPositioningSummary();
+    el.innerHTML = `<div class="seo-row" style="flex-direction:column;align-items:flex-start;">
+      <div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(state.company || 'This account')}'s positioning in ${escapeHtml(state.industry || 'this industry')}</div>
+      ${vision
+        ? `<div class="seo-row-detail">${escapeHtml(vision)}</div>`
+        : `<div class="hint">No Vision Statement on file yet — draft one in Brand Foundations → Voice &amp; Vision to see this account's own positioning here, or add a Direct Competitor above for a head-to-head Battle Brief.</div>`}
+    </div>`;
     return;
   }
-  el.innerHTML = named.map(name => {
-    const brief = getBattleBrief(name);
+
+  const briefBlock = name => {
+    const brief = competitorBriefContent(name);
+    // 2026-08-29 — continuous monitoring watch items (see
+    // competitorWatchItems()'s own comment) can exist even when there's no
+    // curated/manual brief content at all, so this is checked and rendered
+    // independently of `brief` rather than nested inside its early return.
+    const watchItems = competitorWatchItems(name);
+    const watchHtml = watchItems.length
+      ? `<div class="seo-row-detail" style="margin-top:${brief ? '6px' : '0'};"><strong>Worth watching:</strong> <span class="illustrative-tag">AI reasoning — not a live news feed</span><ul style="margin:4px 0 0;padding-left:18px;">${watchItems.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
+      : '';
     if (!brief){
-      return `<div class="seo-row"><div class="seo-row-main"><div class="seo-row-title">${escapeHtml(name)}</div><div class="seo-row-detail">No Battle Brief drafted yet for this competitor.</div></div></div>`;
+      return watchHtml
+        ? `<div class="seo-row" style="flex-direction:column;align-items:flex-start;"><div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(name)}</div>${watchHtml}</div>`
+        : `<div class="seo-row"><div class="seo-row-main"><div class="seo-row-title">${escapeHtml(name)}</div><div class="seo-row-detail">No Battle Brief drafted yet — add a "why they compete" note or generate a positioning read for this competitor above.</div></div></div>`;
     }
     return `<div class="seo-row" style="flex-direction:column;align-items:flex-start;">
       <div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(brief.competitor)}</div>
       <div class="seo-row-detail" style="margin-bottom:6px;"><strong>Their position:</strong> ${escapeHtml(brief.positioningSummary)}</div>
-      <div class="seo-row-detail" style="margin-bottom:6px;"><strong>Our differentiation:</strong> ${escapeHtml(brief.differentiation)}</div>
-      <div class="seo-row-detail"><strong>Messaging angles:</strong><ul style="margin:4px 0 0;padding-left:18px;">${brief.messagingAngles.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul></div>
+      ${brief.differentiation ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>Our differentiation:</strong> ${escapeHtml(brief.differentiation)}</div>` : ''}
+      ${brief.messagingAngles && brief.messagingAngles.length ? `<div class="seo-row-detail" style="margin-bottom:${watchHtml ? '6px' : '0'};"><strong>Messaging angles:</strong><ul style="margin:4px 0 0;padding-left:18px;">${brief.messagingAngles.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul></div>` : ''}
+      ${watchHtml}
     </div>`;
-  }).join('');
+  };
+
+  let html = '';
+  if (named.length > 1){
+    const vision = clientPositioningSummary();
+    html += `<div class="table-scroll" style="margin-bottom:14px;">
+      <table class="seo-table">
+        <thead><tr><th>Company</th><th>Positioning in ${escapeHtml(state.industry || 'this industry')}</th></tr></thead>
+        <tbody>
+          <tr style="font-weight:700;">
+            <td>${escapeHtml(clientLabel)}</td>
+            <td>${vision ? escapeHtml(vision) : 'No Vision Statement on file yet — draft one in Brand Foundations → Voice &amp; Vision.'}</td>
+          </tr>
+          ${named.map(name => {
+            const brief = competitorBriefContent(name);
+            return `<tr><td>${escapeHtml(name)}</td><td>${brief ? escapeHtml(brief.positioningSummary) : 'No positioning read on file yet.'}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+  html += named.map(briefBlock).join('');
+  el.innerHTML = html;
 }
 
 // Current Activity — Layer 2. Each item links straight into the real
@@ -15555,6 +15824,7 @@ function renderWorkstreams(){
     // Key Tiles Per Role, AI Partner — Text Routing. See
     // dailyBriefExtraHtml().
     grid.innerHTML = dailyBriefExtraHtml();
+    renderGenerativeBrief();
     renderCuratedNewsCards();
     return;
   }
@@ -15785,27 +16055,50 @@ function renderStatCards(){
 // 2026-08-24 (round 17) — Curated News restyled as a 3-card grid for
 // Daily Brief, per the comps. Reuses the real DAILY_NEWS_ITEMS array
 // (same hand-curated headlines the old accordion module showed, see that
-// array's own comment for why these are real, not invented) — top 3
-// only, matching the comp's 3-card layout, rather than all 5.
+// array's own comment for why these are real, not invented).
+// 2026-08-29 — now picks one card per category (AI & Marketing, Industry
+// News, Client Competitors) when a Client Competitors item exists, so the
+// 3-card highlight grid actually represents all 3 categories instead of
+// whichever 2 happened to be first in DAILY_NEWS_ITEMS; falls back to the
+// old top-3-overall behavior when this account has no generated
+// competitor watch items yet (nothing to show in that slot).
 function renderCuratedNewsCards(){
   const el = document.getElementById('curatedNewsCardGrid');
   if (!el) return;
-  el.innerHTML = DAILY_NEWS_ITEMS.slice(0, 3).map(item => `
-    <a class="curated-news-card" href="${item.url}" target="_blank" rel="noopener">
-      <div class="cn-meta">${escapeHtml(item.meta)}</div>
-      <div class="cn-title">${escapeHtml(item.title)}</div>
-    </a>`).join('');
+  const competitorItems = curatedNewsCompetitorItems();
+  const cardHtml = item => item.url
+    ? `<a class="curated-news-card" href="${item.url}" target="_blank" rel="noopener">
+         <div class="cn-meta">${escapeHtml(item.meta)}</div>
+         <div class="cn-title">${escapeHtml(item.title)}</div>
+       </a>`
+    : `<div class="curated-news-card">
+         <div class="cn-meta">${escapeHtml(item.meta)} <span class="illustrative-tag">AI reasoning</span></div>
+         <div class="cn-title">${escapeHtml(item.title)}</div>
+       </div>`;
+  const picks = competitorItems.length
+    ? [
+        DAILY_NEWS_ITEMS.find(i => i.category === 'ai_marketing'),
+        DAILY_NEWS_ITEMS.find(i => i.category === 'industry_news'),
+        competitorItems[0]
+      ].filter(Boolean)
+    : DAILY_NEWS_ITEMS.slice(0, 3);
+  el.innerHTML = picks.map(cardHtml).join('');
 }
 
 // 2026-08-24 (round 17) — Daily Brief's own module stack, replacing the
 // generic workstream tile shell (see renderWorkstreams()'s 'dailyBrief'
-// branch). Generative Summarized Commentary and Key Observations are
-// simple, illustrative sample content for this demo account — same
-// "placeholder data" honesty convention as the stat cards above, not a
-// claim that real generative summarization runs today (see the daily
-// standup/CFD module's own real, more sophisticated
-// computeConnectedSignals() for the actual cross-workstream signal logic
-// this simpler comp version doesn't replace, just sits alongside).
+// branch).
+// 2026-08-29 — Generative Summarized Commentary and Key Observations were
+// simple, illustrative sample content for this demo account until this
+// round ("not a claim that real generative summarization runs today").
+// That's no longer true: #genCommentaryGrid is now filled by
+// renderGenerativeBrief() from state.accountIntelligence (real,
+// per-account AI output, paid-tier gated — see
+// generateAccountIntelligenceViaAI() on the backend and
+// loadAccountIntelligence()/refreshAccountIntelligence() above). The
+// daily standup/CFD module's own real, more sophisticated
+// computeConnectedSignals() is still separate cross-workstream signal
+// logic, unaffected by this.
 // Key Tiles Per Role routes straight into switchPrimaryTab() for each of
 // the other five tabs — same navigation the primary nav itself uses.
 // AI Partner — Text Routing reuses the real 'collaboration' workstream
@@ -15820,24 +16113,49 @@ const ROLE_TILES = [
   { tab: 'dataScientist', label: 'Data Scientist', desc: 'Measurement, match markets, KPIs' },
   { tab: 'accountManagement', label: 'Account Management', desc: 'Setup — all optional, any order' }
 ];
+
+// 2026-08-29 — fills #genCommentaryGrid with this account's real,
+// generated Daily Brief when one exists, an honest "generate one" nudge
+// for a paid account that hasn't refreshed yet, or a plan upsell for a
+// non-paid account — never a fabricated placeholder. Called on init
+// (loadAccountIntelligence()) and after every refresh
+// (refreshAccountIntelligence()) — see both above.
+function renderGenerativeBrief(){
+  const el = document.getElementById('genCommentaryGrid');
+  if (!el) return;
+  const ai = state.accountIntelligence;
+  const brief = ai.data && ai.data.dailyBrief;
+  const generatedLabel = ai.generatedAt
+    ? `Generated ${new Date(ai.generatedAt).toLocaleString()} — reasoning-based analysis of this account's own on-file data (named competitors, industry trends, Vision Statement), not a live news pull.`
+    : '';
+  const refreshBtn = `<div class="btn-row" style="margin-top:10px;">
+      <button type="button" class="btn-ghost" onclick="refreshAccountIntelligence()" ${ai.refreshing ? 'disabled' : ''}>${ai.refreshing ? 'Refreshing…' : (brief ? 'Refresh now →' : 'Generate now →')}</button>
+      <span id="intelligenceRefreshStatus" class="hint">${escapeHtml(ai.statusMessage || '')}</span>
+    </div>`;
+  el.innerHTML = `
+    <div class="gen-commentary-card">
+      <span class="badge-ai-generated">AI-Generated</span>
+      ${brief && (brief.summary || '').trim()
+        ? `<p>${escapeHtml(brief.summary)}</p>${generatedLabel ? `<p><span class="illustrative-tag">${escapeHtml(generatedLabel)}</span></p>` : ''}`
+        : ai.paidTier
+          ? `<p class="hint">No generative brief yet for this account. Generate one from this account's own named competitors, industry trends, and Vision Statement.</p>`
+          : `<p class="hint">Continuous competitor monitoring and a real generative Daily Brief are a paid-plan feature. <a class="flink" href="select-tier.html">See plans →</a></p>`}
+      ${ai.paidTier ? refreshBtn : (ai.statusMessage ? `<div class="hint" style="margin-top:8px;">${escapeHtml(ai.statusMessage)}</div>` : '')}
+    </div>
+    <div>
+      <div class="db-section-title">Key Observations</div>
+      <div class="key-obs-list">
+        ${brief && brief.keyObservations && brief.keyObservations.length
+          ? brief.keyObservations.map(o => `<div class="key-obs-item info">${escapeHtml(o)}</div>`).join('')
+          : `<div class="hint">${ai.paidTier ? 'Refresh above to generate key observations.' : 'Available on a paid plan.'}</div>`}
+      </div>
+    </div>`;
+}
+
 function dailyBriefExtraHtml(){
   return `
     <div class="db-section">
-      <div class="gen-commentary-grid">
-        <div class="gen-commentary-card">
-          <span class="badge-ai-generated">AI-Generated</span>
-          <p>Impressions are up 6% week-over-week, driven mostly by the fall sailings push on paid social — efficiency held at 3.4x, comfortably above the 2.8x plan floor. Two campaigns (Mediterranean Late-Season, Alaska Repositioning) are sitting in creative approval and are the only thing between you and full pacing this week.</p>
-          <p>Nothing in market needs your attention today outside those two approvals. Budget pacing across all active campaigns is within 3% of plan. <span class="illustrative-tag">sample summary for this demo account — not a live generative pull</span></p>
-        </div>
-        <div>
-          <div class="db-section-title">Key Observations</div>
-          <div class="key-obs-list">
-            <div class="key-obs-item warn"><b>2 campaigns awaiting creative approval</b> — Mediterranean Late-Season, Alaska Repositioning</div>
-            <div class="key-obs-item good"><b>Budget pacing</b> within 3% of plan across all active campaigns</div>
-            <div class="key-obs-item info"><b>Competitor activity</b> up on paid social this week — see Battle Brief in <a class="flink" onclick="switchPrimaryTab('strategy')">Strategy</a></div>
-          </div>
-        </div>
-      </div>
+      <div class="gen-commentary-grid" id="genCommentaryGrid"></div>
     </div>
     <div class="db-section">
       <div class="db-section-title">Curated News</div>
@@ -24457,16 +24775,146 @@ const BWS_CATEGORIES = [
   { id: 'standard_presentation_template', label: 'Standard Presentation Template' },
   { id: 'sales', label: 'Sales' },
   { id: 'pr', label: 'PR' },
-  { id: 'consumer_marketing', label: 'Consumer Marketing' }
+  { id: 'consumer_marketing', label: 'Consumer Marketing' },
+  { id: 'video_script', label: 'Video Script' }
 ];
 let bwsFileDataUrl = null, bwsFileName = null, bwsSamples = [], bwsFilterCategory = '';
 
 function bwsPopulateCategorySelects(){
-  ['bwsFileCategory', 'bwsLinkCategory'].forEach(id => {
+  ['bwsFileCategory', 'bwsLinkCategory', 'bwsVideoCategory'].forEach(id => {
     const el = document.getElementById(id);
     if (!el || el.options.length) return;
     el.innerHTML = BWS_CATEGORIES.map(c => `<option value="${c.id}">${escapeHtml(c.label)}</option>`).join('');
+    if (id === 'bwsVideoCategory') el.value = 'video_script';
   });
+}
+
+// ---------- Video sample upload & analysis (round 140, 2026-08-29) ----------
+// Per direct instruction: video capability capped at :30 seconds or the
+// equivalent file size; the video is never saved after analysis if that
+// reduces cost. This client-side check is a fast first pass only — the
+// server (analyzeVideoSample in backend/server.js) re-checks both duration
+// (via ffprobe) and byte size before doing any real work, since a client
+// check can always be bypassed. bwsVideoDataUrl lives only in memory for
+// the duration of this page session and is discarded (never sent anywhere
+// except the one analyze-video call) once analysis completes or fails.
+const BWS_VIDEO_MAX_DURATION_SECONDS = 30;
+const BWS_VIDEO_MAX_BYTES = 25 * 1024 * 1024; // 25MB — see server-side comment for reasoning
+let bwsVideoDataUrl = null, bwsVideoMimeType = null, bwsVideoFileName = null, bwsVideoAnalysisNote = '';
+
+function bwsVideoProbeDuration(file){
+  return new Promise(resolve => {
+    try {
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'metadata';
+      const objectUrl = URL.createObjectURL(file);
+      videoEl.onloadedmetadata = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(Number.isFinite(videoEl.duration) ? videoEl.duration : null);
+      };
+      videoEl.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(null); };
+      videoEl.src = objectUrl;
+    } catch (e){
+      resolve(null);
+    }
+  });
+}
+
+async function bwsHandleVideoFile(event){
+  const file = event.target.files && event.target.files[0];
+  const statusEl = document.getElementById('bwsVideoStatus');
+  const chosen = document.getElementById('bwsVideoChosenName');
+  const analyzeRow = document.getElementById('bwsVideoAnalyzeRow');
+  const resultBlock = document.getElementById('bwsVideoResultBlock');
+  bwsVideoDataUrl = null; bwsVideoMimeType = null; bwsVideoFileName = null;
+  if (analyzeRow) analyzeRow.style.display = 'none';
+  if (resultBlock) resultBlock.style.display = 'none';
+  if (!file) { if (chosen) chosen.textContent = ''; return; }
+
+  if (file.size > BWS_VIDEO_MAX_BYTES){
+    if (statusEl) statusEl.textContent = `"${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)}MB — clips are capped at :${BWS_VIDEO_MAX_DURATION_SECONDS} seconds or about ${(BWS_VIDEO_MAX_BYTES / 1024 / 1024).toFixed(0)}MB.`;
+    if (chosen) chosen.textContent = '';
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Checking length…';
+  const duration = await bwsVideoProbeDuration(file);
+  if (duration !== null && duration > BWS_VIDEO_MAX_DURATION_SECONDS + 0.5){
+    if (statusEl) statusEl.textContent = `"${file.name}" is ${duration.toFixed(0)}s long — clips are capped at :${BWS_VIDEO_MAX_DURATION_SECONDS} seconds.`;
+    if (chosen) chosen.textContent = '';
+    return;
+  }
+
+  try {
+    bwsVideoDataUrl = await bwsFileToDataUrl(file);
+    bwsVideoMimeType = file.type || null;
+    bwsVideoFileName = file.name;
+    if (chosen) chosen.textContent = `${file.name}${duration !== null ? ` (${duration.toFixed(0)}s)` : ''}`;
+    if (statusEl) statusEl.textContent = '';
+    if (analyzeRow) analyzeRow.style.display = '';
+  } catch (e){
+    if (statusEl) statusEl.textContent = e.message || `Couldn't read ${file.name}.`;
+  }
+}
+
+async function bwsAnalyzeVideo(){
+  const statusEl = document.getElementById('bwsVideoStatus');
+  const resultBlock = document.getElementById('bwsVideoResultBlock');
+  if (!bwsVideoDataUrl){ if (statusEl) statusEl.textContent = 'Choose a video first.'; return; }
+  if (statusEl) statusEl.textContent = 'Analyzing visuals and on-screen text — this can take a moment…';
+  if (resultBlock) resultBlock.style.display = 'none';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/analyze-video`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl: bwsVideoDataUrl, mimeType: bwsVideoMimeType })
+    });
+    const data = await resp.json().catch(() => ({}));
+    // Whether this succeeds or fails, the video data URL has done its one
+    // job — drop it from memory now rather than holding onto it.
+    bwsVideoDataUrl = null;
+    if (!resp.ok){
+      if (statusEl) statusEl.textContent = data.error || 'Video analysis failed.';
+      return;
+    }
+    bwsVideoAnalysisNote = data.analysis || '';
+    const analysisEl = document.getElementById('bwsVideoAnalysisText');
+    if (analysisEl) analysisEl.value = bwsVideoAnalysisNote;
+    const titleEl = document.getElementById('bwsVideoTitle');
+    if (titleEl && !titleEl.value) titleEl.value = (bwsVideoFileName || 'Video sample').replace(/\.[^.]+$/, '');
+    if (statusEl) statusEl.textContent = `Analyzed ${data.framesAnalyzed || 0} frames${data.durationSeconds ? ` from a ${data.durationSeconds.toFixed(0)}s clip` : ''}. The video itself was not saved — review the analysis below, then save it as a sample.`;
+    if (resultBlock) resultBlock.style.display = '';
+  } catch (e){
+    if (statusEl) statusEl.textContent = 'Backend unreachable — could not analyze the video.';
+  }
+}
+
+async function bwsSaveVideoAnalysis(){
+  const statusEl = document.getElementById('bwsVideoStatus');
+  const title = (document.getElementById('bwsVideoTitle') || {}).value || '';
+  const category = (document.getElementById('bwsVideoCategory') || {}).value || 'video_script';
+  const docDate = (document.getElementById('bwsVideoDate') || {}).value || '';
+  const notes = (document.getElementById('bwsVideoAnalysisText') || {}).value || '';
+  if (!title.trim()){ if (statusEl) statusEl.textContent = 'Title is required.'; return; }
+  if (!docDate){ if (statusEl) statusEl.textContent = 'Date is required — every sample is categorized by purpose AND date.'; return; }
+  if (!notes.trim()){ if (statusEl) statusEl.textContent = 'The analysis text is required — run Analyze video again if it\'s empty.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), uploadedBy: state.userName || '' })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the analysis failed.'; return; }
+    if (statusEl) statusEl.textContent = `Saved — "${title.trim()}" added to the library below.`;
+    const resultBlock = document.getElementById('bwsVideoResultBlock');
+    if (resultBlock) resultBlock.style.display = 'none';
+    const analyzeRow = document.getElementById('bwsVideoAnalyzeRow');
+    if (analyzeRow) analyzeRow.style.display = 'none';
+    const chosen = document.getElementById('bwsVideoChosenName'); if (chosen) chosen.textContent = '';
+    const videoInput = document.getElementById('bwsVideoInput'); if (videoInput) videoInput.value = '';
+    bwsVideoMimeType = null; bwsVideoFileName = null; bwsVideoAnalysisNote = '';
+    bwsLoadLibrary();
+  } catch (e){
+    if (statusEl) statusEl.textContent = 'Backend unreachable — could not save the analysis.';
+  }
 }
 
 function bwsInit(){
@@ -24647,6 +25095,8 @@ function bwsRenderLibrary(){
         <td>${escapeHtml(s.docDate)}</td>
         <td>${s.sourceType === 'link'
           ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener">Google link ↗</a>`
+          : s.sourceType === 'video_analysis'
+          ? '<span class="hint">AI video analysis — video not retained</span>'
           : (s.file ? `${escapeHtml(s.file.originalFilename || 'file')} <span class="hint">(${Math.round((s.file.sizeBytes || 0) / 1024)} KB)</span>` : 'File')}</td>
         <td><button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
       </tr>`).join('')}</tbody>
@@ -35248,6 +35698,69 @@ async function loadPrCorpCommData(){
   if (signalsEl) renderConnectedSignals();
 }
 
+// 2026-08-29 — continuous competitor monitoring + generative Daily Brief
+// (accounts.accountIntelligenceJson on the backend). Loads the cached
+// blob only — never triggers a new AI generation (see
+// refreshAccountIntelligence() below for that) — same defensive
+// dataSourceLabel/companyId guard as loadPrCorpCommData() above. Called
+// once at app init so state.accountIntelligence.paidTier is already known
+// before anyone opens the Daily Brief tab (it gates curated news's Client
+// Competitors category on the Dashboard tab too, not just Daily Brief).
+async function loadAccountIntelligence(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  state.accountIntelligence.loading = true;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/intelligence`);
+    if (resp.ok){
+      const data = await resp.json();
+      state.accountIntelligence.data = data.intelligence || null;
+      state.accountIntelligence.generatedAt = data.generatedAt || null;
+      state.accountIntelligence.paidTier = !!data.paidTier;
+    }
+  } catch (e){ /* honest-empty fallback — state.accountIntelligence stays whatever it already was */ }
+  state.accountIntelligence.loading = false;
+  if (typeof renderGenerativeBrief === 'function') renderGenerativeBrief();
+  if (document.getElementById('curatedNewsCardGrid')) renderCuratedNewsCards();
+  if (document.getElementById('dailyNewsList')) renderDailyNews();
+}
+
+// The manual "Refresh now" trigger on the Daily Brief tab — same
+// generation the daily Vercel Cron job calls (GET
+// /api/cron/refresh-intelligence), just for this one account, on demand.
+// Paid-tier gated server-side (403 for a non-paid account); this function
+// also short-circuits client-side so a non-paid account never even fires
+// the request, and shows the same upsell message either way.
+async function refreshAccountIntelligence(){
+  if (!state.accountIntelligence.paidTier){
+    state.accountIntelligence.statusMessage = 'Continuous competitor monitoring and the generative Daily Brief are a paid-plan feature — activate a plan to turn this on.';
+    if (typeof renderGenerativeBrief === 'function') renderGenerativeBrief();
+    return;
+  }
+  state.accountIntelligence.refreshing = true;
+  state.accountIntelligence.statusMessage = 'Refreshing — analyzing this account\'s named competitors and current on-file context…';
+  if (typeof renderGenerativeBrief === 'function') renderGenerativeBrief();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/intelligence/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.intelligence){
+      state.accountIntelligence.data = data.intelligence;
+      state.accountIntelligence.generatedAt = data.generatedAt;
+      state.accountIntelligence.statusMessage = `Updated ${new Date(data.generatedAt).toLocaleString()}.`;
+    } else if (resp.ok){
+      // Request succeeded but generation itself didn't (e.g. no API key
+      // configured) — data.note carries the honest reason, nothing faked.
+      state.accountIntelligence.statusMessage = data.note || 'Refresh did not return new data.';
+    } else {
+      state.accountIntelligence.statusMessage = data.error || 'Refresh failed.';
+    }
+  } catch (e){ state.accountIntelligence.statusMessage = 'Backend unreachable — could not refresh.'; }
+  state.accountIntelligence.refreshing = false;
+  if (typeof renderGenerativeBrief === 'function') renderGenerativeBrief();
+  if (document.getElementById('curatedNewsCardGrid')) renderCuratedNewsCards();
+  if (document.getElementById('dailyNewsList')) renderDailyNews();
+  if (typeof renderBattleBrief === 'function') renderBattleBrief();
+}
+
 // One shared "add" handler for all three doc types — differs only in the
 // required fields and which array/endpoint it targets, same
 // config-over-duplication approach as PRC_TYPE_CONFIG below.
@@ -35274,9 +35787,17 @@ async function prcCreate(type, fields){
 
 function prcCreatePress(){
   const title = (document.getElementById('prcPressNewTitle') || {}).value || '';
+  const releaseType = (document.getElementById('prcPressNewType') || {}).value || '';
+  const audience = (document.getElementById('prcPressNewAudience') || {}).value || '';
+  const ctaText = (document.getElementById('prcPressNewCtaText') || {}).value || '';
+  const ctaMode = (document.getElementById('prcPressNewCtaMode') || {}).value || 'inspiration';
   if (!title.trim()){ document.getElementById('prcpressNewStatus').textContent = 'Title is required.'; return; }
-  prcCreate('press', { title: title.trim() });
+  prcCreate('press', { title: title.trim(), releaseType, audience, ctaText: ctaText.trim(), ctaMode });
   document.getElementById('prcPressNewTitle').value = '';
+  document.getElementById('prcPressNewType').value = '';
+  document.getElementById('prcPressNewAudience').value = '';
+  document.getElementById('prcPressNewCtaText').value = '';
+  document.getElementById('prcPressNewCtaMode').value = 'inspiration';
 }
 function prcCreateEditorial(){
   const outlet = (document.getElementById('prcEditorialNewOutlet') || {}).value || '';
@@ -35385,18 +35906,137 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
         <button type="button" class="btn-ghost" onclick="prcDelete('${type}','${item.id}')">Remove</button>
       </div>
       ${expanded ? `<div style="margin-top:8px;">
+        ${type === 'press' ? `
+        <!-- 2026-08-29, per direct request: complete the "set-once at
+             creation" gap flagged in Known Gaps — releaseType/audience/
+             ctaText/ctaMode are now editable here too, not just at
+             creation. Same PATCH endpoint the create form's fields feed
+             on the backend; a dedicated Save so it doesn't get bundled
+             into (or blocked by) the working-copy save below. -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line, #e3e3e8);">
+          <select id="prcPressEditType-${item.id}" style="min-width:180px;">
+            <option value="" ${!item.releaseType ? 'selected' : ''}>Release type…</option>
+            ${Object.entries(PRC_PRESS_TYPE_LABELS).map(([v, l]) => `<option value="${v}" ${item.releaseType === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
+          </select>
+          <select id="prcPressEditAudience-${item.id}" style="min-width:170px;">
+            <option value="" ${!item.audience ? 'selected' : ''}>Audience…</option>
+            ${Object.entries(PRC_PRESS_AUDIENCE_LABELS).map(([v, l]) => `<option value="${v}" ${item.audience === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
+          </select>
+          <input type="text" id="prcPressEditCtaText-${item.id}" placeholder="Exact Next Step / how-to-book text" value="${escapeHtml(item.ctaText || '')}" style="flex:1;min-width:220px;">
+          <select id="prcPressEditCtaMode-${item.id}" style="min-width:230px;">
+            ${Object.entries(PRC_PRESS_CTA_MODE_LABELS).map(([v, l]) => `<option value="${v}" ${(item.ctaMode || 'inspiration') === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn-primary" onclick="prcSavePressMeta('${item.id}')">Save details →</button>
+          <div id="prcPressMetaStatus-${item.id}" class="hint" style="flex-basis:100%;"></div>
+        </div>` : ''}
         <textarea id="prcCopy-${type}-${item.id}" rows="6" style="width:100%;font-family:inherit;">${escapeHtml(item.workingCopy || '')}</textarea>
         <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveCopy('${type}','${item.id}')">Save →</button></div>
         <div id="prcCopyStatus-${type}-${item.id}" class="hint" style="margin-top:4px;"></div>
+        ${type === 'press' ? `
+        <!-- 2026-08-29, per direct request: "we should include a LinkedIn
+             copy example" — a platform-native derivative of this release's
+             own approved copy above, same master/derivative pattern as
+             Social Content Batch. Kept inside the same expanded editor
+             rather than a separate section, since it only makes sense once
+             a working draft exists to rewrite. -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+          <div class="btn-row" style="flex-wrap:wrap;">
+            <button type="button" class="btn-ghost" onclick="prcGenerateLinkedIn('${item.id}')">LinkedIn post from this release →</button>
+          </div>
+          <div id="prcLinkedinStatus-${item.id}" class="hint" style="margin-top:4px;"></div>
+          ${item.linkedinCopy ? `<textarea id="prcLinkedin-${item.id}" rows="5" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.linkedinCopy)}</textarea>
+          <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveLinkedin('${item.id}')">Save LinkedIn copy →</button></div>` : ''}
+        </div>` : ''}
       </div>` : ''}
     </div>`;
   }).join('');
 }
 
+// 2026-08-29 — LinkedIn derivative: draft, and save-after-editing. Mirrors
+// prcGenerateDraft/prcSaveCopy's shape but targets linkedinCopy specifically
+// and is press-release-only (see the generate-linkedin backend endpoint's
+// own comment for why this is scoped to press releases, not all 3 PR/Corp
+// Comm types).
+async function prcGenerateLinkedIn(id){
+  prcExpanded[`press:${id}`] = true;
+  const statusEl = document.getElementById(`prcLinkedinStatus-${id}`);
+  if (statusEl) statusEl.textContent = 'Drafting LinkedIn post with AI…';
+  else renderReputationStep();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/generate-linkedin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    const data = await resp.json().catch(() => ({}));
+    await loadPrCorpCommData();
+    const freshStatusEl = document.getElementById(`prcLinkedinStatus-${id}`);
+    if (freshStatusEl) freshStatusEl.textContent = data.copy ? 'Drafted — review and edit before saving.' : (data.note || 'AI drafting did not return a draft.');
+  } catch (e){
+    const freshStatusEl = document.getElementById(`prcLinkedinStatus-${id}`);
+    if (freshStatusEl) freshStatusEl.textContent = 'Backend unreachable — could not draft.';
+  }
+}
+async function prcSaveLinkedin(id){
+  const textarea = document.getElementById(`prcLinkedin-${id}`);
+  if (!textarea) return;
+  const statusEl = document.getElementById(`prcLinkedinStatus-${id}`);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ linkedinCopy: textarea.value })
+    });
+    if (resp.ok){ if (statusEl) statusEl.textContent = 'Saved.'; await loadPrCorpCommData(); }
+    else if (statusEl) statusEl.textContent = 'Save failed.';
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
+}
+
+// 2026-08-27 — display labels matching backend PRESS_RELEASE_TYPE_LABELS/
+// PRESS_RELEASE_AUDIENCE_LABELS exactly (server.js), so the release-type/
+// audience chip a user sees here reads the same as what the AI-drafting
+// prompt was actually told.
+const PRC_PRESS_TYPE_LABELS = {
+  product_launch: 'Product Launch / Enhancement',
+  earnings: 'Earnings Announcement',
+  partnership: 'Strategic Partnership',
+  charity_or_person: 'Charity / Person Partnership',
+  hire_or_departure: 'Significant Hire / Departure'
+};
+const PRC_PRESS_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network' };
+// Mirrors backend PRESS_RELEASE_CTA_MODE_LABELS (server.js).
+const PRC_PRESS_CTA_MODE_LABELS = {
+  inspiration: 'Use for inspiration',
+  exact: 'Use exact copy',
+  both: 'Both — exact copy, framed for creativity'
+};
+
+// 2026-08-29 — completes the "set-once at creation" gap: releaseType,
+// audience, ctaText, and ctaMode are now editable on an existing press
+// release, not just at creation. Same PATCH endpoint/validation as every
+// other field edit in this workstream (prcSaveCopy, prcSaveLinkedin).
+async function prcSavePressMeta(id){
+  const typeEl = document.getElementById(`prcPressEditType-${id}`);
+  const audienceEl = document.getElementById(`prcPressEditAudience-${id}`);
+  const ctaTextEl = document.getElementById(`prcPressEditCtaText-${id}`);
+  const ctaModeEl = document.getElementById(`prcPressEditCtaMode-${id}`);
+  const statusEl = document.getElementById(`prcPressMetaStatus-${id}`);
+  if (!typeEl || !audienceEl || !ctaTextEl || !ctaModeEl) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ releaseType: typeEl.value, audience: audienceEl.value, ctaText: ctaTextEl.value.trim(), ctaMode: ctaModeEl.value })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok){ if (statusEl) statusEl.textContent = 'Saved.'; await loadPrCorpCommData(); }
+    else if (statusEl) statusEl.textContent = data.error || 'Save failed.';
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
+}
 function renderRepPress(){
   prcRenderSection('press', 'repPressList',
     p => `${escapeHtml(p.title)}${p.distributedDate ? ` <span class="hint" style="font-weight:400;">— ${escapeHtml(p.distributedDate.slice(0,10))}</span>` : ''}`,
-    p => '');
+    p => {
+      const bits = [];
+      if (p.releaseType && PRC_PRESS_TYPE_LABELS[p.releaseType]) bits.push(PRC_PRESS_TYPE_LABELS[p.releaseType]);
+      if (p.audience && PRC_PRESS_AUDIENCE_LABELS[p.audience]) bits.push(PRC_PRESS_AUDIENCE_LABELS[p.audience]);
+      return bits.join(' · ');
+    });
 }
 
 function renderRepEditorial(){
@@ -42030,6 +42670,13 @@ function renderVoiceContestInputsPanel(){
 // explicit-click-to-apply pattern as runCopyInterview()/runInterviewSelect()
 // in the copy workspace, applied at the account level instead of a specific
 // creative job.
+// 2026-08-27 — no longer rendered anywhere (see runBrandVoiceContest() and
+// renderBrandVoiceContestPanel()'s own comments): the blue best-practice tip
+// box these fed was removed per direct feedback ("we no longer need the
+// section in blue while we are thinking and when we view results"). Left
+// defined, unused, same reversible-swap posture as the rest of this
+// codebase — the first tip's text now lives directly in the module body
+// instead (see "What this contest draws on" replacement above).
 const VOICE_CONTEST_STATUS_TIPS = [
   "A voice option that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products & Services, not just how it reads.",
   "The Vision Statement is the north star, not a tagline — it should still make sense a year from now, even as individual campaigns change.",
@@ -42058,7 +42705,11 @@ async function runBrandVoiceContest(){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder || !state.companyId) return;
   const clickStartedAt = new Date().toISOString();
-  holder.innerHTML = renderMiniLoadCover('YOUR AI CONTESTANTS ARE THINKING') + renderAiStatusBubble("Drafting a blind panel of brand voice options, each with its own Vision Statement and a real longform example built from your Products & Services and approved Brand Keywords.", VOICE_CONTEST_STATUS_TIPS);
+  // 2026-08-27 fix, per direct feedback — "we no longer need the section in
+  // blue while we are thinking and when we view results." The blue
+  // .ai-status-bubble (best-practice tip box, shared with other AI features)
+  // is dropped here; the mini loading spinner + copy is enough on its own.
+  holder.innerHTML = renderMiniLoadCover('YOUR AI CONTESTANTS ARE THINKING');
   try {
     // 2026-08-26 fix, per direct report ("Running the contest could not
     // reach the backend" — screenshot showing "Backend unreachable —
@@ -42162,7 +42813,7 @@ async function runBrandVoiceContest(){
       // history for a few minutes before giving up, and show the real
       // result the moment it shows up instead of leaving a false failure
       // message on screen.
-      holder.innerHTML = renderAiStatusBubble("Still working — this run is taking longer than usual. Checking whether it finished in the background instead of making you re-run it...", []);
+      holder.innerHTML = renderMiniLoadCover('YOUR AI CONTESTANTS ARE STILL THINKING');
       const recovered = await recoverBrandVoiceContestAfterTimeout(clickStartedAt);
       if (!recovered){
         holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">This run is taking unusually long and hasn't shown up yet — it may still finish in the background. Wait a minute and check again before re-running (running it again while the first one is still working just spends AI usage twice).</div>`;
@@ -42282,8 +42933,7 @@ function renderBrandVoiceContestPanel(result){
     <div style="display:flex;justify-content:center;margin-top:16px;">
       <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectContestWinner('${result.interviewId}')">Select Contest Winner</button>
     </div>
-    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>
-    ${renderAiStatusTip(VOICE_CONTEST_STATUS_TIPS)}`;
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>`;
 }
 // Mobile-first: the Vision Statement (short) shows by default; the Longform
 // Example (long) stays collapsed until the client explicitly asks for it.
@@ -43443,7 +44093,8 @@ async function saveCompetitivePositioning(){
     loadTeam(),
     loadPrCorpCommData(),
     loadMediaPlan(),
-    loadContentLibrary()
+    loadContentLibrary(),
+    loadAccountIntelligence()
   ]);
   renderOrgModelRow();
   applyOrgModel();
