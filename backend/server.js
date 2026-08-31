@@ -3116,12 +3116,34 @@ createTableIfNeeded(`
 // never written to brand_writing_samples or uploaded_files — only the
 // resulting analysis text is saved, categorized here as 'video_script'
 // alongside any other video-script sample.
+// Round 142 (2026-08-31), per direct instruction: expanded from the
+// original 5 categories to a taxonomy built around what actually varies
+// how much a sample should influence generation. "Website Scraping,
+// Digital Product Brochures, Marketing Campaign Videos, Email Templates,
+// Direct Mail Templates, Social Posts, Approvals and Rejections" were
+// named directly. 'internal_comms' is added alongside 'pr' so both have an
+// explicit home in this taxonomy while being weighted to zero in
+// brandWritingSampleContext() below (they have their own separate
+// generation paths and are never blended into consumer-facing copy). The
+// original 5 ids are kept, unchanged, for backward compatibility with
+// samples already saved under them — 'video_script' in particular is kept
+// as a recognized alias of 'marketing_campaign_video' for weighting
+// purposes (see SAMPLE_CATEGORY_WEIGHT) rather than migrated, since a real
+// account may already have samples saved under it.
 const BRAND_WRITING_SAMPLE_CATEGORIES = [
   { id: 'standard_presentation_template', label: 'Standard Presentation Template' },
   { id: 'sales', label: 'Sales' },
   { id: 'pr', label: 'PR' },
+  { id: 'internal_comms', label: 'Internal Communications' },
   { id: 'consumer_marketing', label: 'Consumer Marketing' },
-  { id: 'video_script', label: 'Video Script' }
+  { id: 'video_script', label: 'Video Script (legacy)' },
+  { id: 'website_scraping', label: 'Website Scraping' },
+  { id: 'digital_brochure', label: 'Digital Product Brochures' },
+  { id: 'marketing_campaign_video', label: 'Marketing Campaign Videos' },
+  { id: 'email_template', label: 'Email Templates' },
+  { id: 'direct_mail_template', label: 'Direct Mail Templates' },
+  { id: 'social_post', label: 'Social Posts' },
+  { id: 'approval_rejection', label: 'Approvals & Rejections' }
 ];
 const BRAND_WRITING_SAMPLE_FILE_MIME_RE = /^(application\/(msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.openxmlformats-officedocument\.presentationml\.presentation|vnd\.ms-powerpoint|pdf))$/i;
 
@@ -3343,6 +3365,14 @@ ensureColumn('brand_writing_samples', 'excluded', 'INTEGER DEFAULT 0');
 ensureColumn('brand_writing_samples', 'excludedAt', 'TEXT');
 ensureColumn('brand_writing_samples', 'excludedBy', 'TEXT');
 ensureColumn('brand_writing_samples', 'excludedReason', 'TEXT');
+// Round 142 (2026-08-31): 'outcome' ('approved' | 'rejected' | NULL) —
+// required for category 'approval_rejection', optional elsewhere. This is
+// what lets brandWritingSampleContext() below tell a client-approved real
+// campaign example apart from a client-rejected one and frame each
+// correctly (an approved sample is a positive reference; a rejected one is
+// labeled as an explicit anti-example, never blended in as "do more of
+// this").
+ensureColumn('brand_writing_samples', 'outcome', 'TEXT');
 
 // ---------- Brand Copy Website Examples (2026-08-25) ----------
 // Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
@@ -7211,6 +7241,43 @@ function extractBrandGuideFields(text){
 // baked in at generation time — this function doesn't need to re-derive
 // that, just label the block honestly as a video analysis so a reader (or
 // a future prompt) doesn't mistake it for a literal writing sample.
+// Round 142 (2026-08-31), per direct instruction, following the question
+// "should we weight certain types of sample writings ... more or less as
+// it relates to scoring for B2C companies focused on maximizing ROAS":
+// not every sample type carries the same evidentiary strength for what
+// actually drives consumer-facing, revenue-driving copy. Real client
+// approvals/rejections of actual campaign copy are market-tested, not
+// just a stylistic reference, so they're weighted highest. Video is
+// weighted above plain text per direct instruction ("I probably would
+// lean towards video having a higher weight than pure text"). PR and
+// Internal Communications are weighted to zero here — not ignored, just
+// out of scope for this function specifically, because both already have
+// their own separate generation paths (draftPrCorpCommCopyViaAI(),
+// generateInternalCommsMaster()) that are the correct place for their own
+// approval/rejection history to feed back in, never blended into
+// consumer-facing copy. That wiring is a separate, not-yet-built follow-up
+// (flagged, not silently dropped) — this function only controls what
+// reaches consumer/B2C-facing generation.
+const SAMPLE_CATEGORY_WEIGHT = {
+  approval_rejection: 3.0,
+  marketing_campaign_video: 2.0,
+  video_script: 2.0, // legacy alias — pre-round-142 video samples saved here
+  digital_brochure: 1.5,
+  social_post: 1.5,
+  email_template: 1.2,
+  direct_mail_template: 1.2,
+  website_scraping: 1.0,
+  consumer_marketing: 1.0,
+  sales: 1.0,
+  standard_presentation_template: 0.5,
+  pr: 0,
+  internal_comms: 0
+};
+const SAMPLE_VIDEO_WEIGHT_MULTIPLIER = 1.25; // stacks on top of category weight for any video-analysis sample
+function sampleWeight(sample){
+  const base = SAMPLE_CATEGORY_WEIGHT.hasOwnProperty(sample.category) ? SAMPLE_CATEGORY_WEIGHT[sample.category] : 1.0;
+  return sample.sourceType === 'video_analysis' ? base * SAMPLE_VIDEO_WEIGHT_MULTIPLIER : base;
+}
 async function brandWritingSampleContext(accountId){
   try {
     // (excluded IS NULL OR excluded = 0) is the enforcement point for the
@@ -7219,31 +7286,49 @@ async function brandWritingSampleContext(accountId){
     // (see the GET endpoint below, which still returns it so the admin
     // panel can show/restore it) — this is the one place that actually
     // decides what reaches a generation prompt.
+    //
+    // category NOT IN ('pr', 'internal_comms') replaces the old
+    // category-allowlist gate — PR/Internal Comms are excluded by design
+    // (see the comment on SAMPLE_CATEGORY_WEIGHT above), and every other
+    // category (including the new round-142 categories, plus
+    // standard_presentation_template at its low weight) is now a
+    // candidate, ranked by weight rather than gated in/out by category.
     const samples = db.prepare(
       `SELECT * FROM brand_writing_samples WHERE accountId = ? AND (excluded IS NULL OR excluded = 0)
-       AND ((category IN ('consumer_marketing', 'sales') AND uploadedFileId IS NOT NULL) OR sourceType = 'video_analysis')
+       AND category NOT IN ('pr', 'internal_comms')
+       AND (uploadedFileId IS NOT NULL OR sourceType = 'video_analysis')
        ORDER BY docDate DESC, createdAt DESC`
     ).all(accountId);
     if (!samples.length) return '';
+    const ranked = samples
+      .map(sample => ({ sample, weight: sampleWeight(sample) }))
+      .sort((a, b) => b.weight - a.weight || new Date(b.sample.docDate) - new Date(a.sample.docDate));
     const categoryLabel = (id) => (BRAND_WRITING_SAMPLE_CATEGORIES.find(c => c.id === id) || {}).label || id;
     const blocks = [];
-    for (const sample of samples){
-      if (blocks.length >= 2) break;
+    for (const { sample } of ranked){
+      if (blocks.length >= 3) break;
+      // Approved/rejected outcome framing — a rejected sample is an
+      // explicit anti-example, never a style reference to emulate.
+      const outcomeTag = sample.outcome === 'rejected'
+        ? ' — CLIENT-REJECTED: an example of what NOT to do; do not emulate this'
+        : sample.outcome === 'approved'
+          ? ' — CLIENT-APPROVED real campaign copy'
+          : '';
       if (sample.sourceType === 'video_analysis'){
         const text = (sample.notes || '').trim();
         if (text){
-          blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate} — AI analysis of an uploaded video's VISUALS and on-screen text only, not audio/spoken content; the video itself was not retained) ---\n${text.replace(/\s+/g, ' ').slice(0, 900)}`);
+          blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${outcomeTag} — AI analysis of an uploaded video's VISUALS and on-screen text only, not audio/spoken content; the video itself was not retained) ---\n${text.replace(/\s+/g, ' ').slice(0, 900)}`);
         }
         continue;
       }
       const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
       const text = await extractSampleText(file);
       if (text && text.trim()){
-        blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+        blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${outcomeTag}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
       }
     }
     if (!blocks.length) return '';
-    return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing and video visuals — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
+    return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing, video visuals, and campaign approval/rejection history — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; a sample marked CLIENT-REJECTED shows what to avoid, not what to follow; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
@@ -13413,6 +13498,18 @@ async function handleRequest(req, res) {
       if (!body.title || !body.title.trim()) return sendJson(res, 400, { error: 'title is required' });
       if (!body.docDate || !body.docDate.trim()) return sendJson(res, 400, { error: 'docDate is required — this feature always categorizes by purpose AND date' });
       const sourceType = body.sourceType === 'link' ? 'link' : body.sourceType === 'video_analysis' ? 'video_analysis' : 'file';
+      // Round 142: outcome ('approved'/'rejected') is required for the
+      // Approvals & Rejections category (that's the whole point of the
+      // category), optional elsewhere — an account may want to tag e.g. a
+      // rejected email template even outside that dedicated category.
+      let outcome = null;
+      const outcomeRaw = (body.outcome || '').trim().toLowerCase();
+      if (category === 'approval_rejection'){
+        if (outcomeRaw !== 'approved' && outcomeRaw !== 'rejected') return sendJson(res, 400, { error: 'outcome must be "approved" or "rejected" for the Approvals & Rejections category' });
+        outcome = outcomeRaw;
+      } else if (outcomeRaw === 'approved' || outcomeRaw === 'rejected'){
+        outcome = outcomeRaw;
+      }
 
       let uploadedFileId = null;
       if (sourceType === 'file'){
@@ -13435,9 +13532,9 @@ async function handleRequest(req, res) {
 
       const id = generateId('BWS');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO brand_writing_samples (id, accountId, uploadedFileId, sourceType, sourceUrl, title, category, docDate, notes, uploadedBy, createdAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, uploadedFileId, sourceType, sourceType === 'link' ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now);
+      db.prepare(`INSERT INTO brand_writing_samples (id, accountId, uploadedFileId, sourceType, sourceUrl, title, category, docDate, notes, uploadedBy, createdAt, outcome)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, uploadedFileId, sourceType, sourceType === 'link' ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now, outcome);
       return sendJson(res, 201, { id, status: 'saved' });
     }
 
