@@ -3100,10 +3100,24 @@ const ACS_INCOME_BRACKETS = [
 /* ---------- 2026-08-31 — Step 2's income-slider "Verilume Wealth Index" ----------
    Replaces the old High Net-Worth/Wealthy/Middle Income tri-select with a
    single household-income slider, combined with the existing
-   GENERATION_WEALTH_INDEX (Fed SCF-sourced) into one 0-100 score. See
-   incomePercentile()/verilumeWealthIndex()/deriveWealthTiersFromIndex()
-   below and renderWealthIndex() further down (near renderAudienceChecks())
-   for where it's wired to the DOM. */
+   GENERATION_WEALTH_INDEX (Fed SCF-sourced) into one score. See
+   incomePercentile()/nationalAverageIncome()/verilumeWealthIndex()/
+   deriveWealthTiersFromIndex() below and renderWealthIndex() further down
+   (near renderAudienceChecks()) for where it's wired to the DOM.
+
+   2026-08-31 (same day, follow-up) — reworked from a 0-100-capped
+   percentile score to an UNCAPPED index anchored so 100 = the average U.S.
+   household (average national income x a 1.0 "general audience" wealth
+   multiplier). Per direct feedback: the old percentile-based ceiling meant
+   an older-skewing, above-average-wealth generation (e.g. Silent
+   Generation, GENERATION_WEALTH_INDEX 1.74) saturated at 100 the moment
+   income crossed roughly the 57th percentile, which both threw away the
+   generation signal at the top end and couldn't represent a luxury
+   operator's actual target customer (Atlas Ocean Voyages-style luxury
+   cruise targets roughly the top 5-10% of U.S. household wealth, which
+   this uncapped index now reads as ~200+ — see wealthIndexLabel() below).
+   incomePercentile() is kept only as a helper other code may still find
+   useful; verilumeWealthIndex() no longer calls it. */
 
 // Dollar boundaries for the 16 ACS_INCOME_BRACKETS rows above, in the exact
 // same order — [lowerBound, upperBoundExclusive], with Infinity for the
@@ -3163,43 +3177,70 @@ function incomePercentile(value){
   return 1;
 }
 
-// The Verilume Wealth Index itself: income percentile (0-1, real/illustrative
-// Census ACS household income data) x generationWealthMultiplier() (the
-// existing Fed SCF-sourced age/generation wealth index), scaled to 0-100 and
-// capped there — a high income percentile combined with an older-skewing,
-// above-1.0-multiplier generation selection can otherwise exceed 100.
-function verilumeWealthIndex(){
-  const pct = incomePercentile(state.targetIncome);
-  const mult = generationWealthMultiplier();
-  return Math.min(100, Math.round(pct * 100 * mult));
+// Weighted-mean national household income, from the same live-or-fallback
+// incomeBracketShares() used everywhere else in this section x each
+// bracket's dollar midpoint. The one open-ended bracket ($200,000+) has no
+// real upper bound to average against — Census doesn't publish one at this
+// resolution — so it's assigned an illustrative $300,000 midpoint (a
+// disclosed assumption, consistent with the same open-bracket handling
+// incomePercentile() above already uses, just expressed as a point value
+// instead of an interpolation span). With the fallback shares this
+// currently resolves to ~$97,900; it moves to a real, live-Census figure
+// automatically once state.censusNational resolves, with no code change
+// needed here.
+function nationalAverageIncome(){
+  const shares = incomeBracketShares();
+  const midpoints = INCOME_BRACKET_BOUNDS.map(([lo, hi]) => hi === Infinity ? 300000 : (lo + hi) / 2);
+  return shares.reduce((sum, share, i) => sum + (share || 0) * midpoints[i], 0);
 }
 
-// Band cutoffs for the qualitative label shown next to the index. Chosen so
-// the two upper bands roughly track this file's existing WEALTH_TIER_ILLUSTRATIVE
-// shares once scaled by generationWealthMultiplier(): an index of 85+ is the
-// kind of income-percentile x generation-wealth combination that would
-// already sit inside the illustrative HNW share for an average-wealth
-// generation, 65-85 the broader Wealthy share, and everything below that is
-// the mainstream/value-conscious majority the flat national baseline
-// describes. Reasoned band, not a modeled cutoff — same disclosed-approximation
+// The Verilume Wealth Index itself: 100 = the average U.S. household — i.e.
+// nationalAverageIncome() at a 1.0 ("general"/no-generation-selected) wealth
+// multiplier scores exactly 100. Above or below that, the index moves
+// linearly with (a) how the selected income compares to that national
+// average and (b) generationWealthMultiplier() (the existing Fed SCF-sourced
+// age/generation net-worth index) — so two visitors entering the identical
+// income can land at very different index values if they selected different
+// generations, which is the point: net worth, not income alone, is what the
+// index is meant to represent. Deliberately UNCAPPED (see the 2026-08-31
+// follow-up note above) — a luxury operator's actual target customer should
+// be able to score well above 100, not get clipped at it.
+function verilumeWealthIndex(){
+  const ratio = state.targetIncome / nationalAverageIncome();
+  const mult = generationWealthMultiplier();
+  return Math.round(ratio * mult * 100);
+}
+
+// Band cutoffs for the qualitative label shown next to the index, rebuilt
+// for the new average-anchored, uncapped scale (100 = average U.S.
+// household; see verilumeWealthIndex() above). Roughly: mainstream
+// affluence brackets the national average on either side; "Wealthy" starts
+// where a household is running meaningfully (30%+) above the national
+// average; "High Net-Worth / Luxury" starts at roughly 2x the national
+// average, which — combining nationalAverageIncome()'s ~$97,900 fallback
+// average with realistic income + above-average-generation-multiplier
+// combinations — lands in the same neighborhood as the real top ~5-10% of
+// U.S. household wealth Atlas Ocean Voyages-style luxury operators actually
+// target. Reasoned bands, not a modeled cutoff — same disclosed-approximation
 // posture as the rest of this section.
 function wealthIndexLabel(index){
-  if (index >= 85) return 'High Net-Worth';
-  if (index >= 65) return 'Wealthy';
-  if (index >= 35) return 'Mainstream Affluent';
+  if (index >= 200) return 'High Net-Worth / Luxury';
+  if (index >= 130) return 'Wealthy';
+  if (index >= 70) return 'Mainstream Affluent';
   return 'Value-Conscious';
 }
 
-// Maps the 0-100 index back onto the SAME 3-key Set shape every existing
+// Maps the uncapped index back onto the SAME 3-key Set shape every existing
 // downstream consumer of state.wealth already expects ('hnw'/'wealthy'/
 // 'middle' — see portal.html's WEALTH_TIER_MULTIPLIER/wealthTierKey() and
-// this file's own wealthLabels()/recap census table). "Mainstream Affluent"
-// and "Value-Conscious" both collapse to 'middle' here since the rest of
-// the app only ever distinguished three tiers, not four.
+// this file's own wealthLabels()/recap census table). Thresholds rebased to
+// match wealthIndexLabel()'s new bands above; "Mainstream Affluent" and
+// "Value-Conscious" both still collapse to 'middle' since the rest of the
+// app only ever distinguished three tiers, not four.
 function deriveWealthTiersFromIndex(index){
   const set = new Set();
-  if (index >= 85) set.add('hnw');
-  else if (index >= 65) set.add('wealthy');
+  if (index >= 200) set.add('hnw');
+  else if (index >= 130) set.add('wealthy');
   else set.add('middle');
   return set;
 }
@@ -4468,7 +4509,8 @@ function renderWealthIndex(){
     const sourceNote = isLive
       ? 'live U.S. Census ACS household income data (table B19001)'
       : 'an illustrative national income distribution — live Census data hasn\'t loaded this session';
-    body.innerHTML = `<strong>Verilume Wealth Index: ${index} — ${label}.</strong> Built from your target income's percentile against ${sourceNote}, multiplied by the Fed Survey of Consumer Finances-sourced wealth index for your selected generation(s) above.`;
+    const avgIncome = Math.round(nationalAverageIncome());
+    body.innerHTML = `<strong>Verilume Wealth Index: ${index} — ${label}.</strong> 100 = the average U.S. household (currently ~$${avgIncome.toLocaleString()}/yr, from ${sourceNote}). Your score is your target income relative to that average, multiplied by the Fed Survey of Consumer Finances-sourced wealth index for your selected generation(s) above — so it isn't capped at 100, and two identical incomes can score very differently depending on generation.`;
   }
   renderIndustryTierSuggestion();
 }
