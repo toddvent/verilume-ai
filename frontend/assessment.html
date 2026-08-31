@@ -1339,39 +1339,79 @@
     <div class="eyebrow">Step 2 of 5</div>
     <div class="mat-slide-grid">
       <div>
-        <h2>Here's our first read on <span id="guessCompanyName">the brand</span>.</h2>
-        <p class="lede">Pulled from your site and how you sell — correct anything that's off. This drives the recap and best-practice guidance that follow.</p>
+        <h2>Tell us about <span id="guessCompanyName">the brand</span>.</h2>
+        <p class="lede">We can only reliably guess your industry from your site — audience and wealth tier are yours to tell us. This drives the recap and best-practice guidance that follow.</p>
         <div class="intake-card">
-          <!-- Round 119 (2026-08-08), per direct instruction: section
-               relabeled "Brand profile" -> "Validate Your Industry" — this
-               section's only job now is confirming the industry guess, and
-               the new NAICS/SIC-sourced description below (#industryDescBody,
-               populated by renderIndustryDesc(), called from
-               enterProfileGuess() and on every change to #inIndustry) gives
-               a plain-English check on the code, not just the label. -->
-          <div class="profile-section">
-            <div class="profile-section-title">Validate Your Industry</div>
-            <div class="field">
-              <label for="inIndustry">Your Industry <span class="guess-tag" id="industryGuessTag">Our Guess</span></label>
-              <select id="inIndustry" onchange="markUserEdited(this); syncProfileGuessState(); renderIndustryDesc();">
-                <option value="">Select an industry…</option>
-              </select>
-              <div class="field-hint" id="industryDescBody"></div>
-            </div>
-          </div>
+          <!-- Reordering note (2026-08-31): per direct instruction, Industry
+               moved to be the LAST question on this step — Audience and the
+               new income-slider-driven Wealth Tier read now come first, so
+               the industry auto-suggestion below (renderIndustryTierSuggestion())
+               has real audience/wealth signal to compare against by the time
+               a visitor reaches it. Round 119's original comment (why this
+               section exists at all) still applies to the Industry block
+               below, just relocated.
+
+               2026-08-31 (same day, follow-up) — per direct instruction
+               ("It's supposed to be a guess but we only return that we
+               can't guess so we'll reframe the page and only guess the
+               industry"): guessProfileFromInput() never actually had a real
+               audience signal to guess from (its generic branch always
+               returns audience: [] — only the one hardcoded demo account in
+               KNOWN_BRAND_OVERVIEWS has a real guess), so badging it "Our
+               Guess"/"Unknown" was presenting a guess that, in practice,
+               almost never existed. Audience and Wealth Tier are now framed
+               as plain questions the visitor answers themselves — no
+               guess-tag, no "Our Guess"/"Unknown" badge — while Industry
+               keeps its badge, since that one DOES have a real signal
+               (keyword-matched against the visitor's own site content via
+               startSiteReview()'s website-scan fetch). See
+               enterProfileGuess() below — it no longer calls setGuessTag()
+               for audience/wealth at all. -->
           <!-- Round 119, per direct instruction: Audience and Wealth Tier
                stacked (was a side-by-side .field-row) — the two tri-grids
                of tiles next to each other read cluttered, especially at
                this step's already-wide breakout container. -->
           <div class="profile-section">
-            <div class="profile-section-title">Audience</div>
+            <div class="profile-section-title">Audience &amp; Wealth Tier</div>
             <div class="field">
-              <label>Target audience <span class="guess-tag" id="audienceGuessTag">Our Guess</span> <span class="optional">(pick as many generations as apply)</span></label>
+              <label>Who's your target audience? <span class="optional">(pick as many generations as apply)</span></label>
               <div class="select-tile-grid tri" id="audienceChecks"></div>
             </div>
+            <!-- 2026-08-31 — replaces the old High Net-Worth/Wealthy/Middle
+                 Income tri-select (WEALTH_TIERS, rendered by the now-removed
+                 renderWealthChecks()) with a household-income slider. See
+                 incomePercentile()/verilumeWealthIndex()/
+                 deriveWealthTiersFromIndex() below for the real math —
+                 state.wealth still ends up a Set of 'hnw'|'wealthy'|'middle',
+                 recomputed live on every drag, so every existing downstream
+                 reader of state.wealth (recap, report, portal handoff) keeps
+                 working unchanged. WEALTH_TIERS itself is untouched — its
+                 labels/blurbs still power wealthLabels() and the recap step's
+                 wealth-tier table. -->
             <div class="field">
-              <label>Target wealth tier <span class="guess-tag" id="wealthGuessTag">Our Guess</span> <span class="optional">(pick all that apply)</span></label>
-              <div class="select-tile-grid tri" id="wealthChecks"></div>
+              <label for="inTargetIncome">What's your target customer's household income?</label>
+              <div class="mat-slider-wrap">
+                <input type="range" id="inTargetIncome" min="15000" max="250000" step="5000" value="75000" oninput="updateTargetIncome()">
+                <div class="mat-slider-labels"><span>$15,000</span><span id="targetIncomeValueLabel">$75,000</span><span>$250,000+</span></div>
+              </div>
+              <div class="field-hint" id="wealthIndexBody"></div>
+            </div>
+          </div>
+          <div class="profile-section">
+            <div class="profile-section-title">Validate Your Industry</div>
+            <div class="field">
+              <label for="inIndustry">Your Industry <span class="guess-tag" id="industryGuessTag">Our Guess</span></label>
+              <select id="inIndustry" onchange="markUserEdited(this); syncProfileGuessState(); renderIndustryDesc(); renderIndustryTierSuggestion();">
+                <option value="">Select an industry…</option>
+              </select>
+              <div class="field-hint" id="industryDescBody"></div>
+              <!-- 2026-08-31 — low-key, non-blocking suggestion when the
+                   picked industry has a Luxury/Mass Market sibling and the
+                   computed audience+wealth designation points the other way.
+                   Never auto-switches — Industry may already be a manual
+                   edit — just offers a one-click swap. See
+                   renderIndustryTierSuggestion()/applyIndustryTierSuggestion(). -->
+              <div id="industryTierSuggestion" style="display:none;font-size:0.8125rem;color:#3A3428;background:var(--paper-dim);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-top:8px;"></div>
             </div>
           </div>
         </div>
@@ -1403,7 +1443,9 @@
        Picker, and Assess belong in that post-registration "extended
        evaluation" accordion now (see #enhanceAccordion further down).
        Registration is the LAST step of the free assessment, reached only
-       after these three plus the quick-reveal interstitial. -->
+       after these three. (2026-08-31 — the quick-reveal interstitial
+       mentioned in earlier rounds' comments here is removed from the flow;
+       see advancePastLoopStep() near finishLoopStep().) -->
 
   <section class="step" data-step="orgstyle">
     <div class="eyebrow">Step 3 of 5</div>
@@ -1609,19 +1651,37 @@
     </div>
     <!-- Round 104, module (e) — sample-output thumbnail. Opens a real
          illustrative sample report (sample-assessment.html, a static
-         standalone page) in a new tab — stands in for "the full PDF of a
-         demo dummy account's assessment" the spec calls for; an actual PDF
-         export isn't wired up in this prototype (same honesty convention
-         as the Save & Schedule button and the CRM-write note above). -->
+         standalone page — see that file, built 2026-08-31) in a new tab —
+         stands in for "the full PDF of a demo dummy account's assessment"
+         the spec calls for; an actual PDF export isn't wired up in this
+         prototype (same honesty convention as the Save & Schedule button
+         and the CRM-write note above).
+         2026-08-31 — replaced the old generic blue/cyan bar-mockup
+         (.sf-bar) with a real preview built from this SAME page's own
+         report-visual classes (.quad-visual.mini/.qcell/.quad-marker,
+         .stat-grid/.stat-tile), so the thumbnail actually looks like the
+         report it links to instead of an invented placeholder. -->
     <aside class="sample-thumb">
       <div class="teaser-label">See the format first</div>
       <a class="sample-thumb-frame" href="sample-assessment.html" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;">
         <div class="sf-row"><span>Atlas Ocean Voyages</span><span>Sample · Dummy Account</span></div>
-        <div class="sf-bar" style="width:38%;background:#2563EB;"></div>
-        <div class="sf-bar short" style="background:#0891B2;"></div>
-        <div class="sf-bar" style="width:70%;"></div>
-        <div class="sf-bar" style="width:45%;"></div>
-        <div class="sf-bar short" style="width:30%;"></div>
+        <div class="quad-visual mini" style="margin:2px 0 10px;">
+          <div class="qcell q2">Hidden Gem</div>
+          <div class="qcell q1">The Complete Brand</div>
+          <div class="qcell q3">Invisible &amp; Inconsistent</div>
+          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="quad-marker" style="left:78%;bottom:71%;"></div>
+        </div>
+        <div class="stat-grid" style="margin-top:0;gap:8px;">
+          <div class="stat-tile" style="padding:10px 12px;">
+            <span class="stat-label">Est. market size</span>
+            <span class="stat-value" style="color:var(--advocacy);font-size:1.0625rem;">2.97M</span>
+          </div>
+          <div class="stat-tile" style="padding:10px 12px;">
+            <span class="stat-label">Wealth Index</span>
+            <span class="stat-value" style="font-size:1.0625rem;">100</span>
+          </div>
+        </div>
       </a>
       <div class="sample-thumb-cta">View sample assessment →</div>
       <p style="font-size:0.75rem;color:#6E6E73;margin:10px 0 0;">A real dummy account's report, not a mockup — see exactly what you'll get before you register.</p>
@@ -1636,12 +1696,16 @@
   <!-- Round 120 (2026-08-08), a quick, fun reveal of two headline numbers.
        Round 121 (2026-08-08), per direct instruction ("What we know so far
        will not be used before we show the final assessment output"): moved
-       here, right before the final report — finishAssess() hands off to
-       startQuickReveal(), which auto-advances into the real report after
-       2s, or immediately on the CTA/Close click (finishQuickReveal()).
-       #quickRevenueStat and #quickMarketStat are filled by
-       startQuickReveal(). No step number/eyebrow, same unnumbered-
-       interstitial pattern as site-review above. -->
+       here, right before the final report.
+       2026-08-31, per direct instruction — UNREACHABLE. finishLoopStep()
+       now calls advancePastLoopStep() directly instead of
+       startQuickReveal(), so goToStep('quick-reveal') is never invoked and
+       this section never shows. Left in the DOM (not deleted) in case the
+       "First Look Interstitial" is wanted back later — see
+       advancePastLoopStep()'s own comment near startQuickReveal()/
+       finishQuickReveal() for the full explanation. #quickRevenueStat/
+       #quickMarketStat and the buttons' finishQuickReveal() calls below
+       still resolve correctly if this is ever re-wired. -->
   <section class="step" data-step="quick-reveal">
     <div class="reveal-wrap">
       <div class="reveal-eyebrow">What we know so far</div>
@@ -2515,6 +2579,80 @@ const INDUSTRIES = [
   { label: "Other / Not listed", naics: "—", sic: "—", weakHint: "Purchase", usRevenue: null, desc: "No standard NAICS/SIC classification applies here — describe the business in your own words below." }
 ];
 
+/* ---------- 2026-08-31 — Luxury/Mass Market sibling pairs ----------
+   Built by pattern-matching INDUSTRIES[] labels ending " — Luxury" /
+   " — Mass Market" (Cruise Lines is the only confirmed pair as of this
+   round; this stays generic so any future sibling pair added to
+   INDUSTRIES[] picks up the Step 2 suggestion automatically, no code
+   change needed). Keyed by the shared base label, e.g. "Cruise Lines". */
+const INDUSTRY_LUXURY_MASS_PAIRS = (() => {
+  const pairs = {};
+  INDUSTRIES.forEach((ind, i) => {
+    const lux = ind.label.match(/^(.*) — Luxury$/);
+    const mass = ind.label.match(/^(.*) — Mass Market$/);
+    if (lux){ (pairs[lux[1]] = pairs[lux[1]] || {}).luxuryIdx = i; }
+    if (mass){ (pairs[mass[1]] = pairs[mass[1]] || {}).massMarketIdx = i; }
+  });
+  return pairs;
+})();
+
+// Given the currently-selected #inIndustry value, returns null if it has no
+// Luxury/Mass Market sibling, or { base, currentIsLuxury, luxuryIdx,
+// massMarketIdx } when it does (both indices present — a base label with
+// only one of the two suffixes isn't a real pair).
+function industryLuxuryMassSibling(){
+  const idx = document.getElementById('inIndustry')?.value;
+  if (idx === '' || idx == null) return null;
+  const ind = INDUSTRIES[Number(idx)];
+  if (!ind) return null;
+  const lux = ind.label.match(/^(.*) — Luxury$/);
+  const mass = ind.label.match(/^(.*) — Mass Market$/);
+  const base = lux ? lux[1] : (mass ? mass[1] : null);
+  if (!base) return null;
+  const pair = INDUSTRY_LUXURY_MASS_PAIRS[base];
+  if (!pair || pair.luxuryIdx == null || pair.massMarketIdx == null) return null;
+  return { base, currentIsLuxury: !!lux, luxuryIdx: pair.luxuryIdx, massMarketIdx: pair.massMarketIdx };
+}
+
+// Mass Market vs. Luxury read for the CURRENT audience+wealth selection —
+// reuses the exact same two inputs as verilumeWealthIndex() (income
+// percentile x generationWealthMultiplier()), just read against the
+// "Wealthy" band cutoff (65) rather than shown as its own 0-100 score:
+// roughly where a luxury positioning starts making more sense than a
+// mass-market one. Used only to power the low-key Step 2 sibling-industry
+// suggestion below — not a scored input anywhere else in the assessment.
+function luxuryMassMarketDesignation(){
+  return verilumeWealthIndex() >= 65 ? 'luxury' : 'mass-market';
+}
+
+// Renders (or hides) the inline "switch to the Luxury/Mass Market sibling?"
+// note under #inIndustry. Deliberately low-key — a dismissible inline note,
+// not a modal — and never auto-switches the select: Industry may already be
+// a visitor's own manual edit, so this only offers a one-click accept via
+// applyIndustryTierSuggestion() below. Called on every audience/income
+// change (via renderWealthIndex()) and on every #inIndustry change.
+function renderIndustryTierSuggestion(){
+  const el = document.getElementById('industryTierSuggestion');
+  if (!el) return;
+  const sib = industryLuxuryMassSibling();
+  if (!sib){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  const wantsLuxury = luxuryMassMarketDesignation() === 'luxury';
+  if (wantsLuxury === sib.currentIsLuxury){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  const targetIdx = wantsLuxury ? sib.luxuryIdx : sib.massMarketIdx;
+  const targetLabel = INDUSTRIES[targetIdx].label;
+  el.style.display = 'block';
+  el.innerHTML = `Based on your audience and wealth tier, this reads as ${wantsLuxury ? 'Luxury' : 'Mass Market'} — <button type="button" onclick="applyIndustryTierSuggestion(${targetIdx})" style="border:none;background:none;color:var(--advocacy);font-weight:700;text-decoration:underline;cursor:pointer;padding:0;font:inherit;">switch to ${targetLabel}?</button>`;
+}
+function applyIndustryTierSuggestion(idx){
+  const sel = document.getElementById('inIndustry');
+  if (!sel) return;
+  sel.value = idx;
+  markUserEdited(sel);
+  syncProfileGuessState();
+  renderIndustryDesc();
+  renderIndustryTierSuggestion();
+}
+
 /* ---------- Round 27 — known-domain brand overview lookup ----------
    Atlas Ocean Voyages (atlasoceanvoyages.com) is this build's designated
    full-demo brand. This is a small, hand-researched lookup keyed by domain —
@@ -2620,17 +2758,31 @@ const INDUSTRY_KEYWORDS = {
 // on top of the old one.
 let assessmentWebsiteContext = null;
 
+// 2026-08-31 — very rough illustrative starting point for the new Step 2
+// income slider (see verilumeWealthIndex() below), used only as the initial
+// guessed value shown before a visitor drags it themselves. Uses the same
+// weak "does the label say Luxury" signal already carried by
+// INDUSTRIES[].label — not modeled from any real target-income data —
+// comment applies to every call site below.
+function guessIncomeForIndustry(industryIdx){
+  const industry = INDUSTRIES[industryIdx];
+  if (!industry) return 75000; // no industry guessed yet — national-median-ish default, see its own comment on the slider default below
+  return /luxury/i.test(industry.label) ? 150000 : 75000;
+}
+
 function guessProfileFromInput(){
   const domain = normalizeDomain(document.getElementById('inUrl').value);
   const known = KNOWN_BRAND_OVERVIEWS[domain];
   if (known){
+    const idx = INDUSTRIES.findIndex(ind => ind.label === known.industryLabel);
     return {
       confident: true,
-      industryIdx: INDUSTRIES.findIndex(ind => ind.label === known.industryLabel),
+      industryIdx: idx,
       description: known.description,
       productThemes: known.productThemes || '',
       audience: known.audience || [],
       wealth: known.wealth || [],
+      income: known.income != null ? known.income : guessIncomeForIndustry(idx),
       source: `Brand overview pulled from public sources for ${known.company} — this build's demo account.`
     };
   }
@@ -2645,6 +2797,17 @@ function guessProfileFromInput(){
   const siteText = site ? `${site.title || ''} ${site.metaDescription || ''} ${(site.headings || []).join(' ')} ${site.excerpt || ''}` : '';
   const haystack = `${state.company} ${domain} ${siteText}`.toLowerCase();
   let industryIdx = -1;
+  // 2026-08-31 — this loop is also, implicitly, the "guess Luxury vs. Mass
+  // Market" read called for in the Round-after-105 direct instruction:
+  // INDUSTRY_KEYWORDS already carries separate, distinct keyword lists for
+  // "Cruise Lines — Luxury" (e.g. "luxury cruise", "expedition cruise",
+  // "yacht cruise") vs. "Cruise Lines — Mass Market" (the generic "cruise
+  // line"/"cruises"), in that order, so a haystack that names the premium
+  // cues lands on the Luxury sibling and a generic one falls through to
+  // Mass Market — no separate variant-guess step needed. Same honestly-weak,
+  // simulated-signal disclosure as the rest of this function; a visitor
+  // still sees and can correct the result via renderIndustryTierSuggestion()
+  // once Step 2's audience/wealth read a moment later.
   for (const [label, keywords] of Object.entries(INDUSTRY_KEYWORDS)){
     if (keywords.some(k => haystack.includes(k))){
       industryIdx = INDUSTRIES.findIndex(ind => ind.label === label);
@@ -2668,6 +2831,7 @@ function guessProfileFromInput(){
     productThemes: '',
     audience: [],
     wealth: [],
+    income: industryIdx !== -1 ? guessIncomeForIndustry(industryIdx) : 75000,
     source
   };
 }
@@ -2720,6 +2884,17 @@ function startSiteReview(){
 // longer part of this guess; see the REVENUE_BRACKETS_BY_REGION removal
 // note further down for where it went.)
 function enterProfileGuess(){
+  // 2026-08-31 — kicked off here, on entering Step 2, rather than waiting
+  // for startRecapStep() (several steps later) to first request it. The
+  // Step 2 income slider's Verilume Wealth Index reads
+  // state.censusNational.incomeBrackets (see incomeBracketShares()), so
+  // starting this fetch as early as possible gives it the best chance of
+  // resolving with real data by the time a visitor drags the slider — it
+  // still degrades gracefully to the illustrative fallback table if it
+  // hasn't (or never does). Guarded/idempotent the same way
+  // startRecapStep() already guards its own call.
+  if (!state.censusNational) primeNationalCensus();
+
   const guess = guessProfileFromInput();
   document.getElementById('guessCompanyName').textContent = state.company || 'the brand';
 
@@ -2730,9 +2905,13 @@ function enterProfileGuess(){
     tag.classList.toggle('unknown', !isGuess);
   };
 
-  // Industry
+  // Industry — populated first even though it now renders LAST on the step
+  // (2026-08-31 reorder); renderIndustryTierSuggestion(), called at the end
+  // of this function once audience/income are also set, needs the select's
+  // value already in place to compare against.
   const industrySel = document.getElementById('inIndustry');
   industrySel.value = guess.industryIdx !== -1 ? guess.industryIdx : '';
+  delete industrySel.dataset.userEdited;
   setGuessTag('industryGuessTag', guess.industryIdx !== -1);
   renderIndustryDesc();
 
@@ -2748,13 +2927,34 @@ function enterProfileGuess(){
   // step — recap.html reads state.productThemes later).
   state.productThemes = guess.productThemes || '';
 
-  // Target audience / wealth tier
+  // Target audience — 2026-08-31 (same-day follow-up), per direct
+  // instruction: no longer badged as a guess. guessProfileFromInput()'s
+  // generic branch always returns audience: [] (only the one hardcoded
+  // demo account in KNOWN_BRAND_OVERVIEWS has a real value here), so
+  // calling this "Our Guess" was honest for exactly one account and
+  // "Unknown" for everyone else — reframed as a plain question instead; see
+  // the HTML comment above this step's Audience field. Still seeds from
+  // guess.audience when one exists (harmless — an empty Set either way),
+  // just without the badge implying a guess was attempted.
   state.audience = new Set(guess.audience || []);
-  state.wealth = new Set(guess.wealth || []);
   renderAudienceChecks();
-  renderWealthChecks();
-  setGuessTag('audienceGuessTag', (guess.audience || []).length > 0);
-  setGuessTag('wealthGuessTag', (guess.wealth || []).length > 0);
+
+  // Target wealth tier — likewise no longer badged as a guess (same
+  // instruction). Still seeds the income slider from guess.income (a
+  // reasonable starting default, see guessIncomeForIndustry()) and derives
+  // state.wealth from the Verilume Wealth Index the same way every
+  // subsequent slider drag does (renderWealthIndex() ->
+  // deriveWealthTiersFromIndex()), so the seeded and hand-adjusted paths
+  // always agree — just presented as a starting point to adjust, not a
+  // claimed guess.
+  const incomeEl = document.getElementById('inTargetIncome');
+  if (incomeEl){
+    const guessedIncome = guess.income != null ? guess.income : 75000;
+    incomeEl.value = guessedIncome;
+    delete incomeEl.dataset.userEdited;
+    state.targetIncome = guessedIncome;
+  }
+  renderWealthIndex(); // also calls renderIndustryTierSuggestion()
 
   syncProfileGuessState();
   goToStep('profile-guess');
@@ -2763,12 +2963,35 @@ function enterProfileGuess(){
 /* ---------- Target audience (generations) and target wealth tier —
    multi-select, both feed the best-practice panels shown at every
    later step. ---------- */
+// 2026-08-31 — expanded to match Todd's supplied "Appendix A" generation
+// list exactly (8 named generations + the existing general/all-ages
+// catch-all), replacing the earlier same-day partial fix that only added
+// Gen Alpha. Full list, oldest to youngest, per Appendix A:
+//   The Greatest Generation (1901–1927), The Silent Generation (1928–1945),
+//   Baby Boomers (1946–1964), Generation X (1965–1980),
+//   Millennials / Generation Y (1981–1996), Generation Z (1997–2012),
+//   Generation Alpha (2013–2024), Generation Beta (2025–2039).
+// "The Silent Generation" already existed here as "Seniors / Silent Gen"
+// (pre-existing label, left as-is rather than renamed, to avoid touching
+// every place that already reads that label) — everything else genuinely
+// missing (Greatest Generation, Gen Beta) is added below, alongside Gen
+// Alpha (added earlier today). Live Census age-bin population data
+// (ACS_AGE_BINS further down) has no bins for Greatest Generation (125+
+// years old — no living population at this table's granularity), Gen Alpha,
+// or Gen Beta (not yet born in any meaningful number) — see the dedicated
+// skips/notes in renderRecapCensus() for how each is handled honestly
+// rather than shown as a silent/wrong 0%. All three stay fully selectable
+// everywhere else: the audience picker, generationWealthMultiplier(), and
+// every best-practice panel.
 const GENERATIONS = [
+  { key: "genbeta", label: "Generation Beta", blurb: "Born 2025–2039. The newest, still-emerging cohort — no meaningful population yet and no independent purchasing behavior; relevant mainly to brands planning multi-decade positioning." },
+  { key: "genalpha", label: "Gen Alpha", blurb: "Born ~2013–2024. Not yet direct purchasers for most categories, but shapes household buying via parent influence — brands positioning for the next decade track them now." },
   { key: "genz", label: "Gen Z", blurb: "Born ~1997–2012. Discovery-first, video-native, expects instant self-serve answers." },
   { key: "millennial", label: "Millennials", blurb: "Born ~1981–1996. Research-heavy, values-driven — reviews and social proof matter most." },
   { key: "genx", label: "Gen X", blurb: "Born ~1965–1980. Balances digital research with trust in a real person or phone call." },
   { key: "boomer", label: "Baby Boomers", blurb: "Born ~1946–1964. Prefers direct contact and loyalty to known brands; low tolerance for friction." },
-  { key: "silent", label: "Seniors / Silent Gen", blurb: "Born before 1946. Highest trust in in-person and phone; least forgiving of digital-only experiences." },
+  { key: "silent", label: "Seniors / Silent Gen", blurb: "Born 1928–1945. Highest trust in in-person and phone; least forgiving of digital-only experiences." },
+  { key: "greatest", label: "The Greatest Generation", blurb: "Born 1901–1927. The oldest named cohort — lived through the Great Depression and WWII; an extremely small living population today, included for completeness rather than active targeting." },
   { key: "general", label: "General / all ages", blurb: "No specific generational focus — benchmark across the full range." }
 ];
 
@@ -2874,6 +3097,113 @@ const ACS_INCOME_BRACKETS = [
   ["017","$200,000 or more"]
 ];
 
+/* ---------- 2026-08-31 — Step 2's income-slider "Verilume Wealth Index" ----------
+   Replaces the old High Net-Worth/Wealthy/Middle Income tri-select with a
+   single household-income slider, combined with the existing
+   GENERATION_WEALTH_INDEX (Fed SCF-sourced) into one 0-100 score. See
+   incomePercentile()/verilumeWealthIndex()/deriveWealthTiersFromIndex()
+   below and renderWealthIndex() further down (near renderAudienceChecks())
+   for where it's wired to the DOM. */
+
+// Dollar boundaries for the 16 ACS_INCOME_BRACKETS rows above, in the exact
+// same order — [lowerBound, upperBoundExclusive], with Infinity for the
+// open-ended top bracket. Kept as a parallel array (rather than parsed from
+// the label strings) so incomePercentile() below never has to regex a
+// dollar range out of Census's own label wording.
+const INCOME_BRACKET_BOUNDS = [
+  [0,10000],[10000,15000],[15000,20000],[20000,25000],[25000,30000],[30000,35000],
+  [35000,40000],[40000,45000],[45000,50000],[50000,60000],[60000,75000],[75000,100000],
+  [100000,125000],[125000,150000],[150000,200000],[200000,Infinity]
+];
+
+// Fallback national household-income distribution, used only when
+// state.censusNational hasn't resolved yet (or its fetch failed) — same
+// isLive/fallback convention renderRecapCensus() already uses for this same
+// data. Shares are illustrative, hand-shaped to roughly track the real,
+// published ACS B19001 national distribution (broadly: a long left tail
+// under $50K, the largest single mass in the $75K-$150K range, and a
+// meaningful $200K+ tail) — NOT pulled from a live table, and replaced the
+// moment fetchAcsPopulation(null) actually resolves. Same 16-bracket order
+// as ACS_INCOME_BRACKETS/INCOME_BRACKET_BOUNDS above.
+const INCOME_BRACKETS_FALLBACK_SHARES = [
+  0.06, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.03, 0.03, 0.07, 0.09, 0.12, 0.09, 0.07, 0.09, 0.11
+];
+
+// Returns the 16 bracket shares (0-1, summing to ~1) to use right now: live
+// Census ACS shares if state.censusNational has resolved, otherwise the
+// illustrative fallback above.
+function incomeBracketShares(){
+  const live = state.censusNational;
+  if (live && Array.isArray(live.incomeBrackets) && live.incomeTotal){
+    return live.incomeBrackets.map(b => live.incomeTotal ? b.count / live.incomeTotal : 0);
+  }
+  return INCOME_BRACKETS_FALLBACK_SHARES;
+}
+
+// Real (or, absent a live fetch, illustrative-fallback) cumulative share of
+// U.S. households at or below `value`, linear-interpolated within whichever
+// bracket `value` falls in. The slider's own $250,000 max sits $50,000
+// above the open top bracket's $200,000 floor with no real upper bound to
+// interpolate against — a nominal $50,000 span is used there so the top of
+// the slider still reads as "fully within the top bracket" (percentile 1.0)
+// rather than pinning flat the instant the slider crosses $200,000.
+function incomePercentile(value){
+  const shares = incomeBracketShares();
+  let cum = 0;
+  for (let i = 0; i < INCOME_BRACKET_BOUNDS.length; i++){
+    const [lo, hi] = INCOME_BRACKET_BOUNDS[i];
+    const share = shares[i] || 0;
+    if (hi === Infinity || value < hi){
+      const span = hi === Infinity ? 50000 : (hi - lo);
+      const frac = Math.max(0, Math.min((value - lo) / span, 1));
+      return Math.min(cum + share * frac, 1);
+    }
+    cum += share;
+  }
+  return 1;
+}
+
+// The Verilume Wealth Index itself: income percentile (0-1, real/illustrative
+// Census ACS household income data) x generationWealthMultiplier() (the
+// existing Fed SCF-sourced age/generation wealth index), scaled to 0-100 and
+// capped there — a high income percentile combined with an older-skewing,
+// above-1.0-multiplier generation selection can otherwise exceed 100.
+function verilumeWealthIndex(){
+  const pct = incomePercentile(state.targetIncome);
+  const mult = generationWealthMultiplier();
+  return Math.min(100, Math.round(pct * 100 * mult));
+}
+
+// Band cutoffs for the qualitative label shown next to the index. Chosen so
+// the two upper bands roughly track this file's existing WEALTH_TIER_ILLUSTRATIVE
+// shares once scaled by generationWealthMultiplier(): an index of 85+ is the
+// kind of income-percentile x generation-wealth combination that would
+// already sit inside the illustrative HNW share for an average-wealth
+// generation, 65-85 the broader Wealthy share, and everything below that is
+// the mainstream/value-conscious majority the flat national baseline
+// describes. Reasoned band, not a modeled cutoff — same disclosed-approximation
+// posture as the rest of this section.
+function wealthIndexLabel(index){
+  if (index >= 85) return 'High Net-Worth';
+  if (index >= 65) return 'Wealthy';
+  if (index >= 35) return 'Mainstream Affluent';
+  return 'Value-Conscious';
+}
+
+// Maps the 0-100 index back onto the SAME 3-key Set shape every existing
+// downstream consumer of state.wealth already expects ('hnw'/'wealthy'/
+// 'middle' — see portal.html's WEALTH_TIER_MULTIPLIER/wealthTierKey() and
+// this file's own wealthLabels()/recap census table). "Mainstream Affluent"
+// and "Value-Conscious" both collapse to 'middle' here since the rest of
+// the app only ever distinguished three tiers, not four.
+function deriveWealthTiersFromIndex(index){
+  const set = new Set();
+  if (index >= 85) set.add('hnw');
+  else if (index >= 65) set.add('wealthy');
+  else set.add('middle');
+  return set;
+}
+
 // Illustrative wealth-tier shares — kept as Verilume's own categorization
 // (income proxy, not real net-worth data — see the comment block above),
 // used only as the fallback/comparison table, never presented as Census data.
@@ -2904,7 +3234,26 @@ const WEALTH_TIER_ILLUSTRATIVE = { hnw: 0.02, wealthy: 0.18, middle: 0.50 };
 // remains a disclosed approximation, just a materially better-grounded one
 // than the flat, age-independent version it replaces.
 const GENERATION_WEALTH_INDEX = {
-  genz: 0.20, millennial: 0.47, genx: 1.32, boomer: 1.82, silent: 1.74, general: 1.0
+  genz: 0.20, millennial: 0.47, genx: 1.32, boomer: 1.82, silent: 1.74, general: 1.0,
+  // 2026-08-31 — Gen Alpha, Gen Beta, and The Greatest Generation, added
+  // alongside their GENERATIONS[] entries (Appendix A). Unlike every other
+  // value in this object, none of these three is Fed SCF-sourced:
+  //   - genalpha: the SCF doesn't survey household heads this young (its
+  //     youngest bracket starts at <35) — a low illustrative placeholder,
+  //     reflecting that a Gen Alpha member has essentially no independent
+  //     net worth yet (a household-influence audience, not a spending one).
+  //   - genbeta: not yet born in meaningful numbers — 0, since there is no
+  //     real population to index.
+  //   - greatest: the SCF's oldest bracket is 75+, already folded into
+  //     "silent" above; The Greatest Generation (99+ years old in 2026) is
+  //     an extremely small living population with no separate SCF bracket
+  //     of its own, so this reuses the 75+ figure (same as "silent") rather
+  //     than inventing a new number — an approximation, not a distinct
+  //     data point.
+  // Flagged here so a future session doesn't mistake genalpha/genbeta/
+  // greatest for real SCF data the way genz/millennial/genx/boomer/silent
+  // are.
+  genalpha: 0.05, genbeta: 0.0, greatest: 1.74
 };
 
 // Average GENERATION_WEALTH_INDEX across the audience generation(s) actually
@@ -3103,6 +3452,12 @@ let state = {
                      // this hardcoded default if B2B ever becomes real.
   audience: new Set(),
   wealth: new Set(),
+  // 2026-08-31 — Step 2's income slider (#inTargetIncome). $75,000 is an
+  // illustrative starting default, roughly near the current U.S. median
+  // household income (no more precise figure is already referenced
+  // elsewhere in this file) — see guessIncomeForIndustry()/
+  // verilumeWealthIndex() for how a real guess or edit updates it.
+  targetIncome: 75000,
   region: null, // Local | National | Global
   address: '', // typed by the user at the recap step, geocoded live
   geo: null, // {ok, countyName, stateFips, countyFips, cbsaName, lat, lon} from geocodeAddress(), or {ok:false} / null
@@ -3212,12 +3567,13 @@ function industryCluster(industryLabel){
   return INDUSTRY_CLUSTER[industryLabel] || 'generic';
 }
 prefillFromQueryString();
-// Step 2's audience/wealth selection tiles render once up front. The
+// Step 2's audience selection tiles (and, since 2026-08-31, the income
+// slider's live Wealth Index readout) render once up front. The
 // consolidated journey best-practice panel targets a later-step element, so
 // this call is a no-op guard until the visitor actually reaches that step —
 // kept here anyway so a direct deep-link into a later step still renders it.
 renderAudienceChecks();
-renderWealthChecks();
+renderWealthIndex();
 renderJourneyBP();
 
 // Round 107 (2026-08-07) — REVENUE_BRACKETS_BY_REGION, revenueBrackets(),
@@ -3617,6 +3973,12 @@ function updateProgress(step){
   // comments on the sections themselves); only Channels/Scope Picker/
   // Assess stay in the post-registration accordion — see
   // updateEnhanceProgress() for how the bar keeps moving through those.
+  // 2026-08-31 — 'quick-reveal' left in this map even though goToStep()
+  // never receives it any more (advancePastLoopStep() replaced the
+  // startQuickReveal() hand-off — see that function's comment): an unused
+  // object key is harmless (order[step] just never looks it up), and
+  // removing it buys nothing but a merge conflict if the interstitial is
+  // ever wired back up.
   const order = { landing:0, company:5, 'site-review':8, 'profile-guess':11, orgstyle:16, recap:22, loop:28, maturity:40, 'quick-reveal':62, contact:68, report:70 };
   document.getElementById('progressFill').style.width = (order[step] ?? 0) + '%';
 }
@@ -3758,11 +4120,15 @@ function finishLoopStep(){
     return;
   }
   if (errEl) errEl.style.display = 'none';
-  startQuickReveal();
+  // 2026-08-31, per direct instruction — the "First Look Interstitial"
+  // (quick-reveal step + its 2s auto-advance) is removed from the flow;
+  // this now hands off straight to the real-account/Contact branching logic
+  // that used to sit behind it. See advancePastLoopStep()'s own comment.
+  advancePastLoopStep();
 }
 
 document.getElementById('restartBtn').addEventListener('click', () => {
-  state = { company:'', url:'', industryIdx:'', description:'', productThemes:'', buyerType:'B2C', audience:new Set(), wealth:new Set(), region:null, address:'', geo:null, censusNational:null, censusLocal:null, cbpNational:null, cbpLocal:null, firstName:'', lastName:'', email:'', phoneCountry:'+1', phone:'', consent:false, assessStages:new Set(), assessProducts:new Set(), productRatings:{}, answers:{}, opportunity:null, revenueLevel:2, orgStyle:null, orgChartId:null, stageEffectiveness:{}, cxConsistencyRating:0, fnGroupRatings:{} };
+  state = { company:'', url:'', industryIdx:'', description:'', productThemes:'', buyerType:'B2C', audience:new Set(), wealth:new Set(), targetIncome:75000, region:null, address:'', geo:null, censusNational:null, censusLocal:null, cbpNational:null, cbpLocal:null, firstName:'', lastName:'', email:'', phoneCountry:'+1', phone:'', consent:false, assessStages:new Set(), assessProducts:new Set(), productRatings:{}, answers:{}, opportunity:null, revenueLevel:2, orgStyle:null, orgChartId:null, stageEffectiveness:{}, cxConsistencyRating:0, fnGroupRatings:{} };
   document.querySelectorAll('#orgStyleChips .select-tile').forEach(c => c.classList.remove('selected'));
   document.getElementById('orgChartGrid').innerHTML = '';
   document.getElementById('orgChartSection').style.display = 'none';
@@ -3771,7 +4137,15 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.getElementById('loopStageRows').innerHTML = '';
   document.getElementById('fnGroupRows').innerHTML = '';
   document.querySelectorAll('#regionChips .select-tile').forEach(c => c.classList.remove('selected'));
-  document.querySelectorAll('#audienceChecks .select-tile, #wealthChecks .select-tile').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('#audienceChecks .select-tile').forEach(c => c.classList.remove('selected'));
+  // 2026-08-31 — reset the income slider + its guess tag back to the
+  // illustrative national-median default (see the slider's own comment on
+  // the intake-card markup), and re-render the Wealth Index/suggestion off
+  // that reset value.
+  const targetIncomeEl = document.getElementById('inTargetIncome');
+  if (targetIncomeEl){ targetIncomeEl.value = 75000; delete targetIncomeEl.dataset.userEdited; }
+  const industryTierSuggestionEl = document.getElementById('industryTierSuggestion');
+  if (industryTierSuggestionEl){ industryTierSuggestionEl.style.display = 'none'; industryTierSuggestionEl.innerHTML = ''; }
   document.getElementById('addressEditInput').value = '';
   document.getElementById('recapAddressStatus').textContent = '';
   // 2026-08-20 — Step 1's address block
@@ -3792,11 +4166,16 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.getElementById('guessCompanyName').textContent = 'the brand';
   // Round 118 — descGuessTag removed along with #inDesc (Step 2 no longer
   // has its own description field/guess tag; see that step's comment).
-  ['industryGuessTag','audienceGuessTag','wealthGuessTag'].forEach(id => {
-    const tag = document.getElementById(id);
-    tag.textContent = 'Our Guess';
-    tag.classList.remove('unknown');
-  });
+  // 2026-08-31 (same-day follow-up) — audienceGuessTag/wealthGuessTag no
+  // longer exist in the DOM (Audience/Wealth Tier are plain questions now,
+  // not badged guesses — see enterProfileGuess()'s comment); only Industry
+  // still carries a guess tag, since that's the one field with a real
+  // signal behind it.
+  const industryTag = document.getElementById('industryGuessTag');
+  if (industryTag){
+    industryTag.textContent = 'Our Guess';
+    industryTag.classList.remove('unknown');
+  }
   document.querySelectorAll('#reviewChecklist li').forEach(li => li.classList.remove('done'));
   document.getElementById('companyNext').disabled = true;
   document.getElementById('contactNext').disabled = true;
@@ -3808,6 +4187,7 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.getElementById('productPickCount').textContent = '0 picked';
   document.getElementById('assessBody').innerHTML = '';
   renderJourneyBP();
+  renderWealthIndex(); // re-renders off the just-reset slider/audience state
   goToStep('landing');
 });
 
@@ -3888,8 +4268,12 @@ function renderJourneyBP(){
   const wealth = wealthLabels();
   const company = state.company || 'this brand';
 
-  const youngerSet = ['genz', 'millennial'];
-  const olderSet = ['genx', 'boomer', 'silent'];
+  // 2026-08-31 — genalpha added to youngerSet: it's the youngest generation
+  // in GENERATIONS[], so grouping it here keeps this sentence accurate for
+  // a visitor who selects only Gen Alpha, instead of falling through to
+  // "audience isn't set yet" for a generation that IS set.
+  const youngerSet = ['genbeta', 'genalpha', 'genz', 'millennial'];
+  const olderSet = ['genx', 'boomer', 'silent', 'greatest'];
   const hasYounger = youngerSet.some(k => state.audience.has(k));
   const hasOlder = olderSet.some(k => state.audience.has(k));
   const genSentence = hasYounger && hasOlder
@@ -3945,8 +4329,8 @@ function renderJourneyBP(){
 // above, since these get dropped into five compact per-stage templates
 // rather than one longer paragraph.
 function journeyProfileClauses(){
-  const hasYounger = ['genz', 'millennial'].some(k => state.audience.has(k));
-  const hasOlder = ['genx', 'boomer', 'silent'].some(k => state.audience.has(k));
+  const hasYounger = ['genbeta', 'genalpha', 'genz', 'millennial'].some(k => state.audience.has(k)); // genbeta/genalpha grouped with the younger-skewing set — see renderJourneyBP()'s comment
+  const hasOlder = ['genx', 'boomer', 'silent', 'greatest'].some(k => state.audience.has(k));
   const genPhrase = hasYounger && hasOlder
     ? 'a generational mix'
     : hasYounger
@@ -4027,28 +4411,66 @@ function renderAudienceChecks(){
       else state.audience.add(g.key);
       card.classList.toggle('selected');
       checkCompanyReady();
+      // 2026-08-31 — generationWealthMultiplier() depends on state.audience,
+      // so a generation toggle changes the Verilume Wealth Index (and
+      // therefore state.wealth and the Luxury/Mass Market suggestion) even
+      // though the income slider itself didn't move. Guarded (renderWealthIndex
+      // no-ops via its own element-existence check) for any other page that
+      // might reuse renderAudienceChecks() without the Step 2 slider present.
+      renderWealthIndex();
     });
     c.appendChild(card);
   });
 }
 
-function renderWealthChecks(){
-  const c = document.getElementById('wealthChecks');
-  c.innerHTML = '';
-  WEALTH_TIERS.forEach(w => {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'select-tile checkbox compact' + (state.wealth.has(w.key) ? ' selected' : '');
-    card.innerHTML = `<span class="indicator">✓</span><span class="body"><h3>${w.label}<span class="info-icon" tabindex="0">i<span class="tip">${w.blurb}</span></span></h3></span>`;
-    card.querySelector('.info-icon').addEventListener('click', (e) => { e.stopPropagation(); toggleTip(e.currentTarget); });
-    card.addEventListener('click', () => {
-      if (state.wealth.has(w.key)) state.wealth.delete(w.key);
-      else state.wealth.add(w.key);
-      card.classList.toggle('selected');
-      checkCompanyReady();
-    });
-    c.appendChild(card);
-  });
+// 2026-08-31 — renderWealthChecks() (the old High Net-Worth/Wealthy/Middle
+// Income tri-select renderer) removed here, per direct instruction: Step 2's
+// "Target wealth tier" question is now the income slider below, not a
+// manual multi-select. WEALTH_TIERS[] itself is untouched (still read by
+// wealthLabels(), the recap step's wealth-tier table, and portal.html) —
+// only this renderer and its #wealthChecks call sites are gone.
+// renderWealthIndex()/updateTargetIncome() below are the slider's
+// equivalent, kept here next to the renderer they replaced.
+
+// Slider oninput handler (#inTargetIncome). Marks the field user-edited
+// (same markUserEdited() convention as every other Step 2 field) and
+// recomputes everything downstream of the new value.
+function updateTargetIncome(){
+  const el = document.getElementById('inTargetIncome');
+  if (!el) return;
+  markUserEdited(el);
+  state.targetIncome = Number(el.value);
+  renderWealthIndex();
+}
+
+// Renders the live "Verilume Wealth Index: NN — Label" readout, recomputes
+// state.wealth from it (deriveWealthTiersFromIndex() — see that function's
+// comment for why every downstream reader of state.wealth keeps working
+// unchanged), and refreshes the Luxury/Mass Market industry suggestion,
+// since that also depends on the same index. Called on every slider drag,
+// every audience-tile toggle (see renderAudienceChecks() above), and once
+// from enterProfileGuess() when the step first populates.
+function renderWealthIndex(){
+  const slider = document.getElementById('inTargetIncome');
+  if (!slider) return; // this step isn't in the DOM (shouldn't happen, but matches the guarded pattern renderAudienceChecks() already uses)
+  const val = Number(slider.value);
+  state.targetIncome = val;
+  const valueLabel = document.getElementById('targetIncomeValueLabel');
+  if (valueLabel) valueLabel.textContent = val >= 250000 ? '$250,000+' : `$${val.toLocaleString()}`;
+
+  const index = verilumeWealthIndex();
+  const label = wealthIndexLabel(index);
+  state.wealth = deriveWealthTiersFromIndex(index);
+
+  const body = document.getElementById('wealthIndexBody');
+  if (body){
+    const isLive = !!(state.censusNational && Array.isArray(state.censusNational.incomeBrackets) && state.censusNational.incomeTotal);
+    const sourceNote = isLive
+      ? 'live U.S. Census ACS household income data (table B19001)'
+      : 'an illustrative national income distribution — live Census data hasn\'t loaded this session';
+    body.innerHTML = `<strong>Verilume Wealth Index: ${index} — ${label}.</strong> Built from your target income's percentile against ${sourceNote}, multiplied by the Fed Survey of Consumer Finances-sourced wealth index for your selected generation(s) above.`;
+  }
+  renderIndustryTierSuggestion();
 }
 
 /* ---------- Round 104, module (b) — Org Style + org-chart picker ---------- */
@@ -4389,33 +4811,35 @@ function pickRegion(region){
 // proof-of-work recap shows. Round 121 (2026-08-08), per direct instruction
 // ("What we know so far will not be used before we show the final
 // assessment output"): moved from between orgstyle and recap to right
-// before the final report — it now runs after finishAssess() and leads
-// into goToStep('report') instead of into recap. Still deliberately reuses
-// recap's own render functions (renderRecapIndustry()/renderRecapCensus())
-// rather than recomputing anything — same sourcing as always (industry
-// usRevenue; market size = population × selected-generation share ×
-// selected-wealth share, computed inline inside renderRecapCensus()). By
-// this point in the new flow recap (Step 8) has already run once, so this
-// mostly just re-reads state.opportunity; calling both again is harmless
-// and picks up a slightly more current number if a live Census fetch
-// resolved in the meantime.
-let quickRevealTimer = null;
-function startQuickReveal(){
+// before the final report.
+//
+// 2026-08-31, per direct instruction — the "First Look Interstitial" (this
+// quick-reveal step, and its 2-second auto-advance timer) is REMOVED from
+// the flow. finishLoopStep() now calls advancePastLoopStep() directly
+// instead of startQuickReveal(); the branching logic that used to live in
+// finishQuickReveal() (real-account skip-to-report vs. go-to-Contact) is
+// preserved verbatim below as advancePastLoopStep() — same behavior, just
+// reached immediately instead of after a 2s delay behind an interstitial
+// screen. startQuickReveal()/finishQuickReveal() are kept, calling the same
+// shared function, in case the interstitial is wanted back later — but
+// nothing in this file calls them any more, and the <section
+// data-step="quick-reveal"> markup (and its onclick handlers, which still
+// reference finishQuickReveal()) is now unreachable via goToStep(). Left in
+// place rather than deleted, per the same "don't destroy in case it's
+// wanted back" posture as other deprecated code in this file — see that
+// section's own comment.
+function advancePastLoopStep(){
+  // Still deliberately reuses recap's own render functions
+  // (renderRecapIndustry()/renderRecapCensus()) rather than recomputing
+  // anything — same sourcing as always (industry usRevenue; market size =
+  // population × selected-generation share × selected-wealth share,
+  // computed inline inside renderRecapCensus()). By this point in the flow
+  // recap (Step 8) has already run once via finishOrgStyleStep(), so this
+  // mostly just re-reads state.opportunity; calling both again is harmless
+  // and picks up a slightly more current number if a live Census fetch
+  // resolved in the meantime.
   renderRecapIndustry();
   renderRecapCensus();
-  const opp = state.opportunity || {};
-  document.getElementById('quickRevenueStat').textContent = opp.industryRevenue != null ? fmtB(opp.industryRevenue) : '—';
-  document.getElementById('quickMarketStat').textContent = opp.marketSize != null ? opp.marketSize.toLocaleString() : '—';
-  goToStep('quick-reveal');
-  clearTimeout(quickRevealTimer);
-  quickRevealTimer = setTimeout(finishQuickReveal, 2000);
-}
-// Round 125, per direct instruction ("Registration is the last step for
-// the actual first free assessment"): the interstitial now hands off to
-// registration, not straight to the report — contact is the true final
-// step of the free assessment; the report only opens once that's done.
-function finishQuickReveal(){
-  clearTimeout(quickRevealTimer);
   // 2026-08-21, per direct report — someone who already created a real
   // account (Save & Schedule modal → verified → chose "Keep going with
   // the assessment" instead of "Go to your account") was still being
@@ -4437,6 +4861,23 @@ function finishQuickReveal(){
   const contactCompanyEl = document.getElementById('inContactCompany');
   if (contactCompanyEl) contactCompanyEl.value = state.company || '';
   goToStep('contact');
+}
+let quickRevealTimer = null;
+// Deprecated (2026-08-31) — no longer called anywhere in this file; see the
+// comment on advancePastLoopStep() above. Kept only so the unreachable
+// quick-reveal <section>'s inline onclick handlers still resolve if that
+// markup is ever wired back up.
+function startQuickReveal(){
+  const opp = state.opportunity || {};
+  document.getElementById('quickRevenueStat').textContent = opp.industryRevenue != null ? fmtB(opp.industryRevenue) : '—';
+  document.getElementById('quickMarketStat').textContent = opp.marketSize != null ? opp.marketSize.toLocaleString() : '—';
+  goToStep('quick-reveal');
+  clearTimeout(quickRevealTimer);
+  quickRevealTimer = setTimeout(finishQuickReveal, 2000);
+}
+function finishQuickReveal(){
+  clearTimeout(quickRevealTimer);
+  advancePastLoopStep();
 }
 
 // 2026-08-19 (QA round) — Company Profile is no longer a standalone
@@ -4550,6 +4991,11 @@ async function primeNationalCensus(){
   }
   renderRecapIndustry();
   renderRecapCensus();
+  // 2026-08-31 — the Step 2 income slider's Wealth Index reads
+  // state.censusNational.incomeBrackets too (see incomeBracketShares()); if
+  // this resolved after the visitor already saw the slider on its
+  // illustrative fallback, refresh it in place with the real distribution.
+  renderWealthIndex();
 }
 
 function renderRecapAddressStatus(msg, kind){
@@ -4795,15 +5241,27 @@ function renderRecapCensus(){
     : `U.S. population${isLive ? ' (live, Census ACS)' : ' (illustrative — Census fetch unavailable this session)'}`;
   const selAud = state.audience;
   const selWealth = state.wealth;
+  // 2026-08-31 — genalpha/genbeta/greatest intentionally absent here: none
+  // has an entry in ACS_AGE_BINS (that table's existing bin offsets don't
+  // have room for 3 more generations without reworking the whole mapping —
+  // out of scope for this round; genbeta and greatest also have no
+  // meaningful real population at this table's granularity regardless), so
+  // all three are excluded from this national/local live-population
+  // fallback map too, rather than silently defaulting to a 0% row below.
   const FALLBACK_GEN_SHARES = { genz: 0.20, millennial: 0.22, genx: 0.19, boomer: 0.21, silent: 0.06 };
+  const GEN_KEYS_WITHOUT_CENSUS_TABLE = ['genalpha', 'genbeta', 'greatest'];
 
   // Only the generations actually selected on Step 1 — "General / all ages"
   // means no specific focus, so it's shown as the full population instead
-  // of a filtered row.
+  // of a filtered row. Gen Alpha/Beta and The Greatest Generation are
+  // filtered out of THIS table specifically (see the comment on
+  // ACS_AGE_BINS and the honest inline note rendered below when any of them
+  // is selected) — they stay fully selectable everywhere else (audience
+  // picker, generationWealthMultiplier(), best-practice panels).
   const showAllGenerations = selAud.has('general') || selAud.size === 0;
   let genRows = '';
   let genShareSum = 0;
-  GENERATIONS.filter(g => g.key !== 'general' && (showAllGenerations || selAud.has(g.key))).forEach(g => {
+  GENERATIONS.filter(g => g.key !== 'general' && !GEN_KEYS_WITHOUT_CENSUS_TABLE.includes(g.key) && (showAllGenerations || selAud.has(g.key))).forEach(g => {
     let count, share;
     if (isLive && live.generations){
       count = live.generations[g.key] || 0;
@@ -4875,6 +5333,7 @@ function renderRecapCensus(){
       <tbody>${genRows}</tbody>
     </table>
     <div class="recap-note">${isLive ? 'Live U.S. Census ACS 5-year data (table B01001), bucketed into generations from the nearest standard age bins — an approximation, since Census bins don\'t split exactly at generation birth-year cutoffs.' : 'Illustrative — shaped on general Census Bureau age patterns, not a live pull this session.'}</div>
+    ${GEN_KEYS_WITHOUT_CENSUS_TABLE.some(k => selAud.has(k)) ? `<div class="recap-note">${['genalpha','genbeta','greatest'].filter(k => selAud.has(k)).map(k => (GENERATIONS.find(g => g.key === k) || {}).label).join(', ')} population isn't available from this Census table yet — the standard ACS age bins this table maps generations onto don't split out the age ranges needed for these cohorts (a clean under-13 bracket for Gen Alpha, a not-yet-born cohort for Gen Beta, or a 99+ bracket for The Greatest Generation), so they're left out of the table above rather than shown as an inaccurate 0%. They still factor into the rest of your profile (Wealth Index, best-practice guidance) below.</div>` : ''}
     ${incomeRows ? `
     <table class="census-table" style="margin-top:20px;">
       <colgroup><col style="width:55%;"><col style="width:20%;"><col style="width:25%;"></colgroup>

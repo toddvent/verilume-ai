@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sample Assessment — Verilume</title>
+<meta name="description" content="A sample Verilume free assessment report for a dummy account (Atlas Ocean Voyages), shown before you register so you can see the real format.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* 2026-08-31 — this page is deliberately a small, trimmed copy of
+   assessment.html's own design tokens and report-page classes (same
+   :root vars, .eyebrow/.lede, .stat-grid/.stat-tile, .census-table,
+   .result-band/.quad-visual/.qcell/.quad-marker) rather than an invented
+   visual style — see cxmedia-... build notes: "reuse assessment.html's
+   actual CSS ... rather than inventing a new visual style." Standalone
+   static file (no shared <link> — assessment.html's <style> block isn't
+   externalized, so classes are duplicated here instead of linked). */
+:root{
+  --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+  --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+  --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+  --line-hairline:#E8E8ED;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:
+    radial-gradient(ellipse 700px 460px at 4% 0%, rgba(8,145,178,0.07) 0%, rgba(8,145,178,0) 56%),
+    radial-gradient(ellipse 700px 500px at 99% 8%, rgba(37,99,235,0.09) 0%, rgba(37,99,235,0) 58%),
+    var(--paper);
+  background-attachment:fixed;
+  color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+a{color:inherit;}
+.wrap{max-width:900px;margin:0 auto;padding:0 28px;}
+
+/* ---- Top bar ---- */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 28px;}
+.wordmark{font-weight:500;font-size:1.25rem;letter-spacing:0.01em;color:var(--ink);text-decoration:none;}
+.close-link{font-size:0.8125rem;font-weight:600;color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:8px 16px;}
+.close-link:hover{color:var(--ink);border-color:var(--ink);}
+
+/* ---- Cover / start section ---- */
+.cover{padding:64px 0 56px;text-align:center;}
+.dummy-badge{display:inline-flex;align-items:center;gap:6px;font-size:0.6875rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--advocacy);background:#E0E7FF;border:1px solid #C7D2FE;border-radius:999px;padding:5px 14px;margin-bottom:22px;}
+.cover h1{font-size:2.25rem;font-weight:700;letter-spacing:-0.01em;margin:0 0 14px;}
+.cover .cover-sub{font-size:1.0625rem;color:var(--muted);max-width:560px;margin:0 auto 30px;line-height:1.6;}
+.cover-note{font-size:0.875rem;color:var(--muted);background:var(--paper-dim);border:1px solid var(--line);border-radius:12px;padding:16px 20px;max-width:560px;margin:0 auto 34px;line-height:1.6;text-align:left;}
+.cover-note strong{color:var(--ink);}
+.scroll-cta{display:inline-flex;align-items:center;gap:8px;font-size:0.9375rem;font-weight:600;color:#fff;background:var(--ink);border-radius:999px;padding:14px 28px;text-decoration:none;}
+.scroll-cta:hover{background:#000;}
+
+/* ---- Report body ---- */
+.report-body{padding:8px 0 80px;}
+.eyebrow{font-size:0.75rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:16px;}
+p.lede{font-size:0.9688rem;line-height:1.65;color:#3A3428;max-width:640px;margin:0 0 20px;}
+h2{font-size:1.375rem;font-weight:700;margin:0 0 6px;}
+
+.result-band{border-radius:16px;padding:36px 40px;margin:0 0 28px;background:var(--ink);}
+.result-band .eyebrow{color:rgba(255,255,255,0.65);}
+.result-band h1{color:#fff;font-size:1.75rem;margin:0 0 10px;}
+.result-band .lede{color:rgba(255,255,255,0.88);max-width:640px;margin:0;}
+.basis-note{font-size:0.75rem;color:rgba(255,255,255,0.55);margin-top:14px;}
+
+.quad-wrap{margin:0 0 40px;}
+.quad-axis-y{font-size:0.7188rem;color:var(--cx);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;}
+.quad-visual{position:relative;background:var(--white);border:1px solid var(--ink);border-radius:12px;aspect-ratio:16/9;max-width:560px;}
+.quad-visual .qcell{position:absolute;width:50%;height:50%;padding:14px 16px;font-size:0.7188rem;letter-spacing:0.05em;text-transform:uppercase;color:#8a8067;}
+.quad-visual .qcell.q2{top:0;left:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
+.quad-visual .qcell.q1{top:0;right:0;border-bottom:1px solid var(--line);}
+.quad-visual .qcell.q3{bottom:0;left:0;border-right:1px solid var(--line);}
+.quad-visual .qcell.q4{bottom:0;right:0;}
+.quad-marker{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--advocacy);border:3px solid var(--white);box-shadow:0 0 0 1px var(--ink);transform:translate(-50%,50%);left:78%;bottom:71%;}
+.quad-axis-x{font-size:0.7188rem;color:var(--cx);text-transform:uppercase;letter-spacing:0.06em;margin-top:8px;text-align:right;max-width:560px;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:14px 0 36px;}
+.stat-tile{background:var(--paper-dim);border-radius:12px;padding:14px 16px;}
+.stat-tile .stat-label{font-size:0.7188rem;letter-spacing:0.06em;text-transform:uppercase;color:#8a8067;display:block;margin-bottom:6px;}
+.stat-tile .stat-value{font-size:1.375rem;font-weight:600;color:var(--ink);}
+.stat-tile .stat-note{font-size:0.8125rem;color:#8a8067;margin-top:4px;line-height:1.5;}
+
+.census-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:12px;font-size:0.875rem;}
+.census-table th{text-align:left;vertical-align:top;font-size:0.75rem;letter-spacing:0.05em;text-transform:uppercase;color:#8a8067;padding:6px 8px;border-bottom:1px solid var(--line);}
+.census-table td{padding:8px 8px;border-bottom:1px solid var(--paper-dim);color:#3A3428;vertical-align:top;}
+.census-table tr.selected td{font-weight:700;color:var(--cx);}
+.recap-note{font-size:0.8125rem;color:#8a8067;margin-top:10px;}
+
+.section-block{margin-bottom:44px;}
+.tag-row{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px;}
+.tag-pill{font-size:0.75rem;font-weight:600;color:var(--ink);background:var(--paper-dim);border:1px solid var(--line);border-radius:999px;padding:6px 14px;}
+
+.footer-cta{text-align:center;border-top:1px solid var(--line-hairline);padding-top:40px;}
+.footer-cta h3{font-size:1.25rem;margin:0 0 10px;}
+.footer-cta p{color:var(--muted);font-size:0.9375rem;max-width:480px;margin:0 auto 22px;}
+.footer-cta a.cta-btn{display:inline-block;font-size:0.9375rem;font-weight:600;color:#fff;background:var(--advocacy);border-radius:999px;padding:14px 30px;text-decoration:none;}
+
+@media (max-width:640px){
+  .cover h1{font-size:1.75rem;}
+  .result-band{padding:26px 22px;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar wrap" style="max-width:900px;">
+  <span class="wordmark">Verilume</span>
+  <a class="close-link" href="assessment.html">← Back to your assessment</a>
+</div>
+
+<!-- ---- Cover section — the reader lands here first ---- -->
+<div class="cover wrap">
+  <div class="dummy-badge">● Sample · Dummy Account</div>
+  <h1>Atlas Ocean Voyages</h1>
+  <p class="cover-sub">This is a real, filled-out example of a Verilume free assessment report — not a mockup. Every number and section below is illustrative, built for a dummy account, so you can see the exact format before you register with your own.</p>
+  <div class="cover-note">
+    <strong>Why Atlas Ocean Voyages?</strong> It's this build's one hand-researched demo brand — a small-ship luxury expedition cruise line ("Intimate Yachting Expeditions™"), launched 2019, headquartered in Fort Lauderdale, FL, sailing Polar, Epicurean, and Cultural expeditions on a fleet of purpose-built yachts (World Navigator, World Traveller, World Voyager, and the newly announced Atlas Adventurer) carrying roughly 196 guests on its core ships. None of this data is Atlas Ocean Voyages' real performance data — it's an illustrative scoring run against real, public brand facts.
+  </div>
+  <a class="scroll-cta" href="#report">See the sample report ↓</a>
+</div>
+
+<div class="wrap report-body" id="report">
+
+  <!-- ---- Quadrant position ---- -->
+  <div class="section-block">
+    <div class="eyebrow">Your free results</div>
+    <div class="result-band">
+      <div class="eyebrow">Your truth, illuminated</div>
+      <h1>The Complete Brand</h1>
+      <p class="lede">Atlas Ocean Voyages lands in the strongest quadrant: above-average marketing execution paired with above-average customer experience consistency. The read below is built from this sample account's self-rated Marketing Loop effectiveness and CX consistency — the same two inputs every real free assessment uses.</p>
+      <div class="basis-note">Based on self-rated inputs from the free assessment — refine it further with the full Verilume Portal's guided evaluation.</div>
+    </div>
+
+    <div class="quad-wrap">
+      <div class="quad-axis-y">CX Strength ↑</div>
+      <div class="quad-visual">
+        <div class="qcell q2">Hidden Gem</div>
+        <div class="qcell q1">The Complete Brand</div>
+        <div class="qcell q3">Invisible &amp; Inconsistent</div>
+        <div class="qcell q4">All Promise, No Delivery</div>
+        <div class="quad-marker" title="Overall position"></div>
+      </div>
+      <div class="quad-axis-x">Marketing Effectiveness →</div>
+    </div>
+  </div>
+
+  <!-- ---- Opportunity size ---- -->
+  <div class="section-block">
+    <div class="eyebrow">Opportunity size</div>
+    <h2>Your estimated market, by the numbers</h2>
+    <p class="lede">Illustrative sample figures, shaped the same way a real account's opportunity-size read is built: national population × selected generation share(s) × selected wealth tier share(s).</p>
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <span class="stat-label">Industry annual U.S. revenue (illustrative)</span>
+        <span class="stat-value">$15.0B</span>
+        <div class="stat-note">Luxury cruise lines (NAICS 483112) — illustrative category figure, not Atlas Ocean Voyages' own revenue.</div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">U.S. population (sample)</span>
+        <span class="stat-value">335,000,000</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">Estimated market size</span>
+        <span class="stat-value" style="color:var(--advocacy);">2,970,000</span>
+        <div class="stat-note">National population × Boomer/Gen X share (34% combined) × High Net-Worth share (2.6% combined, age-adjusted).</div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">Verilume Wealth Index</span>
+        <span class="stat-value">100 — High Net-Worth</span>
+        <div class="stat-note">Target income percentile × Fed SCF-sourced generation wealth multiplier for Boomer/Gen X.</div>
+      </div>
+    </div>
+
+    <table class="census-table">
+      <colgroup><col style="width:55%;"><col style="width:20%;"><col style="width:25%;"></colgroup>
+      <thead><tr><th>Generation</th><th>Share</th><th>Est. population</th></tr></thead>
+      <tbody>
+        <tr class="selected"><td>Baby Boomers</td><td>21%</td><td>70,350,000</td></tr>
+        <tr class="selected"><td>Gen X</td><td>19%</td><td>63,650,000</td></tr>
+      </tbody>
+    </table>
+    <div class="recap-note">Sample data, shaped on general Census Bureau age patterns — a real account's report pulls this live from Census ACS.</div>
+  </div>
+
+  <!-- ---- Product themes ---- -->
+  <div class="section-block">
+    <div class="eyebrow">Here's what we learned</div>
+    <h2>Product &amp; experience themes</h2>
+    <p class="lede">Grouped experience categories, pulled from the brand's own site — not a sailing-by-sailing catalog.</p>
+    <div class="tag-row">
+      <span class="tag-pill">Polar Expeditions</span>
+      <span class="tag-pill">Epicurean Expeditions</span>
+      <span class="tag-pill">Cultural Expeditions</span>
+      <span class="tag-pill">Antarctica</span>
+      <span class="tag-pill">Arctic</span>
+      <span class="tag-pill">Northern Europe</span>
+      <span class="tag-pill">Mediterranean</span>
+      <span class="tag-pill">Small luxury expedition yachts (196–400 guests)</span>
+    </div>
+  </div>
+
+  <!-- ---- Scorecard ---- -->
+  <div class="section-block">
+    <div class="eyebrow">Marketing Loop scorecard</div>
+    <h2>Stage-by-stage effectiveness (sample self-rating)</h2>
+    <table class="census-table">
+      <colgroup><col style="width:40%;"><col style="width:20%;"><col style="width:20%;"><col style="width:20%;"></colgroup>
+      <thead><tr><th>Stage</th><th>Importance</th><th>Ideal budget %</th><th>Self-rated effectiveness</th></tr></thead>
+      <tbody>
+        <tr><td>Awareness</td><td>High</td><td>28%</td><td class="selected">4 / 5</td></tr>
+        <tr><td>Consideration</td><td>High</td><td>24%</td><td class="selected">4 / 5</td></tr>
+        <tr><td>Purchase</td><td>Medium</td><td>20%</td><td class="selected">3 / 5</td></tr>
+        <tr><td>Loyalty</td><td>Medium</td><td>16%</td><td class="selected">4 / 5</td></tr>
+        <tr><td>Advocacy</td><td>Medium</td><td>12%</td><td class="selected">3 / 5</td></tr>
+      </tbody>
+    </table>
+    <div class="recap-note">Sample self-ratings, shaped to sit in the upper-right ("The Complete Brand") quadrant shown above. A real account's report reflects that visitor's own answers.</div>
+  </div>
+
+  <div class="footer-cta">
+    <h3>Ready to see your own?</h3>
+    <p>This sample took about 10 minutes to build a real, editable profile against. Your own free assessment works the same way — no NDA, no contract.</p>
+    <a class="cta-btn" href="assessment.html">Start your free assessment →</a>
+  </div>
+
+</div>
+
+</body>
+</html>
