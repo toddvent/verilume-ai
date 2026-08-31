@@ -3147,16 +3147,35 @@ const VIDEO_SAMPLE_MIME_RE = /^video\/(mp4|quicktime|webm|x-m4v)$/i;
 const VIDEO_SAMPLE_FRAME_COUNT = 8; // sampled evenly across the clip
 
 // Resolves the ffmpeg/ffprobe binaries to run: prefer the bundled
-// ffmpeg-static/ffprobe-static packages (added round 140 specifically so
-// this works on Vercel's serverless runtime, which has no system ffmpeg),
-// falling back to whatever 'ffmpeg'/'ffprobe' is on PATH for local/dev
-// environments where they're already installed. NOTE: this fallback and
-// the bundled-binary path have only been exercised against the local
-// system ffmpeg in this sandbox — the bundled-binary path on Vercel's
-// actual Linux runtime has NOT been verified end-to-end from here and
-// should be smoke-tested against a real deployment before relying on it.
+// @ffmpeg-installer/ffmpeg / ffprobe-static packages (added round 140
+// specifically so this works on Vercel's serverless runtime, which has no
+// system ffmpeg), falling back to whatever 'ffmpeg'/'ffprobe' is on PATH
+// for local/dev environments where they're already installed.
+//
+// round 140 follow-up (2026-08-31) — switched from ffmpeg-static to
+// @ffmpeg-installer/ffmpeg after a real Vercel deploy failed with "The
+// Vercel Function api/[...path] is 412.67mb uncompressed which exceeds
+// the maximum uncompressed size limit of 250mb." Two compounding causes,
+// both fixed here:
+//  1. ffprobe-static ships prebuilt binaries for EVERY platform
+//     (darwin/linux/win32 x ia32/x64/arm) in one package — 336MB total —
+//     and vercel.json's includeFiles was bundling the whole package
+//     directory. Narrowed to just node_modules/ffprobe-static/bin/linux/x64
+//     (the only one this runtime ever uses) — ~62MB.
+//  2. ffmpeg-static downloads its binary via a postinstall script
+//     (install.js), which Vercel's build blocked outright ("npm warn
+//     allow-scripts ... ffmpeg-static@5.3.0 (install: node install.js)").
+//     That means even after fixing the size, the binary would never have
+//     existed on a real Vercel build — a silent runtime failure, worse
+//     than the build-time error we actually got. @ffmpeg-installer/ffmpeg
+//     ships its Linux binary directly inside the
+//     @ffmpeg-installer/linux-x64 optionalDependency (no install script
+//     to block) — ~66MB, and confirmed installing cleanly with no
+//     allow-scripts warning.
+// Combined bundle addition: ~128MB, comfortably under the 250MB cap
+// alongside backend/**.
 function resolveFfmpegBinary(){
-  try { return require('ffmpeg-static'); } catch (e) { return 'ffmpeg'; }
+  try { return require('@ffmpeg-installer/ffmpeg').path; } catch (e) { return 'ffmpeg'; }
 }
 function resolveFfprobeBinary(){
   try { return require('ffprobe-static').path; } catch (e) { return 'ffprobe'; }
