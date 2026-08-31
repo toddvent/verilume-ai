@@ -711,6 +711,31 @@
   .value-stat-card p{font-size:0.85rem;line-height:1.5;color:#3A3428;margin:0 0 8px;}
   .value-stat-card .vs-caveat{font-size:0.7188rem;font-style:italic;color:#6E6E73;opacity:0.85;margin:0;}
 
+  /* Round 134, 4-section report rebuild, per direct instruction
+     ("Humanizing Agentic Marketing"). .report-main-title is the new page
+     title; .report-section/.section-num/.section-heading give the 4
+     numbered sections a consistent header treatment; .role-grid/.role-card
+     render Section 4's 6 Agentic Team Role cards (see AGENTIC_ROLES/
+     computeFunctionGroupScores()/renderAgenticRoleMapping() in the script
+     below); .report-section-deemph is the lower-visual-weight treatment
+     for the relocated "Your company profile" block. */
+  .report-main-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:clamp(28px,4vw,40px);margin:0 0 22px;color:var(--ink);}
+  .report-section{margin:0 0 44px;}
+  .section-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--advocacy);color:#fff;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.9375rem;margin-right:10px;vertical-align:middle;}
+  .section-heading{display:inline;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.375rem;color:var(--ink);margin:0;vertical-align:middle;}
+  .report-section > .lede{margin-top:12px;}
+  .report-section-deemph{opacity:0.94;}
+  .report-section-deemph .section-heading{font-size:1.1875rem;}
+  .role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:18px;}
+  .role-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
+  .role-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .role-card-head h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:1.0625rem;margin:0;color:var(--ink);}
+  .role-tier{font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--advocacy);background:var(--paper-dim);border-radius:999px;padding:3px 10px;white-space:nowrap;}
+  .role-score{font-size:0.8438rem;font-weight:600;color:var(--advocacy);margin:0 0 10px;}
+  .role-score-none{color:#8a8067;font-weight:500;font-style:italic;}
+  .role-human,.role-ai{font-size:0.875rem;line-height:1.5;color:#3A3428;margin:0 0 6px;}
+  .role-human b,.role-ai b{color:var(--ink);}
+
   @media (max-width:680px){
     .select-tile-grid,.select-tile-grid.tri{grid-template-columns:1fr;}
     .score-pair{flex-direction:column;}
@@ -1748,6 +1773,7 @@
        actually rated. -->
   <section class="step" data-step="report">
     <div class="eyebrow" style="margin-bottom:8px;">Your free results</div>
+    <h1 class="report-main-title">Humanizing Agentic Marketing</h1>
     <p class="recap-note" id="crmSyncNote" style="margin:0 0 16px;"></p>
 
     <!-- 2026-08-21, per direct instruction — shown only to visitors who
@@ -1761,63 +1787,159 @@
       <a href="free-trial.html" style="flex:none;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;white-space:nowrap;">Start Free Trial →</a>
     </div>
 
+    <!-- Round 134 — 4-section report rebuild, per direct client instruction
+         ("Objective is to align the organization's challenges with our
+         solutions that fill the gap"). Section numbering/headings below are
+         literal: 1) opportunity + Media/CX Score grid, 2) generative
+         consulting synthesis, 3) Magic Quadrant results, 4) Agentic Team
+         Role mapping. See renderFullReport()/renderReportSynthesis()/
+         renderReportOpportunity()/renderAgenticRoleMapping() further down
+         for what populates each section. -->
     <div class="first-deliverable" id="firstDeliverable">
-      <div class="result-band" id="resultBand">
-        <div class="eyebrow" id="reportQuadrantEyebrow">Your truth, illuminated</div>
-        <h1 id="reportQuadrantTitle"></h1>
-        <p class="lede" id="reportQuadrantDesc"></p>
-        <p class="quadrant-basis-note" id="quadrantBasisNote"></p>
+
+      <!-- SECTION 1 — Population Opportunity Size, Industry Revenue,
+           Verilume Wealth Index, Media/CX Score grid (including the
+           Verilume Media CX Index TOTAL — this is the only place the total
+           renders; Section 3 shows Media/CX individually without it). -->
+      <div class="report-section" id="reportSection1">
+        <h2><span class="section-num">1</span><span class="section-heading">Your opportunity, at a glance</span></h2>
+        <p class="lede">The size of the market in front of you, how your audience's wealth profile compares to the national average, and where your Media and CX Strength stand today.</p>
+
+        <div class="stat-grid" id="reportOpportunityStats"></div>
+
+        <div class="stat-grid" style="margin-top:14px;">
+          <div class="stat-tile">
+            <span class="stat-label">Verilume Wealth Index</span>
+            <span class="stat-value" id="reportWealthIndexVal" style="color:var(--advocacy);"></span>
+            <div class="stat-note" id="reportWealthIndexNote"></div>
+          </div>
+        </div>
+
+        <!-- Round 133, per direct instruction — the blended headline metric,
+             marketed as the Verilume Media CX Index: one number, built from
+             the same stage-weighted Media/CX Strength axes, not a separate
+             invented score. See computeQuickScores()/computeScores() for
+             the math and vmcxIndexNote's confidence copy below. IDs
+             unchanged from the pre-Round-134 layout on purpose — this card
+             just relocated into Section 1, renderFullReport() still
+             targets the same elements. -->
+        <div class="vmcx-index-card" style="margin-top:14px;">
+          <div class="lbl">Verilume Media CX Index</div>
+          <div class="val" id="vmcxIndexVal"></div>
+          <div class="vmcx-index-note" id="vmcxIndexNote"></div>
+        </div>
+
+        <div class="score-pair">
+          <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
+          <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreVal"></div></div>
+        </div>
       </div>
 
-      <div class="quad-axis-y">CX Strength ↑</div>
-      <div class="quad-visual" id="quadVisual">
-        <div class="qcell q2">Hidden Gem</div>
-        <div class="qcell q1">The Complete Brand</div>
-        <div class="qcell q3">Invisible &amp; Inconsistent</div>
-        <div class="qcell q4">All Promise, No Delivery</div>
-        <div class="quad-marker" id="quadMarker" title="Overall"></div>
-        <div id="quadStageMarkers"></div>
-      </div>
-      <div class="quad-axis-x"><span>Weak Media</span><span>Strong Media →</span></div>
-
-      <!-- Round 133, per direct instruction — the blended headline metric,
-           marketed as the Verilume Media CX Index: one number, built from
-           the same stage-weighted Media/CX Strength axes below it, not a
-           separate invented score. See computeQuickScores()/computeScores()
-           for the math and vmcxIndexNote's confidence copy below. -->
-      <div class="vmcx-index-card">
-        <div class="lbl">Verilume Media CX Index</div>
-        <div class="val" id="vmcxIndexVal"></div>
-        <div class="vmcx-index-note" id="vmcxIndexNote"></div>
-      </div>
-
-      <div class="score-pair">
-        <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
-        <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreVal"></div></div>
+      <!-- SECTION 2 — the generative-consulting read on this visitor,
+           built from their assessment answers AND the live URL scan (see
+           applyAiGeneratedReadout(), which overwrites #reportSynthesisText/
+           #journeyBP with the AI-generated version once the server call
+           succeeds — the templated copy from renderReportSynthesis() is
+           what's on screen until then). -->
+      <div class="report-section" id="reportSection2">
+        <h2><span class="section-num">2</span><span class="section-heading">Our read on <span id="reportCompanyNameHeading">your business</span></span></h2>
+        <p class="lede">Not a template — this is built from your assessment answers and a live scan of your own website, read the way a consultant would read a new account.</p>
+        <div class="recap-card">
+          <span class="recap-tag">Generative consulting synthesis</span>
+          <p class="lede" id="reportSynthesisText" style="margin:0 0 18px;"></p>
+          <!-- Round 125, per direct instruction ("Optimizing the Journey for
+               [Company] gets incorporated into the Here's what we learned
+               section"): renderJourneyBP()'s best-practice narrative
+               renders here. -->
+          <div id="journeyBP"></div>
+          <div class="learned-grid" id="reportLearnedGrid"></div>
+        </div>
       </div>
 
-      <div class="recap-card">
-        <span class="recap-tag">Here's what we learned</span>
-        <p class="lede" id="reportSynthesisText" style="margin:0 0 18px;"></p>
-        <!-- Round 125, per direct instruction ("Optimizing the Journey for
-             [Company] gets incorporated into the Here's what we learned
-             section"): renderJourneyBP()'s best-practice narrative now
-             renders here instead of at the top of the Scope Picker
-             accordion item. -->
-        <div id="journeyBP"></div>
-        <div class="learned-grid" id="reportLearnedGrid"></div>
+      <!-- SECTION 3 — Magic Quadrant results. Media/CX shown individually
+           (mediaScoreValQ/cxScoreValQ, new IDs) — the Index TOTAL already
+           lives in Section 1 and is deliberately not repeated here, per
+           direct instruction ("Total does not need to be listed again").
+           renderFullReport() sets both this pair and Section 1's pair from
+           the same activeScores() call, so the two never disagree. -->
+      <div class="report-section" id="reportSection3">
+        <h2><span class="section-num">3</span><span class="section-heading">Magic Quadrant Assessment Results</span></h2>
+
+        <div class="result-band" id="resultBand">
+          <div class="eyebrow" id="reportQuadrantEyebrow">Your truth, illuminated</div>
+          <h1 id="reportQuadrantTitle"></h1>
+          <p class="lede" id="reportQuadrantDesc"></p>
+          <p class="quadrant-basis-note" id="quadrantBasisNote"></p>
+        </div>
+
+        <div class="quad-axis-y">CX Strength ↑</div>
+        <div class="quad-visual" id="quadVisual">
+          <div class="qcell q2">Hidden Gem</div>
+          <div class="qcell q1">The Complete Brand</div>
+          <div class="qcell q3">Invisible &amp; Inconsistent</div>
+          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="quad-marker" id="quadMarker" title="Overall"></div>
+          <div id="quadStageMarkers"></div>
+        </div>
+        <div class="quad-axis-x"><span>Weak Media</span><span>Strong Media →</span></div>
+
+        <div class="score-pair">
+          <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreValQ"></div></div>
+          <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreValQ"></div></div>
+        </div>
       </div>
 
-      <h2 style="font-size:1.25rem;margin-top:32px;">Opportunity size</h2>
-      <div class="stat-grid" id="reportOpportunityStats"></div>
+      <!-- SECTION 4 — maps this visitor's assessment gaps to the 6 real
+           Agentic Team Roles Verilume actually offers (AGENTIC_ROLES,
+           condensed from human-ai-agents.html's SYM_DATA — see that const's
+           own comment below). The 3 KPI cards always render, unconditional
+           on any score, per direct instruction ("always show"); the role
+           cards always render all 6 roles, ranked weakest-computed-score
+           first by computeFunctionGroupScores() (see renderAgenticRoleMapping()). -->
+      <div class="report-section" id="reportSection4">
+        <h2><span class="section-num">4</span><span class="section-heading">Where Verilume's Agentic Team Fills Your Gaps</span></h2>
+        <p class="lede">Every Verilume account pairs a real person with a standing AI assistant, role by role. Here's what that partnership is worth, and where your own assessment shows the biggest gap for AI to close first.</p>
 
-      <!-- 2026-08-19 (QA round), per direct instruction: relocated from the
-           old numbered data-step="recap" step, which is gone. Same element
-           IDs as before, so startRecapStep()/renderRecapDescription()/
-           renderRecapProductThemes()/renderRecapIndustry()/renderRecapCensus()/
-           lookupAddress() all still populate these unchanged — "don't break
-           the data sources." -->
-      <h2 style="font-size:1.25rem;margin-top:32px;">Your company profile</h2>
+        <div class="value-stats-grid">
+          <div class="value-stat-card cost">
+            <span class="vs-tag">Reduced Costs</span>
+            <div class="vs-num">40%</div>
+            <p>Marketing teams running 3+ generative-AI workflows report a 40% productivity improvement, and 60-70% less time-to-publish on content specifically (McKinsey, 2024).</p>
+            <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
+          </div>
+          <div class="value-stat-card relevance">
+            <span class="vs-tag">Improved Campaign Relevance</span>
+            <div class="vs-num">30%</div>
+            <p>AI-driven personalization at scale is linked to a 30% average reduction in customer acquisition cost across B2B programs (Thulium, 2024) — reading real, continuous signal instead of a static persona.</p>
+            <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
+          </div>
+          <div class="value-stat-card speed">
+            <span class="vs-tag">Speed to Market</span>
+            <div class="vs-num">1–3 wks</div>
+            <p>41% of marketers report campaign cycles of 30+ days, and even well-run multi-channel campaigns target 10-20 business days (Pedowitz Group, 2025). Our best estimate: agents compress the ideation-to-first-draft window by 1-3 weeks.</p>
+            <p class="vs-caveat">Verilume's own working estimate, not yet tested against a live account.</p>
+          </div>
+        </div>
+        <p style="font-size:0.75rem;color:#6E6E73;font-style:italic;margin:0 0 4px;">Reduced Costs and Improved Campaign Relevance figures are published third-party industry benchmarks for AI-augmented marketing generally, not measured results from a Verilume account. Speed to Market is Verilume's own working estimate — both cited for context, not as a guarantee.</p>
+
+        <div class="role-grid" id="agenticRoleGrid"></div>
+      </div>
+
+    </div>
+
+    <!-- "Your company profile" — 2026-08-31, per direct instruction, moved
+         here (after Section 4) and de-emphasized, since the client didn't
+         directly confirm placement when asked. DEFAULT PENDING
+         CONFIRMATION: kept, not deleted (still real, useful data the
+         visitor entered), positioned after the 4 numbered sections so it
+         reads as supporting detail rather than the headline deliverable.
+         Flag this placement to the client for explicit sign-off.
+         All IDs unchanged from the pre-Round-134 layout — same
+         startRecapStep()/renderRecapDescription()/renderRecapProductThemes()/
+         renderRecapIndustry()/renderRecapCensus()/lookupAddress() data
+         sources, untouched. -->
+    <div class="report-section report-section-deemph" id="reportCompanyProfileSection">
+      <h2 style="font-size:1.1875rem;margin:0 0 4px;">Your company profile</h2>
       <div class="recap-card">
         <span class="recap-tag" id="recapDescTag">Brand description — pulled from your website, or add your own</span>
         <div class="field-hint">Update this any time. If you left Step 2's description blank, this starts as a placeholder built from your company URL — replace it with your own copy whenever you're ready.</div>
@@ -1868,61 +1990,19 @@
       </div>
     </div>
 
+    <!-- 2026-08-31, per direct instruction — the old "The Human Agentic
+         Agency" headline/subhead/human-ai-note, .value-stats-grid (now
+         Section 4's KPI cards), and .paid-inclusions-grid (the old 5-role
+         Brand/Planner/Voice/Analyst/Media Ops grid, superseded by Section
+         4's real 6-role AGENTIC_ROLES mapping — client confirmed those 5
+         roles are "no longer relevant in the product") are all DELETED.
+         DEFAULT PENDING CONFIRMATION: the client didn't directly confirm
+         what should remain here, so this keeps only a short closing
+         tag/headline plus the CTA cards and the main onboarding button —
+         flag this trim to the client for explicit sign-off. -->
     <div class="paid-interstitial">
       <span class="tag">This is the free read — here's what the paid program adds</span>
-      <h2 class="paid-headline">The Human Agentic Agency</h2>
-      <p class="paid-subhead">Improved productivity. Better results.</p>
-      <p class="human-ai-note"><b>Partnership, not replacement.</b> Verilume doesn't replace whoever holds a seat on your marketing team — an employee, a fractional hire, or a role you haven't filled yet. It gives that seat a standing AI assistant for the always-on, first-draft work, so your team spends its time on judgment, relationships, and the final word.</p>
-
-      <div class="value-stats-grid">
-        <div class="value-stat-card cost">
-          <span class="vs-tag">Cost</span>
-          <div class="vs-num">40%</div>
-          <p>Marketing teams running 3+ generative-AI workflows report a 40% productivity improvement, and 60-70% less time-to-publish on content specifically (McKinsey, 2024).</p>
-          <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
-        </div>
-        <div class="value-stat-card relevance">
-          <span class="vs-tag">Relevance</span>
-          <div class="vs-num">30%</div>
-          <p>AI-driven personalization at scale is linked to a 30% average reduction in customer acquisition cost across B2B programs (Thulium, 2024) — reading real, continuous signal instead of a static persona.</p>
-          <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
-        </div>
-        <div class="value-stat-card speed">
-          <span class="vs-tag">Speed to market</span>
-          <div class="vs-num">1–3 wks</div>
-          <p>41% of marketers report campaign cycles of 30+ days, and even well-run multi-channel campaigns target 10-20 business days (Pedowitz Group, 2025). Our best estimate: agents compress the ideation-to-first-draft window by 1-3 weeks.</p>
-          <p class="vs-caveat">Verilume's own working estimate, not yet tested against a live account.</p>
-        </div>
-      </div>
-
-      <div class="paid-inclusions-grid">
-        <div class="paid-inclusion-card">
-          <div class="pi-num">1</div>
-          <h4>The Brand</h4>
-          <p>Your Brand Brief and uploaded style guide, plus access to creative resources.</p>
-        </div>
-        <div class="paid-inclusion-card">
-          <div class="pi-num">2</div>
-          <h4>The Planner</h4>
-          <p>Media mix scenarios and DMA testing options.</p>
-        </div>
-        <div class="paid-inclusion-card">
-          <div class="pi-num">3</div>
-          <h4>The Voice</h4>
-          <p>Copywriting and presentation outputs.</p>
-        </div>
-        <div class="paid-inclusion-card">
-          <div class="pi-num">4</div>
-          <h4>The Analyst</h4>
-          <p>Dashboards and access to your live accounts for analysis and optimization.</p>
-        </div>
-        <div class="paid-inclusion-card">
-          <div class="pi-num">5</div>
-          <h4>Media Ops</h4>
-          <p>Everything you need to execute.</p>
-        </div>
-      </div>
-      <p style="font-size:0.75rem;color:#6E6E73;font-style:italic;margin:0 0 22px;">Cost and relevance figures are published third-party industry benchmarks for AI-augmented marketing generally, not measured results from a Verilume account. Speed-to-market is Verilume's own working estimate — both cited for context, not as a guarantee.</p>
+      <h2 class="paid-headline" style="font-size:clamp(20px,2.6vw,26px);">Ready to bring the team on?</h2>
       <div class="paid-interstitial-actions">
         <a class="btn-primary" id="paidCtaLinkInterstitial" href="onboarding.html">See the paid program →</a>
       </div>
@@ -5907,6 +5987,11 @@ function renderReportSynthesis(){
   intro += `Here's how your own Marketing Loop ratings map to what a Verilume account actually delivers, stage by stage.`;
   introEl.textContent = intro;
 
+  // Round 134 — Section 2's heading ("Our read on [Company]") reads the
+  // same `company` value this function already computed above.
+  const companyHeadingEl = document.getElementById('reportCompanyNameHeading');
+  if (companyHeadingEl) companyHeadingEl.textContent = company;
+
   renderJourneyBP();
 
   const gridEl = document.getElementById('reportLearnedGrid');
@@ -6560,6 +6645,25 @@ function renderFullReport(){
   document.getElementById('reportQuadrantDesc').textContent = q.desc;
   document.getElementById('mediaScoreVal').textContent = s.mediaPct + '%';
   document.getElementById('cxScoreVal').textContent = s.cxPct + '%';
+  // Round 134 — Section 3's individual Media/CX pair (new IDs, no Index
+  // total alongside them, per direct instruction). Same activeScores()
+  // read as the Section 1 pair right above, so the two can never disagree.
+  const mediaScoreValQ = document.getElementById('mediaScoreValQ');
+  const cxScoreValQ = document.getElementById('cxScoreValQ');
+  if (mediaScoreValQ) mediaScoreValQ.textContent = s.mediaPct + '%';
+  if (cxScoreValQ) cxScoreValQ.textContent = s.cxPct + '%';
+  // Round 134 — Section 1's new Verilume Wealth Index tile. verilumeWealthIndex()/
+  // wealthIndexLabel() are safe to call again here: both just read
+  // state.targetIncome/state.audience, which persist past the profile-guess
+  // step. Note copy echoes wealthIndexBody's disclosure on that step.
+  const wealthValEl = document.getElementById('reportWealthIndexVal');
+  const wealthNoteEl = document.getElementById('reportWealthIndexNote');
+  if (wealthValEl || wealthNoteEl){
+    const wIndex = verilumeWealthIndex();
+    const wLabel = wealthIndexLabel(wIndex);
+    if (wealthValEl) wealthValEl.textContent = `${wIndex} — ${wLabel}`;
+    if (wealthNoteEl) wealthNoteEl.textContent = '100 = the average U.S. household. Your score is your target income relative to that average, adjusted for the wealth profile of your selected generation(s).';
+  }
   // Round 133 — Verilume Media CX Index headline stat + confidence note.
   // Same estimate/measured language convention as quadrantBasisNote just
   // below, so the two notes never contradict each other.
@@ -6681,6 +6785,7 @@ function renderFullReport(){
     }
   }
   renderReportOpportunity();
+  renderAgenticRoleMapping();
 }
 window.addEventListener('resize', () => {
   document.querySelectorAll('.stage-block.open .stage-body').forEach(b => {
@@ -6723,6 +6828,104 @@ function renderReportOpportunity(){
   }
   statsEl.innerHTML = stats || `<div class="recap-note">Opportunity size wasn't calculated this session — refresh this page to generate it.</div>`;
 
+}
+
+// Round 134 — Section 4's 6 Agentic Team Roles, per direct client
+// instruction: "always show the key KPIs that AI adds for all... [and] the
+// Agentic Team Role we provide." This is a condensed, DUPLICATED mirror of
+// human-ai-agents.html's SYM_DATA array (~line 697 there) — title/tier and
+// one representative human/ai bullet each, trimmed for a compact report
+// card rather than that page's full bullet lists. Keep in sync by hand if
+// that page's role copy changes; there's no shared include between the two
+// files today.
+const AGENTIC_ROLES = [
+  { title: 'Brand', tier: 'Partly built',
+    human: 'Final creative direction and outside vendor relationships for finished production.',
+    ai: 'Drafts and enforces the approved brand voice across every draft, ad copy, and SEO/GEO/AEO copy.' },
+  { title: 'Performance Marketing', tier: 'Brief-ready',
+    human: 'The actual media buy — every real ad platform still needs a person (or its own tools) spending real money.',
+    ai: 'Drafts the channel plan and creative angle for social, search, programmatic, TV, and partnerships.' },
+  { title: 'Omni-Channel Creative', tier: 'Brief-ready',
+    human: 'Creative review, final direction, and the handoff to outside production tools.',
+    ai: "Drafts on-brand, best-practice-spec'd copy and layout per channel from the approved brand voice." },
+  { title: 'PR', tier: 'Draft-ready today',
+    human: 'Media and editorial relationships, and judgment on anything sensitive or crisis-adjacent.',
+    ai: 'Drafts full press releases and pitch angles from supplied facts — ready to edit, never invented.' },
+  { title: 'Advanced Analytics', tier: 'Partly built',
+    human: 'The underlying data engineering, live warehouse work, and the final call on what a number means.',
+    ai: 'Interprets connected data (GA4 live today), designs test frameworks, flags events worth reading against a dip.' },
+  { title: 'Media Planning & Ops', tier: 'Partly built',
+    human: 'Vendor relationships, contracts, and live delivery/trafficking logistics.',
+    ai: 'Drafts a KPI framework and a structured marketing calendar from a campaign brief.' }
+];
+
+// Round 134 — maps this visitor's REAL, rated products (Step 9;
+// state.productRatings, only for keys in state.assessProducts) onto the 6
+// AGENTIC_ROLES buckets above, so Section 4 can rank roles by actual,
+// measured gap severity instead of a fabricated or fixed order. Reads
+// PRODUCTS/PRODUCT_RATING_VALUE/state.productRatings/state.assessProducts —
+// does not mutate any of them. A bucket with zero rated products gets no
+// score (null) — never fabricated, same "don't fabricate" rule the rest of
+// the scoring pipeline (buildAnswersFromProductRatings()) already follows.
+function computeFunctionGroupScores(){
+  const buckets = {}; // role title -> array of numeric ratings
+  PRODUCTS.forEach(p => {
+    if (!state.assessProducts.has(p.key)) return;
+    const rating = state.productRatings[p.key];
+    if (rating == null) return;
+    const val = PRODUCT_RATING_VALUE[rating];
+    if (val == null) return;
+    // The 4 omni-* products (omni-print/omni-digital/omni-video/omni-dam-mam)
+    // are tagged functionGroup: "Brand" in PRODUCTS, but their own
+    // `category` field already reads "Omni-Channel Creative" — one of the 6
+    // real agentic roles verilume.ai/human-ai-agents.html actually offers.
+    // Using `category` for just these 4 keeps them out of the Brand bucket
+    // and avoids inventing a 7th product tag that exists nowhere else in
+    // the codebase.
+    const bucket = p.category === 'Omni-Channel Creative' ? 'Omni-Channel Creative' : p.functionGroup;
+    if (!bucket) return;
+    (buckets[bucket] = buckets[bucket] || []).push(val);
+  });
+  const scores = {};
+  Object.keys(buckets).forEach(k => {
+    const arr = buckets[k];
+    scores[k] = arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  });
+  return scores;
+}
+
+// Round 134 — renders Section 4's role-card grid: the 6 AGENTIC_ROLES,
+// always all 6, ranked weakest/least-covered first (a role with no rated
+// products at all is treated as the biggest visible gap and sorts first,
+// ahead of any real-but-low numeric average) so the report visually
+// prioritizes the real gap Verilume's team can close, without ever hiding
+// a role that simply wasn't assessed this session.
+function renderAgenticRoleMapping(){
+  const gridEl = document.getElementById('agenticRoleGrid');
+  if (!gridEl) return;
+  const scores = computeFunctionGroupScores();
+  const ranked = AGENTIC_ROLES
+    .map(role => ({ role, score: scores[role.title] != null ? scores[role.title] : null }))
+    .sort((a, b) => {
+      if (a.score == null && b.score == null) return 0;
+      if (a.score == null) return -1;
+      if (b.score == null) return 1;
+      return a.score - b.score;
+    });
+  gridEl.innerHTML = ranked.map(({ role, score }) => {
+    const scoreHtml = score != null
+      ? `<div class="role-score">Your rated products here average ${score.toFixed(1)}/4</div>`
+      : `<div class="role-score role-score-none">Not yet assessed in this function</div>`;
+    return `<div class="role-card">
+      <div class="role-card-head">
+        <h4>${role.title}</h4>
+        <span class="role-tier">${role.tier}</span>
+      </div>
+      ${scoreHtml}
+      <p class="role-human"><b>Your team:</b> ${role.human}</p>
+      <p class="role-ai"><b>Verilume AI:</b> ${role.ai}</p>
+    </div>`;
+  }).join('');
 }
 
 // Round 122 — reads activeScores() so this works both right after
