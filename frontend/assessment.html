@@ -401,7 +401,26 @@
   /* Result band — the emotional payoff moment gets a full color block, not
      just a thin accent tag, per the design review's "let color do more
      structural work" recommendation. */
-  .result-band{border-radius:16px;padding:36px 40px;margin:0 0 8px;background:var(--ink);}
+  /* 2026-09-01 — reworked twice. First pass capped .result-band to
+     .quad-visual's own max-width:420px, stacked title-above-box. Per direct
+     follow-up ("The new assessment grid dimensions completely breaks the
+     page... left align the title with the grid to the right instead of
+     top aligned... Everything on the page is full width and then we insert
+     the quadrant. This should look like a digital whitepaper... I'm just
+     trying to reduce the footprint"): a narrow, centered, stacked block
+     read as broken next to the page's full-width sections above/below it.
+     Now: .quad-layout puts the quadrant plot and .result-band SIDE BY SIDE
+     (plot fixed-width on the left, title/description left-aligned filling
+     the remaining width on the right) instead of stacked, so the section
+     spans the page's normal full width like everything else, and uses less
+     vertical footprint than the stacked version did. See .quad-layout/
+     .quad-plot-col/.quad-info-col below and the report HTML for the
+     wrapping markup. */
+  .quad-layout{display:flex;align-items:flex-start;gap:32px;margin:20px 0 8px;}
+  .quad-plot-col{flex:0 0 340px;max-width:340px;}
+  .quad-info-col{flex:1 1 auto;min-width:0;}
+  @media (max-width:760px){ .quad-layout{flex-direction:column;} .quad-plot-col{max-width:340px;width:100%;} }
+  .result-band{border-radius:16px;padding:28px 32px;background:var(--ink);height:100%;box-sizing:border-box;text-align:left;}
   .result-band .eyebrow{color:rgba(255,255,255,0.65);}
   .result-band h1{color:var(--white);margin:0 0 14px;}
   .result-band .lede{color:rgba(255,255,255,0.88);max-width:640px;margin:0;}
@@ -423,7 +442,13 @@
      (was: full column width) and centered — aspect-ratio:16/10 still
      governs height, so this shrinks both dimensions together rather than
      just squashing it vertically. */
-  .quad-visual{position:relative;background:var(--white);border:1px solid var(--ink);border-radius:12px;aspect-ratio:16/10;margin:20px auto;max-width:420px;}
+  /* 2026-09-01 — margin changed from "20px auto" (centered, for the old
+     stacked layout) to "8px 0 0" (no auto-centering) now that this sits
+     inside .quad-plot-col, a fixed-width flex column — see .quad-layout's
+     own comment above for why. max-width:420px stays as a ceiling; the
+     column's own max-width:340px is what actually constrains it day to
+     day. */
+  .quad-visual{position:relative;background:var(--white);border:1px solid var(--ink);border-radius:12px;aspect-ratio:16/10;margin:8px 0 0;max-width:420px;}
   .quad-visual .qcell{position:absolute;width:50%;height:50%;padding:14px 16px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;letter-spacing:0.05em;text-transform:uppercase;color:#8a8067;}
   .quad-visual .qcell.q2{top:0;left:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
   .quad-visual .qcell.q1{top:0;right:0;border-bottom:1px solid var(--line);}
@@ -622,6 +647,69 @@
   .enh-item.open .enh-body{padding:20px;}
   .enh-actions{display:flex;justify-content:flex-end;margin-top:18px;}
 
+  /* 2026-09-01, per direct instruction (report step rebuild, corrected
+     placement round) — the report's main title, and the numbered-section
+     heading convention (glance grid / quadrant / role-gap) used throughout
+     the rest of the step below. */
+  .report-main-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.75rem;color:var(--ink);margin:0 0 18px;}
+  .report-section-head{display:flex;align-items:baseline;gap:10px;margin:36px 0 4px;}
+  .report-section-head .section-num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:700;color:var(--white);background:var(--ink);border-radius:50%;width:24px;height:24px;flex:none;display:inline-flex;align-items:center;justify-content:center;}
+  .report-section-head .section-heading{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.25rem;color:var(--ink);}
+
+  /* 2026-09-01, per direct client instruction ("the audience target is
+     45+ CMO. Pay attention to font sizes") — a light, targeted font-size
+     pass scoped ONLY to the report step: uppercase micro-labels bumped
+     from ~0.6875-0.7188rem up to ~0.75-0.8125rem, and body/paragraph text
+     bumped from ~0.9375rem up to ~1-1.0625rem, both still comfortably
+     inside each element's existing layout. Nothing outside data-step="report"
+     is touched — .lede, .score-pill, .glance-card etc. are shared classes
+     used elsewhere in the funnel, so this overrides them by specificity
+     within the report step only rather than editing their base rules. */
+  .step[data-step="report"] .lede{font-size:1.0625rem;}
+  .step[data-step="report"] .quadrant-basis-note{font-size:1rem;}
+  .step[data-step="report"] .role-gap-table th{font-size:0.8125rem;}
+  .step[data-step="report"] .role-gap-table .rg-stage{font-size:0.75rem;}
+  .step[data-step="report"] .role-gap-table p{font-size:1rem;}
+  .step[data-step="report"] .value-stat-card .vs-tag{font-size:0.75rem;}
+  .step[data-step="report"] .value-stat-card p{font-size:1rem;}
+  .step[data-step="report"] .score-pill .lbl{font-size:0.8125rem;}
+  .step[data-step="report"] .glance-card .glance-label{font-size:0.8125rem;}
+  .step[data-step="report"] .paid-cta-copy .tag{font-size:0.8125rem;}
+  .step[data-step="report"] .paid-interstitial .tag{font-size:0.8125rem;}
+  .step[data-step="report"] .human-ai-note{font-size:1.0625rem;}
+
+  /* Section 1 — "Your opportunity, at a glance." Per direct instruction: "a
+     single 4 column single row table or 4 small aligned cards, with no copy
+     beyond these 4 labels" — extra context (methodology, source) lives only
+     in the native `title` attribute, never as visible body text. */
+  .glance-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:14px 0 8px;}
+  @media (max-width:720px){ .glance-grid{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:420px){ .glance-grid{grid-template-columns:1fr;} }
+  .glance-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:20px 16px;text-align:center;}
+  .glance-card .glance-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;letter-spacing:0.06em;text-transform:uppercase;color:#8a8067;display:block;margin-bottom:8px;}
+  .glance-card .glance-value{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.375rem;color:var(--ink);}
+
+  /* Section 3 — role-gap grid, computed solely from the 6 quick-assessment
+     inputs (see STAGE_TO_ROLE/renderAgenticRoleMapping()). */
+  /* 2026-09-01 — per direct instruction ("Add the Question Title and Score
+     In Column A with our product aligned in Column B is probably a better
+     sales presentation vs. reading tiles"): the per-question role mapping
+     renders as a 2-column table (question + self-rated score on the left,
+     the Verilume role/product that covers it on the right) instead of a
+     card grid. Wrapped in .role-gap-table-wrap so it can scroll horizontally
+     on narrow screens without the page itself scrolling sideways. */
+  .role-gap-table-wrap{overflow-x:auto;margin:16px 0 22px;}
+  .role-gap-table{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .role-gap-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.06em;text-transform:uppercase;color:#8a8067;background:var(--bg-soft, #F7F4EC);padding:12px 20px;border-bottom:1px solid var(--line);}
+  .role-gap-table td{padding:16px 20px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .role-gap-table tr:last-child td{border-bottom:none;}
+  .role-gap-table col.rg-col-a{width:38%;}
+  .role-gap-table .rg-stage{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);display:block;margin-bottom:6px;}
+  .role-gap-table .rg-score{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1rem;color:var(--ink);}
+  .role-gap-table .rg-role{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.0625rem;color:var(--ink);margin:0 0 6px;}
+  .role-gap-table p{font-size:0.9375rem;line-height:1.5;color:#3A3428;margin:0;}
+  @media (max-width:640px){ .role-gap-table th, .role-gap-table td{padding:12px 14px;} }
+
   .report-actions{display:flex;gap:14px;margin:32px 0;flex-wrap:wrap;}
   .paid-cta-band{display:flex;justify-content:space-between;align-items:center;gap:24px;background:var(--ink);color:var(--white);border-radius:14px;padding:26px 30px;margin:32px 0;flex-wrap:wrap;}
   .paid-cta-copy .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--media);display:block;margin-bottom:8px;}
@@ -729,44 +817,6 @@
   .value-stat-card .vs-num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:1.75rem;color:var(--ink);line-height:1;margin-bottom:8px;}
   .value-stat-card p{font-size:0.85rem;line-height:1.5;color:#3A3428;margin:0 0 8px;}
   .value-stat-card .vs-caveat{font-size:0.7188rem;font-style:italic;color:#6E6E73;opacity:0.85;margin:0;}
-
-  /* Round 134, 4-section report rebuild, per direct instruction
-     ("Humanizing Agentic Marketing"). .report-main-title is the page
-     title; .report-section/.section-num/.section-heading give the
-     remaining numbered sections a consistent header treatment; .role-grid/
-     .role-card render Section 3's 6 Agentic Team Role cards (see
-     AGENTIC_ROLES/computeFunctionGroupScores()/renderAgenticRoleMapping()
-     in the script below).
-     Round 135 (2026-08-31), redo per direct instruction: Section 2
-     (generative consulting synthesis), #granularScorecard, and
-     #reportCompanyProfileSection are deleted, so .report-section-deemph
-     (that section's lower-visual-weight treatment) is unused now — left
-     defined rather than removed, since nothing currently references it but
-     a future de-emphasized block may want it again. .glance-grid is
-     Section 1's new single-row, 4-tile layout (Industry Revenue /
-     Estimated Market Size / Verilume Wealth Index / Your Organization
-     Score) — same .stat-grid/.stat-tile classes as elsewhere, just forced
-     to a fixed 4-column, single-row layout instead of stat-grid's default
-     auto-fit wrap, since these 4 tiles should always read as one aligned
-     row on anything wider than a phone. */
-  .report-main-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:clamp(28px,4vw,40px);margin:0 0 22px;color:var(--ink);}
-  .report-section{margin:0 0 44px;}
-  .section-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--advocacy);color:#fff;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.9375rem;margin-right:10px;vertical-align:middle;}
-  .section-heading{display:inline;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.375rem;color:var(--ink);margin:0;vertical-align:middle;}
-  .report-section > .lede{margin-top:12px;}
-  .report-section-deemph{opacity:0.94;}
-  .report-section-deemph .section-heading{font-size:1.1875rem;}
-  .glance-grid{grid-template-columns:repeat(4,1fr);margin-top:18px;}
-  @media (max-width:680px){ .glance-grid{grid-template-columns:repeat(2,1fr);} }
-  .role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:18px;}
-  .role-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
-  .role-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
-  .role-card-head h4{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:1.0625rem;margin:0;color:var(--ink);}
-  .role-tier{font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--advocacy);background:var(--paper-dim);border-radius:999px;padding:3px 10px;white-space:nowrap;}
-  .role-score{font-size:0.8438rem;font-weight:600;color:var(--advocacy);margin:0 0 10px;}
-  .role-score-none{color:#8a8067;font-weight:500;font-style:italic;}
-  .role-human,.role-ai{font-size:0.875rem;line-height:1.5;color:#3A3428;margin:0 0 6px;}
-  .role-human b,.role-ai b{color:var(--ink);}
 
   @media (max-width:680px){
     .select-tile-grid,.select-tile-grid.tri{grid-template-columns:1fr;}
@@ -1789,24 +1839,44 @@
        step of the free assessment (per direct instruction), reached only
        after every other survey step — Org Style, Company Profile,
        Marketing Loop, and the CX/Media Science/Team/Voice maturity
-       carousel. This page opens right after with a "first deliverable" —
-       a quadrant placement estimated from that self-rated maturity
-       (computeQuickScores()), the opportunity-size numbers, and the
-       generations/wealth recap — all real data, no function-by-function
-       ratings required yet. Below that, #enhanceAccordion holds only
-       Function Groups, Scope Picker, and Assess (the "extended
-       evaluation") as inline/expandable sections; completing Assess
-       recomputes real scores (computeScores()) and refines the same
-       quadrant in place.
-       Round 135 (2026-08-31), per direct instruction (redo of the
-       over-aggressive Round 134 rebuild, which the client rejected): the old
-       Section 2 ("Our read on...", generative consulting synthesis) and the
-       #granularScorecard block (per-stage position legend, narrative line,
-       and stage-by-stage breakdown — all of it downstream of the deep
-       per-product Assess ratings) are DELETED outright, not hidden pending
-       data. Same for #reportCompanyProfileSection (the Company Profile
-       accordion). See renderFullReport()/renderAgenticRoleMapping() further
-       down for what still populates the 4 numbered sections that remain. -->
+       carousel. This page opens right after with a "first deliverable."
+       Below the 3 numbered sections, #enhanceAccordion holds Function
+       Groups, Scope Picker, and Assess (the "extended evaluation") as
+       inline/expandable sections; completing Assess recomputes real scores
+       (computeScores()) and refines the same quadrant in place.
+
+       2026-08-31, round 137 revert — a same-day 4-section rebuild of this
+       step was rejected outright by the client ("Not correct. Go back two
+       releases") and fully undone, restoring the round-137 version
+       verbatim. See cxmedia-report-step-full-revert-2026-08-31 in the
+       project's Product docs archive for that revert record.
+
+       2026-09-01, redo (this version) — the same rebuild redone against
+       the round-137 baseline above, this time landing correctly: report
+       title "Humanizing Agentic Marketing"; renderJourneyBP()'s
+       "Optimizing the journey for [Company]" panel (#journeyBP, untouched)
+       as the first content under the title; Section 1 ("Optimizing The
+       Journey For [Company]") a 4-card glance grid (Industry Revenue /
+       Estimated Market Size / Verilume Wealth Index / Your Organization
+       Score), no body copy beyond the labels; Section 2 (Magic Quadrant
+       Assessment Results) with Media/CX Strength pills below the quadrant;
+       Section 3 ("Where Verilume's Agentic Team Fills Your Gaps") — a
+       role-gap grid computed solely from the 6 quick-assessment inputs
+       (STAGE_TO_ROLE/renderAgenticRoleMapping()), plus the 3 unconditional
+       KPI cards. #granularScorecard (the literal Awareness/Consideration/
+       Purchase/Loyalty/Advocacy stage tiles, their legend, and their
+       narrative) and the old "Your company profile" section are both
+       deleted entirely — see finishAssess()/renderFullReport() and
+       startRecapStep()'s null-guarded DOM writes respectively. Report
+       download is now window.print()-based PDF (Copy summary removed);
+       the portal-handoff button reads "Begin Your One Week Free Trial."
+       #reportSynthesisText and #reportLearnedGrid are gone too — a
+       same-day intermediate correction (Round 135b) had restored
+       #reportSynthesisText here, but the client's final clarification,
+       given a screenshot and asked to point at the exact copy meant to
+       stay, was #journeyBP, not that sentence — see this doc's own project
+       archive entry (cxmedia-assessment-report-4section-rebuild-2026-08-31)
+       for the full history. -->
   <section class="step" data-step="report">
     <div class="eyebrow" style="margin-bottom:8px;">Your free results</div>
     <h1 class="report-main-title">Humanizing Agentic Marketing</h1>
@@ -1823,164 +1893,128 @@
       <a href="free-trial.html" style="flex:none;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;white-space:nowrap;">Start Free Trial →</a>
     </div>
 
-    <!-- Round 134 — 4-section report rebuild, per direct client instruction
-         ("Objective is to align the organization's challenges with our
-         solutions that fill the gap").
-         Round 135 (2026-08-31), redo per direct instruction — the old
-         Section 2 (generative consulting synthesis) is deleted, so this is
-         now a 3-section report: 1) opportunity glance grid (Industry
-         Revenue / Estimated Market Size / Verilume Wealth Index / Your
-         Organization Score), 2) Magic Quadrant results (internal element
-         IDs still read reportSection3/reportSection4 — see that comment),
-         3) Agentic Team Role mapping. See renderFullReport()/
-         renderAgenticRoleMapping() further down for what populates each
-         section. -->
     <div class="first-deliverable" id="firstDeliverable">
+      <!-- 2026-09-01, per direct client correction (shown a screenshot of
+           the old report, pointed at this exact bordered panel): the first
+           piece of content under the report title is renderJourneyBP()'s
+           "Optimizing the journey for [Company]" narrative, NOT the shorter
+           #reportSynthesisText sentence (deleted — superseded/redundant
+           with this panel per that same clarification). renderJourneyBP()
+           itself is untouched; only its target's position in the page
+           moved. See renderReportSynthesis()/renderInitialReport(). -->
+      <div id="journeyBP"></div>
 
-      <!-- SECTION 1 — Round 135 (2026-08-31), per direct instruction: a
-           single 4-column, single-row grid, no body copy — Industry
-           Revenue, Estimated Market Size, Verilume Wealth Index, and Your
-           Organization Score (the Verilume Media CX Index total; this is
-           the only place the total renders — Section 3 shows Media/CX
-           individually without it). Each tile's `title` attribute carries
-           the longer explanatory note that used to run as visible copy —
-           a native tooltip, not a paragraph. renderFullReport() populates
-           these 4 values directly from state.opportunity / verilumeWealthIndex()
-           / activeScores(), same underlying data as before, just no longer
-           laid out as separate multi-tile stat grids + a standalone
-           Wealth Index tile + a separate vmcx-index-card. -->
-      <div class="report-section" id="reportSection1">
-        <h2><span class="section-num">1</span><span class="section-heading">Optimizing The Journey For <span id="reportCompanyNameHeading">Your Company</span></span></h2>
+      <!-- Section 1 — "Your opportunity, at a glance." Per direct
+           instruction: a single 4-column, single-row grid of 4 small cards,
+           no body copy beyond the 4 labels (Industry Revenue / Estimated
+           Market Size / Verilume Wealth Index / Your Organization Score) —
+           extra context lives only in each card's native `title` attribute.
+           #reportCompanyNameHeading is populated by renderReportSynthesis(). -->
+      <h2 class="report-section-head"><span class="section-heading">Opportunity for <span id="reportCompanyNameHeading">Your Company</span></span></h2>
+      <div class="glance-grid" id="reportOpportunityStats"></div>
 
-        <div class="stat-grid glance-grid">
-          <div class="stat-tile" id="glanceIndustryRevenueTile" title="U.S. industry revenue — illustrative, not a live data feed.">
-            <span class="stat-label">Industry Revenue</span>
-            <span class="stat-value" id="glanceIndustryRevenue"></span>
+      <!-- Section 2 — Magic Quadrant Assessment Results. .quad-visual's
+           reduced footprint (max-width:420px) is the existing global CSS
+           rule above, untouched. Media Strength / CX Strength live here,
+           below the quadrant, as a pair of pills — the blended total
+           (Your Organization Score) is not re-listed; it only appears once,
+           in Section 1's glance grid above. -->
+      <h2 class="report-section-head"><span class="section-heading">How is your Media &amp; CX Performance Today?</span></h2>
+      <!-- 2026-09-01 — plot and title/description sit SIDE BY SIDE
+           (.quad-layout) instead of stacked, per direct instruction: a
+           narrow, centered, stacked block looked broken next to the rest
+           of the page's full-width sections ("This should look like a
+           digital whitepaper... I'm just trying to reduce the footprint").
+           2026-09-01, follow-up correction — the two columns were
+           originally ordered plot-then-title (grid on the left, title on
+           the right); per direct instruction ("left align the title with
+           the grid to the right") the title/description was always meant
+           to be the LEFT column with the grid on the right — swapped
+           .quad-info-col (title/description) to come first in the markup,
+           .quad-plot-col (the grid) second. See .quad-layout/
+           .quad-plot-col/.quad-info-col's own CSS comment above for the
+           full reasoning on the side-by-side layout itself. -->
+      <div class="quad-layout">
+        <div class="quad-info-col">
+          <div class="result-band" id="resultBand">
+            <div class="eyebrow" id="reportQuadrantEyebrow">Your truth, illuminated</div>
+            <h1 id="reportQuadrantTitle"></h1>
+            <p class="lede" id="reportQuadrantDesc"></p>
+            <p class="quadrant-basis-note" id="quadrantBasisNote"></p>
           </div>
-          <div class="stat-tile" id="glanceMarketSizeTile" title="Population x your selected generation(s) x your selected wealth tier(s) — illustrative approximation.">
-            <span class="stat-label">Estimated Market Size</span>
-            <span class="stat-value" style="color:var(--advocacy);" id="glanceMarketSize"></span>
+        </div>
+        <div class="quad-plot-col">
+          <div class="quad-axis-y">CX Strength ↑</div>
+          <div class="quad-visual" id="quadVisual">
+            <div class="qcell q2">Hidden Gem</div>
+            <div class="qcell q1">The Complete Brand</div>
+            <div class="qcell q3">Invisible &amp; Inconsistent</div>
+            <div class="qcell q4">All Promise, No Delivery</div>
+            <div class="quad-marker" id="quadMarker" title="Overall"></div>
+            <div id="quadStageMarkers"></div>
           </div>
-          <div class="stat-tile" id="glanceWealthIndexTile" title="100 = the average U.S. household. Your target income relative to that average, adjusted for your selected generation(s).">
-            <span class="stat-label">Verilume Wealth Index</span>
-            <span class="stat-value" id="glanceWealthIndex"></span>
-          </div>
-          <div class="stat-tile" id="glanceOrgScoreTile" title="The Verilume Media CX Index — a blend of your Media Strength and CX Strength axes.">
-            <span class="stat-label">Your Organization Score</span>
-            <span class="stat-value" id="glanceOrgScore"></span>
-          </div>
+          <div class="quad-axis-x"><span>Weak Media</span><span>Strong Media →</span></div>
         </div>
       </div>
 
-      <!-- SECTION 3 (id/element names unchanged; renders as visible "2" —
-           see the section-num span below) — the old Section 2 above it
-           (generative consulting synthesis) is deleted, so the 3 remaining
-           sections are renumbered 1/2/3 for the visible display rather than
-           showing 1/3/4 with a gap where 2 used to be. IDs (reportSection3,
-           reportSection4) are left as-is on purpose — internal names,
-           referenced from JS/comments throughout — only the visible
-           <span class="section-num"> text changes. Magic Quadrant
-           results. Media/CX shown individually
-           (mediaScoreValQ/cxScoreValQ, new IDs) — the Index TOTAL already
-           lives in Section 1 and is deliberately not repeated here, per
-           direct instruction ("Total does not need to be listed again").
-           renderFullReport() sets both this pair and Section 1's pair from
-           the same activeScores() call, so the two never disagree. -->
-      <div class="report-section" id="reportSection3">
-        <h2><span class="section-num">2</span><span class="section-heading">Magic Quadrant Assessment Results</span></h2>
-
-        <div class="result-band" id="resultBand">
-          <div class="eyebrow" id="reportQuadrantEyebrow">Your truth, illuminated</div>
-          <h1 id="reportQuadrantTitle"></h1>
-          <p class="lede" id="reportQuadrantDesc"></p>
-          <p class="quadrant-basis-note" id="quadrantBasisNote"></p>
-        </div>
-
-        <div class="quad-axis-y">CX Strength ↑</div>
-        <div class="quad-visual" id="quadVisual">
-          <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">The Complete Brand</div>
-          <div class="qcell q3">Invisible &amp; Inconsistent</div>
-          <div class="qcell q4">All Promise, No Delivery</div>
-          <div class="quad-marker" id="quadMarker" title="Overall"></div>
-          <div id="quadStageMarkers"></div>
-        </div>
-        <div class="quad-axis-x"><span>Weak Media</span><span>Strong Media →</span></div>
-
-        <div class="score-pair">
-          <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreValQ"></div></div>
-          <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreValQ"></div></div>
-        </div>
+      <div class="score-pair">
+        <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
+        <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreVal"></div></div>
       </div>
 
-      <!-- SECTION 4 — maps this visitor's assessment gaps to the 6 real
-           Agentic Team Roles Verilume actually offers (AGENTIC_ROLES,
-           condensed from human-ai-agents.html's SYM_DATA — see that const's
-           own comment below). The 3 KPI cards always render, unconditional
-           on any score, per direct instruction ("always show"); the role
-           cards always render all 6 roles, ranked weakest-computed-score
-           first by computeFunctionGroupScores() (see renderAgenticRoleMapping()). -->
-      <div class="report-section" id="reportSection4">
-        <h2><span class="section-num">3</span><span class="section-heading">Where Verilume's Agentic Team Fills Your Gaps</span></h2>
-        <p class="lede">Every Verilume account pairs a real person with a standing AI assistant, role by role. Here's what that partnership is worth, and where your own assessment shows the biggest gap for AI to close first.</p>
-
-        <div class="value-stats-grid">
-          <div class="value-stat-card cost">
-            <span class="vs-tag">Reduced Costs</span>
-            <div class="vs-num">40%</div>
-            <p>Marketing teams running 3+ generative-AI workflows report a 40% productivity improvement, and 60-70% less time-to-publish on content specifically (McKinsey, 2024).</p>
-            <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
-          </div>
-          <div class="value-stat-card relevance">
-            <span class="vs-tag">Improved Campaign Relevance</span>
-            <div class="vs-num">30%</div>
-            <p>AI-driven personalization at scale is linked to a 30% average reduction in customer acquisition cost across B2B programs (Thulium, 2024) — reading real, continuous signal instead of a static persona.</p>
-            <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
-          </div>
-          <div class="value-stat-card speed">
-            <span class="vs-tag">Speed to Market</span>
-            <div class="vs-num">1–3 wks</div>
-            <p>41% of marketers report campaign cycles of 30+ days, and even well-run multi-channel campaigns target 10-20 business days (Pedowitz Group, 2025). Our best estimate: agents compress the ideation-to-first-draft window by 1-3 weeks.</p>
-            <p class="vs-caveat">Verilume's own working estimate, not yet tested against a live account.</p>
-          </div>
-        </div>
-        <p style="font-size:0.75rem;color:#6E6E73;font-style:italic;margin:0 0 4px;">Reduced Costs and Improved Campaign Relevance figures are published third-party industry benchmarks for AI-augmented marketing generally, not measured results from a Verilume account. Speed to Market is Verilume's own working estimate — both cited for context, not as a guarantee.</p>
-
-        <div class="role-grid" id="agenticRoleGrid"></div>
+      <!-- Section 3 — "Where Verilume's Agentic Team Fills Your Gaps." Per
+           direct instruction: scoped ONLY to the 6 quick-assessment
+           questions (the 5 RUBRIC stage self-ratings + CX Consistency),
+           not Step 9's deep per-product ratings — see STAGE_TO_ROLE/
+           renderAgenticRoleMapping(). The 3 KPI cards below (moved here
+           from the paid interstitial, same markup/citations, unchanged)
+           always render regardless of scores. -->
+      <h2 class="report-section-head"><span class="section-heading">How AI Agents Can Improve Your Performance?</span></h2>
+      <p class="lede">Save Your Results and expand your assessment to more than 20 Marketing Functions.</p>
+      <div class="role-gap-table-wrap">
+        <table class="role-gap-table">
+          <colgroup><col class="rg-col-a"><col></colgroup>
+          <thead><tr><th>Question &amp; your score</th><th>Verilume role that fills it</th></tr></thead>
+          <tbody id="roleGapGrid"></tbody>
+        </table>
       </div>
 
+      <div class="value-stats-grid">
+        <div class="value-stat-card cost">
+          <span class="vs-tag">Cost</span>
+          <div class="vs-num">40%</div>
+          <p>Marketing teams running 3+ generative-AI workflows report a 40% productivity improvement, and 60-70% less time-to-publish on content specifically (McKinsey, 2024).</p>
+          <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
+        </div>
+        <div class="value-stat-card relevance">
+          <span class="vs-tag">Relevance</span>
+          <div class="vs-num">30%</div>
+          <p>AI-driven personalization at scale is linked to a 30% average reduction in customer acquisition cost across B2B programs (Thulium, 2024) — reading real, continuous signal instead of a static persona.</p>
+          <p class="vs-caveat">Industry benchmark, not a measured Verilume result.</p>
+        </div>
+        <div class="value-stat-card speed">
+          <span class="vs-tag">Speed to market</span>
+          <div class="vs-num">1–3 wks</div>
+          <p>41% of marketers report campaign cycles of 30+ days, and even well-run multi-channel campaigns target 10-20 business days (Pedowitz Group, 2025). Our best estimate: agents compress the ideation-to-first-draft window by 1-3 weeks.</p>
+          <p class="vs-caveat">Verilume's own working estimate, not yet tested against a live account.</p>
+        </div>
+      </div>
+      <p style="font-size:0.75rem;color:#6E6E73;font-style:italic;margin:0 0 22px;">Cost and relevance figures are published third-party industry benchmarks for AI-augmented marketing generally, not measured results from a Verilume account. Speed-to-market is Verilume's own working estimate — both cited for context, not as a guarantee.</p>
     </div>
 
-    <!-- 2026-08-31, per direct instruction — the old "Your company profile"
-         accordion (#reportCompanyProfileSection: brand description, product
-         themes, address/local-revenue card, industry & Census cards,
-         generation/wealth chip recap) is DELETED outright, not moved or
-         de-emphasized — confirmed scope: Company Profile only, no separate
-         SWOT section exists. Its data sources (startRecapStep()/
-         renderRecapDescription()/renderRecapProductThemes()/
-         renderRecapIndustry()/renderRecapCensus()) are still called — they
-         seed state.opportunity, which Section 1 above still depends on —
-         but every DOM write those functions used to make into this deleted
-         card is now null-guarded rather than removed, so the computation
-         keeps running headlessly. See those functions' own comments. -->
-
-    <!-- 2026-08-31, per direct instruction — the old "The Human Agentic
-         Agency" headline/subhead/human-ai-note, .value-stats-grid (now
-         Section 4's KPI cards), and .paid-inclusions-grid (the old 5-role
-         Brand/Planner/Voice/Analyst/Media Ops grid, superseded by Section
-         4's real 6-role AGENTIC_ROLES mapping — client confirmed those 5
-         roles are "no longer relevant in the product") are all DELETED.
-         DEFAULT PENDING CONFIRMATION: the client didn't directly confirm
-         what should remain here, so this keeps only a short closing
-         tag/headline plus the CTA cards and the main onboarding button —
-         flag this trim to the client for explicit sign-off. -->
     <div class="paid-interstitial">
       <span class="tag">This is the free read — here's what the paid program adds</span>
-      <h2 class="paid-headline" style="font-size:clamp(20px,2.6vw,26px);">Ready to bring the team on?</h2>
-      <div class="paid-interstitial-actions">
-        <a class="btn-primary" id="paidCtaLinkInterstitial" href="onboarding.html">See the paid program →</a>
-      </div>
+      <h2 class="paid-headline">The Human Agentic Platform</h2>
+      <p class="paid-subhead">Improved productivity. Better results.</p>
+      <p class="human-ai-note"><b>Partnership, not replacement.</b> Verilume doesn't replace whoever holds a seat on your marketing team — an employee, a fractional hire, or a role you haven't filled yet. It gives that seat a standing AI assistant for the always-on, first-draft work, so your team spends its time on judgment, relationships, and the final word.</p>
 
+      <!-- 2026-09-01, per direct instruction — the 3 KPI cards (Cost/
+           Relevance/Speed) moved to Section 3 above ("always show the key
+           KPIs that AI adds"). The old static 5-role .paid-inclusions-grid
+           (The Brand/The Planner/The Voice/The Analyst/Media Ops) is
+           deleted outright, not moved — "Those roles are no longer
+           relevant in the product." Section 3's role-gap grid uses the
+           real, current 6-role taxonomy instead. -->
       <!-- Round 104, module (f) — thank-you / product-page CTAs. Explicit,
            multiple paths into the paid service rather than the single
            link above standing alone — schedule time, self-serve explore,
@@ -2009,123 +2043,21 @@
       </div>
     </div>
 
-    <!-- ENHANCE YOUR PROFILE — accordion, the "extended evaluation."
-         Round 125, per direct instruction ("The channel specific ratings
-         are considered a different extended evaluation... we should be
-         including all survey question slides except for the channel
-         functional views before registration"): Org Style, Company
-         Profile, and Marketing Loop moved OUT of this accordion (Round
-         124/125) back to standalone pre-registration steps — only
-         Function Groups (Channels), Scope Picker, and Assess stay here,
-         since those are the genuinely separate function-by-function
-         evaluation. -->
-    <div class="enhance-section" id="enhanceSection">
-      <h2 style="font-size:1.25rem;">Extended evaluation</h2>
-      <p class="lede">The read above is a starting estimate, based on how you rated each Marketing Loop stage. Work through the sections below — the same function-by-function depth as a full audit — and we'll refine it into your exact, fully measured quadrant position.</p>
-      <div class="enh-list" id="enhanceAccordion">
-
-        <div class="enh-item open" data-enh="channels">
-          <button type="button" class="enh-head" onclick="toggleEnhItem('channels')">
-            <span class="enh-title">1. How do your marketing functions stack up?</span>
-            <span class="enh-status" id="enhStatus-channels">Not started</span>
-            <span class="enh-chevron">▸</span>
-          </button>
-          <div class="enh-body" id="enhBody-channels">
-            <div class="mat-slide-grid">
-              <div>
-                <p class="lede">A quick self-rating at the function-group level — the free read. The full channel-by-channel breakdown is part of your account, not this assessment.</p>
-                <div class="fngroup-grid" id="fnGroupRows"></div>
-              </div>
-              <aside class="mat-visual">
-                <div class="teaser-label">Marketing function groups</div>
-                <div class="mod-visual-frame" id="fnCircleVisual"></div>
-                <ul class="landing-teaser-bullets">
-                  <li>Full channel-level detail — individual platforms, partners, and creative formats — unlocks with an account.</li>
-                  <li>Each function group maps to real deliverables inside the Marketing Ops Task Queue.</li>
-                  <li>AI drafts the first pass per group; a human approves before anything ships.</li>
-                </ul>
-              </aside>
-            </div>
-            <div class="enh-actions">
-              <button class="btn-primary" onclick="completeEnhanceStep('channels')">Save &amp; continue →</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="enh-item" data-enh="scope-picker">
-          <button type="button" class="enh-head" onclick="toggleEnhItem('scope-picker')">
-            <span class="enh-title">2. Pick what to assess</span>
-            <span class="enh-status" id="enhStatus-scope-picker">Not started</span>
-            <span class="enh-chevron">▸</span>
-          </button>
-          <div class="enh-body" id="enhBody-scope-picker">
-            <p class="lede">Pick the stages — and the products behind them — you want scored. Skip anything that's not relevant right now.</p>
-            <div class="picker-card">
-              <div class="picker-head">
-                <span class="picker-tag">Step A — pick your stages</span>
-                <span class="picker-count" id="stagePickCount">0 of 5 picked</span>
-              </div>
-              <p class="picker-hint">Tap every stage of the journey you want in this assessment.</p>
-              <div class="select-tile-grid" id="stagePickerGrid"></div>
-            </div>
-            <div class="picker-card" id="productPickerCard" style="display:none;">
-              <div class="picker-head">
-                <span class="picker-tag">Step B — pick your products</span>
-                <span class="picker-count" id="productPickCount">0 picked</span>
-              </div>
-              <p class="picker-hint" id="productPickerHint">For each stage you picked, tap the products your team runs (or wants evaluated) there.</p>
-              <div id="productPickerBody"></div>
-            </div>
-            <div class="enh-actions">
-              <button class="btn-primary" id="scopePickerNext" disabled onclick="completeEnhanceStep('scope-picker')">Save &amp; continue →</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="enh-item" data-enh="assess">
-          <button type="button" class="enh-head" onclick="toggleEnhItem('assess')">
-            <span class="enh-title">3. Rate your team, product by product</span>
-            <span class="enh-status" id="enhStatus-assess">Not started</span>
-            <span class="enh-chevron">▸</span>
-          </button>
-          <div class="enh-body" id="enhBody-assess">
-            <p class="lede">One card per stage you picked in Section 2. For each product, rate your team against the best practice — takes about a minute.</p>
-            <div class="bp-panel mmm-panel">
-              <span class="bp-tag">What the industry's models tell us</span>
-              <p>Marketing mix models don't agree on one universal number for how much any single channel — PR, television, search — contributes to sales; that split shifts too much by category and by brand to cite honestly as one figure. What the research does agree on, across nearly a thousand case studies in the IPA effectiveness databank, is the split between the two jobs media does: roughly 60 percent of budget toward long-term brand-building and 40 percent toward short-term activation outperforms other mixes over time. (Binet &amp; Field, IPA) Keep that balance in mind as you rate the team below — a channel that looks weak on immediate response may still be doing its share of the long-term work.</p>
-            </div>
-            <h3 class="assess-subhead">How do you compare?</h3>
-            <div id="assessBody"></div>
-            <div class="enh-actions">
-              <button class="btn-primary" onclick="finishAssess()">Save ratings &amp; refine my quadrant →</button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- 2026-08-31, per direct instruction — #granularScorecard (the
-         per-stage quadrant-dot legend, the narrative line, and the
-         "Stage by stage" strong/weak breakdown, all downstream of the deep
-         per-product Assess ratings) is DELETED outright. It used to reveal
-         itself once finishAssess() had real per-cell data; that call site
-         is now null-guarded (see finishAssess()) instead of pointing at a
-         real element. renderFullReport()'s equivalent population block
-         (formerly `if (!s.isQuick){...}`, targeting #stagePositionsList/
-         #narrativeText/#reportStages) is removed the same way — see that
-         function's own comment for what stayed (#quadStageMarkers, still
-         real, still used by the Section 2 quadrant plot above). -->
+    <!-- 2026-09-01, per direct instruction ("Awareness, Consideration,
+         Purchase, loyalty, Advocacy sections goes away completely") —
+         #granularScorecard (the literal .stage-block tiles titled with
+         those 5 stage names, plus their #stagePositionsList legend and
+         #narrativeText) is deleted entirely. #quadStageMarkers — the
+         quadrant's own per-stage dot-plotting, above — is a distinct,
+         still-used element and is unaffected; only this separate tile
+         list/legend/narrative is gone. finishAssess()'s reveal of this
+         container is null-guarded; renderFullReport()'s population logic
+         for it was removed (its dot-plotting half, which still feeds
+         #quadStageMarkers, was kept). -->
 
     <div class="report-actions">
-      <!-- 2026-08-31, per direct instruction — replaces the old .txt
-           download + "Copy summary" buttons with a PDF-via-print button,
-           matching portal.html's exact convention (window.print(), no JS
-           library) — see the @media print rule this step's CSS adds.
-           downloadReport()/copyReport()/reportText() (the old .txt-export
-           helpers) are deleted; nothing else called them. -->
-      <button class="btn-primary" onclick="window.print()">Download Report (PDF) ↓</button>
-      <button class="btn-ghost" id="portalHandoffBtn" onclick="activateInPortal()">Begin Your One Week Free Trial</button>
+      <button class="btn-ghost" onclick="window.print()">Download Report (PDF) ↓</button>
+      <button class="btn-primary" id="portalHandoffBtn" onclick="activateInPortal()">Begin Your One Week Free Trial</button>
     </div>
     <!-- 2026-08-19 fix — this note used to describe the old access-code-only
          path, which created an account but no real per-person login and no
@@ -3675,6 +3607,15 @@ const INDUSTRY_CLUSTER = {
 function industryCluster(industryLabel){
   return INDUSTRY_CLUSTER[industryLabel] || 'generic';
 }
+// 2026-09-01 — moved up from its old declaration point further down the
+// file (just above regionMultiplier()): renderJourneyBP() now calls
+// activeScores(), and renderJourneyBP() itself is invoked once,
+// synchronously, right below during this script's initial top-to-bottom
+// run (well before that old declaration point) — a `let` declared later
+// in the same scope was hitting the temporal dead zone on that first,
+// pre-navigation call. Declaring it here, before every call site, fixes
+// that without changing scores' behavior anywhere else in the file.
+let scores = null;
 prefillFromQueryString();
 // Step 2's audience selection tiles (and, since 2026-08-31, the income
 // slider's live Wealth Index readout) render once up front. The
@@ -4244,7 +4185,12 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.getElementById('orgChartPreview').innerHTML = '<div class="placeholder">Pick a style, then a shape, to preview it here.</div>';
   document.getElementById('orgStyleNext').disabled = true;
   document.getElementById('loopStageRows').innerHTML = '';
-  document.getElementById('fnGroupRows').innerHTML = '';
+  // 2026-09-01 — #enhanceSection (fnGroupRows/scopePickerNext/
+  // stagePickerGrid/productPickerCard/productPickerBody/assessBody) was
+  // removed from the report step entirely; null-guarded here so restartBtn's
+  // click handler doesn't throw on a page that no longer has those fields.
+  const fnGroupRowsEl = document.getElementById('fnGroupRows');
+  if (fnGroupRowsEl) fnGroupRowsEl.innerHTML = '';
   document.querySelectorAll('#regionChips .select-tile').forEach(c => c.classList.remove('selected'));
   document.querySelectorAll('#audienceChecks .select-tile').forEach(c => c.classList.remove('selected'));
   // 2026-08-31 — reset the income slider + its guess tag back to the
@@ -4294,13 +4240,20 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.querySelectorAll('#reviewChecklist li').forEach(li => li.classList.remove('done'));
   document.getElementById('companyNext').disabled = true;
   document.getElementById('contactNext').disabled = true;
-  document.getElementById('scopePickerNext').disabled = true;
-  document.getElementById('stagePickerGrid').innerHTML = '';
-  document.getElementById('stagePickCount').textContent = `0 of ${RUBRIC.length} picked`;
-  document.getElementById('productPickerCard').style.display = 'none';
-  document.getElementById('productPickerBody').innerHTML = '';
-  document.getElementById('productPickCount').textContent = '0 picked';
-  document.getElementById('assessBody').innerHTML = '';
+  const scopePickerNextEl = document.getElementById('scopePickerNext');
+  if (scopePickerNextEl) scopePickerNextEl.disabled = true;
+  const stagePickerGridEl = document.getElementById('stagePickerGrid');
+  if (stagePickerGridEl) stagePickerGridEl.innerHTML = '';
+  const stagePickCountEl = document.getElementById('stagePickCount');
+  if (stagePickCountEl) stagePickCountEl.textContent = `0 of ${RUBRIC.length} picked`;
+  const productPickerCardEl = document.getElementById('productPickerCard');
+  if (productPickerCardEl) productPickerCardEl.style.display = 'none';
+  const productPickerBodyEl = document.getElementById('productPickerBody');
+  if (productPickerBodyEl) productPickerBodyEl.innerHTML = '';
+  const productPickCountEl = document.getElementById('productPickCount');
+  if (productPickCountEl) productPickCountEl.textContent = '0 picked';
+  const assessBodyEl = document.getElementById('assessBody');
+  if (assessBodyEl) assessBodyEl.innerHTML = '';
   renderJourneyBP();
   renderWealthIndex(); // re-renders off the just-reset slider/audience state
   goToStep('landing');
@@ -4378,64 +4331,46 @@ function renderIndustryDesc(){
 // selections, not a real audit — the closing line says so explicitly rather
 // than presenting the read as settled fact. If this direction holds up,
 // the same voice should extend to Step 4's per-stage panels next.
+// 2026-09-01, per direct client instruction — replaced the prior
+// if/else-branch template copy (canned demo language, and one branch
+// literally said "...will do more than premium positioning", which reads
+// as consumer-ad-agency language and is a deal-breaker for a HNW/luxury
+// account landing in that branch). Rewritten to recap brand, assessment
+// (Media vs. CX, the two axes Verilume actually sells against), audience
+// target, and how Human + AI reinforces Verilume's Media + CX expertise —
+// in plain executive language for the actual report audience (45+ CMO).
+// Must never contain "premium", "discount", or other discount/bargain-coded
+// language — verified by grep after every edit to this function.
 function renderJourneyBP(){
   const ind = industryOf();
-  const wealth = wealthLabels();
   const company = state.company || 'this brand';
-
-  // 2026-08-31 — genalpha added to youngerSet: it's the youngest generation
-  // in GENERATIONS[], so grouping it here keeps this sentence accurate for
-  // a visitor who selects only Gen Alpha, instead of falling through to
-  // "audience isn't set yet" for a generation that IS set.
-  const youngerSet = ['genbeta', 'genalpha', 'genz', 'millennial'];
-  const olderSet = ['genx', 'boomer', 'silent', 'greatest'];
-  const hasYounger = youngerSet.some(k => state.audience.has(k));
-  const hasOlder = olderSet.some(k => state.audience.has(k));
-  const genSentence = hasYounger && hasOlder
-    ? `You're speaking to a wide span of generations here, so the two ends of that audience won't open the same way — younger customers want to find their own proof, in short video and real customer stories, while your older customers still want a knowledgeable person to talk to before they commit.`
-    : hasYounger
-      ? `Your audience skews younger, which tells us short video, peer proof, and a journey people can complete entirely on their own will outperform a reassurance-heavy pitch.`
-      : hasOlder
-        ? `Your audience skews older, which tells us a knowledgeable person on the phone or in person will still convert better than asking people to figure it out on their own.`
-        : `We don't have a generation selected yet, so this read stays general until you tell us who you're speaking to.`;
-
-  const wealthSentence = state.wealth.has('hnw')
-    ? `At the high end of the wealth spectrum you're courting, discretion and an effortless moment of purchase matter more than any discount ever will.`
-    : state.wealth.has('middle') && !state.wealth.has('wealthy')
-      ? `For a value-conscious, mainstream customer, consistency and a clear sense of getting their money's worth will do more than premium positioning.`
-      : wealth.length
-        ? `Quality and status cues need to hold up from the first ad someone sees through the moment they hand over payment.`
-        : `Wealth tier isn't set yet, so we can't speak to tone with much confidence.`;
-
-  const footprintSentence = state.region === 'Global'
-    ? `As a global brand, you're carrying the hardest promise in the industry to keep — the experience has to hold up across languages, currencies, and cultures, and ${ind.weakHint.toLowerCase()} is usually where global brands in ${ind.label.toLowerCase()} lose people.`
-    : state.region === 'National'
-      ? `As a national, company-run brand, the moment of purchase has to feel the same in every market you operate — not just your strongest one.`
-      : state.region === 'Local'
-        ? `Operating in a single market, your opportunity is consistency in person, not reach across channels.`
-        : `Footprint isn't set yet, so we're using a neutral baseline here.`;
-
-  const buyerSentence = state.buyerType === 'B2B'
-    ? ` And because you're selling to other businesses rather than individual consumers, the people answering the phone and the reliability of delivery will carry more weight with a buying committee than the creative does — that group moves slower and needs consistency across more conversations.`
-    : state.buyerType === 'B2C'
-      ? ` And because you're selling directly to individual consumers, strong visual storytelling and being easy to find will matter more than a deep phone-support bench — you're usually dealing with one person moving fast.`
-      : '';
-
+  const aud = audienceLabels();
+  const wealth = wealthLabels();
+  const s = activeScores();
   const target = document.getElementById('journeyBP');
   if (!target) return;
-  // 2026-08-25 — this opening clause used to unconditionally claim "based
-  // on your website" even when no real fetch ever happened (pre-real-fetch,
-  // that was true for every domain except the one demo account). Now that
-  // startSiteReview() runs a real POST /api/assessment/website-scan, say so
-  // only when assessmentWebsiteContext actually holds a successful read —
-  // otherwise this honestly names what it's actually grounded in (the
-  // profile fields the visitor entered), matching the same per-field
-  // honesty convention as guessProfileFromInput()'s own source labels.
-  const websiteReadClause = assessmentWebsiteContext
-    ? `based on your website and the profile you just gave us`
-    : `based on the profile you just gave us`;
-  target.innerHTML = bpPanel(`Optimizing the journey for ${company}`,
-    `Here's our first read on ${company}, ${websiteReadClause} — a seasoned outside view, not an audit of your internal data. ${genSentence} ${wealthSentence} ${footprintSentence}${buyerSentence} Treat this as a starting hypothesis: pick the stages and products below where it's right, and tell us where it's off — we'd rather hear that now than build your program on a bad assumption.`);
+
+  // Brand recap
+  const footprintWord = state.region === 'Global' ? 'global' : state.region === 'National' ? 'national' : state.region === 'Local' ? 'local' : '';
+  const brandClause = `${company} is a ${footprintWord ? footprintWord + ' ' : ''}${ind.label ? ind.label.toLowerCase() : 'brand'}.`;
+
+  // Assessment recap — Media vs. CX comparison, framed as the two axes
+  // Verilume actually sells against, not a templated "weak/strong" label.
+  const gapClause = s.mediaPct === s.cxPct
+    ? ` Your own ratings show Media and CX moving together today — ${s.mediaPct}% each — which is the harder position to build and the easier one to defend.`
+    : s.mediaPct > s.cxPct
+      ? ` Your own ratings show Media running ahead of CX (${s.mediaPct}% vs. ${s.cxPct}%) — you're earning attention faster than the experience is currently keeping the promise that attention makes.`
+      : ` Your own ratings show CX running ahead of Media (${s.cxPct}% vs. ${s.mediaPct}%) — the experience is already strong; reach is the lever with the most room to move.`;
+
+  // Audience recap — plain business terms, no consumer-marketing framing
+  const audienceClause = aud.length
+    ? ` Your primary audience is ${aud.join(', ')}${wealth.length ? `, in the ${wealth.join(' and ')} segment` : ''}.`
+    : ` Your audience isn't narrowed down yet, so this stays general until that's set.`;
+
+  // Human + AI, reinforcing Media + CX expertise specifically
+  const aiClause = ` Verilume pairs a real person with a standing AI partner across that full journey — AI carries the always-on, first-draft work; your team keeps the judgment and the final word. That partnership is built specifically to close the gap between the Media work that earns attention and the CX work that keeps what Media promised.`;
+
+  target.innerHTML = bpPanel(`Where ${company} stands today`, brandClause + gapClause + audienceClause + aiClause);
 }
 
 // Shared short-phrase clauses (generation skew, wealth tone, footprint bar)
@@ -5845,9 +5780,9 @@ function finishAssess(){
   computeScores();
   completeEnhanceStep('assess');
   renderFullReport();
-  // 2026-08-31 — #granularScorecard was deleted (Round 135 redo); guarded
-  // rather than removed outright so this still degrades safely if that
-  // markup is ever reintroduced.
+  // 2026-09-01 — #granularScorecard was deleted from the report step
+  // entirely; null-guarded so this reveal step is a no-op instead of
+  // throwing.
   const granularEl = document.getElementById('granularScorecard');
   if (granularEl) granularEl.style.display = 'block';
   syncEnhancedProfileToBackend();
@@ -6031,48 +5966,24 @@ function activeScores(){
 // per Loop stage (RUBRIC's 5 stages), rather than inventing new content or
 // falling back to a permanent default.
 const STAGE_EFF_LABEL = { 1: 'Needs attention', 2: 'Inconsistent', 3: 'Getting there', 4: 'Working well', 5: 'A real strength' };
-const STAGE_PRODUCT_DESC = {
-  Awareness: 'Media mix scenarios and DMA-level testing that put the brand in front of the right prospects first.',
-  Consideration: 'Landing pages and remarketing creative that keep the story going once someone starts comparing.',
-  Purchase: 'A consistent handoff from Media’s promise through booking, call center, and POS to the close.',
-  Loyalty: 'CRM and lifecycle programs that keep customers coming back without another acquisition dollar.',
-  Advocacy: 'Referral and review prompts built into the experience, turning customers into the next Awareness channel.'
-};
+
+// 2026-09-01 — rebuilt per the report step's corrected 3-section structure.
+// #reportSynthesisText (the short "This company is a national cruise
+// lines..." sentence) and #reportLearnedGrid ("here's what we learned")
+// are both deleted — per direct client clarification, given a screenshot of
+// the old report and asked to point at the exact copy meant to stay, the
+// client circled the "OPTIMIZING THE JOURNEY FOR [COMPANY]" bordered panel
+// (renderJourneyBP()'s output, rendered via bpPanel() into #journeyBP), not
+// this shorter sentence. So this function's only remaining jobs are: (1)
+// populate Section 1's "Optimizing The Journey For [Company]" heading
+// (#reportCompanyNameHeading), and (2) call the untouched renderJourneyBP()
+// so its panel — now the first piece of content under the report title —
+// renders. renderJourneyBP() itself, and applyAiGeneratedReadout()'s async
+// upgrade of #journeyBP on a successful AI call, are both unchanged.
 function renderReportSynthesis(){
-  const introEl = document.getElementById('reportSynthesisText');
-  if (!introEl) return;
-  const industry = industryOf();
-  const aud = audienceLabels();
-  const wealth = wealthLabels();
-  const footprint = state.region ? state.region.toLowerCase() : 'unspecified-footprint';
-  const company = state.company || 'This company';
-  let intro = `${company} is a ${footprint} ${industry.label ? industry.label.toLowerCase() : 'business'} `;
-  intro += aud.length ? `targeting ${aud.join(', ')}${wealth.length ? ` in the ${wealth.join(', ').toLowerCase()} tier` : ''}. ` : `with its target audience not yet narrowed down. `;
-  intro += `Here's how your own Marketing Loop ratings map to what a Verilume account actually delivers, stage by stage.`;
-  introEl.textContent = intro;
-
-  // Round 134 — Section 2's heading ("Our read on [Company]") reads the
-  // same `company` value this function already computed above.
-  const companyHeadingEl = document.getElementById('reportCompanyNameHeading');
-  if (companyHeadingEl) companyHeadingEl.textContent = company;
-
+  const headingEl = document.getElementById('reportCompanyNameHeading');
+  if (headingEl) headingEl.textContent = state.company || 'Your Company';
   renderJourneyBP();
-
-  const gridEl = document.getElementById('reportLearnedGrid');
-  if (!gridEl) return;
-  const cards = RUBRIC.map((stage, i) => {
-    const rating = state.stageEffectiveness[stage.stage];
-    const finding = rating
-      ? `${stage.sub} Self-rated: "${STAGE_EFF_LABEL[rating] || 'Not yet rated'}" (${rating}/5).`
-      : `${stage.sub} Not yet self-rated.`;
-    return { num: i + 1, theme: stage.stage, finding, desc: STAGE_PRODUCT_DESC[stage.stage] || '' };
-  });
-  gridEl.innerHTML = cards.map(c => `<div class="learned-card">
-      <div class="lc-num">${c.num}</div>
-      <h4>${c.theme}</h4>
-      <p class="lc-finding">${c.finding}</p>
-      <p>${c.desc}</p>
-    </div>`).join('');
 }
 
 // 2026-08-25 — the AI-generated version of the "here's what we learned"
@@ -6159,18 +6070,18 @@ function renderAudienceRecapChips(){
 // score set is authoritative right now (the coarse estimate, since Assess
 // hasn't run yet).
 function renderInitialReport(){
-  startRecapStep(); // seeds state.opportunity + the (now-deleted) Company Profile accordion item's fields
-  // 2026-08-31, per direct instruction — renderReportSynthesis() and
-  // applyAiGeneratedReadout() are no longer called from here: both exist
-  // solely to populate #reportSynthesisText/#journeyBP/#reportLearnedGrid,
-  // all three deleted along with Section 2. Both functions are still
-  // null-guarded and would no-op harmlessly if called (see their own
-  // comments), but applyAiGeneratedReadout() makes a real backend call to
-  // the Anthropic-backed generate-readout endpoint purely to discard the
-  // result — leaving it wired up would spend that real API cost for
-  // nothing, so it's removed from this call site instead of just guarded.
+  startRecapStep(); // seeds state.opportunity + the Company Profile accordion item's fields
+  renderReportSynthesis();
   renderAudienceRecapChips();
   renderFullReport();
+  // 2026-08-25 — fires the AI-generated readout (see
+  // applyAiGeneratedReadout()'s own comment below) after the templated
+  // synthesis/journeyBP content above has already rendered synchronously,
+  // so the page never shows a blank or loading state while this is
+  // in flight. Deliberately not awaited here — it overwrites the two
+  // targeted spots in place on success and leaves everything else, and
+  // everything already on screen, exactly as-is on any failure.
+  applyAiGeneratedReadout();
   // 2026-08-21, per direct instruction — visitors who already have a real
   // Verilume account (created via the Save & Schedule modal, then chose
   // "Keep going with the assessment" instead of going straight to the
@@ -6217,6 +6128,14 @@ function enhSeed(key){
 }
 
 function initEnhanceAccordion(){
+  // 2026-09-01 — #enhanceSection (the "Extended evaluation" accordion) was
+  // removed from the report step per direct client instruction. This
+  // function's only remaining call sites (submitContact(), and the
+  // has-account branch above) still call it unconditionally as part of the
+  // report page hand-off, so guard here rather than at each call site:
+  // with the section gone there is nothing left to seed or track progress
+  // for.
+  if (!document.getElementById('enhanceSection')) return;
   ENH_ORDER.forEach(k => { enhDone[k] = false; });
   updateEnhanceProgress();
   // First item starts open (matches the HTML's initial .enh-item.open on
@@ -6376,7 +6295,6 @@ async function syncEnhancedProfileToBackend(){
    reflecting the brief's note that these aren't graded on the same bar — real
    benchmark data should replace this multiplier once available.
 */
-let scores = null;
 
 function regionMultiplier(stageIdx, layerName){
   const isPurchase = RUBRIC[stageIdx].stage === 'Purchase';
@@ -6673,33 +6591,36 @@ function quadrantFor(mediaPct, cxPct){
 // convention portal.html's account-record banner already uses. Reads
 // crmSyncResult, set by syncLeadToBackend() back at the contact/
 // registration step, well before this function runs.
+// 2026-09-01, per direct instruction — this used to show the visitor a
+// plain-language status of the CRM/HubSpot sync (including, on a failed
+// POST /api/leads, "We weren't able to save this just now — please try
+// again in a moment"). Client: "You shouldn't display that message to the
+// potential client. They don't need to know that the email didn't go to
+// HubSpot. That's an internal issue. We'll evaluate the HubSpot's logs in
+// the future." This is now a deliberate no-op — crmSyncResult is still set
+// by syncLeadToBackend() (nothing upstream changed) and still available to
+// read from the console/devtools or a future internal-only surface, but
+// nothing renders into #crmSyncNote for the visitor, on success OR failure.
+// Left in place (rather than deleted) as the one function this file already
+// has for reading crmSyncResult, in case a future internal-only view wants
+// it.
 function renderCrmSyncNote(){
   const el = document.getElementById('crmSyncNote');
   if (!el) return;
-  const status = crmSyncResult && crmSyncResult.hubspotStatus;
-  if (status === 'synced'){
-    const idText = crmSyncResult.hubspotContactId || 'id unavailable';
-    const linkHtml = crmSyncResult.hubspotContactUrl
-      ? ` — <a href="${crmSyncResult.hubspotContactUrl}" target="_blank" rel="noopener">open in HubSpot</a>`
-      : '';
-    el.innerHTML = `Saved (contact ${idText})${linkHtml}.`;
-  } else if (status === 'not_configured'){
-    el.textContent = 'Saved — you\'ll hear from us shortly.';
-  } else if (status === 'error'){
-    el.textContent = `Saved — you'll hear from us shortly.`;
-  } else {
-    el.textContent = 'We weren\'t able to save this just now — please try again in a moment.';
-  }
+  el.textContent = '';
 }
 
 // Round 122 — now runs twice: once right after registration (activeScores()
 // falls back to the coarse computeQuickScores() estimate, since window.scores
 // is still null) and again once Assess completes (window.scores is real, so
 // activeScores() returns it). The quadrant band, marker, and score pills
-// always render either way; the per-stage dots/legend, narrative line, and
-// stage-by-stage breakdown only exist once real per-cell answers do, so they
-// stay empty (and #granularScorecard stays hidden — see finishAssess()) until
-// then rather than fabricating stage-level detail from a maturity ladder.
+// always render either way; the per-stage dots on #quadStageMarkers only
+// exist once real per-cell answers do, so they stay empty until then rather
+// than fabricating stage-level detail from a maturity ladder. 2026-09-01 —
+// the old per-stage legend/narrative/stage-tile breakdown that used to run
+// alongside those dots is gone (see #granularScorecard's deletion note in
+// the HTML above); renderReportOpportunity() (Section 1's glance grid) and
+// renderAgenticRoleMapping() (Section 3's role-gap grid) both run here too.
 function renderFullReport(){
   renderCrmSyncNote();
   const s = activeScores();
@@ -6707,37 +6628,8 @@ function renderFullReport(){
   document.getElementById('resultBand').className = 'result-band ' + q.key;
   document.getElementById('reportQuadrantTitle').textContent = q.name;
   document.getElementById('reportQuadrantDesc').textContent = q.desc;
-  // Round 134 — Section 2's (Magic Quadrant) individual Media/CX pair.
-  // Same activeScores() read as Section 1's org score above, so the two
-  // can never disagree.
-  const mediaScoreValQ = document.getElementById('mediaScoreValQ');
-  const cxScoreValQ = document.getElementById('cxScoreValQ');
-  if (mediaScoreValQ) mediaScoreValQ.textContent = s.mediaPct + '%';
-  if (cxScoreValQ) cxScoreValQ.textContent = s.cxPct + '%';
-
-  // Round 135 (2026-08-31), per direct instruction — Section 1's single
-  // 4-tile glance grid: Industry Revenue, Estimated Market Size, Verilume
-  // Wealth Index, Your Organization Score. Replaces the old separate
-  // multi-tile #reportOpportunityStats grid + standalone Wealth Index tile
-  // + vmcx-index-card (renderReportOpportunity() is deleted — its two
-  // opportunity figures are read directly from state.opportunity here
-  // instead). No visible body copy per direct instruction — the `title`
-  // attribute set on each tile in the HTML carries the longer note.
-  const companyHeadingEl = document.getElementById('reportCompanyNameHeading');
-  if (companyHeadingEl) companyHeadingEl.textContent = state.company || 'Your Company';
-  const opp = state.opportunity || {};
-  const revEl = document.getElementById('glanceIndustryRevenue');
-  if (revEl) revEl.textContent = opp.industryRevenue != null ? fmtB(opp.industryRevenue) : '—';
-  const marketEl = document.getElementById('glanceMarketSize');
-  if (marketEl) marketEl.textContent = opp.marketSize != null ? opp.marketSize.toLocaleString() : '—';
-  const wealthEl = document.getElementById('glanceWealthIndex');
-  if (wealthEl){
-    const wIndex = verilumeWealthIndex();
-    wealthEl.textContent = `${wIndex} — ${wealthIndexLabel(wIndex)}`;
-  }
-  const orgScoreEl = document.getElementById('glanceOrgScore');
-  if (orgScoreEl) orgScoreEl.textContent = (typeof s.index === 'number' ? s.index : Math.round((s.mediaPct + s.cxPct) / 2)) + '%';
-
+  document.getElementById('mediaScoreVal').textContent = s.mediaPct + '%';
+  document.getElementById('cxScoreVal').textContent = s.cxPct + '%';
   const onboardingUrl = buildOnboardingHandoffUrl();
   document.getElementById('paidCtaLink').href = onboardingUrl;
   const interstitialLink = document.getElementById('paidCtaLinkInterstitial');
@@ -6747,9 +6639,13 @@ function renderFullReport(){
 
   const basisNote = document.getElementById('quadrantBasisNote');
   if (basisNote){
+    // 2026-09-01 — "work through Extended evaluation below" removed along
+    // with #enhanceSection (the accordion that copy pointed at); this note
+    // now just names what the estimate is based on, with no dangling
+    // reference to a section that no longer exists on this page.
     basisNote.textContent = s.isQuick
-      ? 'This is a starting estimate, based on how you rated each Marketing Loop stage — work through "Extended evaluation" below to refine it into a measured position.'
-      : 'Refined from your function-by-function ratings below — this is your measured position, not an estimate.';
+      ? 'This is a starting estimate, based on how you rated each Marketing Loop stage.'
+      : 'Refined from your function-by-function ratings — this is your measured position, not an estimate.';
   }
 
   const marker = document.getElementById('quadMarker');
@@ -6757,104 +6653,105 @@ function renderFullReport(){
   marker.style.bottom = s.cxPct + '%';
   marker.title = `Overall — ${s.mediaPct}% Media Strength / ${s.cxPct}% CX Strength — ${q.name}${s.isQuick ? ' (estimate)' : ''}`;
 
-  // Per-stage dots on the quadrant plot (round 34, direct instruction) —
-  // see computeScores()'s stagePoints comment for the math. Numbered 1-5 in
-  // RUBRIC order rather than color-coded (only 3 accent colors exist
-  // site-wide, not enough for 6 distinct dots). None of this exists until
-  // Assess has produced real per-cell answers (s.isQuick === true until
-  // then).
-  // Round 135 (2026-08-31), redo per direct instruction — this block used
-  // to ALSO build the #stagePositionsList legend, #narrativeText, and the
-  // #reportStages "Stage by stage" breakdown; all three of those elements
-  // were deleted along with #granularScorecard, so that HTML-building code
-  // is removed here too (not left running against nonexistent elements).
-  // #quadStageMarkers itself stays — it's still real, still part of the
-  // Section 2 quadrant plot above — only the dot-creation half of the old
-  // loop survives; the legend-row half is gone with it.
+  // Per-stage dots (round 34, direct instruction) — see computeScores()'s
+  // stagePoints comment for the math. Numbered 1-5 in RUBRIC order rather
+  // than color-coded (only 3 accent colors exist site-wide, not enough for
+  // 6 distinct dots). None of this exists until Assess has produced real
+  // per-cell answers (s.isQuick === true until then).
+  // 2026-09-01 — the legend (#stagePositionsList), narrative line
+  // (#narrativeText), and the literal Awareness/Consideration/Purchase/
+  // Loyalty/Advocacy stage tiles (#reportStages, inside the now-deleted
+  // #granularScorecard) are gone entirely, per direct instruction
+  // ("Awareness, Consideration, Purchase, loyalty, Advocacy sections goes
+  // away completely"). #quadStageMarkers is a distinct, still-used element
+  // — the quadrant's own dot-plotting — and is unaffected; only the dot
+  // loop below (kept) stays, the legend/narrative/tile-building code that
+  // used to run alongside it (removed) does not.
   const stageMarkersEl = document.getElementById('quadStageMarkers');
-  if (stageMarkersEl){
-    stageMarkersEl.innerHTML = '';
-    if (!s.isQuick && scores && scores.stagePoints){
-      scores.stagePoints.forEach((sp, i) => {
-        const num = i + 1;
-        if (!sp.assessed) return;
-        const sq = quadrantFor(sp.pct, scores.cxPct);
-        const dot = document.createElement('div');
-        dot.className = 'quad-marker stage-dot';
-        dot.style.left = sp.pct + '%';
-        dot.style.bottom = scores.cxPct + '%';
-        dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% CX Strength — ${sq.name}`;
-        dot.textContent = String(num);
-        stageMarkersEl.appendChild(dot);
-      });
-    }
+  stageMarkersEl.innerHTML = '';
+  if (!s.isQuick){
+    scores.stagePoints.forEach((sp, i) => {
+      if (!sp.assessed) return;
+      const num = i + 1;
+      const sq = quadrantFor(sp.pct, scores.cxPct);
+      const dot = document.createElement('div');
+      dot.className = 'quad-marker stage-dot';
+      dot.style.left = sp.pct + '%';
+      dot.style.bottom = scores.cxPct + '%';
+      dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% CX Strength — ${sq.name}`;
+      dot.textContent = String(num);
+      stageMarkersEl.appendChild(dot);
+    });
   }
+  renderReportOpportunity();
   renderAgenticRoleMapping();
 }
-window.addEventListener('resize', () => {
-  document.querySelectorAll('.stage-block.open .stage-body').forEach(b => {
-    b.style.maxHeight = b.scrollHeight + 'px';
-  });
-});
 
-// 2026-08-31 — renderReportOpportunity() (the old multi-tile
-// #reportOpportunityStats grid) is DELETED. Section 1's glance grid now
-// reads state.opportunity/verilumeWealthIndex()/activeScores() directly,
-// inline in renderFullReport() above — same underlying numbers, no
-// separate function needed since there's only 4 single values to place,
-// not a variable-length stat-tile list.
+// Opportunity size reuses the exact numbers already computed and shown at
+// the recap step — captured into state.opportunity at the point they were
+// calculated, not recomputed here, so the report can never drift from what
+// the visitor already saw.
+// Round 106 — competitorReasoning() and the report's named-competitor
+// section were removed per direct instruction: named competitors are moving
+// to a "free 1-week trial" concept after account creation (not yet built),
+// not something collected in this free flow anymore.
+// 2026-09-01, rebuilt per direct instruction — Section 1 ("Your opportunity,
+// at a glance") is now a single 4-column, single-row grid of 4 small cards,
+// no body copy beyond the 4 labels: Industry Revenue, Estimated Market Size,
+// Verilume Wealth Index, Your Organization Score. Extra context (methodology,
+// what's behind each number) lives only in each card's native `title`
+// attribute, never as visible text. "Your Organization Score" is the
+// Verilume Media CX Index total (activeScores().index) — the SAME blended
+// number the old standalone .vmcx-index-card used to show; it's not
+// re-listed a second time below the quadrant (Media/CX Strength pills there
+// show the two component axes only, not the blended total).
+function renderReportOpportunity(){
+  const opp = state.opportunity || {};
+  const s = activeScores();
+  const statsEl = document.getElementById('reportOpportunityStats');
+  if (!statsEl) return;
 
-// Round 134 — Section 3's 6 Agentic Team Roles, per direct client
-// instruction: "always show the key KPIs that AI adds for all... [and] the
-// Agentic Team Role we provide." This is a condensed, DUPLICATED mirror of
-// human-ai-agents.html's SYM_DATA array (~line 697 there) — title/tier and
-// one representative human/ai bullet each, trimmed for a compact report
-// card rather than that page's full bullet lists. Keep in sync by hand if
-// that page's role copy changes; there's no shared include between the two
-// files today.
-const AGENTIC_ROLES = [
-  { title: 'Brand', tier: 'Partly built',
-    human: 'Final creative direction and outside vendor relationships for finished production.',
-    ai: 'Drafts and enforces the approved brand voice across every draft, ad copy, and SEO/GEO/AEO copy.' },
-  { title: 'Performance Marketing', tier: 'Brief-ready',
-    human: 'The actual media buy — every real ad platform still needs a person (or its own tools) spending real money.',
-    ai: 'Drafts the channel plan and creative angle for social, search, programmatic, TV, and partnerships.' },
-  { title: 'Omni-Channel Creative', tier: 'Brief-ready',
-    human: 'Creative review, final direction, and the handoff to outside production tools.',
-    ai: "Drafts on-brand, best-practice-spec'd copy and layout per channel from the approved brand voice." },
-  { title: 'PR', tier: 'Draft-ready today',
-    human: 'Media and editorial relationships, and judgment on anything sensitive or crisis-adjacent.',
-    ai: 'Drafts full press releases and pitch angles from supplied facts — ready to edit, never invented.' },
-  { title: 'Advanced Analytics', tier: 'Partly built',
-    human: 'The underlying data engineering, live warehouse work, and the final call on what a number means.',
-    ai: 'Interprets connected data (GA4 live today), designs test frameworks, flags events worth reading against a dip.' },
-  { title: 'Media Planning & Ops', tier: 'Partly built',
-    human: 'Vendor relationships, contracts, and live delivery/trafficking logistics.',
-    ai: 'Drafts a KPI framework and a structured marketing calendar from a campaign brief.' }
-];
+  const industryTitle = 'Illustrative U.S. estimated revenue for this industry — not a live data feed, verify before use.';
+  const marketTitle = opp.marketSize != null
+    ? `${opp.popLabel || ''} × selected generation(s) (${opp.genSharePct}% combined) × selected wealth tier(s) (${opp.wealthSharePct}% combined). Illustrative approximation, not a licensed audience count.`
+    : 'Opportunity size wasn\'t calculated this session yet.';
+  const wealthIndex = verilumeWealthIndex();
+  const wealthTitle = `Household-income-driven index, anchored to 100 = the average U.S. household; ${wealthIndexLabel(wealthIndex)} band.`;
+  const orgScoreTitle = s.isQuick
+    ? 'Estimated from your self-ratings above — create an account to refine each stage with real data and sharpen this number.'
+    : 'Measured from your function-by-function ratings — this is your real Index, not an estimate.';
 
-// Round 135 (2026-08-31), per direct instruction — REPLACES the old Step 9
-// (Assess/deep per-product ratings) based scoring above. Section 3's role
-// grid must now be computed ONLY from the 6 quick-assessment questions
-// every visitor answers on the Marketing Loop step — the 5 RUBRIC
-// stage-effectiveness self-ratings (state.stageEffectiveness) plus the 6th
-// question, CX consistency (state.cxConsistencyRating) — never from the
-// deep per-product Assess ratings (state.productRatings), which most
-// visitors never reach.
-// STAGE_TO_ROLE is Verilume's own reasoned mapping, one stage (or the CX
-// question) to one of the 6 real AGENTIC_ROLES — NOT a researched or
-// client-confirmed 1:1 correspondence, disclosed as such here: Awareness →
-// Performance Marketing (media selects drive top-of-funnel reach);
-// Consideration → Omni-Channel Creative (the creative/content work that
-// keeps a prospect comparing); Purchase → Media Planning & Ops (the
-// handoff/booking/ops machinery that gets the sale across the line);
-// Loyalty → Brand (voice/relationship consistency that keeps a customer);
-// Advocacy → PR (earned-media/referral amplification); CX Consistency →
-// Advanced Analytics (the cross-channel measurement discipline behind a
-// consistent experience). All 6 AGENTIC_ROLES have exactly one mapped
-// input under this scheme, so every role card still gets a real score (or
-// an honest "not yet self-rated" when that one input is missing) — nothing
-// is fabricated, same "don't fabricate" rule the rest of this file follows.
+  statsEl.innerHTML = `
+    <div class="glance-card" title="${industryTitle}">
+      <span class="glance-label">Industry Revenue</span>
+      <div class="glance-value">${opp.industryRevenue != null ? fmtB(opp.industryRevenue) : '—'}</div>
+    </div>
+    <div class="glance-card" title="${marketTitle}">
+      <span class="glance-label">Estimated Market Size</span>
+      <div class="glance-value">${opp.marketSize != null ? opp.marketSize.toLocaleString() : '—'}</div>
+    </div>
+    <div class="glance-card" title="${wealthTitle}">
+      <span class="glance-label">Verilume Wealth Index</span>
+      <div class="glance-value">${wealthIndex}</div>
+    </div>
+    <div class="glance-card" title="${orgScoreTitle}">
+      <span class="glance-label">Your Organization Score</span>
+      <div class="glance-value" id="vmcxIndexVal">${(typeof s.index === 'number' ? s.index : Math.round((s.mediaPct + s.cxPct) / 2))}%</div>
+    </div>
+  `;
+}
+
+// 2026-09-01 — Section 3 ("Where Verilume's Agentic Team Fills Your Gaps"),
+// per direct instruction: "Assessment and how we fit: This should only be
+// based on our 6 assessment questions at this point" — confirmed via
+// clarifying answer to mean the 6 quick-assessment inputs (the 5 RUBRIC
+// stage self-ratings + the standalone CX Consistency question), NOT Step 9's
+// deep per-product ratings. Disclosed mapping, each quick-assessment input
+// to the real, current 6-role taxonomy on frontend/human-ai-agents.html's
+// "Marketing Symphony" section (SYM_DATA) — NOT round137's superseded
+// static 5-role grid (The Brand/The Planner/The Voice/The Analyst/Media
+// Ops), which the client separately confirmed is "no longer relevant in
+// the product."
 const STAGE_TO_ROLE = {
   Awareness: 'Performance Marketing',
   Consideration: 'Omni-Channel Creative',
@@ -6863,58 +6760,46 @@ const STAGE_TO_ROLE = {
   Advocacy: 'PR'
 };
 const CX_CONSISTENCY_ROLE = 'Advanced Analytics';
-
-function computeFunctionGroupScores(){
-  const scores = {}; // role title -> raw 1-5 self-rating, or null if unrated
-  RUBRIC.forEach(r => {
-    const role = STAGE_TO_ROLE[r.stage];
-    if (!role) return;
-    const v = Number(state.stageEffectiveness?.[r.stage]);
-    scores[role] = v > 0 ? v : null;
-  });
-  const cx = Number(state.cxConsistencyRating);
-  scores[CX_CONSISTENCY_ROLE] = cx > 0 ? cx : null;
-  return scores;
-}
-
-// Round 134 — renders Section 3's role-card grid: the 6 AGENTIC_ROLES,
-// always all 6, ranked weakest/least-covered first (a role with no rating
-// behind it at all is treated as the biggest visible gap and sorts first,
-// ahead of any real-but-low rating) so the report visually prioritizes the
-// real gap Verilume's team can close, without ever hiding a role that
-// simply wasn't rated this session.
-// Round 135 — score display changed from "average X.X/4" (the old
-// per-product PRODUCT_RATING_VALUE scale) to the 1-5 self-rating scale
-// computeFunctionGroupScores() now returns, reusing the same
-// STAGE_EFF_LABEL wording (renderReportSynthesis() above) so a visitor
-// sees the identical label for the identical rating wherever it appears.
+// 2026-09-01 — rewritten from a card grid to table rows (Column A: the
+// question title + the visitor's own self-rated score, Column B: the
+// Verilume role that fills the gap), per direct instruction: "Add the
+// Question Title and Score In Column A with our product aligned in Column
+// B is probably a better sales presentation vs. reading tiles." gridEl now
+// targets the <tbody> (id="roleGapGrid" moved onto the tbody — see the
+// <table class="role-gap-table"> wrapper above).
 function renderAgenticRoleMapping(){
-  const gridEl = document.getElementById('agenticRoleGrid');
+  const gridEl = document.getElementById('roleGapGrid');
   if (!gridEl) return;
-  const scores = computeFunctionGroupScores();
-  const ranked = AGENTIC_ROLES
-    .map(role => ({ role, score: scores[role.title] != null ? scores[role.title] : null }))
-    .sort((a, b) => {
-      if (a.score == null && b.score == null) return 0;
-      if (a.score == null) return -1;
-      if (b.score == null) return 1;
-      return a.score - b.score;
-    });
-  gridEl.innerHTML = ranked.map(({ role, score }) => {
-    const scoreHtml = score != null
-      ? `<div class="role-score">Self-rated: "${STAGE_EFF_LABEL[score] || score}" (${score}/5)</div>`
-      : `<div class="role-score role-score-none">Not yet self-rated</div>`;
-    return `<div class="role-card">
-      <div class="role-card-head">
-        <h4>${role.title}</h4>
-        <span class="role-tier">${role.tier}</span>
-      </div>
-      ${scoreHtml}
-      <p class="role-human"><b>Your team:</b> ${role.human}</p>
-      <p class="role-ai"><b>Verilume AI:</b> ${role.ai}</p>
-    </div>`;
-  }).join('');
+  const rows = RUBRIC.map(stage => {
+    const role = STAGE_TO_ROLE[stage.stage];
+    const rating = Number(state.stageEffectiveness?.[stage.stage]) || 0;
+    const scoreLine = rating > 0
+      ? `${STAGE_EFF_LABEL[rating] || 'Not yet rated'} (${rating}/5)`
+      : `Not yet self-rated`;
+    return `<tr>
+      <td><span class="rg-stage">${stage.stage}</span><span class="rg-score">${scoreLine}</span></td>
+      <td><h4 class="rg-role">${role}</h4><p>Verilume's ${role} role picks up the always-on, first-draft work here, so your team spends its time on judgment and the final word.</p></td>
+    </tr>`;
+  });
+  const cxRating = Number(state.cxConsistencyRating) || 0;
+  const cxScoreLine = cxRating > 0
+    ? `${STAGE_EFF_LABEL[cxRating] || 'Not yet rated'} (${cxRating}/5)`
+    : `Not yet self-rated`;
+  rows.push(`<tr>
+    <td><span class="rg-stage">CX Consistency</span><span class="rg-score">${cxScoreLine}</span></td>
+    <td><h4 class="rg-role">${CX_CONSISTENCY_ROLE}</h4><p>Verilume's ${CX_CONSISTENCY_ROLE} role keeps measurement and attribution consistent across every channel.</p></td>
+  </tr>`);
+  gridEl.innerHTML = rows.join('');
 }
+
+// 2026-09-01 — reportText()/downloadReport()/copyReport() (the .txt blob
+// download and clipboard "Copy summary" button) are deleted entirely, per
+// direct instruction ("Report download should be PDF vs text. Eliminate
+// copy summary."). Nothing else called any of the three. The report's
+// single download action is now window.print() on the "Download Report
+// (PDF) ↓" button (see .report-actions in the HTML above and the
+// @media print rule near the top of this file), matching portal.html's
+// existing convention — no external JS library.
 </script>
 <script>
   const navToggle = document.getElementById('navToggle');
