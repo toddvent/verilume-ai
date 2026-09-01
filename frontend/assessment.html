@@ -727,9 +727,22 @@
      are navigation/interaction rather than report content (the "Extended
      evaluation" accordion, and the paid-program interstitial's CTA cards),
      so a printed/saved PDF reads as the 3 numbered sections plus the
-     closing CTA band, not the whole live page. */
+     closing CTA band, not the whole live page.
+
+     2026-09-01 addition, per direct instruction ("It should be out of the
+     printable version also") — #portalHandoffNote is an internal
+     dev/sandbox disclaimer next to the free-trial button (references
+     backend/server.js, register-admin, portal.html; explicitly says "The
+     backend is a local demo running in this sandbox only, not a public
+     deployment"). It was never meant for the client-facing report, on
+     screen or in print — same category of thing already pulled out of
+     portal.html per Round 132 ("Remove Prototype Notes"). It stays visible
+     on screen (still useful context while working in this sandbox) but is
+     now hidden in the printed/saved PDF specifically. Hidden by ID, not by
+     its shared .recap-note class, since that class also carries real
+     methodology notes elsewhere in the report that should keep printing. */
   @media print{
-    header, footer, nav, .report-actions, #freeTrialCta, .enhance-section, .product-cta-grid, .paid-interstitial-actions{ display:none !important; }
+    header, footer, nav, .report-actions, #freeTrialCta, .enhance-section, .product-cta-grid, .paid-interstitial-actions, #portalHandoffNote{ display:none !important; }
     body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 
     /* 2026-09-01, per direct instruction ("we're breaking core content
