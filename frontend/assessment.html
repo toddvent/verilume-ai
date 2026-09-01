@@ -731,6 +731,32 @@
   @media print{
     header, footer, nav, .report-actions, #freeTrialCta, .enhance-section, .product-cta-grid, .paid-interstitial-actions{ display:none !important; }
     body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+    /* 2026-09-01, per direct instruction ("we're breaking core content
+       across pages") — window.print()'s default pagination splits mid-block
+       wherever a page boundary happens to land (e.g. the quadrant title
+       band on one page, the quadrant grid on the next). Each of these is a
+       single unit of report content that should never be cut in half by a
+       page break; `break-inside`/`page-break-inside` are the modern/legacy
+       spellings of the same rule, both set for browser coverage (Chrome's
+       print-to-PDF, which is what window.print() drives here, honors
+       break-inside). Headings also get break-after:avoid so a section title
+       can't be stranded alone at the bottom of a page, orphaned from its
+       own content below. This does not change the visual layout on screen
+       — print-only. */
+    .bp-panel, .glance-grid, .glance-card, .quad-layout, .quad-plot-col,
+    .quad-info-col, .result-band, .quad-visual, .score-pair, .role-gap-table-wrap,
+    .role-gap-table tr, .value-stats-grid, .value-stat-card, .paid-interstitial,
+    .paid-cta-band{
+      break-inside:avoid; page-break-inside:avoid;
+    }
+    .report-main-title, .report-section-head, h1, h2, h3{
+      break-after:avoid; page-break-after:avoid;
+    }
+    /* If a whole section still can't fit what's left of the current page,
+       push it onto a fresh one rather than splitting it — cheaper on paper
+       than a mid-section break reads. */
+    .report-section-head{ break-before:auto; }
   }
 
   /* ---- Step 5 of 6: Solutions Map (process map by funnel stage) ---- */
