@@ -10377,21 +10377,37 @@ async function handleRequest(req, res) {
     }
 
     // POST /api/ops/vendor-blind-panel — staff-only, one-off scoped tool
-    // (2026-09-02 direct request): fires ONE shared prompt at all five
-    // licensed vendors (Anthropic direct, plus the four in
-    // INTERVIEW_VENDOR_REGISTRY) and returns every result, blind-labeled
-    // the same way runBrandVoiceContest/runCandidateInterview already do
-    // (Fisher-Yates shuffle, then "Option N" in randomized order) so the
-    // reviewer compares the writing itself before knowing which vendor
-    // wrote it. This is NOT the client-facing Free Assessment panel this
-    // was built to help evaluate — it exists only so that comparison can
-    // happen through the app's own already-configured vendor keys, instead
-    // of handling those keys anywhere else. Real vendor/model IS included
-    // in the response (unredacted, same "staff-only" convention as
+    // (2026-09-02 direct request, revised same day per five follow-up
+    // corrections): fires ONE shared prompt at all five licensed vendors
+    // (Anthropic direct, plus the four in INTERVIEW_VENDOR_REGISTRY) and
+    // returns every result, blind-labeled the same way
+    // runBrandVoiceContest/runCandidateInterview already do (Fisher-Yates
+    // shuffle, then "Option N" in randomized order) so the reviewer
+    // compares the writing itself before knowing which vendor wrote it.
+    // This is NOT the client-facing Free Assessment panel this was built
+    // to help evaluate — it exists only so that comparison can happen
+    // through the app's own already-configured vendor keys, instead of
+    // handling those keys anywhere else. Real vendor/model IS included in
+    // the response (unredacted, same "staff-only" convention as
     // GET /api/ops/accounts/:id/voice-contests below) — the frontend page
     // is responsible for hiding it behind a reveal control, not this route.
     // Nothing here is persisted — no contest_rankings row, no db write —
     // this is a one-time comparison tool, not a scored/recorded contest.
+    //
+    // Revision, same day: direct correction — "They should be crawling the
+    // site. That's specifically why we ask for the URL on the first page."
+    // Most vendor chat-completion APIs do NOT browse a URL just because
+    // it's mentioned in the prompt text (only Perplexity's sonar-pro does
+    // live search by default) — passing a bare URL to the other four would
+    // silently invite the same fabrication failure already caught twice in
+    // this exercise (the invented "340 operators" figure, the wrong
+    // luxury-cruise industry claims). So this route does the crawl itself,
+    // ONCE, server-side, reusing fetchAndExtractPage() (already used
+    // elsewhere in this file, not reinvented here) — every vendor then
+    // gets the identical real extracted title/meta description/headings/
+    // excerpt, which is both more reliable than hoping five different
+    // models browse consistently, and fairer as a comparison (same
+    // material in front of all five, not whatever each one guesses).
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'vendor-blind-panel'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
@@ -10400,10 +10416,33 @@ async function handleRequest(req, res) {
       const company = (body.company || 'Oceania Cruises').trim();
       const footprint = (body.footprint || 'National').trim();
       const industryLabel = (body.industryLabel || 'Luxury tier, Cruise Lines').trim();
-      const mediaPct = Number.isFinite(Number(body.mediaPct)) ? Number(body.mediaPct) : 61;
-      const cxPct = Number.isFinite(Number(body.cxPct)) ? Number(body.cxPct) : 65;
-      const weakestStage = (body.weakestStage || 'Purchase').trim();
-      const prompt = `You are an independent marketing consultant, not a vendor pitching a product. Write a ~100-word paragraph for a prospect who just finished a free brand assessment. Real inputs available: company name, footprint (local/national/global), industry + market tier, the prospect's own self-rated Media effectiveness % and CX effectiveness %, and which of five funnel stages (Awareness, Consideration, Purchase, Loyalty, Advocacy) they rated weakest. Do not invent any statistic, market size, or competitor count — only reference the self-rated inputs given, plus general, well-established industry/marketing knowledge you're confident is true without a citation. The paragraph must: (1) open on where this company is actually positioned, not a recap of what they just told you; (2) surface one real industry-level trend relevant to their weakest stage; (3) make one observation about how AI and human judgment are being split in marketing work right now, as an industry dynamic — not as a pitch for any specific product or company; (4) end on a genuine open thread that makes the reader want to see more, not a call-to-action or sales line. Do not mention any vendor, tool, or platform by name. Inputs: Company = ${company}. Footprint = ${footprint}. Industry = ${industryLabel}. Media% = ${mediaPct}. CX% = ${cxPct}. Weakest stage = ${weakestStage}.`;
+      const naicsCode = (body.naicsCode || '483112').trim();
+      const websiteUrl = (body.websiteUrl || 'https://www.oceaniacruises.com').trim();
+      const qaRaw = (body.qaRaw || 'Q: How would you rate your brand\'s presence across paid and organic search?\nA: Behind\n\nQ: How consistent is your customer experience across channels?\nA: Ahead\n\nQ: How well does your loyalty program retain repeat guests?\nA: On par').trim();
+
+      let websiteContext;
+      try {
+        const page = await fetchAndExtractPage(websiteUrl);
+        websiteContext = { ok: true, ...page };
+      } catch (e){
+        websiteContext = { ok: false, url: websiteUrl, error: e.message };
+      }
+      const siteBlock = websiteContext.ok
+        ? `WEBSITE (fetched live just now — use only what's given here, do not add page content beyond this):\nTitle: ${websiteContext.title || '(none found)'}\nMeta description: ${websiteContext.metaDescription || '(none found)'}\nHeadings: ${(websiteContext.headings || []).join(' | ') || '(none found)'}\nExcerpt: ${websiteContext.excerpt || '(none found)'}`
+        : `WEBSITE: could not be fetched (${websiteContext.error}) — do not invent or guess what this site contains; proceed without site-specific detail.`;
+
+      const prompt = `You are an Executive Marketing Consultant preparing a brief for a Chief Marketing Officer, assessing how AI marketing trends can support improved performance and organizational scale. Write a concise, high-impact paragraph (~120-150 words) that reads like a strong 30-second pitch of real insight — not a sales pitch, no product or vendor names, no call to action.
+
+INPUTS YOU MAY USE:
+- Company: ${company}
+- NAICS: ${naicsCode} — ${industryLabel}
+- Footprint: ${footprint}
+${siteBlock}
+
+ASSESSMENT Q&A (the client's own answers, verbatim):
+${qaRaw}
+
+Do not invent any statistic, market size, or competitor count. Do not simply restate or summarize the Q&A or website content back to the reader — synthesize what these specific inputs, taken together, reveal about where this organization is strong and where the real opportunity sits. The paragraph must: (1) open on where this company is actually positioned, grounded in the industry/NAICS classification and the real website content given, not a recap of the inputs; (2) surface one real, organization-wide marketing trend relevant to this company's category and scale — not tied to any single answer; (3) make one observation about how AI and human judgment are being split in marketing work right now, as an industry dynamic, not a product pitch; (4) end on a genuine open thread that makes a CMO want to see the full assessment, not a call-to-action or sales line. Do not mention any vendor, tool, or platform by name.`;
 
       async function callAnthropicText(promptText){
         try {
@@ -10456,7 +10495,139 @@ async function handleRequest(req, res) {
         return na - nb;
       });
 
-      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, mediaPct, cxPct, weakestStage }, candidates });
+      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, naicsCode, websiteUrl, qaRaw }, websiteContext, candidates });
+    }
+
+    // POST /api/ops/website-category-scan — staff-only, one-off scoped tool
+    // (2026-09-02 direct request): a preview of a not-yet-built capability —
+    // crawling BEYOND the homepage (per direct correction: "I wrongly
+    // assumed that we scan the entire website vs. the home page only... I
+    // don't know that we need the full site... corporate pages beyond press
+    // releases can be excluded. The top level brand.com/ and product
+    // transaction pages... tell the story") — and extracting a fixed set of
+    // seven positioning categories from what's actually found, purely to
+    // preview the capability against a real site (Atlas Ocean Voyages)
+    // BEFORE any of that account's own real, already-on-file information is
+    // consulted. Deliberately does NOT touch brand_copy_website_examples or
+    // any accountId — this is a standalone scan of a bare URL, not tied to
+    // any account record, so it can never accidentally read or write real
+    // account data. Nothing here is persisted.
+    //
+    // Page selection is an ALLOWLIST, not a denylist — reusing
+    // fetchSitemapUrls() (already built for brand_copy_website_examples,
+    // not reinvented here) to discover every URL on the site, then keeping
+    // only the homepage plus pages whose path matches a product/transaction
+    // or press pattern. Everything else (investors, careers, legal, privacy,
+    // generic about-us boilerplate) is left out by construction, not by an
+    // exclude list — simpler and safer than trying to name every corporate
+    // page to avoid. Patterns are intentionally broad/generic (not
+    // travel-only) since this needs to work across every vertical this
+    // platform serves (cruise lines, retail apparel, wine & spirits,
+    // sporting goods) — see docs/verilume-product-docs.html's six Product
+    // groups. If no sitemap.xml exists (fetchSitemapUrls throws), falls back
+    // to just the homepage rather than failing outright — a scan that finds
+    // less is still more honest than one that produces nothing.
+    const WEBSITE_SCAN_PRODUCT_PATTERNS = ['itinerar', 'ship', 'destination', 'cruise', 'voyage', 'expedition', 'fleet', 'shop', 'product', 'collection', 'wine', 'spirit', 'gear', 'store', 'catalog'];
+    const WEBSITE_SCAN_PRESS_PATTERNS = ['press', 'news', 'media'];
+    const WEBSITE_SCAN_MAX_PAGES = 12;
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'website-category-scan'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const body = await readBody(req);
+      const websiteUrl = (body.websiteUrl || 'https://www.atlasoceanvoyages.com').trim();
+      let origin;
+      try { origin = new URL(websiteUrl).origin; } catch (e){
+        return sendJson(res, 400, { error: 'Not a valid URL.' });
+      }
+
+      let sitemapUrls = [];
+      let sitemapError = null;
+      try { sitemapUrls = await fetchSitemapUrls(origin); }
+      catch (e){ sitemapError = e.message; }
+
+      const seenPaths = new Set(['/']);
+      const selectedPaths = ['/'];
+      for (const raw of sitemapUrls){
+        let u;
+        try { u = new URL(raw, origin); } catch (e){ continue; }
+        if (u.origin !== origin) continue;
+        u.search = ''; u.hash = '';
+        const p = u.pathname;
+        if (seenPaths.has(p)) continue;
+        const lower = p.toLowerCase();
+        const isProduct = WEBSITE_SCAN_PRODUCT_PATTERNS.some(pat => lower.includes(pat));
+        const isPress = WEBSITE_SCAN_PRESS_PATTERNS.some(pat => lower.includes(pat));
+        if (!isProduct && !isPress) continue;
+        seenPaths.add(p);
+        selectedPaths.push(p);
+        if (selectedPaths.length >= WEBSITE_SCAN_MAX_PAGES) break;
+      }
+
+      const pages = [];
+      for (const p of selectedPaths){
+        try {
+          const ctx = await fetchAndExtractPage(origin + p);
+          pages.push({ path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt });
+        } catch (e){
+          pages.push({ path: p, ok: false, error: e.message });
+        }
+      }
+
+      const pageBlocks = pages.filter(p => p.ok).map(p =>
+        `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}`
+      ).join('\n\n');
+
+      const extractionPrompt = `You are extracting structured facts from real, live-fetched pages of a company's own website — nothing here is guessed or inferred from outside knowledge. Below are the pages actually fetched.
+
+${pageBlocks || '(no pages could be fetched)'}
+
+Fill in exactly these seven categories, using ONLY what the text above actually supports. For any category the given text does not clearly support, set "value" to null — do not guess, infer from company name/industry alone, or use outside knowledge. Every non-null "value" must have an "evidence" field quoting or closely paraphrasing the specific text above that supports it.
+
+Categories:
+1. scaleFormat — the size or format of what they deliver (e.g. small-ship vs. mega-ship; boutique vs. big-box)
+2. specializationNiche — the specific capability that differentiates them from a generalist competitor
+3. geographicOperationalReach — where they can actually go or operate (specific regions, capabilities, certifications enabling reach)
+4. audienceSegmentServed — who they explicitly target
+5. priceTierPosition — where they position on price/tier, only if the text actually signals this
+6. experienceFormatStyle — how the experience/product is structured
+7. distinctiveCapabilityCertification — a specific, named operational fact or certification
+
+Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"specializationNiche":{...},"geographicOperationalReach":{...},"audienceSegmentServed":{...},"priceTierPosition":{...},"experienceFormatStyle":{...},"distinctiveCapabilityCertification":{...}}`;
+
+      let categories = null;
+      let extractionError = null;
+      if (!process.env.ANTHROPIC_API_KEY){
+        extractionError = 'not configured — ANTHROPIC_API_KEY not set';
+      } else if (!pageBlocks){
+        extractionError = 'no pages were successfully fetched — nothing to extract from';
+      } else {
+        try {
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 900, messages: [{ role: 'user', content: extractionPrompt }] })
+          });
+          if (!resp.ok){
+            extractionError = `HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`;
+          } else {
+            const data = await resp.json();
+            const text = (data.content || []).map(b => b.text || '').join('');
+            const match = text.match(/\{[\s\S]*\}/);
+            categories = match ? JSON.parse(match[0]) : null;
+            if (!categories) extractionError = 'model response did not contain parseable JSON';
+          }
+        } catch (e){
+          extractionError = 'Extraction failed: ' + e.message;
+        }
+      }
+
+      return sendJson(res, 200, {
+        websiteUrl, origin, sitemapError,
+        totalSitemapUrls: sitemapUrls.length,
+        selectedPaths, pages,
+        extractionPrompt, categories, extractionError
+      });
     }
 
     // GET /api/ops/accounts/:id/voice-contests — staff-only, unredacted (real
@@ -15335,156 +15506,4 @@ async function handleRequest(req, res) {
       const existing = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       if (!requireAdminMember(req, res, existing.accountId)) return;
-      db.prepare('DELETE FROM team_members WHERE id = ?').run(memberId);
-      return sendJson(res, 200, { deleted: true });
-    }
-
-    // GET /api/team/:id/ratings — round 46, HEO self-rating (function 1 of
-    // 3). Returns this member's full rating history, flat and ordered
-    // oldest-first — same shape as score_history reads elsewhere, so the
-    // front end can derive "most recent per skill" and "trend over time"
-    // from the same array without a second endpoint.
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'team' && parts[3] === 'ratings'){
-      const memberId = decodeURIComponent(parts[2]);
-      const member = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
-      if (!member) return sendJson(res, 404, { error: 'team member not found' });
-      if (!requireAccount(req, res, member.accountId)) return;
-      const ratings = db.prepare('SELECT * FROM self_ratings WHERE memberId = ? ORDER BY ratedAt ASC').all(memberId);
-      return sendJson(res, 200, { ratings });
-    }
-
-    // POST /api/team/:id/ratings — records one self-rating for one skill.
-    // One skill per call (not a batch) so the front end's per-skill
-    // Behind/On par/Ahead tile — same interaction as Continuous
-    // Monitoring's submitRerate() — can post the instant it's clicked,
-    // exactly like that flow already does, rather than waiting for every
-    // skill on the card to be rated before anything saves.
-    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'team' && parts[3] === 'ratings'){
-      const memberId = decodeURIComponent(parts[2]);
-      const member = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
-      if (!member) return sendJson(res, 404, { error: 'team member not found' });
-      if (!requireAccount(req, res, member.accountId)) return;
-      const body = await readBody(req);
-      if (!body.skill || typeof body.score !== 'number'){
-        return sendJson(res, 400, { error: 'skill and a numeric score are required' });
-      }
-      const ratingId = generateId('RATING');
-      const now = new Date().toISOString();
-      db.prepare(
-        'INSERT INTO self_ratings (id, accountId, memberId, skill, score, source, ratedAt) VALUES (?,?,?,?,?,?,?)'
-      ).run(ratingId, member.accountId, memberId, body.skill, body.score, body.source || 'self-rating', now);
-      return sendJson(res, 201, { ratingId, ratedAt: now });
-    }
-
-    // ---------- Round 61 — Print Ad Specs (Print channel of the creative
-    // selection tree) ----------
-
-    // ---------- CMO Daily Brief (Deliverable #10) ----------
-    // GET /api/daily-brief/global — every curated article, ungrouped and
-    // unfiltered. Not account-scoped and not auth-gated — same trust level
-    // as GET /api/print-specs/global: real reference content, identical for
-    // every account.
-    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'daily-brief' && parts[2] === 'global'){
-      return sendJson(res, 200, { articles: GLOBAL_DAILY_BRIEF_ARTICLES, curatedAt: DAILY_BRIEF_CURATED_AT });
-    }
-
-    // GET /api/accounts/:id/daily-brief — the personalized view: which
-    // Function Groups are "active" for this specific account (at least one
-    // team_members row with that functionGroup and status = 'active'), and
-    // only the curated articles for those groups. The article CONTENT is
-    // identical across every account (GLOBAL_DAILY_BRIEF_ARTICLES above) —
-    // what's account-specific is purely which groups are relevant, driven
-    // by this account's own real Team & Org Chart roster, not by anything
-    // generated per-account. A CMO/Executive-level member sees every group
-    // regardless (mirrors how the Team & Org Chart's "Acting as CMO" full
-    // view already works elsewhere in this file).
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'daily-brief'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const activeMembers = db.prepare(`SELECT DISTINCT functionGroup FROM team_members WHERE accountId = ? AND status = 'active' AND functionGroup IS NOT NULL`).all(accountId);
-      const hasExecutive = activeMembers.some(m => m.functionGroup === 'Executive');
-      const activeFunctionGroups = hasExecutive
-        ? [...new Set(GLOBAL_DAILY_BRIEF_ARTICLES.map(a => a.functionGroup))]
-        : activeMembers.map(m => m.functionGroup).filter(fg => GLOBAL_DAILY_BRIEF_ARTICLES.some(a => a.functionGroup === fg));
-      const articles = activeFunctionGroups.length
-        ? GLOBAL_DAILY_BRIEF_ARTICLES.filter(a => activeFunctionGroups.includes(a.functionGroup))
-        : GLOBAL_DAILY_BRIEF_ARTICLES; // no active team roster yet on file — show everything rather than nothing
-      return sendJson(res, 200, {
-        articles,
-        curatedAt: DAILY_BRIEF_CURATED_AT,
-        activeFunctionGroups,
-        personalized: activeFunctionGroups.length > 0
-      });
-    }
-
-    // GET /api/print-specs/global — the shared master catalog. Not
-    // account-scoped and not auth-gated: it's read-only reference data
-    // identical for every account, same trust level as GET /api/health.
-    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'print-specs' && parts[2] === 'global'){
-      return sendJson(res, 200, { specs: GLOBAL_PRINT_SPECS });
-    }
-
-    // GET /api/direct-mail-specs/global — the shared Direct Mail catalog
-    // (round 62). Same trust level as print-specs/global: read-only
-    // reference data, identical for every account, no auth required.
-    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'direct-mail-specs' && parts[2] === 'global'){
-      return sendJson(res, 200, { specs: GLOBAL_DIRECT_MAIL_SPECS });
-    }
-
-    // GET /api/ooh-specs/global — the shared Out-of-Home / Digital OOH
-    // catalog (round 63). Same trust level as the other /global endpoints:
-    // read-only reference data, no auth required.
-    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ooh-specs' && parts[2] === 'global'){
-      return sendJson(res, 200, { specs: GLOBAL_OOH_SPECS });
-    }
-
-    // GET /api/accounts/:id/print-specs — this account's own custom
-    // publication/spec additions (round 61, per direct instruction: teams
-    // can add a publication the master catalog is missing, saved to their
-    // account). Requires login exactly like every other account-scoped
-    // route — a team's added publications are private to that account.
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'print-specs'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const custom = db.prepare('SELECT * FROM print_specs_custom WHERE accountId = ? ORDER BY createdAt ASC').all(accountId)
-        .map(row => ({ ...row, source: 'custom' }));
-      return sendJson(res, 200, { specs: custom });
-    }
-
-    // POST /api/accounts/:id/print-specs — add a custom publication/ad
-    // format this account needs that isn't in the master catalog.
-    // publication, mediumType, and adFormat are required; every dimension
-    // and technical field is optional so a team can save a partial entry
-    // and fill in exact trim/bleed later rather than being blocked on
-    // having every number up front.
-    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'print-specs'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const body = await readBody(req);
-      if (!body.publication || !body.mediumType || !body.adFormat){
-        return sendJson(res, 400, { error: 'publication, mediumType, and adFormat are required' });
-      }
-      const specId = generateId('PRINT-CUSTOM');
-      const now = new Date().toISOString();
-      // Technical fields default from the same Submission Guidelines house
-      // rules buildPrintSpec() applies to the global catalog, so a custom
-      // publication the team adds isn't left with blank specs just because
-      // they only knew the trim size and not the color-profile jargon —
-      // they can still override any of these explicitly in the request.
-      const isMagazine = body.mediumType === 'Magazine';
-      const defaultColorProfile = isMagazine ? 'SWOP 3 / GRACoL 2013 (coated magazine stock)' : 'SNAP (coldset newsprint)';
-      const defaultDpi = isMagazine ? '300 DPI minimum @ 100% size' : '200 DPI acceptable (300 DPI preferred) @ 100% size';
-      const defaultFileFormat = 'PDF/X-1a or PDF/X-4 — CMYK only, all fonts embedded, crop marks outside bleed';
-      const defaultInkLimit = isMagazine ? 'Max 300% TAC (Total Area Coverage)' : 'Max 220%-240% TAC (Total Area Coverage)';
-      const defaultRichBlack = '60% C / 40% M / 30% Y / 100% K for solid black backgrounds/large shapes; small body text must be 100% K only';
-      db.prepare(`INSERT INTO print_specs_custom
-        (id, accountId, publication, publisher, mediumType, adFormat, trimWidthIn, trimHeightIn,
-         bleedWidthIn, bleedHeightIn, liveWidthIn, liveHeightIn, colorProfile, dpi, fileFormat,
-         inkLimit, richBlack, notes, createdAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(
-          specId, accountId, body.publication, body.publisher || n
+      db.prepare('DELETE FROM team_memb
