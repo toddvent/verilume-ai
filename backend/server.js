@@ -3485,7 +3485,43 @@ async function fetchSitemapUrls(origin){
   }
   const xml = await resp.text();
   if (/<sitemapindex[\s>]/i.test(xml)){
-    throw new Error(`${origin}/sitemap.xml is a multi-file sitemap index, which isn't supported yet — add specific pages instead.`);
+    // 2026-09-02 fix, per direct correction while testing the
+    // website-category-scan tool against a real site (Atlas Ocean
+    // Voyages) — this used to just throw here ("multi-file sitemap
+    // index... not supported"), which meant any site using the extremely
+    // common sitemap-index-of-sitemaps pattern fell all the way back to
+    // homepage-only for BOTH callers of this function (this scan tool and
+    // resolveWebsiteExampleDirectoryRule's brand_copy_website_examples
+    // flow). A sitemap index is just a list of <loc> entries pointing at
+    // child sitemap files instead of pages, so fetch each child (capped,
+    // each failure skipped rather than aborting the whole thing) and
+    // concatenate their real <loc> entries. Deliberately does NOT recurse
+    // into a child that is itself another index — real-world sitemap
+    // indexes are practically never nested more than one level, and
+    // unbounded recursion here is a real risk with no real-world upside.
+    const WEBSITE_SITEMAP_INDEX_MAX_CHILDREN = 8;
+    const childSitemapUrls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1].trim()).slice(0, WEBSITE_SITEMAP_INDEX_MAX_CHILDREN);
+    if (!childSitemapUrls.length){
+      throw new Error(`${origin}/sitemap.xml is a sitemap index but lists no child sitemaps — add specific pages instead.`);
+    }
+    const childResults = await Promise.all(childSitemapUrls.map(async (childUrl) => {
+      try {
+        const childController = new AbortController();
+        const childTimeout = setTimeout(() => childController.abort(), 8000);
+        const childResp = await fetch(childUrl, { signal: childController.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
+        clearTimeout(childTimeout);
+        if (!childResp.ok) return [];
+        const childXml = await childResp.text();
+        return [...childXml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1].trim());
+      } catch (e){
+        return [];
+      }
+    }));
+    const merged = childResults.flat();
+    if (!merged.length){
+      throw new Error(`${origin}/sitemap.xml is a sitemap index, but none of its ${childSitemapUrls.length} child sitemap(s) could be fetched — add specific pages instead.`);
+    }
+    return merged;
   }
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1].trim());
 }
@@ -7591,12 +7627,49 @@ async function fetchAndExtractPage(url){
   }
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const bodyText = stripTags(bodyMatch ? bodyMatch[1] : html);
+  // 2026-09-02 addition, per direct feedback that meta/heading/excerpt
+  // text alone misses real transactional/product data that lives on
+  // ecommerce and booking pages — a plain fetch() here never executes
+  // JavaScript, so anything rendered client-side (a live search widget,
+  // a booking tool) stays invisible no matter what. Many such sites still
+  // embed schema.org Product/Offer JSON-LD directly in server-rendered
+  // HTML for SEO rich-snippet purposes even when the visible UI is
+  // JS-driven, so this is real, parseable structured data available
+  // without needing a headless browser. Capped at 5 items so one page
+  // heavy with product markup can't blow out prompt size downstream;
+  // any block that isn't valid JSON, or whose @type isn't Product/Offer-
+  // shaped, is silently skipped rather than guessed at.
+  const structuredData = [];
+  const ldJsonRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let ldMatch;
+  while ((ldMatch = ldJsonRe.exec(html)) && structuredData.length < 5){
+    let parsed;
+    try { parsed = JSON.parse(ldMatch[1].trim()); } catch (e){ continue; }
+    const items = Array.isArray(parsed) ? parsed : (Array.isArray(parsed['@graph']) ? parsed['@graph'] : [parsed]);
+    for (const item of items){
+      if (structuredData.length >= 5) break;
+      if (!item || typeof item !== 'object') continue;
+      const type = String(item['@type'] || '').toLowerCase();
+      if (!/product|offer/.test(type)) continue;
+      const offer = item.offers && typeof item.offers === 'object' ? item.offers : null;
+      structuredData.push({
+        type: item['@type'],
+        name: typeof item.name === 'string' ? item.name.slice(0, 200) : null,
+        description: typeof item.description === 'string' ? item.description.slice(0, 300) : null,
+        price: offer && offer.price != null ? offer.price : (item.price != null ? item.price : null),
+        priceCurrency: offer && offer.priceCurrency ? offer.priceCurrency : (item.priceCurrency || null),
+        availability: offer && offer.availability ? offer.availability : (item.availability || null),
+        brand: (item.brand && typeof item.brand === 'object' && item.brand.name) ? item.brand.name : (typeof item.brand === 'string' ? item.brand : null)
+      });
+    }
+  }
   return {
     url,
     title: titleMatch ? stripTags(titleMatch[1]).trim() : null,
     metaDescription: descText ? stripTags(descText).trim() : null,
     headings,
     excerpt: bodyText.slice(0, 800),
+    structuredData,
     fetchedAt: new Date().toISOString()
   };
 }
@@ -10534,23 +10607,32 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
     // any account record, so it can never accidentally read or write real
     // account data. Nothing here is persisted.
     //
-    // Page selection is an ALLOWLIST, not a denylist — reusing
-    // fetchSitemapUrls() (already built for brand_copy_website_examples,
-    // not reinvented here) to discover every URL on the site, then keeping
-    // only the homepage plus pages whose path matches a product/transaction
-    // or press pattern. Everything else (investors, careers, legal, privacy,
-    // generic about-us boilerplate) is left out by construction, not by an
-    // exclude list — simpler and safer than trying to name every corporate
-    // page to avoid. Patterns are intentionally broad/generic (not
-    // travel-only) since this needs to work across every vertical this
-    // platform serves (cruise lines, retail apparel, wine & spirits,
-    // sporting goods) — see docs/verilume-product-docs.html's six Product
-    // groups. If no sitemap.xml exists (fetchSitemapUrls throws), falls back
-    // to just the homepage rather than failing outright — a scan that finds
-    // less is still more honest than one that produces nothing.
-    const WEBSITE_SCAN_PRODUCT_PATTERNS = ['itinerar', 'ship', 'destination', 'cruise', 'voyage', 'expedition', 'fleet', 'shop', 'product', 'collection', 'wine', 'spirit', 'gear', 'store', 'catalog'];
-    const WEBSITE_SCAN_PRESS_PATTERNS = ['press', 'news', 'media'];
+    // Page selection (2026-09-02, revised same day per direct feedback:
+    // "do we need keywords or do they just restrict us?"): originally an
+    // ALLOWLIST of hardcoded keyword substrings (itinerar/ship/cruise/
+    // shop/wine/etc.) — one blended, imprecise list applied identically
+    // regardless of industry, which meant it worked passably for a cruise
+    // line by accident (cruise terms happened to be in the mix) and would
+    // do a poor job for, say, a bank or a law firm, whose real
+    // product/service vocabulary isn't represented at all. The platform
+    // already has a real per-industry keyword system for a DIFFERENT
+    // purpose (frontend/assessment.html's INDUSTRY_KEYWORDS, 25 entries)
+    // — but a hand-maintained keyword table always trails whatever
+    // industries actually exist on the platform, so rather than building
+    // a second one scoped to page-selection, this now asks the model to
+    // classify the real, actually-discovered sitemap paths directly: the
+    // model can only pick from paths that genuinely exist (validated
+    // against the real candidate set below — a hallucinated or malformed
+    // path is silently dropped, never fetched), so there's no fabrication
+    // risk, and it generalizes across every vertical with no list to
+    // maintain. Falls back to homepage-only if ANTHROPIC_API_KEY isn't
+    // set, the sitemap can't be resolved, or the classification call
+    // fails — same honest-degradation posture as the extraction step
+    // below, never a hard failure. See fetchSitemapUrls() for the
+    // matching 2026-09-02 fix that lets a sitemap-index site (like Atlas
+    // Ocean Voyages) even reach this step with real candidate paths.
     const WEBSITE_SCAN_MAX_PAGES = 12;
+    const WEBSITE_SCAN_CANDIDATE_CAP = 200; // sitemap paths offered to the classifier — keeps its prompt bounded on very large sites
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'website-category-scan'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
@@ -10568,21 +10650,55 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
       catch (e){ sitemapError = e.message; }
 
       const seenPaths = new Set(['/']);
-      const selectedPaths = ['/'];
+      const candidatePaths = [];
       for (const raw of sitemapUrls){
         let u;
         try { u = new URL(raw, origin); } catch (e){ continue; }
         if (u.origin !== origin) continue;
         u.search = ''; u.hash = '';
         const p = u.pathname;
-        if (seenPaths.has(p)) continue;
-        const lower = p.toLowerCase();
-        const isProduct = WEBSITE_SCAN_PRODUCT_PATTERNS.some(pat => lower.includes(pat));
-        const isPress = WEBSITE_SCAN_PRESS_PATTERNS.some(pat => lower.includes(pat));
-        if (!isProduct && !isPress) continue;
+        if (p === '/' || seenPaths.has(p)) continue;
         seenPaths.add(p);
-        selectedPaths.push(p);
-        if (selectedPaths.length >= WEBSITE_SCAN_MAX_PAGES) break;
+        candidatePaths.push(p);
+        if (candidatePaths.length >= WEBSITE_SCAN_CANDIDATE_CAP) break;
+      }
+
+      let selectedPaths = ['/'];
+      let pageSelectionError = null;
+      if (!candidatePaths.length){
+        if (sitemapError) pageSelectionError = 'no sitemap candidates available (' + sitemapError + ') — homepage only';
+      } else if (!process.env.ANTHROPIC_API_KEY){
+        pageSelectionError = 'not configured — ANTHROPIC_API_KEY not set; falling back to homepage only';
+      } else {
+        const selectionPrompt = `Below is the real, complete list of URL paths found on a company's website (one per line — nothing here is invented). Pick up to ${WEBSITE_SCAN_MAX_PAGES - 1} of them that most likely lead to product/service/transaction pages (what they actually sell or offer) or press/news/media pages. Judge only from the path/slug itself.
+
+${candidatePaths.join('\n')}
+
+Respond with ONLY a JSON array of the chosen paths, copied exactly as they appear above, e.g. ["/path-one","/path-two"]. If none look relevant, respond with [].`;
+        try {
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 500, messages: [{ role: 'user', content: selectionPrompt }] })
+          });
+          if (!resp.ok){
+            pageSelectionError = `HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)} — falling back to homepage only`;
+          } else {
+            const data = await resp.json();
+            const text = (data.content || []).map(b => b.text || '').join('');
+            const match = text.match(/\[[\s\S]*\]/);
+            const picked = match ? JSON.parse(match[0]) : null;
+            if (Array.isArray(picked)){
+              const candidateSet = new Set(candidatePaths);
+              const validated = picked.filter(p => typeof p === 'string' && candidateSet.has(p)).slice(0, WEBSITE_SCAN_MAX_PAGES - 1);
+              selectedPaths = ['/', ...validated];
+            } else {
+              pageSelectionError = 'model response did not contain a parseable page list — falling back to homepage only';
+            }
+          }
+        } catch (e){
+          pageSelectionError = 'Page selection failed: ' + e.message + ' — falling back to homepage only';
+        }
       }
 
       // Fetched in SMALL CONCURRENT BATCHES, not one at a time and not all
@@ -10604,7 +10720,7 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         const batchResults = await Promise.all(batch.map(async (p) => {
           try {
             const ctx = await fetchAndExtractPage(origin + p);
-            return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt };
+            return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt, structuredData: ctx.structuredData };
           } catch (e){
             return { path: p, ok: false, error: e.message };
           }
@@ -10612,22 +10728,25 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         pages.push(...batchResults);
       }
 
-      const pageBlocks = pages.filter(p => p.ok).map(p =>
-        `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}`
-      ).join('\n\n');
+      const pageBlocks = pages.filter(p => p.ok).map(p => {
+        const structuredBlock = (p.structuredData && p.structuredData.length)
+          ? `\nStructured product/offer data found on this page (schema.org JSON-LD, not visible page text): ${JSON.stringify(p.structuredData)}`
+          : '';
+        return `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}${structuredBlock}`;
+      }).join('\n\n');
 
-      const extractionPrompt = `You are extracting structured facts from real, live-fetched pages of a company's own website — nothing here is guessed or inferred from outside knowledge. Below are the pages actually fetched.
+      const extractionPrompt = `You are extracting structured facts from real, live-fetched pages of a company's own website — nothing here is guessed or inferred from outside knowledge. Below are the pages actually fetched, including any real structured product/offer data (schema.org JSON-LD) found embedded in the page.
 
 ${pageBlocks || '(no pages could be fetched)'}
 
-Fill in exactly these seven categories, using ONLY what the text above actually supports. For any category the given text does not clearly support, set "value" to null — do not guess, infer from company name/industry alone, or use outside knowledge. Every non-null "value" must have an "evidence" field quoting or closely paraphrasing the specific text above that supports it.
+Fill in exactly these seven categories, using ONLY what the text and structured data above actually support. For any category the given material does not clearly support, set "value" to null — do not guess, infer from company name/industry alone, or use outside knowledge. Every non-null "value" must have an "evidence" field quoting or closely paraphrasing the specific text or structured data above that supports it.
 
 Categories:
 1. scaleFormat — the size or format of what they deliver (e.g. small-ship vs. mega-ship; boutique vs. big-box)
 2. specializationNiche — the specific capability that differentiates them from a generalist competitor
 3. geographicOperationalReach — where they can actually go or operate (specific regions, capabilities, certifications enabling reach)
 4. audienceSegmentServed — who they explicitly target
-5. priceTierPosition — where they position on price/tier, only if the text actually signals this
+5. priceTierPosition — where they position on price/tier; a structured "price"/"priceCurrency" value above is strong evidence for this, but on-page copy signaling premium/value positioning counts too
 6. experienceFormatStyle — how the experience/product is structured
 7. distinctiveCapabilityCertification — a specific, named operational fact or certification
 
@@ -10663,6 +10782,8 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
       return sendJson(res, 200, {
         websiteUrl, origin, sitemapError,
         totalSitemapUrls: sitemapUrls.length,
+        totalCandidatePaths: candidatePaths.length,
+        pageSelectionError,
         selectedPaths, pages,
         extractionPrompt, categories, extractionError
       });
@@ -15894,4 +16015,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
