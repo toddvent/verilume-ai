@@ -10543,6 +10543,14 @@ async function handleRequest(req, res) {
       if (!websiteScanSummary){
         return sendJson(res, 400, { error: 'websiteScanSummary is required — run website-category-scan.html first and use its "Send to Vendor Blind Panel" button to carry the scan over.' });
       }
+      // 2026-09-02, same-day revision — per direct correction: these two
+      // were originally only folded into qaRaw's free text (from a loaded
+      // real lead's generations/wealthTier), which meant they were never
+      // visible as their own inputs on the panel's screen. Given their own
+      // fields and their own explicit prompt block now, same treatment as
+      // the website scan gets — real data, but never buried.
+      const generations = Array.isArray(body.generations) ? body.generations.filter(g => typeof g === 'string' && g.trim()) : [];
+      const wealthTier = Array.isArray(body.wealthTier) ? body.wealthTier.filter(w => typeof w === 'string' && w.trim()) : [];
 
       let websiteContext;
       try {
@@ -10565,6 +10573,9 @@ ${siteBlock}
 
 ASSESSMENT Q&A (the client's own answers, verbatim):
 ${qaRaw || '(none provided — proceed without client-specific answers, do not invent any)'}
+
+TARGET GENERATIONS (from this lead's real assessment answers): ${generations.length ? generations.join(', ') : '(not provided — assume a broad, general audience)'}
+TARGET WEALTH TIER (Verilume Wealth Index-derived, from this lead's real assessment answers): ${wealthTier.length ? wealthTier.join(', ') : '(not provided — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
 
 WEBSITE POSITIONING SCAN (AI-extracted from the company's own website by a separate multi-page scan — not client-provided; treat as background context, cite specifics from it only where they genuinely support the paragraph):
 ${websiteScanSummary}
@@ -10622,7 +10633,7 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         return na - nb;
       });
 
-      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, naicsCode, websiteUrl, qaRaw, websiteScanSummary }, websiteContext, candidates });
+      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, naicsCode, websiteUrl, qaRaw, websiteScanSummary, generations, wealthTier }, websiteContext, candidates });
     }
 
     // POST /api/ops/website-category-scan — staff-only, one-off scoped tool
@@ -15997,23 +16008,30 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
     ];
     const ASSESSMENT_STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
 
-    function formatLeadAssessmentQa(lead){
+    // 2026-09-02, same-day revision — per direct correction: folding
+    // generations/wealthTier into the free-text Q&A block (as this
+    // function first did) meant they were never actually VISIBLE anywhere
+    // on the panel's own input screen — easy to lose, easy to accidentally
+    // edit away, and given no distinct treatment the way the website scan
+    // gets its own block. parseLeadAssessment() now returns them as their
+    // own fields so GET /api/leads and the panel's UI can surface them as
+    // real, separate inputs — same pattern as accountAudience/accountWealth
+    // already getting their own labeled block in draftPrCorpCommCopyViaAI's
+    // prompt, not buried in Q&A text there either.
+    function parseLeadAssessment(lead){
       let parsed;
       try { parsed = JSON.parse(lead.assessmentDataJson || '{}'); } catch (e){ parsed = {}; }
       const loopEffectiveness = parsed.loopEffectiveness || {};
-      const lines = [];
-      ASSESSMENT_RUBRIC_STAGES.forEach(({ stage, sub }) => {
+      const qaLines = ASSESSMENT_RUBRIC_STAGES.map(({ stage, sub }) => {
         const rating = loopEffectiveness[stage];
         const label = rating ? ASSESSMENT_STAGE_EFF_LABEL[rating] : null;
-        lines.push(`Q: ${stage} — ${sub}\nA: ${label || '(not rated by this visitor)'}`);
+        return `Q: ${stage} — ${sub}\nA: ${label || '(not rated by this visitor)'}`;
       });
-      if (Array.isArray(parsed.generations) && parsed.generations.length){
-        lines.push(`Q: Which generations does this company target?\nA: ${parsed.generations.join(', ')}`);
-      }
-      if (Array.isArray(parsed.wealthTier) && parsed.wealthTier.length){
-        lines.push(`Q: What wealth tier does this company target (Verilume Wealth Index)?\nA: ${parsed.wealthTier.join(', ')}`);
-      }
-      return lines.join('\n\n');
+      return {
+        assessmentQaText: qaLines.join('\n\n'),
+        generations: Array.isArray(parsed.generations) ? parsed.generations : [],
+        wealthTier: Array.isArray(parsed.wealthTier) ? parsed.wealthTier : []
+      };
     }
 
     // GET /api/leads — admin/verification visibility into captured leads
@@ -16032,7 +16050,7 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const leads = db.prepare('SELECT * FROM leads ORDER BY createdAt DESC').all()
-        .map(lead => ({ ...lead, hubspotContactUrl: hubspotContactUrl(lead.hubspotContactId), assessmentQaText: formatLeadAssessmentQa(lead) }));
+        .map(lead => ({ ...lead, hubspotContactUrl: hubspotContactUrl(lead.hubspotContactId), ...parseLeadAssessment(lead) }));
       return sendJson(res, 200, { leads });
     }
 
