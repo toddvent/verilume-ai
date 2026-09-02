@@ -100,7 +100,7 @@
     <h1>Website Category Scan</h1>
     <p class="lede">Crawls a company's own website — homepage plus a small allowlist of product/transaction and press pages (not the whole site) — and extracts seven generalized positioning categories from what's actually on those pages. Nothing here is saved, and no account record is read or written. Built to preview how this would eventually inform competitor/positioning context, before that context has any account data behind it.</p>
 
-    <div class="note">Page selection is an <b>allowlist</b>, not a full crawl: the homepage, plus any sitemap URL whose path matches a product/transaction pattern (itinerary, ship, destination, cruise, voyage, expedition, fleet, shop, product, collection, wine, spirit, gear, store, catalog) or a press pattern (press, news, media), capped at 12 pages. Everything else — investor relations, careers, legal, generic corporate — is excluded by construction.</div>
+    <div class="note">Page selection is not a full crawl: the homepage, plus up to 11 pages the model picks from the site's real sitemap URLs (fetching a sitemap index's child sitemaps too) as likely product/transaction or press pages, judging only from the URL path. Every picked page is a real URL that was actually found — nothing is invented. Any product/offer data embedded as schema.org JSON-LD on a fetched page is also parsed and fed into extraction, in addition to title/meta/headings/excerpt text.</div>
 
     <div class="module">
       <h3>Input</h3>
@@ -122,6 +122,10 @@
         <h3>Extracted categories</h3>
         <div class="desc" id="extractionStatus"></div>
         <div class="cat-grid" id="catGrid"></div>
+        <div id="sendToPanelRow" class="hidden" style="margin-top:16px;">
+          <button class="btn" id="sendToPanelBtn">Send to Vendor Blind Panel &rarr;</button>
+          <div class="desc" style="margin-top:6px;">Carries the website URL and this category summary to vendor-blind-panel.html as a labeled "Website Positioning Scan" block, kept separate from the client's own assessment answers.</div>
+        </div>
       </div>
 
       <div class="module">
@@ -169,6 +173,10 @@
   const extractionStatus = document.getElementById('extractionStatus');
   const catGrid = document.getElementById('catGrid');
   const promptBox = document.getElementById('promptBox');
+  const sendToPanelRow = document.getElementById('sendToPanelRow');
+  const sendToPanelBtn = document.getElementById('sendToPanelBtn');
+  let lastScanWebsiteUrl = null;
+  let lastScanCategories = null;
 
   const CAT_LABELS = {
     scaleFormat: 'Scale / format',
@@ -216,11 +224,48 @@
     }).join('');
   }
 
+  // 2026-09-02 addition — "simple handoff" to vendor-blind-panel.html, per
+  // direct request ("as long as the scan results are included"). Formats
+  // the same seven categories shown above into plain text (value + its
+  // grounding evidence, or an explicit "not supported" line — never
+  // silently drops a null category, since an absence is itself real
+  // information for whoever reads it on the other end) and hands it off
+  // via localStorage (see vendor-blind-panel.html's matching read/consume
+  // logic) rather than a URL param, since the full summary is too long to
+  // reliably survive a query string.
+  function formatCategoriesForHandoff(categories){
+    return CAT_ORDER.map(key => {
+      const c = (categories || {})[key] || {};
+      const empty = c.value == null || c.value === '';
+      const line = CAT_LABELS[key] + ': ' + (empty ? '(not supported by crawled pages)' : c.value);
+      return (!empty && c.evidence) ? (line + ' — ' + c.evidence) : line;
+    }).join('\n');
+  }
+
+  sendToPanelBtn.addEventListener('click', function(){
+    if (!lastScanCategories) return;
+    try {
+      localStorage.setItem('verilume_scanHandoff', JSON.stringify({
+        websiteUrl: lastScanWebsiteUrl,
+        summary: formatCategoriesForHandoff(lastScanCategories),
+        savedAt: Date.now()
+      }));
+    } catch (e){
+      runStatus.textContent = 'Could not hand off to Vendor Blind Panel: ' + e.message;
+      runStatus.classList.add('error');
+      return;
+    }
+    window.location.href = 'vendor-blind-panel.html';
+  });
+
   runBtn.addEventListener('click', async function(){
     runBtn.disabled = true;
     runStatus.textContent = 'Fetching sitemap and pages, then extracting categories — this can take up to a minute...';
     runStatus.classList.remove('hidden', 'error');
     resultsModule.classList.add('hidden');
+    sendToPanelRow.classList.add('hidden');
+    lastScanWebsiteUrl = null;
+    lastScanCategories = null;
 
     const body = { websiteUrl: document.getElementById('inUrl').value };
 
@@ -252,11 +297,16 @@
       runStatus.textContent = 'Done.';
       sitemapSummary.textContent = data.sitemapError
         ? ('Sitemap could not be used (' + data.sitemapError + ') — falling back to the homepage only.')
-        : (data.totalSitemapUrls + ' URLs found in sitemap.xml; ' + data.selectedPaths.length + ' selected by the allowlist.');
+        : data.pageSelectionError
+        ? (data.totalSitemapUrls + ' URLs found in sitemap.xml (' + data.totalCandidatePaths + ' same-origin candidates); page selection could not run (' + data.pageSelectionError + ') — falling back to the homepage only.')
+        : (data.totalSitemapUrls + ' URLs found in sitemap.xml (' + data.totalCandidatePaths + ' same-origin candidates); ' + data.selectedPaths.length + ' selected by AI classification of the real page list.');
       renderPages(data.pages || []);
       renderCategories(data.categories, data.extractionError);
       promptBox.textContent = data.extractionPrompt || '';
       resultsModule.classList.remove('hidden');
+      lastScanWebsiteUrl = data.websiteUrl || document.getElementById('inUrl').value;
+      lastScanCategories = data.extractionError ? null : data.categories;
+      sendToPanelRow.classList.toggle('hidden', !lastScanCategories);
     } catch (e){
       runStatus.textContent = 'Request failed: ' + e.message;
       runStatus.classList.add('error');

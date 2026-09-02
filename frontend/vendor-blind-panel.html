@@ -105,13 +105,29 @@
         <div><label>Footprint</label><input type="text" id="inFootprint" value="National"></div>
         <div><label>Industry + tier</label><input type="text" id="inIndustry" value="Luxury tier, Cruise Lines"></div>
       </div>
-      <div class="field-row three">
-        <div><label>Media %</label><input type="number" id="inMedia" value="61"></div>
-        <div><label>CX %</label><input type="number" id="inCx" value="65"></div>
-        <div><label>Weakest stage</label><input type="text" id="inStage" value="Purchase"></div>
+      <div class="field-row">
+        <div><label>NAICS code</label><input type="text" id="inNaics" value="483112"></div>
+        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value="https://www.oceaniacruises.com"></div>
       </div>
-      <button class="btn primary" id="runBtn">Run panel — call all 5 vendors</button>
+      <div>
+        <label>Assessment Q&amp;A — paste the client's actual question/answer pairs (not scores)</label>
+        <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;">Q: How would you rate your brand's presence across paid and organic search?
+A: Behind
+
+Q: How consistent is your customer experience across channels?
+A: Ahead
+
+Q: How well does your loyalty program retain repeat guests?
+A: On par</textarea>
+      </div>
+      <div id="scanHandoffNote" class="desc hidden" style="margin-top:10px;"></div>
+      <div>
+        <label>Website Positioning Scan <span style="font-weight:400;color:var(--muted);">(optional — carried over from website-category-scan.html when you arrive via its "Send to Vendor Blind Panel" button; edit or clear freely)</span></label>
+        <textarea id="inScanSummary" rows="6" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(none — run a scan on website-category-scan.html and use its handoff button to fill this in)"></textarea>
+      </div>
+      <button class="btn primary" id="runBtn" style="margin-top:14px;">Run panel — call all 5 vendors</button>
       <div class="status-line hidden" id="runStatus"></div>
+      <div class="prompt-box hidden" id="siteBox"></div>
       <div class="prompt-box hidden" id="promptBox"></div>
     </div>
 
@@ -153,10 +169,40 @@
 
   const runBtn = document.getElementById('runBtn');
   const runStatus = document.getElementById('runStatus');
+  const siteBox = document.getElementById('siteBox');
   const promptBox = document.getElementById('promptBox');
   const resultsModule = document.getElementById('resultsModule');
   const candidatesEl = document.getElementById('candidates');
   const revealAllBtn = document.getElementById('revealAllBtn');
+  const inScanSummary = document.getElementById('inScanSummary');
+  const scanHandoffNote = document.getElementById('scanHandoffNote');
+
+  // 2026-09-02 addition — "simple handoff" from website-category-scan.html's
+  // "Send to Vendor Blind Panel" button (per direct request: "as long as
+  // the scan results are included"). That page writes a small JSON blob to
+  // localStorage (shared across tabs, unlike sessionStorage, so the button
+  // works whether it opens a new tab or navigates this one) rather than a
+  // URL param — a full 7-category scan summary is too long to reliably
+  // round-trip through a query string. Guarded by a 10-minute freshness
+  // window and consumed exactly once (removed immediately after reading)
+  // so a stale or leftover blob can't silently reapply on a later,
+  // unrelated visit to this page.
+  const SCAN_HANDOFF_KEY = 'verilume_scanHandoff';
+  const SCAN_HANDOFF_MAX_AGE_MS = 10 * 60 * 1000;
+  try {
+    const raw = localStorage.getItem(SCAN_HANDOFF_KEY);
+    if (raw){
+      localStorage.removeItem(SCAN_HANDOFF_KEY);
+      const handoff = JSON.parse(raw);
+      const age = Date.now() - (handoff.savedAt || 0);
+      if (handoff.summary && age >= 0 && age <= SCAN_HANDOFF_MAX_AGE_MS){
+        if (handoff.websiteUrl) document.getElementById('inUrl').value = handoff.websiteUrl;
+        inScanSummary.value = handoff.summary;
+        scanHandoffNote.textContent = 'Website Positioning Scan filled in from a website-category-scan.html run' + (handoff.websiteUrl ? ' (' + handoff.websiteUrl + ')' : '') + ' — review below, edit or clear as needed.';
+        scanHandoffNote.classList.remove('hidden');
+      }
+    }
+  } catch (e){ /* malformed or inaccessible localStorage — just skip the handoff, never block the page */ }
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -198,15 +244,17 @@
     runStatus.textContent = 'Calling all five vendors — this can take up to a minute...';
     runStatus.classList.remove('hidden', 'error');
     promptBox.classList.add('hidden');
+    siteBox.classList.add('hidden');
     resultsModule.classList.add('hidden');
 
     const body = {
       company: document.getElementById('inCompany').value,
       footprint: document.getElementById('inFootprint').value,
       industryLabel: document.getElementById('inIndustry').value,
-      mediaPct: Number(document.getElementById('inMedia').value),
-      cxPct: Number(document.getElementById('inCx').value),
-      weakestStage: document.getElementById('inStage').value
+      naicsCode: document.getElementById('inNaics').value,
+      websiteUrl: document.getElementById('inUrl').value,
+      qaRaw: document.getElementById('inQa').value,
+      websiteScanSummary: inScanSummary.value
     };
 
     try {
@@ -223,6 +271,11 @@
         return;
       }
       runStatus.textContent = 'Done.';
+      const wc = data.websiteContext || {};
+      siteBox.textContent = wc.ok
+        ? 'Website actually fetched:\nTitle: ' + (wc.title || '(none)') + '\nMeta description: ' + (wc.metaDescription || '(none)') + '\nHeadings: ' + ((wc.headings || []).join(' | ') || '(none)') + '\nExcerpt: ' + (wc.excerpt || '(none)')
+        : 'Website could NOT be fetched: ' + (wc.error || 'unknown error') + ' — the prompt proceeded without site-specific detail rather than guessing.';
+      siteBox.classList.remove('hidden');
       promptBox.textContent = data.prompt;
       promptBox.classList.remove('hidden');
       renderCandidates(data.candidates || []);
