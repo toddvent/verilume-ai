@@ -98,32 +98,36 @@
     <div class="safeguard"><b>Cost note:</b> every run calls all five providers for real. Only run this when you actually want a fresh comparison.</div>
 
     <div class="module">
+      <h3>Load a real lead</h3>
+      <div class="desc">The Assessment Q&amp;A below is real captured data — a real visitor's actual self-ratings across the five Marketing Loop stages (Awareness/Consideration/Purchase/Loyalty/Advocacy), not example text. Pick a real lead here to fill Company/Footprint/Industry and the Q&amp;A from what they actually answered before registering.</div>
+      <div class="field-row">
+        <div style="flex:1;"><label>Real captured lead</label><select id="inLeadSelect" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;"><option value="">— load leads to choose —</option></select></div>
+      </div>
+      <button class="btn small" id="loadLeadsBtn" style="margin-top:10px;">Load leads</button>
+      <button class="btn small" id="useLeadBtn" style="margin-top:10px;" disabled>Use selected lead →</button>
+      <div class="status-line hidden" id="leadStatus"></div>
+    </div>
+
+    <div class="module">
       <h3>Inputs</h3>
-      <div class="desc">Prefilled with the Oceania Cruises example from the current thread — change any field and re-run.</div>
+      <div class="desc">Company/Footprint/Industry/Assessment Q&amp;A below are filled from a real lead once loaded above (still editable). Website URL, NAICS, and Industry+tier detail stay manual — the real lead data doesn't carry those.</div>
       <div class="field-row three">
-        <div><label>Company</label><input type="text" id="inCompany" value="Oceania Cruises"></div>
-        <div><label>Footprint</label><input type="text" id="inFootprint" value="National"></div>
-        <div><label>Industry + tier</label><input type="text" id="inIndustry" value="Luxury tier, Cruise Lines"></div>
+        <div><label>Company</label><input type="text" id="inCompany" value=""></div>
+        <div><label>Footprint</label><input type="text" id="inFootprint" value=""></div>
+        <div><label>Industry + tier</label><input type="text" id="inIndustry" value=""></div>
       </div>
       <div class="field-row">
-        <div><label>NAICS code</label><input type="text" id="inNaics" value="483112"></div>
-        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value="https://www.oceaniacruises.com"></div>
+        <div><label>NAICS code</label><input type="text" id="inNaics" value=""></div>
+        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value=""></div>
       </div>
       <div>
-        <label>Assessment Q&amp;A — paste the client's actual question/answer pairs (not scores)</label>
-        <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;">Q: How would you rate your brand's presence across paid and organic search?
-A: Behind
-
-Q: How consistent is your customer experience across channels?
-A: Ahead
-
-Q: How well does your loyalty program retain repeat guests?
-A: On par</textarea>
+        <label>Assessment Q&amp;A — real captured answers once a lead is loaded above; edit freely, but don't type in invented Q&amp;A pairs to stand in for real data</label>
+        <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(none yet — load a real lead above)"></textarea>
       </div>
       <div id="scanHandoffNote" class="desc hidden" style="margin-top:10px;"></div>
       <div>
-        <label>Website Positioning Scan <span style="font-weight:400;color:var(--muted);">(optional — carried over from website-category-scan.html when you arrive via its "Send to Vendor Blind Panel" button; edit or clear freely)</span></label>
-        <textarea id="inScanSummary" rows="6" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(none — run a scan on website-category-scan.html and use its handoff button to fill this in)"></textarea>
+        <label>Website Positioning Scan <span style="font-weight:600;color:var(--danger);">(required)</span> <span style="font-weight:400;color:var(--muted);">— run website-category-scan.html first and use its "Send to Vendor Blind Panel" button to carry the scan over here</span></label>
+        <textarea id="inScanSummary" rows="6" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(required — go run a scan on website-category-scan.html, then use its handoff button; the panel will not run without this)"></textarea>
       </div>
       <button class="btn primary" id="runBtn" style="margin-top:14px;">Run panel — call all 5 vendors</button>
       <div class="status-line hidden" id="runStatus"></div>
@@ -176,6 +180,57 @@ A: On par</textarea>
   const revealAllBtn = document.getElementById('revealAllBtn');
   const inScanSummary = document.getElementById('inScanSummary');
   const scanHandoffNote = document.getElementById('scanHandoffNote');
+  const inLeadSelect = document.getElementById('inLeadSelect');
+  const loadLeadsBtn = document.getElementById('loadLeadsBtn');
+  const useLeadBtn = document.getElementById('useLeadBtn');
+  const leadStatus = document.getElementById('leadStatus');
+  let loadedLeads = [];
+
+  // 2026-09-02 addition, per direct correction — the Assessment Q&A field
+  // used to default to fabricated example text that doesn't match the real
+  // free assessment at all. Real fix: load real captured leads from
+  // GET /api/leads (same ADMIN_API_TOKEN already gating this whole page)
+  // and let staff pick one — its real assessmentQaText (built server-side
+  // in formatLeadAssessmentQa(), from that lead's actual Marketing Loop
+  // self-ratings) fills the Q&A field instead of anyone typing or trusting
+  // invented answers.
+  loadLeadsBtn.addEventListener('click', async function(){
+    leadStatus.textContent = 'Loading leads...';
+    leadStatus.classList.remove('hidden', 'error');
+    try {
+      const resp = await fetch('/api/leads', { headers: { 'X-Admin-Token': adminToken } });
+      const data = await resp.json();
+      if (!resp.ok){
+        leadStatus.textContent = data.error || ('Request failed (HTTP ' + resp.status + ').');
+        leadStatus.classList.add('error');
+        return;
+      }
+      loadedLeads = data.leads || [];
+      inLeadSelect.innerHTML = '<option value="">— select a real lead —</option>' + loadedLeads.map(l =>
+        `<option value="${esc(l.id)}">${esc(l.company || '(no company)')} — ${esc(l.email || '')} — ${esc(l.createdAt ? l.createdAt.slice(0, 10) : '')}</option>`
+      ).join('');
+      leadStatus.textContent = loadedLeads.length + ' lead(s) loaded.';
+      useLeadBtn.disabled = !loadedLeads.length;
+    } catch (e){
+      leadStatus.textContent = 'Request failed: ' + e.message;
+      leadStatus.classList.add('error');
+    }
+  });
+
+  useLeadBtn.addEventListener('click', function(){
+    const lead = loadedLeads.find(l => l.id === inLeadSelect.value);
+    if (!lead){
+      leadStatus.textContent = 'Select a lead from the list first.';
+      leadStatus.classList.add('error');
+      return;
+    }
+    document.getElementById('inCompany').value = lead.company || '';
+    document.getElementById('inFootprint').value = lead.footprint || '';
+    document.getElementById('inIndustry').value = lead.industry || '';
+    document.getElementById('inQa').value = lead.assessmentQaText || '';
+    leadStatus.textContent = 'Filled Company/Footprint/Industry/Assessment Q&A from ' + (lead.company || lead.email) + '. Website URL and NAICS still need manual entry — the real lead doesn\'t carry those.';
+    leadStatus.classList.remove('error');
+  });
 
   // 2026-09-02 addition — "simple handoff" from website-category-scan.html's
   // "Send to Vendor Blind Panel" button (per direct request: "as long as
@@ -240,6 +295,16 @@ A: On par</textarea>
   });
 
   runBtn.addEventListener('click', async function(){
+    // 2026-09-02 — required, not optional, per direct correction ("The
+    // website positioning scan is not optional for the contest. It's a
+    // critical component."). Checked here too, not just server-side,
+    // so the failure is immediate and specific instead of a round-trip.
+    if (!inScanSummary.value.trim()){
+      runStatus.textContent = 'Website Positioning Scan is required — run a scan on website-category-scan.html and use its "Send to Vendor Blind Panel" button first.';
+      runStatus.classList.remove('hidden');
+      runStatus.classList.add('error');
+      return;
+    }
     runBtn.disabled = true;
     runStatus.textContent = 'Calling all five vendors — this can take up to a minute...';
     runStatus.classList.remove('hidden', 'error');
