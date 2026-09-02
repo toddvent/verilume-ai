@@ -120,6 +120,10 @@
         <div><label>NAICS code</label><input type="text" id="inNaics" value=""></div>
         <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value=""></div>
       </div>
+      <div class="field-row">
+        <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(from this lead's real assessment answers — comma-separated, e.g. "Gen Z, Millennials")</span></label><input type="text" id="inGenerations" value=""></div>
+        <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(Verilume Wealth Index-derived, from this lead's real answers)</span></label><input type="text" id="inWealthTier" value=""></div>
+      </div>
       <div>
         <label>Assessment Q&amp;A — real captured answers once a lead is loaded above; edit freely, but don't type in invented Q&amp;A pairs to stand in for real data</label>
         <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(none yet — load a real lead above)"></textarea>
@@ -228,7 +232,9 @@
     document.getElementById('inFootprint').value = lead.footprint || '';
     document.getElementById('inIndustry').value = lead.industry || '';
     document.getElementById('inQa').value = lead.assessmentQaText || '';
-    leadStatus.textContent = 'Filled Company/Footprint/Industry/Assessment Q&A from ' + (lead.company || lead.email) + '. Website URL and NAICS still need manual entry — the real lead doesn\'t carry those.';
+    document.getElementById('inGenerations').value = (lead.generations || []).join(', ');
+    document.getElementById('inWealthTier').value = (lead.wealthTier || []).join(', ');
+    leadStatus.textContent = 'Filled Company/Footprint/Industry/Assessment Q&A/Generations/Wealth Tier from ' + (lead.company || lead.email) + '. Website URL and NAICS still need manual entry — the real lead doesn\'t carry those.';
     leadStatus.classList.remove('error');
   });
 
@@ -319,6 +325,8 @@
       naicsCode: document.getElementById('inNaics').value,
       websiteUrl: document.getElementById('inUrl').value,
       qaRaw: document.getElementById('inQa').value,
+      generations: document.getElementById('inGenerations').value.split(',').map(s => s.trim()).filter(Boolean),
+      wealthTier: document.getElementById('inWealthTier').value.split(',').map(s => s.trim()).filter(Boolean),
       websiteScanSummary: inScanSummary.value
     };
 
