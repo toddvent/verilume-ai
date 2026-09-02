@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Website Category Scan (Staff Only, One-Off Tool)</title>
+<style>
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+    --warn:#B45309; --warn-tint:#FEF3E2; --danger:#B42318; --danger-tint:#FEF1F0;
+    --good:#166534; --good-tint:#DCFCE7;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.05) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.06) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:0 28px 80px;}
+  a{color:inherit;}
+  .staffbar{background:var(--ink);color:#fff;}
+  .staffbar-inner{max-width:920px;margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.75rem;letter-spacing:0.04em;}
+  .staffbar-inner b{color:var(--media-tint);}
+  .staffbar .op{color:#B9BEDB;}
+  .topnav{border-bottom:1px solid var(--line);}
+  .topnav-inner{max-width:920px;margin:0 auto;padding:18px 28px;}
+  .wordmark{font-size:1.25rem;font-weight:500;}
+  .wordmark b{color:var(--media);font-weight:600;}
+  .wordmark .sub{font-size:0.72rem;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-left:10px;padding-left:10px;border-left:1px solid var(--line);}
+  h1{font-size:1.7rem;margin:28px 0 4px;letter-spacing:-0.01em;}
+  .lede{color:var(--muted);font-size:0.9rem;max-width:680px;line-height:1.55;margin:0 0 24px;}
+  .eyebrow{font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--media);font-weight:600;margin-bottom:8px;}
+  .module{background:var(--white);border:1px solid var(--line);border-top-width:2px;border-top-color:var(--media-tint);border-radius:14px;margin-bottom:18px;padding:22px 24px;}
+  .module h3{font-size:0.95rem;margin:0 0 4px;}
+  .module .desc{font-size:0.82rem;color:var(--muted);margin:0 0 16px;line-height:1.5;}
+  .field-row{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px;}
+  label{font-size:0.75rem;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;}
+  input[type=text],input[type=password]{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);}
+  .btn{font-size:0.8rem;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;}
+  .btn:hover{border-color:var(--line-strong);}
+  .btn.primary{background:var(--media);border-color:var(--media);color:#fff;}
+  .btn.primary:hover{background:#1D4ED8;}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .toggle-row{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted);margin-top:10px;}
+  .hidden{display:none !important;}
+  .safeguard{background:var(--danger-tint);border:1px solid #F3C6C2;border-radius:var(--radius-sm);padding:14px 18px;font-size:0.82rem;color:#7A241C;margin:0 0 18px;line-height:1.5;}
+  .safeguard b{color:var(--danger);}
+  .note{background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 18px;font-size:0.82rem;color:var(--muted);margin:0 0 18px;line-height:1.5;}
+  .status-line{font-size:0.82rem;color:var(--muted);margin-top:8px;}
+  .status-line.error{color:var(--danger);}
+  .pill{display:inline-block;font-size:0.68rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);}
+  .pill.ok{background:var(--good-tint);color:var(--good);}
+  .pill.fail{background:var(--danger-tint);color:var(--danger);}
+  .pages-list{display:grid;gap:10px;margin-top:8px;}
+  .page-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:0.82rem;}
+  .page-card .path{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.78rem;}
+  .page-card .meta{color:var(--muted);margin-top:6px;line-height:1.5;}
+  .page-card .headings{margin-top:4px;font-size:0.76rem;color:var(--muted);}
+  .cat-grid{display:grid;gap:12px;margin-top:8px;}
+  .cat-card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .cat-card.empty{opacity:0.55;}
+  .cat-card .cat-name{font-size:0.72rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--media);margin-bottom:6px;}
+  .cat-card .cat-value{font-size:0.95rem;margin-bottom:6px;}
+  .cat-card .cat-evidence{font-size:0.8rem;color:var(--muted);font-style:italic;line-height:1.5;}
+  .prompt-box{font-size:0.72rem;color:var(--muted);background:var(--paper-dim);border:1px dashed var(--line-strong);border-radius:8px;padding:10px 12px;line-height:1.5;white-space:pre-wrap;margin-top:8px;max-height:320px;overflow:auto;}
+  details summary{cursor:pointer;font-size:0.8rem;font-weight:600;color:var(--muted);}
+  #gate{min-height:60vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  #gate .card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:36px;max-width:420px;width:100%;}
+  #gate h2{font-size:1.2rem;margin:0 0 6px;}
+  #gate p{font-size:0.85rem;color:var(--muted);margin:0 0 20px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <div class="eyebrow">Staff Only</div>
+    <h2>Website Category Scan</h2>
+    <p>One-off internal preview — not part of the product. Enter the admin token to continue.</p>
+    <label>X-Admin-Token</label>
+    <input type="password" id="gateToken" placeholder="Admin token" autocomplete="off">
+    <div class="toggle-row"><label style="margin:0;"><input type="checkbox" id="gateRemember"> Remember on this device (session only)</label></div>
+    <div style="margin-top:16px;"><button class="btn primary" id="gateSubmit">Enter</button></div>
+    <div class="status-line error hidden" id="gateError"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="staffbar"><div class="staffbar-inner"><span><b>STAFF ONLY</b> — preview tool, not part of the product</span><span class="op">website-category-scan.html</span></div></div>
+  <div class="topnav"><div class="topnav-inner"><span class="wordmark"><b>Verilume</b><span class="sub">Website Category Scan</span></span></div></div>
+
+  <div class="wrap">
+    <h1>Website Category Scan</h1>
+    <p class="lede">Crawls a company's own website — homepage plus a small allowlist of product/transaction and press pages (not the whole site) — and extracts seven generalized positioning categories from what's actually on those pages. Nothing here is saved, and no account record is read or written. Built to preview how this would eventually inform competitor/positioning context, before that context has any account data behind it.</p>
+
+    <div class="note">Page selection is an <b>allowlist</b>, not a full crawl: the homepage, plus any sitemap URL whose path matches a product/transaction pattern (itinerary, ship, destination, cruise, voyage, expedition, fleet, shop, product, collection, wine, spirit, gear, store, catalog) or a press pattern (press, news, media), capped at 12 pages. Everything else — investor relations, careers, legal, generic corporate — is excluded by construction.</div>
+
+    <div class="module">
+      <h3>Input</h3>
+      <div class="field-row">
+        <div><label>Website URL</label><input type="text" id="inUrl" value="https://www.atlasoceanvoyages.com"></div>
+      </div>
+      <button class="btn primary" id="runBtn">Run scan</button>
+      <div class="status-line hidden" id="runStatus"></div>
+    </div>
+
+    <div id="resultsModule" class="hidden">
+      <div class="module">
+        <h3>Pages found &amp; selected</h3>
+        <div class="desc" id="sitemapSummary"></div>
+        <div class="pages-list" id="pagesList"></div>
+      </div>
+
+      <div class="module">
+        <h3>Extracted categories</h3>
+        <div class="desc" id="extractionStatus"></div>
+        <div class="cat-grid" id="catGrid"></div>
+      </div>
+
+      <div class="module">
+        <details>
+          <summary>Show the exact extraction prompt sent</summary>
+          <div class="prompt-box" id="promptBox"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const TOKEN_KEY = 'verilume_website_scan_admin_token';
+  const gate = document.getElementById('gate');
+  const app = document.getElementById('app');
+  const gateToken = document.getElementById('gateToken');
+  const gateRemember = document.getElementById('gateRemember');
+  const gateSubmit = document.getElementById('gateSubmit');
+  const gateError = document.getElementById('gateError');
+  let adminToken = null;
+
+  function enterApp(token){
+    adminToken = token;
+    gate.classList.add('hidden');
+    app.classList.remove('hidden');
+  }
+
+  const remembered = sessionStorage.getItem(TOKEN_KEY);
+  if (remembered) enterApp(remembered);
+
+  gateSubmit.addEventListener('click', function(){
+    const t = gateToken.value.trim();
+    if (!t){ gateError.textContent = 'Enter a token.'; gateError.classList.remove('hidden'); return; }
+    if (gateRemember.checked) sessionStorage.setItem(TOKEN_KEY, t);
+    enterApp(t);
+  });
+
+  const runBtn = document.getElementById('runBtn');
+  const runStatus = document.getElementById('runStatus');
+  const resultsModule = document.getElementById('resultsModule');
+  const sitemapSummary = document.getElementById('sitemapSummary');
+  const pagesList = document.getElementById('pagesList');
+  const extractionStatus = document.getElementById('extractionStatus');
+  const catGrid = document.getElementById('catGrid');
+  const promptBox = document.getElementById('promptBox');
+
+  const CAT_LABELS = {
+    scaleFormat: 'Scale / format',
+    specializationNiche: 'Specialization / niche',
+    geographicOperationalReach: 'Geographic / operational reach',
+    audienceSegmentServed: 'Audience / segment served',
+    priceTierPosition: 'Price / tier position',
+    experienceFormatStyle: 'Experience / format style',
+    distinctiveCapabilityCertification: 'Distinctive capability / certification'
+  };
+  const CAT_ORDER = Object.keys(CAT_LABELS);
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderPages(pages){
+    pagesList.innerHTML = pages.map(p => {
+      if (!p.ok){
+        return `<div class="page-card"><span class="path">${esc(p.path)}</span> <span class="pill fail">Fetch failed</span><div class="meta">${esc(p.error)}</div></div>`;
+      }
+      return `<div class="page-card">
+        <span class="path">${esc(p.path)}</span> <span class="pill ok">Fetched</span>
+        <div class="meta"><b>Title:</b> ${esc(p.title || '(none)')}<br><b>Meta:</b> ${esc(p.metaDescription || '(none)')}</div>
+        <div class="headings">${esc((p.headings || []).slice(0, 8).join(' | ') || '(no headings)')}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderCategories(categories, extractionError){
+    if (extractionError){
+      extractionStatus.textContent = extractionError;
+      catGrid.innerHTML = '';
+      return;
+    }
+    extractionStatus.textContent = 'Every non-null value below is grounded in a quoted/paraphrased excerpt from the fetched pages above — nulls mean the crawled pages did not clearly support that category.';
+    catGrid.innerHTML = CAT_ORDER.map(key => {
+      const c = (categories || {})[key] || {};
+      const empty = c.value == null || c.value === '';
+      return `<div class="cat-card${empty ? ' empty' : ''}">
+        <div class="cat-name">${esc(CAT_LABELS[key])}</div>
+        <div class="cat-value">${empty ? '(not supported by crawled pages)' : esc(c.value)}</div>
+        ${!empty && c.evidence ? `<div class="cat-evidence">"${esc(c.evidence)}"</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  runBtn.addEventListener('click', async function(){
+    runBtn.disabled = true;
+    runStatus.textContent = 'Fetching sitemap and pages, then extracting categories — this can take up to a minute...';
+    runStatus.classList.remove('hidden', 'error');
+    resultsModule.classList.add('hidden');
+
+    const body = { websiteUrl: document.getElementById('inUrl').value };
+
+    try {
+      const resp = await fetch('/api/ops/website-category-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json();
+      if (!resp.ok){
+        runStatus.textContent = data.error || ('Request failed (HTTP ' + resp.status + ').');
+        runStatus.classList.add('error');
+        runBtn.disabled = false;
+        return;
+      }
+      runStatus.textContent = 'Done.';
+      sitemapSummary.textContent = data.sitemapError
+        ? ('Sitemap could not be used (' + data.sitemapError + ') — falling back to the homepage only.')
+        : (data.totalSitemapUrls + ' URLs found in sitemap.xml; ' + data.selectedPaths.length + ' selected by the allowlist.');
+      renderPages(data.pages || []);
+      renderCategories(data.categories, data.extractionError);
+      promptBox.textContent = data.extractionPrompt || '';
+      resultsModule.classList.remove('hidden');
+    } catch (e){
+      runStatus.textContent = 'Request failed: ' + e.message;
+      runStatus.classList.add('error');
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
