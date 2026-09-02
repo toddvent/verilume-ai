@@ -10512,7 +10512,18 @@ async function handleRequest(req, res) {
       const industryLabel = (body.industryLabel || 'Luxury tier, Cruise Lines').trim();
       const naicsCode = (body.naicsCode || '483112').trim();
       const websiteUrl = (body.websiteUrl || 'https://www.oceaniacruises.com').trim();
-      const qaRaw = (body.qaRaw || 'Q: How would you rate your brand\'s presence across paid and organic search?\nA: Behind\n\nQ: How consistent is your customer experience across channels?\nA: Ahead\n\nQ: How well does your loyalty program retain repeat guests?\nA: On par').trim();
+      // 2026-09-02 fix, per direct correction — this default used to be
+      // fabricated example Q&A text ("How would you rate your brand's
+      // presence across paid and organic search?") that does not match the
+      // real free assessment's actual questions (the five-stage Marketing
+      // Loop — Awareness/Consideration/Purchase/Loyalty/Advocacy — rated on
+      // a 1-5 maturity scale; see ASSESSMENT_RUBRIC_STAGES near GET
+      // /api/leads below). No fabricated substitute belongs here: an empty
+      // qaRaw now stays empty and the prompt says so honestly, and the
+      // frontend's real fix is pulling GET /api/leads' real
+      // assessmentQaText for an actual captured lead instead of anyone
+      // typing or relying on invented example answers.
+      const qaRaw = (body.qaRaw || '').trim();
       // 2026-09-02 addition, per direct request — a "simple handoff" link
       // from website-category-scan.html (its multi-page, sitemap-aware,
       // JSON-LD-aware scan is real, deeper site research than the single
@@ -10520,9 +10531,18 @@ async function handleRequest(req, res) {
       // entirely separate, clearly labeled block rather than merged into
       // qaRaw — those are explicitly the client's own verbatim answers,
       // and blending AI-extracted website findings into that would
-      // misrepresent the source. Optional and backward-compatible: absent
-      // or blank changes nothing about existing behavior.
+      // misrepresent the source.
+      //
+      // 2026-09-02, same day, revised per direct correction ("The website
+      // positioning scan is not optional for the contest. It's a critical
+      // component."): originally optional/backward-compatible. Now
+      // required and enforced server-side (not just a frontend nicety) so
+      // no caller — the panel's own UI or a direct API call — can produce
+      // a comparison without it.
       const websiteScanSummary = (body.websiteScanSummary || '').trim();
+      if (!websiteScanSummary){
+        return sendJson(res, 400, { error: 'websiteScanSummary is required — run website-category-scan.html first and use its "Send to Vendor Blind Panel" button to carry the scan over.' });
+      }
 
       let websiteContext;
       try {
@@ -10544,8 +10564,11 @@ INPUTS YOU MAY USE:
 ${siteBlock}
 
 ASSESSMENT Q&A (the client's own answers, verbatim):
-${qaRaw}
-${websiteScanSummary ? `\nWEBSITE POSITIONING SCAN (AI-extracted from the company's own website by a separate multi-page scan — not client-provided; treat as background context, cite specifics from it only where they genuinely support the paragraph):\n${websiteScanSummary}\n` : ''}
+${qaRaw || '(none provided — proceed without client-specific answers, do not invent any)'}
+
+WEBSITE POSITIONING SCAN (AI-extracted from the company's own website by a separate multi-page scan — not client-provided; treat as background context, cite specifics from it only where they genuinely support the paragraph):
+${websiteScanSummary}
+
 Do not invent any statistic, market size, or competitor count. Do not simply restate or summarize the Q&A or website content back to the reader — synthesize what these specific inputs, taken together, reveal about where this organization is strong and where the real opportunity sits. The paragraph must: (1) open on where this company is actually positioned, grounded in the industry/NAICS classification and the real website content given, not a recap of the inputs; (2) surface one real, organization-wide marketing trend relevant to this company's category and scale — not tied to any single answer; (3) make one observation about how AI and human judgment are being split in marketing work right now, as an industry dynamic, not a product pitch; (4) end on a genuine open thread that makes a CMO want to see the full assessment, not a call-to-action or sales line. Do not mention any vendor, tool, or platform by name.`;
 
       async function callAnthropicText(promptText){
@@ -15945,6 +15968,54 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
       });
     }
 
+    // 2026-09-02 addition, per direct correction — the Vendor Blind Panel's
+    // "Assessment Q&A" field previously shipped with fabricated placeholder
+    // text ("How would you rate your brand's presence across paid and
+    // organic search?" etc.) that does not match the real free assessment
+    // at all. This formats a REAL captured lead's actual self-ratings from
+    // its assessmentDataJson into the same Q&A shape the panel's prompt
+    // already expects, so GET /api/leads below can hand the frontend real
+    // data to select from instead of anyone having to invent example text.
+    //
+    // ASSESSMENT_RUBRIC_STAGES/ASSESSMENT_STAGE_EFF_LABEL are a deliberate,
+    // narrow duplication of frontend/assessment.html's RUBRIC (stage/sub
+    // text) and STAGE_EFF_LABEL (1-5 maturity label) — the free assessment
+    // itself lives entirely client-side with no equivalent backend copy, so
+    // there's no live source to import from. If assessment.html's RUBRIC
+    // stages/sub-copy or STAGE_EFF_LABEL values ever change, update both
+    // here to match — same keeping-two-things-in-sync risk this whole
+    // session has been fixing elsewhere, but unlike schema-identifiers.json
+    // there's no way to self-derive this one (it's prose copy, not a
+    // pattern in server.js's own source), so it's called out explicitly
+    // instead.
+    const ASSESSMENT_RUBRIC_STAGES = [
+      { stage: 'Awareness', sub: 'Prospects discover the brand before a competitor gets there first.' },
+      { stage: 'Consideration', sub: 'Prospects arrive already convinced, not still comparing.' },
+      { stage: 'Purchase', sub: 'The sale closes on the exact promise Media already made.' },
+      { stage: 'Loyalty', sub: 'Customers keep coming back without another acquisition dollar spent.' },
+      { stage: 'Advocacy', sub: 'Customers sell the brand for you — for free.' }
+    ];
+    const ASSESSMENT_STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
+
+    function formatLeadAssessmentQa(lead){
+      let parsed;
+      try { parsed = JSON.parse(lead.assessmentDataJson || '{}'); } catch (e){ parsed = {}; }
+      const loopEffectiveness = parsed.loopEffectiveness || {};
+      const lines = [];
+      ASSESSMENT_RUBRIC_STAGES.forEach(({ stage, sub }) => {
+        const rating = loopEffectiveness[stage];
+        const label = rating ? ASSESSMENT_STAGE_EFF_LABEL[rating] : null;
+        lines.push(`Q: ${stage} — ${sub}\nA: ${label || '(not rated by this visitor)'}`);
+      });
+      if (Array.isArray(parsed.generations) && parsed.generations.length){
+        lines.push(`Q: Which generations does this company target?\nA: ${parsed.generations.join(', ')}`);
+      }
+      if (Array.isArray(parsed.wealthTier) && parsed.wealthTier.length){
+        lines.push(`Q: What wealth tier does this company target (Verilume Wealth Index)?\nA: ${parsed.wealthTier.join(', ')}`);
+      }
+      return lines.join('\n\n');
+    }
+
     // GET /api/leads — admin/verification visibility into captured leads
     // and their HubSpot sync status; not called from any front-end file
     // yet (no admin UI exists in this build), but useful for confirming a
@@ -15961,7 +16032,7 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const leads = db.prepare('SELECT * FROM leads ORDER BY createdAt DESC').all()
-        .map(lead => ({ ...lead, hubspotContactUrl: hubspotContactUrl(lead.hubspotContactId) }));
+        .map(lead => ({ ...lead, hubspotContactUrl: hubspotContactUrl(lead.hubspotContactId), assessmentQaText: formatLeadAssessmentQa(lead) }));
       return sendJson(res, 200, { leads });
     }
 
