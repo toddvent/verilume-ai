@@ -24,6 +24,19 @@ try {
   const schemaPath = path.join(__dirname, 'schema-identifiers.json');
   const list = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
   KNOWN_IDENTIFIERS = new Set(list);
+  // 2026-09-02 addition, per a second recurrence of the exact same
+  // production incident this same day: schema-identifiers.json is a
+  // companion file to server.js, deployed manually and separately, and it
+  // silently got missed/stale in a deploy — the file loaded fine (so the
+  // catch block's loud warning below never fired), it just didn't have
+  // the newer entries. That's a much harder failure mode to catch than
+  // "the file is missing" — nothing here crashed, it just quietly broke
+  // camelCase quoting for whichever identifiers weren't in the stale
+  // list. Logging the loaded count at startup makes a stale deploy
+  // immediately visible in Vercel's logs (compare against the count in
+  // this repo's copy of the file) instead of requiring a full repeat of
+  // this debugging cycle to notice.
+  console.log(`[sql-translate] loaded ${KNOWN_IDENTIFIERS.size} known identifiers from schema-identifiers.json`);
 } catch (e) {
   // If the identifier list is missing, translation still runs (placeholder
   // conversion still works) but camelCase columns won't be quoted — this
