@@ -10507,11 +10507,30 @@ async function handleRequest(req, res) {
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const body = await readBody(req);
-      const company = (body.company || 'Oceania Cruises').trim();
-      const footprint = (body.footprint || 'National').trim();
-      const industryLabel = (body.industryLabel || 'Luxury tier, Cruise Lines').trim();
-      const naicsCode = (body.naicsCode || '483112').trim();
-      const websiteUrl = (body.websiteUrl || 'https://www.oceaniacruises.com').trim();
+      // 2026-09-02 fix — these five fields used to silently fall back to a
+      // fabricated example identity (Oceania Cruises, NAICS 483112,
+      // oceaniacruises.com, "Luxury tier, Cruise Lines") whenever left
+      // blank, with nothing in the response indicating a fake company had
+      // been substituted for a real one. That's the exact same bug class
+      // as tonight's other fixes (qaRaw's fabricated Q&A, the previously-
+      // optional website scan) — caught on self-review, not reported, so
+      // fixed the same way: required and rejected loudly instead of
+      // silently faked, rather than trusting a filled-in-looking prompt
+      // that was actually running under an invented company.
+      const company = (body.company || '').trim();
+      const footprint = (body.footprint || '').trim();
+      const industryLabel = (body.industryLabel || '').trim();
+      const naicsCode = (body.naicsCode || '').trim();
+      const websiteUrl = (body.websiteUrl || '').trim();
+      const missingFields = [];
+      if (!company) missingFields.push('company');
+      if (!footprint) missingFields.push('footprint');
+      if (!industryLabel) missingFields.push('industryLabel');
+      if (!naicsCode) missingFields.push('naicsCode');
+      if (!websiteUrl) missingFields.push('websiteUrl');
+      if (missingFields.length){
+        return sendJson(res, 400, { error: `Missing required field(s): ${missingFields.join(', ')} — load a real lead or fill these in manually. No fabricated company identity is substituted.` });
+      }
       // 2026-09-02 fix, per direct correction — this default used to be
       // fabricated example Q&A text ("How would you rate your brand's
       // presence across paid and organic search?") that does not match the
@@ -16114,3 +16133,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
