@@ -26,6 +26,7 @@
     { "source": "/ooh-specs.html", "destination": "/frontend/ooh-specs.html" },
     { "source": "/ops-console.html", "destination": "/frontend/ops-console.html" },
     { "source": "/vendor-blind-panel.html", "destination": "/frontend/vendor-blind-panel.html" },
+    { "source": "/website-category-scan.html", "destination": "/frontend/website-category-scan.html" },
     { "source": "/portal.html", "destination": "/frontend/portal.html" },
     { "source": "/sample-assessment.html", "destination": "/frontend/sample-assessment.html" },
     { "source": "/print-specs.html", "destination": "/frontend/print-specs.html" },
