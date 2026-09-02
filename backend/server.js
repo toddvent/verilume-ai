@@ -7332,6 +7332,52 @@ async function brandWritingSampleContext(accountId){
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
+// 2026-09-01, per direct instruction — "make sure the copy feedback loop
+// includes the approvals and rejections including reasons why for each."
+// creative_job_decisions has captured approve/reject-with-reason on every
+// creative job's copy since 2026-08-22 (see that endpoint's own comment:
+// "an unlabeled rejection carries no training signal, which is exactly the
+// gap this endpoint exists to close") — but until now it was written and
+// displayed only, never read back into any generation prompt. This closes
+// that gap for real: every call site below now sees this account's own
+// recent copy decisions, rejection reasons included verbatim, so the next
+// draft actually gets the signal the endpoint always claimed to capture.
+// Scoped to creative_job_decisions specifically (campaign/creative-job
+// copy) — deliberately NOT wired into draftPrCorpCommCopyViaAI (PR/Corp
+// Comm) below, matching the same isolation SAMPLE_CATEGORY_WEIGHT already
+// enforces for brand_writing_samples: PR/Corp Comm has its own separate
+// generation path and should learn from its own decisions, never from
+// consumer/campaign creative-job decisions blended in.
+async function creativeJobDecisionContext(accountId){
+  try {
+    const decisions = db.prepare(
+      `SELECT d.approved, d.reason, d.decidedAt, j.channel, j.specSummary
+       FROM creative_job_decisions d
+       JOIN creative_jobs j ON j.id = d.jobId
+       WHERE d.accountId = ?
+       ORDER BY d.decidedAt DESC
+       LIMIT 8`
+    ).all(accountId);
+    if (!decisions.length) return '';
+    // A rejection's reason is the real training signal (per the endpoint's
+    // own comment above) — surface every reasoned rejection first, then
+    // fill any remaining slots with the most recent approvals as positive
+    // confirmation. Capped at 5 total so this doesn't dwarf the brand-
+    // sample context it's appended alongside.
+    const rejections = decisions.filter(d => !d.approved && d.reason);
+    const approvals = decisions.filter(d => !!d.approved);
+    const picked = [...rejections, ...approvals].slice(0, 5);
+    if (!picked.length) return '';
+    const lines = picked.map(d => {
+      const channel = d.channel ? ` (${d.channel})` : '';
+      return d.approved
+        ? `- APPROVED${channel}${d.reason ? ` — note: "${d.reason}"` : ''}`
+        : `- REJECTED${channel} — reason: "${d.reason}"`;
+    });
+    return `\nRECENT TEAM APPROVAL/REJECTION DECISIONS ON THIS ACCOUNT'S CREATIVE COPY (most recent first — a rejection's stated reason is a direct instruction for what to avoid this time; an approval confirms what already worked):\n${lines.join('\n')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
+
 // 2026-08-25 — sibling of brandWritingSampleContext() above, reading
 // brand_copy_website_examples instead of brand_writing_samples. Same
 // 2-most-recent/900-char-cap discipline, same honest-empty-string
@@ -7357,6 +7403,31 @@ async function brandCopyWebsiteExampleContext(accountId){
     return `\nREAL PAGES FROM THIS BRAND'S OWN WEBSITE (client-selected as copy examples — a genuine reference for vocabulary and how this brand actually presents itself online, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers/prices as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; }
 }
+// 2026-08-31 (round 135), per direct instruction — "We need to make sure
+// that the Wealth Index + Generations impacts our copywriting product."
+// Before this, generateMessagingCopyViaAI() below only ever read
+// campaign.segment (a free-text per-campaign field an account manager
+// types) — it never touched account.audience/account.wealth, the same
+// generation-keys/wealth-tier-keys columns the free assessment
+// (assessment.html Step 2) actually persists onto the account. Small
+// label maps mirroring assessment.html's GENERATIONS[]/WEALTH_TIERS[]
+// display labels (hand-sync'd — same disclosed-duplication tradeoff as
+// AGENTIC_ROLES in assessment.html; keep in sync if those change) so the
+// comma-joined keys stored in the DB read as real words in the prompt
+// rather than raw keys like "hnw,wealthy".
+const GENERATION_LABELS_FOR_COPY = {
+  genbeta: 'Generation Beta', genalpha: 'Gen Alpha', genz: 'Gen Z', millennial: 'Millennials',
+  genx: 'Gen X', boomer: 'Baby Boomers', silent: 'Seniors / Silent Gen',
+  greatest: 'The Greatest Generation', general: 'General / all ages'
+};
+const WEALTH_TIER_LABELS_FOR_COPY = {
+  hnw: 'High Net-Worth', wealthy: 'Wealthy', middle: 'Mainstream / Value-Conscious'
+};
+function humanizeAudienceKeys(commaJoined, labelMap){
+  if (!commaJoined) return '';
+  return commaJoined.split(',').map(k => k.trim()).filter(Boolean).map(k => labelMap[k] || k).join(', ');
+}
+
 async function generateMessagingCopyViaAI(campaign, account, opts){
   opts = opts || {};
   if (!process.env.ANTHROPIC_API_KEY) return { copy: null, note: 'AI copy generation requires ANTHROPIC_API_KEY to be configured. Falling back to the deterministic template draft (see the Long Form Copy field) until one is set.' };
@@ -7381,7 +7452,7 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // and the brand_copy_website_examples feature) — a second, independent
     // source of real brand-voice grounding, appended rather than replacing
     // the writing-samples context above.
-    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
+    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -7406,6 +7477,8 @@ CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 - Objective: ${campaign.objective || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}
+- Target generation(s) (from this account's Verilume assessment): ${humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'}
+- Target wealth tier (Verilume Wealth Index-derived): ${humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
 - Primary KPI this campaign is measured on: ${campaign.primaryKpi || '(not set)'} — the call to action must genuinely drive this outcome, specifically, not a generic "learn more"
 - Key Message the human supplied, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief, not a sentence to quote verbatim -- write real, finished copy that captures this direction in your own words; do not reproduce it as-is)' : ' (weave this in as the real anchor of the copy if present, as close to verbatim as reads naturally)'}: ${opts.keyMessage || '(none supplied — establish your own opening line grounded in the brand voice and style facts above)'}
 - Role/Style approach: ${opts.style || 'Storytelling'}
@@ -7637,6 +7710,13 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // 2026-08-25 — same website-examples addition as generateMessagingCopyViaAI
   // above, so both PR-copy generation paths (single-shot and the contest
   // panel, which both call this same builder) draw from it too.
+  // 2026-09-01 — deliberately NOT appending creativeJobDecisionContext()
+  // here: creative_job_decisions is campaign/creative-job copy approval
+  // history, not PR/Corp Comm's own — see that function's comment for the
+  // isolation this preserves (same boundary SAMPLE_CATEGORY_WEIGHT already
+  // draws for brand_writing_samples). PR/Corp Comm's own approval/rejection
+  // history feeding back into this prompt is still the "separate, not-yet-
+  // built follow-up" noted in SAMPLE_CATEGORY_WEIGHT's comment, not this.
   const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
   // 2026-08-27 — pull this account's saved legal boilerplate library
   // (contentLibraryJson.legalDisclaimer, round 55) so an Earnings
@@ -8518,7 +8598,7 @@ async function runCandidateInterview(campaign, account){
   // vendor in this panel is judging the same brief against the same brand,
   // so there's no reason to re-query/re-extract the same samples up to 7
   // times per click.
-  const sampleContext = await brandWritingSampleContext(account.accountId);
+  const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
   const generated = await Promise.all(
     INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext))
   );
@@ -10294,6 +10374,89 @@ async function handleRequest(req, res) {
       const longformVoiceExample = body.longformVoiceExample !== undefined ? body.longformVoiceExample : existing.longformVoiceExample;
       db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?').run(visionStatement, longformVoiceExample, accountId);
       return sendJson(res, 200, { visionStatement, longformVoiceExample });
+    }
+
+    // POST /api/ops/vendor-blind-panel — staff-only, one-off scoped tool
+    // (2026-09-02 direct request): fires ONE shared prompt at all five
+    // licensed vendors (Anthropic direct, plus the four in
+    // INTERVIEW_VENDOR_REGISTRY) and returns every result, blind-labeled
+    // the same way runBrandVoiceContest/runCandidateInterview already do
+    // (Fisher-Yates shuffle, then "Option N" in randomized order) so the
+    // reviewer compares the writing itself before knowing which vendor
+    // wrote it. This is NOT the client-facing Free Assessment panel this
+    // was built to help evaluate — it exists only so that comparison can
+    // happen through the app's own already-configured vendor keys, instead
+    // of handling those keys anywhere else. Real vendor/model IS included
+    // in the response (unredacted, same "staff-only" convention as
+    // GET /api/ops/accounts/:id/voice-contests below) — the frontend page
+    // is responsible for hiding it behind a reveal control, not this route.
+    // Nothing here is persisted — no contest_rankings row, no db write —
+    // this is a one-time comparison tool, not a scored/recorded contest.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'vendor-blind-panel'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const body = await readBody(req);
+      const company = (body.company || 'Oceania Cruises').trim();
+      const footprint = (body.footprint || 'National').trim();
+      const industryLabel = (body.industryLabel || 'Luxury tier, Cruise Lines').trim();
+      const mediaPct = Number.isFinite(Number(body.mediaPct)) ? Number(body.mediaPct) : 61;
+      const cxPct = Number.isFinite(Number(body.cxPct)) ? Number(body.cxPct) : 65;
+      const weakestStage = (body.weakestStage || 'Purchase').trim();
+      const prompt = `You are an independent marketing consultant, not a vendor pitching a product. Write a ~100-word paragraph for a prospect who just finished a free brand assessment. Real inputs available: company name, footprint (local/national/global), industry + market tier, the prospect's own self-rated Media effectiveness % and CX effectiveness %, and which of five funnel stages (Awareness, Consideration, Purchase, Loyalty, Advocacy) they rated weakest. Do not invent any statistic, market size, or competitor count — only reference the self-rated inputs given, plus general, well-established industry/marketing knowledge you're confident is true without a citation. The paragraph must: (1) open on where this company is actually positioned, not a recap of what they just told you; (2) surface one real industry-level trend relevant to their weakest stage; (3) make one observation about how AI and human judgment are being split in marketing work right now, as an industry dynamic — not as a pitch for any specific product or company; (4) end on a genuine open thread that makes the reader want to see more, not a call-to-action or sales line. Do not mention any vendor, tool, or platform by name. Inputs: Company = ${company}. Footprint = ${footprint}. Industry = ${industryLabel}. Media% = ${mediaPct}. CX% = ${cxPct}. Weakest stage = ${weakestStage}.`;
+
+      async function callAnthropicText(promptText){
+        try {
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 700, messages: [{ role: 'user', content: promptText }] })
+          });
+          if (!resp.ok){
+            const bodyText = (await resp.text()).slice(0, 300);
+            return { text: null, error: `HTTP ${resp.status}: ${bodyText}` };
+          }
+          const data = await resp.json();
+          return { text: (data.content || []).map(b => b.text || '').join(''), error: null };
+        } catch (e){
+          return { text: null, error: 'Generation failed: ' + e.message };
+        }
+      }
+
+      const candidates = [];
+      if (process.env.ANTHROPIC_API_KEY){
+        const r = await callAnthropicText(prompt);
+        candidates.push({ key: 'anthropic-claude', vendor: 'Anthropic', model: 'claude-sonnet-4-5-20250929', text: r.text, error: r.error });
+      } else {
+        candidates.push({ key: 'anthropic-claude', vendor: 'Anthropic', model: null, text: null, error: 'not configured — ANTHROPIC_API_KEY not set' });
+      }
+      const registryResults = await Promise.all(INTERVIEW_VENDOR_REGISTRY.map(async v => {
+        if (!process.env[v.envVar]){
+          return { key: v.key, vendor: v.vendor, model: null, text: null, error: `not configured — ${v.envVar} not set` };
+        }
+        try {
+          const text = await callVendorForText(v.key, prompt);
+          return { key: v.key, vendor: v.vendor, model: v.model, text, error: null };
+        } catch (e){
+          return { key: v.key, vendor: v.vendor, model: v.model, text: null, error: 'Generation failed: ' + e.message };
+        }
+      }));
+      candidates.push(...registryResults);
+
+      // Same blind-label shuffle as runBrandVoiceContest/runCandidateInterview.
+      const shuffled = [...candidates];
+      for (let i = shuffled.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
+      candidates.sort((a, b) => {
+        const na = parseInt(String(a.blindLabel).replace(/\D/g, ''), 10) || 0;
+        const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
+        return na - nb;
+      });
+
+      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, mediaPct, cxPct, weakestStage }, candidates });
     }
 
     // GET /api/ops/accounts/:id/voice-contests — staff-only, unredacted (real
@@ -15324,201 +15487,4 @@ async function handleRequest(req, res) {
          inkLimit, richBlack, notes, createdAt)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(
-          specId, accountId, body.publication, body.publisher || null, body.mediumType, body.adFormat,
-          typeof body.trimWidthIn === 'number' ? body.trimWidthIn : null,
-          typeof body.trimHeightIn === 'number' ? body.trimHeightIn : null,
-          body.bleedWidthIn != null ? String(body.bleedWidthIn) : null,
-          body.bleedHeightIn != null ? String(body.bleedHeightIn) : null,
-          typeof body.liveWidthIn === 'number' ? body.liveWidthIn : null,
-          typeof body.liveHeightIn === 'number' ? body.liveHeightIn : null,
-          body.colorProfile || defaultColorProfile, body.dpi || defaultDpi, body.fileFormat || defaultFileFormat,
-          body.inkLimit || defaultInkLimit, body.richBlack || defaultRichBlack, body.notes || null, now
-        );
-      return sendJson(res, 201, { specId, createdAt: now });
-    }
-
-    // DELETE /api/print-specs/:id — remove a custom entry this account
-    // added by mistake. Only ever targets print_specs_custom rows — the
-    // global catalog isn't deletable through the API.
-    if (req.method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'print-specs'){
-      const specId = decodeURIComponent(parts[2]);
-      const existing = db.prepare('SELECT id, accountId FROM print_specs_custom WHERE id = ?').get(specId);
-      if (!existing) return sendJson(res, 404, { error: 'custom print spec not found' });
-      if (!requireAccount(req, res, existing.accountId)) return;
-      db.prepare('DELETE FROM print_specs_custom WHERE id = ?').run(specId);
-      return sendJson(res, 200, { deleted: true });
-    }
-
-    // POST /api/leads — real lead capture from assessment.html's contact
-    // step (round 59, Deliverable 13/CRM integration; expanded round 126).
-    // Fires at registration — the last step of the free assessment as of
-    // Round 125 — so everything through the Marketing Loop and the CX/
-    // Media Science/Team/Voice maturity carousel is already in `body` here;
-    // only the post-registration "extended evaluation" (Function Groups,
-    // Scope Picker, Assess) isn't yet — that arrives later via POST
-    // /api/leads/enhance below. Always persists locally first (this is the
-    // durable record — assessmentDataJson holds the full structured
-    // profile, not just the typed columns); attempts a HubSpot sync on top
-    // only if HUBSPOT_ACCESS_TOKEN is configured — see
-    // syncLeadToHubspot()'s comment above for the one-time setup once a
-    // HubSpot account exists. Never accountId-scoped: a lead exists before
-    // any account does.
-    if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'leads'){
-      const body = await readBody(req);
-      if (!body.email || !body.consent){
-        return sendJson(res, 400, { error: 'email and consent are required' });
-      }
-      const leadId = generateId('lead');
-      const now = new Date().toISOString();
-      const sync = await syncLeadToHubspot(body);
-      db.prepare(`INSERT INTO leads
-        (id, email, firstName, lastName, phoneCountry, phone, company, industry, footprint,
-         buyerType, address, engagementModel, quadrant, mediaPct, cxPct, consent, source,
-         hubspotStatus, hubspotContactId, hubspotError, createdAt, assessmentDataJson)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(
-          leadId, body.email, body.firstName || '', body.lastName || '', body.phoneCountry || '',
-          body.phone || '', body.company || '', body.industry || '', body.footprint || '',
-          body.buyerType || '', body.address || '', body.engagementModel || '', body.quadrant || '',
-          typeof body.mediaPct === 'number' ? body.mediaPct : null,
-          typeof body.cxPct === 'number' ? body.cxPct : null,
-          body.consent ? 1 : 0, body.source || '',
-          sync.hubspotStatus, sync.hubspotContactId || null, sync.hubspotError || null, now,
-          JSON.stringify(body)
-        );
-      return sendJson(res, 201, {
-        leadId,
-        hubspotStatus: sync.hubspotStatus,
-        hubspotContactId: sync.hubspotContactId || null,
-        hubspotContactUrl: sync.hubspotContactUrl || null,
-        hubspotError: sync.hubspotError || null
-      });
-    }
-
-    // POST /api/leads/enhance — round 126. Fires once the post-registration
-    // "extended evaluation" accordion (Function Groups, Scope Picker,
-    // Assess) finishes — assessment.html calls this from finishAssess().
-    // Looked up by email, not leadId (the front end doesn't keep the
-    // leadId from the /api/leads response around across the page's later
-    // steps, and email is the same natural key HubSpot's own upsert already
-    // keys on) — updates the MOST RECENT leads row for that email in place
-    // (a repeat visitor re-running the assessment gets a fresh row from
-    // /api/leads first, so "most recent" is always this session's row) and
-    // re-syncs the same HubSpot contact (upsert-by-email) with the fuller
-    // property set — see buildHubspotCustomProperties() above for exactly
-    // which fields land where.
-    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'leads' && parts[2] === 'enhance'){
-      const body = await readBody(req);
-      if (!body.email){
-        return sendJson(res, 400, { error: 'email is required' });
-      }
-      const existing = db.prepare('SELECT * FROM leads WHERE email = ? ORDER BY createdAt DESC LIMIT 1').get(body.email);
-      if (!existing){
-        return sendJson(res, 404, { error: 'no lead found for this email — POST /api/leads first' });
-      }
-      // Merge onto the original registration-time payload so fields it
-      // already had (industry, footprint, org style, maturity levels, …)
-      // still get sent to HubSpot alongside the new post-Assess fields —
-      // the enhance call only carries what changed, not the whole profile.
-      const merged = Object.assign({}, JSON.parse(existing.assessmentDataJson || '{}'), body);
-      const sync = await syncLeadToHubspot(merged);
-      db.prepare(`UPDATE leads SET
-          quadrant = ?, mediaPct = ?, cxPct = ?,
-          hubspotStatus = ?, hubspotContactId = ?, hubspotError = ?, assessmentDataJson = ?
-        WHERE id = ?`)
-        .run(
-          merged.quadrant || existing.quadrant,
-          typeof merged.mediaPct === 'number' ? merged.mediaPct : existing.mediaPct,
-          typeof merged.cxPct === 'number' ? merged.cxPct : existing.cxPct,
-          sync.hubspotStatus, sync.hubspotContactId || existing.hubspotContactId || null,
-          sync.hubspotError || null, JSON.stringify(merged), existing.id
-        );
-      return sendJson(res, 200, {
-        leadId: existing.id,
-        hubspotStatus: sync.hubspotStatus,
-        hubspotContactId: sync.hubspotContactId || existing.hubspotContactId || null,
-        hubspotContactUrl: sync.hubspotContactUrl || hubspotContactUrl(existing.hubspotContactId) || null,
-        hubspotError: sync.hubspotError || null
-      });
-    }
-
-    // GET /api/leads — admin/verification visibility into captured leads
-    // and their HubSpot sync status; not called from any front-end file
-    // yet (no admin UI exists in this build), but useful for confirming a
-    // real sync actually happened once HUBSPOT_ACCESS_TOKEN is set. Leads
-    // aren't scoped to any single account (no account exists yet at
-    // capture time), so the per-account session check doesn't apply here —
-    // gated instead by a separate admin token, since this endpoint returns
-    // every lead's PII across every account at once. Same "not a real
-    // identity provider" caveat as the rest of this round: a real build
-    // replaces this with an actual admin role, per
-    // cxmedia-account-mgmt-scoping.md's future admin-panel note.
-    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'leads'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
-        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
-      }
-      const leads = db.prepare('SELECT * FROM leads ORDER BY createdAt DESC').all()
-        .map(lead => ({ ...lead, hubspotContactUrl: hubspotContactUrl(lead.hubspotContactId) }));
-      return sendJson(res, 200, { leads });
-    }
-
-    sendJson(res, 404, { error: 'not found' });
-  } catch (e){
-    console.error(e);
-    sendJson(res, 500, { error: 'server error', detail: e.message });
-  }
-}
-
-// 2026-08-22 — process-level safety net, added after a live production
-// crash (500 INTERNAL_FUNCTION_INVOCATION_FAILED on a completely unrelated,
-// route-unmatched GET request, immediately following a login-MFA POST on
-// the same warm container). handleRequest()'s own try/catch only protects
-// errors thrown SYNCHRONOUSLY inside a request's own call chain — it has
-// no reach over a stray throw from a timer, an un-awaited background
-// promise, or any other async operation that outlives the request that
-// started it. Node's default behavior for an uncaught exception or an
-// unhandled promise rejection is to crash the entire process — on a warm
-// serverless container, that takes down whatever OTHER, completely
-// unrelated request happens to be in flight at that exact moment, which
-// is consistent with what was observed (a harmless unmatched GET, with
-// zero outgoing calls of its own per Vercel's own request trace, crashing
-// outright). This mirrors the exact fix already applied to
-// pg-sync-bridge.js's Worker on 2026-08-20 for the same crash signature —
-// this is the same fix at the process level instead of one specific
-// Worker, since the earlier fix only covers errors from that one Worker,
-// not from anywhere else in this ~12,000-line file's ~200 async
-// functions. Logs and stays up rather than crashing — the in-flight
-// request whose own code actually threw still fails (as it should; the
-// bug there is real), but every OTHER concurrent/subsequent request on
-// this container no longer gets caught in the blast radius.
-process.on('uncaughtException', (err) => {
-  console.error('[process] uncaughtException — server staying up:', err);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('[process] unhandledRejection — server staying up:', reason);
-});
-
-// Local dev / standalone mode: only start a real listening server when this
-// file is run directly (`node server.js`), same as before. When Vercel
-// imports this file as a serverless function module (require.main !== this
-// module), it skips straight to the module.exports below instead — no port
-// ever gets bound, which is correct, since Vercel's platform handles
-// listening/routing itself and just calls handleRequest per request.
-if (require.main === module) {
-  const server = http.createServer(handleRequest);
-  const PORT = process.env.PORT || 8787;
-  server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
-}
-
-// 2026-08-23 fix — module load (and all ~230 top-level schema-setup
-// db.exec()/ensureColumn() calls above) is finished at this point. Flip
-// INIT_PHASE off so any db.exec() call from here on — i.e. any real
-// per-request query — throws normally again instead of being swallowed.
-// Those still get caught cleanly by handleRequest's own try/catch (a
-// normal 500 with a real error message) or, for anything async, by the
-// process.on('uncaughtException')/'unhandledRejection' handlers just
-// above. Only the one-time startup window is forgiving; request-time
-// failures still surface exactly as before.
-INIT_PHASE = false;
-
-module.exports = handleRequest;
+          specId, accountId, body.publication, body.publisher || n
