@@ -5339,7 +5339,28 @@ const LEGACY_CASING_COLUMNS = [
   ['zip_demographic_master', 'sourceLabel'],
   ['zip_demographic_master', 'updatedAt'],
   ['zip_population_master', 'sourceLabel'],
-  ['zip_population_master', 'updatedAt']
+  ['zip_population_master', 'updatedAt'],
+  // 2026-09-02 addition — same bug, same fix, different cold start. These 9
+  // never made it into schema-identifiers.json when the corresponding
+  // features shipped (brand-sample exclusion, press-release CTA/release
+  // type/LinkedIn copy, account-intelligence caching), so ensureColumn()
+  // kept creating/matching them all-lowercase every single cold start —
+  // both the recurring "column already exists" crash noise AND the reason
+  // the app's own JS (which reads query results as e.g. row.releaseType)
+  // was silently getting undefined for these specific fields. Adding them
+  // here lets the existing, already-approved fixLegacyColumnCasing() repair
+  // (POST /api/admin/fix-legacy-casing) rename the lowercase-folded column
+  // to the correct camelCase one IN PLACE — RENAME COLUMN preserves data,
+  // so whatever was written under the lowercase name survives the rename.
+  ['brand_writing_samples', 'excludedAt'],
+  ['brand_writing_samples', 'excludedBy'],
+  ['brand_writing_samples', 'excludedReason'],
+  ['press_releases', 'releaseType'],
+  ['press_releases', 'ctaText'],
+  ['press_releases', 'ctaMode'],
+  ['press_releases', 'linkedinCopy'],
+  ['accounts', 'accountIntelligenceGeneratedAt'],
+  ['accounts', 'accountIntelligenceJson']
 ];
 // 2026-08-21, later same day — this used to run automatically at module
 // load (`fixLegacyColumnCasing();` right here, on every cold start), doing
@@ -15862,4 +15883,15 @@ if (require.main === module) {
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
-// db.exec()/ensureColumn() calls above) is finished at this poin
+// db.exec()/ensureColumn() calls above) is finished at this point. Flip
+// INIT_PHASE off so any db.exec() call from here on — i.e. any real
+// per-request query — throws normally again instead of being swallowed.
+// Those still get caught cleanly by handleRequest's own try/catch (a
+// normal 500 with a real error message) or, for anything async, by the
+// process.on('uncaughtException')/'unhandledRejection' handlers just
+// above. Only the one-time startup window is forgiving; request-time
+// failures still surface exactly as before.
+INIT_PHASE = false;
+
+module.exports = handleRequest;
+
