@@ -25,6 +25,7 @@
     { "source": "/onboarding.html", "destination": "/frontend/onboarding.html" },
     { "source": "/ooh-specs.html", "destination": "/frontend/ooh-specs.html" },
     { "source": "/ops-console.html", "destination": "/frontend/ops-console.html" },
+    { "source": "/vendor-blind-panel.html", "destination": "/frontend/vendor-blind-panel.html" },
     { "source": "/portal.html", "destination": "/frontend/portal.html" },
     { "source": "/sample-assessment.html", "destination": "/frontend/sample-assessment.html" },
     { "source": "/print-specs.html", "destination": "/frontend/print-specs.html" },
@@ -38,7 +39,11 @@
     { "source": "/docs/", "destination": "/docs/verilume-product-docs.html" },
     { "source": "/docs/copywriting", "destination": "/docs/verilume-product-copywriting.html" },
     { "source": "/docs/licensed-integrations", "destination": "/docs/verilume-product-licensed-integrations.html" },
-    { "source": "/docs/registration-account-management", "destination": "/docs/registrationaccountmanagementproduct.html" }
+    { "source": "/docs/registration-account-management", "destination": "/docs/registrationaccountmanagementproduct.html" },
+    { "source": "/docs/free-assessment", "destination": "/docs/verilume-product-free-assessment.html" },
+    { "source": "/docs/continuous-monitoring", "destination": "/docs/verilume-product-continuous-monitoring.html" },
+    { "source": "/docs/team-experiences", "destination": "/docs/verilume-product-team-experiences.html" },
+    { "source": "/docs/public-sample-assessment", "destination": "/docs/verilume-product-public-sample-assessment.html" }
   ],
   "redirects": [
     { "source": "/docs", "destination": "/docs/", "permanent": false }
