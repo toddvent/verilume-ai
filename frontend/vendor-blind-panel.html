@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Vendor Blind Panel (Staff Only, One-Off Tool)</title>
+<style>
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+    --warn:#B45309; --warn-tint:#FEF3E2; --danger:#B42318; --danger-tint:#FEF1F0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.05) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.06) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:880px;margin:0 auto;padding:0 28px 80px;}
+  a{color:inherit;}
+  .staffbar{background:var(--ink);color:#fff;}
+  .staffbar-inner{max-width:880px;margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.75rem;letter-spacing:0.04em;}
+  .staffbar-inner b{color:var(--media-tint);}
+  .staffbar .op{color:#B9BEDB;}
+  .topnav{border-bottom:1px solid var(--line);}
+  .topnav-inner{max-width:880px;margin:0 auto;padding:18px 28px;}
+  .wordmark{font-size:1.25rem;font-weight:500;}
+  .wordmark b{color:var(--media);font-weight:600;}
+  .wordmark .sub{font-size:0.72rem;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-left:10px;padding-left:10px;border-left:1px solid var(--line);}
+  h1{font-size:1.7rem;margin:28px 0 4px;letter-spacing:-0.01em;}
+  .lede{color:var(--muted);font-size:0.9rem;max-width:640px;line-height:1.55;margin:0 0 24px;}
+  .eyebrow{font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--media);font-weight:600;margin-bottom:8px;}
+  .module{background:var(--white);border:1px solid var(--line);border-top-width:2px;border-top-color:var(--media-tint);border-radius:14px;margin-bottom:18px;padding:22px 24px;}
+  .module h3{font-size:0.95rem;margin:0 0 4px;}
+  .module .desc{font-size:0.82rem;color:var(--muted);margin:0 0 16px;line-height:1.5;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  .field-row.three{grid-template-columns:1fr 1fr 1fr;}
+  label{font-size:0.75rem;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;}
+  input[type=text],input[type=number],input[type=password]{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);}
+  .btn{font-size:0.8rem;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;}
+  .btn:hover{border-color:var(--line-strong);}
+  .btn.primary{background:var(--media);border-color:var(--media);color:#fff;}
+  .btn.primary:hover{background:#1D4ED8;}
+  .btn.small{padding:5px 11px;font-size:0.72rem;}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .toggle-row{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted);margin-top:10px;}
+  .hidden{display:none !important;}
+  .safeguard{background:var(--danger-tint);border:1px solid #F3C6C2;border-radius:var(--radius-sm);padding:14px 18px;font-size:0.82rem;color:#7A241C;margin:0 0 18px;line-height:1.5;}
+  .safeguard b{color:var(--danger);}
+  .prompt-box{font-size:0.75rem;color:var(--muted);background:var(--paper-dim);border:1px dashed var(--line-strong);border-radius:8px;padding:10px 12px;line-height:1.5;white-space:pre-wrap;margin-top:8px;}
+  .candidates{display:grid;gap:14px;margin-top:8px;}
+  .candidate{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-md);padding:18px 20px;}
+  .candidate.errored{border-color:#F3C6C2;background:var(--danger-tint);}
+  .candidate .cand-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;}
+  .candidate .cand-label{font-size:0.72rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);}
+  .candidate .cand-vendor{font-size:0.72rem;color:var(--muted);font-weight:600;}
+  .candidate .cand-text{font-size:0.92rem;line-height:1.6;white-space:pre-wrap;}
+  .candidate .cand-error{font-size:0.82rem;color:var(--danger);}
+  .candidate .cand-wc{font-size:0.68rem;color:var(--line-strong);margin-top:8px;}
+  .reveal-all-row{margin:10px 0 0;text-align:right;}
+  .status-line{font-size:0.82rem;color:var(--muted);margin-top:8px;}
+  .status-line.error{color:var(--danger);}
+  #gate{min-height:60vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  #gate .card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:36px;max-width:420px;width:100%;}
+  #gate h2{font-size:1.2rem;margin:0 0 6px;}
+  #gate p{font-size:0.85rem;color:var(--muted);margin:0 0 20px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <div class="eyebrow">Staff Only</div>
+    <h2>Vendor Blind Panel</h2>
+    <p>One-off internal tool — not part of the product. Enter the admin token to continue.</p>
+    <label>X-Admin-Token</label>
+    <input type="password" id="gateToken" placeholder="Admin token" autocomplete="off">
+    <div class="toggle-row"><label style="margin:0;"><input type="checkbox" id="gateRemember"> Remember on this device (session only)</label></div>
+    <div style="margin-top:16px;"><button class="btn primary" id="gateSubmit">Enter</button></div>
+    <div class="status-line error hidden" id="gateError"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="staffbar"><div class="staffbar-inner"><span><b>STAFF ONLY</b> — one-off comparison tool, not part of the product</span><span class="op">vendor-blind-panel.html</span></div></div>
+  <div class="topnav"><div class="topnav-inner"><span class="wordmark"><b>Verilume</b><span class="sub">Vendor Blind Panel</span></span></div></div>
+
+  <div class="wrap">
+    <h1>Vendor Blind Panel</h1>
+    <p class="lede">Fires one shared prompt at all five licensed vendors (Anthropic, OpenAI, Gemini, Grok, Perplexity) through the app's own already-configured keys, and shows every result blind-labeled — Option 1 through 5, randomized order — so you can judge the writing before knowing who wrote it. Built for one exercise: comparing candidate copy for the Free Assessment results panel rework. Nothing here is saved or scored.</p>
+
+    <div class="safeguard"><b>Cost note:</b> every run calls all five providers for real. Only run this when you actually want a fresh comparison.</div>
+
+    <div class="module">
+      <h3>Inputs</h3>
+      <div class="desc">Prefilled with the Oceania Cruises example from the current thread — change any field and re-run.</div>
+      <div class="field-row three">
+        <div><label>Company</label><input type="text" id="inCompany" value="Oceania Cruises"></div>
+        <div><label>Footprint</label><input type="text" id="inFootprint" value="National"></div>
+        <div><label>Industry + tier</label><input type="text" id="inIndustry" value="Luxury tier, Cruise Lines"></div>
+      </div>
+      <div class="field-row three">
+        <div><label>Media %</label><input type="number" id="inMedia" value="61"></div>
+        <div><label>CX %</label><input type="number" id="inCx" value="65"></div>
+        <div><label>Weakest stage</label><input type="text" id="inStage" value="Purchase"></div>
+      </div>
+      <button class="btn primary" id="runBtn">Run panel — call all 5 vendors</button>
+      <div class="status-line hidden" id="runStatus"></div>
+      <div class="prompt-box hidden" id="promptBox"></div>
+    </div>
+
+    <div id="resultsModule" class="module hidden">
+      <h3>Results — blind</h3>
+      <div class="desc">Randomized order, no vendor name shown by default. Reveal a single card or all at once.</div>
+      <div class="reveal-all-row"><button class="btn small" id="revealAllBtn">Reveal all vendors</button></div>
+      <div class="candidates" id="candidates"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const TOKEN_KEY = 'verilume_vendor_panel_admin_token';
+  const gate = document.getElementById('gate');
+  const app = document.getElementById('app');
+  const gateToken = document.getElementById('gateToken');
+  const gateRemember = document.getElementById('gateRemember');
+  const gateSubmit = document.getElementById('gateSubmit');
+  const gateError = document.getElementById('gateError');
+  let adminToken = null;
+
+  function enterApp(token){
+    adminToken = token;
+    gate.classList.add('hidden');
+    app.classList.remove('hidden');
+  }
+
+  const remembered = sessionStorage.getItem(TOKEN_KEY);
+  if (remembered) enterApp(remembered);
+
+  gateSubmit.addEventListener('click', function(){
+    const t = gateToken.value.trim();
+    if (!t){ gateError.textContent = 'Enter a token.'; gateError.classList.remove('hidden'); return; }
+    if (gateRemember.checked) sessionStorage.setItem(TOKEN_KEY, t);
+    enterApp(t);
+  });
+
+  const runBtn = document.getElementById('runBtn');
+  const runStatus = document.getElementById('runStatus');
+  const promptBox = document.getElementById('promptBox');
+  const resultsModule = document.getElementById('resultsModule');
+  const candidatesEl = document.getElementById('candidates');
+  const revealAllBtn = document.getElementById('revealAllBtn');
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function wordCount(s){
+    if (!s) return 0;
+    return s.trim().split(/\s+/).filter(Boolean).length;
+  }
+
+  function renderCandidates(candidates){
+    candidatesEl.innerHTML = candidates.map(c => {
+      const errored = !!c.error;
+      return `<div class="candidate${errored ? ' errored' : ''}" data-key="${esc(c.key)}">
+        <div class="cand-head">
+          <span class="cand-label">${esc(c.blindLabel)}</span>
+          <span class="cand-vendor hidden" data-vendor>${esc(c.vendor)}${c.model ? ' — ' + esc(c.model) : ''}</span>
+        </div>
+        ${errored
+          ? `<div class="cand-error">${esc(c.error)}</div>`
+          : `<div class="cand-text">${esc(c.text)}</div><div class="cand-wc">${wordCount(c.text)} words</div>`}
+      </div>`;
+    }).join('');
+    resultsModule.classList.remove('hidden');
+  }
+
+  revealAllBtn.addEventListener('click', function(){
+    document.querySelectorAll('[data-vendor]').forEach(el => el.classList.remove('hidden'));
+  });
+  candidatesEl.addEventListener('click', function(e){
+    const card = e.target.closest('.candidate');
+    if (!card) return;
+    const vEl = card.querySelector('[data-vendor]');
+    if (vEl) vEl.classList.remove('hidden');
+  });
+
+  runBtn.addEventListener('click', async function(){
+    runBtn.disabled = true;
+    runStatus.textContent = 'Calling all five vendors — this can take up to a minute...';
+    runStatus.classList.remove('hidden', 'error');
+    promptBox.classList.add('hidden');
+    resultsModule.classList.add('hidden');
+
+    const body = {
+      company: document.getElementById('inCompany').value,
+      footprint: document.getElementById('inFootprint').value,
+      industryLabel: document.getElementById('inIndustry').value,
+      mediaPct: Number(document.getElementById('inMedia').value),
+      cxPct: Number(document.getElementById('inCx').value),
+      weakestStage: document.getElementById('inStage').value
+    };
+
+    try {
+      const resp = await fetch('/api/ops/vendor-blind-panel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json();
+      if (!resp.ok){
+        runStatus.textContent = data.error || ('Request failed (HTTP ' + resp.status + ').');
+        runStatus.classList.add('error');
+        runBtn.disabled = false;
+        return;
+      }
+      runStatus.textContent = 'Done.';
+      promptBox.textContent = data.prompt;
+      promptBox.classList.remove('hidden');
+      renderCandidates(data.candidates || []);
+    } catch (e){
+      runStatus.textContent = 'Request failed: ' + e.message;
+      runStatus.classList.add('error');
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
