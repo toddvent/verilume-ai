@@ -10564,15 +10564,22 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         if (selectedPaths.length >= WEBSITE_SCAN_MAX_PAGES) break;
       }
 
-      const pages = [];
-      for (const p of selectedPaths){
+      // Fetched in PARALLEL, not sequentially — up to WEBSITE_SCAN_MAX_PAGES
+      // (12) pages each carry their own 8s timeout inside fetchAndExtractPage;
+      // fetching them one at a time could take up to ~96s on top of the
+      // sitemap fetch and the extraction call, which risks tripping the
+      // platform's function-timeout ("A server error has occurred" — not
+      // real JSON, which is what broke the frontend the first time this was
+      // tested against a real site). Promise.all keeps the wall-clock cost
+      // close to the single slowest page instead of the sum of all of them.
+      const pages = await Promise.all(selectedPaths.map(async (p) => {
         try {
           const ctx = await fetchAndExtractPage(origin + p);
-          pages.push({ path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt });
+          return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt };
         } catch (e){
-          pages.push({ path: p, ok: false, error: e.message });
+          return { path: p, ok: false, error: e.message };
         }
-      }
+      }));
 
       const pageBlocks = pages.filter(p => p.ok).map(p =>
         `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}`
@@ -15506,4 +15513,353 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
       const existing = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       if (!requireAdminMember(req, res, existing.accountId)) return;
-      db.prepare('DELETE FROM team_memb
+      db.prepare('DELETE FROM team_members WHERE id = ?').run(memberId);
+      return sendJson(res, 200, { deleted: true });
+    }
+
+    // GET /api/team/:id/ratings — round 46, HEO self-rating (function 1 of
+    // 3). Returns this member's full rating history, flat and ordered
+    // oldest-first — same shape as score_history reads elsewhere, so the
+    // front end can derive "most recent per skill" and "trend over time"
+    // from the same array without a second endpoint.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'team' && parts[3] === 'ratings'){
+      const memberId = decodeURIComponent(parts[2]);
+      const member = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
+      if (!member) return sendJson(res, 404, { error: 'team member not found' });
+      if (!requireAccount(req, res, member.accountId)) return;
+      const ratings = db.prepare('SELECT * FROM self_ratings WHERE memberId = ? ORDER BY ratedAt ASC').all(memberId);
+      return sendJson(res, 200, { ratings });
+    }
+
+    // POST /api/team/:id/ratings — records one self-rating for one skill.
+    // One skill per call (not a batch) so the front end's per-skill
+    // Behind/On par/Ahead tile — same interaction as Continuous
+    // Monitoring's submitRerate() — can post the instant it's clicked,
+    // exactly like that flow already does, rather than waiting for every
+    // skill on the card to be rated before anything saves.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'team' && parts[3] === 'ratings'){
+      const memberId = decodeURIComponent(parts[2]);
+      const member = db.prepare('SELECT id, accountId FROM team_members WHERE id = ?').get(memberId);
+      if (!member) return sendJson(res, 404, { error: 'team member not found' });
+      if (!requireAccount(req, res, member.accountId)) return;
+      const body = await readBody(req);
+      if (!body.skill || typeof body.score !== 'number'){
+        return sendJson(res, 400, { error: 'skill and a numeric score are required' });
+      }
+      const ratingId = generateId('RATING');
+      const now = new Date().toISOString();
+      db.prepare(
+        'INSERT INTO self_ratings (id, accountId, memberId, skill, score, source, ratedAt) VALUES (?,?,?,?,?,?,?)'
+      ).run(ratingId, member.accountId, memberId, body.skill, body.score, body.source || 'self-rating', now);
+      return sendJson(res, 201, { ratingId, ratedAt: now });
+    }
+
+    // ---------- Round 61 — Print Ad Specs (Print channel of the creative
+    // selection tree) ----------
+
+    // ---------- CMO Daily Brief (Deliverable #10) ----------
+    // GET /api/daily-brief/global — every curated article, ungrouped and
+    // unfiltered. Not account-scoped and not auth-gated — same trust level
+    // as GET /api/print-specs/global: real reference content, identical for
+    // every account.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'daily-brief' && parts[2] === 'global'){
+      return sendJson(res, 200, { articles: GLOBAL_DAILY_BRIEF_ARTICLES, curatedAt: DAILY_BRIEF_CURATED_AT });
+    }
+
+    // GET /api/accounts/:id/daily-brief — the personalized view: which
+    // Function Groups are "active" for this specific account (at least one
+    // team_members row with that functionGroup and status = 'active'), and
+    // only the curated articles for those groups. The article CONTENT is
+    // identical across every account (GLOBAL_DAILY_BRIEF_ARTICLES above) —
+    // what's account-specific is purely which groups are relevant, driven
+    // by this account's own real Team & Org Chart roster, not by anything
+    // generated per-account. A CMO/Executive-level member sees every group
+    // regardless (mirrors how the Team & Org Chart's "Acting as CMO" full
+    // view already works elsewhere in this file).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'daily-brief'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const activeMembers = db.prepare(`SELECT DISTINCT functionGroup FROM team_members WHERE accountId = ? AND status = 'active' AND functionGroup IS NOT NULL`).all(accountId);
+      const hasExecutive = activeMembers.some(m => m.functionGroup === 'Executive');
+      const activeFunctionGroups = hasExecutive
+        ? [...new Set(GLOBAL_DAILY_BRIEF_ARTICLES.map(a => a.functionGroup))]
+        : activeMembers.map(m => m.functionGroup).filter(fg => GLOBAL_DAILY_BRIEF_ARTICLES.some(a => a.functionGroup === fg));
+      const articles = activeFunctionGroups.length
+        ? GLOBAL_DAILY_BRIEF_ARTICLES.filter(a => activeFunctionGroups.includes(a.functionGroup))
+        : GLOBAL_DAILY_BRIEF_ARTICLES; // no active team roster yet on file — show everything rather than nothing
+      return sendJson(res, 200, {
+        articles,
+        curatedAt: DAILY_BRIEF_CURATED_AT,
+        activeFunctionGroups,
+        personalized: activeFunctionGroups.length > 0
+      });
+    }
+
+    // GET /api/print-specs/global — the shared master catalog. Not
+    // account-scoped and not auth-gated: it's read-only reference data
+    // identical for every account, same trust level as GET /api/health.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'print-specs' && parts[2] === 'global'){
+      return sendJson(res, 200, { specs: GLOBAL_PRINT_SPECS });
+    }
+
+    // GET /api/direct-mail-specs/global — the shared Direct Mail catalog
+    // (round 62). Same trust level as print-specs/global: read-only
+    // reference data, identical for every account, no auth required.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'direct-mail-specs' && parts[2] === 'global'){
+      return sendJson(res, 200, { specs: GLOBAL_DIRECT_MAIL_SPECS });
+    }
+
+    // GET /api/ooh-specs/global — the shared Out-of-Home / Digital OOH
+    // catalog (round 63). Same trust level as the other /global endpoints:
+    // read-only reference data, no auth required.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ooh-specs' && parts[2] === 'global'){
+      return sendJson(res, 200, { specs: GLOBAL_OOH_SPECS });
+    }
+
+    // GET /api/accounts/:id/print-specs — this account's own custom
+    // publication/spec additions (round 61, per direct instruction: teams
+    // can add a publication the master catalog is missing, saved to their
+    // account). Requires login exactly like every other account-scoped
+    // route — a team's added publications are private to that account.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'print-specs'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const custom = db.prepare('SELECT * FROM print_specs_custom WHERE accountId = ? ORDER BY createdAt ASC').all(accountId)
+        .map(row => ({ ...row, source: 'custom' }));
+      return sendJson(res, 200, { specs: custom });
+    }
+
+    // POST /api/accounts/:id/print-specs — add a custom publication/ad
+    // format this account needs that isn't in the master catalog.
+    // publication, mediumType, and adFormat are required; every dimension
+    // and technical field is optional so a team can save a partial entry
+    // and fill in exact trim/bleed later rather than being blocked on
+    // having every number up front.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'print-specs'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      if (!body.publication || !body.mediumType || !body.adFormat){
+        return sendJson(res, 400, { error: 'publication, mediumType, and adFormat are required' });
+      }
+      const specId = generateId('PRINT-CUSTOM');
+      const now = new Date().toISOString();
+      // Technical fields default from the same Submission Guidelines house
+      // rules buildPrintSpec() applies to the global catalog, so a custom
+      // publication the team adds isn't left with blank specs just because
+      // they only knew the trim size and not the color-profile jargon —
+      // they can still override any of these explicitly in the request.
+      const isMagazine = body.mediumType === 'Magazine';
+      const defaultColorProfile = isMagazine ? 'SWOP 3 / GRACoL 2013 (coated magazine stock)' : 'SNAP (coldset newsprint)';
+      const defaultDpi = isMagazine ? '300 DPI minimum @ 100% size' : '200 DPI acceptable (300 DPI preferred) @ 100% size';
+      const defaultFileFormat = 'PDF/X-1a or PDF/X-4 — CMYK only, all fonts embedded, crop marks outside bleed';
+      const defaultInkLimit = isMagazine ? 'Max 300% TAC (Total Area Coverage)' : 'Max 220%-240% TAC (Total Area Coverage)';
+      const defaultRichBlack = '60% C / 40% M / 30% Y / 100% K for solid black backgrounds/large shapes; small body text must be 100% K only';
+      db.prepare(`INSERT INTO print_specs_custom
+        (id, accountId, publication, publisher, mediumType, adFormat, trimWidthIn, trimHeightIn,
+         bleedWidthIn, bleedHeightIn, liveWidthIn, liveHeightIn, colorProfile, dpi, fileFormat,
+         inkLimit, richBlack, notes, createdAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(
+          specId, accountId, body.publication, body.publisher || null, body.mediumType, body.adFormat,
+          typeof body.trimWidthIn === 'number' ? body.trimWidthIn : null,
+          typeof body.trimHeightIn === 'number' ? body.trimHeightIn : null,
+          body.bleedWidthIn != null ? String(body.bleedWidthIn) : null,
+          body.bleedHeightIn != null ? String(body.bleedHeightIn) : null,
+          typeof body.liveWidthIn === 'number' ? body.liveWidthIn : null,
+          typeof body.liveHeightIn === 'number' ? body.liveHeightIn : null,
+          body.colorProfile || defaultColorProfile, body.dpi || defaultDpi, body.fileFormat || defaultFileFormat,
+          body.inkLimit || defaultInkLimit, body.richBlack || defaultRichBlack, body.notes || null, now
+        );
+      return sendJson(res, 201, { specId, createdAt: now });
+    }
+
+    // DELETE /api/print-specs/:id — remove a custom entry this account
+    // added by mistake. Only ever targets print_specs_custom rows — the
+    // global catalog isn't deletable through the API.
+    if (req.method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'print-specs'){
+      const specId = decodeURIComponent(parts[2]);
+      const existing = db.prepare('SELECT id, accountId FROM print_specs_custom WHERE id = ?').get(specId);
+      if (!existing) return sendJson(res, 404, { error: 'custom print spec not found' });
+      if (!requireAccount(req, res, existing.accountId)) return;
+      db.prepare('DELETE FROM print_specs_custom WHERE id = ?').run(specId);
+      return sendJson(res, 200, { deleted: true });
+    }
+
+    // POST /api/leads — real lead capture from assessment.html's contact
+    // step (round 59, Deliverable 13/CRM integration; expanded round 126).
+    // Fires at registration — the last step of the free assessment as of
+    // Round 125 — so everything through the Marketing Loop and the CX/
+    // Media Science/Team/Voice maturity carousel is already in `body` here;
+    // only the post-registration "extended evaluation" (Function Groups,
+    // Scope Picker, Assess) isn't yet — that arrives later via POST
+    // /api/leads/enhance below. Always persists locally first (this is the
+    // durable record — assessmentDataJson holds the full structured
+    // profile, not just the typed columns); attempts a HubSpot sync on top
+    // only if HUBSPOT_ACCESS_TOKEN is configured — see
+    // syncLeadToHubspot()'s comment above for the one-time setup once a
+    // HubSpot account exists. Never accountId-scoped: a lead exists before
+    // any account does.
+    if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'leads'){
+      const body = await readBody(req);
+      if (!body.email || !body.consent){
+        return sendJson(res, 400, { error: 'email and consent are required' });
+      }
+      const leadId = generateId('lead');
+      const now = new Date().toISOString();
+      const sync = await syncLeadToHubspot(body);
+      db.prepare(`INSERT INTO leads
+        (id, email, firstName, lastName, phoneCountry, phone, company, industry, footprint,
+         buyerType, address, engagementModel, quadrant, mediaPct, cxPct, consent, source,
+         hubspotStatus, hubspotContactId, hubspotError, createdAt, assessmentDataJson)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(
+          leadId, body.email, body.firstName || '', body.lastName || '', body.phoneCountry || '',
+          body.phone || '', body.company || '', body.industry || '', body.footprint || '',
+          body.buyerType || '', body.address || '', body.engagementModel || '', body.quadrant || '',
+          typeof body.mediaPct === 'number' ? body.mediaPct : null,
+          typeof body.cxPct === 'number' ? body.cxPct : null,
+          body.consent ? 1 : 0, body.source || '',
+          sync.hubspotStatus, sync.hubspotContactId || null, sync.hubspotError || null, now,
+          JSON.stringify(body)
+        );
+      return sendJson(res, 201, {
+        leadId,
+        hubspotStatus: sync.hubspotStatus,
+        hubspotContactId: sync.hubspotContactId || null,
+        hubspotContactUrl: sync.hubspotContactUrl || null,
+        hubspotError: sync.hubspotError || null
+      });
+    }
+
+    // POST /api/leads/enhance — round 126. Fires once the post-registration
+    // "extended evaluation" accordion (Function Groups, Scope Picker,
+    // Assess) finishes — assessment.html calls this from finishAssess().
+    // Looked up by email, not leadId (the front end doesn't keep the
+    // leadId from the /api/leads response around across the page's later
+    // steps, and email is the same natural key HubSpot's own upsert already
+    // keys on) — updates the MOST RECENT leads row for that email in place
+    // (a repeat visitor re-running the assessment gets a fresh row from
+    // /api/leads first, so "most recent" is always this session's row) and
+    // re-syncs the same HubSpot contact (upsert-by-email) with the fuller
+    // property set — see buildHubspotCustomProperties() above for exactly
+    // which fields land where.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'leads' && parts[2] === 'enhance'){
+      const body = await readBody(req);
+      if (!body.email){
+        return sendJson(res, 400, { error: 'email is required' });
+      }
+      const existing = db.prepare('SELECT * FROM leads WHERE email = ? ORDER BY createdAt DESC LIMIT 1').get(body.email);
+      if (!existing){
+        return sendJson(res, 404, { error: 'no lead found for this email — POST /api/leads first' });
+      }
+      // Merge onto the original registration-time payload so fields it
+      // already had (industry, footprint, org style, maturity levels, …)
+      // still get sent to HubSpot alongside the new post-Assess fields —
+      // the enhance call only carries what changed, not the whole profile.
+      const merged = Object.assign({}, JSON.parse(existing.assessmentDataJson || '{}'), body);
+      const sync = await syncLeadToHubspot(merged);
+      db.prepare(`UPDATE leads SET
+          quadrant = ?, mediaPct = ?, cxPct = ?,
+          hubspotStatus = ?, hubspotContactId = ?, hubspotError = ?, assessmentDataJson = ?
+        WHERE id = ?`)
+        .run(
+          merged.quadrant || existing.quadrant,
+          typeof merged.mediaPct === 'number' ? merged.mediaPct : existing.mediaPct,
+          typeof merged.cxPct === 'number' ? merged.cxPct : existing.cxPct,
+          sync.hubspotStatus, sync.hubspotContactId || existing.hubspotContactId || null,
+          sync.hubspotError || null, JSON.stringify(merged), existing.id
+        );
+      return sendJson(res, 200, {
+        leadId: existing.id,
+        hubspotStatus: sync.hubspotStatus,
+        hubspotContactId: sync.hubspotContactId || existing.hubspotContactId || null,
+        hubspotContactUrl: sync.hubspotContactUrl || hubspotContactUrl(existing.hubspotContactId) || null,
+        hubspotError: sync.hubspotError || null
+      });
+    }
+
+    // GET /api/leads — admin/verification visibility into captured leads
+    // and their HubSpot sync status; not called from any front-end file
+    // yet (no admin UI exists in this build), but useful for confirming a
+    // real sync actually happened once HUBSPOT_ACCESS_TOKEN is set. Leads
+    // aren't scoped to any single account (no account exists yet at
+    // capture time), so the per-account session check doesn't apply here —
+    // gated instead by a separate admin token, since this endpoint returns
+    // every lead's PII across every account at once. Same "not a real
+    // identity provider" caveat as the rest of this round: a real build
+    // replaces this with an actual admin role, per
+    // cxmedia-account-mgmt-scoping.md's future admin-panel note.
+    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'leads'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const leads = db.prepare('SELECT * FROM leads ORDER BY createdAt DESC').all()
+        .map(lead => ({ ...lead, hubspotContactUrl: hubspotContactUrl(lead.hubspotContactId) }));
+      return sendJson(res, 200, { leads });
+    }
+
+    sendJson(res, 404, { error: 'not found' });
+  } catch (e){
+    console.error(e);
+    sendJson(res, 500, { error: 'server error', detail: e.message });
+  }
+}
+
+// 2026-08-22 — process-level safety net, added after a live production
+// crash (500 INTERNAL_FUNCTION_INVOCATION_FAILED on a completely unrelated,
+// route-unmatched GET request, immediately following a login-MFA POST on
+// the same warm container). handleRequest()'s own try/catch only protects
+// errors thrown SYNCHRONOUSLY inside a request's own call chain — it has
+// no reach over a stray throw from a timer, an un-awaited background
+// promise, or any other async operation that outlives the request that
+// started it. Node's default behavior for an uncaught exception or an
+// unhandled promise rejection is to crash the entire process — on a warm
+// serverless container, that takes down whatever OTHER, completely
+// unrelated request happens to be in flight at that exact moment, which
+// is consistent with what was observed (a harmless unmatched GET, with
+// zero outgoing calls of its own per Vercel's own request trace, crashing
+// outright). This mirrors the exact fix already applied to
+// pg-sync-bridge.js's Worker on 2026-08-20 for the same crash signature —
+// this is the same fix at the process level instead of one specific
+// Worker, since the earlier fix only covers errors from that one Worker,
+// not from anywhere else in this ~12,000-line file's ~200 async
+// functions. Logs and stays up rather than crashing — the in-flight
+// request whose own code actually threw still fails (as it should; the
+// bug there is real), but every OTHER concurrent/subsequent request on
+// this container no longer gets caught in the blast radius.
+process.on('uncaughtException', (err) => {
+  console.error('[process] uncaughtException — server staying up:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] unhandledRejection — server staying up:', reason);
+});
+
+// Local dev / standalone mode: only start a real listening server when this
+// file is run directly (`node server.js`), same as before. When Vercel
+// imports this file as a serverless function module (require.main !== this
+// module), it skips straight to the module.exports below instead — no port
+// ever gets bound, which is correct, since Vercel's platform handles
+// listening/routing itself and just calls handleRequest per request.
+if (require.main === module) {
+  const server = http.createServer(handleRequest);
+  const PORT = process.env.PORT || 8787;
+  server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
+}
+
+// 2026-08-23 fix — module load (and all ~230 top-level schema-setup
+// db.exec()/ensureColumn() calls above) is finished at this point. Flip
+// INIT_PHASE off so any db.exec() call from here on — i.e. any real
+// per-request query — throws normally again instead of being swallowed.
+// Those still get caught cleanly by handleRequest's own try/catch (a
+// normal 500 with a real error message) or, for anything async, by the
+// process.on('uncaughtException')/'unhandledRejection' handlers just
+// above. Only the one-time startup window is forgiving; request-time
+// failures still surface exactly as before.
+INIT_PHASE = false;
+
+module.exports = handleRequest;
