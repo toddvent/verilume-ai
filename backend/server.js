@@ -10513,6 +10513,16 @@ async function handleRequest(req, res) {
       const naicsCode = (body.naicsCode || '483112').trim();
       const websiteUrl = (body.websiteUrl || 'https://www.oceaniacruises.com').trim();
       const qaRaw = (body.qaRaw || 'Q: How would you rate your brand\'s presence across paid and organic search?\nA: Behind\n\nQ: How consistent is your customer experience across channels?\nA: Ahead\n\nQ: How well does your loyalty program retain repeat guests?\nA: On par').trim();
+      // 2026-09-02 addition, per direct request — a "simple handoff" link
+      // from website-category-scan.html (its multi-page, sitemap-aware,
+      // JSON-LD-aware scan is real, deeper site research than the single
+      // homepage fetch this route does for siteBlock below). Kept as an
+      // entirely separate, clearly labeled block rather than merged into
+      // qaRaw — those are explicitly the client's own verbatim answers,
+      // and blending AI-extracted website findings into that would
+      // misrepresent the source. Optional and backward-compatible: absent
+      // or blank changes nothing about existing behavior.
+      const websiteScanSummary = (body.websiteScanSummary || '').trim();
 
       let websiteContext;
       try {
@@ -10535,7 +10545,7 @@ ${siteBlock}
 
 ASSESSMENT Q&A (the client's own answers, verbatim):
 ${qaRaw}
-
+${websiteScanSummary ? `\nWEBSITE POSITIONING SCAN (AI-extracted from the company's own website by a separate multi-page scan — not client-provided; treat as background context, cite specifics from it only where they genuinely support the paragraph):\n${websiteScanSummary}\n` : ''}
 Do not invent any statistic, market size, or competitor count. Do not simply restate or summarize the Q&A or website content back to the reader — synthesize what these specific inputs, taken together, reveal about where this organization is strong and where the real opportunity sits. The paragraph must: (1) open on where this company is actually positioned, grounded in the industry/NAICS classification and the real website content given, not a recap of the inputs; (2) surface one real, organization-wide marketing trend relevant to this company's category and scale — not tied to any single answer; (3) make one observation about how AI and human judgment are being split in marketing work right now, as an industry dynamic, not a product pitch; (4) end on a genuine open thread that makes a CMO want to see the full assessment, not a call-to-action or sales line. Do not mention any vendor, tool, or platform by name.`;
 
       async function callAnthropicText(promptText){
@@ -10589,7 +10599,7 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         return na - nb;
       });
 
-      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, naicsCode, websiteUrl, qaRaw }, websiteContext, candidates });
+      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, naicsCode, websiteUrl, qaRaw, websiteScanSummary }, websiteContext, candidates });
     }
 
     // POST /api/ops/website-category-scan — staff-only, one-off scoped tool
@@ -15995,23 +16005,4 @@ process.on('unhandledRejection', (reason) => {
 // file is run directly (`node server.js`), same as before. When Vercel
 // imports this file as a serverless function module (require.main !== this
 // module), it skips straight to the module.exports below instead — no port
-// ever gets bound, which is correct, since Vercel's platform handles
-// listening/routing itself and just calls handleRequest per request.
-if (require.main === module) {
-  const server = http.createServer(handleRequest);
-  const PORT = process.env.PORT || 8787;
-  server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
-}
-
-// 2026-08-23 fix — module load (and all ~230 top-level schema-setup
-// db.exec()/ensureColumn() calls above) is finished at this point. Flip
-// INIT_PHASE off so any db.exec() call from here on — i.e. any real
-// per-request query — throws normally again instead of being swallowed.
-// Those still get caught cleanly by handleRequest's own try/catch (a
-// normal 500 with a real error message) or, for anything async, by the
-// process.on('uncaughtException')/'unhandledRejection' handlers just
-// above. Only the one-time startup window is forgiving; request-time
-// failures still surface exactly as before.
-INIT_PHASE = false;
-
-module.exports = handleRequest;
+// ever gets bound
