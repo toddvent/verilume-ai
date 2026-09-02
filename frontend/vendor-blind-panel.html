@@ -311,6 +311,20 @@
       runStatus.classList.add('error');
       return;
     }
+    // 2026-09-02 addition, caught on self-review — Company/Footprint/
+    // Industry+tier/NAICS/Website URL used to silently fall back to a
+    // fabricated "Oceania Cruises" example identity server-side whenever
+    // left blank. The backend now rejects a blank field outright instead
+    // of faking one; this mirrors that check here so it's caught
+    // immediately instead of a round-trip 400.
+    const requiredFieldIds = { inCompany: 'Company', inFootprint: 'Footprint', inIndustry: 'Industry + tier', inNaics: 'NAICS code', inUrl: 'Website URL' };
+    const blankFields = Object.entries(requiredFieldIds).filter(([id]) => !document.getElementById(id).value.trim()).map(([, label]) => label);
+    if (blankFields.length){
+      runStatus.textContent = 'Missing required field(s): ' + blankFields.join(', ') + ' — load a real lead above or fill these in manually.';
+      runStatus.classList.remove('hidden');
+      runStatus.classList.add('error');
+      return;
+    }
     runBtn.disabled = true;
     runStatus.textContent = 'Calling all five vendors — this can take up to a minute...';
     runStatus.classList.remove('hidden', 'error');
