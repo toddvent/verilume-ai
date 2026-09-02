@@ -10564,22 +10564,32 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         if (selectedPaths.length >= WEBSITE_SCAN_MAX_PAGES) break;
       }
 
-      // Fetched in PARALLEL, not sequentially — up to WEBSITE_SCAN_MAX_PAGES
-      // (12) pages each carry their own 8s timeout inside fetchAndExtractPage;
-      // fetching them one at a time could take up to ~96s on top of the
-      // sitemap fetch and the extraction call, which risks tripping the
-      // platform's function-timeout ("A server error has occurred" — not
-      // real JSON, which is what broke the frontend the first time this was
-      // tested against a real site). Promise.all keeps the wall-clock cost
-      // close to the single slowest page instead of the sum of all of them.
-      const pages = await Promise.all(selectedPaths.map(async (p) => {
-        try {
-          const ctx = await fetchAndExtractPage(origin + p);
-          return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt };
-        } catch (e){
-          return { path: p, ok: false, error: e.message };
-        }
-      }));
+      // Fetched in SMALL CONCURRENT BATCHES, not one at a time and not all
+      // WEBSITE_SCAN_MAX_PAGES (12) at once. Sequential was too slow — up to
+      // ~96s of page fetches alone (each carries its own 8s timeout inside
+      // fetchAndExtractPage) plus the sitemap fetch and extraction call,
+      // which tripped the platform's function-timeout page ("A server error
+      // has occurred", not real JSON). Firing all 12 at once fixed that but
+      // traded it for a harder failure — enough simultaneous outbound
+      // fetches downloading full page HTML at once crashed the function
+      // outright (FUNCTION_INVOCATION_FAILED), which happens below the
+      // level any try/catch in this file can catch. Batches of 4 keep wall
+      // time close to 3x one page's worst case (~24s) instead of either
+      // extreme.
+      const WEBSITE_SCAN_FETCH_BATCH_SIZE = 4;
+      const pages = [];
+      for (let i = 0; i < selectedPaths.length; i += WEBSITE_SCAN_FETCH_BATCH_SIZE){
+        const batch = selectedPaths.slice(i, i + WEBSITE_SCAN_FETCH_BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(async (p) => {
+          try {
+            const ctx = await fetchAndExtractPage(origin + p);
+            return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt };
+          } catch (e){
+            return { path: p, ok: false, error: e.message };
+          }
+        }));
+        pages.push(...batchResults);
+      }
 
       const pageBlocks = pages.filter(p => p.ok).map(p =>
         `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}`
@@ -15852,14 +15862,4 @@ if (require.main === module) {
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
-// db.exec()/ensureColumn() calls above) is finished at this point. Flip
-// INIT_PHASE off so any db.exec() call from here on — i.e. any real
-// per-request query — throws normally again instead of being swallowed.
-// Those still get caught cleanly by handleRequest's own try/catch (a
-// normal 500 with a real error message) or, for anything async, by the
-// process.on('uncaughtException')/'unhandledRejection' handlers just
-// above. Only the one-time startup window is forgiving; request-time
-// failures still surface exactly as before.
-INIT_PHASE = false;
-
-module.exports = handleRequest;
+// db.exec()/ensureColumn() calls above) is finished at this poin
