@@ -16176,4 +16176,26 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Local dev / standalone mode: only start a real listening server when this
-// file is ru
+// file is run directly (`node server.js`), same as before. When Vercel
+// imports this file as a serverless function module (require.main !== this
+// module), it skips straight to the module.exports below instead — no port
+// ever gets bound, which is correct, since Vercel's platform handles
+// listening/routing itself and just calls handleRequest per request.
+if (require.main === module) {
+  const server = http.createServer(handleRequest);
+  const PORT = process.env.PORT || 8787;
+  server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
+}
+
+// 2026-08-23 fix — module load (and all ~230 top-level schema-setup
+// db.exec()/ensureColumn() calls above) is finished at this point. Flip
+// INIT_PHASE off so any db.exec() call from here on — i.e. any real
+// per-request query — throws normally again instead of being swallowed.
+// Those still get caught cleanly by handleRequest's own try/catch (a
+// normal 500 with a real error message) or, for anything async, by the
+// process.on('uncaughtException')/'unhandledRejection' handlers just
+// above. Only the one-time startup window is forgiving; request-time
+// failures still surface exactly as before.
+INIT_PHASE = false;
+
+module.exports = handleRequest;
