@@ -99,7 +99,7 @@
 
     <div class="module">
       <h3>Load a real lead</h3>
-      <div class="desc">The Assessment Q&amp;A below is real captured data — a real visitor's actual self-ratings across the five Marketing Loop stages (Awareness/Consideration/Purchase/Loyalty/Advocacy), not example text. Pick a real lead here to fill Company/Footprint/Industry and the Q&amp;A from what they actually answered before registering.</div>
+      <div class="desc">The Assessment Q&amp;A below is real captured data — a real visitor's actual self-ratings across the five Marketing Loop stages (Awareness/Consideration/Purchase/Loyalty/Advocacy), not example text. Pick a real lead here to fill Company/Footprint/Industry/NAICS/Website URL and the Q&amp;A from what they actually answered before registering. (NAICS and Website URL only fill for leads captured after 2026-09-02 — those fields weren't being sent to the backend before that fix; older leads will show blank and need them typed manually.)</div>
       <div class="field-row">
         <div style="flex:1;"><label>Real captured lead</label><select id="inLeadSelect" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;"><option value="">— load leads to choose —</option></select></div>
       </div>
@@ -110,7 +110,7 @@
 
     <div class="module">
       <h3>Inputs</h3>
-      <div class="desc">Company/Footprint/Industry/Assessment Q&amp;A below are filled from a real lead once loaded above (still editable). Website URL, NAICS, and Industry+tier detail stay manual — the real lead data doesn't carry those.</div>
+      <div class="desc">Company/Footprint/Industry/NAICS/Website URL/Assessment Q&amp;A below are filled from a real lead once loaded above (still editable) — for leads captured after 2026-09-02; older leads won't have NAICS/Website URL on file and need those typed manually. "Industry + tier" detail (e.g. the specific tier positioning beyond the label) stays manual either way — the assessment doesn't capture that separately.</div>
       <div class="field-row three">
         <div><label>Company</label><input type="text" id="inCompany" value=""></div>
         <div><label>Footprint</label><input type="text" id="inFootprint" value=""></div>
@@ -231,10 +231,23 @@
     document.getElementById('inCompany').value = lead.company || '';
     document.getElementById('inFootprint').value = lead.footprint || '';
     document.getElementById('inIndustry').value = lead.industry || '';
+    if (lead.websiteUrl) document.getElementById('inUrl').value = lead.websiteUrl;
+    if (lead.naicsCode) document.getElementById('inNaics').value = lead.naicsCode;
     document.getElementById('inQa').value = lead.assessmentQaText || '';
     document.getElementById('inGenerations').value = (lead.generations || []).join(', ');
     document.getElementById('inWealthTier').value = (lead.wealthTier || []).join(', ');
-    leadStatus.textContent = 'Filled Company/Footprint/Industry/Assessment Q&A/Generations/Wealth Tier from ' + (lead.company || lead.email) + '. Website URL and NAICS still need manual entry — the real lead doesn\'t carry those.';
+    const filledExtras = (lead.websiteUrl ? '/Website URL' : '') + (lead.naicsCode ? '/NAICS' : '');
+    const missingExtras = [];
+    if (!lead.websiteUrl) missingExtras.push('Website URL');
+    if (!lead.naicsCode) missingExtras.push('NAICS');
+    const missingNote = missingExtras.length ? ' ' + missingExtras.join(' and ') + ' not on this lead (captured before those fields existed) — enter manually.' : '';
+    // Note: Industry reflects this lead's FINAL answer, including the
+    // assessment's own Luxury/Mass Market auto-switch based on their
+    // audience+wealth selections (round 135, assessment.html) — a lead
+    // can show "Mass Market" here even if "Luxury" was the industry-step
+    // guess, if their wealth-index answers landed below the luxury cutoff.
+    // That's the real, already-submitted answer, not a data error.
+    leadStatus.textContent = 'Filled Company/Footprint/Industry/Assessment Q&A/Generations/Wealth Tier' + filledExtras + ' from ' + (lead.company || lead.email) + '.' + missingNote + ' Industry reflects this lead\'s final answer, including any Luxury/Mass Market auto-switch from their audience+wealth answers.';
     leadStatus.classList.remove('error');
   });
 
@@ -311,20 +324,14 @@
       runStatus.classList.add('error');
       return;
     }
-    // 2026-09-02 addition, caught on self-review — Company/Footprint/
-    // Industry+tier/NAICS/Website URL used to silently fall back to a
-    // fabricated "Oceania Cruises" example identity server-side whenever
-    // left blank. The backend now rejects a blank field outright instead
-    // of faking one; this mirrors that check here so it's caught
-    // immediately instead of a round-trip 400.
-    const requiredFieldIds = { inCompany: 'Company', inFootprint: 'Footprint', inIndustry: 'Industry + tier', inNaics: 'NAICS code', inUrl: 'Website URL' };
-    const blankFields = Object.entries(requiredFieldIds).filter(([id]) => !document.getElementById(id).value.trim()).map(([, label]) => label);
-    if (blankFields.length){
-      runStatus.textContent = 'Missing required field(s): ' + blankFields.join(', ') + ' — load a real lead above or fill these in manually.';
-      runStatus.classList.remove('hidden');
-      runStatus.classList.add('error');
-      return;
-    }
+    // 2026-09-02 — Company/Footprint/Industry+tier/NAICS/Website URL used
+    // to silently fall back to a fabricated "Oceania Cruises" example
+    // identity whenever left blank; that's fixed (no fallback exists
+    // anymore, blank stays blank in the prompt). A hard block requiring
+    // all five before every run was added at the same time and then
+    // reverted per direct correction — this is a one-off staff testing
+    // tool, and the operator typing the real company by hand is the
+    // normal case, not something that needs gating.
     runBtn.disabled = true;
     runStatus.textContent = 'Calling all five vendors — this can take up to a minute...';
     runStatus.classList.remove('hidden', 'error');

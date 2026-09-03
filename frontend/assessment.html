@@ -5,6 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Verilume — Free Assessment</title>
 <meta name="description" content="Take the free Verilume assessment — build a brand profile, pick the funnel stages and products that matter to you, rate your team against the best practice for each, and get a fast read on where your Media Loop and CX layers break down.">
+
+<!-- 2026-09-01, per direct instruction ("A link to specific AI Thoughts and
+     FAQs supporting AEO/SEO should be available") — structured FAQ data for
+     answer-engine optimization, same @graph/FAQPage pattern already live on
+     index.html (see that file's <head>). This page's questions are scoped
+     to the free-assessment flow itself, not the general "what is Verilume"
+     questions index.html already answers, so the two pages' FAQ content is
+     complementary rather than duplicated. The matching visible FAQ (same
+     text, required for FAQPage rich-result eligibility — Google requires
+     the answer text to be visible on the page, not schema-only) is the
+     .footer-faq block on the landing step, below. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How long does the free Verilume assessment take?",
+          "acceptedAnswer": { "@type": "Answer", "text": "About 10 minutes. It's five short steps — company basics, a site scan, your audience profile, a quick self-rating against best practice for the funnel stages that matter to you, and contact info — before your quadrant placement and full report are built." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need to give my email before I see any results?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. You can start the assessment with no contact info at all. Registration is a single step partway through the flow, well before your quadrant position and report are generated." }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the Verilume Wealth Index?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A score for how affluent your selected target audience is, relative to the average U.S. household (100 = average). It combines your target household income with a generation-based wealth multiplier sourced from the Federal Reserve's Survey of Consumer Finances, since net worth is heavily age-skewed and a flat income figure alone understates or overstates an older or younger audience's real buying power." }
+        },
+        {
+          "@type": "Question",
+          "name": "What do I get at the end of the free assessment?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A quadrant placement (where your Media effectiveness and CX consistency intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is my company's data kept separate from other companies using Verilume?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every account gets its own isolated workbook, provisioned fresh — no account's data, scorecard, or usage history is ever visible to, or used to inform, another account's results." }
+        }
+      ]
+    }
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -719,6 +767,26 @@
 
   footer{margin-top:60px;padding:24px 28px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;color:#8a8067;text-align:center;}
 
+  /* 2026-09-01, per direct instruction — visible FAQ content matching the
+     FAQPage JSON-LD in <head> (Google requires the schema'd answer text to
+     also be visible on the page, not schema-only, to be rich-result
+     eligible). Same class names/behavior as assessment-framework.html's
+     .footer-faq — that page uses it as a page-wide footer; here it's
+     scoped to the landing step only (see the markup below), since the
+     other steps are an active task flow where FAQ content would just be
+     clutter mid-form. */
+  .footer-faq{max-width:900px;margin:56px auto 0;}
+  .footer-faq h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-style:normal;font-size:1.375rem;margin:0 0 18px;color:var(--ink);}
+  .footer-faq .faq-list{display:flex;flex-direction:column;}
+  .footer-faq .faq-item{padding:16px 0;border-top:1px solid var(--line);}
+  .footer-faq .faq-item:first-child{border-top:none;padding-top:0;}
+  .footer-faq .faq-item > h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:1rem;margin:0;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;}
+  .footer-faq .faq-item > h3 .faq-chevron{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;color:#8a8067;transition:transform 0.15s ease;flex-shrink:0;}
+  .footer-faq .faq-item.open > h3 .faq-chevron{transform:rotate(90deg);}
+  .footer-faq .faq-item > .faq-body{display:none;margin-top:8px;}
+  .footer-faq .faq-item.open > .faq-body{display:block;}
+  .footer-faq .faq-item p{font-size:0.9375rem;line-height:1.6;color:#3A3428;margin:0;max-width:70ch;}
+
   /* 2026-08-31, per direct instruction — the report step's "Download
      Report (PDF)" button is window.print(), same convention as
      portal.html's .cc-hero-toolbar (no JS library). Scoped to the report
@@ -1306,12 +1374,12 @@
         <div class="teaser-label">What you'll get</div>
         <div class="quad-visual mini" aria-hidden="true">
           <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">The Complete Brand</div>
-          <div class="qcell q3">Invisible &amp; Inconsistent</div>
-          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="qcell q1">Compounding Brand</div>
+          <div class="qcell q3">Foundational Stage</div>
+          <div class="qcell q4">Reach Outpacing Delivery</div>
           <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
         </div>
-        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Weak Media</span><span>Strong Media →</span></div>
+        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Emerging Media</span><span>Strong Media →</span></div>
         <ul class="landing-teaser-bullets">
           <li>A real position on the quadrant above — plotted from your own answers, not a generic benchmark.</li>
           <li>A 17-point rubric across all five stages of the Marketing Loop, Awareness through Advocacy.</li>
@@ -1320,6 +1388,50 @@
           <li>No email required to start — registration is a quick step partway through, well before your results are built.</li>
         </ul>
       </aside>
+    </div>
+
+    <!-- 2026-09-01, per direct instruction — visible FAQ matching the
+         FAQPage JSON-LD in <head>. Scoped to the landing step only (inside
+         this .step so it's hidden/shown by the same goToStep() mechanism
+         as everything else) — a visitor mid-flow on a later step doesn't
+         need marketing FAQ content, but a search crawler or a visitor who
+         hasn't clicked "Begin" yet does. Also see AI Agent Thoughts, a
+         separate logged-in portal help drawer (portal.html) — not this;
+         this is public-facing AEO/SEO content, no login required. -->
+    <div class="footer-faq" id="faq">
+      <h2>Free assessment — frequently asked questions</h2>
+      <div class="faq-list">
+        <div class="faq-item">
+          <h3 onclick="toggleFaqItem(this)">How long does the free Verilume assessment take? <span class="faq-chevron">▸</span></h3>
+          <div class="faq-body">
+            <p>About 10 minutes. It's five short steps — company basics, a site scan, your audience profile, a quick self-rating against best practice for the funnel stages that matter to you, and contact info — before your quadrant placement and full report are built.</p>
+          </div>
+        </div>
+        <div class="faq-item">
+          <h3 onclick="toggleFaqItem(this)">Do I need to give my email before I see any results? <span class="faq-chevron">▸</span></h3>
+          <div class="faq-body">
+            <p>No. You can start the assessment with no contact info at all. Registration is a single step partway through the flow, well before your quadrant position and report are generated.</p>
+          </div>
+        </div>
+        <div class="faq-item">
+          <h3 onclick="toggleFaqItem(this)">What is the Verilume Wealth Index? <span class="faq-chevron">▸</span></h3>
+          <div class="faq-body">
+            <p>A score for how affluent your selected target audience is, relative to the average U.S. household (100 = average). It combines your target household income with a generation-based wealth multiplier sourced from the Federal Reserve's Survey of Consumer Finances, since net worth is heavily age-skewed and a flat income figure alone understates or overstates an older or younger audience's real buying power.</p>
+          </div>
+        </div>
+        <div class="faq-item">
+          <h3 onclick="toggleFaqItem(this)">What do I get at the end of the free assessment? <span class="faq-chevron">▸</span></h3>
+          <div class="faq-body">
+            <p>A quadrant placement (where your Media effectiveness and CX consistency intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract. Want to see one filled out first? <a href="sample-assessment.html">View a sample report →</a></p>
+          </div>
+        </div>
+        <div class="faq-item">
+          <h3 onclick="toggleFaqItem(this)">Is my company's data kept separate from other companies using Verilume? <span class="faq-chevron">▸</span></h3>
+          <div class="faq-body">
+            <p>Yes. Every account gets its own isolated workbook, provisioned fresh — no account's data, scorecard, or usage history is ever visible to, or used to inform, another account's results.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1685,17 +1797,17 @@
         <div class="teaser-label">Your free assessment includes</div>
         <div class="quad-visual mini" aria-hidden="true">
           <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">The Complete Brand</div>
-          <div class="qcell q3">Invisible &amp; Inconsistent</div>
-          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="qcell q1">Compounding Brand</div>
+          <div class="qcell q3">Foundational Stage</div>
+          <div class="qcell q4">Reach Outpacing Delivery</div>
           <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
         </div>
-        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Weak Media</span><span>Strong Media →</span></div>
+        <div class="quad-axis-x" style="margin-bottom:14px;"><span>Emerging Media</span><span>Strong Media →</span></div>
         <ul class="landing-teaser-bullets">
-          <li><b>The Complete Brand</b> — reach and delivery both firing. The target quadrant: loyalty compounds here, and advocacy funds the next cycle for free.</li>
+          <li><b>Compounding Brand</b> — reach and delivery both firing, so loyalty compounds and advocacy funds the next cycle for free.</li>
           <li><b>Hidden Gem</b> — the experience is genuinely true to your promise, but that truth isn't reaching enough people yet.</li>
-          <li><b>All Promise, No Delivery</b> — reach and creative are working, but somewhere in the experience the promise stops being true.</li>
-          <li><b>Invisible &amp; Inconsistent</b> — struggling to get discovered and struggling to deliver once someone shows up. A foundational rebuild, not a quick fix.</li>
+          <li><b>Reach Outpacing Delivery</b> — reach and creative are working, but delivery hasn't caught up to the promise yet.</li>
+          <li><b>Foundational Stage</b> — real room to grow on both discovery and delivery. A foundational build, not a quick fix — and the biggest gains are still on the table.</li>
         </ul>
       </aside>
     </div>
@@ -1813,9 +1925,9 @@
         <div class="sf-row"><span>Atlas Ocean Voyages</span><span>Sample · Dummy Account</span></div>
         <div class="quad-visual mini" style="margin:2px 0 10px;">
           <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">The Complete Brand</div>
-          <div class="qcell q3">Invisible &amp; Inconsistent</div>
-          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="qcell q1">Compounding Brand</div>
+          <div class="qcell q3">Foundational Stage</div>
+          <div class="qcell q4">Reach Outpacing Delivery</div>
           <div class="quad-marker" style="left:78%;bottom:71%;"></div>
         </div>
         <div class="stat-grid" style="margin-top:0;gap:8px;">
@@ -1986,13 +2098,13 @@
           <div class="quad-axis-y">CX Strength ↑</div>
           <div class="quad-visual" id="quadVisual">
             <div class="qcell q2">Hidden Gem</div>
-            <div class="qcell q1">The Complete Brand</div>
-            <div class="qcell q3">Invisible &amp; Inconsistent</div>
-            <div class="qcell q4">All Promise, No Delivery</div>
+            <div class="qcell q1">Compounding Brand</div>
+            <div class="qcell q3">Foundational Stage</div>
+            <div class="qcell q4">Reach Outpacing Delivery</div>
             <div class="quad-marker" id="quadMarker" title="Overall"></div>
             <div id="quadStageMarkers"></div>
           </div>
-          <div class="quad-axis-x"><span>Weak Media</span><span>Strong Media →</span></div>
+          <div class="quad-axis-x"><span>Emerging Media</span><span>Strong Media →</span></div>
         </div>
       </div>
 
@@ -3682,6 +3794,14 @@ function wealthLabels(){
 }
 function bpPanel(tag, html){
   return `<div class="bp-panel"><span class="bp-tag">${tag}</span><p>${html}</p></div>`;
+}
+
+// 2026-09-01 — landing-step FAQ accordion toggle, same behavior as
+// assessment-framework.html's toggleFaqItem(): each item starts collapsed;
+// clicking its heading toggles it open/closed independently (not an
+// exclusive accordion — more than one can be open at once).
+function toggleFaqItem(heading){
+  heading.parentElement.classList.toggle('open');
 }
 
 /* ---------- Navigation ---------- */
@@ -5636,8 +5756,15 @@ function updateScopePickerNext(){
    practice and a lightweight 3-state self-rating. This is where the
    self-assessment actually happens now; it replaces both the old checkbox
    quiz and the standalone Solutions Map step. ---------- */
+// 2026-09-01, per direct instruction to update negative rating language
+// sitewide — 'Behind' relabeled to 'Needs Prioritization', the same Level 1
+// term the Scoring Grid legend on assessment-framework.html already
+// established, so a visitor sees one consistent vocabulary whether they're
+// reading the framework explainer or rating a product right here. Internal
+// key ('behind') and its numeric value (PRODUCT_RATING_VALUE.behind = 1)
+// are unchanged — only the visible label changed.
 const RATING_OPTIONS = [
-  { key: 'behind', label: 'Behind' },
+  { key: 'behind', label: 'Needs Prioritization' },
   { key: 'onpar', label: 'On par' },
   { key: 'ahead', label: 'Ahead' }
 ];
@@ -5772,7 +5899,7 @@ const PRODUCT_RATING_VALUE = { behind: 1, onpar: 2.5, ahead: 4 };
 // handful, not all ~35), so most cells in every "assessed" stage were
 // silently padded with a fabricated 4 — confirmed by direct test: rating
 // every single selected product "Behind" (the worst possible input) still
-// produced 67%/78% and landed in "The Complete Brand," the best quadrant,
+// produced 67%/78% and landed in "Compounding Brand," the best quadrant,
 // because 12 of 17 cells got the fabricated default. state.answers still
 // carries a value for every cell (4 when unscoped) so buildScorecardPayload()
 // and the full stage-by-stage reference table below are unaffected — but
@@ -6004,7 +6131,13 @@ function activeScores(){
 // stageEffectiveness) — real data the visitor already gave us, one card
 // per Loop stage (RUBRIC's 5 stages), rather than inventing new content or
 // falling back to a permanent default.
-const STAGE_EFF_LABEL = { 1: 'Needs attention', 2: 'Inconsistent', 3: 'Getting there', 4: 'Working well', 5: 'A real strength' };
+// 2026-09-01, per direct instruction — aligned to the same 5-level ladder
+// the Scoring Grid legend on assessment-framework.html already established
+// (Needs Prioritization / Early Progress / Accurate Experiences / Proactive
+// & Personalized / Shareable Moments), replacing the older, milder-but-
+// still-negative 'Needs attention'/'Inconsistent' labels. One vocabulary
+// for the same 1-5 concept everywhere it appears.
+const STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
 
 // 2026-09-01 — rebuilt per the report step's corrected 3-section structure.
 // #reportSynthesisText (the short "This company is a national cruise
@@ -6240,7 +6373,24 @@ async function syncLeadToBackend(){
     phone: state.phone,
     company: state.company || '',
     industry: (INDUSTRIES[state.industryIdx] && INDUSTRIES[state.industryIdx].label) || '',
+    // 2026-09-02 fix, per direct correction — every INDUSTRIES entry
+    // already carries a real NAICS code (see the array's definition,
+    // ~line 2680) matched to the picked label, including the
+    // wealth-index-driven Luxury/Mass Market auto-switch
+    // (renderIndustryTierSuggestion(), round 135) — so by the time this
+    // fires at the Contact step (after Step 2's audience/wealth
+    // selection has already run that auto-switch), state.industryIdx is
+    // the final, corrected pick. That real code was never sent to the
+    // backend before this fix; NAICS on the panel was manual-only
+    // because the data existed only in this page's own INDUSTRIES table.
+    naicsCode: (INDUSTRIES[state.industryIdx] && INDUSTRIES[state.industryIdx].naics) || '',
     footprint: state.region || '',
+    // 2026-09-02 fix, per direct correction — Step 1 ("Review the website")
+    // already collects and validates this (state.url / #inUrl) and uses it
+    // for a real live scan (assessmentWebsiteContext), but it was never
+    // actually sent to the backend lead record — captured, used once
+    // in-page, then dropped. Now flows through to leads.websiteUrl.
+    url: state.url || '',
     buyerType: state.buyerType || '',
     address: state.address || '',
     orgStyle: ORG_STYLE_LABEL[state.orgStyle] || state.orgStyle || '',
@@ -6615,10 +6765,17 @@ let saveModalThenOpenPortal = false;
 function quadrantFor(mediaPct, cxPct){
   const mediaStrong = mediaPct >= 50;
   const cxStrong = cxPct >= 50;
-  if (mediaStrong && cxStrong) return { key:'q1', name:'The Complete Brand', desc:'The truth holds up end to end: reach and delivery are both firing. This is the target quadrant — loyalty compounds here, and advocacy funds the next cycle for free.' };
+  // 2026-09-01, per direct instruction — renamed all 4 quadrants. "The
+  // Complete Brand" implied a brand had nothing left to gain, which
+  // undercuts the case for continued investment; "Invisible & Inconsistent"
+  // and "All Promise, No Delivery" read as an insult rather than a
+  // diagnosis, especially for a visitor who rates every stage low. Same
+  // 50%/50% split as before — only the names and framing changed, not the
+  // scoring.
+  if (mediaStrong && cxStrong) return { key:'q1', name:'Compounding Brand', desc:'Reach and delivery are both firing, and loyalty is compounding as a result — advocacy is funding the next cycle for free. The work now is sustaining and scaling that across every channel and location, not standing still.' };
   if (!mediaStrong && cxStrong) return { key:'q2', name:'Hidden Gem', desc:'The experience is genuinely true to your promise — but that truth isn\'t reaching enough people yet, or your advocacy and loyalty mechanics aren\'t illuminating the goodwill you\'ve already earned.' };
-  if (mediaStrong && !cxStrong) return { key:'q4', name:'All Promise, No Delivery', desc:'Reach and creative are working — but somewhere in call center, at the point of sale, or in fulfillment, the promise stops being true. Guests arrive excited and leave disappointed.' };
-  return { key:'q3', name:'Invisible & Inconsistent', desc:'Struggling to get discovered and struggling to deliver once someone shows up — the truth is hard to see and hard to trust on both axes. This is a foundational rebuild, not a quick fix.' };
+  if (mediaStrong && !cxStrong) return { key:'q4', name:'Reach Outpacing Delivery', desc:'Reach and creative are working — but somewhere in call center, at the point of sale, or in fulfillment, delivery hasn\'t caught up to the promise yet. Guests arrive excited and the follow-through doesn\'t match.' };
+  return { key:'q3', name:'Foundational Stage', desc:'Reach and delivery both have real room to grow — the brand isn\'t yet consistently found or consistently delivering once someone arrives. This is a foundational build, not a quick fix, but it also means the biggest gains are still on the table.' };
 }
 
 /* ---------- Full report (quadrant + scorecard render together). Round 121
