@@ -98,19 +98,8 @@
     <div class="safeguard"><b>Cost note:</b> every run calls all five providers for real. Only run this when you actually want a fresh comparison.</div>
 
     <div class="module">
-      <h3>Load a real lead</h3>
-      <div class="desc">The Assessment Q&amp;A below is real captured data — a real visitor's actual self-ratings across the five Marketing Loop stages (Awareness/Consideration/Purchase/Loyalty/Advocacy), not example text. Pick a real lead here to fill Company/Footprint/Industry/NAICS/Website URL and the Q&amp;A from what they actually answered before registering. (NAICS and Website URL only fill for leads captured after 2026-09-02 — those fields weren't being sent to the backend before that fix; older leads will show blank and need them typed manually.)</div>
-      <div class="field-row">
-        <div style="flex:1;"><label>Real captured lead</label><select id="inLeadSelect" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;"><option value="">— load leads to choose —</option></select></div>
-      </div>
-      <button class="btn small" id="loadLeadsBtn" style="margin-top:10px;">Load leads</button>
-      <button class="btn small" id="useLeadBtn" style="margin-top:10px;" disabled>Use selected lead →</button>
-      <div class="status-line hidden" id="leadStatus"></div>
-    </div>
-
-    <div class="module">
       <h3>Inputs</h3>
-      <div class="desc">Company/Footprint/Industry/NAICS/Website URL/Assessment Q&amp;A below are filled from a real lead once loaded above (still editable) — for leads captured after 2026-09-02; older leads won't have NAICS/Website URL on file and need those typed manually. "Industry + tier" detail (e.g. the specific tier positioning beyond the label) stays manual either way — the assessment doesn't capture that separately.</div>
+      <div class="desc">Plain manual fields — type in the real company you're testing. Nothing here is loaded or guessed for you.</div>
       <div class="field-row three">
         <div><label>Company</label><input type="text" id="inCompany" value=""></div>
         <div><label>Footprint</label><input type="text" id="inFootprint" value=""></div>
@@ -121,12 +110,12 @@
         <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value=""></div>
       </div>
       <div class="field-row">
-        <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(from this lead's real assessment answers — comma-separated, e.g. "Gen Z, Millennials")</span></label><input type="text" id="inGenerations" value=""></div>
-        <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(Verilume Wealth Index-derived, from this lead's real answers)</span></label><input type="text" id="inWealthTier" value=""></div>
+        <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(comma-separated, e.g. "Gen Z, Millennials")</span></label><input type="text" id="inGenerations" value=""></div>
+        <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(e.g. "High Net-Worth, Wealthy")</span></label><input type="text" id="inWealthTier" value=""></div>
       </div>
       <div>
-        <label>Assessment Q&amp;A — real captured answers once a lead is loaded above; edit freely, but don't type in invented Q&amp;A pairs to stand in for real data</label>
-        <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(none yet — load a real lead above)"></textarea>
+        <label>Assessment Q&amp;A — paste this company's real assessment answers if you have them; leave blank rather than typing in invented Q&amp;A pairs to stand in for real data</label>
+        <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(optional — paste real Q&A here, or leave blank)"></textarea>
       </div>
       <div id="scanHandoffNote" class="desc hidden" style="margin-top:10px;"></div>
       <div>
@@ -184,72 +173,15 @@
   const revealAllBtn = document.getElementById('revealAllBtn');
   const inScanSummary = document.getElementById('inScanSummary');
   const scanHandoffNote = document.getElementById('scanHandoffNote');
-  const inLeadSelect = document.getElementById('inLeadSelect');
-  const loadLeadsBtn = document.getElementById('loadLeadsBtn');
-  const useLeadBtn = document.getElementById('useLeadBtn');
-  const leadStatus = document.getElementById('leadStatus');
-  let loadedLeads = [];
 
-  // 2026-09-02 addition, per direct correction — the Assessment Q&A field
-  // used to default to fabricated example text that doesn't match the real
-  // free assessment at all. Real fix: load real captured leads from
-  // GET /api/leads (same ADMIN_API_TOKEN already gating this whole page)
-  // and let staff pick one — its real assessmentQaText (built server-side
-  // in formatLeadAssessmentQa(), from that lead's actual Marketing Loop
-  // self-ratings) fills the Q&A field instead of anyone typing or trusting
-  // invented answers.
-  loadLeadsBtn.addEventListener('click', async function(){
-    leadStatus.textContent = 'Loading leads...';
-    leadStatus.classList.remove('hidden', 'error');
-    try {
-      const resp = await fetch('/api/leads', { headers: { 'X-Admin-Token': adminToken } });
-      const data = await resp.json();
-      if (!resp.ok){
-        leadStatus.textContent = data.error || ('Request failed (HTTP ' + resp.status + ').');
-        leadStatus.classList.add('error');
-        return;
-      }
-      loadedLeads = data.leads || [];
-      inLeadSelect.innerHTML = '<option value="">— select a real lead —</option>' + loadedLeads.map(l =>
-        `<option value="${esc(l.id)}">${esc(l.company || '(no company)')} — ${esc(l.email || '')} — ${esc(l.createdAt ? l.createdAt.slice(0, 10) : '')}</option>`
-      ).join('');
-      leadStatus.textContent = loadedLeads.length + ' lead(s) loaded.';
-      useLeadBtn.disabled = !loadedLeads.length;
-    } catch (e){
-      leadStatus.textContent = 'Request failed: ' + e.message;
-      leadStatus.classList.add('error');
-    }
-  });
-
-  useLeadBtn.addEventListener('click', function(){
-    const lead = loadedLeads.find(l => l.id === inLeadSelect.value);
-    if (!lead){
-      leadStatus.textContent = 'Select a lead from the list first.';
-      leadStatus.classList.add('error');
-      return;
-    }
-    document.getElementById('inCompany').value = lead.company || '';
-    document.getElementById('inFootprint').value = lead.footprint || '';
-    document.getElementById('inIndustry').value = lead.industry || '';
-    if (lead.websiteUrl) document.getElementById('inUrl').value = lead.websiteUrl;
-    if (lead.naicsCode) document.getElementById('inNaics').value = lead.naicsCode;
-    document.getElementById('inQa').value = lead.assessmentQaText || '';
-    document.getElementById('inGenerations').value = (lead.generations || []).join(', ');
-    document.getElementById('inWealthTier').value = (lead.wealthTier || []).join(', ');
-    const filledExtras = (lead.websiteUrl ? '/Website URL' : '') + (lead.naicsCode ? '/NAICS' : '');
-    const missingExtras = [];
-    if (!lead.websiteUrl) missingExtras.push('Website URL');
-    if (!lead.naicsCode) missingExtras.push('NAICS');
-    const missingNote = missingExtras.length ? ' ' + missingExtras.join(' and ') + ' not on this lead (captured before those fields existed) — enter manually.' : '';
-    // Note: Industry reflects this lead's FINAL answer, including the
-    // assessment's own Luxury/Mass Market auto-switch based on their
-    // audience+wealth selections (round 135, assessment.html) — a lead
-    // can show "Mass Market" here even if "Luxury" was the industry-step
-    // guess, if their wealth-index answers landed below the luxury cutoff.
-    // That's the real, already-submitted answer, not a data error.
-    leadStatus.textContent = 'Filled Company/Footprint/Industry/Assessment Q&A/Generations/Wealth Tier' + filledExtras + ' from ' + (lead.company || lead.email) + '.' + missingNote + ' Industry reflects this lead\'s final answer, including any Luxury/Mass Market auto-switch from their audience+wealth answers.';
-    leadStatus.classList.remove('error');
-  });
+  // 2026-09-03 fix, per direct correction — the "Load a real lead" module
+  // (GET /api/leads picker + Use selected lead button) is removed entirely.
+  // It was built to solve a real problem (fabricated example Q&A text) but
+  // turned into ongoing friction for what is, per direct correction, a
+  // one-off manual staff testing tool — every field below is now just a
+  // plain text box the operator fills in by hand. GET /api/leads itself is
+  // untouched server-side (harmless, unused by this page now) in case a
+  // real admin lead-lookup UI wants it later.
 
   // 2026-09-02 addition — "simple handoff" from website-category-scan.html's
   // "Send to Vendor Blind Panel" button (per direct request: "as long as
@@ -257,26 +189,73 @@
   // localStorage (shared across tabs, unlike sessionStorage, so the button
   // works whether it opens a new tab or navigates this one) rather than a
   // URL param — a full 7-category scan summary is too long to reliably
-  // round-trip through a query string. Guarded by a 10-minute freshness
-  // window and consumed exactly once (removed immediately after reading)
-  // so a stale or leftover blob can't silently reapply on a later,
-  // unrelated visit to this page.
+  // round-trip through a query string.
+  //
+  // 2026-09-03 fix, per direct correction — this used to delete the blob
+  // immediately after the first read and expire it after 10 minutes, on
+  // the theory that a stale blob silently reapplying later would be
+  // confusing. In practice that meant one scan only ever survived a single
+  // page load: reload the panel, or come back an hour later to keep testing
+  // the same scan against different copy, and the field was empty again
+  // with no indication why. This is a same-person, admin-gated staff tool
+  // for one ongoing testing session, not a multi-user handoff where a
+  // leftover blob could reach the wrong person — so the real fix is to
+  // stop treating "reusable" as a bug. The blob now persists (never
+  // removed here) and stays valid for 24 hours; re-running the scan tool
+  // and using its handoff button again simply overwrites it.
   const SCAN_HANDOFF_KEY = 'verilume_scanHandoff';
-  const SCAN_HANDOFF_MAX_AGE_MS = 10 * 60 * 1000;
+  const SCAN_HANDOFF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   try {
     const raw = localStorage.getItem(SCAN_HANDOFF_KEY);
     if (raw){
-      localStorage.removeItem(SCAN_HANDOFF_KEY);
       const handoff = JSON.parse(raw);
       const age = Date.now() - (handoff.savedAt || 0);
       if (handoff.summary && age >= 0 && age <= SCAN_HANDOFF_MAX_AGE_MS){
         if (handoff.websiteUrl) document.getElementById('inUrl').value = handoff.websiteUrl;
         inScanSummary.value = handoff.summary;
-        scanHandoffNote.textContent = 'Website Positioning Scan filled in from a website-category-scan.html run' + (handoff.websiteUrl ? ' (' + handoff.websiteUrl + ')' : '') + ' — review below, edit or clear as needed.';
+        const ageMin = Math.round(age / 60000);
+        scanHandoffNote.textContent = 'Website Positioning Scan filled in from a website-category-scan.html run' + (handoff.websiteUrl ? ' (' + handoff.websiteUrl + ')' : '') + (ageMin > 1 ? ', ' + ageMin + ' min ago' : '') + ' — review below, edit or clear as needed. Re-run the scan tool and its handoff button to replace this.';
         scanHandoffNote.classList.remove('hidden');
       }
     }
   } catch (e){ /* malformed or inaccessible localStorage — just skip the handoff, never block the page */ }
+
+  // 2026-09-03 fix, per direct correction — "Company/Footprint/Industry/
+  // NAICS/Website URL/Q&A/Generations/Wealth Tier stay blank without a
+  // loaded lead" is real (those fields have no other data source), and
+  // none of it used to survive a page reload — only the scan handoff
+  // above did. Every reload silently wiped a lead's worth of typed-in or
+  // loaded data, forcing "Load a real lead" to be redone from scratch
+  // every time. Persisted the same way as the scan handoff: every field
+  // below autosaves to localStorage on input and restores on load, so a
+  // reload (or coming back tomorrow) keeps whatever was last on the form.
+  const FORM_STATE_KEY = 'verilume_vendorPanelInputs';
+  const PERSISTED_FIELD_IDS = ['inCompany', 'inFootprint', 'inIndustry', 'inNaics', 'inUrl', 'inGenerations', 'inWealthTier', 'inQa', 'inScanSummary'];
+  function saveFormState(){
+    try {
+      const data = {};
+      PERSISTED_FIELD_IDS.forEach(id => { const el = document.getElementById(id); if (el) data[id] = el.value; });
+      localStorage.setItem(FORM_STATE_KEY, JSON.stringify(data));
+    } catch (e){ /* inaccessible localStorage — autosave just silently doesn't happen */ }
+  }
+  try {
+    const savedRaw = localStorage.getItem(FORM_STATE_KEY);
+    if (savedRaw){
+      const saved = JSON.parse(savedRaw);
+      PERSISTED_FIELD_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        // Never clobber a value the scan-handoff block above just set
+        // moments ago (a fresher, just-run scan should win over an older
+        // autosave) — only restore into a field that's still empty.
+        if (el && !el.value && saved[id]) el.value = saved[id];
+      });
+    }
+  } catch (e){ /* malformed or inaccessible localStorage — just skip restore */ }
+  saveFormState(); // capture the merged result of both restores above (scan handoff + this autosave) as the new baseline
+  PERSISTED_FIELD_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', saveFormState);
+  });
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
