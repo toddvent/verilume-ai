@@ -120,9 +120,16 @@
         <div><label>Industry + tier</label><input type="text" id="inIndustry" value="Cruise Lines — Luxury"></div>
       </div>
       <div class="field-row">
-        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value="https://www.atlasoceanvoyages.com"></div>
+        <div>
+          <label>Website URL — actually crawled server-side before the prompt is built</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="inUrl" value="https://www.atlasoceanvoyages.com" style="flex:1;">
+            <button class="btn small" id="scanSiteBtn" type="button" style="white-space:nowrap;">Scan site</button>
+          </div>
+        </div>
         <div><label>Business model <span style="font-weight:400;color:var(--muted);">(e.g. "B2C", "B2B")</span></label><input type="text" id="inBuyerType" value=""></div>
       </div>
+      <div class="prompt-box hidden" id="preScanBox"></div>
       <div class="field-row">
         <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(comma-separated)</span></label><input type="text" id="inGenerations" value="Baby Boomers, Seniors / Silent Gen"></div>
         <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(comma-separated)</span></label><input type="text" id="inWealthTier" value="High Net-Worth, Wealthy"></div>
@@ -184,6 +191,44 @@
   const resultsModule = document.getElementById('resultsModule');
   const candidatesEl = document.getElementById('candidates');
   const revealAllBtn = document.getElementById('revealAllBtn');
+  const scanSiteBtn = document.getElementById('scanSiteBtn');
+  const preScanBox = document.getElementById('preScanBox');
+
+  // 2026-09-03 fix, per direct correction — "I see wealth not the scan."
+  // The website URL field crawls server-side when you click Run, same as
+  // the real assessment, but that left no way to actually SEE the scan
+  // before committing to a full 5-vendor call. This hits the real, public
+  // POST /api/assessment/website-scan endpoint directly — the exact same
+  // endpoint assessment.html's Step 1 calls — so you can see the real
+  // crawled title/meta description/headings/excerpt up front. Doesn't
+  // change what Run sends; the panel route still does its own crawl.
+  function formatSiteContext(wc){
+    return 'Title: ' + (wc.title || '(none)') + '\nMeta description: ' + (wc.metaDescription || '(none)') + '\nHeadings: ' + ((wc.headings || []).join(' | ') || '(none)') + '\nExcerpt: ' + (wc.excerpt || '(none)');
+  }
+  scanSiteBtn.addEventListener('click', async function(){
+    const url = document.getElementById('inUrl').value.trim();
+    if (!url){ preScanBox.textContent = 'Enter a website URL first.'; preScanBox.classList.remove('hidden'); return; }
+    scanSiteBtn.disabled = true;
+    preScanBox.textContent = 'Scanning ' + url + ' ...';
+    preScanBox.classList.remove('hidden');
+    try {
+      const resp = await fetch('/api/assessment/website-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await resp.json();
+      if (!resp.ok){
+        preScanBox.textContent = 'Scan failed: ' + (data.error || ('HTTP ' + resp.status));
+        return;
+      }
+      preScanBox.textContent = 'Website actually fetched just now:\n' + formatSiteContext(data);
+    } catch (e){
+      preScanBox.textContent = 'Scan failed: ' + e.message;
+    } finally {
+      scanSiteBtn.disabled = false;
+    }
+  });
 
   // 2026-09-03 fix, per direct correction — no lead picker, no
   // website-category-scan handoff, no freeform Q&A box. This panel now
@@ -350,7 +395,7 @@
       runStatus.textContent = 'Done.';
       const wc = data.websiteContext;
       siteBox.textContent = wc
-        ? 'Website actually fetched:\nTitle: ' + (wc.title || '(none)') + '\nMeta description: ' + (wc.metaDescription || '(none)') + '\nHeadings: ' + ((wc.headings || []).join(' | ') || '(none)') + '\nExcerpt: ' + (wc.excerpt || '(none)')
+        ? 'Website actually fetched:\n' + formatSiteContext(wc)
         : 'Website could NOT be fetched, or no URL was given — the prompt proceeded without site-specific detail rather than guessing (matches the real feature\'s behavior).';
       siteBox.classList.remove('hidden');
       promptBox.textContent = data.prompt;
