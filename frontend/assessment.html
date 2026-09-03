@@ -2909,6 +2909,15 @@ const INDUSTRY_KEYWORDS = {
 // on top of the old one.
 let assessmentWebsiteContext = null;
 
+// 2026-09-03 fix, per direct correction — the site-content industry guess
+// (guessProfileFromInput()'s industryIdx, computed at Step 2 entry) used to
+// apply itself to #inIndustry immediately, before the visitor had answered
+// Audience or Wealth Tier — intentionally the opposite of the real design:
+// industry (and the NAICS code tied to it) is only supposed to appear once
+// real audience+wealth signal exists. This holds that computed guess until
+// maybeRevealIndustryGuess() (below) decides it's actually time to show it.
+let pendingIndustryGuess = null;
+
 // 2026-08-31 — very rough illustrative starting point for the new Step 2
 // income slider (see verilumeWealthIndex() below), used only as the initial
 // guessed value shown before a visitor drags it themselves. Uses the same
@@ -3056,15 +3065,26 @@ function enterProfileGuess(){
     tag.classList.toggle('unknown', !isGuess);
   };
 
-  // Industry — populated first even though it now renders LAST on the step
-  // (2026-08-31 reorder); renderIndustryTierSuggestion(), called at the end
-  // of this function once audience/income are also set, needs the select's
-  // value already in place to compare against.
+  // Industry — 2026-09-03 fix, per direct correction: this used to apply
+  // guess.industryIdx to the select immediately on entering Step 2, before
+  // the visitor has answered Audience or Wealth Tier at all — a guess
+  // computed from site content alone, "revealed" while it read Our Guess.
+  // That's the opposite of the intentional design: industry (and the NAICS
+  // code that rides with it) is supposed to stay genuinely null until both
+  // Audience and Wealth Tier are populated by the visitor, not pre-filled
+  // and then silently corrected later by renderIndustryTierSuggestion().
+  // The keyword-matched guess is still computed (guessProfileFromInput()
+  // above) and stashed in pendingIndustryGuess for maybeRevealIndustryGuess()
+  // to apply once real audience+wealth signal exists — never before.
+  pendingIndustryGuess = guess.industryIdx !== -1 ? guess : null;
   const industrySel = document.getElementById('inIndustry');
-  industrySel.value = guess.industryIdx !== -1 ? guess.industryIdx : '';
+  industrySel.value = '';
   delete industrySel.dataset.userEdited;
-  setGuessTag('industryGuessTag', guess.industryIdx !== -1);
+  setGuessTag('industryGuessTag', false);
+  document.getElementById('industryGuessTag').textContent = 'Pending';
   renderIndustryDesc();
+  const industryHint = document.getElementById('industryDescBody');
+  if (industryHint) industryHint.textContent = 'Answer Audience and Wealth Tier above first — your industry (and its NAICS code) is guessed from those answers, not shown until they\'re in.';
 
   // Description ("what we think this brand does") — Round 118: no longer
   // has its own field on this step (removed as a duplicate of the Step 5
@@ -3098,14 +3118,16 @@ function enterProfileGuess(){
   // deriveWealthTiersFromIndex()), so the seeded and hand-adjusted paths
   // always agree — just presented as a starting point to adjust, not a
   // claimed guess.
+  // 2026-09-03 — no longer seeded from guess.income. That default was
+  // derived FROM the (now-deferred) industry guess (guessIncomeForIndustry()),
+  // which made the slider's starting position implicitly reveal a guess the
+  // visitor hadn't actually given wealth signal for yet. Left at the
+  // slider's own neutral HTML default ($75,000) until the visitor drags it
+  // themselves — that drag is what now marks Wealth Tier as populated (see
+  // updateTargetIncome()'s markUserEdited() call and maybeRevealIndustryGuess()).
   const incomeEl = document.getElementById('inTargetIncome');
-  if (incomeEl){
-    const guessedIncome = guess.income != null ? guess.income : 75000;
-    incomeEl.value = guessedIncome;
-    delete incomeEl.dataset.userEdited;
-    state.targetIncome = guessedIncome;
-  }
-  renderWealthIndex(); // also calls renderIndustryTierSuggestion()
+  if (incomeEl) delete incomeEl.dataset.userEdited;
+  renderWealthIndex(); // also calls maybeRevealIndustryGuess() -> renderIndustryTierSuggestion()
 
   syncProfileGuessState();
   goToStep('profile-guess');
@@ -4702,6 +4724,37 @@ function renderWealthIndex(){
     const avgIncome = Math.round(nationalAverageIncome());
     body.innerHTML = `<strong>Verilume Wealth Index: ${index} — ${label}.</strong> 100 = the average U.S. household (currently ~$${avgIncome.toLocaleString()}/yr, from ${sourceNote}). Your score is your target income relative to that average, multiplied by the Fed Survey of Consumer Finances-sourced wealth index for your selected generation(s) above — so it isn't capped at 100, and two identical incomes can score very differently depending on generation.`;
   }
+  maybeRevealIndustryGuess();
+}
+
+// 2026-09-03 — gate for the deferred industry guess (see pendingIndustryGuess
+// above). "Populated" is read literally per direct instruction ("completely
+// null until those fields are populated"): at least one Audience tile picked
+// AND the Wealth Tier slider actually dragged by the visitor (not just left
+// at its default — see updateTargetIncome()'s markUserEdited() call). Once
+// both are true, and only then, the stashed guess is applied exactly once;
+// a visitor who already hand-picked an industry before that point (possible
+// since Industry itself is never disabled) is left alone. Called on every
+// audience toggle and every slider drag (both funnel through
+// renderWealthIndex() above), so it fires the instant both conditions are
+// first met, not just once.
+function maybeRevealIndustryGuess(){
+  const industrySel = document.getElementById('inIndustry');
+  if (!industrySel) return;
+  if (industrySel.value !== '' || industrySel.dataset.userEdited){
+    // Already revealed, or the visitor picked their own — from here on this
+    // is just the existing Luxury/Mass Market auto-switch.
+    renderIndustryTierSuggestion();
+    return;
+  }
+  const incomeEl = document.getElementById('inTargetIncome');
+  const wealthPopulated = !!(incomeEl && incomeEl.dataset.userEdited);
+  const audiencePopulated = state.audience.size > 0;
+  if (!wealthPopulated || !audiencePopulated || !pendingIndustryGuess) return;
+  industrySel.value = pendingIndustryGuess.industryIdx;
+  const tag = document.getElementById('industryGuessTag');
+  if (tag){ tag.textContent = 'Our Guess'; tag.classList.remove('unknown'); }
+  renderIndustryDesc();
   renderIndustryTierSuggestion();
 }
 
