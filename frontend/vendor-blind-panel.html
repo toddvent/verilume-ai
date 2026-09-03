@@ -99,28 +99,41 @@
 
     <div class="module">
       <h3>Inputs</h3>
-      <div class="desc">Plain manual fields — type in the real company you're testing. Nothing here is loaded or guessed for you.</div>
+      <!-- 2026-09-03 fix, per direct correction — this now matches the REAL
+           results-panel feature's actual input shape (company/industry/
+           footprint/audience/wealth/buyerType/website/5 stage self-ratings/
+           Media+CX %), built by calling the same buildAssessmentReadoutPrompt()
+           the live free assessment calls — not a separate invented prompt.
+           NAICS, freeform Q&A text, and the separate website-category-scan
+           summary are gone: none of those were ever part of the real prompt.
+           Prefilled below with the real, verified Atlas Ocean Voyages values
+           already confirmed this session (company override in
+           assessment.html's KNOWN_BRAND_OVERVIEWS; Generations/Wealth Tier
+           and the first 3 stage ratings read off the real captured lead's
+           actual data). Loyalty, Advocacy, Media %, CX %, and Business model
+           were never seen this session — left genuinely blank rather than
+           guessed. Everything stays editable and autosaves. -->
+      <div class="desc">Matches the real free-assessment results-panel feature's actual inputs — same prompt-builder, not a separate invented one. Prefilled with real Atlas Ocean Voyages data where it's actually known; blank fields are blank because that data was never captured this session, not guessed.</div>
       <div class="field-row three">
-        <div><label>Company</label><input type="text" id="inCompany" value=""></div>
-        <div><label>Footprint</label><input type="text" id="inFootprint" value=""></div>
-        <div><label>Industry + tier</label><input type="text" id="inIndustry" value=""></div>
+        <div><label>Company</label><input type="text" id="inCompany" value="Atlas Ocean Voyages"></div>
+        <div><label>Footprint</label><input type="text" id="inFootprint" value="National"></div>
+        <div><label>Industry + tier</label><input type="text" id="inIndustry" value="Cruise Lines — Luxury"></div>
       </div>
       <div class="field-row">
-        <div><label>NAICS code</label><input type="text" id="inNaics" value=""></div>
-        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value=""></div>
+        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value="https://www.atlasoceanvoyages.com"></div>
+        <div><label>Business model <span style="font-weight:400;color:var(--muted);">(e.g. "B2C", "B2B")</span></label><input type="text" id="inBuyerType" value=""></div>
       </div>
       <div class="field-row">
-        <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(comma-separated, e.g. "Gen Z, Millennials")</span></label><input type="text" id="inGenerations" value=""></div>
-        <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(e.g. "High Net-Worth, Wealthy")</span></label><input type="text" id="inWealthTier" value=""></div>
+        <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(comma-separated)</span></label><input type="text" id="inGenerations" value="Baby Boomers, Seniors / Silent Gen"></div>
+        <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(comma-separated)</span></label><input type="text" id="inWealthTier" value="High Net-Worth, Wealthy"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Overall Media Strength % <span style="font-weight:400;color:var(--muted);">(0-100, blank = not yet scored)</span></label><input type="number" id="inMediaPct" min="0" max="100" value=""></div>
+        <div><label>Overall CX Strength % <span style="font-weight:400;color:var(--muted);">(0-100, blank = not yet scored)</span></label><input type="number" id="inCxPct" min="0" max="100" value=""></div>
       </div>
       <div>
-        <label>Assessment Q&amp;A — paste this company's real assessment answers if you have them; leave blank rather than typing in invented Q&amp;A pairs to stand in for real data</label>
-        <textarea id="inQa" rows="8" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(optional — paste real Q&A here, or leave blank)"></textarea>
-      </div>
-      <div id="scanHandoffNote" class="desc hidden" style="margin-top:10px;"></div>
-      <div>
-        <label>Website Positioning Scan <span style="font-weight:600;color:var(--danger);">(required)</span> <span style="font-weight:400;color:var(--muted);">— run website-category-scan.html first and use its "Send to Vendor Blind Panel" button to carry the scan over here</span></label>
-        <textarea id="inScanSummary" rows="6" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;" placeholder="(required — go run a scan on website-category-scan.html, then use its handoff button; the panel will not run without this)"></textarea>
+        <label>Marketing Loop self-ratings <span style="font-weight:400;color:var(--muted);">(1 = Needs Prioritization … 5 = Shareable Moments; blank = not yet rated — matches the real assessment exactly)</span></label>
+        <div class="field-row" id="stageRatingsRow" style="flex-wrap:wrap;gap:12px;margin-top:6px;"></div>
       </div>
       <button class="btn primary" id="runBtn" style="margin-top:14px;">Run panel — call all 5 vendors</button>
       <div class="status-line hidden" id="runStatus"></div>
@@ -171,66 +184,38 @@
   const resultsModule = document.getElementById('resultsModule');
   const candidatesEl = document.getElementById('candidates');
   const revealAllBtn = document.getElementById('revealAllBtn');
-  const inScanSummary = document.getElementById('inScanSummary');
-  const scanHandoffNote = document.getElementById('scanHandoffNote');
 
-  // 2026-09-03 fix, per direct correction — the "Load a real lead" module
-  // (GET /api/leads picker + Use selected lead button) is removed entirely.
-  // It was built to solve a real problem (fabricated example Q&A text) but
-  // turned into ongoing friction for what is, per direct correction, a
-  // one-off manual staff testing tool — every field below is now just a
-  // plain text box the operator fills in by hand. GET /api/leads itself is
-  // untouched server-side (harmless, unused by this page now) in case a
-  // real admin lead-lookup UI wants it later.
+  // 2026-09-03 fix, per direct correction — no lead picker, no
+  // website-category-scan handoff, no freeform Q&A box. This panel now
+  // sends exactly what the real generate-readout call sends: company,
+  // industry, footprint, audience, wealth, business model, website URL
+  // (crawled server-side), and the 5 Marketing Loop stage self-ratings +
+  // Media/CX %. Built as real <select> controls, one per stage, matching
+  // ASSESSMENT_RUBRIC_STAGES/ASSESSMENT_STAGE_EFF_LABEL server-side exactly.
+  const STAGES = [
+    { stage: 'Awareness', sub: 'Prospects discover the brand before a competitor gets there first.' },
+    { stage: 'Consideration', sub: 'Prospects arrive already convinced, not still comparing.' },
+    { stage: 'Purchase', sub: 'The sale closes on the exact promise Media already made.' },
+    { stage: 'Loyalty', sub: 'Customers keep coming back without another acquisition dollar spent.' },
+    { stage: 'Advocacy', sub: 'Customers sell the brand for you — for free.' }
+  ];
+  const STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
+  // Real ratings from the actual Atlas Ocean Voyages lead captured this
+  // session, read off its Assessment Q&A: Awareness = Accurate Experiences
+  // (3), Consideration = Early Progress (2), Purchase = Early Progress (2).
+  // Loyalty/Advocacy were never seen — left unset rather than guessed.
+  const KNOWN_AOV_STAGE_RATINGS = { Awareness: 3, Consideration: 2, Purchase: 2 };
+  const stageRatingsRow = document.getElementById('stageRatingsRow');
+  stageRatingsRow.innerHTML = STAGES.map(s => {
+    const known = KNOWN_AOV_STAGE_RATINGS[s.stage];
+    const options = ['<option value="">(not rated)</option>'].concat([1, 2, 3, 4, 5].map(n =>
+      `<option value="${n}"${known === n ? ' selected' : ''}>${n} — ${STAGE_EFF_LABEL[n]}</option>`
+    )).join('');
+    return `<div style="min-width:170px;"><label style="font-size:0.78rem;">${esc(s.stage)}</label><select id="stage_${s.stage}" data-stage="${esc(s.stage)}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:0.82rem;font-family:inherit;">${options}</select></div>`;
+  }).join('');
 
-  // 2026-09-02 addition — "simple handoff" from website-category-scan.html's
-  // "Send to Vendor Blind Panel" button (per direct request: "as long as
-  // the scan results are included"). That page writes a small JSON blob to
-  // localStorage (shared across tabs, unlike sessionStorage, so the button
-  // works whether it opens a new tab or navigates this one) rather than a
-  // URL param — a full 7-category scan summary is too long to reliably
-  // round-trip through a query string.
-  //
-  // 2026-09-03 fix, per direct correction — this used to delete the blob
-  // immediately after the first read and expire it after 10 minutes, on
-  // the theory that a stale blob silently reapplying later would be
-  // confusing. In practice that meant one scan only ever survived a single
-  // page load: reload the panel, or come back an hour later to keep testing
-  // the same scan against different copy, and the field was empty again
-  // with no indication why. This is a same-person, admin-gated staff tool
-  // for one ongoing testing session, not a multi-user handoff where a
-  // leftover blob could reach the wrong person — so the real fix is to
-  // stop treating "reusable" as a bug. The blob now persists (never
-  // removed here) and stays valid for 24 hours; re-running the scan tool
-  // and using its handoff button again simply overwrites it.
-  const SCAN_HANDOFF_KEY = 'verilume_scanHandoff';
-  const SCAN_HANDOFF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-  try {
-    const raw = localStorage.getItem(SCAN_HANDOFF_KEY);
-    if (raw){
-      const handoff = JSON.parse(raw);
-      const age = Date.now() - (handoff.savedAt || 0);
-      if (handoff.summary && age >= 0 && age <= SCAN_HANDOFF_MAX_AGE_MS){
-        if (handoff.websiteUrl) document.getElementById('inUrl').value = handoff.websiteUrl;
-        inScanSummary.value = handoff.summary;
-        const ageMin = Math.round(age / 60000);
-        scanHandoffNote.textContent = 'Website Positioning Scan filled in from a website-category-scan.html run' + (handoff.websiteUrl ? ' (' + handoff.websiteUrl + ')' : '') + (ageMin > 1 ? ', ' + ageMin + ' min ago' : '') + ' — review below, edit or clear as needed. Re-run the scan tool and its handoff button to replace this.';
-        scanHandoffNote.classList.remove('hidden');
-      }
-    }
-  } catch (e){ /* malformed or inaccessible localStorage — just skip the handoff, never block the page */ }
-
-  // 2026-09-03 fix, per direct correction — "Company/Footprint/Industry/
-  // NAICS/Website URL/Q&A/Generations/Wealth Tier stay blank without a
-  // loaded lead" is real (those fields have no other data source), and
-  // none of it used to survive a page reload — only the scan handoff
-  // above did. Every reload silently wiped a lead's worth of typed-in or
-  // loaded data, forcing "Load a real lead" to be redone from scratch
-  // every time. Persisted the same way as the scan handoff: every field
-  // below autosaves to localStorage on input and restores on load, so a
-  // reload (or coming back tomorrow) keeps whatever was last on the form.
   const FORM_STATE_KEY = 'verilume_vendorPanelInputs';
-  const PERSISTED_FIELD_IDS = ['inCompany', 'inFootprint', 'inIndustry', 'inNaics', 'inUrl', 'inGenerations', 'inWealthTier', 'inQa', 'inScanSummary'];
+  const PERSISTED_FIELD_IDS = ['inCompany', 'inFootprint', 'inIndustry', 'inUrl', 'inBuyerType', 'inGenerations', 'inWealthTier', 'inMediaPct', 'inCxPct'].concat(STAGES.map(s => 'stage_' + s.stage));
   function saveFormState(){
     try {
       const data = {};
@@ -239,22 +224,24 @@
     } catch (e){ /* inaccessible localStorage — autosave just silently doesn't happen */ }
   }
   try {
+    // Unconditional restore (not "only if empty") — the fields below ship
+    // with real Atlas Ocean Voyages defaults baked into the HTML, so on a
+    // repeat visit a saved edit (a different company, a changed rating)
+    // must win over that hardcoded default, not the other way around.
     const savedRaw = localStorage.getItem(FORM_STATE_KEY);
     if (savedRaw){
       const saved = JSON.parse(savedRaw);
       PERSISTED_FIELD_IDS.forEach(id => {
         const el = document.getElementById(id);
-        // Never clobber a value the scan-handoff block above just set
-        // moments ago (a fresher, just-run scan should win over an older
-        // autosave) — only restore into a field that's still empty.
-        if (el && !el.value && saved[id]) el.value = saved[id];
+        if (el && saved[id] !== undefined) el.value = saved[id];
       });
     }
   } catch (e){ /* malformed or inaccessible localStorage — just skip restore */ }
-  saveFormState(); // capture the merged result of both restores above (scan handoff + this autosave) as the new baseline
   PERSISTED_FIELD_IDS.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('input', saveFormState);
+    if (!el) return;
+    el.addEventListener('input', saveFormState);
+    el.addEventListener('change', saveFormState);
   });
 
   function esc(s){
@@ -266,17 +253,43 @@
     return s.trim().split(/\s+/).filter(Boolean).length;
   }
 
+  // 2026-09-03 fix — the real feature's prompt (buildAssessmentReadoutPrompt())
+  // asks for JSON {"synthesis":..., "opportunity":...}, not one paragraph, so
+  // each vendor's raw text is parsed the same way generateAssessmentReadout()
+  // parses it server-side. A vendor that returns non-JSON (some do, on a bad
+  // day) shows its raw text under "Unparsed response" instead of silently
+  // losing it.
+  function parseReadoutText(text){
+    if (!text) return null;
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]);
+      if (typeof parsed.synthesis === 'string' || typeof parsed.opportunity === 'string') return parsed;
+      return null;
+    } catch (e){ return null; }
+  }
+
   function renderCandidates(candidates){
     candidatesEl.innerHTML = candidates.map(c => {
       const errored = !!c.error;
+      const parsed = errored ? null : parseReadoutText(c.text);
+      let bodyHtml;
+      if (errored){
+        bodyHtml = `<div class="cand-error">${esc(c.error)}</div>`;
+      } else if (parsed){
+        bodyHtml = `<div class="cand-text"><strong>Synthesis:</strong> ${esc(parsed.synthesis || '(missing)')}</div>
+          <div class="cand-text" style="margin-top:8px;"><strong>Opportunity:</strong> ${esc(parsed.opportunity || '(missing)')}</div>
+          <div class="cand-wc">${wordCount((parsed.synthesis || '') + ' ' + (parsed.opportunity || ''))} words total</div>`;
+      } else {
+        bodyHtml = `<div class="cand-error">Unparsed response (not valid JSON) — shown raw:</div><div class="cand-text">${esc(c.text)}</div>`;
+      }
       return `<div class="candidate${errored ? ' errored' : ''}" data-key="${esc(c.key)}">
         <div class="cand-head">
           <span class="cand-label">${esc(c.blindLabel)}</span>
           <span class="cand-vendor hidden" data-vendor>${esc(c.vendor)}${c.model ? ' — ' + esc(c.model) : ''}</span>
         </div>
-        ${errored
-          ? `<div class="cand-error">${esc(c.error)}</div>`
-          : `<div class="cand-text">${esc(c.text)}</div><div class="cand-wc">${wordCount(c.text)} words</div>`}
+        ${bodyHtml}
       </div>`;
     }).join('');
     resultsModule.classList.remove('hidden');
@@ -293,24 +306,6 @@
   });
 
   runBtn.addEventListener('click', async function(){
-    // 2026-09-02 — required, not optional, per direct correction ("The
-    // website positioning scan is not optional for the contest. It's a
-    // critical component."). Checked here too, not just server-side,
-    // so the failure is immediate and specific instead of a round-trip.
-    if (!inScanSummary.value.trim()){
-      runStatus.textContent = 'Website Positioning Scan is required — run a scan on website-category-scan.html and use its "Send to Vendor Blind Panel" button first.';
-      runStatus.classList.remove('hidden');
-      runStatus.classList.add('error');
-      return;
-    }
-    // 2026-09-02 — Company/Footprint/Industry+tier/NAICS/Website URL used
-    // to silently fall back to a fabricated "Oceania Cruises" example
-    // identity whenever left blank; that's fixed (no fallback exists
-    // anymore, blank stays blank in the prompt). A hard block requiring
-    // all five before every run was added at the same time and then
-    // reverted per direct correction — this is a one-off staff testing
-    // tool, and the operator typing the real company by hand is the
-    // normal case, not something that needs gating.
     runBtn.disabled = true;
     runStatus.textContent = 'Calling all five vendors — this can take up to a minute...';
     runStatus.classList.remove('hidden', 'error');
@@ -318,16 +313,25 @@
     siteBox.classList.add('hidden');
     resultsModule.classList.add('hidden');
 
+    const stageRatings = {};
+    STAGES.forEach(s => {
+      const v = document.getElementById('stage_' + s.stage).value;
+      if (v) stageRatings[s.stage] = Number(v);
+    });
+    const mediaPctVal = document.getElementById('inMediaPct').value;
+    const cxPctVal = document.getElementById('inCxPct').value;
+
     const body = {
       company: document.getElementById('inCompany').value,
       footprint: document.getElementById('inFootprint').value,
       industryLabel: document.getElementById('inIndustry').value,
-      naicsCode: document.getElementById('inNaics').value,
       websiteUrl: document.getElementById('inUrl').value,
-      qaRaw: document.getElementById('inQa').value,
+      buyerType: document.getElementById('inBuyerType').value,
       generations: document.getElementById('inGenerations').value.split(',').map(s => s.trim()).filter(Boolean),
       wealthTier: document.getElementById('inWealthTier').value.split(',').map(s => s.trim()).filter(Boolean),
-      websiteScanSummary: inScanSummary.value
+      stageRatings,
+      mediaPct: mediaPctVal ? Number(mediaPctVal) : null,
+      cxPct: cxPctVal ? Number(cxPctVal) : null
     };
 
     try {
@@ -344,10 +348,10 @@
         return;
       }
       runStatus.textContent = 'Done.';
-      const wc = data.websiteContext || {};
-      siteBox.textContent = wc.ok
+      const wc = data.websiteContext;
+      siteBox.textContent = wc
         ? 'Website actually fetched:\nTitle: ' + (wc.title || '(none)') + '\nMeta description: ' + (wc.metaDescription || '(none)') + '\nHeadings: ' + ((wc.headings || []).join(' | ') || '(none)') + '\nExcerpt: ' + (wc.excerpt || '(none)')
-        : 'Website could NOT be fetched: ' + (wc.error || 'unknown error') + ' — the prompt proceeded without site-specific detail rather than guessing.';
+        : 'Website could NOT be fetched, or no URL was given — the prompt proceeded without site-specific detail rather than guessing (matches the real feature\'s behavior).';
       siteBox.classList.remove('hidden');
       promptBox.textContent = data.prompt;
       promptBox.classList.remove('hidden');
