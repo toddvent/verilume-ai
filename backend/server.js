@@ -4908,6 +4908,24 @@ createTableIfNeeded(`
 // TABLE ADD COLUMN is safe to attempt unconditionally and this swallows
 // the "duplicate column" error on every run after the first.
 try { db.exec(`ALTER TABLE leads ADD COLUMN assessmentDataJson TEXT`); } catch (e) { /* already exists */ }
+// 2026-09-02 fix, per direct correction — the free assessment's Step 1
+// ("Review the website") already collects and validates a real company
+// website URL (state.url / #inUrl in assessment.html) and even runs a
+// live scan against it (POST /api/assessment/website-scan), but
+// syncLeadToBackend()'s payload to POST /api/leads never actually
+// included it — so it was captured client-side, used for that one scan,
+// and then dropped on the floor. It never reached the leads table or
+// assessmentDataJson, meaning no lead ever had a real website URL to
+// hand back to Vendor Blind Panel's "load a real lead" flow. Closing
+// that gap: a real column, populated from the same body.url the POST
+// handler below now reads.
+ensureColumn('leads', 'websiteUrl', 'TEXT');
+// 2026-09-02 fix, same round, per direct correction — NAICS is likewise
+// real data (every INDUSTRIES entry in assessment.html carries an actual
+// NAICS code for its label, including the wealth-index-driven Luxury/Mass
+// Market auto-switch), not something the assessment leaves unset. It just
+// wasn't being sent to the backend either — same gap as websiteUrl above.
+ensureColumn('leads', 'naicsCode', 'TEXT');
 
 // Round 60 — session tokens (Deliverable 14/auth). One row per active
 // login; deleted on logout or lazily on expiry (see authenticate() below).
@@ -10511,26 +10529,22 @@ async function handleRequest(req, res) {
       // fabricated example identity (Oceania Cruises, NAICS 483112,
       // oceaniacruises.com, "Luxury tier, Cruise Lines") whenever left
       // blank, with nothing in the response indicating a fake company had
-      // been substituted for a real one. That's the exact same bug class
-      // as tonight's other fixes (qaRaw's fabricated Q&A, the previously-
-      // optional website scan) — caught on self-review, not reported, so
-      // fixed the same way: required and rejected loudly instead of
-      // silently faked, rather than trusting a filled-in-looking prompt
-      // that was actually running under an invented company.
+      // been substituted for a real one.
+      //
+      // 2026-09-02, same day, revised per direct correction: the fix above
+      // over-corrected into a hard 400 block requiring every one of these
+      // five fields, which forced staff through the "load a real lead"
+      // flow even for a one-off manual test where the operator already
+      // knows and is typing the real company by hand — friction this tool
+      // never needed. The actual bug was silent fabrication, not "blank is
+      // unsafe." So: back to plain optional fields, same as qaRaw already
+      // works — left blank, they stay blank, and the prompt says so
+      // honestly instead of ever substituting invented identity data.
       const company = (body.company || '').trim();
       const footprint = (body.footprint || '').trim();
       const industryLabel = (body.industryLabel || '').trim();
       const naicsCode = (body.naicsCode || '').trim();
       const websiteUrl = (body.websiteUrl || '').trim();
-      const missingFields = [];
-      if (!company) missingFields.push('company');
-      if (!footprint) missingFields.push('footprint');
-      if (!industryLabel) missingFields.push('industryLabel');
-      if (!naicsCode) missingFields.push('naicsCode');
-      if (!websiteUrl) missingFields.push('websiteUrl');
-      if (missingFields.length){
-        return sendJson(res, 400, { error: `Missing required field(s): ${missingFields.join(', ')} — load a real lead or fill these in manually. No fabricated company identity is substituted.` });
-      }
       // 2026-09-02 fix, per direct correction — this default used to be
       // fabricated example Q&A text ("How would you rate your brand's
       // presence across paid and organic search?") that does not match the
@@ -10572,22 +10586,26 @@ async function handleRequest(req, res) {
       const wealthTier = Array.isArray(body.wealthTier) ? body.wealthTier.filter(w => typeof w === 'string' && w.trim()) : [];
 
       let websiteContext;
-      try {
-        const page = await fetchAndExtractPage(websiteUrl);
-        websiteContext = { ok: true, ...page };
-      } catch (e){
-        websiteContext = { ok: false, url: websiteUrl, error: e.message };
+      if (!websiteUrl){
+        websiteContext = { ok: false, url: '', error: 'no URL provided' };
+      } else {
+        try {
+          const page = await fetchAndExtractPage(websiteUrl);
+          websiteContext = { ok: true, ...page };
+        } catch (e){
+          websiteContext = { ok: false, url: websiteUrl, error: e.message };
+        }
       }
       const siteBlock = websiteContext.ok
         ? `WEBSITE (fetched live just now — use only what's given here, do not add page content beyond this):\nTitle: ${websiteContext.title || '(none found)'}\nMeta description: ${websiteContext.metaDescription || '(none found)'}\nHeadings: ${(websiteContext.headings || []).join(' | ') || '(none found)'}\nExcerpt: ${websiteContext.excerpt || '(none found)'}`
-        : `WEBSITE: could not be fetched (${websiteContext.error}) — do not invent or guess what this site contains; proceed without site-specific detail.`;
+        : `WEBSITE: ${websiteUrl ? `could not be fetched (${websiteContext.error})` : 'no URL provided'} — do not invent or guess what this site contains; proceed without site-specific detail.`;
 
       const prompt = `You are an Executive Marketing Consultant preparing a brief for a Chief Marketing Officer, assessing how AI marketing trends can support improved performance and organizational scale. Write a concise, high-impact paragraph (~120-150 words) that reads like a strong 30-second pitch of real insight — not a sales pitch, no product or vendor names, no call to action.
 
 INPUTS YOU MAY USE:
-- Company: ${company}
-- NAICS: ${naicsCode} — ${industryLabel}
-- Footprint: ${footprint}
+- Company: ${company || '(not provided)'}
+- NAICS: ${naicsCode || '(not provided)'} — ${industryLabel || '(not provided)'}
+- Footprint: ${footprint || '(not provided)'}
 ${siteBlock}
 
 ASSESSMENT Q&A (the client's own answers, verbatim):
@@ -15930,8 +15948,8 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
       db.prepare(`INSERT INTO leads
         (id, email, firstName, lastName, phoneCountry, phone, company, industry, footprint,
          buyerType, address, engagementModel, quadrant, mediaPct, cxPct, consent, source,
-         hubspotStatus, hubspotContactId, hubspotError, createdAt, assessmentDataJson)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+         hubspotStatus, hubspotContactId, hubspotError, createdAt, assessmentDataJson, websiteUrl, naicsCode)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(
           leadId, body.email, body.firstName || '', body.lastName || '', body.phoneCountry || '',
           body.phone || '', body.company || '', body.industry || '', body.footprint || '',
@@ -15940,7 +15958,7 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
           typeof body.cxPct === 'number' ? body.cxPct : null,
           body.consent ? 1 : 0, body.source || '',
           sync.hubspotStatus, sync.hubspotContactId || null, sync.hubspotError || null, now,
-          JSON.stringify(body)
+          JSON.stringify(body), body.url || '', body.naicsCode || ''
         );
       return sendJson(res, 201, {
         leadId,
@@ -16133,4 +16151,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
