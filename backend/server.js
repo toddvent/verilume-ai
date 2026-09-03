@@ -7711,6 +7711,29 @@ async function fetchAndExtractPage(url){
 // it explains fit, it doesn't offer a menu. Reuses the same "senior
 // consultant, no acronyms, leaves room for correction" voice already
 // established for renderJourneyBP()'s panel in assessment.html.
+// ASSESSMENT_RUBRIC_STAGES/ASSESSMENT_STAGE_EFF_LABEL are a deliberate,
+// narrow duplication of frontend/assessment.html's RUBRIC (stage/sub
+// text) and STAGE_EFF_LABEL (1-5 maturity label) — the free assessment
+// itself lives entirely client-side with no equivalent backend copy, so
+// there's no live source to import from. If assessment.html's RUBRIC
+// stages/sub-copy or STAGE_EFF_LABEL values ever change, update both
+// here to match — same keeping-two-things-in-sync risk this whole
+// session has been fixing elsewhere, but unlike schema-identifiers.json
+// there's no way to self-derive this one (it's prose copy, not a
+// pattern in server.js's own source), so it's called out explicitly
+// instead. Placed here (before buildAssessmentReadoutPrompt and before
+// the /api/ops/vendor-blind-panel route, which also references these) so
+// neither this function nor that route can hit a temporal-dead-zone
+// ReferenceError from a `const` declared later in the same dispatcher.
+const ASSESSMENT_RUBRIC_STAGES = [
+  { stage: 'Awareness', sub: 'Prospects discover the brand before a competitor gets there first.' },
+  { stage: 'Consideration', sub: 'Prospects arrive already convinced, not still comparing.' },
+  { stage: 'Purchase', sub: 'The sale closes on the exact promise Media already made.' },
+  { stage: 'Loyalty', sub: 'Customers keep coming back without another acquisition dollar spent.' },
+  { stage: 'Advocacy', sub: 'Customers sell the brand for you — for free.' }
+];
+const ASSESSMENT_STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
+
 function buildAssessmentReadoutPrompt(input){
   const stageLines = (input.stages || []).map(s =>
     `- ${s.stage}: self-rated "${s.ratingLabel || 'not yet rated'}"${typeof s.rating === 'number' ? ` (${s.rating}/5)` : ''}${s.sub ? ` — ${s.sub}` : ''}`
@@ -10525,99 +10548,57 @@ async function handleRequest(req, res) {
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const body = await readBody(req);
-      // 2026-09-02 fix — these five fields used to silently fall back to a
-      // fabricated example identity (Oceania Cruises, NAICS 483112,
-      // oceaniacruises.com, "Luxury tier, Cruise Lines") whenever left
-      // blank, with nothing in the response indicating a fake company had
-      // been substituted for a real one.
-      //
-      // 2026-09-02, same day, revised per direct correction: the fix above
-      // over-corrected into a hard 400 block requiring every one of these
-      // five fields, which forced staff through the "load a real lead"
-      // flow even for a one-off manual test where the operator already
-      // knows and is typing the real company by hand — friction this tool
-      // never needed. The actual bug was silent fabrication, not "blank is
-      // unsafe." So: back to plain optional fields, same as qaRaw already
-      // works — left blank, they stay blank, and the prompt says so
-      // honestly instead of ever substituting invented identity data.
+      // 2026-09-03 fix, per direct correction — this route used to build its
+      // own separate prompt from scratch (Executive Marketing Consultant
+      // brief, ~120-150 word single paragraph, NAICS-driven, keyed off a
+      // freeform Q&A text block and a separate website-category-scan
+      // summary). None of that is what the real feature actually runs.
+      // The real free-assessment results-panel copy comes from
+      // buildAssessmentReadoutPrompt()/generateAssessmentReadout() above
+      // (see POST /api/assessment/generate-readout) — company, industry,
+      // footprint, audience, wealth, buyerType, real website content, the
+      // five Marketing Loop stage self-ratings, and Media/CX percentages;
+      // output is {"synthesis":..., "opportunity":...}, not one paragraph.
+      // A vendor comparison built on a different prompt answers a different
+      // question — same bug class as runPrCandidateInterview() already
+      // avoided by reusing buildPrCorpCommPrompt() directly instead of
+      // inventing a parallel one. Fixed the same way here: this route now
+      // calls buildAssessmentReadoutPrompt() itself, unmodified, with real
+      // inputs — so a vendor that wins here is a vendor that would actually
+      // win on the real feature.
       const company = (body.company || '').trim();
       const footprint = (body.footprint || '').trim();
       const industryLabel = (body.industryLabel || '').trim();
-      const naicsCode = (body.naicsCode || '').trim();
       const websiteUrl = (body.websiteUrl || '').trim();
-      // 2026-09-02 fix, per direct correction — this default used to be
-      // fabricated example Q&A text ("How would you rate your brand's
-      // presence across paid and organic search?") that does not match the
-      // real free assessment's actual questions (the five-stage Marketing
-      // Loop — Awareness/Consideration/Purchase/Loyalty/Advocacy — rated on
-      // a 1-5 maturity scale; see ASSESSMENT_RUBRIC_STAGES near GET
-      // /api/leads below). No fabricated substitute belongs here: an empty
-      // qaRaw now stays empty and the prompt says so honestly, and the
-      // frontend's real fix is pulling GET /api/leads' real
-      // assessmentQaText for an actual captured lead instead of anyone
-      // typing or relying on invented example answers.
-      const qaRaw = (body.qaRaw || '').trim();
-      // 2026-09-02 addition, per direct request — a "simple handoff" link
-      // from website-category-scan.html (its multi-page, sitemap-aware,
-      // JSON-LD-aware scan is real, deeper site research than the single
-      // homepage fetch this route does for siteBlock below). Kept as an
-      // entirely separate, clearly labeled block rather than merged into
-      // qaRaw — those are explicitly the client's own verbatim answers,
-      // and blending AI-extracted website findings into that would
-      // misrepresent the source.
-      //
-      // 2026-09-02, same day, revised per direct correction ("The website
-      // positioning scan is not optional for the contest. It's a critical
-      // component."): originally optional/backward-compatible. Now
-      // required and enforced server-side (not just a frontend nicety) so
-      // no caller — the panel's own UI or a direct API call — can produce
-      // a comparison without it.
-      const websiteScanSummary = (body.websiteScanSummary || '').trim();
-      if (!websiteScanSummary){
-        return sendJson(res, 400, { error: 'websiteScanSummary is required — run website-category-scan.html first and use its "Send to Vendor Blind Panel" button to carry the scan over.' });
-      }
-      // 2026-09-02, same-day revision — per direct correction: these two
-      // were originally only folded into qaRaw's free text (from a loaded
-      // real lead's generations/wealthTier), which meant they were never
-      // visible as their own inputs on the panel's screen. Given their own
-      // fields and their own explicit prompt block now, same treatment as
-      // the website scan gets — real data, but never buried.
+      const buyerType = (body.buyerType || '').trim();
       const generations = Array.isArray(body.generations) ? body.generations.filter(g => typeof g === 'string' && g.trim()) : [];
       const wealthTier = Array.isArray(body.wealthTier) ? body.wealthTier.filter(w => typeof w === 'string' && w.trim()) : [];
+      const mediaPct = typeof body.mediaPct === 'number' ? body.mediaPct : (body.mediaPct ? Number(body.mediaPct) : null);
+      const cxPct = typeof body.cxPct === 'number' ? body.cxPct : (body.cxPct ? Number(body.cxPct) : null);
+      // stageRatings: { Awareness: 1-5, Consideration: 1-5, ... } — staff
+      // input, one per ASSESSMENT_RUBRIC_STAGES entry; matches exactly what
+      // assessment.html's applyAiGeneratedReadout() builds from
+      // state.stageEffectiveness for the real call.
+      const stageRatings = body.stageRatings && typeof body.stageRatings === 'object' ? body.stageRatings : {};
+      const stages = ASSESSMENT_RUBRIC_STAGES.map(({ stage, sub }) => {
+        const rating = Number(stageRatings[stage]) || null;
+        return { stage, sub, rating, ratingLabel: rating ? ASSESSMENT_STAGE_EFF_LABEL[rating] : null };
+      });
 
-      let websiteContext;
-      if (!websiteUrl){
-        websiteContext = { ok: false, url: '', error: 'no URL provided' };
-      } else {
+      let websiteContext = null;
+      if (websiteUrl){
         try {
-          const page = await fetchAndExtractPage(websiteUrl);
-          websiteContext = { ok: true, ...page };
+          websiteContext = await fetchAndExtractPage(websiteUrl);
         } catch (e){
-          websiteContext = { ok: false, url: websiteUrl, error: e.message };
+          websiteContext = null; // matches the real client path: a failed fetch leaves assessmentWebsiteContext null, never a guess
         }
       }
-      const siteBlock = websiteContext.ok
-        ? `WEBSITE (fetched live just now — use only what's given here, do not add page content beyond this):\nTitle: ${websiteContext.title || '(none found)'}\nMeta description: ${websiteContext.metaDescription || '(none found)'}\nHeadings: ${(websiteContext.headings || []).join(' | ') || '(none found)'}\nExcerpt: ${websiteContext.excerpt || '(none found)'}`
-        : `WEBSITE: ${websiteUrl ? `could not be fetched (${websiteContext.error})` : 'no URL provided'} — do not invent or guess what this site contains; proceed without site-specific detail.`;
 
-      const prompt = `You are an Executive Marketing Consultant preparing a brief for a Chief Marketing Officer, assessing how AI marketing trends can support improved performance and organizational scale. Write a concise, high-impact paragraph (~120-150 words) that reads like a strong 30-second pitch of real insight — not a sales pitch, no product or vendor names, no call to action.
-
-INPUTS YOU MAY USE:
-- Company: ${company || '(not provided)'}
-- NAICS: ${naicsCode || '(not provided)'} — ${industryLabel || '(not provided)'}
-- Footprint: ${footprint || '(not provided)'}
-${siteBlock}
-
-ASSESSMENT Q&A (the client's own answers, verbatim):
-${qaRaw || '(none provided — proceed without client-specific answers, do not invent any)'}
-
-TARGET GENERATIONS (from this lead's real assessment answers): ${generations.length ? generations.join(', ') : '(not provided — assume a broad, general audience)'}
-TARGET WEALTH TIER (Verilume Wealth Index-derived, from this lead's real assessment answers): ${wealthTier.length ? wealthTier.join(', ') : '(not provided — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
-
-WEBSITE POSITIONING SCAN (AI-extracted from the company's own website by a separate multi-page scan — not client-provided; treat as background context, cite specifics from it only where they genuinely support the paragraph):
-${websiteScanSummary}
-
-Do not invent any statistic, market size, or competitor count. Do not simply restate or summarize the Q&A or website content back to the reader — synthesize what these specific inputs, taken together, reveal about where this organization is strong and where the real opportunity sits. The paragraph must: (1) open on where this company is actually positioned, grounded in the industry/NAICS classification and the real website content given, not a recap of the inputs; (2) surface one real, organization-wide marketing trend relevant to this company's category and scale — not tied to any single answer; (3) make one observation about how AI and human judgment are being split in marketing work right now, as an industry dynamic, not a product pitch; (4) end on a genuine open thread that makes a CMO want to see the full assessment, not a call-to-action or sales line. Do not mention any vendor, tool, or platform by name.`;
+      const prompt = buildAssessmentReadoutPrompt({
+        company, industryLabel, footprint,
+        audience: generations, wealth: wealthTier, buyerType,
+        websiteContext, stages, mediaPct, cxPct
+      });
 
       async function callAnthropicText(promptText){
         try {
@@ -10670,7 +10651,7 @@ Do not invent any statistic, market size, or competitor count. Do not simply res
         return na - nb;
       });
 
-      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, naicsCode, websiteUrl, qaRaw, websiteScanSummary, generations, wealthTier }, websiteContext, candidates });
+      return sendJson(res, 200, { prompt, inputs: { company, footprint, industryLabel, websiteUrl, buyerType, generations, wealthTier, stages, mediaPct, cxPct }, websiteContext, candidates });
     }
 
     // POST /api/ops/website-category-scan — staff-only, one-off scoped tool
@@ -16025,25 +16006,12 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
     // already expects, so GET /api/leads below can hand the frontend real
     // data to select from instead of anyone having to invent example text.
     //
-    // ASSESSMENT_RUBRIC_STAGES/ASSESSMENT_STAGE_EFF_LABEL are a deliberate,
-    // narrow duplication of frontend/assessment.html's RUBRIC (stage/sub
-    // text) and STAGE_EFF_LABEL (1-5 maturity label) — the free assessment
-    // itself lives entirely client-side with no equivalent backend copy, so
-    // there's no live source to import from. If assessment.html's RUBRIC
-    // stages/sub-copy or STAGE_EFF_LABEL values ever change, update both
-    // here to match — same keeping-two-things-in-sync risk this whole
-    // session has been fixing elsewhere, but unlike schema-identifiers.json
-    // there's no way to self-derive this one (it's prose copy, not a
-    // pattern in server.js's own source), so it's called out explicitly
-    // instead.
-    const ASSESSMENT_RUBRIC_STAGES = [
-      { stage: 'Awareness', sub: 'Prospects discover the brand before a competitor gets there first.' },
-      { stage: 'Consideration', sub: 'Prospects arrive already convinced, not still comparing.' },
-      { stage: 'Purchase', sub: 'The sale closes on the exact promise Media already made.' },
-      { stage: 'Loyalty', sub: 'Customers keep coming back without another acquisition dollar spent.' },
-      { stage: 'Advocacy', sub: 'Customers sell the brand for you — for free.' }
-    ];
-    const ASSESSMENT_STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
+    // ASSESSMENT_RUBRIC_STAGES/ASSESSMENT_STAGE_EFF_LABEL now live earlier in
+    // this file (near buildAssessmentReadoutPrompt(), ~line 7714) — moved
+    // 2026-09-03 so the vendor-blind-panel route (which sits earlier in this
+    // same dispatcher, ~line 10491, and now calls buildAssessmentReadoutPrompt
+    // directly) doesn't reference a `const` before its temporal-dead-zone
+    // initialization point. They're still in scope here unchanged.
 
     // 2026-09-02, same-day revision — per direct correction: folding
     // generations/wealthTier into the free-text Q&A block (as this
@@ -16151,3 +16119,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
