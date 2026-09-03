@@ -1940,10 +1940,14 @@ const BRAND_VOICE_PRIMARY_BRIEF = {
 // had this pattern right (8s AbortController) for the website-crawl case;
 // this is the same fix generalized so every direct vendor fetch in the file
 // shares one timeout behavior instead of each call site reinventing it.
-// 45s default: generous for a single completion call, small enough that
-// even several such calls in sequence (see the interview/contest panels,
-// which call multiple vendors) stay well under the 120s function ceiling.
-async function fetchWithTimeout(url, options, ms = 45000){
+// 90s default (raised from an initial 45s on 2026-09-03, same day, per
+// direct report — xAI's grok-4.6 legitimately needs more than 45s to
+// finish a real completion on this panel's prompt, and 45s was cutting off
+// a vendor that used to win the contest before any timeout existed at all.
+// 90s leaves headroom under Vercel's 120s function ceiling as long as the
+// vendor calls in a given panel run in parallel (one Promise.all) rather
+// than stacked — see each panel's own call site for confirmation of that.
+async function fetchWithTimeout(url, options, ms = 90000){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
@@ -8190,20 +8194,31 @@ async function runPrCandidateInterview(account, docType, brief){
     return { available: false, note: built.error, recommendedKey: null, candidates: [] };
   }
   const { prompt } = built;
-  const anthropicResp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
-  }).then(async r => {
-    if (!r.ok) return { copy: null, error: `Generation failed (HTTP ${r.status}).` };
-    const data = await r.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = parseJsonBlock(text);
-    return { copy: parsed && typeof parsed.copy === 'string' ? parsed.copy : null, error: parsed ? null : 'Generation returned no parseable JSON.' };
-  }).catch(e => ({ copy: null, error: 'Generation failed: ' + e.message }));
-
+  // 2026-09-03 fix, alongside the fetchWithTimeout() timeout raise (45s ->
+  // 90s, per the grok-4.6 report) — this used to `await` the Anthropic call
+  // FIRST and only then run the vendor batch, the same
+  // await-then-Promise.all stacking pattern that caused the original
+  // vendor-blind-panel 504 (see that route's own fix notes). It was
+  // survivable at a 45s per-call cap (worst case ~90s total, under the
+  // 120s ceiling) but not at 90s (worst case ~180s, guaranteed 504) — so
+  // this now runs both in one Promise.all, same pattern already used by
+  // runBrandVoiceContest and runCandidateInterview, bounding total time to
+  // the single slowest call instead of a sum.
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, prompt)));
+  const [anthropicResp, vendorGenerated] = await Promise.all([
+    fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
+    }).then(async r => {
+      if (!r.ok) return { copy: null, error: `Generation failed (HTTP ${r.status}).` };
+      const data = await r.json();
+      const text = (data.content || []).map(b => b.text || '').join('');
+      const parsed = parseJsonBlock(text);
+      return { copy: parsed && typeof parsed.copy === 'string' ? parsed.copy : null, error: parsed ? null : 'Generation returned no parseable JSON.' };
+    }).catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })),
+    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, prompt)))
+  ]);
 
   const buildCandidate = (key, label, vendor, model, configured, gen) => ({
     key, label, vendor, model, configured,
@@ -10658,12 +10673,15 @@ async function handleRequest(req, res) {
       // JSON" — a downstream symptom of this, not a JSON-handling bug).
       // Fixed two ways: every vendor call (including Anthropic) now runs in
       // the same Promise.all so total time is the slowest single call, not a
-      // sum; and withTimeout() below races each call against a 45s cap so
-      // one hung vendor degrades to an error card for that vendor instead of
-      // timing out the whole panel. 45s * (one still-sequential retry
-      // ceiling never happens here — each call fires once) comfortably fits
-      // under the 120s function ceiling alongside the ~8s crawl above.
-      const VENDOR_CALL_TIMEOUT_MS = 45000;
+      // sum; and withTimeout() below races each call against a cap so one
+      // hung vendor degrades to an error card for that vendor instead of
+      // timing out the whole panel. Started at 45s, raised to 90s same day
+      // per direct report — xAI's grok-4.6 (a reasoning model, previously a
+      // contest winner before any timeout existed) needs more than 45s for
+      // a real completion on this panel's prompt; 90s * one call each, no
+      // retries, comfortably fits under the 120s function ceiling alongside
+      // the ~8s crawl above. Matches fetchWithTimeout()'s own default.
+      const VENDOR_CALL_TIMEOUT_MS = 90000;
       function withTimeout(promise, ms, label){
         return new Promise((resolve) => {
           const timer = setTimeout(() => resolve({ __timedOut: true }), ms);
@@ -16158,27 +16176,4 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Local dev / standalone mode: only start a real listening server when this
-// file is run directly (`node server.js`), same as before. When Vercel
-// imports this file as a serverless function module (require.main !== this
-// module), it skips straight to the module.exports below instead — no port
-// ever gets bound, which is correct, since Vercel's platform handles
-// listening/routing itself and just calls handleRequest per request.
-if (require.main === module) {
-  const server = http.createServer(handleRequest);
-  const PORT = process.env.PORT || 8787;
-  server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
-}
-
-// 2026-08-23 fix — module load (and all ~230 top-level schema-setup
-// db.exec()/ensureColumn() calls above) is finished at this point. Flip
-// INIT_PHASE off so any db.exec() call from here on — i.e. any real
-// per-request query — throws normally again instead of being swallowed.
-// Those still get caught cleanly by handleRequest's own try/catch (a
-// normal 500 with a real error message) or, for anything async, by the
-// process.on('uncaughtException')/'unhandledRejection' handlers just
-// above. Only the one-time startup window is forgiving; request-time
-// failures still surface exactly as before.
-INIT_PHASE = false;
-
-module.exports = handleRequest;
-
+// file is ru
