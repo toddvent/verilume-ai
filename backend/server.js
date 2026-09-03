@@ -1959,6 +1959,98 @@ async function fetchWithTimeout(url, options, ms = 90000){
     clearTimeout(timer);
   }
 }
+// ---------- Shared hardened structured-output helper (2026-09-03) ----------
+// Root cause (Silver Trident Winery Company Profile extraction, 2026-09-03):
+// every call site in this file that asked Claude to "Respond with ONLY a
+// JSON object" and then did text.match(/\{[\s\S]*\}/) + JSON.parse(...) on
+// the free-text reply shared one failure mode. The model was free-writing
+// JSON as prose, and any real site/campaign copy it echoed back into a
+// string field — a quoted pull-quote, a curly apostrophe, an embedded
+// quotation mark — could produce syntactically invalid JSON. A bare
+// JSON.parse() then throws, surfacing as an opaque parser error ("Expected
+// ',' or '}' ... at position N") instead of a usable result — and nothing
+// caught or repaired it. That happened on Silver Trident's homepage copy;
+// it can happen on any site's.
+//
+// Fix: force the response through Anthropic's tool-use with an
+// input_schema instead of asking the model to hand-write JSON as text. The
+// API validates the structure itself and returns an already-parsed JS
+// object as the tool call's `input` — there is no text to regex-match and
+// no JSON.parse() to throw, no matter what punctuation the source content
+// contains. Every one of this file's ~14 "ask Claude for JSON" call sites
+// should route through this helper rather than repeating the old pattern.
+async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
+  const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content }],
+      tools: [{
+        name: toolName,
+        description: toolDescription || 'Submit the requested structured result.',
+        input_schema: schema
+      }],
+      tool_choice: { type: 'tool', name: toolName }
+    })
+  }, timeoutMs);
+  if (!resp.ok){
+    const bodyText = await resp.text();
+    const err = new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 300)}`);
+    err.httpStatus = resp.status;
+    throw err;
+  }
+  const data = await resp.json();
+  const toolUse = (data.content || []).find(b => b.type === 'tool_use' && b.name === toolName);
+  if (!toolUse || typeof toolUse.input !== 'object' || toolUse.input === null){
+    throw new Error('model response did not include the expected structured tool call');
+  }
+  return toolUse.input;
+}
+// Shared shape for the several 0-100 score + one-sentence rationale call
+// sites above (content relevance, imagery relevance) — one schema, reused,
+// instead of a copy hand-typed at each site.
+const SCORE_RATIONALE_SCHEMA = {
+  type: 'object',
+  properties: {
+    score: { type: 'integer', minimum: 0, maximum: 100 },
+    rationale: { type: 'string', description: 'One sentence.' }
+  },
+  required: ['score', 'rationale']
+};
+// Shared shapes for the several "draft copy, citing what real material you
+// used" call sites (Messaging Long Form Copy, PR & Corp Comm drafting).
+const COPY_SCHEMA = {
+  type: 'object',
+  properties: { copy: { type: 'string', description: 'The full drafted copy.' } },
+  required: ['copy']
+};
+const COPY_SOURCES_SCHEMA = {
+  type: 'object',
+  properties: {
+    copy: { type: 'string', description: 'The full drafted copy, paragraphs separated by blank lines.' },
+    sourcesUsed: { type: 'array', items: { type: 'string' }, description: 'Short phrases each naming a specific real fact/voice element actually used from the given material.' }
+  },
+  required: ['copy', 'sourcesUsed']
+};
+// Company Profile website-extraction categories (the Silver Trident Winery
+// root-cause site) — each of the 7 categories is a {value, evidence} pair,
+// either of which may legitimately be null when the fetched material
+// doesn't clearly support that category.
+const BRAND_PROFILE_CATEGORY_KEYS = [
+  'scaleFormat', 'specializationNiche', 'geographicOperationalReach',
+  'audienceSegmentServed', 'priceTierPosition', 'experienceFormatStyle',
+  'distinctiveCapabilityCertification'
+];
+const BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA = {
+  type: 'object',
+  properties: {
+    value: { type: ['string', 'null'], description: 'null if the given material does not clearly support this category — never guessed or inferred from company name/industry alone.' },
+    evidence: { type: ['string', 'null'], description: 'Quoting or closely paraphrasing the specific text/structured data that supports the value; null when value is null.' }
+  },
+  required: ['value', 'evidence']
+};
 //
 // "Critical customer-facing messages" — per direct instruction, derived from
 // this account's EXISTING brand inputs rather than a new required field:
@@ -2017,17 +2109,22 @@ COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry
 CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
 
-Respond with ONLY a JSON object with two fields:
-{"visionStatement": "<a single, memorable 1-2 sentence vision statement for this brand's voice — the north star, not a tagline>", "longformExample": "<120-200 words of real, finished longform copy in this voice, written as if it were the opening of a real customer-facing piece (e.g. a welcome email or About page) — must naturally incorporate the critical customer-facing messages above, not just describe them>"}`;
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: angle.model, max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+Propose your candidate via the submit_brand_voice_candidate tool.`;
+    const parsed = await callClaudeForJSON({
+      model: angle.model,
+      maxTokens: 700,
+      content: prompt,
+      toolName: 'submit_brand_voice_candidate',
+      toolDescription: 'Submit one proposed brand voice direction.',
+      schema: {
+        type: 'object',
+        properties: {
+          visionStatement: { type: 'string', description: "A single, memorable 1-2 sentence vision statement for this brand's voice — the north star, not a tagline." },
+          longformExample: { type: 'string', description: '120-200 words of real, finished longform copy in this voice, written as if it were the opening of a real customer-facing piece (e.g. a welcome email or About page) — must naturally incorporate the critical customer-facing messages given, not just describe them.' }
+        },
+        required: ['visionStatement', 'longformExample']
+      }
     });
-    if (!resp.ok) return { visionStatement: null, longformExample: null, error: `Generation failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return {
       visionStatement: typeof parsed.visionStatement === 'string' ? parsed.visionStatement : null,
       longformExample: typeof parsed.longformExample === 'string' ? parsed.longformExample : null,
@@ -3334,22 +3431,23 @@ Describe, based ONLY on what is visibly present in these frames:
 
 Do NOT guess at anything you cannot see in these specific frames — no invented dialogue, no assumed narration, no claims about audio or spoken tone (this analysis is visuals and on-screen text only). If the frames are too ambiguous to say something with confidence, say so plainly rather than filling in a plausible-sounding guess.
 
-Respond with ONLY a JSON object: {"analysis": "<2-4 sentences, written as a usable brand-voice reference note>", "onScreenText": ["<verbatim on-screen text you actually saw, if any>"]}`;
+Submit your findings via the submit_video_analysis tool.`;
 
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5', max_tokens: 600,
-        messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
-      })
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 600,
+      content: [...imageBlocks, { type: 'text', text: prompt }],
+      toolName: 'submit_video_analysis',
+      toolDescription: 'Submit the visual style/tone analysis of these video frames.',
+      schema: {
+        type: 'object',
+        properties: {
+          analysis: { type: 'string', description: '2-4 sentences, written as a usable brand-voice reference note.' },
+          onScreenText: { type: 'array', items: { type: 'string' }, description: 'Verbatim on-screen text actually seen, if any.' }
+        },
+        required: ['analysis', 'onScreenText']
+      }
     });
-    if (!resp.ok) return { error: `Video analysis failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { error: 'Video analysis returned an unexpected response.' };
-    const parsed = JSON.parse(jsonMatch[0]);
     const onScreenText = Array.isArray(parsed.onScreenText) ? parsed.onScreenText.filter(t => typeof t === 'string' && t.trim()) : [];
     const analysis = (parsed.analysis || '').trim();
     if (!analysis) return { error: 'Video analysis returned no usable content.' };
@@ -6999,16 +7097,15 @@ function ctaPathCoherence(ctaHref, conversionType){
 async function scoreContentRelevance(page, campaign){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, note: 'AI content relevance scoring requires ANTHROPIC_API_KEY to be configured.' };
   try {
-    const prompt = `You are scoring whether a landing page's actual content matches a marketing campaign's intended messaging. Campaign objective: ${campaign.objective || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Campaign long-form copy: ${(campaign.longformCopy || '').slice(0, 1500) || '(not set)'}.\n\nLanding page title: ${page.title}\nLanding page headline: ${page.headline}\nLanding page body text: ${page.bodyText.slice(0, 2000)}\n\nScore 0-100 how well the landing page's actual content matches the campaign's intended messaging and objective. Respond with ONLY a JSON object: {"score": <0-100 integer>, "rationale": "<one sentence>"}`;
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 300, messages: [{ role: 'user', content: prompt }] })
+    const prompt = `You are scoring whether a landing page's actual content matches a marketing campaign's intended messaging. Campaign objective: ${campaign.objective || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Campaign long-form copy: ${(campaign.longformCopy || '').slice(0, 1500) || '(not set)'}.\n\nLanding page title: ${page.title}\nLanding page headline: ${page.headline}\nLanding page body text: ${page.bodyText.slice(0, 2000)}\n\nScore 0-100 how well the landing page's actual content matches the campaign's intended messaging and objective.`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 300,
+      content: prompt,
+      toolName: 'submit_relevance_score',
+      toolDescription: 'Submit the content relevance score.',
+      schema: SCORE_RATIONALE_SCHEMA
     });
-    if (!resp.ok) return { score: null, note: `AI content relevance scoring failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return { score: typeof parsed.score === 'number' ? parsed.score : null, note: parsed.rationale || '' };
   } catch (e){
     return { score: null, note: 'AI content relevance scoring failed: ' + e.message };
@@ -7028,19 +7125,15 @@ async function scoreImageRelevance(imageUrl, campaign){
     const buf = Buffer.from(await imgResp.arrayBuffer());
     if (buf.length > 5_000_000) return { score: null, note: 'Hero image is too large to score (over 5MB).' };
     const b64 = buf.toString('base64');
-    const prompt = `You are scoring whether a landing page's hero image matches a marketing campaign's intended brand and messaging. Campaign objective: ${campaign.objective || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Brand tone notes: ${campaign.brandToneNotes || '(not set)'}.\n\nScore 0-100 how well this image fits that campaign's brand and messaging. Respond with ONLY a JSON object: {"score": <0-100 integer>, "rationale": "<one sentence>"}`;
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5', max_tokens: 300,
-        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: contentType, data: b64 } }, { type: 'text', text: prompt }] }]
-      })
+    const prompt = `You are scoring whether a landing page's hero image matches a marketing campaign's intended brand and messaging. Campaign objective: ${campaign.objective || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Brand tone notes: ${campaign.brandToneNotes || '(not set)'}.\n\nScore 0-100 how well this image fits that campaign's brand and messaging.`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 300,
+      content: [{ type: 'image', source: { type: 'base64', media_type: contentType, data: b64 } }, { type: 'text', text: prompt }],
+      toolName: 'submit_relevance_score',
+      toolDescription: 'Submit the imagery relevance score.',
+      schema: SCORE_RATIONALE_SCHEMA
     });
-    if (!resp.ok) return { score: null, note: `AI imagery relevance scoring failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return { score: typeof parsed.score === 'number' ? parsed.score : null, note: parsed.rationale || '' };
   } catch (e){
     return { score: null, note: 'AI imagery relevance scoring failed: ' + e.message };
@@ -7180,16 +7273,24 @@ ${draftCopy.slice(0, 3000)}
 
 Score 0-100: how likely is this specific copy, as written, to actually produce the Loop Stage's real business outcome for this Primary KPI — not whether it sounds nice, not whether it uses expected keywords, but whether a real reader in this audience would plausibly take the intended next action after reading it. A technically polished paragraph that never gives the reader a reason or a path to act should score LOW even if it is well-written. Copy that is bluntly written but unmistakably drives toward the right action for this stage should score HIGH.
 
-Respond with ONLY a JSON object: {"score": <0-100 integer>, "verdict": "<one of: strong, adequate, weak, off-target>", "rationale": "<2-3 sentences, specific to this draft, explaining the score in terms of actual likely reader behavior, not word choice>", "missingElements": ["<short phrase naming a concrete missing element, if any — e.g. 'no concrete next step for the reader'>", "..."]}`;
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 500, messages: [{ role: 'user', content: prompt }] })
+Submit your assessment via the submit_business_outcome_score tool.`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 500,
+      content: prompt,
+      toolName: 'submit_business_outcome_score',
+      toolDescription: 'Submit the business-outcome relevance assessment.',
+      schema: {
+        type: 'object',
+        properties: {
+          score: { type: 'integer', minimum: 0, maximum: 100 },
+          verdict: { type: 'string', enum: ['strong', 'adequate', 'weak', 'off-target'] },
+          rationale: { type: 'string', description: '2-3 sentences, specific to this draft, explaining the score in terms of actual likely reader behavior, not word choice.' },
+          missingElements: { type: 'array', items: { type: 'string' }, description: "Short phrases naming concrete missing elements, if any — e.g. 'no concrete next step for the reader'." }
+        },
+        required: ['score', 'verdict', 'rationale', 'missingElements']
+      }
     });
-    if (!resp.ok) return { score: null, verdict: null, rationale: null, missingElements: [], note: `AI business-outcome relevance scoring failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return {
       score: typeof parsed.score === 'number' ? parsed.score : null,
       verdict: parsed.verdict || null,
@@ -7592,7 +7693,7 @@ CAMPAIGN CONTEXT:
 ${campaignTypeBriefContext(campaign)}
 Write 3-5 short paragraphs of real Long Form Copy (120-220 words). It must read as something a real luxury travel brand would actually publish — specific, sensory where appropriate, never generic "unforgettable journey" language, and it must end with a call to action that genuinely serves the stated Primary KPI for this Loop Stage.
 
-Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs separated by \\n\\n>", "sourcesUsed": ["<short phrase naming a specific real fact/voice element you actually used from the material above>", "..."]}`;
+Submit your draft via the submit_copy tool.`;
     // 2026-08-25 — Contest-Winner Priority Model. If this account has run a
     // marketing_copy contest and picked a non-Anthropic winner whose vendor
     // key is still configured on this deployment, dispatch through that
@@ -7617,15 +7718,14 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
         // fall through to Anthropic below on an unparseable/empty response
       } catch (e){ /* fall through to Anthropic below */ }
     }
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 1200,
+      content: prompt,
+      toolName: 'submit_copy',
+      toolDescription: 'Submit the drafted Long Form Copy.',
+      schema: COPY_SOURCES_SCHEMA
     });
-    if (!resp.ok) return { copy: null, note: `AI copy generation failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return {
       copy: typeof parsed.copy === 'string' ? parsed.copy : null,
       sourcesUsed: Array.isArray(parsed.sourcesUsed) ? parsed.sourcesUsed : [],
@@ -7801,7 +7901,7 @@ Write two things:
 
 2. An "opportunity" paragraph (3-5 sentences) explaining, in plain value language, how Verilume would actually help THIS company given the specific pattern of strong vs. weak stages above — never naming a tier, package, or model by name. Where most stages are already strong, frame Verilume's role as making a good team faster and more consistent (organizational efficiency) — the team stays the team, Verilume removes friction. Where several stages are weak across the board, frame Verilume's role as covering real gaps where no function is running today (complementary capacity) — never phrase this as "your team failed to..." or "you're missing..."; phrase it as "there's real headroom here, and here's specifically how we'd close it." Blend both framings proportionally to the actual mix of strong/weak stages found above — don't force it to one extreme. Ground the "how" in Verilume's actual operating model: a modern AI-agentic organization — a standing team of specialized AI agents (spanning roles like Performance Marketing, Omni-Channel Creative, Media Planning & Operations, Brand, Public Relations, and Advanced Analytics) that carry the always-on, first-draft work across the relevant stages, while the client's own team keeps final judgment and creative direction. Weave this in naturally as the concrete mechanism behind the value — never as a bullet list of role names or a jargon-heavy feature dump.
 
-Respond with ONLY a JSON object: {"synthesis": "<text for item 1>", "opportunity": "<text for item 2>"}`;
+Submit the synthesis and opportunity paragraphs via the submit_readout tool.`;
 }
 
 async function generateAssessmentReadout(input){
@@ -7810,15 +7910,21 @@ async function generateAssessmentReadout(input){
   }
   try {
     const prompt = buildAssessmentReadoutPrompt(input);
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 900, messages: [{ role: 'user', content: prompt }] })
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 900,
+      content: prompt,
+      toolName: 'submit_readout',
+      toolDescription: 'Submit the assessment readout.',
+      schema: {
+        type: 'object',
+        properties: {
+          synthesis: { type: 'string', description: 'The "here\'s what we learned" synthesis, 3-5 sentences.' },
+          opportunity: { type: 'string', description: 'The "opportunity" paragraph, 3-5 sentences.' }
+        },
+        required: ['synthesis', 'opportunity']
+      }
     });
-    if (!resp.ok) return { synthesis: null, opportunity: null, note: `AI readout generation failed (HTTP ${resp.status}). Showing the standard reading.` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return {
       synthesis: typeof parsed.synthesis === 'string' ? parsed.synthesis : null,
       opportunity: typeof parsed.opportunity === 'string' ? parsed.opportunity : null,
@@ -7949,7 +8055,7 @@ FORMAT: ${docSpec.format}
 
 Never invent facts, figures, dates, or quotes not present in the brief or brand context above — where a real detail is missing, write around it (e.g. a bracketed placeholder like [Title Placeholder]) rather than fabricating one.
 
-Respond with ONLY a JSON object: {"copy": "<the full drafted text>", "sourcesUsed": ["<short phrase naming a specific real fact/voice element you actually used from the material above>", "..."]}`;
+Submit your draft via the submit_copy tool.`;
   return { prompt, docSpec };
 }
 async function draftPrCorpCommCopyViaAI(account, docType, brief){
@@ -7977,15 +8083,14 @@ async function draftPrCorpCommCopyViaAI(account, docType, brief){
         }
       } catch (e){ /* fall through to Anthropic below */ }
     }
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 1200,
+      content: prompt,
+      toolName: 'submit_copy',
+      toolDescription: 'Submit the drafted PR & Corp Comm copy.',
+      schema: COPY_SOURCES_SCHEMA
     });
-    if (!resp.ok) return { copy: null, note: `AI drafting failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return {
       copy: typeof parsed.copy === 'string' ? parsed.copy : null,
       sourcesUsed: Array.isArray(parsed.sourcesUsed) ? parsed.sourcesUsed : [],
@@ -8020,16 +8125,15 @@ ${pressRelease.workingCopy}
 
 FORMAT: A LinkedIn-native post — short punchy opening line (not the press release's dateline lede), 3-5 short paragraphs or a mix of short paragraphs and a brief line-broken list, plain conversational register appropriate for a feed rather than a wire service, ending with a clear call to action. Include 2-4 relevant hashtags on their own line at the end. 100-200 words, not counting hashtags.
 
-Respond with ONLY a JSON object: {"copy": "<the full LinkedIn post text, hashtags included>"}`;
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+Submit the post via the submit_copy tool (hashtags included in the copy text).`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 700,
+      content: prompt,
+      toolName: 'submit_copy',
+      toolDescription: 'Submit the drafted LinkedIn post.',
+      schema: COPY_SCHEMA
     });
-    if (!resp.ok) return { copy: null, note: `AI drafting failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, note: null };
   } catch (e){
     return { copy: null, note: 'AI drafting failed: ' + e.message };
@@ -8087,27 +8191,36 @@ Industry trends note on file: ${industryTrendsText || '(none on file yet)'}
 NAMED DIRECT COMPETITORS:
 ${competitorContext}
 
-TASK — respond with ONLY a JSON object in this exact shape:
-{
-  "competitors": [
-    { "name": "<competitor name, exactly as given above>", "positioningSummary": "<1-2 sentence reasoned read of how they likely position themselves in this category, grounded in the note/positioning read given above if present>", "watchItems": ["<a specific, reasoning-based 'worth watching' pattern or hypothesis — NOT a claimed real event>", "<a second, distinct one>"] }
-  ],
-  "dailyBriefSummary": "<2-3 sentence synthesis for a CMO opening their dashboard today — reference the competitive landscape and this account's own positioning, in plain confident language, no hedging filler>",
-  "dailyBriefObservations": ["<a short, specific observation worth a CMO's attention today>", "<a second one>", "<a third one>"]
-}
+Submit via the submit_competitive_intelligence tool.
 ${competitors.length === 0 ? 'No competitors are named for this account, so return an empty "competitors" array — do not invent competitor names.' : `Include exactly one entry per named competitor above, in the same order, using their exact given names.`}`;
 
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1400, messages: [{ role: 'user', content: prompt }] })
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 1400,
+      content: prompt,
+      toolName: 'submit_competitive_intelligence',
+      toolDescription: 'Submit the competitive intelligence and daily brief.',
+      schema: {
+        type: 'object',
+        properties: {
+          competitors: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Competitor name, exactly as given.' },
+                positioningSummary: { type: 'string', description: '1-2 sentence reasoned read of how they likely position themselves in this category, grounded in the note/positioning read given if present.' },
+                watchItems: { type: 'array', items: { type: 'string' }, description: "Specific, reasoning-based 'worth watching' patterns or hypotheses — NOT claimed real events." }
+              },
+              required: ['name', 'positioningSummary', 'watchItems']
+            }
+          },
+          dailyBriefSummary: { type: 'string', description: "2-3 sentence synthesis for a CMO opening their dashboard today — reference the competitive landscape and this account's own positioning, in plain confident language, no hedging filler." },
+          dailyBriefObservations: { type: 'array', items: { type: 'string' }, description: "Short, specific observations worth a CMO's attention today." }
+        },
+        required: ['competitors', 'dailyBriefSummary', 'dailyBriefObservations']
+      }
     });
-    if (!resp.ok) return { intelligence: null, note: `AI generation failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return { intelligence: null, note: 'AI generation returned an unparseable response.' };
-    const parsed = JSON.parse(match[0]);
     const cleanCompetitors = Array.isArray(parsed.competitors)
       ? parsed.competitors.filter(c => c && typeof c.name === 'string').map(c => ({
           name: c.name,
@@ -8206,17 +8319,15 @@ async function runPrCandidateInterview(account, docType, brief){
   // the single slowest call instead of a sum.
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   const [anthropicResp, vendorGenerated] = await Promise.all([
-    fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }] })
-    }).then(async r => {
-      if (!r.ok) return { copy: null, error: `Generation failed (HTTP ${r.status}).` };
-      const data = await r.json();
-      const text = (data.content || []).map(b => b.text || '').join('');
-      const parsed = parseJsonBlock(text);
-      return { copy: parsed && typeof parsed.copy === 'string' ? parsed.copy : null, error: parsed ? null : 'Generation returned no parseable JSON.' };
-    }).catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })),
+    callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 1200,
+      content: prompt,
+      toolName: 'submit_copy',
+      toolDescription: 'Submit the drafted copy.',
+      schema: COPY_SCHEMA
+    }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null }))
+      .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })),
     Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, prompt)))
   ]);
 
@@ -8398,7 +8509,7 @@ async function scoreDraftCopy(copyText, campaign, account){
       // picture of the brand's voice the drafter was given, not a narrower
       // one.
       const visionStatement = (account.visionStatement || '').trim();
-      const prompt = `Score this marketing copy on two dimensions, 0-100 each. Respond with ONLY a JSON object: {"relevanceScore": <0-100>, "relevanceNote": "<one sentence>", "complianceScore": <0-100>, "complianceFlags": ["<short specific flag>", ...]}
+      const prompt = `Score this marketing copy on two dimensions, 0-100 each.
 
 RELEVANCE (0-100): how well this copy serves the campaign's stated objective, audience/segment, and primary KPI below. 100 = precisely on-brief; 0 = unrelated.
 - Objective: ${campaign.objective || '(not set)'}
@@ -8414,26 +8525,34 @@ ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word
 
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
-      const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 500, messages: [{ role: 'user', content: prompt }] })
+      const parsed = await callClaudeForJSON({
+        model: 'claude-sonnet-4-5',
+        maxTokens: 500,
+        content: prompt,
+        toolName: 'submit_copy_score',
+        toolDescription: 'Submit the relevance and compliance scores.',
+        schema: {
+          type: 'object',
+          properties: {
+            relevanceScore: { type: 'integer', minimum: 0, maximum: 100 },
+            relevanceNote: { type: 'string', description: 'One sentence.' },
+            complianceScore: { type: 'integer', minimum: 0, maximum: 100 },
+            complianceFlags: { type: 'array', items: { type: 'string' }, description: 'Short, specific flags — one per real compliance issue found.' }
+          },
+          required: ['relevanceScore', 'relevanceNote', 'complianceScore', 'complianceFlags']
+        }
       });
-      if (resp.ok){
-        const data = await resp.json();
-        const text = (data.content || []).map(b => b.text || '').join('');
-        const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
-        return {
-          relevanceScore: typeof parsed.relevanceScore === 'number' ? parsed.relevanceScore : null,
-          note: typeof parsed.relevanceNote === 'string' ? parsed.relevanceNote : null,
-          complianceScore: typeof parsed.complianceScore === 'number' ? parsed.complianceScore : null,
-          flags: Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags : [],
-          mode: 'ai'
-        };
-      }
-      // fall through to heuristic on a non-OK response rather than failing
-      // the whole score — a scoring endpoint should never 500 the copy
-      // workspace just because the AI scoring call itself hiccuped.
+      return {
+        relevanceScore: typeof parsed.relevanceScore === 'number' ? parsed.relevanceScore : null,
+        note: typeof parsed.relevanceNote === 'string' ? parsed.relevanceNote : null,
+        complianceScore: typeof parsed.complianceScore === 'number' ? parsed.complianceScore : null,
+        flags: Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags : [],
+        mode: 'ai'
+      };
+      // A thrown error (bad HTTP status, malformed tool response) falls
+      // through to heuristic scoring below rather than failing the whole
+      // score — a scoring endpoint should never 500 the copy workspace
+      // just because the AI scoring call itself hiccuped.
     } catch (e){ /* fall through to heuristic below */ }
   }
   const rel = scoreDraftHeuristically(copyText, campaign);
@@ -8628,7 +8747,7 @@ CAMPAIGN CONTEXT:
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 - Role/Style approach, if the account has one on file: ${campaign.roleStyle || '(none set -- follow your assigned angle above)'}
 ${campaignTypeBriefContext(campaign)}
-Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs separated by \\n\\n>"}`;
+Submit your draft via the submit_copy tool.`;
 }
 // One subagent angle's generation call — a lighter-weight sibling of
 // generateMessagingCopyViaAI above, sharing its brand-context inputs but
@@ -8638,15 +8757,14 @@ Respond with ONLY a JSON object: {"copy": "<the full drafted copy, paragraphs se
 async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext){
   try {
     const prompt = buildInterviewPrompt(angle.brief, campaign, account, sampleContext);
-    const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: angle.model, max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+    const parsed = await callClaudeForJSON({
+      model: angle.model,
+      maxTokens: 700,
+      content: prompt,
+      toolName: 'submit_copy',
+      toolDescription: 'Submit the drafted copy.',
+      schema: COPY_SCHEMA
     });
-    if (!resp.ok) return { copy: null, error: `Generation failed (HTTP ${resp.status}).` };
-    const data = await resp.json();
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
     return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
   } catch (e){
     return { copy: null, error: 'Generation failed: ' + e.message };
@@ -10816,27 +10934,28 @@ async function handleRequest(req, res) {
 
 ${candidatePaths.join('\n')}
 
-Respond with ONLY a JSON array of the chosen paths, copied exactly as they appear above, e.g. ["/path-one","/path-two"]. If none look relevant, respond with [].`;
+Submit the chosen paths, copied exactly as they appear above, via the submit_selected_paths tool. If none look relevant, submit an empty list.`;
         try {
-          const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 500, messages: [{ role: 'user', content: selectionPrompt }] })
-          });
-          if (!resp.ok){
-            pageSelectionError = `HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)} — falling back to homepage only`;
-          } else {
-            const data = await resp.json();
-            const text = (data.content || []).map(b => b.text || '').join('');
-            const match = text.match(/\[[\s\S]*\]/);
-            const picked = match ? JSON.parse(match[0]) : null;
-            if (Array.isArray(picked)){
-              const candidateSet = new Set(candidatePaths);
-              const validated = picked.filter(p => typeof p === 'string' && candidateSet.has(p)).slice(0, WEBSITE_SCAN_MAX_PAGES - 1);
-              selectedPaths = ['/', ...validated];
-            } else {
-              pageSelectionError = 'model response did not contain a parseable page list — falling back to homepage only';
+          const picked = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5-20250929',
+            maxTokens: 500,
+            content: selectionPrompt,
+            toolName: 'submit_selected_paths',
+            toolDescription: 'Submit the selected page paths.',
+            schema: {
+              type: 'object',
+              properties: {
+                selectedPaths: { type: 'array', items: { type: 'string' }, description: 'Chosen paths, copied exactly as given in the candidate list.' }
+              },
+              required: ['selectedPaths']
             }
+          });
+          if (Array.isArray(picked.selectedPaths)){
+            const candidateSet = new Set(candidatePaths);
+            const validated = picked.selectedPaths.filter(p => typeof p === 'string' && candidateSet.has(p)).slice(0, WEBSITE_SCAN_MAX_PAGES - 1);
+            selectedPaths = ['/', ...validated];
+          } else {
+            pageSelectionError = 'model response did not contain a parseable page list — falling back to homepage only';
           }
         } catch (e){
           pageSelectionError = 'Page selection failed: ' + e.message + ' — falling back to homepage only';
@@ -10892,7 +11011,7 @@ Categories:
 6. experienceFormatStyle — how the experience/product is structured
 7. distinctiveCapabilityCertification — a specific, named operational fact or certification
 
-Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"specializationNiche":{...},"geographicOperationalReach":{...},"audienceSegmentServed":{...},"priceTierPosition":{...},"experienceFormatStyle":{...},"distinctiveCapabilityCertification":{...}}`;
+Submit your findings via the submit_brand_categories tool.`;
 
       let categories = null;
       let extractionError = null;
@@ -10902,20 +11021,18 @@ Respond with ONLY a JSON object: {"scaleFormat":{"value":...,"evidence":...},"sp
         extractionError = 'no pages were successfully fetched — nothing to extract from';
       } else {
         try {
-          const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 900, messages: [{ role: 'user', content: extractionPrompt }] })
+          categories = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5-20250929',
+            maxTokens: 900,
+            content: extractionPrompt,
+            toolName: 'submit_brand_categories',
+            toolDescription: 'Submit the seven extracted brand categories.',
+            schema: {
+              type: 'object',
+              properties: Object.fromEntries(BRAND_PROFILE_CATEGORY_KEYS.map(key => [key, BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA])),
+              required: BRAND_PROFILE_CATEGORY_KEYS
+            }
           });
-          if (!resp.ok){
-            extractionError = `HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`;
-          } else {
-            const data = await resp.json();
-            const text = (data.content || []).map(b => b.text || '').join('');
-            const match = text.match(/\{[\s\S]*\}/);
-            categories = match ? JSON.parse(match[0]) : null;
-            if (!categories) extractionError = 'model response did not contain parseable JSON';
-          }
         } catch (e){
           extractionError = 'Extraction failed: ' + e.message;
         }
@@ -16199,3 +16316,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
