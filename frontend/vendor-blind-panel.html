@@ -120,16 +120,13 @@
         <div><label>Industry + tier</label><input type="text" id="inIndustry" value="Cruise Lines — Luxury"></div>
       </div>
       <div class="field-row">
-        <div>
-          <label>Website URL — actually crawled server-side before the prompt is built</label>
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="inUrl" value="https://www.atlasoceanvoyages.com" style="flex:1;">
-            <button class="btn small" id="scanSiteBtn" type="button" style="white-space:nowrap;">Scan site</button>
-          </div>
-        </div>
+        <div><label>Website URL — actually crawled server-side before the prompt is built</label><input type="text" id="inUrl" value="https://www.atlasoceanvoyages.com"></div>
         <div><label>Business model <span style="font-weight:400;color:var(--muted);">(e.g. "B2C", "B2B")</span></label><input type="text" id="inBuyerType" value=""></div>
       </div>
-      <div class="prompt-box hidden" id="preScanBox"></div>
+      <div>
+        <label>Website Positioning Scan <span style="font-weight:400;color:var(--muted);">(from website-category-scan.html's "Send to Panel" step)</span></label>
+        <textarea id="inScanSummary" rows="6" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);resize:vertical;" placeholder="Run a scan on website-category-scan.html and click &quot;Send to Panel&quot; to fill this in."></textarea>
+      </div>
       <div class="field-row">
         <div><label>Target Generations <span style="font-weight:400;color:var(--muted);">(comma-separated)</span></label><input type="text" id="inGenerations" value="Baby Boomers, Seniors / Silent Gen"></div>
         <div><label>Target Wealth Tier <span style="font-weight:400;color:var(--muted);">(comma-separated)</span></label><input type="text" id="inWealthTier" value="High Net-Worth, Wealthy"></div>
@@ -191,44 +188,27 @@
   const resultsModule = document.getElementById('resultsModule');
   const candidatesEl = document.getElementById('candidates');
   const revealAllBtn = document.getElementById('revealAllBtn');
-  const scanSiteBtn = document.getElementById('scanSiteBtn');
-  const preScanBox = document.getElementById('preScanBox');
+  const inScanSummary = document.getElementById('inScanSummary');
 
-  // 2026-09-03 fix, per direct correction — "I see wealth not the scan."
-  // The website URL field crawls server-side when you click Run, same as
-  // the real assessment, but that left no way to actually SEE the scan
-  // before committing to a full 5-vendor call. This hits the real, public
-  // POST /api/assessment/website-scan endpoint directly — the exact same
-  // endpoint assessment.html's Step 1 calls — so you can see the real
-  // crawled title/meta description/headings/excerpt up front. Doesn't
-  // change what Run sends; the panel route still does its own crawl.
-  function formatSiteContext(wc){
-    return 'Title: ' + (wc.title || '(none)') + '\nMeta description: ' + (wc.metaDescription || '(none)') + '\nHeadings: ' + ((wc.headings || []).join(' | ') || '(none)') + '\nExcerpt: ' + (wc.excerpt || '(none)');
-  }
-  scanSiteBtn.addEventListener('click', async function(){
-    const url = document.getElementById('inUrl').value.trim();
-    if (!url){ preScanBox.textContent = 'Enter a website URL first.'; preScanBox.classList.remove('hidden'); return; }
-    scanSiteBtn.disabled = true;
-    preScanBox.textContent = 'Scanning ' + url + ' ...';
-    preScanBox.classList.remove('hidden');
-    try {
-      const resp = await fetch('/api/assessment/website-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      const data = await resp.json();
-      if (!resp.ok){
-        preScanBox.textContent = 'Scan failed: ' + (data.error || ('HTTP ' + resp.status));
-        return;
+  // 2026-09-03 fix, per direct correction — back to the plain, simple
+  // format: a normal readable/editable text box holding the scan summary,
+  // like this always worked, not a small greyed-out reference note. Still
+  // fed from the same localStorage handoff website-category-scan.html's
+  // "Send to Panel" step sets (verilume_scanHandoff: {websiteUrl, summary,
+  // savedAt}) — pulls the URL into inUrl and the category summary straight
+  // into this text box, plain, no prefix line, editable like every other
+  // field. The one real crawl that feeds the prompt still happens once,
+  // server-side, when Run is clicked.
+  try {
+    const handoffRaw = localStorage.getItem('verilume_scanHandoff');
+    if (handoffRaw){
+      const handoff = JSON.parse(handoffRaw);
+      if (handoff && handoff.websiteUrl){
+        document.getElementById('inUrl').value = handoff.websiteUrl;
+        inScanSummary.value = handoff.summary || '';
       }
-      preScanBox.textContent = 'Website actually fetched just now:\n' + formatSiteContext(data);
-    } catch (e){
-      preScanBox.textContent = 'Scan failed: ' + e.message;
-    } finally {
-      scanSiteBtn.disabled = false;
     }
-  });
+  } catch (e){ /* malformed or inaccessible localStorage — just skip, leave fields at their defaults */ }
 
   // 2026-09-03 fix, per direct correction — no lead picker, no
   // website-category-scan handoff, no freeform Q&A box. This panel now
@@ -250,17 +230,35 @@
   // (3), Consideration = Early Progress (2), Purchase = Early Progress (2).
   // Loyalty/Advocacy were never seen — left unset rather than guessed.
   const KNOWN_AOV_STAGE_RATINGS = { Awareness: 3, Consideration: 2, Purchase: 2 };
+  // 2026-09-03 fix, per direct correction — a <select> made every rating
+  // invisible until clicked open. Plain number input (1-5) instead: the
+  // value is just sitting there as text, readable at a glance, same as
+  // every other field on this form. The live "N — Label" caption under
+  // each one updates as you type, so the maturity-level wording is still
+  // visible without a dropdown.
   const stageRatingsRow = document.getElementById('stageRatingsRow');
   stageRatingsRow.innerHTML = STAGES.map(s => {
-    const known = KNOWN_AOV_STAGE_RATINGS[s.stage];
-    const options = ['<option value="">(not rated)</option>'].concat([1, 2, 3, 4, 5].map(n =>
-      `<option value="${n}"${known === n ? ' selected' : ''}>${n} — ${STAGE_EFF_LABEL[n]}</option>`
-    )).join('');
-    return `<div style="min-width:170px;"><label style="font-size:0.78rem;">${esc(s.stage)}</label><select id="stage_${s.stage}" data-stage="${esc(s.stage)}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:0.82rem;font-family:inherit;">${options}</select></div>`;
+    const known = KNOWN_AOV_STAGE_RATINGS[s.stage] || '';
+    return `<div style="min-width:170px;">
+      <label style="font-size:0.78rem;">${esc(s.stage)}</label>
+      <input type="number" min="1" max="5" step="1" id="stage_${s.stage}" data-stage="${esc(s.stage)}" value="${known}" style="width:100%;">
+      <div id="stage_${s.stage}_caption" style="font-size:0.72rem;color:var(--muted);margin-top:4px;"></div>
+    </div>`;
   }).join('');
+  function updateStageCaption(stage){
+    const el = document.getElementById('stage_' + stage);
+    const caption = document.getElementById('stage_' + stage + '_caption');
+    if (!el || !caption) return;
+    const n = Number(el.value);
+    caption.textContent = (n >= 1 && n <= 5) ? (n + ' — ' + STAGE_EFF_LABEL[n]) : 'not yet rated';
+  }
+  STAGES.forEach(s => {
+    updateStageCaption(s.stage);
+    document.getElementById('stage_' + s.stage).addEventListener('input', () => updateStageCaption(s.stage));
+  });
 
   const FORM_STATE_KEY = 'verilume_vendorPanelInputs';
-  const PERSISTED_FIELD_IDS = ['inCompany', 'inFootprint', 'inIndustry', 'inUrl', 'inBuyerType', 'inGenerations', 'inWealthTier', 'inMediaPct', 'inCxPct'].concat(STAGES.map(s => 'stage_' + s.stage));
+  const PERSISTED_FIELD_IDS = ['inCompany', 'inFootprint', 'inIndustry', 'inUrl', 'inBuyerType', 'inGenerations', 'inWealthTier', 'inScanSummary', 'inMediaPct', 'inCxPct'].concat(STAGES.map(s => 'stage_' + s.stage));
   function saveFormState(){
     try {
       const data = {};
@@ -395,7 +393,7 @@
       runStatus.textContent = 'Done.';
       const wc = data.websiteContext;
       siteBox.textContent = wc
-        ? 'Website actually fetched:\n' + formatSiteContext(wc)
+        ? 'Website actually fetched:\nTitle: ' + (wc.title || '(none)') + '\nMeta description: ' + (wc.metaDescription || '(none)') + '\nHeadings: ' + ((wc.headings || []).join(' | ') || '(none)') + '\nExcerpt: ' + (wc.excerpt || '(none)')
         : 'Website could NOT be fetched, or no URL was given — the prompt proceeded without site-specific detail rather than guessing (matches the real feature\'s behavior).';
       siteBox.classList.remove('hidden');
       promptBox.textContent = data.prompt;
