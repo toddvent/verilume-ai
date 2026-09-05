@@ -1,0 +1,552 @@
+<title>Media Plan & Budget — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0 8px;}
+.product-card{border:1px solid var(--line);border-radius:12px;padding:20px 22px;background:var(--paper-sunk);text-decoration:none;display:block;transition:border-color .15s;}
+.product-card:hover{border-color:var(--brand);}
+.product-card.disabled{opacity:0.55;pointer-events:none;}
+.product-card .pc-group{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate-soft);margin-bottom:8px;}
+.product-card h3{font-size:17px;margin:0 0 8px;color:var(--ink);}
+.product-card p{font-size:13px;color:var(--slate);margin:0 0 12px;max-width:none;}
+</style>
+
+
+<div class="shell">
+
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Media Plan &amp; Budget</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+    <div class="toc-sub" style="margin-top:-14px;">Group 04 &middot; Marketing Budgets, Campaigns &amp; Analysis</div>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#plan-setup">Plan Setup — the front door</a>
+      <a href="#upload">Upload path</a>
+      <a href="#manual">Manual path — the Media Plan wizard</a>
+      <a href="#leverage">Leverage previous year</a>
+      <a href="#international">International scope &amp; total-only</a>
+      <a href="#taxonomy">Budget category taxonomy</a>
+      <a href="#reporting">The reporting view</a>
+      <a href="#active-channels">Active Channels gate</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#endpoints">Endpoint reference</a>
+      <a href="#data-model">Data model reference</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#log">Decision log — this cycle</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Media Plan &amp; Budget</h1>
+      <p class="doc-dek">
+        One page in the portal (<code>Annual Media Plan</code>, step
+        <code>mediaplan</code>) where a client sets up each year's marketing
+        budget and turns it into a channel-by-channel, month-by-month plan.
+        Two ways in share one front door: <b>upload</b> the budget file the
+        client already has (auto-recognized, category-mapped, confirmed), or
+        <b>build it by hand</b> from a total — or gross revenue × a target % —
+        through stage weighting, a recommended channel mix, and a monthly
+        curve. A confirmed budget then drives Active Channels, the Plan
+        Pacing / Budget Tracking / Channel Mix reports, and Campaign
+        Creation's channel picker. This document is the current-state
+        reference, verified against the live code on 2026-09-05.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>backend/server.js</code>, <code>frontend/portal.html</code> (<code>step-mediaplan</code>, <code>mbu*</code> / <code>mp*</code> / <code>msw*</code> functions)</span>
+        <span><b>Verified against</b> working tree, 2026-09-05 (Round 8)</span>
+        <span><b>Status</b> Built; pending live retest</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">this cycle</span></h2>
+      <p class="lede">
+        Seven rounds of direct client review on 2026-09-05 turned a confusing,
+        duplicated page into one sequenced flow. What changed structurally,
+        checked against the code:
+      </p>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>One visibility controller</h4>
+          <p><code>mbuApplyPageMode()</code> is the single place that decides
+          what's on screen, from two inputs: does a budget exist for the
+          selected year+scope, and which Setup path was picked. No budget →
+          only Plan Setup shows. See &sect;01.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>Manual = the Media Plan, not a second path</h4>
+          <p>Rounds 5–6 had built a duplicate manual path (a synthetic upload
+          with a pre-filled grid and its own revenue calculator). Round 7
+          deleted it; "Manually add" now <em>is</em> the Media Plan wizard,
+          sequenced as Steps 1–4. See &sect;03.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>One Budget detail view, whichever way the budget was made</h4>
+          <p><code>mbdRenderUnified()</code> renders the same four components —
+          Marketing Loop allocations, channel totals, sub-channels rolling up
+          to them, monthly distribution — from an uploaded budget or a saved
+          Media Plan, with non-working spend beside working and a read-only
+          total marketing spend. See &sect;07.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>Active Channels are the one allocation gate</h4>
+          <p><code>computeRecommendedMix()</code> filters by
+          <code>state.activeChannels</code> only; a confirmed upload rewrites
+          that set to its mapped channels and the UI adopts it immediately.
+          See &sect;08.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--warning">Pending</span>
+          <h4>Not yet retested live</h4>
+          <p>Every round was syntax-checked and Round 7 was driven end-to-end
+          in a headless browser against a stubbed backend, but none of it has
+          been exercised in the deployed environment with a real file yet. See
+          &sect;11.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="plan-setup">
+      <h2><span>Plan Setup — the front door</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">
+        The first card on the page (<code>#mbuPlanSetupCard</code>): one
+        <b>Budget scope</b> toggle (Domestic / International), one <b>Budget
+        year</b> chip row (the only year control on the page — it also
+        switches which year's Media Plan is loaded, via
+        <code>setMbuYear()</code> → <code>setMpYear()</code>), and a status
+        block rendered by <code>mbuRenderPlanSetup()</code>.
+      </p>
+      <p>"Budget exists" (<code>mbuBudgetExists()</code>) means a
+      <b>confirmed</b> Marketing Budget Upload for the selected year+scope
+      (<code>mbuHasActiveBudget()</code>) or, for Domestic only, a <b>saved</b>
+      Media Plan for that year (<code>mpHasSavedPlan()</code> — requires a
+      backend id, so an in-progress unsaved draft is still "Setup").
+      <code>media_plans</code> rows have no scope, which is why a saved plan
+      only counts toward Domestic.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>State</th><th>Status block</th><th>What else is visible</th></tr></thead>
+          <tbody>
+            <tr><td>No budget, no path picked</td><td>"Setup — how would you like to start?" with three tiles: <b>1. Upload budget</b> · <b>2. Manually add</b> · <b>3. Leverage previous year</b> (International also gets a "Just track a total budget" checkbox — &sect;05)</td><td>Nothing else. Charts, upload card, budget detail, plan steps, Active Channels, Non-Working Media and Upload history are all hidden.</td></tr>
+            <tr><td>Upload path</td><td>Compact "Setting up … · Upload" line with a "← Choose a different way" link</td><td>The upload card; the mapping-evaluation screen appears below it once a file is analyzed.</td></tr>
+            <tr><td>Manual path</td><td>"Setting up … · Manually add — work through Steps 1–4 below, then Save plan."</td><td>The Media Plan steps (progressively revealed) and Active Channels (so the allocation gate can be adjusted first).</td></tr>
+            <tr><td>Leverage path</td><td>"Setting up … · Leverage previous year"</td><td>The mapping-review screen (copied upload) or the Manual steps pre-filled (copied Media Plan).</td></tr>
+            <tr><td>Budget exists</td><td>"✓ Active — … confirmed" (or "Media Plan saved") with <b>View budget detail →</b></td><td>The full reporting view — &sect;07.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The Setup path (<code>mbuSetupPath</code>) resets to none on every page
+      visit, year change and scope change, so the page always opens from its
+      own state rather than a remembered choice.</p>
+    </section>
+
+    <section id="upload">
+      <h2><span>Upload path</span><span class="num">&sect; 02</span></h2>
+      <p class="lede">
+        Accepts <code>.csv</code> or <code>.xlsx</code> in whatever layout the
+        client already has — a flat table or a multi-block export that repeats a
+        header per section. The year and scope come from Plan Setup; a second
+        confirmed budget for the same year+scope is refused (HTTP 409).
+      </p>
+      <div class="flow">
+        <div class="flow-step"><div class="flow-num">01</div><div><h4>Upload &amp; analyze</h4><p>The file is stored (<code>uploaded_files</code>), the grid is scanned for month-name header rows (one = flat table; several = multi-block), and category / Working–Non-Working / month / total columns are guessed. Rows whose total equals the sum of their block are flagged as subtotals so they aren't double-counted.</p><span class="endpoint">POST /api/accounts/:id/marketing-budget-uploads</span></div></div>
+        <div class="flow-step"><div class="flow-num">02</div><div><h4>Import with the best-guess mapping</h4><p>Runs automatically (<code>mbuConfirmImport()</code>) — the old per-column "confirm each column" panel was removed in Round 4; Step 2 below is the review screen. Line items are written per raw category × month, with the Working/Non-Working status token normalized (<code>WORKING MEDIA</code>, <code>NON-WORKING MEDIA</code>, etc.).</p><span class="endpoint">POST /api/accounts/:id/marketing-budget-uploads/:uploadId/confirm</span></div></div>
+        <div class="flow-step"><div class="flow-num">03</div><div><h4>Mapping evaluation</h4><p>Laid out like a financial statement in three columns — A the category (bold), B the amount, C the mapping/label, with one "Please update as needed" header per section. <b>Working</b> media first: each raw category with Verilume's suggested category as an always-editable grouped dropdown in column C (Total Channel → subcategory, &sect;06; an "International" line can map to International — total only). <b>This is where the client assigns sub-channel allocations:</b> a category mapped to a group's "Total/Unspecified" bucket offers "Split into … sub-channels →", which adds that group's sub-channels as editable $ rows; whatever is assigned to them comes out of the bucket (the group header shows the remainder), so sub-channels feed the total and nothing is counted twice. <b>Non-working</b> spend follows underneath in the same columns, no mapping required, with column C an editable name (saved as a display label) and "+ Add category" for lines the file didn't have (saved as line items via <code>POST …/nonworking-lines</code>). Every total sits under column B; a read-only <b>Total marketing spend</b> (working + non-working) closes the screen.</p><span class="endpoint">GET …/category-mapping · POST …/category-overrides · POST …/category-labels</span></div></div>
+        <div class="flow-step"><div class="flow-num">04</div><div><h4>Submit as final</h4><p>Only Working categories must be mapped. On confirm the upload becomes <code>confirmed</code>, the account's Active Channels are recomputed from the mapped categories (Domestic only — &sect;08), and the page hands off to the Media Plan with the Annual Marketing Budget pre-filled from the upload's Working total.</p><span class="endpoint">POST …/confirm-categories</span></div></div>
+        <div class="flow-step"><div class="flow-num">05</div><div><h4>Export</h4><p>The confirmed view's default export is a monthly-detail CSV: one row per Verilume category, Jan–Dec + Total. CSV rather than <code>.xlsx</code> because the Excel generator (<code>xlsx_gen.py</code>) is a Python subprocess that doesn't run on Vercel's Node runtime.</p><span class="endpoint">GET …/export.csv</span></div></div>
+      </div>
+      <p>A sample template with the recognized layout is downloadable from the
+      upload card (<code>GET /api/marketing-budget-upload-template.csv</code>,
+      unauthenticated).</p>
+    </section>
+
+    <section id="manual">
+      <h2><span>Manual path — the Media Plan wizard</span><span class="num">&sect; 03</span></h2>
+      <p class="lede">
+        Four steps inside <code>#mpPlanSection</code>. Step 2 appears once a
+        Working Marketing Budget exists; Steps 3–4 once a channel mix has been
+        built (<code>mpRenderPlanSteps()</code>). Domestic only.
+      </p>
+      <div class="card card--confirmed">
+        <div class="card-title">The upload feeds the manual process (R8)</div>
+        <p>Per direct instruction, the two paths are one process: the upload is a head
+        start on Steps 1–4, not a separate end state. Confirming an upload (or
+        "Build the media plan from this budget" on the Budget detail) runs
+        <code>mpSeedPlanFromUpload()</code>: Step 1 gets the working total and
+        non-working lines; Step 2 gets the Marketing Loop split — the five stage
+        percentages and dollar totals — derived from the uploaded channel mix (or the
+        client's assigned stage dollars), saved as the account's split so the table,
+        the pie and the channel build agree; Step 3 gets channel rows built from the
+        uploaded categories (the Active-Channels crosswalk plus a plan-seeding
+        crosswalk for the additive subcategories, <code>MBD_SEED_CROSSWALK</code>;
+        categories with no media channel — e.g. International total-only — are named
+        on screen and left off the rows); Step 4 gets the monthly curve from the
+        uploaded months. The page opens on Step 2 so the Loop percentages and totals
+        are the first thing seen, and the client reviews, edits and saves exactly as
+        in the manual path. Once the plan exists, the Budget detail shows the refined
+        plan with the upload named as its source; "Re-seed the plan from this budget"
+        starts over from the upload.</p>
+      </div>
+      <div class="flow">
+        <div class="flow-step"><div class="flow-num">1</div><div><h4>Budget</h4><p><b>Working Marketing Budget</b> — <b>Type an amount</b>, or <b>Calculate from revenue</b>: gross revenue × a target % of working marketing spend (dropdown, 3%–25% in whole steps, default 7%), with an explicit apply. Beside it, read like a financial statement: <b>Non-working Budget</b> (read-only, the sum of the Non-Working Media lines, with a link to add/edit them), <b>Sales Budget</b> (optional), and <b>Total Sales and Marketing</b> (read-only, working + non-working + sales). The chosen % is remembered on the plan (<code>marketingBudgetPct</code>) but is not a live formula. The revenue field reads the same for every industry — the former Travel/Cruise "Purchase Year" copy and recognition schedule were removed as hard-coded client content (R8).</p></div></div>
+        <div class="flow-step"><div class="flow-num">2</div><div><h4>Stage Weighting — one full-width card, the Marketing Loop pie inside it</h4><p>One row per Media Loop stage (Awareness, Consideration, Purchase, Loyalty, Advocacy) showing the default split for reference plus an editable <b>Share %</b> and an editable <b>Budget $</b> (share × Step 1). Editing either rebalances the other four proportionally so the split always totals 100%, and saves immediately as the account's override (<code>accounts.stageBudgetWeightsOverrideJson</code>). The pie, this table and the channel allocation all read the same numbers (<code>getIndustryStageWeights()</code>; a saved override is used exactly, with no industry nudge). A suggested split from the Business &amp; Revenue Profile survey can be applied in one click when available. The card states what the weights are based on (<code>mpWeightingBasisText()</code>): the account's saved split or the industry/default stage split, industry-specific channel weights where a table exists (Automotive Sales &amp; Service, Financial Services / Banking today) or the cross-industry table otherwise, and — new in R8 — an adjustment for the audience's <b>generation and wealth tier</b> from Company Profile (<code>GENERATION_CHANNEL_AFFINITY</code> / <code>WEALTH_CHANNEL_AFFINITY</code>, directional media-consumption multipliers averaged across the selected segments and renormalized within each stage; editorial heuristics, disclosed as such). "Continue → build channel mix" is at the bottom of this card.</p><span class="endpoint">GET / POST /api/accounts/:id/stage-weights</span></div></div>
+        <div class="flow-step"><div class="flow-num">3</div><div><h4>Channel mix — review &amp; adjust</h4><p>A card like the other steps (R8), with the Full Year / quarter / month <b>View budget</b> selector at the top of the funnel-stage sections it filters. <code>applyRecommendedMix()</code> splits each stage's dollars across its channels by <code>effectiveStageChannelWeights()</code> (industry-specific where one exists, audience-adjusted), blended toward the account's own prior-year channel shares when history exists, limited to <b>Active Channels</b> (&sect;08), and dropping channels that would fall under their minimum-viable spend (listed as "Not recommended this pass"). Every row's Annual $ and Est. CPM are editable; an inline "Add a channel" card adds any stage+channel. The per-channel "playbook" block (audience / creative / KPI notes) is no longer rendered here — it read as campaign-level content (R8).</p></div></div>
+        <div class="flow-step"><div class="flow-num">4</div><div><h4>Monthly distribution, then Save plan</h4><p>One curve for every channel: <b>Flat</b> (even), <b>Revenue curve</b> (the account's AOV seasonality, editable per month) or <b>Custom %</b>. Stored as <code>monthlyMode</code> <code>flat | curve | manual</code> plus the month table. <b>Save plan</b> writes the plan, its allocations and periods; saving is what flips Plan Setup to Active.</p><span class="endpoint">POST /api/accounts/:id/media-plan</span></div></div>
+      </div>
+    </section>
+
+    <section id="leverage">
+      <h2><span>Leverage previous year</span><span class="num">&sect; 04</span></h2>
+      <p>One picker with two kinds of source, so there is a single carry-forward
+      affordance rather than two:</p>
+      <ul>
+        <li><b>A prior confirmed upload</b> (any year/scope) — copied server-side
+        into a new upload for the target year+scope as a <b>draft</b>
+        (<code>pending_category_mapping</code>), never auto-confirmed: last
+        year's numbers are very likely stale, and a silent copy shouldn't
+        rewrite Active Channels without a human looking. It opens on the same
+        mapping-review screen as a real upload. <span class="endpoint">POST …/marketing-budget-uploads/carry-forward</span></li>
+        <li><b>A prior saved Media Plan</b> (Domestic) — copied client-side by
+        <code>mpCarryForwardFromYear()</code> into an unsaved draft (fresh
+        allocation ids, months recomputed, Non-Working vendors deliberately not
+        copied) that opens in the Manual steps for review and Save.</li>
+      </ul>
+    </section>
+
+    <section id="international">
+      <h2><span>International scope &amp; total-only</span><span class="num">&sect; 05</span></h2>
+      <p>International is a different office with the same media-mix opportunity,
+      so budgets are keyed on <code>(accountId, year, scope)</code> — a Domestic
+      and an International budget for the same year coexist, each with its own
+      upload/mapping flow and its own Active/Setup status. Pre-existing rows
+      read as Domestic via <code>COALESCE(scope,'domestic')</code>.</p>
+      <p>For an organization that doesn't want a full International plan, Plan
+      Setup offers <b>"Just track a total budget (skip channel detail)"</b>:
+      one number, stored as an auto-confirmed upload flagged
+      <code>totalOnly</code> with a single line item mapped to
+      <code>Other/Uncategorized</code>. Its Active state shows the figure with an
+      "Edit total" action instead of a channel-level detail screen. The
+      channel-level Media Plan builder (Manual path) is Domestic-only for now.</p>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; International does not drive Active Channels</div>
+        <p><code>recomputeAccountActiveChannels()</code> runs for Domestic confirms
+        only. Because it replaces the account's channel set wholesale, letting
+        both scopes drive it would mean whichever confirmed last silently wins.
+        How International spend should combine with Domestic for Campaign
+        Creation's channel picker is an open product decision (&sect;11).</p>
+      </div>
+    </section>
+
+    <section id="taxonomy">
+      <h2><span>Budget category taxonomy</span><span class="num">&sect; 06</span></h2>
+      <p class="lede">
+        <code>VERILUME_BUDGET_CATEGORIES</code> (backend) is the list a client
+        maps raw categories onto; <code>MBU_FUNCTIONAL_GROUPS</code> (frontend)
+        groups it as Total Channel → subcategory in the dropdown.
+        <code>VERILUME_TO_MMM_CHANNEL_MAP</code> crosswalks a subset of those
+        categories to Campaign Creation's channels.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Total channel</th><th>Subcategories offered</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Direct Mail</td><td>Total/Unspecified (legacy <code>Direct Mail</code>), Customers, Customers Pending, Inquiries, Prospects, Identity Resolution</td><td>Subcategories added 2026-09-05; <code>Direct Mail — ID Resolution</code> retired from new selection in favor of Identity Resolution (R8)</td></tr>
+            <tr><td>Digital</td><td>Total/Unspecified, Search, Social, Addressable, Partnerships</td><td><code>Display/Programmatic</code> retired from new selection (still valid on old data)</td></tr>
+            <tr><td>TV</td><td>Total/Unspecified, Linear TV, OTV, CTV, Addressable</td><td></td></tr>
+            <tr><td>Consumer Print Advertising</td><td>Total/Unspecified, Magazines, Newspapers (legacy <code>Magazines/Print</code> kept)</td><td>Group renamed from "Print Advertising" 2026-09-05</td></tr>
+            <tr><td>Out-of-Home · Radio · Trade</td><td>single entries</td><td>No subcategories, per direct instruction</td></tr>
+            <tr><td>International</td><td><code>International — Total (not broken out)</code></td><td>Added 2026-09-05 (R8): a Domestic file's single International line maps here as a total-only bucket; no crosswalk, so it never activates a channel. Distinct from the separate International <em>scope</em> budget.</td></tr>
+            <tr><td>Everything else</td><td>Email, PR/Earned, Events, Podcasts, Partner/Affiliate Media, Consulting &amp; Professional Fees, Production, Fulfillment &amp; Collateral, Data/Technology &amp; Analytics, Other/Uncategorized</td><td>Unchanged, standalone</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All 2026-09-05 additions are <b>additive</b>: no stored category string
+      was renamed, so historical uploads keep their meaning. The new
+      subcategories deliberately have <b>no</b> MMM crosswalk entry yet —
+      they're scoped to budget screens and reporting, and don't activate
+      Campaign Creation channels on their own.</p>
+    </section>
+
+    <section id="reporting">
+      <h2><span>The reporting view</span><span class="num">&sect; 07</span></h2>
+      <p class="lede">Shown only once a budget exists for the selected year+scope, top to bottom:</p>
+      <ol>
+        <li><b>Plan Setup</b> — Active status, "View budget detail →".</li>
+        <li><b>Budget summary charts</b> — Plan Pacing (committed vs. remaining, over/under against the current day of year), Budget Tracking (Unplanned / Planned / Active / Completed), Channel Media Mix (YTD/QTD/MTD).</li>
+        <li><b>Budget detail</b> — one unified view (<code>mbdRenderUnified()</code>) with four components: <b>A. Marketing Loop allocations</b> (five stages, $ and share); <b>B. Channel totals</b> (Direct Mail, Digital, TV, Consumer Print Advertising, …) with <b>C. sub-channels</b> that roll up to them (expand a total to see e.g. Digital = Search, Social, Addressable); and <b>D. Monthly distribution</b> (working, non-working, total by month). Non-working lines follow directly under the working-media table in the same columns, and <b>Total marketing spend</b> (working + non-working) is read-only underneath. For an uploaded budget the sub-channels are its Verilume categories and the Loop stages are derived from the channel-by-stage research (categories with no channel research use the account's stage split, and the view says so) — <b>and this is where the client assigns Loop totals</b>: each stage's $ is an input; editing one rebalances the others to the working total and saves per upload (<code>stageAllocationsJson</code>, <code>POST …/stage-allocations</code>, "Reset to the derived split" to clear); for a saved Media Plan the sub-channels are its channels and the stages are as allocated. Actions: edit categories &amp; labels, download the monthly CSV, and edit/build the media plan — which reveals Steps 1–4 (otherwise tucked away), plus Budget History &amp; Forecast with 2+ saved years.</li>
+        <li><b>Active Channels</b> — the account-level channel tiles (&sect;08).</li>
+        <li><b>Non-Working Media</b> — agency, analytics, production and similar vendor spend by vendor and month, with an editable client label per row and a CSV vendor upload; feeds the Total Marketing Budget.</li>
+        <li><b>Upload history</b> — the audit trail of every upload attempt, accepted or rejected. Always last.</li>
+      </ol>
+    </section>
+
+    <section id="active-channels">
+      <h2><span>Active Channels gate</span><span class="num">&sect; 08</span></h2>
+      <p>The Active Channels tiles (<code>state.activeChannels</code>, persisted on
+      the account profile) are the single gate on the recommended channel mix:
+      only selected channels receive allocation. Confirming a Domestic upload
+      rewrites the account's set to the channels its mapped, nonzero categories
+      crosswalk to (<code>account_active_channels</code>, plus the always-active
+      owned channels) and returns it, so the tiles update immediately and
+      categories not mapped are unselected automatically. A channel can still be
+      added to a plan by hand regardless of the gate. <code>GET
+      /api/accounts/:id/active-channels?year=</code> reports the year's
+      upload-derived set for Campaign Creation.</p>
+    </section>
+
+    <section id="endpoints">
+      <h2><span>Endpoint reference</span><span class="num">&sect; 09</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">POST /api/accounts/:id/marketing-budget-uploads</td><td>Create an upload from a file (analyze). Body variants: <code>manual:true</code> (blank, Round 5 — no longer used by the UI), <code>totalOnly:true, totalAmount</code> (International total-only). Requires <code>year</code>; accepts <code>scope</code>. 409 on a duplicate confirmed year+scope.</td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/:uploadId/confirm</td><td>Import line items with a column mapping</td></tr>
+            <tr><td class="mono">GET …/marketing-budget-uploads/:uploadId/category-mapping</td><td>Working categories + suggestions, Non-Working pass-through</td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/:uploadId/category-overrides</td><td>Per-category total overrides</td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/:uploadId/stage-allocations</td><td>Client-assigned Marketing Loop dollars for an uploaded budget — <code>{ stages: {Awareness…Advocacy} | null }</code></td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/:uploadId/nonworking-lines</td><td>Client-added non-working lines — <code>{ lines: [{category, total}] }</code>, replaces the manual set (stored as line items, <code>sourceRowIndex -1</code>)</td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/:uploadId/category-labels</td><td>Display labels for (non-working) raw categories — <code>{ labels: { rawCategory: label } }</code>; blank clears</td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/:uploadId/confirm-categories</td><td>Confirm; recompute Active Channels (Domestic); returns <code>activeChannels</code></td></tr>
+            <tr><td class="mono">POST …/marketing-budget-uploads/carry-forward</td><td>Copy a confirmed upload into a new draft for <code>{year, scope}</code></td></tr>
+            <tr><td class="mono">GET …/marketing-budget-uploads/:uploadId/export.csv</td><td>Monthly-detail CSV (confirmed uploads)</td></tr>
+            <tr><td class="mono">GET …/marketing-budget-uploads · GET …/:uploadId · DELETE …/:uploadId</td><td>List (with <code>scope</code>, <code>totalOnly</code>, <code>totalAmount</code>), detail (grid, analysis, confirmed mapping, rollups), delete</td></tr>
+            <tr><td class="mono">GET /api/marketing-budget-upload-template.csv</td><td>Sample template (unauthenticated)</td></tr>
+            <tr><td class="mono">GET / POST /api/accounts/:id/media-plan?year=</td><td>Load / save the year's plan, allocations, periods, Non-Working vendors, monthly curve</td></tr>
+            <tr><td class="mono">GET …/media-plan/history</td><td>Every saved year's totals and channel shares (year chips, trend chart, history blend)</td></tr>
+            <tr><td class="mono">GET …/media-plan/export.csv · export.xlsx</td><td>Plan exports (xlsx path depends on the Python generator — see &sect;11)</td></tr>
+            <tr><td class="mono">GET / POST …/stage-weights</td><td>Default / suggested / override stage split (weights must sum to 1.00)</td></tr>
+            <tr><td class="mono">GET …/active-channels?year=</td><td>Upload-derived channel set for the year</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">&sect; 10</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Table</th><th>Key fields</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>marketing_budget_uploads</code></td><td><code>id</code>, <code>accountId</code>, <code>year</code>, <code>scope</code>, <code>status</code>, <code>totalOnly</code>, <code>categoryLabelsJson</code>, <code>stageAllocationsJson</code>, <code>gridJson</code>, <code>analysisJson</code>, <code>confirmedMappingJson</code></td><td>One per upload; <code>status</code> ∈ needs_mapping → pending_category_mapping → confirmed</td></tr>
+            <tr><td><code>marketing_budget_line_items</code></td><td><code>uploadId</code>, <code>category</code>, <code>status</code>, <code>month</code>, <code>amount</code>, <code>annualTotal</code>, <code>verilumeCategory</code></td><td>Raw category × month; <code>verilumeCategory</code> NULL until mapped</td></tr>
+            <tr><td><code>marketing_budget_category_overrides</code></td><td><code>uploadId</code>, <code>verilumeCategory</code>, <code>overrideTotal</code></td><td>Client-edited totals; also how a total-only figure is edited</td></tr>
+            <tr><td><code>account_active_channels</code></td><td><code>accountId</code>, <code>channel</code></td><td>Cache of "channels with real budget behind them," replaced on each Domestic confirm</td></tr>
+            <tr><td><code>media_plans</code></td><td><code>id</code>, <code>accountId</code>, <code>year</code>, <code>totalBudget</code>, <code>grossRevenue</code>, <code>marketingBudgetPct</code>, <code>tradeMarketingPct</code>, <code>tradeMarketingBudget</code>, <code>monthlyMode</code>, <code>monthlyPctJson</code>, <code>nonWorkingMediaJson</code></td><td>One per account per year; <code>monthlyMode</code> ∈ flat | curve | manual</td></tr>
+            <tr><td><code>media_plan_allocations</code> / <code>media_plan_periods</code></td><td><code>mediaPlanId</code>, <code>stage</code>, <code>channel</code>, <code>recommendedAmount</code>, <code>approvedAmount</code> / <code>allocationId</code>, <code>label</code>, <code>approvedAmount</code></td><td>Channel rows and their Jan–Dec split</td></tr>
+            <tr><td><code>accounts</code> (columns)</td><td><code>stageBudgetWeightsOverrideJson</code>, <code>minViableSpendCalibrationEnabled</code>, <code>activeChannels</code></td><td>Stage split override; AOV calibration flag (no longer surfaced in the UI); Active Channels tiles</td></tr>
+            <tr><td><code>VERILUME_BUDGET_CATEGORIES</code> / <code>VERILUME_TO_MMM_CHANNEL_MAP</code> (in-code)</td><td></td><td>The mapping taxonomy and its Campaign-Creation crosswalk — &sect;06</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 11 — for product awareness</span></h2>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Not yet retested in the deployed environment</div>
+        <p>Rounds 1–7 were verified by syntax checks and (Round 7) a headless-browser
+        run against a stubbed backend. A live pass is still needed: a real file
+        through upload → confirm → Media Plan hand-off, a real International
+        total-only budget, the new Consumer Print Advertising subcategories
+        against a file that names magazines/newspapers, and the monthly CSV
+        export's actual columns.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; International vs. Domestic for Active Channels</div>
+        <p>Only Domestic confirms drive the account's channel set. Whether and how
+        International spend should combine with it for Campaign Creation is an
+        open product decision; a channel-level International Media Plan would
+        also need a scope on <code>media_plans</code>.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No manual column-mapping correction any more</div>
+        <p>Round 4 removed the per-column mapping panel. If the auto-detected
+        column layout is wrong on an unusual multi-block file, the fix is via
+        the category-mapping screen or a cleaner re-upload; the backend still
+        stores everything needed to re-derive the import if a UI is ever wanted
+        again.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Media Plan <code>.xlsx</code> export depends on a Python generator</div>
+        <p><code>xlsx_gen.py</code> won't run on Vercel's Node runtime — every new
+        export this cycle was built as CSV for that reason. The older
+        <code>media-plan/export.xlsx</code> path should be treated as
+        hosting-dependent.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Audience media-consumption weights are editorial, not licensed research</div>
+        <p>The generation and wealth-tier channel multipliers added in R8 are
+        directional heuristics (e.g. Boomers over-index on linear TV and
+        newspapers, Gen Z on paid social and CTV). They are disclosed as such
+        in the UI and are meant to be replaced with licensed consumption data
+        when it's on file — the mechanism (per-channel multipliers averaged
+        across the account's selected segments) stays the same.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Legacy categories still on old data</div>
+        <p><code>Display/Programmatic</code> and <code>Magazines/Print</code> remain
+        valid on historical uploads by design; no bulk "remap to the new
+        categories" prompt exists.</p>
+      </div>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log — this cycle</span><span class="num">&sect; 12</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Ask</th><th>Resolution</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-09-05 · R1</td><td>"The ask from a client POV is confusing… easier mapping process and/or a sample upload template. Users should not need to reimport."</td><td>Fixed the Working/Non-Working token regex that silently bucketed $1.3M of non-working spend as working on the real 2025 file; added category rules for "digital"/"communications"; sample CSV template; reopen-without-reimport (backend returns grid + confirmed mapping).</td></tr>
+            <tr><td class="mono">2026-09-05 · R2</td><td>"We only need to map working media… show the client's category first and our assumption next to it as a drop-down… show actual amounts per month… allow total-only per category."</td><td>Shared category ledger; Non-Working pass-through; side-by-side label + editable dropdown per Working category; expandable Jan–Dec per row; only Working categories block confirm. Also fixed the dead Delete button on duplicate uploads.</td></tr>
+            <tr><td class="mono">2026-09-05 · R3</td><td>"We need a total channel category and then subcategories… International is technically a different office."</td><td>Additive Total Channel + subcategory taxonomy (Direct Mail, Digital, TV, Print Advertising) with no MMM crosswalk yet; <code>scope</code> column and Domestic/International toggle; Domestic-only Active Channels recompute.</td></tr>
+            <tr><td class="mono">2026-09-05 · R4</td><td>"This entire section should have been deleted. Step 2 has the correct experience."</td><td>Per-column mapping panel removed from the UI entirely; import still auto-runs with the best guess.</td></tr>
+            <tr><td class="mono">2026-09-05 · R5</td><td>"We have duplicate modules… Plan Setup should be the first module… Active links to the budget detail… Inactive provides manually add, leverage previous year, upload… Excel exports should be monthly detail… Active Channels next… Audit upload last."</td><td>Plan Setup card replaced the "Budgets on file" table; one year selector for the whole page; carry-forward endpoint (lands as a draft); monthly-detail CSV export; page reordered.</td></tr>
+            <tr><td class="mono">2026-09-05 · R6</td><td>Eight items: hide charts until a budget exists; Consumer Print Advertising; retire Display/Programmatic from the dropdown; International total-only option; Total Marketing Budget = working + non-working; non-working continuity; editable client label on non-working rows; Manual starts from a total or revenue × %.</td><td>All built. Pre-answered decisions: total-only toggle at Plan Setup; Total Marketing Budget read-only; Manual pre-fills from the weighting research (later superseded by R7).</td></tr>
+            <tr><td class="mono">2026-09-05 · R7</td><td>"We're still trying to show too much at once and duplicating content/functions." Nine items: Plan Setup alone when no budget; tile order Upload / Manual / Leverage; Manual = total or revenue × 3–25% (default 7%); stage weighting with dollar totals and the loop pie, calibration toggle removed; editable channel mix incorporating add-by-hand; flat vs. revenue-curve months; Active Channels gate the allocation; Non-Working Media above Upload history.</td><td>One visibility controller (<code>mbuApplyPageMode</code>); deleted R5–R6's duplicate manual path and made the Media Plan the "Manually add" wizard (Steps 1–4); Stage Weighting rewritten with editable %/$ that rebalance and save; pie/table/allocation unified on one stage split; <code>monthlyMode: 'curve'</code>; Active Channels as the single gate with confirm adopting the recomputed set; Non-Working Media moved above Upload history. Driven end-to-end in a headless browser.</td></tr>
+            <tr><td class="mono">2026-09-05 · R8</td><td>"The entire flow should end up in the same for both upload and manual… 4 components: Marketing Loop allocations, aggregate channel totals, detailed sub-channels rolling up to totals [and monthly distribution]." Plus: International allowed in the mapping dropdown as a total; non-working listed to the right of working "as if you were looking at a complete financial document," names editable; read-only total marketing spend.</td><td>Unified Budget detail (<code>mbdRenderUnified</code>) fed by two builders — uploaded budget (Loop stages derived from channel-by-stage research, per pre-answered decision) and saved Media Plan; it is the Active-state view for both paths, with the Media Plan steps tucked behind "Edit media plan." New <code>International — Total (not broken out)</code> category + suggestion rule; mapping screen re-laid out as two columns with editable non-working labels (<code>categoryLabelsJson</code>, <code>POST …/category-labels</code>) and a read-only total marketing spend; the crosswalk is now returned by the API rather than mirrored in the frontend. Manual-process follow-ups the same day: Travel/Cruise "Purchase Year" copy and recognition table removed (hard-coded client content); Step 1 relabeled Working / Non-working / Sales / Total Sales and Marketing; Step 2 as one full-width card with the pie inside; generation + wealth media-consumption multipliers added to the channel weights and the basis stated on screen; Step 3 as a card with the View-budget selector attached to the funnel sections; style-guide <code>.field</code> wrappers on the stage inputs; per-channel playbook block removed from the plan grid. Upload-process follow-ups: "When does the client assign totals to Loop categories and sub-channels?" — answered by making both assignable: stage $ inputs on the Budget detail (saved per upload) and "Split into sub-channels" on the review screen (assigned dollars come out of the Total/Unspecified bucket); review screen tidied — bold category instead of a "Client's category" caption, one "Please update as needed" header per section, totals under column B, check-mark line removed, "+ Add category" for non-working. Then, per "the upload process feeds the manual process… the user has a head start": a confirmed upload now seeds Steps 1–4 (<code>mpSeedPlanFromUpload</code>) and opens on Step 2's Loop percentages/totals; Direct Mail sub-channels completed (Customers, Customers Pending, Inquiries, Prospects, Identity Resolution).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 13</span></h2>
+      <ol>
+        <li><strong>Live retest</strong> of the full flow in the deployed environment with the real 2025 file, then close the "pending live retest" status above.</li>
+        <li><strong>Decide the International question</strong> — how (or whether) International spend should combine with Domestic for Active Channels, and whether a channel-level International Media Plan is wanted (needs a scope on <code>media_plans</code>).</li>
+        <li><strong>Decide whether the new subcategories should drive Active Channels</strong> — today they have no MMM crosswalk by design.</li>
+        <li><strong>Remove the dead code</strong> left in place this cycle once the live retest passes (<code>mpRenderRevenuePctApply</code>, <code>renderMpCarryForwardPrompt</code>, <code>renderMbuYearsList</code>, <code>mswToggleCalibration</code>, the unused <code>manual:true</code> upload branch).</li>
+        <li><strong>Resolve the <code>.xlsx</code> export hosting dependency</strong> — either a Node-native generator or standardize on CSV.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Reflects the state of
+      <code>backend/server.js</code> and <code>frontend/portal.html</code> as
+      verified on 2026-09-05 (Round 8). Update this document as the Product changes — it's
+      meant to be the living reference, not a point-in-time snapshot.
+    </div>
+
+  </main>
+</div>

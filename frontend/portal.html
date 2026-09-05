@@ -23737,6 +23737,13 @@ async function renderMediaPlanStep(fromUpload){
   // to the Carry-forward offer exactly as before (see
   // renderMpCarryForwardPrompt()) since this is a no-op in that case.
   await mpAutoPrefillIfBlank();
+  // Round 8d: arriving from a just-confirmed upload seeds Steps 1-4 from it
+  // (totals -> Loop split -> channel rows -> months) and opens on Step 2.
+  if (fromUpload && !(state.mediaPlan && (state.mediaPlan.allocations || []).length)){
+    renderMediaPlanFieldsAndCharts(false);
+    const seeded = await mpBuildPlanFromUpload();
+    if (seeded){ mswLoadStageWeights(); return; }
+  }
   renderMediaPlanFieldsAndCharts(fromUpload);
   // Round 132c[7] (2026-08-17) — buildout item #7. Loads independently of
   // the plan/budget data above (it's account-scoped, not plan-scoped) so a
@@ -25791,7 +25798,13 @@ async function mbuConfirmImport(){
 // flat category, still its own group, per direct confirmation these
 // should stay exactly as they are.
 const MBU_FUNCTIONAL_GROUPS = {
-  'Direct Mail': ['Direct Mail', 'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution'],
+  // Round 8d (2026-09-05): "Direct Mail also has sub-channels: Customers,
+  // Customers Pending, Inquiries, Prospects, Identity Resolution." The
+  // legacy 'Direct Mail — ID Resolution' stays in the group for anything
+  // already mapped to it but is retired from new selection (see
+  // MBU_RETIRED_CATEGORIES); the legacy bare 'Direct Mail' is the group's
+  // Total/Unspecified.
+  'Direct Mail': ['Direct Mail', 'Direct Mail — Customers', 'Direct Mail — Customers Pending', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — Identity Resolution', 'Direct Mail — ID Resolution'],
   'Digital': ['Digital — Total/Unspecified', 'Search', 'Social', 'Digital — Addressable', 'Digital — Partnerships'],
   'TV': ['TV — Total/Unspecified', 'Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
   // Round 6 (2026-09-05), per direct instruction: "We need a Consumer Print
@@ -25985,7 +25998,7 @@ function mbuToggleMonthlyDetail(detailId){
 // CURRENT choice selectable even if it's on this list (never silently
 // un-selects a real saved value), and mbuRenderCategoryMapping's "+ Add
 // category" control filters its own addable list against this too.
-const MBU_RETIRED_CATEGORIES = ['Display/Programmatic'];
+const MBU_RETIRED_CATEGORIES = ['Display/Programmatic', 'Direct Mail — ID Resolution'];
 function mbuGroupedCategoryOptionsHtml(verilumeCats, choice){
   const available = new Set(verilumeCats.filter(c => c === choice || !MBU_RETIRED_CATEGORIES.includes(c)));
   const placed = new Set();
@@ -26065,7 +26078,7 @@ function mbuWorkingCategoryRowHtml(c){
 // editable $ rows (the same manual-category mechanism "+ Add category"
 // uses); the Total/Unspecified row then shows what's left unallocated.
 function mbuSplitControlHtml(choice){
-  if (!choice || !/ — Total\/Unspecified$/.test(choice)) return '';
+  if (!choice || !(/ — Total\/Unspecified$/.test(choice) || choice === 'Direct Mail')) return '';
   const group = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(choice));
   if (!group) return '';
   const subs = group[1].filter(c => c !== choice && !MBU_RETIRED_CATEGORIES.includes(c) && !mbuManualCategories.has(c));
@@ -26206,7 +26219,7 @@ function mbuRenderCategoryMapping(){
   // sub-channel dollars, so the group total, the Working total and what's
   // saved on Submit all agree.
   Object.entries(MBU_FUNCTIONAL_GROUPS).forEach(([, labels]) => {
-    const bucket = labels.find(l => / — Total\/Unspecified$/.test(l));
+    const bucket = labels.find(l => / — Total\/Unspecified$/.test(l)) || (labels.includes('Direct Mail') ? 'Direct Mail' : null);
     if (!bucket || !byLabel[bucket] || !byLabel[bucket].items.length) return;
     const subSum = labels.filter(l => l !== bucket && mbuManualCategories.has(l)).reduce((s2, l) => s2 + (Number(mbuCategoryOverrides[l]) || 0), 0);
     if (subSum > 0) mbuCategoryOverrides[bucket] = Math.max(0, byLabel[bucket].total - subSum);
@@ -26226,7 +26239,7 @@ function mbuRenderCategoryMapping(){
     sectionTotal += groupTotal;
     // Round 8c: a group whose Total/Unspecified bucket was split into
     // sub-channels shows what's still unallocated against that bucket.
-    const totalBucket = groupLabels.find(l => / — Total\/Unspecified$/.test(l));
+    const totalBucket = groupLabels.find(l => / — Total\/Unspecified$/.test(l)) || (groupLabels.includes('Direct Mail') ? 'Direct Mail' : null);
     const subSum = groupLabels.filter(l => l !== totalBucket && mbuManualCategories.has(l)).reduce((s2, l) => s2 + shownTotalFor(l), 0);
     const remainderNote = (totalBucket && subSum > 0) ? `<span style="font-weight:400;text-transform:none;letter-spacing:normal;"> · ${fmtMoney(subSum)} assigned to sub-channels, ${fmtMoney(shownTotalFor(totalBucket))} still in ${escapeHtml(totalBucket)}</span>` : '';
     return `
@@ -26662,7 +26675,12 @@ let mbdLoadedUploadId = null;
 let mpPlanEditing = false;
 async function mbdShowForUpload(uploadId){
   if (!uploadId || !state.companyId) return;
-  if (mbdLoadedUploadId === uploadId && document.getElementById('mbuResultsCard') && document.getElementById('mbuResultsCard').style.display !== 'none') return;
+  if (mbdLoadedUploadId === uploadId && document.getElementById('mbuResultsCard') && document.getElementById('mbuResultsCard').style.display !== 'none'){
+    // Already loaded: re-render from the cached detail (the plan built from
+    // it may have changed) unless the review screen is open on it.
+    if (mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId && !document.getElementById('mbuCategoryMappingResult')) mbuRenderResults(mbdLastUploadDetail);
+    return;
+  }
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}`);
     if (!resp.ok) return;
@@ -26715,6 +26733,9 @@ async function mbdSaveUploadStages(uploadId, stages){
   } catch (e){ alert('Backend unreachable — not saved.'); }
 }
 function mpStartEditingPlan(){
+  // Round 8d: with a confirmed upload and no plan rows yet, editing starts
+  // by seeding the steps from the upload (the head start).
+  if (!(state.mediaPlan && (state.mediaPlan.allocations || []).length) && mbuHasActiveBudget()){ mpBuildPlanFromUpload(); return; }
   mpPlanEditing = true;
   if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
   const sec = document.getElementById('mpPlanSection');
@@ -26724,6 +26745,141 @@ function mpStopEditingPlan(){
   mpPlanEditing = false;
   if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
 }
+// ============ Round 8d (2026-09-05) — the upload feeds the manual process ============
+// Per direct instruction: "The upload process feeds the manual process
+// beginning with totals and then loop weights that feed channel totals and
+// sub-groups. The user has a head start when they use the upload process."
+// A confirmed upload seeds Steps 1-4 of the Media Plan: Step 1 the working
+// total (and non-working lines), Step 2 the Marketing Loop split (% and $)
+// derived from the uploaded channel mix, Step 3 channel allocations built
+// from the uploaded categories, Step 4 the monthly curve from the uploaded
+// months. The client then reviews/edits exactly as in the manual path and
+// saves. Runs on the confirm hand-off (fromUpload) and from "Build the
+// media plan from this budget" on the Budget detail card.
+//
+// Plan-seeding crosswalk for the additive subcategories that deliberately
+// have NO Active-Channels crosswalk on the backend: this is only used to
+// place their dollars on a Media Plan channel row so the money isn't
+// dropped from the plan -- it does not activate channels.
+const MBD_SEED_CROSSWALK = {
+  'Digital — Total/Unspecified': ['Brand Search', 'Non-Brand Search', 'Paid Social', 'Programmatic Display'],
+  'Digital — Addressable': ['Programmatic Display'],
+  'Digital — Partnerships': ['Partner Media'],
+  'Direct Mail — Customers': ['Direct Mail — Past Guests'],
+  'Direct Mail — Inquiries': ['Direct Mail — Inquiries'],
+  'Direct Mail — Prospects': ['Direct Mail — Prospects'],
+  'Direct Mail — ID Resolution': ['Direct Mail — Prospects'],
+  'Direct Mail — Identity Resolution': ['Direct Mail — Prospects'],
+  'Direct Mail — Customers Pending': ['Direct Mail — Past Guests'],
+  'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV'],
+  'TV — Addressable': ['CTV'],
+  'Consumer Print Advertising — Total/Unspecified': ['Magazines', 'Newspapers'],
+  'Consumer Print Advertising — Magazines': ['Magazines'],
+  'Print Advertising — Newspapers': ['Newspapers']
+};
+let mpSeededFromUploadId = null;
+async function mpSeedPlanFromUpload(detail, opts){
+  opts = opts || {};
+  if (!detail || detail.status !== 'confirmed') return false;
+  const model = mbdModelFromUpload(detail);
+  const working = model.channels.reduce((s, g) => s + g.total, 0);
+  if (!(working > 0)) return false;
+  const crosswalk = Object.assign({}, MBD_SEED_CROSSWALK, detail.verilumeToMmm || {});
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: 0, allocations: [] };
+  const plan = state.mediaPlan;
+  // Step 1 -- totals
+  plan.totalBudget = Math.round(working);
+  const budgetInput = document.getElementById('mpTotalBudget');
+  if (budgetInput) budgetInput.value = plan.totalBudget;
+  // Step 2 -- Marketing Loop split from the uploaded mix (or the client's
+  // own assigned stage dollars), saved as this account's split so the
+  // Stage Weighting card, the pie and the channel build all use it.
+  const weights = {};
+  let wsum = 0;
+  MEDIA_LOOP_STAGES.forEach(st => { weights[st] = Math.round(((model.stages[st] || 0) / working) * 10000) / 10000; wsum += weights[st]; });
+  if (wsum > 0){
+    weights[MEDIA_LOOP_STAGES[0]] = Math.round((weights[MEDIA_LOOP_STAGES[0]] + (1 - wsum)) * 10000) / 10000;
+    mswStageWeightsOverride = weights;
+    if (!opts.skipSaveWeights){ try { await mswSaveWeights(weights); } catch (e){ /* card re-renders below regardless */ } }
+  }
+  // Step 3 -- channel allocations from the uploaded categories
+  const byCat = detail.byVerilumeCategory || {};
+  const rows = {};
+  const skipped = [];
+  Object.entries(byCat).forEach(([cat, total]) => {
+    const amt = Number(total) || 0;
+    if (!(amt > 0)) return;
+    const chans = (crosswalk[cat] || []).filter(ch => MMM_CATEGORIES.includes(ch));
+    if (!chans.length){ skipped.push({ cat, amt }); return; }
+    // weight of each (stage, channel) cell from the channel-by-stage research
+    const cells = [];
+    let cellSum = 0;
+    MEDIA_LOOP_STAGES.forEach(st => { const w = effectiveStageChannelWeights(st); chans.forEach(ch => { const v = w[ch] || 0; if (v > 0){ cells.push({ st, ch, v }); cellSum += v; } }); });
+    if (!cellSum){
+      // no research for these channels: equal split across channels, the
+      // account's stage split across stages
+      const sw = getIndustryStageWeights(state.industry);
+      MEDIA_LOOP_STAGES.forEach(st => chans.forEach(ch => { cells.push({ st, ch, v: (sw[st] || 0) / chans.length }); cellSum += (sw[st] || 0) / chans.length; }));
+    }
+    cells.forEach(c => { const key = `${c.st}||${c.ch}`; rows[key] = (rows[key] || 0) + amt * (c.v / cellSum); });
+  });
+  ensurePlanMonthlyDefaults();
+  // Step 4 -- monthly curve from the uploaded months (working media)
+  if (model.months){
+    const total = MBD_MONTHS.reduce((s, m) => s + (Number(model.months[m]) || 0), 0);
+    if (total > 0){
+      plan.monthlyMode = 'manual';
+      plan.monthlyPct = {};
+      MBD_MONTHS.forEach((m, i) => { plan.monthlyPct[MONTH_LABELS[i]] = Math.round(((Number(model.months[m]) || 0) / total) * 1000) / 10; });
+    }
+  }
+  plan.allocations = Object.entries(rows).map(([key, amt], i) => {
+    const [stage, channel] = key.split('||');
+    const rounded = Math.round(amt);
+    return { id: `alloc-${mpSelectedYear}-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`, stage, channel, recommendedAmount: rounded, approvedAmount: rounded, cpm: ILLUSTRATIVE_CHANNEL_CPM[channel] || DEFAULT_BLENDED_CPM, audienceType: defaultAudienceTypeForChannel(channel), periods: computePlanMonthlyPeriods(rounded) };
+  });
+  plan.lastExcludedFromMix = [];
+  plan.seededFromUpload = { uploadId: detail.id, fileName: detail.fileName || null, skipped };
+  mpSeededFromUploadId = detail.id;
+  // Non-working lines from the upload (fill-if-empty, existing helper)
+  if (typeof mpPrefillFromConfirmedUpload === 'function'){ try { await mpPrefillFromConfirmedUpload(true); } catch (e){} }
+  renderMediaPlanFieldsAndCharts(false);
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  const flag = document.getElementById('mpApplyMixFlag');
+  if (flag){
+    const skippedNote = skipped.length ? ` ${skipped.length} categor${skipped.length === 1 ? 'y' : 'ies'} with no media channel (${skipped.map(x => `${x.cat} ${fmtMoney(x.amt)}`).join(', ')}) stay in the budget but aren't placed on a channel row — add a channel below if you want them in the plan.` : '';
+    flag.textContent = `Pre-filled from "${detail.fileName || 'your upload'}": working total, Marketing Loop split, ${plan.allocations.length} channel row${plan.allocations.length === 1 ? '' : 's'}${model.months ? ', and the monthly curve' : ''}. Review each step and Save plan.${skippedNote}`;
+    flag.style.display = '';
+  }
+  return true;
+}
+// Build (or rebuild) the plan from the active confirmed upload for the
+// selected year+scope, then open the steps on Step 2 so the Loop
+// percentages and totals are the first thing seen.
+async function mpBuildPlanFromUpload(){
+  const findActive = () => mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
+  let active = findActive();
+  if (!active && typeof mbuLoadYearsList === 'function'){ await mbuLoadYearsList(); active = findActive(); }
+  if (!active) return false;
+  let detail = mbdLastUploadDetail && mbdLastUploadDetail.id === active.id ? mbdLastUploadDetail : null;
+  if (!detail){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(active.id)}`);
+      if (resp.ok){ detail = await resp.json(); mbdLastUploadDetail = detail; }
+    } catch (e){}
+  }
+  if (!detail) return false;
+  const ok = await mpSeedPlanFromUpload(detail);
+  if (!ok) return false;
+  mpPlanEditing = true;
+  if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
+  requestAnimationFrame(() => {
+    const target = document.getElementById('mpStageWeightRow');
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  return true;
+}
+
 
 function mbuRenderResults(data){
   const card = document.getElementById('mbuResultsCard');
@@ -26795,7 +26951,9 @@ function mbuRenderResults(data){
     <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
       <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">✎ Edit categories &amp; labels →</button>
       ${isAvailable ? `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>` : ''}
-      ${isAvailable && (data.scope || 'domestic') === 'domestic' ? `<button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">${(state.mediaPlan && (state.mediaPlan.allocations || []).length) ? '✎ Edit media plan (Steps 1–4) →' : '▶ Build the media plan from this budget (Steps 1–4) →'}</button>` : ''}
+      ${isAvailable && (data.scope || 'domestic') === 'domestic' ? ((state.mediaPlan && (state.mediaPlan.allocations || []).length)
+        ? `<button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button><button type="button" class="btn-ghost" onclick="mpBuildPlanFromUpload()">↻ Re-seed the plan from this budget →</button>`
+        : `<button type="button" class="btn-primary" onclick="mpBuildPlanFromUpload()">▶ Build the media plan from this budget (Steps 1–4) →</button>`) : ''}
       <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
     </div>`;
   const statusLine = `
@@ -26814,7 +26972,12 @@ function mbuRenderResults(data){
     </div>`;
   if (isAvailable){
     mbdLastUploadDetail = data;
-    body.innerHTML = statusLine + mbdRenderUnified(mbdModelFromUpload(data), { actionsHtml: actions }) + lineItemsHtml;
+    // Round 8d: once the plan has been built from this upload (the "head
+    // start"), the Budget detail shows the plan -- the refined result -- with
+    // the upload named as its source; until then, the upload itself.
+    const planRows = (state.mediaPlan && (state.mediaPlan.allocations || []).length && Number(state.mediaPlan.year) === Number(data.year) && (data.scope || 'domestic') === 'domestic') ? state.mediaPlan : null;
+    const model = planRows ? Object.assign(mbdModelFromPlan(planRows), { title: `${data.year || ''} Domestic budget — uploaded "${data.fileName || 'file'}", refined in the Media Plan${planRows.id ? '' : ' (unsaved draft)'}` }) : mbdModelFromUpload(data);
+    body.innerHTML = statusLine + mbdRenderUnified(model, { actionsHtml: actions }) + lineItemsHtml;
   } else {
     body.innerHTML = statusLine + actions + lineItemsHtml;
   }
