@@ -4380,7 +4380,21 @@ function mbuIsTotalLikeCategoryLabel(text){
   const words = t.toLowerCase().split(/\s+/);
   return words.length <= 3 && words.includes('total') && words.every(w => genericWords.includes(w));
 }
-const MARKETING_BUDGET_STATUS_TOKEN_RE = /^(working|non-working|non-woring|working[\s-]*(partner|audience|channel|trade))$/i;
+// Round 2026-09-05, per direct bug report against a real client file
+// ("2025 HISTORICAL BUDGET.xlsx"): this used to require an EXACT match
+// against bare "working"/"non-working" only. That real file's own SPEND
+// TYPE column uses "WORKING MEDIA" / "NON-WORKING MEDIA" — neither matched,
+// so the status column was never auto-detected (statusColIdx stayed null),
+// every line item's status was stored as NULL, and mbuIsNonWorkingStatus()
+// treats NULL as Working — silently rebucketing the entire real
+// Non-Working Media total (5 categories, $1,315,016 on that file) into
+// Working Media with no warning anywhere on screen. Broadened to also
+// accept the common real-world suffixes ("Media", "Partner", "Spend",
+// etc.) a client's own file is likely to use, while staying an exact
+// match on the WORKING/NON-WORKING token itself (not a bare substring
+// test) — still only ever a 'suggested' confidence a human confirms on
+// the mapping screen, never silently applied without being shown.
+const MARKETING_BUDGET_STATUS_TOKEN_RE = /^(non[\s-]?working|working)([\s-]*(media|partner|audience|channel|trade|spend))?$/i;
 const MARKETING_BUDGET_TARGET_FIELDS = [
   { key: 'category', label: 'Category / Line Item' },
   { key: 'status', label: 'Working / Non-Working' },
@@ -4581,8 +4595,27 @@ function mbuSuggestVerilumeCategory(rawCategory){
     // first.
     [/\bctv\b|\bconnected tv\b/, 'CTV'],
     [/\bott\b|\botv\b|\bstreaming\b|\bvideo\b/, 'OTV'],
+    // Round 2026-09-05, per direct bug report: "Consumer Digital Marketing"
+    // (a real category on a real client file) fell through every existing
+    // rule — no specific channel keyword (search/social/display/video/
+    // etc.) fired on the bare word "digital" alone, so it became an
+    // unexplained Exception. Placed AFTER the CTV/OTV rules deliberately —
+    // a label like "Digital Video" should still match OTV's own bare
+    // "video" fallback above, not get hijacked by this broader catch-all.
+    // Display/Programmatic is the closest general-digital-media bucket
+    // Verilume's own taxonomy has (there's no standalone "Digital" entry —
+    // see VERILUME_BUDGET_CATEGORIES above); still just 'suggested', still
+    // fully editable if the real mix is actually search- or social-heavy.
+    [/\bdigital\b/, 'Display/Programmatic'],
     [/\bemail\b|\be-?mail\b/, 'Email'],
-    [/\bpr\b|\bpublic relations\b|\binquir(y|ies)\b/, 'PR/Earned'],
+    // Round 2026-09-05, per direct bug report against a real client file:
+    // "Corporate/Guest Communications" fell through every existing rule
+    // (no "pr"/"public relations" text) into Other/Uncategorized, becoming
+    // an unexplained Exception. "Communications" alone is a reasonable,
+    // if imperfect, signal for PR/Earned — same forgiving-fallback pattern
+    // as OTV's bare "video" match above, still fully editable on the
+    // review screen.
+    [/\bpr\b|\bpublic relations\b|\binquir(y|ies)\b|\bcommunications?\b/, 'PR/Earned'],
     [/\blinear tv\b|\bbroadcast\b/, 'Linear TV'],
     [/\bdirect mail\b|\bdm\b|\bmailer\b|\bpast guest\b|\binsert/, 'Direct Mail'],
     [/\bevent(s)?\b|\btrade show\b/, 'Events'],
@@ -14945,6 +14978,45 @@ Submit your findings via the submit_brand_categories tool.`;
       });
     }
 
+    // GET /api/marketing-budget-upload-template.csv — round 2026-09-05,
+    // per direct request: no sample/template file existed anywhere in this
+    // flow, so a client formatting their own export had to guess the
+    // expected shape from hint text alone. Not account-scoped (the layout
+    // is the same for everyone) and no auth needed beyond the standard
+    // session gate — this is a blank starting point, never real data.
+    // Deliberately plain CSV, not a generated .xlsx: this app's other
+    // Excel-generation path (xlsx_gen.py) is a Python subprocess call that
+    // won't run on Vercel's Node serverless runtime (flagged separately in
+    // the hosting punch list) — CSV needs no library and opens directly in
+    // Excel/Sheets either way. Column order matches MARKETING_BUDGET_
+    // TARGET_FIELDS exactly (Category, Working/Non-Working, Jan..Dec,
+    // Total) — a file filled in from this template round-trips straight
+    // through analyzeMarketingBudgetGrid()'s standard_flat, single-header-
+    // row path with every column auto-recognized, no manual mapping
+    // needed. Two example rows (one Working, one Non-Working) are included
+    // and clearly marked as placeholders to delete, matching this
+    // project's own "example row, never real data" convention for a
+    // fill-in template.
+    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'marketing-budget-upload-template.csv'){
+      const monthHeaders = MARKETING_BUDGET_MONTHS.map(m => MARKETING_BUDGET_MONTH_LABELS[m]);
+      const header = ['Category', 'Working / Non-Working', ...monthHeaders, 'Total'];
+      const exampleRows = [
+        ['EXAMPLE — delete this row: Paid Search', 'Working', 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 60000],
+        ['EXAMPLE — delete this row: Production (Photo/Video/Creative)', 'Non-Working', 2000, 0, 0, 3000, 0, 0, 0, 0, 2500, 0, 0, 0, 7500]
+      ];
+      const csvEscape = v => {
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = [header, ...exampleRows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="verilume-marketing-budget-template.csv"'
+      });
+      res.end(csv);
+      return;
+    }
+
     // POST /api/accounts/:id/marketing-budget-uploads — Marketing Budget
     // Upload, format-flexibility test (separate feature from MMM's cfi*
     // bulk import above — per direct instruction, not the same thing).
@@ -15313,10 +15385,35 @@ Submit your findings via the submit_brand_categories tool.`;
       // to use" rollup — the underlying line items are untouched, only what's
       // reported here changes. See computeByVerilumeCategoryForUpload.
       const byVerilumeCategory = upload.status === 'confirmed' ? computeByVerilumeCategoryForUpload(uploadId) : {};
+      // Round 2026-09-05, per direct bug report: "Users should not need to
+      // reimport." Before this, the column-mapping screen (which block's
+      // column is Category/Status/month/Total) was only ever reachable
+      // in the same browser session as the original upload — reopening an
+      // upload later (Review & adjust →) landed straight on the category-
+      // total ledger with no way back into fixing a wrong column mapping,
+      // so the ONLY fix for a bad column pick was deleting the whole
+      // confirmed budget and uploading the file again from scratch. The
+      // raw grid was always being stored (gridJson, see the POST handler
+      // above) — it just was never sent back down. Now returned here too,
+      // so the frontend can fully repopulate the same mapping panel it
+      // shows on first upload, any time this upload is reopened.
+      const grid = JSON.parse(upload.gridJson).map(r => (r || []).map(c => (c == null ? '' : String(c))));
+      // The exact { blocks: [...] } this upload was last confirmed with
+      // (same shape the POST .../confirm body above accepts and stores
+      // verbatim) — lets the frontend pre-fill the reopened mapping panel
+      // with what the client actually chose last time, instead of
+      // re-deriving fresh best-guess suggestions that may no longer match
+      // a mapping they already corrected once.
+      let confirmedMapping = null;
+      if (upload.confirmedMappingJson){
+        try { confirmedMapping = JSON.parse(upload.confirmedMappingJson); } catch (e) { confirmedMapping = null; }
+      }
       return sendJson(res, 200, {
         id: upload.id, fileName: upload.fileName, layout: upload.layout, status: upload.status, year: upload.year,
         createdAt: upload.createdAt, confirmedAt: upload.confirmedAt,
         note: analysis.note, blocks: analysis.blocks, monthsRecognized: analysis.monthsRecognized,
+        grid, headerRows: analysis.headerRows, likelyGrandTotalRowIdxs: analysis.likelyGrandTotalRowIdxs,
+        confirmedMapping,
         categories: Object.values(byCategory),
         byVerilumeCategory: upload.status === 'confirmed' ? byVerilumeCategory : null,
         available: upload.status === 'confirmed'
@@ -16316,4 +16413,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
