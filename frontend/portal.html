@@ -25602,8 +25602,9 @@ function mbuRenderMappingPanel(){
       <div class="sk-card" style="margin-bottom:14px;">
         <div class="sk-card-body">
           <p style="font-size:0.8125rem;font-weight:600;margin:0 0 8px;">${mbuAnalysis.layout === 'multi_block' ? `Block ${bi + 1} of ${mbuAnalysis.blocks.length} — header at row ${b.headerRowIdx + 1}` : 'Your columns, and what each one means'}</p>
+          <p class="hint" style="margin:0 0 8px;">For each column in your file, tell us what it contains. This only identifies your data — it doesn't move any numbers around. If a column is already right, leave it as-is.</p>
           <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:6px;">
-            <thead><tr><th>Column header (from your file)</th><th>Sample value (from your file)</th><th>Maps to</th></tr></thead>
+            <thead><tr><th>Column header (from your file)</th><th>Sample value (from your file)</th><th>This column contains</th></tr></thead>
             <tbody>${columnRowsHtml}</tbody>
           </table></div>
           ${!hasCategory ? '<p class="hint" style="color:var(--advocacy);margin:0 0 8px;">No column is mapped to Category / Line Item yet — pick one above.</p>' : ''}
@@ -26614,9 +26615,20 @@ function mbuToggleDeleteConfirm(uploadId){
       <button type="button" class="btn-secondary" onclick="mbuConfirmDeleteUpload('${uploadId}', false)">Yes, delete this budget</button>
       <button type="button" class="btn-secondary" onclick="mbuToggleDeleteConfirm('${uploadId}')">Never mind</button>
     `;
+    // mount carries the shared .cch-confirm class, which is display:none by
+    // default (see its CSS rule) and only becomes visible with an .open
+    // class — that class toggle is how every OTHER .cch-confirm user on
+    // this page reveals itself. This one only ever toggled the outer <tr>'s
+    // display, never added .open, so the <div> inside stayed invisibly
+    // display:none even once its parent row was shown — real bug, found via
+    // direct report ("the delete function does not work"): the confirm
+    // prompt never rendered visibly, so clicking Delete looked like it did
+    // nothing at all.
+    mount.classList.add('open');
     row.style.display = '';
   } else {
     row.style.display = 'none';
+    mount.classList.remove('open');
     mount.innerHTML = '';
   }
 }
