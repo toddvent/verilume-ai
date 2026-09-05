@@ -7439,6 +7439,7 @@
     <h1>Annual Media Plan</h1>
     <p class="lede lede-full">Built from what the brand needs on an ongoing basis — not a response to any one campaign. Allocates the annual budget across the Media Loop stages, then across channels within each stage, with a recommended starting split you can adjust anywhere. Campaigns can draw against these allocations, or run Unplanned, outside the plan entirely — see <code>cxmedia-media-plan-budget-scope.md</code> for the full design.</p>
 
+
     <!-- 2026-08-26 account-management reorg, round 2, per direct
          instruction: "one location to manage the budget account
          creation to include channel activation, uploads, manual channel
@@ -7482,30 +7483,43 @@
       </div>
     </div>
 
-    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
-         Activate channels should be part of the overall budget setup."
-         Moved here from Account Setup — see mbuToggleActiveChannel()'s own
-         comment. Account-level, not tied to any one year's upload, so it
-         sits ahead of Step 1 rather than inside it. -->
-    <div class="sk-card" id="mbuActiveChannelsCard" style="margin-bottom:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Account setting</div><h3>Active channels</h3></div>
-        <div class="hicon">📡</div>
+
+    <!-- Round 2026-09-05 (Plan Setup reorg), per direct instruction: "1)
+         Top under section intro: Plan Setup should be the first module
+         including options a) Select Your Year b) Show Active if budget
+         exists or Setup if no budget exists. c) Active links to the
+         budget detail screen. Inactive provides options manually add,
+         leverage previous year, upload." Replaces the old "Budgets on
+         file" table (#mbuYearsCard, deleted) entirely -- the year/scope
+         pickers here are the SAME #mbuScopeRow/#mbuYearRow elements the
+         old Step 1 upload card used to own (moved here, one consolidated
+         year selector for the whole page -- see setMbuYear(), which now
+         also drives the Media Plan's own year via setMpYear()). See
+         mbuRenderPlanSetup() for the Active/Setup status logic. -->
+    <div class="sk-card" id="mbuPlanSetupCard" style="margin-bottom:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">1</div><h3>Plan Setup</h3></div>
+        <div class="hicon">🗓</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
-        <div class="btn-row" style="margin:0 0 8px;">
-          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
-          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
+        <p class="hint" style="margin-top:0;">Pick a budget scope and year -- below shows whether a confirmed budget already drives this year's Media Plan (Active) or still needs to be set up.</p>
+        <div class="field" style="max-width:420px;">
+          <label>Budget scope</label>
+          <div class="stage-row" id="mbuScopeRow"></div>
         </div>
-        <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
-        <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
+        <div class="field" style="max-width:420px;">
+          <label>Budget year</label>
+          <div class="stage-row" id="mbuYearRow"></div>
+          <div class="hint" id="mbuYearHint" style="margin-top:6px;"></div>
+        </div>
+        <div id="mbuDuplicateYearNotice"></div>
+        <div id="mbuPlanSetupStatus" style="margin-top:10px;"></div>
       </div>
     </div>
 
-    <div class="sk-card" id="mbuUploadCard">
+    <div class="sk-card" id="mbuUploadCard" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Step 1</div><h3>Upload your budget file</h3></div>
+        <div class="htext"><div class="kicker">Setup — Upload</div><h3>Upload your budget file</h3></div>
         <div class="hicon">📤</div>
       </div>
       <div class="sk-card-body">
@@ -7523,17 +7537,13 @@
              media mix... upload the International budget as a different
              view." A separate budget per account per year per scope --
              Domestic vs. International each get their own upload/mapping
-             flow, same duplicate-year-style gate, switchable here. -->
-        <div class="field" style="max-width:420px;">
-          <label>Budget scope</label>
-          <div class="stage-row" id="mbuScopeRow"></div>
-        </div>
-        <div class="field" style="max-width:420px;">
-          <label>Budget year</label>
-          <div class="stage-row" id="mbuYearRow"></div>
-          <div class="hint" id="mbuYearHint" style="margin-top:6px;"></div>
-        </div>
-        <div id="mbuDuplicateYearNotice"></div>
+             flow, same duplicate-year-style gate, switchable here.
+             Round 2026-09-05 (Plan Setup reorg): the #mbuDuplicateYearNotice
+             mount itself moved up into the new Plan Setup card, right next
+             to the year picker it warns about -- this is Setup's "Upload"
+             option now, reached only after Plan Setup already shows Setup
+             for the selected year, so a second copy of that same warning
+             here would be redundant. -->
         <div class="field" style="max-width:320px;">
           <label for="mbuUploadedBy">Uploaded by (optional, for the record)</label>
           <input type="text" id="mbuUploadedBy" placeholder="Your name">
@@ -7547,50 +7557,6 @@
       </div>
     </div>
 
-    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Step 2</div><h3>Imported budget</h3></div>
-        <div class="hicon">📊</div>
-      </div>
-      <div class="sk-card-body" id="mbuResultsBody"></div>
-    </div>
-
-    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: with
-         uploads now single-year-only and blocked from re-uploading over a
-         confirmed year, there needs to be somewhere to see every year's
-         budget at a glance and act on it — review/adjust its category
-         totals in place, or delete it (last resort) to free that year up
-         again. Distinct from the raw file-scan "Upload history" table below
-         (accepted/rejected file attempts, no year/budget context) — this is
-         the confirmed-budget-per-year view. See renderMbuYearsList(). -->
-    <div class="sk-card" id="mbuYearsCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">By year</div><h3>Budgets on file</h3></div>
-        <div class="hicon">📅</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">One confirmed (or in-progress) budget per year. Adjust a category total in place from Review, rather than re-uploading — a year with a confirmed budget can't accept a new file until its old one is deleted.</p>
-        <div id="mbuYearsBody"><p class="hint">Loading…</p></div>
-      </div>
-    </div>
-
-    <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
-        <div class="hicon">🗂</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Every attempt on this account, accepted or rejected — a rejection is a real event worth being able to see, not something this build hides.</p>
-        <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
-      </div>
-    </div>
-
-    <!-- 2026-08-23 — seq-nav only rendered (by mbuRenderCrumb(), which sets
-         both this and #mbuCrumb from the same returnTo argument) when this
-         step is reached as part of the Configuration workstream sequence;
-         empty/hidden for the pre-existing Analysis and Media Plan entry
-         points, which have no "next step" of their own to send someone to. -->
-    <div class="seq-nav" id="mbuSeqNav" style="display:none;"></div>
 
     <!-- Round 27 (2026-08-05), per direct instruction: 3 charts lead the
          Budget screens, ahead of Plan setup — a) Plan Pacing (donut,
@@ -7612,32 +7578,18 @@
       <div class="exec-chart-card" id="channelMixChartCard"></div>
     </div>
 
-    <!-- Round 127 (2026-08-08), per direct instruction: "add options to
-         download as Excel, CSV, Google Sheet or Snowflake if client
-         integration exists." Same export.xlsx/export.csv transport and
-         btn-ghost toolbar pattern the Marketing Calendar page already
-         established (mktCalExport()) — see mediaPlanExport()/
-         renderMediaPlanExportControls() below. The Snowflake button only
-         renders when this account's Analytics Integration setup
-         (state.analyticsPathway) is actually 'snowflake' — no integration,
-         no button, rather than a button that goes nowhere.
-         Round 132bx (2026-08-15), per direct review comment ("Microsoft
-         and Excel versions placed on page with no connection to specific
-         information"): this standalone toolbar is retired — the same
-         #mediaPlanExportButtons/#mediaPlanExportNote pair now render
-         inside the Budget Tracking chart card below instead, where a
-         whole-plan download has real context. See renderBudgetTrackingChart(). -->
+    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Budget detail</div><h3>Imported budget</h3></div>
+        <div class="hicon">📊</div>
+      </div>
+      <div class="sk-card-body" id="mbuResultsBody"></div>
+    </div>
 
-    <!-- Round 128 (2026-08-08), per direct instruction: Marketing Loop Mix
-         moved beside Plan setup (not above it) — more width for the pie +
-         legend, and sticky-positioned (see .mediaplan-setup-row CSS above)
-         so it stays in view while Plan setup's fields — Annual Marketing
-         Budget above all — get edited below it. Stacks under the form on
-         narrow viewports rather than competing for horizontal space. -->
     <div class="mediaplan-setup-row">
     <div class="sk-card">
       <div class="sk-card-head ink">
-        <div class="htext"><h3>Plan setup</h3><div class="kicker">Annual</div></div>
+        <div class="htext"><h3>Budget &amp; Allocation Detail</h3><div class="kicker">Annual</div></div>
         <div class="hicon">$</div>
       </div>
       <div class="sk-card-body">
@@ -7676,11 +7628,6 @@
              (future) so it's clear which years are look-back vs. planning-
              ahead. See renderMpYearRow()/setMpYear() and the now year-scoped
              loadMediaPlan(year)/saveMediaPlan(). -->
-        <div class="field">
-          <label>Plan year</label>
-          <div class="stage-row" id="mpYearRow"></div>
-          <div class="hint" id="mpYearHint" style="margin-top:6px;"></div>
-        </div>
         <div id="mpCarryForwardPrompt"></div>
         <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
              "Selecting Prefill from existing makes sense when beginning a
@@ -7699,11 +7646,6 @@
              where that auto-fill hasn't run yet (e.g. it was cleared by
              hand), or to explicitly re-pull Non-Working Media rows. -->
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-          <div class="hint" style="flex:1 1 260px;display:flex;flex-direction:column;gap:8px;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;">
-            <span><strong>A.</strong> Have a budget file to upload?</span>
-            <span>Upload it and we'll map it to this plan — review the mapping, fix anything unclear, and categorize working vs. non-working spend.</span>
-            <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="goToStep('marketingBudgetUpload', 'mediaplan')">📤 Upload budget →</button>
-          </div>
           <!-- Round 132bx follow-on (2026-08-15), per direct correction: a
                confirmed Marketing Budget Upload wasn't actually connected to
                this plan — the Annual Marketing Budget field and Non-Working
@@ -7922,6 +7864,7 @@
     </div>
     <!-- /.mediaplan-setup-row -->
 
+
     <!-- Round 132c[7] (2026-08-17) — buildout item #7: make the stage-budget
          split ("Apply recommended mix" above splits by STAGE_BUDGET_WEIGHTS)
          and the min-viable-spend channel cutoff tunable per account from
@@ -7941,26 +7884,6 @@
       <div class="sk-card-body" id="mpStageWeightBody"><p class="hint">Loading…</p></div>
     </div>
 
-    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: multiple
-         years of history/forecasts should make recommendations smarter, not
-         just be a switcher. This card shows the trend across every saved
-         year (Total Budget by year, tagged Actual/Current/Forecast) so a
-         human can see it at a glance, and is also where "Apply recommended
-         mix" explains when/how it adjusted its split using this account's
-         own history (see applyRecommendedMix()'s historical-blend note and
-         computeRecommendedMix()'s internal mpHistoricalChannelShares() blend).
-         Hidden entirely when fewer than 2 years of history exist — a trend
-         chart of one point isn't a trend. -->
-    <div class="sk-card" id="mpHistoryCard" style="display:none;">
-      <div class="sk-card-head ink">
-        <div class="htext"><h3>Budget History &amp; Forecast</h3><div class="kicker">Year over year</div></div>
-        <div class="hicon">↗</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" id="mpHistoryIntro" style="margin:0 0 14px;"></p>
-        <div id="mpHistoryChartMount"></div>
-      </div>
-    </div>
 
     <!-- Round 117 (2026-08-08), per direct instruction: Non-Working Media —
          agency fees, advanced analytics, creative asset production,
@@ -8000,6 +7923,29 @@
       </div>
     </div>
 
+
+    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: multiple
+         years of history/forecasts should make recommendations smarter, not
+         just be a switcher. This card shows the trend across every saved
+         year (Total Budget by year, tagged Actual/Current/Forecast) so a
+         human can see it at a glance, and is also where "Apply recommended
+         mix" explains when/how it adjusted its split using this account's
+         own history (see applyRecommendedMix()'s historical-blend note and
+         computeRecommendedMix()'s internal mpHistoricalChannelShares() blend).
+         Hidden entirely when fewer than 2 years of history exist — a trend
+         chart of one point isn't a trend. -->
+    <div class="sk-card" id="mpHistoryCard" style="display:none;">
+      <div class="sk-card-head ink">
+        <div class="htext"><h3>Budget History &amp; Forecast</h3><div class="kicker">Year over year</div></div>
+        <div class="hicon">↗</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" id="mpHistoryIntro" style="margin:0 0 14px;"></p>
+        <div id="mpHistoryChartMount"></div>
+      </div>
+    </div>
+
+
     <!-- Round 109 (2026-08-07), per direct instruction: Save Plan moved out
          of Plan setup and down into the section that shows the actual
          budget allocations — it only matters once "Apply recommended mix"
@@ -8022,6 +7968,7 @@
       </div>
       <div class="sk-card-footer" id="mpFooter"></div>
     </div>
+
 
     <!-- Round 114 (2026-08-08), per direct instruction: removed the entire
          text "Plan pacing" card (Round 55) — it was redundant with the
@@ -8086,14 +8033,39 @@
     </div>
     <div id="mediaPlanGrid"></div>
 
-    <!-- Round 132bx (2026-08-16), per direct review comment: the "Unplanned
-         campaigns" card removed entirely — it's a campaign-level function,
-         not a Media Plan one, and is already fully covered by the Manage
-         Existing Campaigns grid's own Allocated/Unallocated filter (see
-         cmgmtSetAllocationFilter()) plus the Plan Pacing and Budget
-         Tracking reports above. renderMpUnplannedList() is left defined
-         but unused (no #mpUnplannedList element to render into) rather than
-         deleted, in case a future round wants the count elsewhere. -->
+    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
+         Activate channels should be part of the overall budget setup."
+         Moved here from Account Setup — see mbuToggleActiveChannel()'s own
+         comment. Account-level, not tied to any one year's upload, so it
+         sits ahead of Step 1 rather than inside it. -->
+    <div class="sk-card" id="mbuActiveChannelsCard" style="margin-bottom:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting</div><h3>Active channels</h3></div>
+        <div class="hicon">📡</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
+        <div class="btn-row" style="margin:0 0 8px;">
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
+        </div>
+        <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
+        <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
+        <div class="hicon">🗂</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Every attempt on this account, accepted or rejected — a rejection is a real event worth being able to see, not something this build hides.</p>
+        <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
+    <div class="seq-nav" id="mbuSeqNav" style="display:none;"></div>
   </div>
 
   <!-- ================= CAMPAIGN DETAIL ================= -->
@@ -23715,6 +23687,19 @@ async function renderMediaPlanStep(fromUpload){
   } else {
     mpSelectedYear = new Date().getFullYear();
   }
+  // Round 2026-09-05 (Plan Setup reorg) — the old, separate #mpYearRow chip
+  // row is gone; Plan Setup's #mbuYearRow (mbuSelectedYear) is now the ONE
+  // year control for this whole page. Sync it to whatever year Media Plan
+  // itself just resolved to (most-recently-saved, or this calendar year) on
+  // every fresh visit to this step, so the two stay showing the same year
+  // from first paint — setMbuYear() (the reverse direction) keeps them in
+  // sync from here on whenever the person changes the year chip themselves.
+  if (typeof mbuSelectedYear !== 'undefined'){
+    mbuSelectedYear = mpSelectedYear;
+    if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
+    if (typeof mbuRenderDuplicateYearNotice === 'function') mbuRenderDuplicateYearNotice();
+    if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
+  }
   await loadMediaPlan(mpSelectedYear);
   await loadMpYearActiveChannels();
   // Round 132bx follow-on #3 (2026-08-15), per direct correction: "Apply
@@ -25365,6 +25350,7 @@ function setMbuScope(scope){
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
   renderMbuYearsList();
+  if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
 }
 function mbuYearWindow(){
   const cy = new Date().getFullYear();
@@ -25388,6 +25374,14 @@ function setMbuYear(year){
   mbuSelectedYear = year;
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
+  if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
+  // Round 2026-09-05 (Plan Setup reorg), per direct instruction: "A single
+  // year selector" — this Plan Setup year chip row is now the ONE year
+  // control for the whole page (the old, separate #mpYearRow chip row in
+  // Plan setup was deleted). Switching the budget year here also switches
+  // which year's Media Plan (allocations grid, charts) is loaded, reusing
+  // setMpYear()'s own existing load/prefill/re-render logic unchanged.
+  if (typeof setMpYear === 'function') setMpYear(year);
 }
 // Warns, before a file is even picked, that the selected year+scope already
 // has a confirmed budget — the backend would reject the upload outright
@@ -26375,7 +26369,35 @@ function mbuRenderResults(data){
       <thead><tr><th>Your category</th><th>Verilume category</th><th>Working/Non-Working</th><th>Sum of months</th><th>Annual total (from file)</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5">No line items imported.</td></tr>'}</tbody>
     </table></div>
-    <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">Edit category mapping →</button>`;
+    <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">Edit category mapping →</button>
+    ${isAvailable ? `<button type="button" class="btn-primary" style="margin-left:8px;" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>` : ''}`;
+}
+
+// Round 2026-09-05 (Plan Setup reorg), per direct instruction: "Excel
+// exports should be monthly detail views as the default." The DEFAULT/
+// primary export action inside "Imported budget" (mbuResultsCard) — one
+// row per Verilume category, Jan–Dec + Total, straight from GET
+// .../export.csv. Same authedFetch → blob → temporary <a download> pattern
+// mktCalExport()/mediaPlanExport() already use elsewhere on this page (a
+// plain <a href download> can't carry the Bearer session token this
+// account-scoped endpoint requires).
+async function mbuExportMonthlyCsv(uploadId){
+  if (!uploadId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}/export.csv`);
+    if (!resp.ok){ alert("Couldn't build that export right now."); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `verilume-budget-monthly-detail.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e){
+    alert('Backend unreachable — could not build that export.');
+  }
 }
 
 // Round 132by — Measurement Coverage & Confidence (recommendation-
@@ -26687,6 +26709,133 @@ async function mbuLoadYearsList(){
   if (typeof renderMbuScopeRow === 'function') renderMbuScopeRow();
   if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
   if (typeof mbuRenderDuplicateYearNotice === 'function') mbuRenderDuplicateYearNotice();
+  if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
+}
+
+// ---------- Plan Setup (Round 2026-09-05 reorg) ----------
+// Per direct instruction: "Plan Setup should be the first module... Show
+// Active if budget exists or Setup if no budget exists. Active links to the
+// budget detail screen. Inactive provides options manually add, leverage
+// previous year, upload." Replaces the old always-visible "Budgets on file"
+// table (#mbuYearsCard, deleted) entirely — this status block, scoped to
+// whichever year+scope is currently selected above, IS the "budgets on
+// file" view now: one year+scope at a time, with the specific next action
+// for whichever state it's in, rather than a flat table of every year at
+// once (still fully reachable per-year via the year chips above).
+function mbuRenderPlanSetup(){
+  const mount = document.getElementById('mbuPlanSetupStatus');
+  if (!mount) return;
+  const active = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
+  if (active){
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
+        <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} ${mbuScopeLabel(mbuSelectedScope)} budget is confirmed and driving this year's Media Plan.</span>
+        <button type="button" class="btn-primary" onclick="mbuOpenExistingUpload('${active.id}')">View budget detail →</button>
+      </div>`;
+    return;
+  }
+  // Setup — no confirmed budget for this year+scope yet. Three options, per
+  // direct instruction, in the order given: Manually add, Leverage previous
+  // year, Upload.
+  const priorConfirmed = mbuYearsData.filter(u => u.status === 'confirmed').sort((a, b) => (b.year || 0) - (a.year || 0));
+  const leverageOptions = priorConfirmed.map(u => `<option value="${u.id}">${u.year} — ${mbuScopeLabel(u.scope || 'domestic')}</option>`).join('');
+  mount.innerHTML = `
+    <div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;">
+      <p style="margin:0 0 10px;font-weight:700;color:#b8860b;">Setup — no confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget for ${mbuSelectedYear} yet.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+          <span style="color:var(--ink);"><strong>Manually add</strong></span>
+          <span>Start with a blank category grid and fill in your own numbers.</span>
+          <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartManual()">＋ Manually add →</button>
+        </div>
+        <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+          <span style="color:var(--ink);"><strong>Leverage previous year</strong></span>
+          <span>Copy a prior confirmed budget's categories and amounts as a draft to review and adjust.</span>
+          ${leverageOptions ? `
+          <select id="mbuLeverageSelect" style="max-width:220px;">${leverageOptions}</select>
+          <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartLeverage()">↻ Leverage previous year →</button>
+          ` : `<span style="font-style:italic;">No confirmed budget on any year yet to leverage from.</span>`}
+        </div>
+        <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+          <span style="color:var(--ink);"><strong>Upload</strong></span>
+          <span>Upload a budget file in whatever format it's already in — we'll auto-recognize the layout.</span>
+          <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartUpload()">📤 Upload →</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// "Manually add" — creates the upload row (body.manual:true, see the
+// backend's own comment on that branch) and jumps straight to the blank
+// category-mapping grid (mbuLoadCategoryMapping/mbuRenderCategoryMapping),
+// exactly like Step 1's real-file path does after import — just starting
+// with zero categories instead of ones read from a file.
+async function mbuStartManual(){
+  if (!state.companyId) return;
+  mbuResetImport();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, manual: true })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      if (resp.status === 409 && data.existingUploadId){ await mbuLoadYearsList(); return; }
+      alert(data.error || 'Could not start a manual budget.');
+      return;
+    }
+    mbuAnalysis = { id: data.id, layout: 'manual', status: data.status, year: data.year };
+    await mbuLoadCategoryMapping();
+    mbuLoadHistory();
+    const card = document.getElementById('mbuResultsCard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e){
+    alert('Backend unreachable — could not start a manual budget.');
+  }
+}
+
+// "Leverage previous year" — copies the selected prior confirmed upload's
+// line items/overrides into a new DRAFT upload for the current year+scope
+// (see the backend endpoint's own comment on why this lands as a draft —
+// 'pending_category_mapping' — rather than auto-confirmed) and opens the
+// same category-mapping review screen to confirm/adjust before it goes
+// live.
+async function mbuStartLeverage(){
+  const sel = document.getElementById('mbuLeverageSelect');
+  const sourceUploadId = sel && sel.value;
+  if (!sourceUploadId || !state.companyId) return;
+  mbuResetImport();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/carry-forward`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, sourceUploadId })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      if (resp.status === 409 && data.existingUploadId){ await mbuLoadYearsList(); return; }
+      alert(data.error || 'Could not leverage that year.');
+      return;
+    }
+    mbuAnalysis = { id: data.id, layout: 'manual', status: data.status, year: data.year };
+    await mbuLoadCategoryMapping();
+    mbuLoadHistory();
+    const card = document.getElementById('mbuResultsCard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e){
+    alert('Backend unreachable — could not leverage that year.');
+  }
+}
+
+// "Upload" — reveals the existing Step 1 upload card (#mbuUploadCard, kept
+// in the DOM exactly as it was, just hidden by default now that Plan Setup
+// is the entry point) and scrolls to it. Every existing upload mechanism
+// (mbuHandleFile/mbuUploadAndAnalyze/mbuConfirmImport/mbuLoadCategoryMapping)
+// is unchanged.
+function mbuStartUpload(){
+  const card = document.getElementById('mbuUploadCard');
+  if (!card) return;
+  card.style.display = '';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function mbuStatusLabel(s){
   return ({
