@@ -25576,7 +25576,7 @@ function mbuRenderMappingPanel(){
       return `<tr>
         <td>${escapeHtml(headerRow[idx] || '(blank header)')}</td>
         <td class="hint">${escapeHtml(mbuSampleValueFor(b, idx)) || '<span class="hint">(no data)</span>'}</td>
-        <td><select onchange="mbuColumnRoleChanged(${b.headerRowIdx}, ${idx}, this.value)">${mbuRoleOptionsHtml(role)}</select>
+        <td><div class="field" style="margin:0;max-width:220px;"><select onchange="mbuColumnRoleChanged(${b.headerRowIdx}, ${idx}, this.value)">${mbuRoleOptionsHtml(role)}</select></div>
           ${isCoreField && role === 'category' && b.suggestedCategoryCol && b.suggestedCategoryCol.colIdx === idx ? `<span class="hint">(${escapeHtml(b.suggestedCategoryCol.reason)})</span>` : ''}
           ${isCoreField && role === 'status' && b.suggestedStatusCol && b.suggestedStatusCol.colIdx === idx ? `<span class="hint">(${escapeHtml(b.suggestedStatusCol.reason)})</span>` : ''}
         </td>
@@ -25813,7 +25813,12 @@ async function mbuLoadCategoryMapping(){
   if (!resp.ok) return;
   mbuCategoryMappingData = await resp.json();
   mbuCategoryMappingChoices = {};
-  (mbuCategoryMappingData.categories || []).forEach(c => {
+  // Round 2026-09-05, per direct simplification: only Working Media
+  // categories go through this mapping step at all now — Non-Working is
+  // pure pass-through (see mbuRenderCategoryMapping's own Non-Working
+  // section, sourced straight from mbuCategoryMappingData.nonWorkingCategories,
+  // no choices to prefill).
+  (mbuCategoryMappingData.workingCategories || []).forEach(c => {
     // Only pre-fill a choice when the file's own category text and the
     // uploaded status/mapping already agree, or a suggestion rule actually
     // fired (suggested.matched === true) -- a fallback guess of
@@ -25855,38 +25860,76 @@ function mbuAddManualCategory(bucketKey){
   mbuRenderCategoryMapping();
 }
 
-function mbuCategoryRowHtml(label, entry, isCustom){
-  const computed = entry.total;
+// Jan-Dec breakdown for one raw category, per direct request: "once
+// categories are mapped we can show the actual amounts per month." Kept
+// collapsed behind a toggle (confirmed: "expandable per category row")
+// rather than shown by default, so a clean file's review screen doesn't
+// balloon into a 12-column spreadsheet nobody asked to see yet.
+function mbuMonthlyDetailHtml(months){
+  const hasAny = MARKETING_BUDGET_MONTHS_CLIENT.some(m => months && months[m] != null);
+  if (!hasAny) return '<p class="hint" style="margin:4px 0 0;">No month-by-month figures on file for this line -- total only.</p>';
+  const heads = MARKETING_BUDGET_MONTHS_CLIENT.map(m => `<th>${MARKETING_BUDGET_LABELS[m].slice(0, 3)}</th>`).join('');
+  const cells = MARKETING_BUDGET_MONTHS_CLIENT.map(m => `<td>${months[m] != null ? '$' + Number(months[m]).toLocaleString() : '—'}</td>`).join('');
+  return `<div class="table-scroll"><table class="data-table" style="font-size:0.75rem;margin-top:6px;"><thead><tr>${heads}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div>`;
+}
+function mbuToggleMonthlyDetail(detailId){
+  const el = document.getElementById(detailId);
+  if (el) el.hidden = !el.hidden;
+}
+
+// One raw Working Media category, per direct request: "show the spend
+// category that the client listed first and then our assumption next to it
+// as a drop-down so that the client can change it." Every working category
+// gets this row now, not just ones we couldn't confidently guess -- the
+// dropdown IS the correction mechanism, always visible, always editable,
+// rather than being buried inside a collapsed "items from your file" detail
+// the way an already-confident match used to be.
+function mbuWorkingCategoryRowHtml(c){
+  const choice = mbuCategoryMappingChoices[c.category] || '';
+  const safeLabel = c.category.replace(/'/g, "\\'");
+  const detailId = `mbuMonths-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const verilumeCats = mbuCategoryMappingData.verilumeCategories || [];
+  const isLearned = c.suggested && c.suggested.source === 'learned' && !c.currentVerilumeCategory;
+  const learnedNote = isLearned ? `<span class="hint" style="display:block;margin-top:2px;color:var(--cx);">↻ auto-mapped from a previous upload -- change it below if that's changed.</span>` : '';
+  return `
+    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+      <div style="flex:1 1 220px;min-width:180px;">
+        <span class="hint" style="display:block;">Client's category</span>
+        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
+        ${learnedNote}
+        <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(c.months)}</div>
+      </div>
+      <div style="flex:0 0 120px;">
+        <span class="hint" style="display:block;">Amount</span>
+        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
+      </div>
+      <div style="flex:1 1 220px;min-width:200px;">
+        <span class="hint" style="display:block;">Our assumption -- change if wrong</span>
+        <div class="field" style="margin:0;">
+          <select onchange="mbuCategoryChoiceChanged('${safeLabel}', this.value)">
+            <option value="">-- choose --</option>
+            ${verilumeCats.map(vc => `<option value="${escapeHtml(vc)}"${vc === choice ? ' selected' : ''}>${escapeHtml(vc)}</option>`).join('')}
+            ${mbuCustomCategories.map(cc => `<option value="Client: ${escapeHtml(cc)}"${('Client: ' + cc) === choice ? ' selected' : ''}>${escapeHtml(cc)} (your category)</option>`).join('')}
+          </select>
+        </div>
+        ${!choice ? '<span class="hint" style="color:#b8860b;">Not yet identified -- pick one</span>' : ''}
+      </div>
+    </div>`;
+}
+
+// A manually-added standard category with no file items behind it (see
+// mbuAddManualCategory) -- shown as its own editable total, since there's
+// no raw category to attach a "client's text / our assumption" row to.
+function mbuManualCategoryRowHtml(label){
   const override = mbuCategoryOverrides[label];
-  const shown = (override === undefined || override === null) ? computed : override;
-  const edited = override !== undefined && override !== null && override !== computed;
-  const detailId = `mbuItems-${label.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  // Round 132bx follow-on (2026-08-15), per direct instruction: "remember
-  // previous upload mapping decisions by account and automatically map the
-  // next time recognized." When this category's grouping is here because a
-  // raw line item auto-matched a mapping remembered from a PRIOR upload on
-  // this account (not this upload's own rule-based heuristic), say so —
-  // still fully editable above, this is transparency about why it's
-  // already sitting in the right section rather than showing as an
-  // Exception.
-  const learnedFrom = entry.items.filter(it => it.suggested && it.suggested.source === 'learned');
-  const learnedNote = learnedFrom.length ? `<span class="hint" style="display:block;margin-top:2px;color:var(--cx);">↻ auto-mapped from how you categorized "${escapeHtml(learnedFrom[0].category)}" on a previous upload — edit the total above if that's changed.</span>` : '';
-  const detail = entry.items.length ? `
-    <details id="${detailId}" style="margin-top:4px;">
-      <summary class="hint" style="cursor:pointer;">${entry.items.length} item${entry.items.length === 1 ? '' : 's'} mapped from your file</summary>
-      <div class="table-scroll"><table class="data-table" style="font-size:0.75rem;margin-top:6px;">
-        <thead><tr><th>Your category</th><th>Working/Non-Working</th><th>Amount</th></tr></thead>
-        <tbody>${entry.items.map(it => `<tr><td>${escapeHtml(it.category)}</td><td>${escapeHtml(it.status || '—')}</td><td>$${Number(it.total || 0).toLocaleString()}</td></tr>`).join('')}</tbody>
-      </table></div>
-    </details>` : '<span class="hint">added manually — no file items</span>';
+  const shown = (override === undefined || override === null) ? 0 : override;
   const safeLabel = label.replace(/'/g, "\\'");
   return `
     <div class="field" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
-      <div style="flex:1 1 260px;min-width:200px;overflow:hidden;">
+      <div style="flex:1 1 260px;min-width:200px;">
         <label style="visibility:hidden;">Category</label>
-        <div style="padding:11px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">${escapeHtml(label)}${isCustom ? ' <span class="hint" style="font-weight:400;">(your category)</span>' : ''}</div>
-        ${learnedNote}
-        ${detail}
+        <div style="padding:11px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">${escapeHtml(label)} <span class="hint" style="font-weight:400;">(added manually -- no file items)</span></div>
       </div>
       <div style="flex:0 0 160px;">
         <label>Total</label>
@@ -25894,7 +25937,24 @@ function mbuCategoryRowHtml(label, entry, isCustom){
           <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
           <input type="number" min="0" step="100" value="${shown === null ? '' : shown}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeLabel}', this.value)" onchange="mbuRenderCategoryMapping()">
         </div>
-        ${edited ? `<span class="hint" style="display:block;margin-top:3px;">edited — file total was $${computed.toLocaleString()}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+// One raw Non-Working Media category -- per direct simplification, this is
+// pure pass-through: the client's own label, their own numbers, exactly as
+// given, no Verilume-category mapping, no suggestion, nothing to choose.
+function mbuNonWorkingCategoryRowHtml(c){
+  const detailId = `mbuMonthsNW-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+      <div style="flex:1 1 260px;min-width:200px;">
+        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
+        <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(c.months)}</div>
+      </div>
+      <div style="flex:0 0 140px;text-align:right;">
+        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
       </div>
     </div>`;
 }
@@ -25904,128 +25964,109 @@ function mbuRenderCategoryMapping(){
   const body = document.getElementById('mbuResultsBody');
   if (!card || !body || !mbuCategoryMappingData) return;
   card.style.display = '';
-  // Total/subtotal rows are dropped everywhere on this screen -- never
-  // counted, never shown as an exception. See mbuIsTotalLikeLabel.
-  const cats = (mbuCategoryMappingData.categories || []).filter(c => !mbuIsTotalLikeLabel(c.category));
+  // Only Working Media goes through mapping/grouping now. Total/subtotal
+  // rows are already dropped server-side (mbuIsTotalLikeCategoryLabel).
+  const workingCats = mbuCategoryMappingData.workingCategories || [];
+  const nonWorkingCats = mbuCategoryMappingData.nonWorkingCategories || [];
   const stdCategories = mbuCategoryMappingData.verilumeCategories || [];
   const allCategoryLabels = [...stdCategories, ...mbuCustomCategories];
 
   const byLabel = {};
-  allCategoryLabels.forEach(label => { byLabel[label] = { total: 0, items: [], workingTotal: 0, nonWorkingTotal: 0 }; });
+  allCategoryLabels.forEach(label => { byLabel[label] = { total: 0, items: [] }; });
   const exceptions = [];
-  cats.forEach(c => {
+  workingCats.forEach(c => {
     const choice = mbuCategoryMappingChoices[c.category] || '';
     const label = choice.replace(/^Client: /, '');
     if (choice && byLabel[label]) {
       byLabel[label].total += Number(c.total || 0);
       byLabel[label].items.push(c);
-      if (mbuIsNonWorkingStatus(c.status)) byLabel[label].nonWorkingTotal += Number(c.total || 0);
-      else byLabel[label].workingTotal += Number(c.total || 0);
     } else exceptions.push(c);
   });
-  // A category with real file items is bucketed by whichever status holds
-  // the larger share of its dollars; a manually-added category (no file
-  // items at all) uses the section the client explicitly chose when adding
-  // it. Returns null for a standard category that's neither -- not shown
-  // anywhere yet, and still offered in the "+ Add category" picker.
-  const combinedBucketFor = label => {
-    if (byLabel[label] && byLabel[label].items.length) return (byLabel[label].nonWorkingTotal > byLabel[label].workingTotal ? 'nonworking' : 'working');
-    if (mbuManualCategories.has(label)) return mbuManualCategoryBucket[label];
-    return null;
-  };
+  const bucketHasItems = label => (byLabel[label] && byLabel[label].items.length) || mbuManualCategories.has(label);
   const shownTotalFor = label => {
     const override = mbuCategoryOverrides[label];
-    return (override === undefined || override === null) ? byLabel[label].total : override;
+    if (override !== undefined && override !== null) return override;
+    return byLabel[label] ? byLabel[label].total : 0;
   };
 
-  function renderSection(bucketKey, title, colorVar){
-    let sectionTotal = 0;
-    const groupBlocks = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, labels]) => {
-      const groupLabels = labels.filter(l => allCategoryLabels.includes(l) && combinedBucketFor(l) === bucketKey);
-      if (!groupLabels.length) return '';
-      let groupTotal = 0;
-      const rowsHtml = groupLabels.map(label => { groupTotal += shownTotalFor(label); return mbuCategoryRowHtml(label, byLabel[label], false); }).join('');
-      sectionTotal += groupTotal;
-      return `
-        <div style="margin:0 0 16px;">
-          <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px;">${escapeHtml(groupName)} <span style="font-weight:400;text-transform:none;letter-spacing:normal;">— $${groupTotal.toLocaleString()}</span></p>
-          ${rowsHtml}
-        </div>`;
+  let sectionTotal = 0;
+  const groupBlocks = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, labels]) => {
+    const groupLabels = labels.filter(l => allCategoryLabels.includes(l) && bucketHasItems(l));
+    if (!groupLabels.length) return '';
+    let groupTotal = 0;
+    const rowsHtml = groupLabels.map(label => {
+      groupTotal += shownTotalFor(label);
+      const items = byLabel[label].items;
+      if (!items.length) return mbuManualCategoryRowHtml(label);
+      return items.map(mbuWorkingCategoryRowHtml).join('');
     }).join('');
-    // Custom (client-created) categories aren't classified into a
-    // functional group -- shown in their own group at the end of whichever
-    // section their mapped items landed in.
-    const customLabels = mbuCustomCategories.filter(l => byLabel[l] && combinedBucketFor(l) === bucketKey);
-    let customTotal = 0;
-    const customHtml = customLabels.length ? (() => {
-      const rowsHtml = customLabels.map(label => { customTotal += shownTotalFor(label); return mbuCategoryRowHtml(label, byLabel[label], true); }).join('');
-      sectionTotal += customTotal;
-      return `
-        <div style="margin:0 0 16px;">
-          <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px;">Your Categories <span style="font-weight:400;text-transform:none;letter-spacing:normal;">— $${customTotal.toLocaleString()}</span></p>
-          ${rowsHtml}
-        </div>`;
-    })() : '';
-    // "+ Add category" -- per direct instruction, hiding $0/no-item
-    // categories needs a manual way back in. Only offers standard
-    // categories not already shown in EITHER section.
-    const addableLabels = stdCategories.filter(l => combinedBucketFor(l) === null);
-    // Round 132bx follow-on, per direct correction: this select rendered
-    // with the bare, unstyled OS control instead of the site's standard
-    // dropdown treatment (border/radius/chevron -- see the ".field select"
-    // rule) because it was a bare <select>, never wrapped in the .field
-    // container that rule requires. Wrapped now, with .field's own
-    // margin-bottom/max-width overridden inline so it still sits flush
-    // inline next to the button instead of picking up .field's normal
-    // block spacing.
-    const addControl = addableLabels.length ? `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
-        <div class="field" style="margin:0;max-width:280px;">
-          <select id="mbuManualAddSelect-${bucketKey}">
-            ${addableLabels.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('')}
-          </select>
-        </div>
-        <button type="button" class="btn-ghost" onclick="mbuAddManualCategory('${bucketKey}')">+ Add category</button>
-      </div>` : '';
-    const ledgerTotal = `
-      <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:4px;padding-top:8px;">
-        <span style="font-size:0.8125rem;font-weight:600;">Total ${escapeHtml(title)} identified</span>
-        <span style="font-size:1rem;font-weight:700;${colorVar ? `color:${colorVar};` : ''}">$${sectionTotal.toLocaleString()}</span>
-      </div>`;
+    sectionTotal += groupTotal;
     return `
-      <div style="margin:0 0 20px;">
-        <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;${colorVar ? `color:${colorVar};` : ''}">${escapeHtml(title)}</p>
-        ${groupBlocks || customHtml ? (groupBlocks + customHtml) : '<p class="hint">Nothing identified yet.</p>'}
-        ${addControl}
-        ${ledgerTotal}
+      <div style="margin:0 0 16px;">
+        <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px;">${escapeHtml(groupName)} <span style="font-weight:400;text-transform:none;letter-spacing:normal;">-- $${groupTotal.toLocaleString()}</span></p>
+        ${rowsHtml}
       </div>`;
-  }
+  }).join('');
+  // Custom (client-created) categories aren't classified into a functional
+  // group -- shown in their own group at the end.
+  const customLabels = mbuCustomCategories.filter(l => bucketHasItems(l));
+  let customTotal = 0;
+  const customHtml = customLabels.length ? (() => {
+    const rowsHtml = customLabels.map(label => {
+      customTotal += shownTotalFor(label);
+      const items = byLabel[label].items;
+      return items.length ? items.map(mbuWorkingCategoryRowHtml).join('') : mbuManualCategoryRowHtml(label);
+    }).join('');
+    sectionTotal += customTotal;
+    return `
+      <div style="margin:0 0 16px;">
+        <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px;">Your Categories <span style="font-weight:400;text-transform:none;letter-spacing:normal;">-- $${customTotal.toLocaleString()}</span></p>
+        ${rowsHtml}
+      </div>`;
+  })() : '';
+  // "+ Add category" -- per direct instruction, hiding $0/no-item
+  // categories needs a manual way back in.
+  const addableLabels = stdCategories.filter(l => !bucketHasItems(l));
+  const addControl = addableLabels.length ? `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+      <div class="field" style="margin:0;max-width:280px;">
+        <select id="mbuManualAddSelect-working">
+          ${addableLabels.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('')}
+        </select>
+      </div>
+      <button type="button" class="btn-ghost" onclick="mbuAddManualCategory('working')">+ Add category</button>
+    </div>` : '';
+  const workingSectionHtml = `
+    <div style="margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;color:var(--cx);">Working Media</p>
+      ${groupBlocks || customHtml ? (groupBlocks + customHtml) : '<p class="hint">Nothing identified yet.</p>'}
+      ${addControl}
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:4px;padding-top:8px;">
+        <span style="font-size:0.8125rem;font-weight:600;">Total Working Media identified</span>
+        <span style="font-size:1rem;font-weight:700;color:var(--cx);">$${sectionTotal.toLocaleString()}</span>
+      </div>
+    </div>`;
 
-  const workingSectionHtml = renderSection('working', 'Working Media', 'var(--cx)');
-  const nonWorkingSectionHtml = renderSection('nonworking', 'Non-Working Media', null);
+  // Non-Working Media -- pure pass-through, per direct simplification: no
+  // mapping, no dropdown, exactly what the client's file said.
+  const nonWorkingTotal = nonWorkingCats.reduce((s, c) => s + Number(c.total || 0), 0);
+  const nonWorkingSectionHtml = `
+    <div style="margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;">Non-Working Media</p>
+      <p class="hint" style="margin:0 0 10px;">Listed exactly as your file gave it -- no mapping needed here.</p>
+      ${nonWorkingCats.length ? nonWorkingCats.map(mbuNonWorkingCategoryRowHtml).join('') : '<p class="hint">Nothing in your file was tagged Non-Working.</p>'}
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:4px;padding-top:8px;">
+        <span style="font-size:0.8125rem;font-weight:600;">Total Non-Working Media on file</span>
+        <span style="font-size:1rem;font-weight:700;">$${nonWorkingTotal.toLocaleString()}</span>
+      </div>
+    </div>`;
 
-  const verilumeCats = mbuCategoryMappingData.verilumeCategories || [];
+  const exceptionCount = exceptions.length;
   const exceptionRows = exceptions.map((c, i) => {
     const inputId = `mbuNewCatInput-${i}`;
     return `
-      <div class="field" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:10px;background:rgba(255,180,0,0.08);border-radius:8px;">
-        <div style="flex:1 1 220px;min-width:180px;">
-          <label style="visibility:hidden;">Category</label>
-          <div style="padding:11px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)} <span style="color:#b8860b;font-weight:600;" title="Not yet identified">⚠</span></div>
-          <span class="hint">${escapeHtml(c.status || '—')}${c.suggested && !c.suggested.matched ? ' · no confident match found' : ''}</span>
-        </div>
-        <div style="flex:0 0 120px;">
-          <label>Amount</label>
-          <div style="padding:11px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
-        </div>
-        <div style="flex:1 1 220px;min-width:200px;">
-          <label>Map to a Verilume category</label>
-          <select onchange="mbuCategoryChoiceChanged('${c.category.replace(/'/g, "\\'")}', this.value)">
-            <option value="">— choose —</option>
-            ${verilumeCats.map(vc => `<option value="${escapeHtml(vc)}">${escapeHtml(vc)}</option>`).join('')}
-            ${mbuCustomCategories.map(cc => `<option value="Client: ${escapeHtml(cc)}">${escapeHtml(cc)} (your category)</option>`).join('')}
-          </select>
-        </div>
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:10px;background:rgba(255,180,0,0.08);border-radius:8px;">
+        ${mbuWorkingCategoryRowHtml(c)}
         <div style="flex:1 1 260px;min-width:220px;">
           <label>...or create a new client category</label>
           <div style="display:flex;gap:8px;">
@@ -26036,21 +26077,19 @@ function mbuRenderCategoryMapping(){
       </div>`;
   }).join('');
 
-  const exceptionCount = exceptions.length;
-
   body.innerHTML = `
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 4px;">Review your budget</p>
-    <p class="hint" style="margin:0 0 12px;">Grouped by function, split into Working and Non-Working Media -- accept each total as-is or edit it directly, the same way channel spend is entered in Campaign Creation. Expand a row to see which of your file's line items it came from. Each section's total reads like a ledger, right under its last category.</p>
+    <p class="hint" style="margin:0 0 12px;">Only Working Media needs mapping to one of our standard categories -- for each one, your category is on the left and our best guess is the dropdown on the right; change it if it's wrong. Non-Working Media is listed exactly as your file gave it, no mapping needed.</p>
     ${workingSectionHtml}
     ${nonWorkingSectionHtml}
     <div id="mbuExceptionsBlock">
     ${exceptionCount ? `
-    <p style="font-size:0.8125rem;font-weight:600;margin:16px 0 6px;color:#b8860b;">⚠ Exceptions — ${exceptionCount} item${exceptionCount === 1 ? '' : 's'} from your file we couldn't confidently identify</p>
-    <p class="hint" style="margin:0 0 10px;">Not counted in any total above until resolved. Map each to an existing Verilume category, or keep it as your own category if nothing standard fits. (Total/subtotal rows from your file are always dropped here, never treated as an exception.)</p>
-    ${exceptionRows}` : `<p class="hint" style="color:var(--cx);margin-top:4px;">✓ Everything in your file was identified.</p>`}
+    <p style="font-size:0.8125rem;font-weight:600;margin:16px 0 6px;color:#b8860b;">⚠ Still needs a category -- ${exceptionCount} item${exceptionCount === 1 ? '' : 's'}</p>
+    <p class="hint" style="margin:0 0 10px;">Not counted in the Working Media total above until resolved. Choose one above, or create your own category if nothing standard fits.</p>
+    ${exceptionRows}` : `<p class="hint" style="color:var(--cx);margin-top:4px;">✓ Every Working Media category is identified.</p>`}
     </div>
     <div class="btn-row" style="margin-top:6px;">
-      <button type="button" class="btn-primary" onclick="mbuSubmitFinal()">Submit as final${exceptionCount ? ` (${exceptionCount} exception${exceptionCount === 1 ? '' : 's'} unresolved)` : ''} →</button>
+      <button type="button" class="btn-primary" onclick="mbuSubmitFinal()">Submit as final${exceptionCount ? ` (${exceptionCount} unresolved)` : ''} →</button>
     </div>
     <div id="mbuCategoryMappingResult" class="hint" style="margin-top:8px;"></div>`;
 }
@@ -26189,8 +26228,35 @@ function mbuRenderResults(data){
   }).join('');
   const isAvailable = data.status === 'confirmed';
   const byVerilume = data.byVerilumeCategory || null;
-  const verilumeRows = byVerilume ? Object.entries(byVerilume).sort((a, b) => b[1] - a[1]).map(([cat, total]) => `
-    <tr><td>${escapeHtml(cat)}</td><td style="font-weight:600;">$${Number(total).toLocaleString()}</td></tr>`).join('') : '';
+  const byVerilumeMonthly = data.byVerilumeCategoryMonthly || {};
+  const nonWorkingLedger = data.nonWorkingLedger || [];
+  // Per direct request #3 ("once categories are mapped we can show the
+  // actual amounts per month in our budget template") and the confirmed
+  // "expandable per category row" placement — same pattern as the Stage-2
+  // review screen (mbuMonthlyDetailHtml/mbuToggleMonthlyDetail), reused
+  // here for the final confirmed view.
+  const verilumeRows = byVerilume ? Object.entries(byVerilume).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
+    const detailId = `mbuFinalMonths-${cat.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    return `
+    <tr>
+      <td>${escapeHtml(cat)}<br>
+        <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;margin-top:2px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(byVerilumeMonthly[cat] || {})}</div>
+      </td>
+      <td style="font-weight:600;">$${Number(total).toLocaleString()}</td>
+    </tr>`;
+  }).join('') : '';
+  const nonWorkingRows = nonWorkingLedger.map(c => {
+    const detailId = `mbuFinalNWMonths-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    return `
+    <tr>
+      <td>${escapeHtml(c.category)}<br>
+        <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;margin-top:2px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(c.months || {})}</div>
+      </td>
+      <td style="font-weight:600;">$${Number(c.total || 0).toLocaleString()}</td>
+    </tr>`;
+  }).join('');
   body.innerHTML = `
     <p class="hint" style="margin-top:0;">
       ${isAvailable ? '<span style="color:var(--cx);font-weight:600;">✓ Confirmed — available to use</span>' : '<span style="color:#b8860b;font-weight:600;">⚠ Not yet available — category mapping incomplete</span>'}
@@ -26198,10 +26264,15 @@ function mbuRenderResults(data){
     </p>
     ${outliers.length ? `<p class="hint" style="color:#b8860b;">⚠ ${outliers.length} categor${outliers.length === 1 ? 'y makes' : 'ies make'} up more than 35% of the total on its own (${outliers.map(o => escapeHtml(o.category)).join(', ')}) — that's a common sign of an un-excluded subtotal or grand-total row rather than a real line item. Worth checking against the source file.</p>` : ''}
     ${isAvailable ? `
-    <p style="font-size:0.8125rem;font-weight:600;margin:14px 0 6px;">Rolled up by Verilume category</p>
+    <p style="font-size:0.8125rem;font-weight:600;margin:14px 0 6px;">Working Media — rolled up by Verilume category</p>
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
       <thead><tr><th>Verilume category</th><th>Total</th></tr></thead>
       <tbody>${verilumeRows}</tbody>
+    </table></div>
+    <p style="font-size:0.8125rem;font-weight:600;margin:14px 0 6px;">Non-Working Media — as listed in your file</p>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
+      <thead><tr><th>Your category</th><th>Total</th></tr></thead>
+      <tbody>${nonWorkingRows || '<tr><td colspan="2">Nothing in this file was tagged Non-Working.</td></tr>'}</tbody>
     </table></div>` : ''}
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Line items (raw category → Verilume category)</p>
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;">
