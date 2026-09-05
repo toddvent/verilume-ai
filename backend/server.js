@@ -1,3 +1,4 @@
+
 /*
   CXMedia.AI — real local demo backend (built 2026-07-22)
 
@@ -4710,7 +4711,11 @@ function mbuCategoryLedgerForUpload(uploadId){
     const c = byCategory[r.category];
     if (r.verilumeCategory) c.verilumeCategory = r.verilumeCategory;
     const isNonWorking = mbuIsNonWorkingStatus(r.status);
-    const amt = r.month ? (r.amount || 0) : 0;
+    // Round 8d: a total-only row (no month -- e.g. a client-added
+    // non-working line, or a file that only gave annual totals) counts its
+    // annual total toward the Working/Non-Working classification, so a
+    // month-less non-working line isn't misread as working (0 vs 0).
+    const amt = r.month ? (r.amount || 0) : (r.annualTotal || 0);
     if (isNonWorking) c.nonWorkingAmount += amt; else c.workingAmount += amt;
     if (r.month){
       if (!c.months[r.month]) c.months[r.month] = 0;
@@ -5690,6 +5695,15 @@ const LEGACY_CASING_COLUMNS = [
   ['marketing_budget_uploads', 'fileName'],
   ['marketing_budget_uploads', 'gridJson'],
   ['marketing_budget_uploads', 'uploadedFileId'],
+  // 2026-09-05 (Round 8e) -- same bug as the 2026-09-02 addition below:
+  // three columns added today (totalOnly in round 6, categoryLabelsJson and
+  // stageAllocationsJson in round 8) had no schema-identifiers.json entry,
+  // so on Postgres they were created lowercase-folded and read back as
+  // undefined. Registered here (for the in-place rename repair) and in
+  // schema-identifiers.json (for quoting) -- deploy BOTH files together.
+  ['marketing_budget_uploads', 'totalOnly'],
+  ['marketing_budget_uploads', 'categoryLabelsJson'],
+  ['marketing_budget_uploads', 'stageAllocationsJson'],
   ['media_plan_allocations', 'approvedAmount'],
   ['media_plan_allocations', 'audienceType'],
   ['media_plan_allocations', 'mediaPlanId'],
