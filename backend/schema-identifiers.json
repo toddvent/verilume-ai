@@ -318,5 +318,8 @@
   "websiteContextJson",
   "websiteUrl",
   "weightMode",
-  "workingCopy"
+  "workingCopy",
+  "totalOnly",
+  "categoryLabelsJson",
+  "stageAllocationsJson"
 ]
