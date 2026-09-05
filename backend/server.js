@@ -4294,6 +4294,16 @@ ensureColumn('marketing_budget_line_items', 'verilumeCategory', 'TEXT');
 // new DELETE endpoint's own comment on why that's a "last resort," not a
 // casual action).
 ensureColumn('marketing_budget_uploads', 'year', 'INTEGER');
+// Round 2026-09-05, per direct request: "International is technically a
+// different office having the same opportunity for media mix... upload
+// the International budget as a different view." A budget is now scoped
+// by both year AND scope ('domestic' | 'international') — a separate,
+// full budget per account per year for each, not a flag on individual
+// line items within one budget. NULL/missing scope on any pre-existing
+// row is always treated as 'domestic' (see every query below using
+// `COALESCE(scope, 'domestic')`), so nothing already on file needs a
+// migration or silently becomes ambiguous.
+ensureColumn('marketing_budget_uploads', 'scope', 'TEXT');
 
 // Round 132bx (cont'd, 2nd pass) — per direct instruction, the simplified
 // single-screen review lets a client accept or manually edit the rolled-up
@@ -4443,7 +4453,32 @@ const VERILUME_BUDGET_CATEGORIES = [
   'Out-of-Home', 'Partner/Affiliate Media',
   'Consulting & Professional Fees', 'Trade/B2B Marketing',
   'Production (Photo/Video/Creative)', 'Fulfillment & Collateral',
-  'Data, Technology & Analytics', 'Other/Uncategorized'
+  'Data, Technology & Analytics', 'Other/Uncategorized',
+  // Round 2026-09-05, per direct request: "I think we need a total channel
+  // category and then subcategories" -- Digital, Direct Mail, TV, and Print
+  // Advertising each got real per-channel subcategories a client can pick
+  // when their file breaks spend out that finely (2026/2027-style files),
+  // plus one explicit "Total/Unspecified" bucket per group for a file that
+  // only gives a single lump sum for the whole channel (2025-style files --
+  // this was literally the case that prompted the request: "the digital
+  // budget in 25 only lists the total amount vs. channel specific mix").
+  // Deliberately ADDITIVE, not a rename of any existing entry above: every
+  // pre-2026-09-05 upload stays mapped exactly as it was (still valid
+  // values, still driving the same VERILUME_TO_MMM_CHANNEL_MAP entries
+  // where one exists), and 'Search'/'Social'/'Linear TV'/'OTV'/'CTV'/
+  // 'Direct Mail'/'Magazines/Print' remain selectable on their own, now
+  // grouped alongside their new siblings on the mapping screen (see
+  // frontend MBU_FUNCTIONAL_GROUPS) rather than replaced by them. Per
+  // direct decision, these new entries are scoped to the budget-upload
+  // screens and reporting only for now -- they intentionally have NO entry
+  // in VERILUME_TO_MMM_CHANNEL_MAP below, so they don't yet activate or
+  // change any Campaign Creation channel; that's a deliberate, documented
+  // gap, not an oversight, and can be added later if the product decides
+  // this level of granularity should drive Active Channels too.
+  'Digital — Total/Unspecified', 'Digital — Addressable', 'Digital — Partnerships',
+  'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution',
+  'TV — Total/Unspecified', 'TV — Addressable',
+  'Print Advertising — Newspapers'
 ];
 
 // Round 132bx follow-on (2026-08-15), per direct instruction: a confirmed
@@ -4517,6 +4552,14 @@ const VERILUME_TO_MMM_CHANNEL_MAP = {
   // No MMM channel: 'Consulting & Professional Fees', 'Production (Photo/
   // Video/Creative)', 'Fulfillment & Collateral', 'Data, Technology &
   // Analytics', 'Other/Uncategorized'.
+  //
+  // Also no MMM channel, deliberately (round 2026-09-05, see
+  // VERILUME_BUDGET_CATEGORIES' own comment): 'Digital — Total/Unspecified',
+  // 'Digital — Addressable', 'Digital — Partnerships', 'Direct Mail —
+  // Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects',
+  // 'Direct Mail — ID Resolution', 'TV — Total/Unspecified', 'TV —
+  // Addressable', 'Print Advertising — Newspapers' -- scoped to budget-
+  // upload screens/reporting only for now, per direct decision.
 };
 // These three (see RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT and
 // OWNED_MEDIA_CHANNELS in portal.html) are documented elsewhere in this
@@ -4681,11 +4724,13 @@ function mbuSuggestVerilumeCategory(rawCategory){
     // unexplained Exception. Placed AFTER the CTV/OTV rules deliberately —
     // a label like "Digital Video" should still match OTV's own bare
     // "video" fallback above, not get hijacked by this broader catch-all.
-    // Display/Programmatic is the closest general-digital-media bucket
-    // Verilume's own taxonomy has (there's no standalone "Digital" entry —
-    // see VERILUME_BUDGET_CATEGORIES above); still just 'suggested', still
-    // fully editable if the real mix is actually search- or social-heavy.
-    [/\bdigital\b/, 'Display/Programmatic'],
+    // Round 2026-09-05: now that a real "Digital — Total/Unspecified"
+    // bucket exists (see VERILUME_BUDGET_CATEGORIES) this is the honest
+    // suggestion for an undifferentiated "digital" line — it used to guess
+    // 'Display/Programmatic' for lack of anything better, which was often
+    // wrong when the real mix was search- or social-heavy. Still just
+    // 'suggested', still fully editable.
+    [/\bdigital\b/, 'Digital — Total/Unspecified'],
     [/\bemail\b|\be-?mail\b/, 'Email'],
     // Round 2026-09-05, per direct bug report against a real client file:
     // "Corporate/Guest Communications" fell through every existing rule
@@ -4700,7 +4745,13 @@ function mbuSuggestVerilumeCategory(rawCategory){
     [/\bevent(s)?\b|\btrade show\b/, 'Events'],
     [/\bpodcast/, 'Podcasts'],
     [/\bradio\b/, 'Radio'],
-    [/\bmagazine\b|\bnewspaper\b|\bprint\b|\btraveller\b|\btravel\s*&?\s*leisure\b|\bfood\s*&?\s*wine\b|\bgarden\s*&?\s*gun\b|\bjournal\b|\bafar\b/, 'Magazines/Print'],
+    // Round 2026-09-05: newspaper-specific labels now get their own
+    // subcategory (see VERILUME_BUDGET_CATEGORIES) instead of falling into
+    // the combined Magazines/Print bucket -- checked first so a real
+    // "Newspaper" label doesn't get caught by the broader 'print' keyword
+    // in the rule below.
+    [/\bnewspaper\b/, 'Print Advertising — Newspapers'],
+    [/\bmagazine\b|\bprint\b|\btraveller\b|\btravel\s*&?\s*leisure\b|\bfood\s*&?\s*wine\b|\bgarden\s*&?\s*gun\b|\bjournal\b|\bafar\b/, 'Magazines/Print'],
     [/\booh\b|\bout.of.home\b|\bbillboard\b/, 'Out-of-Home'],
     [/\bpartner\b|\baffiliate\b|\btravel leaders\b|\bcruise strategies\b/, 'Partner/Affiliate Media'],
     [/\bconsult/, 'Consulting & Professional Fees'],
@@ -15129,21 +15180,28 @@ Submit your findings via the submit_brand_categories tool.`;
       const uploadedFile = db.prepare('SELECT * FROM uploaded_files WHERE id = ? AND accountId = ?').get(body.uploadedFileId, accountId);
       if (!uploadedFile || uploadedFile.status !== 'accepted') return sendJson(res, 400, { error: 'uploadedFileId must reference a scanned, accepted upload on this account' });
       if (!Array.isArray(body.grid) || !body.grid.length) return sendJson(res, 400, { error: 'grid (array of rows) is required' });
-      const existingConfirmed = db.prepare("SELECT id, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed'").get(accountId, year);
+      // Round 2026-09-05: scope ('domestic' | 'international') is a second
+      // dimension alongside year, not a flag on individual line items — see
+      // ensureColumn('marketing_budget_uploads', 'scope', ...) above. Any
+      // unrecognized/omitted value normalizes to 'domestic' so an older
+      // client (or a request from before this round shipped) behaves
+      // exactly as it always did.
+      const scope = body.scope === 'international' ? 'international' : 'domestic';
+      const existingConfirmed = db.prepare("SELECT id, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND COALESCE(scope, 'domestic') = ? AND status = 'confirmed'").get(accountId, year, scope);
       if (existingConfirmed){
         return sendJson(res, 409, {
-          error: `${year} already has a confirmed budget ("${existingConfirmed.fileName || 'untitled file'}", confirmed ${existingConfirmed.confirmedAt}). Adjust its category totals from that upload's own review screen instead of uploading again, or delete it first if you truly need to start over.`,
+          error: `${year} already has a confirmed ${scope} budget ("${existingConfirmed.fileName || 'untitled file'}", confirmed ${existingConfirmed.confirmedAt}). Adjust its category totals from that upload's own review screen instead of uploading again, or delete it first if you truly need to start over.`,
           existingUploadId: existingConfirmed.id,
-          year
+          year, scope
         });
       }
       const analysis = analyzeMarketingBudgetGrid(body.grid);
       const id = generateId('MBU');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO marketing_budget_uploads (id, accountId, uploadedFileId, fileName, gridJson, layout, analysisJson, status, year, createdAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, body.uploadedFileId, body.fileName || uploadedFile.originalFilename || null, JSON.stringify(body.grid), analysis.layout, JSON.stringify(analysis), analysis.status, year, now);
-      return sendJson(res, 201, { id, year, layout: analysis.layout, status: analysis.status, note: analysis.note, headerRows: analysis.headerRows, blocks: analysis.blocks, monthsRecognized: analysis.monthsRecognized, likelyGrandTotalRowIdxs: analysis.likelyGrandTotalRowIdxs, targetFields: MARKETING_BUDGET_TARGET_FIELDS });
+      db.prepare(`INSERT INTO marketing_budget_uploads (id, accountId, uploadedFileId, fileName, gridJson, layout, analysisJson, status, year, scope, createdAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.uploadedFileId, body.fileName || uploadedFile.originalFilename || null, JSON.stringify(body.grid), analysis.layout, JSON.stringify(analysis), analysis.status, year, scope, now);
+      return sendJson(res, 201, { id, year, scope, layout: analysis.layout, status: analysis.status, note: analysis.note, headerRows: analysis.headerRows, blocks: analysis.blocks, monthsRecognized: analysis.monthsRecognized, likelyGrandTotalRowIdxs: analysis.likelyGrandTotalRowIdxs, targetFields: MARKETING_BUDGET_TARGET_FIELDS });
     }
 
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/confirm —
@@ -15363,8 +15421,18 @@ Submit your findings via the submit_brand_categories tool.`;
       // (nonzero) confirmed dollars behind it activates its mapped
       // channel(s); one that's $0 or was never in this file leaves them
       // inactive. See recomputeAccountActiveChannels / VERILUME_TO_MMM_CHANNEL_MAP.
+      // Round 2026-09-05: recomputeAccountActiveChannels does a wholesale
+      // REPLACE of the account's active-channel set, so confirming an
+      // International budget right after a Domestic one would silently
+      // blow away the Domestic-derived channels (whichever scope confirms
+      // last would win, with no real reasoning behind that outcome).
+      // Deliberately scoped to 'domestic' only for now, pending a real
+      // product decision on how (or whether) International spend should
+      // combine with Domestic for Campaign Creation's channel picker —
+      // an International budget still confirms and is fully usable for
+      // its own reporting, it just doesn't drive Active Channels yet.
       let activeChannels = null;
-      if (allMapped){
+      if (allMapped && (upload.scope || 'domestic') === 'domestic'){
         const byVerilumeCategory = computeByVerilumeCategoryForUpload(uploadId);
         activeChannels = recomputeAccountActiveChannels(accountId, byVerilumeCategory);
       }
@@ -15439,7 +15507,7 @@ Submit your findings via the submit_brand_categories tool.`;
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const rows = db.prepare('SELECT id, fileName, layout, status, year, createdAt, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      const rows = db.prepare("SELECT id, fileName, layout, status, year, COALESCE(scope, 'domestic') AS scope, createdAt, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? ORDER BY createdAt DESC").all(accountId);
       return sendJson(res, 200, { uploads: rows });
     }
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads'){
@@ -15498,6 +15566,7 @@ Submit your findings via the submit_brand_categories tool.`;
       }
       return sendJson(res, 200, {
         id: upload.id, fileName: upload.fileName, layout: upload.layout, status: upload.status, year: upload.year,
+        scope: upload.scope || 'domestic',
         createdAt: upload.createdAt, confirmedAt: upload.confirmedAt,
         note: analysis.note, blocks: analysis.blocks, monthsRecognized: analysis.monthsRecognized,
         grid, headerRows: analysis.headerRows, likelyGrandTotalRowIdxs: analysis.likelyGrandTotalRowIdxs,
@@ -16503,5 +16572,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
