@@ -13027,7 +13027,10 @@ Submit your findings via the submit_brand_categories tool.`;
       // monthlyPct now persisted too (see the columns' own comment above);
       // nonWorkingMedia and monthlyPct stored as JSON text.
       const nonWorkingMediaJson = JSON.stringify(Array.isArray(body.nonWorkingMedia) ? body.nonWorkingMedia : []);
-      const monthlyMode = body.monthlyMode === 'manual' ? 'manual' : 'flat';
+      // Round 7 (2026-09-05): 'curve' added -- "apply specific % of spend
+      // based on revenue curves." Stored distinctly from 'manual' so the UI
+      // can re-select the right tile on reload; both use monthlyPctJson.
+      const monthlyMode = body.monthlyMode === 'manual' ? 'manual' : (body.monthlyMode === 'curve' ? 'curve' : 'flat');
       const monthlyPctJson = body.monthlyPct && typeof body.monthlyPct === 'object' ? JSON.stringify(body.monthlyPct) : null;
       // Round 132c13 — marketingBudgetPct/tradeMarketingPct/
       // tradeMarketingBudget, same fall-back-to-existing-value pattern as
