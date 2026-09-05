@@ -4304,6 +4304,17 @@ ensureColumn('marketing_budget_uploads', 'year', 'INTEGER');
 // `COALESCE(scope, 'domestic')`), so nothing already on file needs a
 // migration or silently becomes ambiguous.
 ensureColumn('marketing_budget_uploads', 'scope', 'TEXT');
+// Round 6 (2026-09-05), per pre-answered decision on International's
+// lightweight path: "a 'Total-only' toggle at Plan Setup when
+// International scope is selected -- an alternative to the full
+// category-by-category mapping that skips line items entirely and stores
+// a single total budget number instead." totalOnly (0/1) records which
+// mode a given upload used, so reopening it later (mbuRenderPlanSetup)
+// shows the right simplified single-total view instead of an empty-
+// looking full grid. Not scope-restricted at the schema level (nothing
+// stops a Domestic total-only budget either), but the UI only offers the
+// toggle for International per the confirmed decision.
+ensureColumn('marketing_budget_uploads', 'totalOnly', 'INTEGER');
 
 // Round 132bx (cont'd, 2nd pass) — per direct instruction, the simplified
 // single-screen review lets a client accept or manually edit the rolled-up
@@ -4478,8 +4489,44 @@ const VERILUME_BUDGET_CATEGORIES = [
   'Digital — Total/Unspecified', 'Digital — Addressable', 'Digital — Partnerships',
   'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution',
   'TV — Total/Unspecified', 'TV — Addressable',
-  'Print Advertising — Newspapers'
+  'Print Advertising — Newspapers',
+  // Round 6 (2026-09-05), per direct instruction: "We need a Consumer Print
+  // Advertising Total option with Magazines and Newspapers as options
+  // under." Print Advertising was the one Total-Channel group left without
+  // its own explicit Total/Unspecified bucket (Digital/Direct Mail/TV all
+  // got one above) -- 'Magazines/Print' was doing double duty as both the
+  // legacy combined bucket AND the de facto "total" option, which is
+  // exactly the inconsistency being fixed. Additive only, per the same
+  // convention as the block above: 'Magazines/Print' and 'Print
+  // Advertising — Newspapers' are both left exactly as they are (a stored
+  // line item or saved mapping using either keeps working, and
+  // 'Magazines/Print' stays a selectable option for now rather than being
+  // renamed/removed -- renaming a stored category string was judged too
+  // disruptive to existing uploads' saved category values). The frontend's
+  // MBU_FUNCTIONAL_GROUPS groups all four (Total/Unspecified, Magazines/
+  // Print, Consumer Print Advertising — Magazines, Print Advertising —
+  // Newspapers) under one renamed "Consumer Print Advertising" umbrella --
+  // see that constant's own comment. Deliberately no VERILUME_TO_MMM_
+  // CHANNEL_MAP crosswalk for either new entry, same as every other
+  // round-3/round-6 additive subcategory (see that map's own comment).
+  'Consumer Print Advertising — Total/Unspecified', 'Consumer Print Advertising — Magazines'
 ];
+
+// Round 6 (2026-09-05) — the International "Total-only" Setup path's single
+// synthetic line item (see the POST .../marketing-budget-uploads
+// body.totalOnly branch below). verilumeCategory is fixed to
+// 'Other/Uncategorized' — a real, standard VERILUME_BUDGET_CATEGORIES entry
+// — deliberately, so this path never needs its own category-mapping
+// completeness logic; editing the total later reuses the existing
+// category-overrides endpoint against this same verilumeCategory rather
+// than a new endpoint (POST .../category-overrides with
+// { overrides: { 'Other/Uncategorized': newAmount } }).
+// Deliberately does NOT start with "Total" and isn't just generic words --
+// mbuIsTotalLikeCategoryLabel() (below) treats a label like that as a
+// subtotal/grand-total row and silently excludes it from every rollup,
+// which would make this synthetic line item invisible to its own account.
+const MBU_TOTAL_ONLY_CATEGORY = 'Consolidated Budget — No Channel Detail';
+const MBU_TOTAL_ONLY_VERILUME_CATEGORY = 'Other/Uncategorized';
 
 // Round 132bx follow-on (2026-08-15), per direct instruction: a confirmed
 // Marketing Budget Upload's identified (nonzero) categories should drive
@@ -4558,8 +4605,10 @@ const VERILUME_TO_MMM_CHANNEL_MAP = {
   // 'Digital — Addressable', 'Digital — Partnerships', 'Direct Mail —
   // Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects',
   // 'Direct Mail — ID Resolution', 'TV — Total/Unspecified', 'TV —
-  // Addressable', 'Print Advertising — Newspapers' -- scoped to budget-
-  // upload screens/reporting only for now, per direct decision.
+  // Addressable', 'Print Advertising — Newspapers', 'Consumer Print
+  // Advertising — Total/Unspecified', 'Consumer Print Advertising —
+  // Magazines' (round 6, 2026-09-05) -- scoped to budget-upload screens/
+  // reporting only for now, per direct decision.
 };
 // These three (see RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT and
 // OWNED_MEDIA_CHANNELS in portal.html) are documented elsewhere in this
@@ -4751,7 +4800,20 @@ function mbuSuggestVerilumeCategory(rawCategory){
     // "Newspaper" label doesn't get caught by the broader 'print' keyword
     // in the rule below.
     [/\bnewspaper\b/, 'Print Advertising — Newspapers'],
-    [/\bmagazine\b|\bprint\b|\btraveller\b|\btravel\s*&?\s*leisure\b|\bfood\s*&?\s*wine\b|\bgarden\s*&?\s*gun\b|\bjournal\b|\bafar\b/, 'Magazines/Print'],
+    // Round 6 (2026-09-05), per direct instruction: "Consumer Print
+    // Advertising Total option with Magazines and Newspapers as options
+    // under." A real magazine-title label now suggests the new, more
+    // precise 'Consumer Print Advertising — Magazines' bucket instead of
+    // the old catch-all 'Magazines/Print' (still a valid, selectable
+    // category for backward compatibility -- just no longer the honest
+    // best guess now that a dedicated Magazines bucket exists alongside its
+    // own Total/Unspecified sibling, mirroring Digital/Direct Mail/TV
+    // above). A bare "print" with no magazine-title signal is genuinely
+    // ambiguous (could be a magazine buy, an insert, a generic "print
+    // advertising" budget line) -- suggests the honest Total/Unspecified
+    // bucket rather than guessing Magazines specifically.
+    [/\bmagazine\b|\btraveller\b|\btravel\s*&?\s*leisure\b|\bfood\s*&?\s*wine\b|\bgarden\s*&?\s*gun\b|\bjournal\b|\bafar\b/, 'Consumer Print Advertising — Magazines'],
+    [/\bprint\b/, 'Consumer Print Advertising — Total/Unspecified'],
     [/\booh\b|\bout.of.home\b|\bbillboard\b/, 'Out-of-Home'],
     [/\bpartner\b|\baffiliate\b|\btravel leaders\b|\bcruise strategies\b/, 'Partner/Affiliate Media'],
     [/\bconsult/, 'Consulting & Professional Fees'],
@@ -15209,6 +15271,44 @@ Submit your findings via the submit_brand_categories tool.`;
       // needed anywhere downstream (Active Channels, exports, Media Plan
       // prefill all key off status='confirmed' plus category-overrides/
       // line-items, exactly as a real upload does).
+      // Round 6 (2026-09-05), per pre-answered decision: International's
+      // "Total-only" Setup path -- skips category-by-category mapping
+      // entirely, stores ONE line item representing the whole budget, and
+      // auto-confirms immediately (there's nothing left to map). Checked
+      // before the general body.manual===true branch below since it's a
+      // distinct create shape (one committed line item, status 'confirmed'
+      // from the start) rather than an empty draft grid.
+      if (body.manual === true && body.totalOnly === true){
+        const totalAmount = Number(body.totalAmount);
+        if (!(totalAmount > 0)) return sendJson(res, 400, { error: 'totalAmount (a positive number) is required for a total-only budget' });
+        const totId = generateId('MBU');
+        const nowTot = new Date().toISOString();
+        const totAnalysis = {
+          layout: 'manual', status: 'confirmed', totalOnly: true,
+          note: 'Total-only budget — a single account-wide figure with no channel-level detail.',
+          headerRows: [], blocks: [], monthsRecognized: [], likelyGrandTotalRowIdxs: []
+        };
+        db.prepare(`INSERT INTO marketing_budget_uploads (id, accountId, uploadedFileId, fileName, gridJson, layout, analysisJson, status, year, scope, totalOnly, confirmedAt, createdAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(totId, accountId, null, 'Total-only budget', JSON.stringify([]), 'manual', JSON.stringify(totAnalysis), 'confirmed', year, scope, 1, nowTot, nowTot);
+        // One committed line item -- category/verilumeCategory are fixed,
+        // synthetic labels (MBU_TOTAL_ONLY_CATEGORY/_VERILUME_CATEGORY,
+        // defined near VERILUME_BUDGET_CATEGORIES) so this reads clearly on
+        // any raw-category listing and is already "mapped" (verilumeCategory
+        // set at insert time) -- confirm-categories is never even called for
+        // this path, since there's nothing left to confirm.
+        db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .run(generateId('MBLI'), totId, accountId, MBU_TOTAL_ONLY_CATEGORY, 'working', null, null, totalAmount, null, MBU_TOTAL_ONLY_VERILUME_CATEGORY);
+        // Same domestic-only Active Channels scoping as every other confirm
+        // path (see confirm-categories' own comment) -- 'Other/Uncategorized'
+        // has no MMM crosswalk anyway, so this is a no-op in practice, but
+        // kept consistent rather than silently skipped.
+        if (scope === 'domestic'){
+          const byVerilumeCategory = computeByVerilumeCategoryForUpload(totId);
+          recomputeAccountActiveChannels(accountId, byVerilumeCategory);
+        }
+        return sendJson(res, 201, { id: totId, year, scope, layout: 'manual', status: 'confirmed', manual: true, totalOnly: true, totalAmount });
+      }
       if (body.manual === true){
         const manualId = generateId('MBU');
         const nowManual = new Date().toISOString();
@@ -15639,7 +15739,19 @@ Submit your findings via the submit_brand_categories tool.`;
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const rows = db.prepare("SELECT id, fileName, layout, status, year, COALESCE(scope, 'domestic') AS scope, createdAt, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? ORDER BY createdAt DESC").all(accountId);
+      const rows = db.prepare("SELECT id, fileName, layout, status, year, COALESCE(scope, 'domestic') AS scope, COALESCE(totalOnly, 0) AS totalOnly, createdAt, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? ORDER BY createdAt DESC").all(accountId);
+      // Round 6 (2026-09-05) — a Total-only row's one real number (so the
+      // Plan Setup list/status view can show it without a second request
+      // per upload); reuses the same override-aware rollup every other
+      // "what's this upload's real total" reading uses, rather than reading
+      // the line item's annualTotal directly and silently ignoring an
+      // edited override.
+      rows.forEach(r => {
+        if (r.totalOnly){
+          const byVc = computeByVerilumeCategoryForUpload(r.id);
+          r.totalAmount = byVc[MBU_TOTAL_ONLY_VERILUME_CATEGORY] || 0;
+        }
+      });
       return sendJson(res, 200, { uploads: rows });
     }
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads'){
@@ -15699,6 +15811,8 @@ Submit your findings via the submit_brand_categories tool.`;
       return sendJson(res, 200, {
         id: upload.id, fileName: upload.fileName, layout: upload.layout, status: upload.status, year: upload.year,
         scope: upload.scope || 'domestic',
+        totalOnly: !!upload.totalOnly,
+        totalAmount: upload.totalOnly ? (byVerilumeCategory[MBU_TOTAL_ONLY_VERILUME_CATEGORY] || 0) : null,
         createdAt: upload.createdAt, confirmedAt: upload.confirmedAt,
         note: analysis.note, blocks: analysis.blocks, monthsRecognized: analysis.monthsRecognized,
         grid, headerRows: analysis.headerRows, likelyGrandTotalRowIdxs: analysis.likelyGrandTotalRowIdxs,
