@@ -564,6 +564,7 @@
   .mediaplan-setup-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,420px);gap:24px;align-items:start;}
   .mediaplan-setup-row .exec-chart-card{position:sticky;top:20px;}
   @media (max-width:900px){ .mediaplan-setup-row{grid-template-columns:1fr;} .mediaplan-setup-row .exec-chart-card{position:static;} }
+  @media (max-width:900px){ .mbd-two-col{grid-template-columns:1fr !important;} }
   .exec-chart-card{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:22px 24px;}
   .exec-chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px;}
   /* Round 132bx (2026-08-15) — groups the new per-card CSV download button
@@ -7607,34 +7608,33 @@
     <div id="mpPlanSection" style="display:none;">
     <div class="sk-card" id="mpBudgetCard">
       <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Step 1 of 4</div><h3>Annual Marketing Budget</h3></div>
+        <div class="htext"><div class="kicker">Step 1 of 4</div><h3>Budget</h3></div>
         <div class="hicon">$</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Type your working-media budget for <span id="mpBudgetYearLabel"></span>, or calculate it from gross revenue and a target % of working marketing spend.</p>
+        <p class="hint" style="margin-top:0;">Set the working marketing budget for <span id="mpBudgetYearLabel"></span> — type it, or calculate it from gross revenue and a target % of working marketing spend. Non-working and Sales budgets sit beside it so the total reads like a complete financial view.</p>
         <div class="stage-row" style="margin-bottom:12px;">
           <button type="button" class="stage-tile selected" id="mpBudgetModeDirectBtn" onclick="mpSetBudgetMode('direct')">Type an amount</button>
           <button type="button" class="stage-tile" id="mpBudgetModeCalcBtn" onclick="mpSetBudgetMode('calc')">Calculate from revenue</button>
         </div>
         <div id="mpBudgetCalcFields" style="display:none;">
           <div class="field" id="mpGrossRevenueField">
-            <label id="mpGrossRevenueLabel" style="margin-bottom:4px;">Gross annual revenue (USD)</label>
-            <input type="number" id="mpGrossRevenue" min="0" step="1000" placeholder="e.g. 15000000" oninput="updateBudgetRevenueContext(); mpUpdateBudgetCalcPreview(); mpRenderRevenueFraming();">
+            <label id="mpGrossRevenueLabel">Gross annual revenue (USD)</label>
+            <input type="number" id="mpGrossRevenue" min="0" step="1000" placeholder="e.g. 15000000" oninput="updateBudgetRevenueContext(); mpUpdateBudgetCalcPreview();">
             <div class="hint" id="mpGrossRevenueHint" style="margin-top:4px;">Not required, and never shown or shared outside this plan.</div>
-            <div id="mpRevenueRecognitionBreakdown" style="margin-top:8px;"></div>
           </div>
           <div class="field" style="max-width:420px;">
             <label>Target % of working marketing spend</label>
-            <select id="mpTargetPctSelect" class="tbl-select" onchange="mpUpdateBudgetCalcPreview()"></select>
-            <div class="hint" style="margin-top:4px;">Starts at 7% — a common working-media benchmark — and ranges 3%–25%. Pick the target your leadership has approved.</div>
+            <select id="mpTargetPctSelect" onchange="mpUpdateBudgetCalcPreview()"></select>
+            <div class="hint" style="margin-top:4px;">Starts at 7% and ranges 3%–25%. Pick the target your leadership has approved.</div>
           </div>
           <div class="btn-row" style="margin-top:4px;align-items:center;">
-            <button type="button" class="btn-ghost" onclick="mpApplyBudgetCalc()">Use this as the Annual Marketing Budget →</button>
+            <button type="button" class="btn-ghost" onclick="mpApplyBudgetCalc()">Use this as the Working Marketing Budget →</button>
             <span class="hint" id="mpBudgetCalcPreview" style="margin:0;"></span>
           </div>
         </div>
         <div class="field">
-          <label>Annual Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— working media, required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
+          <label>Working Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
           <input type="number" id="mpTotalBudget" min="0" step="1000" placeholder="e.g. 1200000" required oninput="renderMediaPlanGrid(); clearMediaPlanBudgetError(); updateBudgetRevenueContext(); renderNwmSummary(); renderMediaLoopMixChart(); renderMpTotalMarketingBudget(); mswRenderStageWeightCard(); mpRenderPlanSteps();" onblur="validateMediaPlanBudget()">
           <div class="rr-error" id="mpTotalBudgetError" style="display:none;"></div>
           <div class="hint" id="mpBudgetRevenuePct" style="display:none;"></div>
@@ -7642,99 +7642,85 @@
           <p class="hint" id="mpPrefillFlag" style="margin:6px 0 0;"></p>
         </div>
         <div class="field">
-          <label>Total Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— Working + Non-Working, calculated</span></label>
-          <input type="text" id="mpTotalMarketingBudgetDisplay" readonly disabled style="background:var(--paper-dim);color:var(--ink);cursor:not-allowed;">
-          <div class="hint">Annual Marketing Budget (working media) plus the Non-Working Media table's Spend total — not editable directly.</div>
+          <label>Non-working Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— from your non-working lines, calculated</span></label>
+          <input type="text" id="mpNonWorkingBudgetDisplay" readonly disabled style="background:var(--paper-dim);color:var(--ink);cursor:not-allowed;">
+          <div class="hint">Agency, analytics, production and similar spend — the sum of the Non-Working Media lines. <a onclick="mpShowNonWorkingLines()" style="cursor:pointer;">Add or edit non-working lines →</a></div>
         </div>
         <div class="field">
-          <label>Sales &amp; Trade Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></label>
-          <input type="number" id="mpTradeMarketingBudget" min="0" step="1000" placeholder="e.g. 2640000" oninput="clearMediaPlanBudgetError();">
-          <div class="hint">Trade-show sponsorships, travel-advisor/dealer co-op, and similar sales-enablement spend — kept separate from the channel mix and not included in any working-media total.</div>
+          <label>Sales Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></label>
+          <input type="number" id="mpTradeMarketingBudget" min="0" step="1000" placeholder="e.g. 2640000" oninput="clearMediaPlanBudgetError(); renderMpTotalMarketingBudget();">
+          <div class="hint">Trade-show sponsorships, dealer/advisor co-op and similar sales-enablement spend — kept separate from the channel mix.</div>
+        </div>
+        <div class="field">
+          <label>Total Sales and Marketing (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— calculated</span></label>
+          <input type="text" id="mpTotalMarketingBudgetDisplay" readonly disabled style="background:var(--paper-dim);color:var(--ink);cursor:not-allowed;">
+          <div class="hint">Working + Non-working + Sales. Not editable directly.</div>
         </div>
         <p class="hint" id="mpStep1Next" style="margin:0;"></p>
       </div>
     </div>
 
-    <div class="mediaplan-setup-row" id="mpStageWeightRow" style="display:none;margin-top:18px;">
-    <!-- Round 132c[7] (2026-08-17) — buildout item #7: make the stage-budget
-         split ("Apply recommended mix" above splits by STAGE_BUDGET_WEIGHTS)
-         and the min-viable-spend channel cutoff tunable per account from
-         Onboarding Survey answers, instead of every account sharing the same
-         hardcoded default. Shows the default 5-stage split, a suggested
-         split computed from this account's own survey answers (sales-cycle
-         length, repeat-vs-one-time) when available, and whatever override is
-         actually saved — a suggestion never silently becomes the active
-         override, has to be explicitly applied. Also surfaces the AOV-driven
-         minimum-viable-spend calibration toggle (off by default — changes an
-         existing account's recommended mix, so opt-in). -->
-    <div class="sk-card" id="mpStageWeightCard">
+    <!-- Step 2 (Round 8b): one full-width card; the Marketing Loop pie sits
+         inside the section beside the weighting table. -->
+    <div class="sk-card" id="mpStageWeightRow" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
         <div class="htext"><div class="kicker">Step 2 of 4</div><h3>Stage Weighting</h3></div>
         <div class="hicon">⚖</div>
       </div>
-      <div class="sk-card-body" id="mpStageWeightBody"><p class="hint">Loading…</p></div>
-    </div>
-
-      <div class="exec-chart-card" id="mediaLoopMixChartCard"></div>
-    </div>
-    <!-- /.mediaplan-setup-row -->
-
-    <div id="mpChannelStep" style="display:none;">
-    <div style="margin:24px 0 14px;">
-      <div class="kicker" style="margin-bottom:4px;">Step 3 of 4</div>
-      <h3 style="margin:0 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);">Channel mix — review &amp; adjust</h3>
-      <p class="hint" style="margin:0;">Each stage's budget is split across its channels using industry best-practice weights, limited to your Active channels. Every Annual $ is editable, and you can add a channel to any stage below.</p>
-    </div>
-    <div class="sk-card" id="mpPeriodViewCard" style="display:none;">
-      <div class="sk-card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <label style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.8438rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0;">View budget</label>
-        <!-- Round 132bx (2026-08-16), per direct review comment: (a) this
-             was a bare, unstyled <select> — now uses the same .tbl-select
-             treatment as every other compact dropdown; (b) grouped into
-             Annual / Quarterly / Monthly per direct instruction. The
-             Annual group intentionally has only "Full Year" for now — a
-             10-year multi-year window (viewing/switching a DIFFERENT
-             year's plan, not just this year's periods) is a real, separate
-             feature needing its own backend support for multiple stored
-             plans per account; logged as an open item rather than faked
-             here. Quarterly/Monthly both scope to the plan's current year
-             (state.mediaPlan.year), same as before. -->
-        <select id="mpPeriodViewSelect" class="tbl-select" style="max-width:220px;" onchange="setMpViewPeriod(this.value)">
-          <optgroup label="Annual">
-            <option value="year">Full Year</option>
-          </optgroup>
-          <optgroup label="Quarterly — this year">
-          <option value="Q1">Q1</option>
-          <option value="Q2">Q2</option>
-          <option value="Q3">Q3</option>
-          <option value="Q4">Q4</option>
-          </optgroup>
-          <optgroup label="Monthly — this year">
-          <option value="Jan">Jan</option>
-          <option value="Feb">Feb</option>
-          <option value="Mar">Mar</option>
-          <option value="Apr">Apr</option>
-          <option value="May">May</option>
-          <option value="Jun">Jun</option>
-          <option value="Jul">Jul</option>
-          <option value="Aug">Aug</option>
-          <option value="Sep">Sep</option>
-          <option value="Oct">Oct</option>
-          <option value="Nov">Nov</option>
-          <option value="Dec">Dec</option>
-          </optgroup>
-        </select>
-        <span class="hint" style="margin:0;">Shows each channel's $ and Impressions for the selected period only — the Annual field itself always stays the annual number.</span>
+      <div class="sk-card-body">
+        <div class="mediaplan-setup-row" id="mpStageWeightCard" style="grid-template-columns:minmax(0,1fr) minmax(300px,380px);">
+          <div id="mpStageWeightBody"><p class="hint">Loading…</p></div>
+          <div class="exec-chart-card" id="mediaLoopMixChartCard" style="position:static;"></div>
+        </div>
       </div>
-      <!-- Round 117 (2026-08-08), per direct instruction: moved the
-           "Impressions is illustrative" disclosure off every line item
-           (was repeated 30+ times down the page) and onto this selector
-           instead — one explanation, stated once, for the whole view. -->
-      <div class="sk-card-footer">Impressions is a simple calculation — Spend ÷ Est. CPM — not a live rate card. Actuals will differ month to month based on audited actual media delivery reports.</div>
     </div>
-    <div id="mediaPlanGrid"></div>
+
+    <div class="sk-card" id="mpChannelStep" style="display:none;margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Step 3 of 4</div><h3>Channel mix — review &amp; adjust</h3></div>
+        <div class="hicon">▤</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Each stage's budget is split across its channels using our channel-by-stage weights — industry-specific where we have them, adjusted for your audience's generation and wealth profile — limited to your Active channels. Every Annual $ is editable, and you can add a channel to any stage below.</p>
+        <div id="mpPeriodViewCard" style="display:none;">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 6px;">
+            <div class="field" style="margin:0;min-width:220px;">
+              <label>View budget</label>
+              <select id="mpPeriodViewSelect" onchange="setMpViewPeriod(this.value)">
+                <optgroup label="Annual">
+                  <option value="year">Full Year</option>
+                </optgroup>
+                <optgroup label="Quarterly — this year">
+                <option value="Q1">Q1</option>
+                <option value="Q2">Q2</option>
+                <option value="Q3">Q3</option>
+                <option value="Q4">Q4</option>
+                </optgroup>
+                <optgroup label="Monthly — this year">
+                <option value="Jan">Jan</option>
+                <option value="Feb">Feb</option>
+                <option value="Mar">Mar</option>
+                <option value="Apr">Apr</option>
+                <option value="May">May</option>
+                <option value="Jun">Jun</option>
+                <option value="Jul">Jul</option>
+                <option value="Aug">Aug</option>
+                <option value="Sep">Sep</option>
+                <option value="Oct">Oct</option>
+                <option value="Nov">Nov</option>
+                <option value="Dec">Dec</option>
+                </optgroup>
+              </select>
+            </div>
+            <span class="hint" style="margin:0;flex:1 1 260px;">Shows each stage's and channel's $ and impressions for the selected period — the Annual field always stays the annual number. Impressions are Spend ÷ Est. CPM, not a live rate card.</span>
+          </div>
+        </div>
+        <div id="mediaPlanGrid"></div>
+      </div>
+    </div>
 
 
+    <div id="mpChannelTail" style="display:none;">
     <div class="sk-card" id="mpMonthlyCard" style="margin-top:18px;">
       <div class="sk-card-head cx">
         <div class="htext"><div class="kicker">Step 4 of 4</div><h3>Monthly distribution</h3></div>
@@ -7772,7 +7758,7 @@
     </div>
 
     </div>
-    <!-- /#mpChannelStep -->
+    <!-- /#mpChannelTail -->
     <!-- Round 132bx follow-on (2026-08-16), per direct instruction: multiple
          years of history/forecasts should make recommendations smarter, not
          just be a switcher. This card shows the trend across every saved
@@ -11553,10 +11539,63 @@ const INDUSTRY_STAGE_CHANNEL_WEIGHTS = {
   'Automotive Sales & Service': AUTO_DEALER_STAGE_CHANNEL_WEIGHTS,
   'Financial Services / Banking': BANKING_STAGE_CHANNEL_WEIGHTS,
 };
+// Round 8b (2026-09-05), per direct instruction: "Validate that weighting
+// incorporates media consumption trends based on client customer
+// generation, wealth and industry." Industry already shaped the weights
+// (INDUSTRY_STAGE_CHANNEL_WEIGHTS above where a specific table exists,
+// INDUSTRY_WEAK_STAGE for the stage split). Generation and wealth tier did
+// not -- these two tables add that: directional media-consumption
+// multipliers per channel (1.0 = no change), averaged across whichever
+// generations / wealth tiers the account selected in its Company Profile
+// (state.audience / state.wealth, same keys as GENERATIONS / WEALTH_TIERS),
+// then applied on top of the industry weights and renormalized within the
+// stage. Editorial heuristics, disclosed as such in the UI -- replace the
+// numbers with licensed research whenever that's on file; the mechanism
+// stays the same.
+const GENERATION_CHANNEL_AFFINITY = {
+  genz:       { 'Paid Social': 1.35, 'CTV': 1.25, 'OTV': 1.15, 'Podcasts': 1.2, 'Programmatic Display': 1.05, 'Out-of-Home': 1.1, 'Linear TV': 0.6, 'Newspapers': 0.5, 'Magazines': 0.7, 'Radio': 0.8, 'Direct Mail — Prospects': 0.7 },
+  millennial: { 'Paid Social': 1.25, 'CTV': 1.25, 'OTV': 1.15, 'Podcasts': 1.25, 'Non-Brand Search': 1.1, 'Linear TV': 0.7, 'Newspapers': 0.6, 'Magazines': 0.85, 'Radio': 0.9, 'Direct Mail — Prospects': 0.85 },
+  genx:       { 'Linear TV': 1.05, 'CTV': 1.1, 'Non-Brand Search': 1.1, 'Radio': 1.1, 'Direct Mail — Prospects': 1.05, 'Newspapers': 0.9 },
+  boomer:     { 'Linear TV': 1.4, 'Newspapers': 1.4, 'Magazines': 1.25, 'Direct Mail — Prospects': 1.3, 'Direct Mail — Past Guests': 1.2, 'Radio': 1.15, 'Paid Social': 0.75, 'CTV': 0.85, 'Podcasts': 0.7, 'Programmatic Display': 0.9 },
+  silent:     { 'Linear TV': 1.5, 'Newspapers': 1.5, 'Direct Mail — Prospects': 1.4, 'Direct Mail — Past Guests': 1.3, 'Radio': 1.2, 'Magazines': 1.2, 'Paid Social': 0.55, 'CTV': 0.7, 'Podcasts': 0.5, 'Programmatic Display': 0.8 },
+  general:    {}
+};
+const WEALTH_CHANNEL_AFFINITY = {
+  hnw:     { 'Magazines': 1.3, 'Direct Mail — Prospects': 1.25, 'Partner Media': 1.2, 'PR': 1.15, 'Podcasts': 1.1, 'Out-of-Home': 1.1, 'Retail Media': 0.7, 'Radio': 0.85, 'Programmatic Display': 0.85 },
+  wealthy: { 'Magazines': 1.15, 'Direct Mail — Prospects': 1.1, 'CTV': 1.1, 'Partner Media': 1.1, 'Retail Media': 0.9 },
+  middle:  { 'Retail Media': 1.25, 'Paid Social': 1.1, 'Radio': 1.1, 'Linear TV': 1.05, 'Programmatic Display': 1.05, 'Magazines': 0.85, 'Partner Media': 0.9 }
+};
+function audienceChannelMultiplier(channel){
+  const avg = (keys, table) => {
+    const vals = [...keys].map(k => (table[k] && table[k][channel] != null) ? table[k][channel] : 1);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 1;
+  };
+  const gens = (state.audience && state.audience.size) ? state.audience : new Set();
+  const tiers = (state.wealth && state.wealth.size) ? state.wealth : new Set();
+  return avg(gens, GENERATION_CHANNEL_AFFINITY) * avg(tiers, WEALTH_CHANNEL_AFFINITY);
+}
 function effectiveStageChannelWeights(stage){
   const override = INDUSTRY_STAGE_CHANNEL_WEIGHTS[state.industry];
-  if (override && override[stage]) return override[stage];
-  return STAGE_CHANNEL_WEIGHTS[stage] || {};
+  const base = (override && override[stage]) ? override[stage] : (STAGE_CHANNEL_WEIGHTS[stage] || {});
+  const hasProfile = (state.audience && state.audience.size) || (state.wealth && state.wealth.size);
+  if (!hasProfile) return base;
+  const adjusted = {};
+  let baseSum = 0, adjSum = 0;
+  Object.entries(base).forEach(([ch, w]) => { baseSum += w; adjusted[ch] = w * audienceChannelMultiplier(ch); adjSum += adjusted[ch]; });
+  if (!adjSum) return base;
+  Object.keys(adjusted).forEach(ch => { adjusted[ch] = adjusted[ch] * (baseSum / adjSum); });
+  return adjusted;
+}
+// One sentence saying what the current weights are actually based on, so the
+// Stage Weighting and Channel mix steps never read as unexplained numbers.
+function mpWeightingBasisText(){
+  const industry = state.industry || 'this industry';
+  const industryChan = INDUSTRY_STAGE_CHANNEL_WEIGHTS[state.industry] ? `${industry}-specific channel weights` : `our cross-industry channel weights (no ${industry}-specific table yet)`;
+  const stageNote = mswStageWeightsOverride ? "this account's own saved stage split" : (INDUSTRY_WEAK_STAGE[state.industry] ? `the ${industry} stage split (weighted toward ${INDUSTRY_WEAK_STAGE[state.industry]})` : 'the default stage split');
+  const gens = GENERATIONS.filter(g => state.audience && state.audience.has(g.key) && g.key !== 'general').map(g => g.label);
+  const tiers = WEALTH_TIERS.filter(t => state.wealth && state.wealth.has(t.key)).map(t => t.label);
+  const profile = (gens.length || tiers.length) ? ` adjusted for your audience's media consumption (${[...gens, ...tiers].join(', ')})` : ' (add generation and wealth tier in Company Profile to adjust for audience media consumption)';
+  return `Based on ${stageNote} and ${industryChan}${profile}.`;
 }
 
 // Round 132f (2026-08-09), per direct instruction — "We should be
@@ -13005,14 +13044,14 @@ function mswRenderStageWeightCard(){
     <tr>
       <td style="font-weight:600;"><span class="swatch" style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${STAGE_LOOP_COLORS[stage]};margin-right:8px;vertical-align:middle;"></span>${stage}</td>
       <td class="hint">${mswPct(d.default[stage])}${d.suggested ? ` · suggested ${mswPct(d.suggested[stage])}` : ''}</td>
-      <td><div style="display:flex;align-items:center;gap:4px;"><input type="number" min="0" max="100" step="0.5" value="${pct}" style="width:84px;padding:6px 8px;" onchange="mswEditStagePct('${stage}', this.value)"><span class="hint">%</span></div></td>
-      <td><div style="position:relative;min-width:150px;"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;">$</span><input type="number" min="0" step="1000" value="${dollars}" style="padding:6px 8px 6px 22px;width:100%;" ${budget > 0 ? '' : 'disabled title="Enter an Annual Marketing Budget in Step 1 first"'} onchange="mswEditStageDollars('${stage}', this.value)"></div></td>
+      <td><div class="field" style="margin:0;max-width:110px;"><div style="position:relative;"><input type="number" min="0" max="100" step="0.5" value="${pct}" style="padding-right:26px;" onchange="mswEditStagePct('${stage}', this.value)"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">%</span></div></div></td>
+      <td><div class="field" style="margin:0;min-width:160px;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="1000" value="${dollars}" style="padding-left:24px;" ${budget > 0 ? '' : 'disabled title="Enter the Working Marketing Budget in Step 1 first"'} onchange="mswEditStageDollars('${stage}', this.value)"></div></div></td>
     </tr>`;
   }).join('');
   const hasSuggestion = !!d.suggested;
   const hasOverride = !!d.override;
   body.innerHTML = `
-    <p class="hint" style="margin-top:0;">${budget > 0 ? `Your ${fmtMoney(budget)} Annual Marketing Budget, split across the 5 Media Loop stages.` : 'Enter an Annual Marketing Budget in Step 1 to see dollar totals per stage.'} ${hasOverride ? 'Using this account\'s own saved split.' : (INDUSTRY_WEAK_STAGE[state.industry] ? `Using the ${state.industry} industry split (weighted toward ${INDUSTRY_WEAK_STAGE[state.industry]}).` : 'Using the default split.')} Edit any % or $ — the other stages rebalance so the total stays at 100%, and the change saves to this account.</p>
+    <p class="hint" style="margin-top:0;">${budget > 0 ? `Your ${fmtMoney(budget)} Working Marketing Budget, split across the 5 Media Loop stages.` : 'Enter the Working Marketing Budget in Step 1 to see dollar totals per stage.'} ${mpWeightingBasisText()} Edit any % or $ — the other stages rebalance so the total stays at 100%, and the change saves to this account.</p>
     <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
       <thead><tr><th>Stage</th><th>Default</th><th>Share</th><th>Budget</th></tr></thead>
       <tbody>${stageRows}</tbody>
@@ -13026,6 +13065,7 @@ function mswRenderStageWeightCard(){
     <div class="btn-row" id="mpApplyMixRow" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
       <button type="button" class="btn-primary" onclick="applyRecommendedMix()" ${budget > 0 ? '' : 'disabled'}>${(state.mediaPlan && (state.mediaPlan.allocations || []).length) ? 'Rebuild channel mix from this split →' : 'Continue → build channel mix'}</button>
     </div>
+    <p class="hint" style="margin:6px 0 0;">Every stage's dollars then split across channels by our channel-by-stage weights, industry-specific where we have them, adjusted for your audience's generation and wealth profile. Only Active channels are considered.</p>
     <div class="hint" id="mpApplyMixFlag" style="display:none;"></div>`;
 }
 // Rebalance helper: set `stage` to `share` (0..1) and scale the other four
@@ -21548,59 +21588,24 @@ function mpRenderPlanSteps(){
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('mpStageWeightRow', exists || budget > 0);
   show('mpChannelStep', exists || hasAlloc);
+  show('mpChannelTail', exists || hasAlloc);
   const next = document.getElementById('mpStep1Next');
   if (next) next.textContent = (!exists && !(budget > 0)) ? 'Next: enter the budget above to unlock the stage weighting (Step 2).' : '';
 }
 
-// Round 132c14 (2026-08-17), per direct instruction — Purchase Year vs.
-// revenue reporting year framing. Travel/Cruise industries book far in
-// advance of when the trip sails and its revenue recognizes, so "gross
-// annual revenue" is ambiguous for them in a way it isn't for most other
-// verticals: it could mean what recognizes/reports THIS calendar year (a
-// blend of bookings made in up to 3 different purchase years), or what
-// THIS Plan Year's bookings will ultimately be worth once fully
-// recognized (Purchase Year revenue) — and Marketing/Revenue Management
-// plan against the latter. Only Travel-family industries get the
-// relabel; every other industry's field stays exactly as it was.
-const PURCHASE_YEAR_REVENUE_INDUSTRIES = ['Travel / Tourism', 'Cruise Lines — Luxury', 'Cruise Lines — Mass Market'];
-// Real, sourced split for this specific line of business, disclosed as
-// such rather than generalized to Mass Market Cruise or Travel/Tourism
-// broadly (no data on file for those) — see the Round 110 precedent on
-// not presenting an unsourced number as if it were data.
-const REVENUE_RECOGNITION_SCHEDULES = {
-  'Cruise Lines — Luxury': [
-    { yearsOut: 0, pct: 0.25, label: 'this calendar year' },
-    { yearsOut: 1, pct: 0.50, label: 'calendar year +1' },
-    { yearsOut: 2, pct: 0.25, label: 'calendar year +2' }
-  ]
-};
+// Round 8b (2026-09-05), per direct instruction: "Validate that we don't
+// have hard coded content." The Travel/Cruise-specific "Purchase Year
+// revenue" relabel, its long explanatory paragraph, and the Luxury Cruise
+// revenue-recognition schedule (25/50/25) were client-specific text baked
+// into the page. Removed: the revenue field now reads the same, neutral way
+// for every industry. (Industry still shapes the plan where we have real
+// per-industry inputs -- stage split, channel weights -- see
+// mpWeightingBasisText().)
 function mpRenderRevenueFraming(){
   const labelEl = document.getElementById('mpGrossRevenueLabel');
   const hintEl = document.getElementById('mpGrossRevenueHint');
-  const breakdownEl = document.getElementById('mpRevenueRecognitionBreakdown');
-  if (!labelEl || !hintEl || !breakdownEl) return;
-  const isPurchaseYear = PURCHASE_YEAR_REVENUE_INDUSTRIES.includes(state.industry);
-  if (!isPurchaseYear){
-    labelEl.textContent = 'Gross annual revenue (USD)';
-    hintEl.textContent = 'Not required, and never shown or shared outside this plan.';
-    breakdownEl.innerHTML = '';
-    return;
-  }
-  labelEl.textContent = `Purchase Year Revenue (USD) — ${mpSelectedYear} bookings`;
-  hintEl.textContent = `Travel bookings recognize as revenue over more than one calendar year, so this calendar year's reported/recognized revenue is a blend of bookings made in several different purchase years — not the same number as what ${mpSelectedYear}'s bookings are worth. Marketing and Revenue Management both plan against Purchase Year revenue: what this year's bookings ultimately total once fully recognized, not what reports this calendar year. Enter that Purchase Year figure here. Not required, and never shown or shared outside this plan.`;
-  const schedule = REVENUE_RECOGNITION_SCHEDULES[state.industry];
-  const revenue = Number((document.getElementById('mpGrossRevenue') || {}).value) || 0;
-  if (!schedule){
-    breakdownEl.innerHTML = '<div class="hint">No revenue-recognition split on file for this industry yet — enter the full Purchase Year figure regardless.</div>';
-    return;
-  }
-  const rows = schedule.map(s => `<li>${(s.pct * 100).toFixed(0)}% recognizes in ${s.label}${revenue ? ` — ${fmtMoney(revenue * s.pct)}` : ''}</li>`).join('');
-  breakdownEl.innerHTML = `
-    <div class="hint" style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;">
-      <strong>How ${mpSelectedYear} Purchase Year revenue recognizes:</strong>
-      <ul style="margin:4px 0 0 18px;padding:0;">${rows}</ul>
-      <span class="illustrative-tag">Luxury Cruise's real recognition split — not assumed for Mass Market Cruise or Travel/Tourism generally, which have no split on file.</span>
-    </div>`;
+  if (labelEl) labelEl.textContent = 'Gross annual revenue (USD)';
+  if (hintEl) hintEl.textContent = 'Not required, and never shown or shared outside this plan.';
 }
 
 // Round 132c13 (2026-08-17) — "apply a percentage of revenue" calculator,
@@ -22131,12 +22136,24 @@ function renderNwmSummary(){
 // already computes. Read-only by design (see the field's own HTML
 // comment) — always derived, never a value someone can edit out of sync.
 function renderMpTotalMarketingBudget(){
+  // Round 8b: Working + Non-working + Sales = Total Sales and Marketing;
+  // Non-working shows as its own read-only figure from the Non-Working
+  // Media lines.
   const el = document.getElementById('mpTotalMarketingBudgetDisplay');
-  if (!el) return;
+  const nwEl = document.getElementById('mpNonWorkingBudgetDisplay');
   const budgetInput = document.getElementById('mpTotalBudget');
   const working = budgetInput ? (Number(budgetInput.value) || 0) : 0;
-  const nonWorking = nwmGrandTotal();
-  el.value = fmtMoney(working + nonWorking);
+  const nonWorking = (state.mediaPlan ? nwmGrandTotal() : 0);
+  const sales = Number((document.getElementById('mpTradeMarketingBudget') || {}).value) || 0;
+  if (nwEl) nwEl.value = fmtMoney(nonWorking);
+  if (el) el.value = fmtMoney(working + nonWorking + sales);
+}
+let mpShowNonWorking = false;
+function mpShowNonWorkingLines(){
+  mpShowNonWorking = true;
+  if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
+  const card = document.getElementById('mpNonWorkingCard');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // Round 132bx (2026-08-15) — CSV upload mapped straight onto the table's
 // own 5 columns (Vendor Name, Marketing Function Support, Start Date, End
@@ -23055,7 +23072,7 @@ function renderMediaPlanGrid(){
             ${isDirectMail ? `<div class="hint" style="margin-top:6px;">Direct Mail CPM here is an average all-in per-piece cost (list + printing + postage) for a slim-jim format — actual format (e.g. postcard vs. slim-jim), list sourcing, and postage class (first-class vs. bulk) will move the real number.</div>` : ''}
             ${a.channel === 'Email — Remarketing' ? `<div class="hint" style="margin-top:6px;">This is the paid anonymous-ID reverse-append list acquisition/matching cost ($0.20/email acquired → $200 CPM) — distinct from the free house-list Internal Email send, which is always included at no media cost.</div>` : ''}
             ${isDemandFulfillment ? `<div class="hint" style="margin-top:6px;">Demand fulfillment — ${a.channel} captures demand other media already created, rather than generating new demand itself.</div>` : ''}
-            ${mpRenderPlaybookBlock(a)}
+
           </div>`;
         }).join('')}
       </div>
@@ -23228,8 +23245,14 @@ async function saveMediaPlan(){
   // flips to Active and the reporting view (charts, Active channels,
   // Non-Working Media, Upload history) appears.
   if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
+  if (typeof mpPlanEditing !== 'undefined') mpPlanEditing = false;
   if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
   renderPlanPacingChart(); renderBudgetTrackingChart(); renderChannelMixChart();
+  // Round 8: land on the unified Budget detail the plan just produced.
+  if (persisted && !mbuHasActiveBudget()){
+    const card = document.getElementById('mbuResultsCard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 // ============ Round 27 — the 3 charts leading the Budget screens ============
@@ -23558,7 +23581,7 @@ function renderMediaLoopMixChart(){
     </div>
     <div class="donut-svg-wrap" style="margin:0 auto 18px;display:flex;justify-content:center;">${pie.svg}</div>
     <div class="donut-legend">${legend}</div>
-    <p class="exec-caption">${usingDollars ? 'Your Annual Marketing Budget split' : 'Default split, shown as % — enter an Annual Marketing Budget in Step 1 to see dollars'} across the 5 Media Loop stages — the same numbers as the Stage Weighting table beside this, updating live as you edit either. <span class="illustrative-tag">Editorial heuristic, not a live MMM model</span> — ${mswStageWeightsOverride ? 'Using this account\'s own saved split.' : industryNote}</p>`;
+    <p class="exec-caption">${usingDollars ? 'Your Working Marketing Budget split' : 'Default split, shown as % — enter the Working Marketing Budget in Step 1 to see dollars'} across the 5 Media Loop stages — the same numbers as the Stage Weighting table beside this, updating live as you edit either. <span class="illustrative-tag">Editorial heuristic, not a live MMM model</span> — ${mswStageWeightsOverride ? 'Using this account\'s own saved split.' : industryNote}</p>`;
 }
 
 function toggleBudgetChartExpand(which){
@@ -23652,6 +23675,10 @@ async function renderMediaPlanStep(fromUpload){
   // no Setup path pre-selected, so a year with no budget shows Plan Setup
   // alone and a year with one shows the reporting view.
   if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
+  // Round 8: arriving from a just-confirmed upload opens the Media Plan
+  // steps so the plan can be built from it; any other visit shows the
+  // unified Budget detail with the steps tucked behind "Edit media plan."
+  if (typeof mpPlanEditing !== 'undefined') mpPlanEditing = !!fromUpload;
   // Round 132bx follow-on (2026-08-16) — history loads first so the year
   // row's "has saved data" dots and the default-year resolution just below
   // both have it available on the very first paint, not one render behind.
@@ -25327,6 +25354,7 @@ function renderMbuScopeRow(){
 function setMbuScope(scope){
   mbuSelectedScope = scope === 'international' ? 'international' : 'domestic';
   if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null; // Round 7: a new scope starts back at the Setup tiles
+  if (typeof mpPlanEditing !== 'undefined') mpPlanEditing = false;
   renderMbuScopeRow();
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
@@ -25354,6 +25382,7 @@ function renderMbuYearRow(){
 function setMbuYear(year){
   mbuSelectedYear = year;
   if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null; // Round 7: a new year starts back at the Setup tiles
+  if (typeof mpPlanEditing !== 'undefined') mpPlanEditing = false;
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
   if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
@@ -25787,6 +25816,9 @@ const MBU_FUNCTIONAL_GROUPS = {
   'Production': ['Production (Photo/Video/Creative)'],
   'Fulfillment & Collateral': ['Fulfillment & Collateral'],
   'Data & Technology': ['Data, Technology & Analytics'],
+  // Round 8 (2026-09-05): a Domestic file's single "International" line maps
+  // here as a total-only bucket (see VERILUME_BUDGET_CATEGORIES, backend).
+  'International': ['International — Total (not broken out)'],
   'Other': ['Other/Uncategorized']
 };
 
@@ -25850,10 +25882,19 @@ let mbuCustomCategories = [];    // client-created category names (bare, no "Cli
 let mbuManualCategories = new Set();
 let mbuManualCategoryBucket = {};
 
-async function mbuLoadCategoryMapping(){
-  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-mapping`);
-  if (!resp.ok) return;
-  mbuCategoryMappingData = await resp.json();
+// Round 8 (2026-09-05): client-editable display labels for Non-Working
+// categories ({ rawCategory: label }), loaded from the upload and saved with
+// "Submit as final" (POST .../category-labels).
+let mbuNonWorkingLabels = {};
+function mbuNonWorkingLabelEdited(rawCategory, value){
+  const clean = String(value || '').trim();
+  if (!clean || clean === rawCategory) delete mbuNonWorkingLabels[rawCategory]; else mbuNonWorkingLabels[rawCategory] = clean;
+}
+async function mbuLoadCategoryMapping(){
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-mapping`);
+  if (!resp.ok) return;
+  mbuCategoryMappingData = await resp.json();
+  mbuNonWorkingLabels = Object.assign({}, mbuCategoryMappingData.categoryLabels || {});
   mbuCategoryMappingChoices = {};
   // Round 2026-09-05, per direct simplification: only Working Media
   // categories go through this mapping step at all now — Non-Working is
@@ -26030,12 +26071,19 @@ function mbuManualCategoryRowHtml(label){
 // given, no Verilume-category mapping, no suggestion, nothing to choose.
 function mbuNonWorkingCategoryRowHtml(c){
   const detailId = `mbuMonthsNW-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  // Round 8 (2026-09-05), per direct instruction: non-working categories
+  // "should be editable should a client to update the name." The file's
+  // text is the key; what the client types here is the display label.
+  const label = mbuNonWorkingLabels[c.category] || c.label || c.category;
+  const safeRaw = c.category.replace(/'/g, "\\'");
   return `
     <div style="margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="flex:1 1 260px;min-width:200px;">
-          <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
-          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+        <div style="flex:1 1 200px;min-width:160px;">
+          <span class="hint" style="display:block;">Client's category — edit to rename</span>
+          <div class="field" style="margin:0;"><input type="text" value="${escapeHtml(label)}" style="padding:7px 10px;" oninput="mbuNonWorkingLabelEdited('${safeRaw}', this.value)"></div>
+          ${label !== c.category ? `<span class="hint" style="display:block;margin-top:2px;">in your file: ${escapeHtml(c.category)}</span>` : ''}
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;margin-top:4px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
         </div>
         <div style="flex:0 0 140px;text-align:right;">
           <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
@@ -26139,7 +26187,7 @@ function mbuRenderCategoryMapping(){
   const nonWorkingSectionHtml = `
     <div style="margin:0 0 20px;">
       <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;">Non-Working Media</p>
-      <p class="hint" style="margin:0 0 10px;">Listed exactly as your file gave it -- no mapping needed here.</p>
+      <p class="hint" style="margin:0 0 10px;">As your file gave it — no mapping needed. Edit a name to relabel it.</p>
       ${nonWorkingCats.length ? nonWorkingCats.map(mbuNonWorkingCategoryRowHtml).join('') : '<p class="hint">Nothing in your file was tagged Non-Working.</p>'}
       <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:4px;padding-top:8px;">
         <span style="font-size:0.8125rem;font-weight:600;">Total Non-Working Media on file</span>
@@ -26165,9 +26213,15 @@ function mbuRenderCategoryMapping(){
 
   body.innerHTML = `
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 4px;">Review your budget</p>
-    <p class="hint" style="margin:0 0 12px;">Only Working Media needs mapping to one of our standard categories -- for each one, your category is on the left and our best guess is the dropdown on the right; change it if it's wrong. Non-Working Media is listed exactly as your file gave it, no mapping needed.</p>
-    ${workingSectionHtml}
-    ${nonWorkingSectionHtml}
+    <p class="hint" style="margin:0 0 12px;">Working media on the left: your category, then our best-guess Verilume category as a dropdown — change it if it's wrong (a single "International" line can map to International — total only). Non-working spend on the right, listed as your file gave it — rename any line if you like; no mapping needed.</p>
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:24px;align-items:start;" class="mbd-two-col">
+      ${workingSectionHtml}
+      ${nonWorkingSectionHtml}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin:4px 0 16px;padding-top:8px;">
+      <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working + non-working, read-only)</span></span>
+      <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${(sectionTotal + nonWorkingTotal).toLocaleString()}</span>
+    </div>
     <div id="mbuExceptionsBlock">
     ${exceptionCount ? `
     <p style="font-size:0.8125rem;font-weight:600;margin:16px 0 6px;color:#b8860b;">⚠ Still needs a category -- ${exceptionCount} item${exceptionCount === 1 ? '' : 's'}</p>
@@ -26217,6 +26271,20 @@ async function mbuSubmitFinal(){
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ overrides: overridesToSend })
       });
+    }
+    // Round 8: non-working display labels (send the full set; the backend
+    // clears any label that equals the raw text or is blank).
+    {
+      const labelsToSend = {};
+      const known = Object.assign({}, (mbuCategoryMappingData && mbuCategoryMappingData.categoryLabels) || {});
+      Object.keys(known).forEach(raw => { labelsToSend[raw] = mbuNonWorkingLabels[raw] || ''; });
+      Object.entries(mbuNonWorkingLabels).forEach(([raw, label]) => { labelsToSend[raw] = label; });
+      if (Object.keys(labelsToSend).length){
+        await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-labels`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ labels: labelsToSend })
+        });
+      }
     }
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/confirm-categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -26298,6 +26366,229 @@ async function mbuSubmitFinal(){
   }
 }
 
+// ============ Round 8 (2026-09-05) — unified Budget detail ============
+// Per direct instruction: "The entire flow should end up in the same for
+// both upload and manual based on what is added. We have 4 components:
+// a) Marketing Loop allocations, b) Aggregate channel totals, c) Detailed
+// sub-channels rolling up to totals (e.g., Digital = social, search,
+// display). The sub-channels feed the totals." (d, confirmed: monthly
+// distribution.) One view model, two builders (an uploaded budget, a saved
+// Media Plan), one renderer (mbdRenderUnified) -- so whichever way a budget
+// was created, the Budget detail card reads the same way.
+//
+// View model:
+//   { source: 'upload'|'plan', title, stages: {stage: $}, stageBasis,
+//     channels: [{ label, total, subs: [{ label, total, months: {jan..dec}|null }] }],
+//     months: {jan..dec} (working, summed from subs) | null,
+//     nonWorking: [{ label, total, months|null }],
+//     monthlyMode: 'flat'|'curve'|'manual'|null }
+const MBD_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+// MMM (Media Plan) channel -> Total Channel label, kept in the same
+// vocabulary as MBU_FUNCTIONAL_GROUPS' keys so an uploaded budget and a
+// hand-built plan roll up to the same totals.
+const MBD_MMM_TO_GROUP = {
+  'Direct Mail — Prospects': 'Direct Mail', 'Direct Mail — Past Guests': 'Direct Mail', 'Direct Mail — Inquiries': 'Direct Mail',
+  'Linear TV': 'TV', 'OTV': 'TV', 'CTV': 'TV',
+  'Paid Social': 'Digital', 'Brand Search': 'Digital', 'Non-Brand Search': 'Digital', 'Programmatic Display': 'Digital',
+  'Partner Media': 'Partnerships', 'Retail Media': 'Partnerships',
+  'Podcasts': 'Podcasts',
+  'Internal Email': 'Email', 'Email — Remarketing': 'Email', 'Remarketing': 'Email',
+  'PR': 'Public Relations',
+  'Magazines': 'Consumer Print Advertising', 'Newspapers': 'Consumer Print Advertising',
+  'Out-of-Home': 'Out-of-Home', 'Radio': 'Radio',
+  'Field / ABM': 'Trade'
+};
+function mbdGroupForVerilume(cat){
+  if (!cat) return 'Other';
+  if (/^Client: /.test(cat)) return 'Your Categories';
+  for (const [group, cats] of Object.entries(MBU_FUNCTIONAL_GROUPS)){ if (cats.includes(cat)) return group; }
+  return 'Other';
+}
+// Stage shares for one Verilume category: its crosswalked MMM channels'
+// weights per stage (the same channel-by-stage research the manual mix
+// uses), normalized across the five stages. A category with no crosswalk
+// (the additive subcategories, International total-only, non-media lines)
+// falls back to the account's own stage split -- per the pre-answered
+// decision "derive from our stage research."
+function mbdStageSharesForVerilume(cat, crosswalk){
+  const chans = (crosswalk && crosswalk[cat]) || [];
+  const raw = {};
+  let sum = 0;
+  MEDIA_LOOP_STAGES.forEach(stage => {
+    const w = effectiveStageChannelWeights(stage);
+    raw[stage] = chans.reduce((s, ch) => s + (w[ch] || 0), 0);
+    sum += raw[stage];
+  });
+  if (sum > 0){ MEDIA_LOOP_STAGES.forEach(st => { raw[st] = raw[st] / sum; }); return { shares: raw, derived: true }; }
+  return { shares: getIndustryStageWeights(state.industry), derived: false };
+}
+function mbdSumMonths(list){
+  // Only months that at least one line actually carries a figure for get a
+  // number; the rest stay null (rendered as "—"), so a total-only file
+  // doesn't read as twelve $0 months.
+  let any = false; const out = {};
+  list.forEach(months => { if (!months) return; MBD_MONTHS.forEach(m => { if (months[m] != null && months[m] !== ''){ out[m] = (out[m] || 0) + (Number(months[m]) || 0); any = true; } }); });
+  return any ? out : null;
+}
+function mbdModelFromUpload(detail){
+  const byCat = detail.byVerilumeCategory || {};
+  const byCatMonthly = detail.byVerilumeCategoryMonthly || {};
+  const crosswalk = detail.verilumeToMmm || {};
+  const groups = {};
+  const stages = {}; MEDIA_LOOP_STAGES.forEach(st => { stages[st] = 0; });
+  let derivedCount = 0, fallbackCount = 0;
+  Object.entries(byCat).forEach(([cat, total]) => {
+    const amt = Number(total) || 0;
+    const g = mbdGroupForVerilume(cat);
+    if (!groups[g]) groups[g] = { label: g, total: 0, subs: [] };
+    groups[g].total += amt;
+    groups[g].subs.push({ label: cat.replace(/^Client: /, ''), total: amt, months: byCatMonthly[cat] || null });
+    const { shares, derived } = mbdStageSharesForVerilume(cat, crosswalk);
+    if (derived) derivedCount++; else fallbackCount++;
+    MEDIA_LOOP_STAGES.forEach(st => { stages[st] += amt * (shares[st] || 0); });
+  });
+  const channels = Object.values(groups).map(g => { g.subs.sort((a, b) => b.total - a.total); return g; }).sort((a, b) => b.total - a.total);
+  const nonWorking = (detail.nonWorkingLedger || []).map(c => ({ label: c.label || c.category, total: Number(c.total) || 0, months: c.months || null }));
+  return {
+    source: 'upload', uploadId: detail.id,
+    title: `${detail.year || ''} ${detail.scope === 'international' ? 'International' : 'Domestic'} budget — from "${detail.fileName || 'upload'}"`.trim(),
+    stages, stageBasis: derivedCount ? `Loop stages derived from our channel-by-stage research${fallbackCount ? ` (${fallbackCount} categor${fallbackCount === 1 ? 'y' : 'ies'} with no channel research use the account's stage split)` : ''}.` : "Loop stages use the account's stage split (no channel research for these categories).",
+    channels, months: mbdSumMonths(channels.flatMap(g => g.subs.map(s => s.months))), nonWorking, monthlyMode: null
+  };
+}
+function mbdModelFromPlan(plan){
+  const allocs = (plan && plan.allocations) || [];
+  const groups = {};
+  const stages = {}; MEDIA_LOOP_STAGES.forEach(st => { stages[st] = 0; });
+  allocs.forEach(a => {
+    const amt = Number(a.approvedAmount) || 0;
+    const g = MBD_MMM_TO_GROUP[a.channel] || 'Other';
+    if (!groups[g]) groups[g] = { label: g, total: 0, subs: [] };
+    groups[g].total += amt;
+    const months = {};
+    let anyMonth = false;
+    (a.periods || []).forEach(p => { const key = String(p.label || '').slice(0, 3).toLowerCase(); if (MBD_MONTHS.includes(key)){ months[key] = (months[key] || 0) + (Number(p.approvedAmount) || 0); anyMonth = true; } });
+    const existing = groups[g].subs.find(sb => sb.label === a.channel);
+    if (existing){ existing.total += amt; if (anyMonth){ MBD_MONTHS.forEach(m => { if (months[m] != null) existing.months = Object.assign(existing.months || {}, { [m]: ((existing.months || {})[m] || 0) + months[m] }); }); } }
+    else groups[g].subs.push({ label: a.channel, total: amt, months: anyMonth ? months : null });
+    if (stages[a.stage] != null) stages[a.stage] += amt;
+  });
+  const channels = Object.values(groups).map(g => { g.subs.sort((a, b) => b.total - a.total); return g; }).sort((a, b) => b.total - a.total);
+  const nonWorking = ((plan && plan.nonWorkingMedia) || []).map(r => {
+    // Non-Working Media rows keep their months as row.monthly[MonthLabel]
+    // (see blankNwmRow/nwmRowTotal); the label is the client's own label
+    // when set, else the vendor name, else the function.
+    const months = {}; let any = false;
+    MBD_MONTHS.forEach((m, i) => { const v = r.monthly ? r.monthly[MONTH_LABELS[i]] : null; if (v != null && v !== ''){ months[m] = Number(v) || 0; any = true; } });
+    const total = any ? MBD_MONTHS.reduce((s2, m) => s2 + (months[m] || 0), 0) : 0;
+    return { label: r.clientLabel || r.vendorName || r.supportingFunction || 'Non-working line', total, months: any ? months : null };
+  });
+  return {
+    source: 'plan', title: `${(plan && plan.year) || mpSelectedYear} Domestic budget — Media Plan`,
+    stages, stageBasis: 'Loop stages as allocated in the plan.',
+    channels, months: mbdSumMonths(channels.flatMap(g => g.subs.map(s => s.months))), nonWorking, monthlyMode: (plan && plan.monthlyMode) || 'flat'
+  };
+}
+function mbdMoneyCells(months, strong){
+  return MBD_MONTHS.map(m => `<td style="white-space:nowrap;text-align:right;${strong ? 'font-weight:700;' : ''}">${months && months[m] != null ? '$' + Math.round(months[m]).toLocaleString() : '—'}</td>`).join('');
+}
+function mbdToggle(id){ const el = document.getElementById(id); if (el) el.hidden = !el.hidden; }
+function mbdRenderUnified(model, opts){
+  opts = opts || {};
+  const working = model.channels.reduce((s, g) => s + g.total, 0);
+  const nonWorkingTotal = model.nonWorking.reduce((s, r) => s + r.total, 0);
+  const uid = `mbd${Date.now().toString(36)}`;
+  // (a) Marketing Loop allocations
+  const stageRows = MEDIA_LOOP_STAGES.map(st => {
+    const amt = model.stages[st] || 0; const pct = working > 0 ? amt / working : 0;
+    return `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${STAGE_LOOP_COLORS[st]};margin-right:8px;vertical-align:middle;"></span>${st}</td><td style="text-align:right;font-weight:600;">$${Math.round(amt).toLocaleString()}</td><td style="text-align:right;color:var(--muted);">${(pct * 100).toFixed(1)}%</td><td style="width:40%;"><div style="height:8px;background:var(--paper-dim);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${Math.min(100, pct * 100).toFixed(1)}%;background:${STAGE_LOOP_COLORS[st]};"></div></div></td></tr>`;
+  }).join('');
+  // (b)+(c) channel totals with sub-channels; right column non-working
+  const channelRows = model.channels.map((g, gi) => {
+    const subId = `${uid}-g${gi}`;
+    const subRows = g.subs.map(sb => `<tr class="mbd-sub"><td style="padding-left:28px;color:var(--muted);">↳ ${escapeHtml(sb.label)}</td><td style="text-align:right;">$${Math.round(sb.total).toLocaleString()}</td><td style="text-align:right;color:var(--muted);">${working > 0 ? ((sb.total / working) * 100).toFixed(1) : '0.0'}%</td></tr>`).join('');
+    return `<tr style="border-top:1px solid var(--line);"><td style="font-weight:700;"><button type="button" class="btn-ghost" style="font-size:0.7rem;padding:1px 7px;margin-right:6px;" onclick="mbdToggle('${subId}')">${g.subs.length}</button>${escapeHtml(g.label)}</td><td style="text-align:right;font-weight:700;">$${Math.round(g.total).toLocaleString()}</td><td style="text-align:right;color:var(--muted);">${working > 0 ? ((g.total / working) * 100).toFixed(1) : '0.0'}%</td></tr>
+      <tbody id="${subId}" hidden>${subRows}</tbody>`;
+  }).join('');
+  const nwRows = model.nonWorking.map(r => `<tr><td>${escapeHtml(r.label)}</td><td style="text-align:right;font-weight:600;">$${Math.round(r.total).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="2" class="hint">No non-working spend on file.</td></tr>';
+  // (d) monthly
+  const nwMonths = mbdSumMonths(model.nonWorking.map(r => r.months));
+  const monthHeads = MBD_MONTHS.map(m => `<th style="text-align:right;">${m[0].toUpperCase()}${m.slice(1)}</th>`).join('');
+  const monthlyHtml = (model.months || nwMonths) ? `
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;min-width:1020px;">
+      <thead><tr><th></th>${monthHeads}<th style="text-align:right;">Total</th></tr></thead>
+      <tbody>
+        <tr><td style="font-weight:600;">Working media</td>${mbdMoneyCells(model.months)}<td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td></tr>
+        <tr><td style="font-weight:600;">Non-working</td>${mbdMoneyCells(nwMonths)}<td style="text-align:right;font-weight:700;">$${Math.round(nonWorkingTotal).toLocaleString()}</td></tr>
+        <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total marketing spend</td>${mbdMoneyCells(mbdSumMonths([model.months, nwMonths]), true)}<td style="text-align:right;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</td></tr>
+      </tbody>
+    </table></div>
+    ${model.monthlyMode ? `<p class="hint" style="margin:6px 0 0;">Monthly curve: ${({ flat: 'Flat (even split)', curve: 'Revenue curve', manual: 'Custom %' })[model.monthlyMode] || model.monthlyMode}.</p>` : ''}` : '<p class="hint">No month-by-month figures on file — totals only.</p>';
+  const sectionHead = (n, title, hint) => `<div style="margin:18px 0 8px;"><span class="kicker" style="margin-right:8px;">${n}</span><span style="font-weight:700;">${title}</span>${hint ? `<span class="hint" style="margin-left:8px;">${hint}</span>` : ''}</div>`;
+  return `
+    <p class="hint" style="margin:0 0 4px;">${escapeHtml(model.title)}</p>
+    ${opts.actionsHtml || ''}
+    ${sectionHead('A', 'Marketing Loop allocations', model.stageBasis)}
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Stage</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th><th></th></tr></thead><tbody>${stageRows}</tbody></table></div>
+    ${sectionHead('B · C', 'Channel totals and sub-channels', 'Sub-channels roll up to each total — click the count to expand.')}
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px;align-items:start;" class="mbd-two-col">
+      <div>
+        <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--cx);margin:0 0 6px;">Working media</p>
+        <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Channel</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th></tr></thead>${channelRows}
+          <tbody><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td><td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td><td style="text-align:right;">100%</td></tr></tbody></table></div>
+      </div>
+      <div>
+        <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 6px;">Non-working media</p>
+        <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Line</th><th style="text-align:right;">Budget</th></tr></thead><tbody>${nwRows}
+          <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total non-working</td><td style="text-align:right;font-weight:700;">$${Math.round(nonWorkingTotal).toLocaleString()}</td></tr></tbody></table></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:12px;padding-top:8px;">
+      <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working + non-working, read-only)</span></span>
+      <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</span>
+    </div>
+    ${sectionHead('D', 'Monthly distribution')}
+    ${monthlyHtml}`;
+}
+// Show the unified view for the selected year's budget: a confirmed upload
+// wins (it's the client's real numbers); otherwise the saved Media Plan.
+let mbdLoadedUploadId = null;
+let mpPlanEditing = false;
+async function mbdShowForUpload(uploadId){
+  if (!uploadId || !state.companyId) return;
+  if (mbdLoadedUploadId === uploadId && document.getElementById('mbuResultsCard') && document.getElementById('mbuResultsCard').style.display !== 'none') return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}`);
+    if (!resp.ok) return;
+    const detail = await resp.json();
+    mbdLoadedUploadId = uploadId;
+    mbuAnalysis = mbuAnalysis && mbuAnalysis.id === uploadId ? mbuAnalysis : { id: uploadId, layout: detail.layout, status: detail.status, year: detail.year };
+    mbuRenderResults(detail);
+  } catch (e){ /* leave whatever is showing */ }
+}
+function mbdShowForPlan(){
+  const card = document.getElementById('mbuResultsCard');
+  const body = document.getElementById('mbuResultsBody');
+  if (!card || !body || !state.mediaPlan) return;
+  card.style.display = '';
+  mbdLoadedUploadId = null;
+  const actions = `<div class="btn-row" style="margin:6px 0 10px;">
+      <button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button>
+      <button type="button" class="btn-ghost" onclick="mediaPlanExport && mediaPlanExport('csv')">⬇ Download plan (CSV) →</button>
+    </div>`;
+  body.innerHTML = mbdRenderUnified(mbdModelFromPlan(state.mediaPlan), { actionsHtml: actions });
+}
+function mpStartEditingPlan(){
+  mpPlanEditing = true;
+  if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
+  const sec = document.getElementById('mpPlanSection');
+  if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function mpStopEditingPlan(){
+  mpPlanEditing = false;
+  if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
+}
+
 function mbuRenderResults(data){
   const card = document.getElementById('mbuResultsCard');
   const body = document.getElementById('mbuResultsBody');
@@ -26359,53 +26650,37 @@ function mbuRenderResults(data){
     </tr>
     <tr id="${detailId}" hidden><td colspan="2">${mbuMonthlyDetailHtml(c.months || {})}</td></tr>`;
   }).join('');
-  body.innerHTML = `
+  // Round 8 (2026-09-05): the confirmed view IS the unified Budget detail
+  // (mbdRenderUnified) -- the same four components a saved Media Plan shows,
+  // built here from the upload's rollups. The raw imported line items stay
+  // available under a toggle for anyone checking the import itself.
+  const lineItemsId = `mbuLineItems-${String(data.id || '').replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const actions = `
+    <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
+      <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">✎ Edit categories &amp; labels →</button>
+      ${isAvailable ? `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>` : ''}
+      ${isAvailable && (data.scope || 'domestic') === 'domestic' ? `<button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">${(state.mediaPlan && (state.mediaPlan.allocations || []).length) ? '✎ Edit media plan (Steps 1–4) →' : '▶ Build the media plan from this budget (Steps 1–4) →'}</button>` : ''}
+      <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
+    </div>`;
+  const statusLine = `
     <p class="hint" style="margin-top:0;">
       ${isAvailable ? '<span style="color:var(--cx);font-weight:600;">✓ Confirmed — available to use</span>' : '<span style="color:#b8860b;font-weight:600;">⚠ Not yet available — category mapping incomplete</span>'}
-      · ${cats.length} categor${cats.length === 1 ? 'y' : 'ies'} imported. Sum across all categories: <strong>$${grand.toLocaleString()}</strong>. If this file had subtotal or grand-total rows the mapping step didn't catch, double-check this sum against the source file before treating it as the account's real total — subtotal rows left un-excluded will inflate it.
+      · ${cats.length} categor${cats.length === 1 ? 'y' : 'ies'} imported, $${grand.toLocaleString()} across all line items.
     </p>
-    ${outliers.length ? `<p class="hint" style="color:#b8860b;">⚠ ${outliers.length} categor${outliers.length === 1 ? 'y makes' : 'ies make'} up more than 35% of the total on its own (${outliers.map(o => escapeHtml(o.category)).join(', ')}) — that's a common sign of an un-excluded subtotal or grand-total row rather than a real line item. Worth checking against the source file.</p>` : ''}
-    ${isAvailable ? `
-    <p style="font-size:0.8125rem;font-weight:600;margin:14px 0 6px;">Working Media — rolled up by Verilume category</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
-      <thead><tr><th>Verilume category</th><th>Total</th></tr></thead>
-      <tbody>${verilumeRows}</tbody>
-    </table></div>
-    <p style="font-size:0.8125rem;font-weight:600;margin:14px 0 6px;">Non-Working Media — as listed in your file</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
-      <thead><tr><th>Your category</th><th>Total</th></tr></thead>
-      <tbody>${nonWorkingRows || '<tr><td colspan="2">Nothing in this file was tagged Non-Working.</td></tr>'}</tbody>
-    </table></div>
-    ${(() => {
-      // Round 6 (2026-09-05), per direct instruction: "Add non-working
-      // spend column under working media column to maintain a flow from
-      // top to bottom." Interpreted as: the Working Media table above and
-      // the Non-Working Media table just above this both stop at their
-      // own subtotal with no combined view — a single summary block right
-      // underneath both, in the same continuous scroll, so a reader sees
-      // Working, Non-Working, and the combined Total Marketing Budget
-      // without leaving this card (a literal shared per-row column wasn't
-      // used since Non-Working Media isn't broken out by the same
-      // categories as Working Media — there's no real per-row alignment
-      // between the two).
-      const workingTotal = Object.values(byVerilume || {}).reduce((s, v) => s + Number(v || 0), 0);
-      const nonWorkingTotal = nonWorkingLedger.reduce((s, c) => s + Number(c.total || 0), 0);
-      return `
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
-      <tbody>
-        <tr><td>Total Working Media</td><td style="font-weight:600;">$${workingTotal.toLocaleString()}</td></tr>
-        <tr><td>Total Non-Working Media</td><td style="font-weight:600;">$${nonWorkingTotal.toLocaleString()}</td></tr>
-        <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total Marketing Budget</td><td style="font-weight:700;color:var(--cx);">$${(workingTotal + nonWorkingTotal).toLocaleString()}</td></tr>
-      </tbody>
-    </table></div>`;
-    })()}` : ''}
-    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Line items (raw category → Verilume category)</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;">
-      <thead><tr><th>Your category</th><th>Verilume category</th><th>Working/Non-Working</th><th>Sum of months</th><th>Annual total (from file)</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5">No line items imported.</td></tr>'}</tbody>
-    </table></div>
-    <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">Edit category mapping →</button>
-    ${isAvailable ? `<button type="button" class="btn-primary" style="margin-left:8px;" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>` : ''}`;
+    ${outliers.length ? `<p class="hint" style="color:#b8860b;">⚠ ${outliers.length} categor${outliers.length === 1 ? 'y makes' : 'ies make'} up more than 35% of the total on its own (${outliers.map(o => escapeHtml(o.category)).join(', ')}) — that's a common sign of an un-excluded subtotal or grand-total row rather than a real line item. Worth checking against the source file.</p>` : ''}`;
+  const lineItemsHtml = `
+    <div id="${lineItemsId}" hidden style="margin-top:14px;">
+      <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Imported line items (your category → Verilume category)</p>
+      <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;">
+        <thead><tr><th>Your category</th><th>Verilume category</th><th>Working/Non-Working</th><th>Sum of months</th><th>Annual total (from file)</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5">No line items imported.</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+  if (isAvailable){
+    body.innerHTML = statusLine + mbdRenderUnified(mbdModelFromUpload(data), { actionsHtml: actions }) + lineItemsHtml;
+  } else {
+    body.innerHTML = statusLine + actions + lineItemsHtml;
+  }
 }
 
 // Round 2026-09-05 (Plan Setup reorg), per direct instruction: "Excel
@@ -26789,9 +27064,12 @@ function mbuApplyPageMode(){
   // it's only force-hidden in the bare Setup state so nothing stale lingers.
   if (!exists && !path) show('mbuResultsCard', false);
   show('budgetChartGrid', exists);
-  show('mpPlanSection', exists || path === 'manual');
+  // Round 8: once a budget exists, the unified Budget detail card is the
+  // view; the Media Plan steps (the editing surface) only show while the
+  // person is editing/building the plan (mpStartEditingPlan).
+  show('mpPlanSection', (!exists && path === 'manual') || (exists && (typeof mpPlanEditing !== 'undefined' && mpPlanEditing)));
   show('mbuActiveChannelsCard', exists || path === 'manual');
-  show('mpNonWorkingCard', exists);
+  show('mpNonWorkingCard', exists || (path === 'manual' && (typeof mpShowNonWorking !== 'undefined' && mpShowNonWorking)));
   show('mbuHistoryCard', exists);
   if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
 }
@@ -26824,8 +27102,11 @@ function mbuRenderPlanSetup(){
     mount.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} ${mbuScopeLabel(mbuSelectedScope)} budget is confirmed${active.fileName ? ` ("${escapeHtml(active.fileName)}")` : ''} and driving this year's Media Plan.</span>
-        <button type="button" class="btn-primary" onclick="mbuOpenExistingUpload('${active.id}')">View budget detail →</button>
+        <button type="button" class="btn-primary" onclick="document.getElementById('mbuResultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>
       </div>`;
+    // Round 8: the unified Budget detail loads automatically for the active
+    // budget (guarded against refetching the same upload).
+    if (typeof mbdShowForUpload === 'function') mbdShowForUpload(active.id);
     return;
   }
   if (mbuSelectedScope === 'domestic' && mpHasSavedPlan()){
@@ -26833,8 +27114,9 @@ function mbuRenderPlanSetup(){
     mount.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} Media Plan saved${Number(p.totalBudget) > 0 ? ` (${fmtMoney(p.totalBudget)} working media, ${(p.allocations || []).length} channel${(p.allocations || []).length === 1 ? '' : 's'})` : ''}.</span>
-        <button type="button" class="btn-primary" onclick="document.getElementById('mpPlanSection').scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>
+        <button type="button" class="btn-primary" onclick="document.getElementById('mbuResultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>
       </div>`;
+    if (typeof mbdShowForPlan === 'function') mbdShowForPlan();
     return;
   }
   // ---- Setup state ----
