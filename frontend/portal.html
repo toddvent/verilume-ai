@@ -7517,6 +7517,49 @@
       </div>
     </div>
 
+    <!-- Round 6 (2026-09-05), per direct instruction: "Selecting Manual
+         should start with the Annual Marketing total or option to
+         calculate based Gross Revenue (manual) * Target Marketing
+         Allocation % as the starting point. The next view will be the
+         total channel recommendations incorporating our channel
+         weighting research." Step A of the restructured Manual flow —
+         hidden until mbuStartManual() reveals it; "Continue" (Step B,
+         mbuManualSetupContinue()) creates the upload and pre-fills the
+         category grid before mbuResultsCard is shown. -->
+    <div class="sk-card" id="mbuManualSetupCard" style="display:none;margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Setup — Manual</div><h3>Set your Annual Marketing Budget</h3></div>
+        <div class="hicon">✎</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Start with your Annual Marketing Budget — type it directly, or calculate it from Gross Revenue × Target Marketing Allocation %. The next step pre-fills a category grid using our channel-weighting research, which you review and adjust before saving.</p>
+        <div class="stage-row" style="margin-bottom:12px;">
+          <button type="button" class="stage-tile selected" id="mbuManualModeDirectBtn" onclick="mbuSetManualBudgetMode('direct')">Type an amount</button>
+          <button type="button" class="stage-tile" id="mbuManualModeCalcBtn" onclick="mbuSetManualBudgetMode('calc')">Calculate from revenue</button>
+        </div>
+        <div class="field" id="mbuManualDirectField">
+          <label>Annual Marketing Budget (USD)</label>
+          <input type="number" id="mbuManualBudgetInput" min="0" step="1000" placeholder="e.g. 1200000" oninput="mbuUpdateManualBudgetPreview()">
+        </div>
+        <div id="mbuManualCalcFields" style="display:none;">
+          <div class="field">
+            <label>Gross annual revenue (USD)</label>
+            <input type="number" id="mbuManualGrossRevenueInput" min="0" step="1000" placeholder="e.g. 15000000" oninput="mbuUpdateManualBudgetPreview()">
+          </div>
+          <div class="field">
+            <label>Target Marketing Allocation (%)</label>
+            <input type="number" id="mbuManualAllocationPctInput" min="0" max="100" step="0.1" placeholder="e.g. 7" oninput="mbuUpdateManualBudgetPreview()">
+          </div>
+          <p class="hint" id="mbuManualCalcPreview"></p>
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-primary" onclick="mbuManualSetupContinue()">Continue → pre-fill recommended mix</button>
+          <button type="button" class="btn-ghost" onclick="mbuCancelManualSetup()">Cancel</button>
+        </div>
+        <p class="hint" id="mbuManualSetupStatus" style="margin-top:8px;"></p>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuUploadCard" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
         <div class="htext"><div class="kicker">Setup — Upload</div><h3>Upload your budget file</h3></div>
@@ -7774,10 +7817,25 @@
              unchanged. -->
         <div class="field">
           <label>Annual Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
-          <input type="number" id="mpTotalBudget" min="0" step="1000" placeholder="e.g. 1200000" required oninput="renderMediaPlanGrid(); clearMediaPlanBudgetError(); updateBudgetRevenueContext(); renderNwmSummary(); renderMediaLoopMixChart();" onblur="validateMediaPlanBudget()">
+          <input type="number" id="mpTotalBudget" min="0" step="1000" placeholder="e.g. 1200000" required oninput="renderMediaPlanGrid(); clearMediaPlanBudgetError(); updateBudgetRevenueContext(); renderNwmSummary(); renderMediaLoopMixChart(); renderMpTotalMarketingBudget();" onblur="validateMediaPlanBudget()">
           <div class="rr-error" id="mpTotalBudgetError" style="display:none;"></div>
           <div class="hint" id="mpBudgetRevenuePct" style="display:none;"></div>
           <div id="mpForecastSuggestion"></div>
+        </div>
+        <!-- Round 6 (2026-09-05), per direct instruction: "Add a Total
+             Marketing Budget that is SUM of Working and Non-Working
+             media." Read-only, always computed -- never directly
+             editable, never out of sync -- from the Annual Marketing
+             Budget above (Working Media) plus the Non-Working Media
+             table's own Spend total below. See renderMpTotalMarketingBudget(),
+             called from mpTotalBudget's own oninput and from
+             renderNwmSummary() (so either side changing keeps this
+             current), plus once on initial paint
+             (renderMediaPlanFieldsAndCharts()). -->
+        <div class="field">
+          <label>Total Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— Working + Non-Working, calculated</span></label>
+          <input type="text" id="mpTotalMarketingBudgetDisplay" readonly disabled style="background:var(--paper-dim);color:var(--ink);cursor:not-allowed;">
+          <div class="hint">Always Annual Marketing Budget (Working Media, above) plus the Non-Working Media table's Spend total (below) — not editable here directly; change either of those to change this.</div>
         </div>
         <!-- Round 132c13 (2026-08-17), per direct instruction — a second,
              separate budget line for sales/trade marketing (e.g. trade-show
@@ -22094,6 +22152,15 @@ function blankNwmRow(rowId){
     id: rowId || `nwm-${Date.now()}-${state.mediaPlan.nonWorkingMedia.length}`,
     vendorName: '',
     supportingFunction: NON_WORKING_MEDIA_FUNCTIONS[0],
+    // Round 6 (2026-09-05), per direct instruction: "Add non-working media
+    // label added by client under working media category drop-down. Add
+    // option for client to edit." A free-text label the client owns and
+    // can edit any time (see updateNwmClientLabel() below) -- distinct
+    // from Marketing Function Support (the fixed dropdown taxonomy), for
+    // when that taxonomy doesn't say enough on its own (e.g. which
+    // specific initiative or internal cost-center this vendor's spend
+    // belongs to).
+    clientLabel: '',
     startDate: '',
     endDate: '',
     // Round 132c17 (2026-08-17), per direct instruction: "All expenses must
@@ -22125,6 +22192,12 @@ function updateNwmFunction(id, value){
   ensureNonWorkingMedia();
   const row = state.mediaPlan.nonWorkingMedia.find(r => r.id === id);
   if (row) row.supportingFunction = value;
+}
+// Round 6 (2026-09-05) — see blankNwmRow()'s clientLabel comment above.
+function updateNwmClientLabel(id, value){
+  ensureNonWorkingMedia();
+  const row = state.mediaPlan.nonWorkingMedia.find(r => r.id === id);
+  if (row) row.clientLabel = value;
 }
 // Round 132c17 (2026-08-17) — see blankNwmRow()'s comment above.
 function updateNwmCampaignId(id, value){
@@ -22185,6 +22258,23 @@ function renderNwmSummary(){
   }
   const pct = (total / budget) * 100;
   el.textContent = `${fmtMoney(total)} total non-working media — ${pct.toFixed(1)}% of the ${fmtMoney(budget)} Annual Marketing Budget (reference guideline: ~${NON_WORKING_MEDIA_GUIDELINE_PCT}%, or ${fmtMoney(guideline)}).`;
+  renderMpTotalMarketingBudget();
+}
+// Round 6 (2026-09-05), per direct instruction: "Add a Total Marketing
+// Budget that is SUM of Working and Non-Working media." Working Media here
+// is the Annual Marketing Budget field itself (#mpTotalBudget) — the field
+// "Apply recommended mix" already builds the channel allocation grid from,
+// i.e. this plan's own definition of working media spend; Non-Working is
+// nwmGrandTotal(), the same Spend-column sum renderNwmSummary() above
+// already computes. Read-only by design (see the field's own HTML
+// comment) — always derived, never a value someone can edit out of sync.
+function renderMpTotalMarketingBudget(){
+  const el = document.getElementById('mpTotalMarketingBudgetDisplay');
+  if (!el) return;
+  const budgetInput = document.getElementById('mpTotalBudget');
+  const working = budgetInput ? (Number(budgetInput.value) || 0) : 0;
+  const nonWorking = nwmGrandTotal();
+  el.value = fmtMoney(working + nonWorking);
 }
 // Round 132bx (2026-08-15) — CSV upload mapped straight onto the table's
 // own 5 columns (Vendor Name, Marketing Function Support, Start Date, End
@@ -22202,6 +22292,7 @@ function nwmParseUploadCsv(text){
   const col = (...names) => header.findIndex(h => names.includes(h));
   const idxVendor = col('vendor name', 'vendor');
   const idxFunction = col('marketing function support', 'function', 'supporting function');
+  const idxLabel = col('client label', 'label');
   const idxStart = col('start date', 'start');
   const idxEnd = col('end date', 'end');
   const idxSpend = col('spend', 'total spend', 'amount');
@@ -22217,6 +22308,7 @@ function nwmParseUploadCsv(text){
     const row = blankNwmRow(`nwm-upload-${Date.now()}-${i}`);
     row.vendorName = vendorName;
     row.supportingFunction = matchedFunction;
+    row.clientLabel = idxLabel >= 0 ? cells[idxLabel] : '';
     row.startDate = idxStart >= 0 ? cells[idxStart] : '';
     row.endDate = idxEnd >= 0 ? cells[idxEnd] : '';
     if (spendTotal > 0){
@@ -22266,7 +22358,7 @@ function renderNonWorkingMedia(){
         const expanded = nwmExpandedRow === r.id;
         const monthlyRow = expanded ? `
           <tr>
-            <td colspan="7" data-label="">
+            <td colspan="8" data-label="">
               <div class="hint" style="margin-bottom:8px;">Monthly breakdown for ${escapeHtml(r.vendorName || 'this vendor')}:</div>
               <div style="display:flex;flex-wrap:wrap;gap:10px;">
                 ${MONTH_LABELS.map(label => `
@@ -22302,6 +22394,7 @@ function renderNonWorkingMedia(){
                 ${NON_WORKING_MEDIA_FUNCTIONS.map(f => `<option value="${f}"${r.supportingFunction === f ? ' selected' : ''}>${f}</option>`).join('')}
               </select>
             </td>
+            <td data-label="Client Label"><input type="text" value="${(r.clientLabel || '').replace(/"/g, '&quot;')}" placeholder="Optional — your own label" class="tbl-input" oninput="updateNwmClientLabel('${r.id}', this.value)"></td>
             <td class="num" data-label="Start Date"><input type="date" value="${r.startDate || ''}" class="tbl-input" oninput="updateNwmStartDate('${r.id}', this.value)"></td>
             <td class="num" data-label="End Date"><input type="date" value="${r.endDate || ''}" class="tbl-input" oninput="updateNwmEndDate('${r.id}', this.value)"></td>
             <td class="num" data-label="Spend">
@@ -22311,7 +22404,7 @@ function renderNonWorkingMedia(){
             <td data-label=""><button type="button" class="btn-ghost" style="padding:6px 14px;font-size:0.75rem;" onclick="removeNonWorkingMediaRow('${r.id}')">Remove →</button></td>
           </tr>${monthlyRow}`;
       }).join('')
-    : `<tr><td colspan="7"><p class="hint" style="margin:8px 0;">No non-working media vendors yet — add one below, or upload a file.</p></td></tr>`;
+    : `<tr><td colspan="8"><p class="hint" style="margin:8px 0;">No non-working media vendors yet — add one below, or upload a file.</p></td></tr>`;
   list.innerHTML = `
     <div class="table-scroll">
       <table class="active-camp-table">
@@ -22320,6 +22413,7 @@ function renderNonWorkingMedia(){
             <th>Vendor Name</th>
             <th>Campaign ID <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span></th>
             <th>Marketing Function Support</th>
+            <th>Client Label</th>
             <th class="num">Start Date</th>
             <th class="num">End Date</th>
             <th class="num">Spend</th>
@@ -23638,6 +23732,7 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
   renderMediaPlanGrid();
   renderNonWorkingMedia();
   renderMpUnplannedList();
+  if (typeof mbuUpdateBudgetChartGridVisibility === 'function') mbuUpdateBudgetChartGridVisibility();
   renderPlanPacingChart();
   // Round 132bx (2026-08-15) — renderBudgetTrackingChart() now renders
   // #mediaPlanExportButtons itself (relocated inside that card); no
@@ -25783,7 +25878,16 @@ const MBU_FUNCTIONAL_GROUPS = {
   'Direct Mail': ['Direct Mail', 'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution'],
   'Digital': ['Digital — Total/Unspecified', 'Search', 'Social', 'Digital — Addressable', 'Digital — Partnerships'],
   'TV': ['TV — Total/Unspecified', 'Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
-  'Print Advertising': ['Magazines/Print', 'Print Advertising — Newspapers'],
+  // Round 6 (2026-09-05), per direct instruction: "We need a Consumer Print
+  // Advertising Total option with Magazines and Newspapers as options
+  // under." Renamed from 'Print Advertising' and given a real Total/
+  // Unspecified entry, mirroring Digital/Direct Mail/TV above. 'Magazines/
+  // Print' (the pre-round-6 legacy combined bucket) stays in the group,
+  // unchanged, purely for backward compatibility with anything already
+  // mapped to it -- the backend category string itself was deliberately
+  // NOT renamed or removed (see VERILUME_BUDGET_CATEGORIES' own comment on
+  // this same decision).
+  'Consumer Print Advertising': ['Consumer Print Advertising — Total/Unspecified', 'Consumer Print Advertising — Magazines', 'Print Advertising — Newspapers', 'Magazines/Print'],
   'Out-of-Home': ['Out-of-Home'],
   'Radio': ['Radio'],
   'Trade': ['Trade/B2B Marketing'],
@@ -25943,8 +26047,66 @@ function mbuToggleMonthlyDetail(detailId){
 // category present in verilumeCats but not listed in any group (shouldn't
 // happen, but not assumed) still gets an ungrouped option appended, so
 // nothing is ever silently unselectable.
+// Round 6 (2026-09-05), per direct instruction: "Display / Programmatic can
+// be deleted from drop-down when users are asked to manually map." The
+// backend category string is deliberately kept valid (see
+// VERILUME_BUDGET_CATEGORIES' own comment) -- an upload that already used
+// it still displays/saves fine -- this just stops it being OFFERED for a
+// new selection. mbuGroupedCategoryOptionsHtml below always keeps the
+// CURRENT choice selectable even if it's on this list (never silently
+// un-selects a real saved value), and mbuRenderCategoryMapping's "+ Add
+// category" control filters its own addable list against this too.
+const MBU_RETIRED_CATEGORIES = ['Display/Programmatic'];
+
+// Round 6 (2026-09-05) — a frontend mirror of backend/server.js's
+// VERILUME_TO_MMM_CHANNEL_MAP, used ONLY for the Manual Setup pre-fill
+// (mbuComputeRecommendedCategoryPrefill, below) — the Media Plan's own
+// channel-mix engine (computeRecommendedMix) speaks MMM_CATEGORIES, not
+// Verilume's budget-category taxonomy, and that crosswalk lives
+// server-side only. Kept in sync by hand with the backend copy (same
+// "kept in sync by hand" convention already used elsewhere on this page,
+// e.g. MC_CATEGORIES' own comment) — deliberately excludes the retired
+// 'Video/CTV' legacy key (irrelevant to a fresh pre-fill) and every
+// MBU_RETIRED_CATEGORIES entry (Display/Programmatic — see that
+// constant's own comment; a category no longer offered for a NEW
+// selection shouldn't be reintroduced silently by an automatic pre-fill
+// either).
+const MBU_VERILUME_TO_MMM_MAP = {
+  'Search': ['Brand Search', 'Non-Brand Search'],
+  'Social': ['Paid Social'],
+  'CTV': ['CTV'],
+  'OTV': ['OTV'],
+  'Email': ['Internal Email', 'Email — Remarketing'],
+  'PR/Earned': ['PR'],
+  'Linear TV': ['Linear TV'],
+  'Direct Mail': ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
+  'Events': ['Field / ABM'],
+  'Podcasts': ['Podcasts'],
+  'Radio': ['Radio'],
+  'Magazines/Print': ['Magazines', 'Newspapers'],
+  'Out-of-Home': ['Out-of-Home'],
+  'Partner/Affiliate Media': ['Partner Media', 'Retail Media'],
+  'Trade/B2B Marketing': ['Field / ABM']
+};
+// Sums computeRecommendedMix(annualBudget)'s per-MMM-channel recommended
+// amounts back onto Verilume budget categories via the crosswalk above —
+// a category with no crosswalk entry (every round-3/round-6 additive
+// Digital/Direct Mail/TV/Print-Advertising subcategory, per the
+// pre-answered decision) simply has no key in the returned object and
+// starts at $0 in the grid, same as a blank manual category always has.
+function mbuComputeRecommendedCategoryPrefill(annualBudget){
+  const mix = (typeof computeRecommendedMix === 'function') ? computeRecommendedMix(annualBudget) : { rows: [] };
+  const mmmTotals = {};
+  (mix.rows || []).forEach(r => { mmmTotals[r.channel] = (mmmTotals[r.channel] || 0) + (r.recommendedAmount || 0); });
+  const prefill = {};
+  Object.entries(MBU_VERILUME_TO_MMM_MAP).forEach(([verilumeCat, mmmChans]) => {
+    const sum = mmmChans.reduce((s, ch) => s + (mmmTotals[ch] || 0), 0);
+    if (sum > 0) prefill[verilumeCat] = Math.round(sum);
+  });
+  return prefill;
+}
 function mbuGroupedCategoryOptionsHtml(verilumeCats, choice){
-  const available = new Set(verilumeCats);
+  const available = new Set(verilumeCats.filter(c => c === choice || !MBU_RETIRED_CATEGORIES.includes(c)));
   const placed = new Set();
   const groupsHtml = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, cats]) => {
     const opts = cats.filter(c => available.has(c));
@@ -25953,7 +26115,7 @@ function mbuGroupedCategoryOptionsHtml(verilumeCats, choice){
     const optionsHtml = opts.map(vc => `<option value="${escapeHtml(vc)}"${vc === choice ? ' selected' : ''}>${escapeHtml(vc)}</option>`).join('');
     return `<optgroup label="${escapeHtml(groupName)}">${optionsHtml}</optgroup>`;
   }).join('');
-  const leftoverHtml = verilumeCats.filter(c => !placed.has(c))
+  const leftoverHtml = verilumeCats.filter(c => available.has(c) && !placed.has(c))
     .map(vc => `<option value="${escapeHtml(vc)}"${vc === choice ? ' selected' : ''}>${escapeHtml(vc)}</option>`).join('');
   return groupsHtml + leftoverHtml;
 }
@@ -26111,7 +26273,7 @@ function mbuRenderCategoryMapping(){
   })() : '';
   // "+ Add category" -- per direct instruction, hiding $0/no-item
   // categories needs a manual way back in.
-  const addableLabels = stdCategories.filter(l => !bucketHasItems(l));
+  const addableLabels = stdCategories.filter(l => !bucketHasItems(l) && !MBU_RETIRED_CATEGORIES.includes(l));
   const addControl = addableLabels.length ? `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
       <div class="field" style="margin:0;max-width:280px;">
@@ -26363,7 +26525,30 @@ function mbuRenderResults(data){
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
       <thead><tr><th>Your category</th><th>Total</th></tr></thead>
       <tbody>${nonWorkingRows || '<tr><td colspan="2">Nothing in this file was tagged Non-Working.</td></tr>'}</tbody>
-    </table></div>` : ''}
+    </table></div>
+    ${(() => {
+      // Round 6 (2026-09-05), per direct instruction: "Add non-working
+      // spend column under working media column to maintain a flow from
+      // top to bottom." Interpreted as: the Working Media table above and
+      // the Non-Working Media table just above this both stop at their
+      // own subtotal with no combined view — a single summary block right
+      // underneath both, in the same continuous scroll, so a reader sees
+      // Working, Non-Working, and the combined Total Marketing Budget
+      // without leaving this card (a literal shared per-row column wasn't
+      // used since Non-Working Media isn't broken out by the same
+      // categories as Working Media — there's no real per-row alignment
+      // between the two).
+      const workingTotal = Object.values(byVerilume || {}).reduce((s, v) => s + Number(v || 0), 0);
+      const nonWorkingTotal = nonWorkingLedger.reduce((s, c) => s + Number(c.total || 0), 0);
+      return `
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:14px;">
+      <tbody>
+        <tr><td>Total Working Media</td><td style="font-weight:600;">$${workingTotal.toLocaleString()}</td></tr>
+        <tr><td>Total Non-Working Media</td><td style="font-weight:600;">$${nonWorkingTotal.toLocaleString()}</td></tr>
+        <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total Marketing Budget</td><td style="font-weight:700;color:var(--cx);">$${(workingTotal + nonWorkingTotal).toLocaleString()}</td></tr>
+      </tbody>
+    </table></div>`;
+    })()}` : ''}
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Line items (raw category → Verilume category)</p>
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;">
       <thead><tr><th>Your category</th><th>Verilume category</th><th>Working/Non-Working</th><th>Sum of months</th><th>Annual total (from file)</th></tr></thead>
@@ -26722,15 +26907,86 @@ async function mbuLoadYearsList(){
 // file" view now: one year+scope at a time, with the specific next action
 // for whichever state it's in, rather than a flat table of every year at
 // once (still fully reachable per-year via the year chips above).
+// Round 6 (2026-09-05), per direct instruction: "We can't show the report
+// charts when no budget has been added. They category should be hidden
+// until budgets exist." Reuses the exact same "is there a confirmed
+// upload for the selected year+scope" check mbuRenderPlanSetup's own
+// Active/Setup status already computes -- one source of truth, not a
+// second detector that could disagree with it. Called from
+// mbuRenderPlanSetup() (below) and from renderMediaPlanFieldsAndCharts()
+// (media-plan.html's own chart-refresh pass), so the grid stays in sync
+// with either the year/scope picker or the Setup->Active transition,
+// whichever changes first.
+function mbuHasActiveBudget(){
+  return mbuYearsData.some(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
+}
+function mbuUpdateBudgetChartGridVisibility(){
+  const grid = document.getElementById('budgetChartGrid');
+  if (!grid) return;
+  grid.style.display = mbuHasActiveBudget() ? '' : 'none';
+}
+// Round 6 (2026-09-05), per pre-answered decision: "add a 'Total-only'
+// toggle at Plan Setup when International scope is selected -- an
+// alternative to the full category-by-category mapping that skips line
+// items entirely and stores a single total budget number instead." Local
+// UI state only (not persisted until Save Total is actually clicked) --
+// whether an upload itself used this path is the separate, persisted
+// `totalOnly` flag on the upload row (see mbuRenderPlanSetup's Active
+// branch below), which is what actually decides the view on reopen.
+let mbuInternationalTotalOnly = false;
+function mbuToggleInternationalTotalOnly(checked){
+  mbuInternationalTotalOnly = !!checked;
+  mbuRenderPlanSetup();
+}
 function mbuRenderPlanSetup(){
   const mount = document.getElementById('mbuPlanSetupStatus');
   if (!mount) return;
+  mbuUpdateBudgetChartGridVisibility();
   const active = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (active){
+    // Round 6 (2026-09-05) — a Total-only budget shows its own simplified
+    // Active view (the one number, editable in place) instead of "View
+    // budget detail →", which would otherwise open an empty-looking full
+    // category grid with nothing in it to review. Persisted on the upload
+    // row itself (active.totalOnly), not just this session's toggle state,
+    // so reopening this year later shows the right view regardless of what
+    // the toggle above happens to be set to right now.
+    if (active.totalOnly){
+      mount.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
+          <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} ${mbuScopeLabel(mbuSelectedScope)} budget is confirmed as a total-only figure (no channel-level detail): $${Number(active.totalAmount || 0).toLocaleString()}.</span>
+          <button type="button" class="btn-ghost" onclick="mbuEditTotalOnly('${active.id}', ${Number(active.totalAmount || 0)})">✎ Edit total →</button>
+        </div>`;
+      return;
+    }
     mount.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} ${mbuScopeLabel(mbuSelectedScope)} budget is confirmed and driving this year's Media Plan.</span>
         <button type="button" class="btn-primary" onclick="mbuOpenExistingUpload('${active.id}')">View budget detail →</button>
+      </div>`;
+    return;
+  }
+  // Round 6 (2026-09-05) — International-only toggle, shown above the
+  // Setup options whenever the International scope is selected. Checking
+  // it swaps the three normal options out for a single lightweight
+  // total-dollar entry (mbuStartTotalOnly below); a link switches back to
+  // the full options without losing anything (nothing's been created yet
+  // at this point either way).
+  const totalOnlyToggleHtml = mbuSelectedScope === 'international' ? `
+    <label class="hint" style="display:flex;align-items:center;gap:8px;margin:0 0 12px;cursor:pointer;">
+      <input type="checkbox" ${mbuInternationalTotalOnly ? 'checked' : ''} onchange="mbuToggleInternationalTotalOnly(this.checked)">
+      <span style="color:var(--ink);">Just track a total budget (skip channel detail)</span>
+    </label>` : '';
+  if (mbuSelectedScope === 'international' && mbuInternationalTotalOnly){
+    mount.innerHTML = `
+      <div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;">
+        <p style="margin:0 0 10px;font-weight:700;color:#b8860b;">Setup — no confirmed international budget for ${mbuSelectedYear} yet.</p>
+        ${totalOnlyToggleHtml}
+        <div class="hint" style="display:flex;flex-direction:column;gap:8px;max-width:320px;">
+          <label style="color:var(--ink);font-weight:600;">Total budget (USD)</label>
+          <input type="number" id="mbuTotalOnlyInput" min="0" step="1000" placeholder="e.g. 250000">
+          <button type="button" class="btn-primary" style="align-self:flex-start;" onclick="mbuStartTotalOnly()">Save total →</button>
+        </div>
       </div>`;
     return;
   }
@@ -26742,10 +26998,11 @@ function mbuRenderPlanSetup(){
   mount.innerHTML = `
     <div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;">
       <p style="margin:0 0 10px;font-weight:700;color:#b8860b;">Setup — no confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget for ${mbuSelectedYear} yet.</p>
+      ${totalOnlyToggleHtml}
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
         <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
           <span style="color:var(--ink);"><strong>Manually add</strong></span>
-          <span>Start with a blank category grid and fill in your own numbers.</span>
+          <span>Start with your Annual Marketing Budget, then a category grid pre-filled from our channel-weighting research to review and adjust.</span>
           <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartManual()">＋ Manually add →</button>
         </div>
         <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
@@ -26765,14 +27022,129 @@ function mbuRenderPlanSetup(){
     </div>`;
 }
 
-// "Manually add" — creates the upload row (body.manual:true, see the
-// backend's own comment on that branch) and jumps straight to the blank
-// category-mapping grid (mbuLoadCategoryMapping/mbuRenderCategoryMapping),
-// exactly like Step 1's real-file path does after import — just starting
-// with zero categories instead of ones read from a file.
-async function mbuStartManual(){
+// Round 6 (2026-09-05) — the International "Total-only" path: one number,
+// no channel detail, auto-confirmed by the backend the moment it's created
+// (see POST .../marketing-budget-uploads' body.totalOnly branch) since
+// there's nothing left to map. Same 409 duplicate-year+scope handling as
+// every other Setup path.
+async function mbuStartTotalOnly(){
   if (!state.companyId) return;
+  const input = document.getElementById('mbuTotalOnlyInput');
+  const totalAmount = input ? Number(input.value) : 0;
+  if (!(totalAmount > 0)){ alert('Enter a total budget amount greater than 0.'); return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, manual: true, totalOnly: true, totalAmount })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      if (resp.status === 409 && data.existingUploadId){ await mbuLoadYearsList(); return; }
+      alert(data.error || 'Could not save that total.');
+      return;
+    }
+    mbuInternationalTotalOnly = false;
+    await mbuLoadYearsList();
+    mbuLoadHistory();
+  } catch (e){
+    alert('Backend unreachable — could not save that total.');
+  }
+}
+// "Edit total" — a Total-only budget has exactly one line item, already
+// mapped to the fixed synthetic 'Other/Uncategorized' Verilume category
+// (see MBU_TOTAL_ONLY_VERILUME_CATEGORY, backend), so changing it reuses
+// the existing category-overrides endpoint rather than a new one.
+async function mbuEditTotalOnly(uploadId, currentAmount){
+  const next = prompt('New total budget (USD):', currentAmount || '');
+  if (next === null) return;
+  const amount = Number(next);
+  if (!(amount > 0)){ alert('Enter a number greater than 0.'); return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}/category-overrides`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ overrides: { 'Other/Uncategorized': amount } })
+    });
+    if (!resp.ok){ alert('Could not save — try again.'); return; }
+    await mbuLoadYearsList();
+  } catch (e){
+    alert('Backend unreachable — could not save.');
+  }
+}
+
+// Round 6 (2026-09-05), per direct instruction: "Selecting Manual should
+// start with the Annual Marketing total or option to calculate based Gross
+// Revenue (manual) * Target Marketing Allocation % as the starting point.
+// The next view will be the total channel recommendations incorporating
+// our channel weighting research." Restructured "Manually add" into two
+// steps — Step A here (mbuStartManual opens #mbuManualSetupCard; grep for
+// "Gross Revenue"/"Target Marketing Allocation" found the Media Plan's own
+// C-option calculator (mpApplyRevenuePct/mpRenderRevenuePctApply) doing
+// exactly this same Revenue × % math, but its fields live on a different
+// card that isn't populated yet at this point in a brand-new Setup flow —
+// this reimplements the same one-time, explicit-Apply calculation with its
+// own small self-contained inputs rather than reaching across cards for
+// DOM elements that may not exist yet), Step B in mbuManualSetupContinue()
+// below (creates the upload, then pre-fills the category grid from the
+// existing recommendation engine — see mbuComputeRecommendedCategoryPrefill).
+let mbuManualBudgetMode = 'direct';
+function mbuStartManual(){
+  const card = document.getElementById('mbuManualSetupCard');
+  if (!card) return;
+  ['mbuManualBudgetInput', 'mbuManualGrossRevenueInput', 'mbuManualAllocationPctInput'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const statusEl = document.getElementById('mbuManualSetupStatus');
+  if (statusEl) statusEl.textContent = '';
+  mbuSetManualBudgetMode('direct');
+  card.style.display = '';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function mbuCancelManualSetup(){
+  const card = document.getElementById('mbuManualSetupCard');
+  if (card) card.style.display = 'none';
+}
+function mbuSetManualBudgetMode(mode){
+  mbuManualBudgetMode = mode === 'calc' ? 'calc' : 'direct';
+  const directField = document.getElementById('mbuManualDirectField');
+  const calcFields = document.getElementById('mbuManualCalcFields');
+  if (directField) directField.style.display = mbuManualBudgetMode === 'direct' ? '' : 'none';
+  if (calcFields) calcFields.style.display = mbuManualBudgetMode === 'calc' ? '' : 'none';
+  const directBtn = document.getElementById('mbuManualModeDirectBtn');
+  const calcBtn = document.getElementById('mbuManualModeCalcBtn');
+  if (directBtn) directBtn.classList.toggle('selected', mbuManualBudgetMode === 'direct');
+  if (calcBtn) calcBtn.classList.toggle('selected', mbuManualBudgetMode === 'calc');
+  mbuUpdateManualBudgetPreview();
+}
+function mbuComputeManualBudgetAmount(){
+  if (mbuManualBudgetMode === 'calc'){
+    const revenue = Number((document.getElementById('mbuManualGrossRevenueInput') || {}).value) || 0;
+    const pct = Number((document.getElementById('mbuManualAllocationPctInput') || {}).value) || 0;
+    return Math.round(revenue * (pct / 100));
+  }
+  return Number((document.getElementById('mbuManualBudgetInput') || {}).value) || 0;
+}
+function mbuUpdateManualBudgetPreview(){
+  const el = document.getElementById('mbuManualCalcPreview');
+  if (el) el.textContent = mbuManualBudgetMode === 'calc' ? `= ${fmtMoney(mbuComputeManualBudgetAmount())} Annual Marketing Budget` : '';
+}
+// Step B — creates the upload (same body.manual:true shape as before),
+// then pre-fills the (otherwise blank) category grid from
+// mbuComputeRecommendedCategoryPrefill(amount) before the review screen is
+// ever shown, so the user reviews/adjusts a real starting recommendation
+// instead of an empty grid. A one-time computation at this exact moment,
+// not a live link back to the Media Plan's own recommended-mix engine —
+// per direct instruction, editing any prefilled amount afterward behaves
+// exactly like editing any other manually-added category.
+async function mbuManualSetupContinue(){
+  if (!state.companyId) return;
+  const statusEl = document.getElementById('mbuManualSetupStatus');
+  const amount = mbuComputeManualBudgetAmount();
+  if (!(amount > 0)){
+    if (statusEl) statusEl.textContent = 'Enter an Annual Marketing Budget greater than 0 — directly, or via Gross Revenue × Target Marketing Allocation %.';
+    return;
+  }
   mbuResetImport();
+  if (statusEl) statusEl.textContent = 'Creating…';
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -26781,16 +27153,24 @@ async function mbuStartManual(){
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){
       if (resp.status === 409 && data.existingUploadId){ await mbuLoadYearsList(); return; }
-      alert(data.error || 'Could not start a manual budget.');
+      if (statusEl) statusEl.textContent = data.error || 'Could not start a manual budget.';
       return;
     }
     mbuAnalysis = { id: data.id, layout: 'manual', status: data.status, year: data.year };
     await mbuLoadCategoryMapping();
+    const prefill = mbuComputeRecommendedCategoryPrefill(amount);
+    Object.entries(prefill).forEach(([cat, amt]) => {
+      mbuManualCategories.add(cat);
+      mbuManualCategoryBucket[cat] = 'working';
+      mbuCategoryOverrides[cat] = amt;
+    });
+    mbuRenderCategoryMapping();
     mbuLoadHistory();
+    mbuCancelManualSetup();
     const card = document.getElementById('mbuResultsCard');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e){
-    alert('Backend unreachable — could not start a manual budget.');
+    if (statusEl) statusEl.textContent = 'Backend unreachable — could not start a manual budget.';
   }
 }
 
