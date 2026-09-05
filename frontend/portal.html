@@ -26071,22 +26071,28 @@ function mbuManualCategoryRowHtml(label){
 // given, no Verilume-category mapping, no suggestion, nothing to choose.
 function mbuNonWorkingCategoryRowHtml(c){
   const detailId = `mbuMonthsNW-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  // Round 8 (2026-09-05), per direct instruction: non-working categories
-  // "should be editable should a client to update the name." The file's
-  // text is the key; what the client types here is the display label.
+  // Round 8 (2026-09-05), per direct instruction: non-working lines sit
+  // BELOW working media in the same three columns -- A the client's
+  // category as the file gave it, B the amount, C (under the working
+  // dropdowns) the editable name the client can update. The file's text
+  // stays the key; what's typed in C is the display label.
   const label = mbuNonWorkingLabels[c.category] || c.label || c.category;
   const safeRaw = c.category.replace(/'/g, "\\'");
   return `
     <div style="margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="flex:1 1 200px;min-width:160px;">
-          <span class="hint" style="display:block;">Client's category — edit to rename</span>
-          <div class="field" style="margin:0;"><input type="text" value="${escapeHtml(label)}" style="padding:7px 10px;" oninput="mbuNonWorkingLabelEdited('${safeRaw}', this.value)"></div>
-          ${label !== c.category ? `<span class="hint" style="display:block;margin-top:2px;">in your file: ${escapeHtml(c.category)}</span>` : ''}
-          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;margin-top:4px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1 1 220px;min-width:180px;">
+          <span class="hint" style="display:block;">Client's category</span>
+          <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
         </div>
-        <div style="flex:0 0 140px;text-align:right;">
+        <div style="flex:0 0 120px;">
+          <span class="hint" style="display:block;">Amount</span>
           <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
+        </div>
+        <div style="flex:1 1 220px;min-width:200px;">
+          <span class="hint" style="display:block;">Label -- edit to rename</span>
+          <div class="field" style="margin:0;"><input type="text" value="${escapeHtml(label)}" oninput="mbuNonWorkingLabelEdited('${safeRaw}', this.value)"></div>
         </div>
       </div>
       <div id="${detailId}" hidden style="margin-top:6px;">${mbuMonthlyDetailHtml(c.months)}</div>
@@ -26187,7 +26193,7 @@ function mbuRenderCategoryMapping(){
   const nonWorkingSectionHtml = `
     <div style="margin:0 0 20px;">
       <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;">Non-Working Media</p>
-      <p class="hint" style="margin:0 0 10px;">As your file gave it — no mapping needed. Edit a name to relabel it.</p>
+      <p class="hint" style="margin:0 0 10px;">As your file gave it — no mapping needed. Edit the label on the right to rename a line.</p>
       ${nonWorkingCats.length ? nonWorkingCats.map(mbuNonWorkingCategoryRowHtml).join('') : '<p class="hint">Nothing in your file was tagged Non-Working.</p>'}
       <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:4px;padding-top:8px;">
         <span style="font-size:0.8125rem;font-weight:600;">Total Non-Working Media on file</span>
@@ -26213,11 +26219,9 @@ function mbuRenderCategoryMapping(){
 
   body.innerHTML = `
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 4px;">Review your budget</p>
-    <p class="hint" style="margin:0 0 12px;">Working media on the left: your category, then our best-guess Verilume category as a dropdown — change it if it's wrong (a single "International" line can map to International — total only). Non-working spend on the right, listed as your file gave it — rename any line if you like; no mapping needed.</p>
-    <div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:24px;align-items:start;" class="mbd-two-col">
-      ${workingSectionHtml}
-      ${nonWorkingSectionHtml}
-    </div>
+    <p class="hint" style="margin:0 0 12px;">Working media first: your category, the amount, then our best-guess Verilume category as a dropdown — change it if it's wrong (a single "International" line can map to International — total only). Non-working spend follows in the same columns — your category, the amount, and a label you can rename; no mapping needed. Total marketing spend closes the statement.</p>
+    ${workingSectionHtml}
+    ${nonWorkingSectionHtml}
     <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin:4px 0 16px;padding-top:8px;">
       <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working + non-working, read-only)</span></span>
       <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${(sectionTotal + nonWorkingTotal).toLocaleString()}</span>
@@ -26531,18 +26535,13 @@ function mbdRenderUnified(model, opts){
     ${sectionHead('A', 'Marketing Loop allocations', model.stageBasis)}
     <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Stage</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th><th></th></tr></thead><tbody>${stageRows}</tbody></table></div>
     ${sectionHead('B · C', 'Channel totals and sub-channels', 'Sub-channels roll up to each total — click the count to expand.')}
-    <div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px;align-items:start;" class="mbd-two-col">
-      <div>
-        <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--cx);margin:0 0 6px;">Working media</p>
-        <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Channel</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th></tr></thead>${channelRows}
-          <tbody><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td><td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td><td style="text-align:right;">100%</td></tr></tbody></table></div>
-      </div>
-      <div>
-        <p style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 6px;">Non-working media</p>
-        <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Line</th><th style="text-align:right;">Budget</th></tr></thead><tbody>${nwRows}
-          <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total non-working</td><td style="text-align:right;font-weight:700;">$${Math.round(nonWorkingTotal).toLocaleString()}</td></tr></tbody></table></div>
-      </div>
-    </div>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
+      <thead><tr><th>Working media</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th></tr></thead>${channelRows}
+      <tbody><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td><td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td><td style="text-align:right;">100%</td></tr></tbody>
+      <thead><tr><th style="padding-top:14px;">Non-working media</th><th style="text-align:right;padding-top:14px;">Budget</th><th></th></tr></thead>
+      <tbody>${model.nonWorking.map(r => `<tr><td>${escapeHtml(r.label)}</td><td style="text-align:right;font-weight:600;">$${Math.round(r.total).toLocaleString()}</td><td></td></tr>`).join('') || '<tr><td colspan="3" class="hint">No non-working spend on file.</td></tr>'}
+      <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total non-working media</td><td style="text-align:right;font-weight:700;">$${Math.round(nonWorkingTotal).toLocaleString()}</td><td></td></tr></tbody>
+    </table></div>
     <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:12px;padding-top:8px;">
       <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working + non-working, read-only)</span></span>
       <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</span>
