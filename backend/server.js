@@ -4315,6 +4315,16 @@ ensureColumn('marketing_budget_uploads', 'scope', 'TEXT');
 // stops a Domestic total-only budget either), but the UI only offers the
 // toggle for International per the confirmed decision.
 ensureColumn('marketing_budget_uploads', 'totalOnly', 'INTEGER');
+// Round 8 (2026-09-05), per direct instruction: Non-Working categories
+// "should be editable should a client to update the name." The file's raw
+// category text stays the stored key on line items; this is a display
+// label per raw category ({ rawCategory: label }), set from the review
+// screen. Working categories don't need it -- their display name is the
+// Verilume category they're mapped to.
+ensureColumn('marketing_budget_uploads', 'categoryLabelsJson', 'TEXT');
+function mbuCategoryLabelsForUpload(upload){
+  try { return upload && upload.categoryLabelsJson ? (JSON.parse(upload.categoryLabelsJson) || {}) : {}; } catch (e){ return {}; }
+}
 
 // Round 132bx (cont'd, 2nd pass) — per direct instruction, the simplified
 // single-screen review lets a client accept or manually edit the rolled-up
@@ -4490,6 +4500,15 @@ const VERILUME_BUDGET_CATEGORIES = [
   'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution',
   'TV — Total/Unspecified', 'TV — Addressable',
   'Print Advertising — Newspapers',
+  // Round 8 (2026-09-05), per direct instruction: "International needs to be
+  // allowed via the drop-down when we ask users for mapping and client does
+  // not designate an International budget... apply to International as a
+  // total only. This is cleaner from an analytics POV." A Domestic file that
+  // carries one "International" line maps it here -- a total-only bucket,
+  // never broken out by channel, and (no crosswalk entry) never activating a
+  // Campaign Creation channel. Distinct from the separate scope='international'
+  // budget, which is for an office that plans its own channel mix.
+  'International — Total (not broken out)',
   // Round 6 (2026-09-05), per direct instruction: "We need a Consumer Print
   // Advertising Total option with Magazines and Newspapers as options
   // under." Print Advertising was the one Total-Channel group left without
@@ -4799,7 +4818,8 @@ function mbuSuggestVerilumeCategory(rawCategory){
     // the combined Magazines/Print bucket -- checked first so a real
     // "Newspaper" label doesn't get caught by the broader 'print' keyword
     // in the rule below.
-    [/\bnewspaper\b/, 'Print Advertising — Newspapers'],
+    [/\binternational\b|\bintl\b|\boverseas\b/, 'International — Total (not broken out)'],
+  [/\bnewspaper\b/, 'Print Advertising — Newspapers'],
     // Round 6 (2026-09-05), per direct instruction: "Consumer Print
     // Advertising Total option with Magazines and Newspapers as options
     // under." A real magazine-title label now suggests the new, more
@@ -15443,8 +15463,9 @@ Submit your findings via the submit_brand_categories tool.`;
         // assumption as an editable dropdown, not just unresolved ones.
         suggested: mbuRecallCategoryMapping(accountId, c.category) || mbuSuggestVerilumeCategory(c.category)
       })).sort((a, b) => b.total - a.total);
+      const categoryLabels = mbuCategoryLabelsForUpload(upload);
       const nonWorkingCategories = ledger.filter(c => c.status === 'nonworking').map(c => ({
-        category: c.category, total: c.total, months: c.months
+        category: c.category, label: categoryLabels[c.category] || c.category, total: c.total, months: c.months
       })).sort((a, b) => b.total - a.total);
       // Client-created categories (see confirm-categories below) — any
       // verilumeCategory value already saved on this upload that ISN'T one
@@ -15459,9 +15480,35 @@ Submit your findings via the submit_brand_categories tool.`;
       overrideRows.forEach(r => { overrides[r.verilumeCategory] = r.overrideTotal; });
       return sendJson(res, 200, {
         uploadId, uploadStatus: upload.status, verilumeCategories: VERILUME_BUDGET_CATEGORIES, customCategoriesInUse, overrides,
-        workingCategories, nonWorkingCategories,
+        workingCategories, nonWorkingCategories, categoryLabels,
+        // Round 8: the Verilume -> MMM crosswalk, so the unified Budget
+        // detail view can derive Marketing Loop stage allocations for an
+        // uploaded budget client-side (one source of truth, no hand-kept
+        // frontend mirror).
+        verilumeToMmm: VERILUME_TO_MMM_CHANNEL_MAP,
         allMapped: workingCategories.every(g => g.currentVerilumeCategory)
       });
+    }
+
+    // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-labels
+    // -- Round 8 (2026-09-05): display labels for Non-Working (or any raw)
+    // categories, { labels: { rawCategory: label } }. Empty/null label clears
+    // back to the file's own text. Never touches line items or totals.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'category-labels'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      const body = await readBody(req);
+      const incoming = (body && typeof body.labels === 'object' && body.labels) || {};
+      const labels = mbuCategoryLabelsForUpload(upload);
+      Object.entries(incoming).forEach(([raw, label]) => {
+        const clean = (label == null ? '' : String(label)).trim().slice(0, 120);
+        if (!clean || clean === raw) delete labels[raw]; else labels[raw] = clean;
+      });
+      db.prepare('UPDATE marketing_budget_uploads SET categoryLabelsJson = ? WHERE id = ?').run(JSON.stringify(labels), uploadId);
+      return sendJson(res, 200, { uploadId, categoryLabels: labels });
     }
 
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-overrides
@@ -15823,7 +15870,11 @@ Submit your findings via the submit_brand_categories tool.`;
         categories: Object.values(byCategory),
         byVerilumeCategory: upload.status === 'confirmed' ? byVerilumeCategory : null,
         byVerilumeCategoryMonthly: upload.status === 'confirmed' ? byVerilumeCategoryMonthly : null,
-        nonWorkingLedger: upload.status === 'confirmed' ? nonWorkingLedger : null,
+        nonWorkingLedger: upload.status === 'confirmed' ? nonWorkingLedger.map(c => ({ ...c, label: (mbuCategoryLabelsForUpload(upload)[c.category] || c.category) })) : null,
+        // Round 8 (2026-09-05): display labels + the Verilume -> MMM crosswalk,
+        // for the unified Budget detail view (see category-mapping's comment).
+        categoryLabels: mbuCategoryLabelsForUpload(upload),
+        verilumeToMmm: VERILUME_TO_MMM_CHANNEL_MAP,
         available: upload.status === 'confirmed'
       });
     }
