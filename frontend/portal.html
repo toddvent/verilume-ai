@@ -25513,24 +25513,27 @@ async function mbuUploadAndAnalyze(){
       };
     });
     if (statusEl){
-      // Round 2026-09-05 (Todd, direct): the "matches the standard layout /
-      // every field auto-recognized" success banner duplicated the summary
-      // line mbuRenderMappingPanel() already shows just below it — dropped
-      // entirely on the confident path. The multi-block warning is real,
-      // new information (not shown anywhere else), so it stays.
+      // Round 2026-09-05 (Todd, direct, second pass): "This entire section
+      // should have been deleted. Step 2 has the correct experience." The
+      // block-by-block column-mapping table/preview/Apply-Cancel panel
+      // (mbuRenderMappingPanel) is no longer shown at all -- see below,
+      // where it's no longer called. Column detection still runs and the
+      // file still auto-imports with its best-guess mapping exactly as
+      // before; what changed is that there's nothing left to manually
+      // confirm at the column level before Step 2 (the category-mapping
+      // review) appears, since that's the screen Todd wants people to
+      // actually use. The unconfident-path message now points at Step 2
+      // (the "Imported budget" card right below) instead of a "flagged
+      // items" section that no longer exists.
       statusEl.textContent = analyzeData.status === 'mapped'
         ? ''
-        : `${mbuFileName}: ${analyzeData.layout === 'multi_block' ? `found ${(analyzeData.headerRows || []).length} header blocks (not a single flat table)` : 'not every field could be auto-mapped'} — review and confirm the flagged items below.`;
+        : `${mbuFileName}: ${analyzeData.layout === 'multi_block' ? `found ${(analyzeData.headerRows || []).length} header blocks (not a single flat table)` : 'not every field could be confidently auto-mapped'} — imported with our best guess; check the categories below and correct anything that looks wrong.`;
     }
-    mbuRenderMappingPanel();
     mbuLoadHistory();
     // Auto-run the import immediately using the best-guess column selections
     // just populated above — per direct instruction, the default experience
     // is a single-screen review (amount, confirm/edit, submit), not a
-    // multi-step wizard the client has to click through block by block. The
-    // detailed block-by-block panel just rendered above still exists for
-    // troubleshooting, collapsed by default; this is what actually shows
-    // the client something immediately.
+    // multi-step wizard the client has to click through block by block.
     await mbuConfirmImport();
   } catch (e){
     if (statusEl) statusEl.textContent = 'Backend unreachable — could not scan/analyze this file.';
@@ -26754,7 +26757,11 @@ async function mbuOpenExistingUpload(uploadId){
       ? { columnRoles: mbuColumnRolesFromConfirmedBlock(confirmedBlock), excludeRowIdxs: new Set(confirmedBlock.excludeRowIdxs || []) }
       : { columnRoles: mbuInitColumnRoles(b), excludeRowIdxs: new Set([...(b.likelySubtotalRowIdxs || []), ...((detail.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))]) };
   });
-  if (mbuGrid && mbuAnalysis.blocks.length) mbuRenderMappingPanel();
+  // Round 2026-09-05 (Todd, direct, second pass): reopening an upload no
+  // longer renders the column-mapping panel either — "Step 2 has the
+  // correct experience." mbuGrid/mbuAnalysis/mbuBlockOverrides are still
+  // repopulated above (mbuConfirmImport still needs them if a future
+  // action re-runs it), just nothing renders from them here anymore.
   // Round 2026-09-05: reopening an upload also restores which scope
   // (Domestic/International) it belongs to, so the toggle above and the
   // year picker's duplicate-check line up with what's actually being
