@@ -4513,6 +4513,12 @@ const VERILUME_BUDGET_CATEGORIES = [
   // this level of granularity should drive Active Channels too.
   'Digital — Total/Unspecified', 'Digital — Addressable', 'Digital — Partnerships',
   'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution',
+  // Round 8d (2026-09-05), per direct instruction: "Direct Mail also has
+  // sub-channels: Customers, Customers Pending, Inquiries, Prospects,
+  // Identity Resolution." Two additions; 'Direct Mail — ID Resolution' stays
+  // valid for anything already saved but is retired from new selection in
+  // favor of the full 'Identity Resolution' name (frontend MBU_RETIRED_CATEGORIES).
+  'Direct Mail — Customers Pending', 'Direct Mail — Identity Resolution',
   'TV — Total/Unspecified', 'TV — Addressable',
   'Print Advertising — Newspapers',
   // Round 8 (2026-09-05), per direct instruction: "International needs to be
@@ -4824,6 +4830,13 @@ function mbuSuggestVerilumeCategory(rawCategory){
     // review screen.
     [/\bpr\b|\bpublic relations\b|\binquir(y|ies)\b|\bcommunications?\b/, 'PR/Earned'],
     [/\blinear tv\b|\bbroadcast\b/, 'Linear TV'],
+    // Round 8d: Direct Mail sub-channel rules, checked before the generic
+    // Direct Mail catch-all below.
+    [/\b(direct[\s-]*mail|dm)\b.*\b(customers?\s+pending|pending\s+customers?|booked)\b|\bcustomers?\s+pending\b.*\b(direct[\s-]*mail|dm)\b/, 'Direct Mail — Customers Pending'],
+    [/\b(direct[\s-]*mail|dm)\b.*\b(identity|id)\s*resolution\b|\b(identity|id)\s*resolution\b.*\b(direct[\s-]*mail|dm)\b/, 'Direct Mail — Identity Resolution'],
+    [/\b(direct[\s-]*mail|dm)\b.*\binquir(y|ies)\b|\binquir(y|ies)\b.*\b(direct[\s-]*mail|dm)\b/, 'Direct Mail — Inquiries'],
+    [/\b(direct[\s-]*mail|dm)\b.*\bprospects?\b|\bprospects?\b.*\b(direct[\s-]*mail|dm)\b/, 'Direct Mail — Prospects'],
+    [/\b(direct[\s-]*mail|dm)\b.*\b(customers?|past guests?)\b|\b(customers?|past guests?)\b.*\b(direct[\s-]*mail|dm)\b/, 'Direct Mail — Customers'],
     [/\bdirect mail\b|\bdm\b|\bmailer\b|\bpast guest\b|\binsert/, 'Direct Mail'],
     [/\bevent(s)?\b|\btrade show\b/, 'Events'],
     [/\bpodcast/, 'Podcasts'],
@@ -16935,4 +16948,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
