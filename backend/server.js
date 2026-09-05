@@ -4322,6 +4322,21 @@ ensureColumn('marketing_budget_uploads', 'totalOnly', 'INTEGER');
 // screen. Working categories don't need it -- their display name is the
 // Verilume category they're mapped to.
 ensureColumn('marketing_budget_uploads', 'categoryLabelsJson', 'TEXT');
+// Round 8c (2026-09-05), per direct question "When does the client assign
+// totals to marketing loop categories": an uploaded budget's Marketing Loop
+// allocations are derived from the channel-by-stage research by default
+// (frontend mbdModelFromUpload); this column holds the client's own
+// per-stage dollar overrides ({ Awareness: $, ... }) once they edit them on
+// the Budget detail view. NULL = derived.
+ensureColumn('marketing_budget_uploads', 'stageAllocationsJson', 'TEXT');
+function mbuStageAllocationsForUpload(upload){
+  try { return upload && upload.stageAllocationsJson ? (JSON.parse(upload.stageAllocationsJson) || null) : null; } catch (e){ return null; }
+}
+// Manual non-working lines (Round 8c, "Non-working Media should also have
+// the option to add a category"): stored as ordinary line items with
+// status 'nonworking' and sourceRowIndex -1 so they flow through the same
+// ledger/rollups as file rows; replaced wholesale on each save.
+const MBU_MANUAL_LINE_SOURCE_ROW = -1;
 function mbuCategoryLabelsForUpload(upload){
   try { return upload && upload.categoryLabelsJson ? (JSON.parse(upload.categoryLabelsJson) || {}) : {}; } catch (e){ return {}; }
 }
@@ -15464,8 +15479,9 @@ Submit your findings via the submit_brand_categories tool.`;
         suggested: mbuRecallCategoryMapping(accountId, c.category) || mbuSuggestVerilumeCategory(c.category)
       })).sort((a, b) => b.total - a.total);
       const categoryLabels = mbuCategoryLabelsForUpload(upload);
+      const manualNwSet = new Set(db.prepare('SELECT category FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = ?').all(uploadId, MBU_MANUAL_LINE_SOURCE_ROW, 'nonworking').map(r => r.category));
       const nonWorkingCategories = ledger.filter(c => c.status === 'nonworking').map(c => ({
-        category: c.category, label: categoryLabels[c.category] || c.category, total: c.total, months: c.months
+        category: c.category, label: categoryLabels[c.category] || c.category, total: c.total, months: c.months, manual: manualNwSet.has(c.category)
       })).sort((a, b) => b.total - a.total);
       // Client-created categories (see confirm-categories below) — any
       // verilumeCategory value already saved on this upload that ISN'T one
@@ -15509,6 +15525,52 @@ Submit your findings via the submit_brand_categories tool.`;
       });
       db.prepare('UPDATE marketing_budget_uploads SET categoryLabelsJson = ? WHERE id = ?').run(JSON.stringify(labels), uploadId);
       return sendJson(res, 200, { uploadId, categoryLabels: labels });
+    }
+
+    // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/stage-allocations
+    // -- Round 8c: { stages: { Awareness: $, Consideration: $, Purchase: $,
+    // Loyalty: $, Advocacy: $ } | null }. null clears back to derived.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'stage-allocations'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      const body = await readBody(req);
+      let json = null;
+      if (body && body.stages && typeof body.stages === 'object'){
+        const stages = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
+        const clean = {};
+        for (const st of stages){ const v = Number(body.stages[st]); if (isNaN(v) || v < 0) return sendJson(res, 400, { error: `stages.${st} must be a number >= 0` }); clean[st] = Math.round(v); }
+        json = JSON.stringify(clean);
+      }
+      db.prepare('UPDATE marketing_budget_uploads SET stageAllocationsJson = ? WHERE id = ?').run(json, uploadId);
+      return sendJson(res, 200, { uploadId, stageAllocations: json ? JSON.parse(json) : null });
+    }
+
+    // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/nonworking-lines
+    // -- Round 8c: { lines: [{ category, total }] } -- the client's own
+    // added non-working lines (no file row behind them). Replaces the
+    // previous manual set; file-sourced rows are never touched.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'nonworking-lines'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      const body = await readBody(req);
+      const lines = Array.isArray(body && body.lines) ? body.lines : [];
+      db.prepare('DELETE FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = ?').run(uploadId, MBU_MANUAL_LINE_SOURCE_ROW, 'nonworking');
+      const ins = db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex) VALUES (?,?,?,?,?,?,?,?,?)`);
+      const saved = [];
+      lines.forEach(l => {
+        const category = String((l && l.category) || '').trim().slice(0, 120);
+        const total = Number(l && l.total);
+        if (!category || isNaN(total) || total < 0) return;
+        ins.run(generateId('MBLI'), uploadId, accountId, category, 'nonworking', null, null, Math.round(total), MBU_MANUAL_LINE_SOURCE_ROW);
+        saved.push({ category, total: Math.round(total) });
+      });
+      return sendJson(res, 200, { uploadId, lines: saved });
     }
 
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-overrides
@@ -15874,6 +15936,7 @@ Submit your findings via the submit_brand_categories tool.`;
         // Round 8 (2026-09-05): display labels + the Verilume -> MMM crosswalk,
         // for the unified Budget detail view (see category-mapping's comment).
         categoryLabels: mbuCategoryLabelsForUpload(upload),
+        stageAllocations: mbuStageAllocationsForUpload(upload),
         verilumeToMmm: VERILUME_TO_MMM_CHANNEL_MAP,
         available: upload.status === 'confirmed'
       });
@@ -16872,3 +16935,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
