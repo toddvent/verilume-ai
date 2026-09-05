@@ -7518,6 +7518,16 @@
              that already has a CONFIRMED budget (see mbuHandleFile()'s 409
              handling below, which points at that year's existing upload
              instead of letting a duplicate through). -->
+        <!-- Round 2026-09-05, per direct request: "International is
+             technically a different office having the same opportunity for
+             media mix... upload the International budget as a different
+             view." A separate budget per account per year per scope --
+             Domestic vs. International each get their own upload/mapping
+             flow, same duplicate-year-style gate, switchable here. -->
+        <div class="field" style="max-width:420px;">
+          <label>Budget scope</label>
+          <div class="stage-row" id="mbuScopeRow"></div>
+        </div>
         <div class="field" style="max-width:420px;">
           <label>Budget year</label>
           <div class="stage-row" id="mbuYearRow"></div>
@@ -25333,7 +25343,29 @@ let mbuAnalysis = null, mbuBlockOverrides = {}; // keyed by headerRowIdx
 // "Budgets on file" card below and to warn — before someone even picks a
 // file — that the selected year already has a confirmed budget.
 let mbuSelectedYear = new Date().getFullYear();
+// Round 2026-09-05, per direct request: Domestic vs. International is a
+// second dimension alongside year -- a separate budget upload per account
+// per year per scope, not a flag on individual line items (see backend
+// ensureColumn('marketing_budget_uploads', 'scope', ...)). Defaults to
+// 'domestic' so every existing flow behaves exactly as it always did
+// unless someone explicitly switches the toggle.
+let mbuSelectedScope = 'domestic';
 let mbuYearsData = [];
+function mbuScopeLabel(s){ return s === 'international' ? 'International' : 'Domestic'; }
+function renderMbuScopeRow(){
+  const row = document.getElementById('mbuScopeRow');
+  if (!row) return;
+  row.innerHTML = ['domestic', 'international'].map(s => `
+    <button type="button" class="stage-tile${s === mbuSelectedScope ? ' selected' : ''}" onclick="setMbuScope('${s}')">${mbuScopeLabel(s)}</button>
+  `).join('');
+}
+function setMbuScope(scope){
+  mbuSelectedScope = scope === 'international' ? 'international' : 'domestic';
+  renderMbuScopeRow();
+  renderMbuYearRow();
+  mbuRenderDuplicateYearNotice();
+  renderMbuYearsList();
+}
 function mbuYearWindow(){
   const cy = new Date().getFullYear();
   const years = [];
@@ -25343,32 +25375,32 @@ function mbuYearWindow(){
 function renderMbuYearRow(){
   const row = document.getElementById('mbuYearRow');
   if (!row) return;
-  const confirmedYears = new Set(mbuYearsData.filter(u => u.status === 'confirmed').map(u => u.year));
+  const confirmedYears = new Set(mbuYearsData.filter(u => u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope).map(u => u.year));
   row.innerHTML = mbuYearWindow().map(y => `
     <button type="button" class="stage-tile${y === mbuSelectedYear ? ' selected' : ''}" onclick="setMbuYear(${y})" title="${confirmedYears.has(y) ? 'Already has a confirmed budget' : 'No confirmed budget yet'}">${y}${confirmedYears.has(y) ? ' •' : ''}</button>
   `).join('');
   const hint = document.getElementById('mbuYearHint');
   if (hint) hint.textContent = confirmedYears.has(mbuSelectedYear)
-    ? `${mbuSelectedYear} already has a confirmed budget — see the notice below.`
-    : `Uploading for ${mbuSelectedYear}. (• marks years that already have a confirmed budget.)`;
+    ? `${mbuSelectedYear} already has a confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget — see the notice below.`
+    : `Uploading ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget for ${mbuSelectedYear}. (• marks years that already have a confirmed budget for this scope.)`;
 }
 function setMbuYear(year){
   mbuSelectedYear = year;
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
 }
-// Warns, before a file is even picked, that the selected year already has a
-// confirmed budget — the backend would reject the upload outright anyway
-// (see the POST handler's own comment), but surfacing it here means someone
-// finds out before reading a file and scanning it for nothing.
+// Warns, before a file is even picked, that the selected year+scope already
+// has a confirmed budget — the backend would reject the upload outright
+// anyway (see the POST handler's own comment), but surfacing it here means
+// someone finds out before reading a file and scanning it for nothing.
 function mbuRenderDuplicateYearNotice(){
   const mount = document.getElementById('mbuDuplicateYearNotice');
   if (!mount) return;
-  const existing = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed');
+  const existing = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (!existing){ mount.innerHTML = ''; return; }
   mount.innerHTML = `
     <div class="hint" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;margin:8px 0 16px;">
-      <span>${mbuSelectedYear} already has a confirmed budget ("${escapeHtml(existing.fileName || 'untitled file')}"). Adjust its category totals instead of uploading again, or delete it first if you truly need to start over.</span>
+      <span>${mbuSelectedYear} already has a confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget ("${escapeHtml(existing.fileName || 'untitled file')}"). Adjust its category totals instead of uploading again, or delete it first if you truly need to start over.</span>
       <span style="display:flex;gap:8px;flex-shrink:0;">
         <button type="button" class="btn-ghost" onclick="mbuOpenExistingUpload('${existing.id}')">Review &amp; adjust →</button>
         <button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${existing.id}')">Delete (last resort) →</button>
@@ -25389,9 +25421,9 @@ async function mbuHandleFile(event){
   // Belt-and-suspenders: the backend is the real gate (see the POST
   // handler's 409), but checking here too avoids reading/scanning a whole
   // file only to be rejected at the very last step.
-  const dupExisting = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed');
+  const dupExisting = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (dupExisting){
-    if (statusEl) statusEl.textContent = `${mbuSelectedYear} already has a confirmed budget — see the notice above to review/adjust or delete it first.`;
+    if (statusEl) statusEl.textContent = `${mbuSelectedYear} already has a confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget — see the notice above to review/adjust or delete it first.`;
     event.target.value = '';
     return;
   }
@@ -25454,7 +25486,7 @@ async function mbuUploadAndAnalyze(){
     mbuUploadedFileId = uploadData.id;
     const analyzeResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: mbuSelectedYear, uploadedFileId: mbuUploadedFileId, fileName: mbuFileName, grid: mbuGrid })
+      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, uploadedFileId: mbuUploadedFileId, fileName: mbuFileName, grid: mbuGrid })
     });
     const analyzeData = await analyzeResp.json().catch(() => ({}));
     if (!analyzeResp.ok){
@@ -25481,8 +25513,13 @@ async function mbuUploadAndAnalyze(){
       };
     });
     if (statusEl){
+      // Round 2026-09-05 (Todd, direct): the "matches the standard layout /
+      // every field auto-recognized" success banner duplicated the summary
+      // line mbuRenderMappingPanel() already shows just below it — dropped
+      // entirely on the confident path. The multi-block warning is real,
+      // new information (not shown anywhere else), so it stays.
       statusEl.textContent = analyzeData.status === 'mapped'
-        ? `${mbuFileName}: matches the standard layout — every target field auto-recognized. Review below, then confirm.`
+        ? ''
         : `${mbuFileName}: ${analyzeData.layout === 'multi_block' ? `found ${(analyzeData.headerRows || []).length} header blocks (not a single flat table)` : 'not every field could be auto-mapped'} — review and confirm the flagged items below.`;
     }
     mbuRenderMappingPanel();
@@ -25627,8 +25664,13 @@ function mbuRenderMappingPanel(){
   // has uploaded before, where getting the mapping wrong the first time
   // used to mean deleting the whole budget and starting over (see
   // mbuOpenExistingUpload, which now reopens this same panel).
+  // Round 2026-09-05 (Todd, direct): "the first part of our return within
+  // Step 1 should completely go away" -- dropped the confident-path
+  // checkmark banner outright (it only ever restated what the column table
+  // right below it already shows). Kept the warning-path message, since
+  // that flags something the client actually needs to act on.
   const summaryLine = confident
-    ? `<p class="hint" style="color:var(--cx);margin:10px 0 12px;">✓ ${escapeHtml(mbuAnalysis.note || 'Every column recognized.')} Review below if anything looks off, or continue to the category review further down.</p>`
+    ? ''
     : `<p class="hint" style="color:#b8860b;margin:10px 0 12px;">${escapeHtml(mbuAnalysis.note || '')} Confirm or fix each column below, then apply.</p>`;
   panel.innerHTML = `
     <div style="margin-top:10px;">
@@ -25726,20 +25768,32 @@ async function mbuConfirmImport(){
 // standard Verilume category has a home; groups not explicitly named by
 // the client (everything past the first four) are a reasonable default
 // grouping, called out plainly so they're easy to correct by name.
+// Round 2026-09-05, per direct request: "we need a total channel category
+// and then subcategories" -- Direct Mail, Digital, TV, and Print
+// Advertising are now real Total Channel groups with real subcategory
+// entries (see VERILUME_BUDGET_CATEGORIES in backend/server.js), each
+// including a "Total/Unspecified" option for a file that only gives one
+// lump sum for the whole channel. Out-of-Home, Radio, and Trade are Total
+// Channels too, per Todd's own list, but he gave no subcategories for
+// them, so each stays a single-entry group exactly as before -- picking
+// the group already picks the (only) category. Everything else Todd's
+// list didn't name (Email, PR/Earned, Events, Podcasts, Partner/Affiliate
+// Media, Consulting & Professional Fees, Production, Fulfillment &
+// Collateral, Data & Technology, Other) is UNCHANGED -- still its own
+// flat category, still its own group, per direct confirmation these
+// should stay exactly as they are.
 const MBU_FUNCTIONAL_GROUPS = {
-  // Round 132bx follow-on #3 (2026-08-15), per repeated direct correction:
-  // 'Video/CTV' was one merged Verilume budget category (see
-  // VERILUME_BUDGET_CATEGORIES in backend/server.js) — split into separate
-  // 'CTV' and 'OTV' entries there, mirrored here so both show up in this
-  // group instead of a category that no longer exists.
-  'Digital': ['Search', 'Social', 'Display/Programmatic', 'CTV', 'OTV', 'Email'],
-  'Direct Mail & Inserts': ['Direct Mail'],
-  'Magazines': ['Magazines/Print'],
-  'Trade': ['Trade/B2B Marketing'],
-  'Broadcast & Audio': ['Linear TV', 'Radio', 'Podcasts'],
+  'Direct Mail': ['Direct Mail', 'Direct Mail — Customers', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — ID Resolution'],
+  'Digital': ['Digital — Total/Unspecified', 'Search', 'Social', 'Digital — Addressable', 'Digital — Partnerships'],
+  'TV': ['TV — Total/Unspecified', 'Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
+  'Print Advertising': ['Magazines/Print', 'Print Advertising — Newspapers'],
   'Out-of-Home': ['Out-of-Home'],
+  'Radio': ['Radio'],
+  'Trade': ['Trade/B2B Marketing'],
+  'Email': ['Email'],
   'Public Relations': ['PR/Earned'],
   'Events & Sponsorships': ['Events'],
+  'Podcasts': ['Podcasts'],
   'Partnerships': ['Partner/Affiliate Media'],
   'Professional Services': ['Consulting & Professional Fees'],
   'Production': ['Production (Photo/Video/Creative)'],
@@ -25868,13 +25922,43 @@ function mbuAddManualCategory(bucketKey){
 function mbuMonthlyDetailHtml(months){
   const hasAny = MARKETING_BUDGET_MONTHS_CLIENT.some(m => months && months[m] != null);
   if (!hasAny) return '<p class="hint" style="margin:4px 0 0;">No month-by-month figures on file for this line -- total only.</p>';
-  const heads = MARKETING_BUDGET_MONTHS_CLIENT.map(m => `<th>${MARKETING_BUDGET_LABELS[m].slice(0, 3)}</th>`).join('');
-  const cells = MARKETING_BUDGET_MONTHS_CLIENT.map(m => `<td>${months[m] != null ? '$' + Number(months[m]).toLocaleString() : '—'}</td>`).join('');
-  return `<div class="table-scroll"><table class="data-table" style="font-size:0.75rem;margin-top:6px;"><thead><tr>${heads}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div>`;
+  // Round 2026-09-05 (Todd, direct: "expand the width to limit cut off
+  // days and increase fonts") -- wider fixed-width columns and a bigger
+  // font so a 6-7 digit dollar figure never wraps or clips against the
+  // column edge; min-width on the table forces the surrounding
+  // .table-scroll to scroll horizontally on a narrow screen rather than
+  // squeezing the columns back down.
+  const heads = MARKETING_BUDGET_MONTHS_CLIENT.map(m => `<th style="white-space:nowrap;padding:6px 10px;">${MARKETING_BUDGET_LABELS[m].slice(0, 3)}</th>`).join('');
+  const cells = MARKETING_BUDGET_MONTHS_CLIENT.map(m => `<td style="white-space:nowrap;padding:6px 10px;">${months[m] != null ? '$' + Number(months[m]).toLocaleString() : '—'}</td>`).join('');
+  return `<div class="table-scroll" style="max-width:100%;"><table class="data-table" style="font-size:0.9062rem;margin-top:6px;min-width:780px;"><thead><tr>${heads}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div>`;
 }
 function mbuToggleMonthlyDetail(detailId){
   const el = document.getElementById(detailId);
   if (el) el.hidden = !el.hidden;
+}
+
+// Round 2026-09-05: with Direct Mail/Digital/TV/Print Advertising now
+// carrying several subcategories each (see MBU_FUNCTIONAL_GROUPS), a flat
+// 31-option dropdown got hard to scan -- groups the "Our assumption"
+// picker into <optgroup>s that match the same Total Channel / subcategory
+// structure the results screen below already rolls categories up by, so
+// the picker and the rollup agree on what a "Total Channel" is. Any
+// category present in verilumeCats but not listed in any group (shouldn't
+// happen, but not assumed) still gets an ungrouped option appended, so
+// nothing is ever silently unselectable.
+function mbuGroupedCategoryOptionsHtml(verilumeCats, choice){
+  const available = new Set(verilumeCats);
+  const placed = new Set();
+  const groupsHtml = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, cats]) => {
+    const opts = cats.filter(c => available.has(c));
+    if (!opts.length) return '';
+    opts.forEach(c => placed.add(c));
+    const optionsHtml = opts.map(vc => `<option value="${escapeHtml(vc)}"${vc === choice ? ' selected' : ''}>${escapeHtml(vc)}</option>`).join('');
+    return `<optgroup label="${escapeHtml(groupName)}">${optionsHtml}</optgroup>`;
+  }).join('');
+  const leftoverHtml = verilumeCats.filter(c => !placed.has(c))
+    .map(vc => `<option value="${escapeHtml(vc)}"${vc === choice ? ' selected' : ''}>${escapeHtml(vc)}</option>`).join('');
+  return groupsHtml + leftoverHtml;
 }
 
 // One raw Working Media category, per direct request: "show the spend
@@ -25892,29 +25976,31 @@ function mbuWorkingCategoryRowHtml(c){
   const isLearned = c.suggested && c.suggested.source === 'learned' && !c.currentVerilumeCategory;
   const learnedNote = isLearned ? `<span class="hint" style="display:block;margin-top:2px;color:var(--cx);">↻ auto-mapped from a previous upload -- change it below if that's changed.</span>` : '';
   return `
-    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
-      <div style="flex:1 1 220px;min-width:180px;">
-        <span class="hint" style="display:block;">Client's category</span>
-        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
-        ${learnedNote}
-        <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
-        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(c.months)}</div>
-      </div>
-      <div style="flex:0 0 120px;">
-        <span class="hint" style="display:block;">Amount</span>
-        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
-      </div>
-      <div style="flex:1 1 220px;min-width:200px;">
-        <span class="hint" style="display:block;">Our assumption -- change if wrong</span>
-        <div class="field" style="margin:0;">
-          <select onchange="mbuCategoryChoiceChanged('${safeLabel}', this.value)">
-            <option value="">-- choose --</option>
-            ${verilumeCats.map(vc => `<option value="${escapeHtml(vc)}"${vc === choice ? ' selected' : ''}>${escapeHtml(vc)}</option>`).join('')}
-            ${mbuCustomCategories.map(cc => `<option value="Client: ${escapeHtml(cc)}"${('Client: ' + cc) === choice ? ' selected' : ''}>${escapeHtml(cc)} (your category)</option>`).join('')}
-          </select>
+    <div style="margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1 1 220px;min-width:180px;">
+          <span class="hint" style="display:block;">Client's category</span>
+          <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
+          ${learnedNote}
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
         </div>
-        ${!choice ? '<span class="hint" style="color:#b8860b;">Not yet identified -- pick one</span>' : ''}
+        <div style="flex:0 0 120px;">
+          <span class="hint" style="display:block;">Amount</span>
+          <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
+        </div>
+        <div style="flex:1 1 220px;min-width:200px;">
+          <span class="hint" style="display:block;">Our assumption -- change if wrong</span>
+          <div class="field" style="margin:0;">
+            <select onchange="mbuCategoryChoiceChanged('${safeLabel}', this.value)">
+              <option value="">-- choose --</option>
+              ${mbuGroupedCategoryOptionsHtml(verilumeCats, choice)}
+              ${mbuCustomCategories.map(cc => `<option value="Client: ${escapeHtml(cc)}"${('Client: ' + cc) === choice ? ' selected' : ''}>${escapeHtml(cc)} (your category)</option>`).join('')}
+            </select>
+          </div>
+          ${!choice ? '<span class="hint" style="color:#b8860b;">Not yet identified -- pick one</span>' : ''}
+        </div>
       </div>
+      <div id="${detailId}" hidden style="margin-top:6px;">${mbuMonthlyDetailHtml(c.months)}</div>
     </div>`;
 }
 
@@ -25947,15 +26033,17 @@ function mbuManualCategoryRowHtml(label){
 function mbuNonWorkingCategoryRowHtml(c){
   const detailId = `mbuMonthsNW-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
   return `
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
-      <div style="flex:1 1 260px;min-width:200px;">
-        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
-        <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
-        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(c.months)}</div>
+    <div style="margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1 1 260px;min-width:200px;">
+          <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);">${escapeHtml(c.category)}</div>
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
+        </div>
+        <div style="flex:0 0 140px;text-align:right;">
+          <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
+        </div>
       </div>
-      <div style="flex:0 0 140px;text-align:right;">
-        <div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>
-      </div>
+      <div id="${detailId}" hidden style="margin-top:6px;">${mbuMonthlyDetailHtml(c.months)}</div>
     </div>`;
 }
 
@@ -26235,16 +26323,21 @@ function mbuRenderResults(data){
   // "expandable per category row" placement — same pattern as the Stage-2
   // review screen (mbuMonthlyDetailHtml/mbuToggleMonthlyDetail), reused
   // here for the final confirmed view.
+  // Round 2026-09-05 (Todd, direct: "expand the width to limit cut off
+  // days"): the monthly detail is now a second, full-width table row
+  // (colspan across both columns) instead of being crammed into the
+  // narrow left-hand cell — same toggle, same hidden div, just a row of
+  // its own so the wider table from mbuMonthlyDetailHtml has room.
   const verilumeRows = byVerilume ? Object.entries(byVerilume).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
     const detailId = `mbuFinalMonths-${cat.replace(/[^a-zA-Z0-9]/g, '_')}`;
     return `
     <tr>
       <td>${escapeHtml(cat)}<br>
         <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;margin-top:2px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
-        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(byVerilumeMonthly[cat] || {})}</div>
       </td>
       <td style="font-weight:600;">$${Number(total).toLocaleString()}</td>
-    </tr>`;
+    </tr>
+    <tr id="${detailId}" hidden><td colspan="2">${mbuMonthlyDetailHtml(byVerilumeMonthly[cat] || {})}</td></tr>`;
   }).join('') : '';
   const nonWorkingRows = nonWorkingLedger.map(c => {
     const detailId = `mbuFinalNWMonths-${c.category.replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -26252,10 +26345,10 @@ function mbuRenderResults(data){
     <tr>
       <td>${escapeHtml(c.category)}<br>
         <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;margin-top:2px;" onclick="mbuToggleMonthlyDetail('${detailId}')">Show monthly →</button>
-        <div id="${detailId}" hidden>${mbuMonthlyDetailHtml(c.months || {})}</div>
       </td>
       <td style="font-weight:600;">$${Number(c.total || 0).toLocaleString()}</td>
-    </tr>`;
+    </tr>
+    <tr id="${detailId}" hidden><td colspan="2">${mbuMonthlyDetailHtml(c.months || {})}</td></tr>`;
   }).join('');
   body.innerHTML = `
     <p class="hint" style="margin-top:0;">
@@ -26588,6 +26681,7 @@ async function mbuLoadYearsList(){
     mbuYearsData = resp.ok ? ((await resp.json()).uploads || []) : [];
   } catch (e){ mbuYearsData = []; }
   renderMbuYearsList();
+  if (typeof renderMbuScopeRow === 'function') renderMbuScopeRow();
   if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
   if (typeof mbuRenderDuplicateYearNotice === 'function') mbuRenderDuplicateYearNotice();
 }
@@ -26599,11 +26693,17 @@ function mbuStatusLabel(s){
 function mbuStatusColor(s){
   return s === 'confirmed' ? 'var(--cx)' : 'var(--muted)';
 }
+// Round 2026-09-05: filtered to the currently selected Domestic/
+// International toggle (mbuSelectedScope), matching the same scope the
+// year picker and duplicate-year notice above are already filtered to —
+// per direct decision, International is "a different view," so switching
+// the toggle switches this table too, not just the upload form.
 function renderMbuYearsList(){
   const body = document.getElementById('mbuYearsBody');
   if (!body) return;
-  if (!mbuYearsData.length){ body.innerHTML = '<p class="hint">No budget years on file yet — select a year above and upload a file to get started.</p>'; return; }
-  const sorted = [...mbuYearsData].sort((a, b) => (b.year || 0) - (a.year || 0));
+  const inScope = mbuYearsData.filter(u => (u.scope || 'domestic') === mbuSelectedScope);
+  if (!inScope.length){ body.innerHTML = `<p class="hint">No ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget years on file yet — select a year above and upload a file to get started.</p>`; return; }
+  const sorted = [...inScope].sort((a, b) => (b.year || 0) - (a.year || 0));
   const rows = sorted.map(u => `
     <tr>
       <td>${u.year || '—'}</td>
@@ -26655,6 +26755,12 @@ async function mbuOpenExistingUpload(uploadId){
       : { columnRoles: mbuInitColumnRoles(b), excludeRowIdxs: new Set([...(b.likelySubtotalRowIdxs || []), ...((detail.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))]) };
   });
   if (mbuGrid && mbuAnalysis.blocks.length) mbuRenderMappingPanel();
+  // Round 2026-09-05: reopening an upload also restores which scope
+  // (Domestic/International) it belongs to, so the toggle above and the
+  // year picker's duplicate-check line up with what's actually being
+  // reviewed instead of silently staying on whatever was selected before.
+  mbuSelectedScope = detail.scope === 'international' ? 'international' : 'domestic';
+  if (typeof renderMbuScopeRow === 'function') renderMbuScopeRow();
   if (detail.year){
     mbuSelectedYear = detail.year;
     if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
