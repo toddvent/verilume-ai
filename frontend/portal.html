@@ -7530,6 +7530,8 @@
         </div>
         <label class="btn-ghost" for="mbuFileInput" style="cursor:pointer;display:inline-block;">📤 Choose file to upload…</label>
         <input type="file" id="mbuFileInput" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleFile(event)">
+        <a class="btn-ghost" id="mbuTemplateDownloadLink" href="/api/marketing-budget-upload-template.csv" download style="display:inline-block;margin-left:8px;">⬇ Download sample template</a>
+        <p class="hint" style="margin:6px 0 0;">Not sure how to format your file? Download the template — it shows the column layout we recognize automatically (Category, Working/Non-Working, one column per month, Total).</p>
         <p class="hint" id="mbuStatus" style="margin-top:8px;"></p>
         <div id="mbuMappingPanel"></div>
       </div>
@@ -25474,8 +25476,7 @@ async function mbuUploadAndAnalyze(){
     mbuBlockOverrides = {};
     (analyzeData.blocks || []).forEach(b => {
       mbuBlockOverrides[b.headerRowIdx] = {
-        categoryColIdx: b.suggestedCategoryCol ? b.suggestedCategoryCol.colIdx : null,
-        statusColIdx: b.suggestedStatusCol ? b.suggestedStatusCol.colIdx : null,
+        columnRoles: mbuInitColumnRoles(b),
         excludeRowIdxs: new Set([...(b.likelySubtotalRowIdxs || []), ...((analyzeData.likelyGrandTotalRowIdxs || []).includes ? (analyzeData.likelyGrandTotalRowIdxs.filter(i => b.dataRowIdxs.includes(i))) : [])])
       };
     });
@@ -25499,11 +25500,61 @@ async function mbuUploadAndAnalyze(){
   }
 }
 
-function mbuColBadge(m){
-  if (!m) return '<span style="color:var(--muted);">— not recognized —</span>';
-  return `<span style="color:var(--cx);font-weight:600;">✓ ${escapeHtml(MARKETING_BUDGET_LABELS[m.key] || m.key)}</span> <span class="hint">(matched "${escapeHtml(m.matchedOn)}")</span>`;
+// Round 2026-09-05 rework, per direct feedback ("the ask from a client POV
+// is confusing... show the important column title and value and then a
+// mapping [to] a specific field listed adjacent via a drop-down"). This
+// used to be three separate displays — a read-only "recognized columns"
+// table, two bare Category/Status dropdowns below it, and a plain-text list
+// of "unrecognized columns" — collapsed inside a <details> a client had to
+// know to open, with the whole file already auto-imported underneath it
+// before they ever saw it. Replaced with ONE per-column table (this
+// column's header text + a real sample value from your file + a single
+// dropdown covering every possible role), shown open by default, not a
+// buried troubleshooting toggle.
+const MARKETING_BUDGET_LABELS = { category:'Category / Line Item', status:'Working / Non-Working', jan:'January', feb:'February', mar:'March', apr:'April', may:'May', jun:'June', jul:'July', aug:'August', sep:'September', oct:'October', nov:'November', dec:'December', total:'Annual Total' };
+// Client-side mirror of the backend's MARKETING_BUDGET_MONTHS (server.js) —
+// keep the two lists in sync if months are ever added/reordered there.
+const MARKETING_BUDGET_MONTHS_CLIENT = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+// Order matters here — this is the dropdown's own option order, category/
+// status first since those are the two fields this file's header text can
+// never reliably auto-name (see analyzeMarketingBudgetGrid's own comment),
+// then months in calendar order, then Total, then Ignore last so it never
+// reads as the "default" choice.
+const MBU_ROLE_ORDER = ['category', 'status', ...MARKETING_BUDGET_MONTHS_CLIENT, 'total'];
+
+// One role per column, initialized from the analysis' own best guess —
+// month/total columns from monthAndTotalMap (real header-text matches,
+// e.g. "January"), category/status from suggestedCategoryCol/
+// suggestedStatusCol (heuristic column-VALUE matches, e.g. "mostly distinct
+// text" or "WORKING/NON-WORKING tokens"). Anything neither identifies
+// starts as '' (ignore), same honest "no guess" default as before — just
+// now every column gets the SAME kind of dropdown, whether it was auto-
+// recognized, suggested, or missed entirely, instead of three different
+// treatments depending on which case it fell into.
+function mbuInitColumnRoles(b){
+  const roles = {};
+  Object.entries(b.monthAndTotalMap || {}).forEach(([idx, m]) => { roles[Number(idx)] = m.key; });
+  if (b.suggestedCategoryCol) roles[b.suggestedCategoryCol.colIdx] = 'category';
+  if (b.suggestedStatusCol) roles[b.suggestedStatusCol.colIdx] = 'status';
+  return roles;
 }
-const MARKETING_BUDGET_LABELS = { jan:'January', feb:'February', mar:'March', apr:'April', may:'May', jun:'June', jul:'July', aug:'August', sep:'September', oct:'October', nov:'November', dec:'December', total:'Annual Total' };
+// First real (non-blank) value found in this column among the block's own
+// data rows — this is the "value" half of "column title and value," pulled
+// from the client's own file, never a placeholder.
+function mbuSampleValueFor(b, colIdx){
+  for (const ri of b.dataRowIdxs){
+    const v = (mbuGrid[ri] || [])[colIdx];
+    if (v != null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+function mbuRoleOptionsHtml(selectedRole){
+  const opts = ['<option value=""' + (selectedRole ? '' : ' selected') + '>— ignore this column —</option>'];
+  MBU_ROLE_ORDER.forEach(key => {
+    opts.push(`<option value="${key}"${key === selectedRole ? ' selected' : ''}>${escapeHtml(MARKETING_BUDGET_LABELS[key])}</option>`);
+  });
+  return opts.join('');
+}
 
 function mbuRenderMappingPanel(){
   const panel = document.getElementById('mbuMappingPanel');
@@ -25514,18 +25565,35 @@ function mbuRenderMappingPanel(){
   }
 
   const grandTotalIdxs = new Set(mbuAnalysis.likelyGrandTotalRowIdxs || []);
+  const confident = mbuAnalysis.status === 'mapped';
   const blocksHtml = (mbuAnalysis.blocks || []).map((b, bi) => {
-    const ov = mbuBlockOverrides[b.headerRowIdx] || { categoryColIdx: null, statusColIdx: null, excludeRowIdxs: new Set() };
-    const monthTotalRows = Object.entries(b.monthAndTotalMap).map(([idx, m]) => `<tr><td>Column ${Number(idx) + 1} ("${escapeHtml((mbuGrid[b.headerRowIdx] || [])[idx] || '')}")</td><td>${mbuColBadge(m)}</td></tr>`).join('');
-    const colOptionsFor = (selectedIdx) => (mbuGrid[b.headerRowIdx] || []).map((h, idx) => `<option value="${idx}"${idx === selectedIdx ? ' selected' : ''}>Column ${idx + 1} ("${escapeHtml(h || '(blank header)')}")</option>`).join('');
+    const ov = mbuBlockOverrides[b.headerRowIdx] || { columnRoles: mbuInitColumnRoles(b), excludeRowIdxs: new Set() };
+    const headerRow = mbuGrid[b.headerRowIdx] || [];
+    const colCount = Math.max(headerRow.length, ...b.dataRowIdxs.map(ri => (mbuGrid[ri] || []).length), 1);
+    const columnRowsHtml = Array.from({ length: colCount }, (_, idx) => idx).map(idx => {
+      const role = ov.columnRoles[idx] || '';
+      const isCoreField = role === 'category' || role === 'status';
+      return `<tr>
+        <td>${escapeHtml(headerRow[idx] || '(blank header)')}</td>
+        <td class="hint">${escapeHtml(mbuSampleValueFor(b, idx)) || '<span class="hint">(no data)</span>'}</td>
+        <td><select onchange="mbuColumnRoleChanged(${b.headerRowIdx}, ${idx}, this.value)">${mbuRoleOptionsHtml(role)}</select>
+          ${isCoreField && role === 'category' && b.suggestedCategoryCol && b.suggestedCategoryCol.colIdx === idx ? `<span class="hint">(${escapeHtml(b.suggestedCategoryCol.reason)})</span>` : ''}
+          ${isCoreField && role === 'status' && b.suggestedStatusCol && b.suggestedStatusCol.colIdx === idx ? `<span class="hint">(${escapeHtml(b.suggestedStatusCol.reason)})</span>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+    const hasCategory = Object.values(ov.columnRoles).includes('category');
+    const hasStatus = Object.values(ov.columnRoles).includes('status');
+    const categoryColIdx = Object.keys(ov.columnRoles).find(k => ov.columnRoles[k] === 'category');
+    const statusColIdx = Object.keys(ov.columnRoles).find(k => ov.columnRoles[k] === 'status');
     const dataPreview = b.dataRowIdxs.slice(0, 6).map(ri => {
       const row = mbuGrid[ri] || [];
       const isExcluded = ov.excludeRowIdxs.has(ri);
       const isFlagged = (b.likelySubtotalRowIdxs || []).includes(ri) || grandTotalIdxs.has(ri);
       return `<tr style="${isExcluded ? 'opacity:0.5;' : ''}${isFlagged ? 'background:rgba(255,180,0,0.08);' : ''}">
         <td><input type="checkbox" ${isExcluded ? 'checked' : ''} onchange="mbuToggleExcludeRow(${b.headerRowIdx}, ${ri}, this.checked)"> row ${ri + 1}</td>
-        <td>${escapeHtml(row[ov.categoryColIdx] || '—')}</td>
-        <td>${escapeHtml(row[ov.statusColIdx] != null ? row[ov.statusColIdx] : '—')}</td>
+        <td>${escapeHtml(categoryColIdx != null ? (row[categoryColIdx] || '—') : '—')}</td>
+        <td>${escapeHtml(statusColIdx != null ? (row[statusColIdx] || '—') : '—')}</td>
         <td>${isFlagged ? '<span style="color:#b8860b;font-weight:600;">⚠ looks like a subtotal/grand total — either its label says so, or its total matches the sum of other rows</span>' : ''}</td>
       </tr>`;
     }).join('');
@@ -25533,28 +25601,13 @@ function mbuRenderMappingPanel(){
     return `
       <div class="sk-card" style="margin-bottom:14px;">
         <div class="sk-card-body">
-          <p style="font-size:0.8125rem;font-weight:600;margin:0 0 8px;">${mbuAnalysis.layout === 'multi_block' ? `Block ${bi + 1} of ${mbuAnalysis.blocks.length} — header at row ${b.headerRowIdx + 1}` : 'Column mapping'}</p>
-          <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;">
-            <thead><tr><th>Your column</th><th>Recognized as</th></tr></thead>
-            <tbody>${monthTotalRows}</tbody>
+          <p style="font-size:0.8125rem;font-weight:600;margin:0 0 8px;">${mbuAnalysis.layout === 'multi_block' ? `Block ${bi + 1} of ${mbuAnalysis.blocks.length} — header at row ${b.headerRowIdx + 1}` : 'Your columns, and what each one means'}</p>
+          <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:6px;">
+            <thead><tr><th>Column header (from your file)</th><th>Sample value (from your file)</th><th>Maps to</th></tr></thead>
+            <tbody>${columnRowsHtml}</tbody>
           </table></div>
-          <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;">
-            <label class="hint">Category / Line Item column
-              <select onchange="mbuOverrideChanged(${b.headerRowIdx}, 'categoryColIdx', this.value)">
-                <option value=""${ov.categoryColIdx == null ? ' selected' : ''}>— not mapped —</option>
-                ${colOptionsFor(ov.categoryColIdx)}
-              </select>
-              ${b.suggestedCategoryCol ? `<span class="hint">(suggested: column ${b.suggestedCategoryCol.colIdx + 1} — ${escapeHtml(b.suggestedCategoryCol.reason)})</span>` : '<span class="hint" style="color:var(--advocacy);">no confident suggestion — pick one</span>'}
-            </label>
-            <label class="hint">Working / Non-Working column
-              <select onchange="mbuOverrideChanged(${b.headerRowIdx}, 'statusColIdx', this.value)">
-                <option value=""${ov.statusColIdx == null ? ' selected' : ''}>— not mapped —</option>
-                ${colOptionsFor(ov.statusColIdx)}
-              </select>
-              ${b.suggestedStatusCol ? `<span class="hint">(suggested: column ${b.suggestedStatusCol.colIdx + 1} — ${escapeHtml(b.suggestedStatusCol.reason)})</span>` : '<span class="hint" style="color:var(--advocacy);">no confident suggestion — pick one</span>'}
-            </label>
-          </div>
-          ${b.unmappedColumns.length ? `<p class="hint" style="color:var(--advocacy);margin:0 0 8px;">Unrecognized column(s) with data, needs your review: ${b.unmappedColumns.map(c => `Column ${c + 1} ("${escapeHtml((mbuGrid[b.headerRowIdx] || [])[c] || '')}")`).join(', ')}</p>` : ''}
+          ${!hasCategory ? '<p class="hint" style="color:var(--advocacy);margin:0 0 8px;">No column is mapped to Category / Line Item yet — pick one above.</p>' : ''}
+          ${!hasStatus ? '<p class="hint" style="color:var(--advocacy);margin:0 0 8px;">No column is mapped to Working / Non-Working yet — pick one above, or every line item here will count as Working Media.</p>' : ''}
           <p style="font-size:0.8125rem;font-weight:600;margin:8px 0 4px;">Rows in this block (first 6 of ${b.rowCount}) — uncheck to exclude a row from import</p>
           <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
             <thead><tr><th>Include</th><th>Category (preview)</th><th>Status (preview)</th><th>Flag</th></tr></thead>
@@ -25564,31 +25617,46 @@ function mbuRenderMappingPanel(){
       </div>`;
   }).join('');
 
-  // Collapsed by default — this is the block-by-block column-detection
-  // detail, kept as a troubleshooting/correction tool, not the default
-  // experience. The file is already auto-imported with these same
-  // best-guess settings the moment analysis finishes (see
-  // mbuUploadAndAnalyze); the single-screen review below is what a client
-  // sees first. Per direct instruction: "without grouping by loop stages."
+  // Shown open, not collapsed — per direct feedback, this is the FIRST
+  // thing a client should see after uploading, not a buried "advanced"
+  // toggle. Still auto-imports with the best-guess mapping the moment
+  // analysis finishes (see mbuUploadAndAnalyze) so there's an immediate
+  // result to review below, but every column's actual mapping is visible
+  // and editable right here, right away — including on a file this account
+  // has uploaded before, where getting the mapping wrong the first time
+  // used to mean deleting the whole budget and starting over (see
+  // mbuOpenExistingUpload, which now reopens this same panel).
+  const summaryLine = confident
+    ? `<p class="hint" style="color:var(--cx);margin:10px 0 12px;">✓ ${escapeHtml(mbuAnalysis.note || 'Every column recognized.')} Review below if anything looks off, or continue to the category review further down.</p>`
+    : `<p class="hint" style="color:#b8860b;margin:10px 0 12px;">${escapeHtml(mbuAnalysis.note || '')} Confirm or fix each column below, then apply.</p>`;
   panel.innerHTML = `
-    <details style="margin-top:10px;">
-      <summary style="cursor:pointer;font-size:0.8125rem;font-weight:600;color:var(--muted);">Review how we read your file (${mbuAnalysis.layout === 'multi_block' ? `${mbuAnalysis.blocks.length} block${mbuAnalysis.blocks.length === 1 ? '' : 's'} found` : 'column detection'}) →</summary>
-      <p class="hint" style="margin:10px 0 12px;">${escapeHtml(mbuAnalysis.note || '')} This already ran automatically with the settings below — change anything here only if a category, status, or excluded row looks wrong in the review below, then re-import.</p>
+    <div style="margin-top:10px;">
+      ${summaryLine}
       ${blocksHtml}
       <div class="btn-row">
-        <button type="button" class="btn-primary" onclick="mbuConfirmImport()">Re-import with these settings →</button>
+        <button type="button" class="btn-primary" onclick="mbuConfirmImport()">Apply this mapping →</button>
         <button type="button" class="btn-ghost" onclick="mbuResetImport()">Cancel &amp; start over</button>
       </div>
+      <p class="hint" style="margin-top:4px;">This re-reads your already-uploaded file with the mapping above — you never need to choose the file again.</p>
       <div id="mbuImportResult" class="hint" style="margin-top:8px;"></div>
-    </details>`;
+    </div>`;
 }
 
-function mbuOverrideChanged(headerRowIdx, field, value){
-  if (!mbuBlockOverrides[headerRowIdx]) mbuBlockOverrides[headerRowIdx] = { categoryColIdx: null, statusColIdx: null, excludeRowIdxs: new Set() };
-  mbuBlockOverrides[headerRowIdx][field] = value === '' ? null : Number(value);
+function mbuColumnRoleChanged(headerRowIdx, colIdx, value){
+  if (!mbuBlockOverrides[headerRowIdx]) mbuBlockOverrides[headerRowIdx] = { columnRoles: {}, excludeRowIdxs: new Set() };
+  const roles = mbuBlockOverrides[headerRowIdx].columnRoles;
+  // A role can only belong to one column at a time (there's exactly one
+  // Category column, one Total column, etc.) — assigning it here clears it
+  // from wherever it used to be, rather than allowing two columns to both
+  // claim "Category" and silently picking one.
+  if (value){
+    Object.keys(roles).forEach(k => { if (roles[k] === value) delete roles[k]; });
+  }
+  if (value) roles[colIdx] = value; else delete roles[colIdx];
+  mbuRenderMappingPanel();
 }
 function mbuToggleExcludeRow(headerRowIdx, rowIdx, checked){
-  if (!mbuBlockOverrides[headerRowIdx]) mbuBlockOverrides[headerRowIdx] = { categoryColIdx: null, statusColIdx: null, excludeRowIdxs: new Set() };
+  if (!mbuBlockOverrides[headerRowIdx]) mbuBlockOverrides[headerRowIdx] = { columnRoles: {}, excludeRowIdxs: new Set() };
   if (checked) mbuBlockOverrides[headerRowIdx].excludeRowIdxs.delete(rowIdx);
   else mbuBlockOverrides[headerRowIdx].excludeRowIdxs.add(rowIdx);
 }
@@ -25597,16 +25665,28 @@ async function mbuConfirmImport(){
   const resultEl = document.getElementById('mbuImportResult');
   if (!mbuAnalysis || !mbuAnalysis.blocks) return;
   const blocks = mbuAnalysis.blocks.map(b => {
-    const ov = mbuBlockOverrides[b.headerRowIdx] || { categoryColIdx: null, statusColIdx: null, excludeRowIdxs: new Set() };
+    const ov = mbuBlockOverrides[b.headerRowIdx] || { columnRoles: mbuInitColumnRoles(b), excludeRowIdxs: new Set() };
+    const roles = ov.columnRoles || {};
+    // Derive every field from the user-editable columnRoles map (not from
+    // b.monthAndTotalMap directly) so a manual remap in the dropdown — e.g.
+    // correcting a month the header-text auto-match missed, or moving
+    // Category to a different column — actually takes effect on import,
+    // instead of silently reverting to the original auto-suggestion.
     const monthCols = {};
-    Object.entries(b.monthAndTotalMap).forEach(([idx, m]) => { if (m.key !== 'total') monthCols[m.key] = Number(idx); });
-    const totalEntry = Object.entries(b.monthAndTotalMap).find(([, m]) => m.key === 'total');
+    let totalColIdx = null, categoryColIdx = null, statusColIdx = null;
+    Object.entries(roles).forEach(([idx, role]) => {
+      const colIdx = Number(idx);
+      if (role === 'total') totalColIdx = colIdx;
+      else if (role === 'category') categoryColIdx = colIdx;
+      else if (role === 'status') statusColIdx = colIdx;
+      else if (MARKETING_BUDGET_MONTHS_CLIENT.includes(role)) monthCols[role] = colIdx;
+    });
     return {
       headerRowIdx: b.headerRowIdx,
-      categoryColIdx: ov.categoryColIdx,
-      statusColIdx: ov.statusColIdx,
+      categoryColIdx,
+      statusColIdx,
       monthCols,
-      totalColIdx: totalEntry ? Number(totalEntry[0]) : null,
+      totalColIdx,
       excludeRowIdxs: Array.from(ov.excludeRowIdxs)
     };
   });
@@ -26475,7 +26555,34 @@ async function mbuOpenExistingUpload(uploadId){
   const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}`);
   if (!resp.ok){ alert("Couldn't load that budget upload right now."); return; }
   const detail = await resp.json();
-  mbuAnalysis = { id: uploadId, layout: detail.layout, status: detail.status, year: detail.year };
+  // Round 2026-09-05, per direct bug report: "Users should not need to
+  // reimport." The backend now returns this upload's raw grid plus its
+  // original block analysis (and, if it's been confirmed before, the exact
+  // column mapping it was last confirmed with) — repopulate the same
+  // client-side state mbuUploadAndAnalyze() sets up on a fresh upload, so
+  // the full column-mapping panel (mbuRenderMappingPanel) is reachable
+  // again on any past upload, not just the category-total ledger below it.
+  // Fixing a wrong column pick no longer means deleting the whole budget
+  // and uploading the file again from scratch.
+  mbuFileDataUrl = null; mbuFileName = detail.fileName || null; mbuUploadedFileId = null;
+  mbuGrid = Array.isArray(detail.grid) ? detail.grid : null;
+  mbuAnalysis = {
+    id: uploadId, layout: detail.layout, status: detail.status, year: detail.year,
+    note: detail.note, blocks: detail.blocks || [], monthsRecognized: detail.monthsRecognized,
+    headerRows: detail.headerRows, likelyGrandTotalRowIdxs: detail.likelyGrandTotalRowIdxs
+  };
+  mbuBlockOverrides = {};
+  (detail.blocks || []).forEach(b => {
+    // A prior confirmed mapping for this exact block (matched by
+    // headerRowIdx) wins over a fresh best-guess — it reflects a mapping
+    // the client already reviewed and applied, not a re-derived heuristic
+    // that may have already been corrected once.
+    const confirmedBlock = (detail.confirmedMapping || []).find(cb => cb.headerRowIdx === b.headerRowIdx);
+    mbuBlockOverrides[b.headerRowIdx] = confirmedBlock
+      ? { columnRoles: mbuColumnRolesFromConfirmedBlock(confirmedBlock), excludeRowIdxs: new Set(confirmedBlock.excludeRowIdxs || []) }
+      : { columnRoles: mbuInitColumnRoles(b), excludeRowIdxs: new Set([...(b.likelySubtotalRowIdxs || []), ...((detail.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))]) };
+  });
+  if (mbuGrid && mbuAnalysis.blocks.length) mbuRenderMappingPanel();
   if (detail.year){
     mbuSelectedYear = detail.year;
     if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
@@ -26484,6 +26591,17 @@ async function mbuOpenExistingUpload(uploadId){
   await mbuLoadCategoryMapping();
   const resultsCard = document.getElementById('mbuResultsCard');
   if (resultsCard){ resultsCard.style.display = ''; resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+// Reverses the flat { categoryColIdx, statusColIdx, monthCols, totalColIdx }
+// shape (what's sent to and stored by POST .../confirm) back into the
+// { colIdx: role } shape the mapping panel's dropdowns are keyed on.
+function mbuColumnRolesFromConfirmedBlock(cb){
+  const roles = {};
+  if (cb.categoryColIdx != null) roles[cb.categoryColIdx] = 'category';
+  if (cb.statusColIdx != null) roles[cb.statusColIdx] = 'status';
+  if (cb.totalColIdx != null) roles[cb.totalColIdx] = 'total';
+  Object.entries(cb.monthCols || {}).forEach(([month, colIdx]) => { if (colIdx != null) roles[colIdx] = month; });
+  return roles;
 }
 function mbuToggleDeleteConfirm(uploadId){
   const row = document.getElementById(`mbuDeleteConfirmRow-${uploadId}`);
@@ -37729,6 +37847,12 @@ function goToStep(step, arg, arg2, arg3){
     mbuLoadHistory();
     if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
     if (typeof mbuRenderCrumb === 'function') mbuRenderCrumb(arg);
+    // BACKEND_URL isn't known at static-markup time (this page's script
+    // computes it from window.location — see its own const declaration),
+    // so the template-download link's real href is set here rather than
+    // inlined into the HTML above, same pattern as this section's other
+    // dynamically-populated elements.
+    { const tmplLink = document.getElementById('mbuTemplateDownloadLink'); if (tmplLink) tmplLink.href = `${BACKEND_URL}/api/marketing-budget-upload-template.csv`; }
     mbuRenderActiveChannels();
     document.getElementById('step-mediaplan').classList.add('active');
   } else if (step === 'campaign'){
