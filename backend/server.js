@@ -1,4 +1,3 @@
-
 /*
   CXMedia.AI — real local demo backend (built 2026-07-22)
 
@@ -4650,6 +4649,32 @@ const VERILUME_TO_MMM_CHANNEL_MAP = {
   // Advertising — Total/Unspecified', 'Consumer Print Advertising —
   // Magazines' (round 6, 2026-09-05) -- scoped to budget-upload screens/
   // reporting only for now, per direct decision.
+  //
+  // Round 9 (2026-09-05) -- that decision reversed, per direct report: "the
+  // Active Channels section is not reading the subchannels added even if
+  // the amounts do come across. All direct mail types had spend
+  // allocations, magazines, newspapers and programmatic display were
+  // included in the budget sent over." Every group/sub-channel category
+  // now activates its media channel(s), so a budget that carries Magazines,
+  // Newspapers, Programmatic Display or a Direct Mail list reaches the
+  // Active Channels card, the Media Plan gate and the research
+  // recommendation (which is limited to Active channels -- without these
+  // entries a print- and mail-heavy budget was being recommended a
+  // digital-only mix).
+  'Digital — Total/Unspecified': ['Brand Search', 'Non-Brand Search', 'Paid Social', 'Programmatic Display'],
+  'Digital — Addressable': ['Programmatic Display'],
+  'Digital — Partnerships': ['Partner Media'],
+  'Direct Mail — Customers': ['Direct Mail — Past Guests'],
+  'Direct Mail — Customers Pending': ['Direct Mail — Past Guests'],
+  'Direct Mail — Inquiries': ['Direct Mail — Inquiries'],
+  'Direct Mail — Prospects': ['Direct Mail — Prospects'],
+  'Direct Mail — ID Resolution': ['Direct Mail — Prospects'],
+  'Direct Mail — Identity Resolution': ['Direct Mail — Prospects'],
+  'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV'],
+  'TV — Addressable': ['CTV'],
+  'Print Advertising — Newspapers': ['Newspapers'],
+  'Consumer Print Advertising — Total/Unspecified': ['Magazines', 'Newspapers'],
+  'Consumer Print Advertising — Magazines': ['Magazines'],
 };
 // These three (see RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT and
 // OWNED_MEDIA_CHANNELS in portal.html) are documented elsewhere in this
@@ -16962,3 +16987,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
