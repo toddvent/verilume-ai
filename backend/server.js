@@ -15176,10 +15176,6 @@ Submit your findings via the submit_brand_categories tool.`;
       const body = await readBody(req);
       const year = parseInt(body.year, 10);
       if (!year || year < 2000 || year > 2100) return sendJson(res, 400, { error: 'a valid year is required — select the budget year before uploading a file' });
-      if (!body.uploadedFileId) return sendJson(res, 400, { error: 'uploadedFileId is required — this file must go through POST .../uploads (purpose=marketing_budget) first' });
-      const uploadedFile = db.prepare('SELECT * FROM uploaded_files WHERE id = ? AND accountId = ?').get(body.uploadedFileId, accountId);
-      if (!uploadedFile || uploadedFile.status !== 'accepted') return sendJson(res, 400, { error: 'uploadedFileId must reference a scanned, accepted upload on this account' });
-      if (!Array.isArray(body.grid) || !body.grid.length) return sendJson(res, 400, { error: 'grid (array of rows) is required' });
       // Round 2026-09-05: scope ('domestic' | 'international') is a second
       // dimension alongside year, not a flag on individual line items — see
       // ensureColumn('marketing_budget_uploads', 'scope', ...) above. Any
@@ -15195,6 +15191,41 @@ Submit your findings via the submit_brand_categories tool.`;
           year, scope
         });
       }
+      // Round 2026-09-05 (Plan Setup reorg), per direct instruction: "Manual
+      // begins with a blank category grid to fill in." body.manual===true
+      // skips the file/grid entirely — no uploadedFileId, no analyze step.
+      // Creates the upload row straight at 'pending_category_mapping' with an
+      // empty grid/analysis and zero line items, so GET .../category-mapping
+      // comes back with workingCategories:[] and nonWorkingCategories:[] —
+      // the SAME review screen a real upload lands on after Step 1 (Imported
+      // budget / mbuResultsCard), just starting empty. Its existing
+      // "+ Add category" control (mbuAddManualCategory / mbuManualCategoryRowHtml
+      // — already built to let someone add a $0 category with "no file
+      // items" and edit its total) IS the blank grid to fill in; each added
+      // category's $ total is stored via the existing category-overrides
+      // endpoint, and confirm-categories' completeness check is vacuously
+      // satisfied with zero real line items, so "Submit as final" works
+      // whenever the user is done — no separate manual-entry code path is
+      // needed anywhere downstream (Active Channels, exports, Media Plan
+      // prefill all key off status='confirmed' plus category-overrides/
+      // line-items, exactly as a real upload does).
+      if (body.manual === true){
+        const manualId = generateId('MBU');
+        const nowManual = new Date().toISOString();
+        const manualAnalysis = {
+          layout: 'manual', status: 'pending_category_mapping',
+          note: 'Manually entered budget — no file was uploaded; categories and amounts were added by hand.',
+          headerRows: [], blocks: [], monthsRecognized: [], likelyGrandTotalRowIdxs: []
+        };
+        db.prepare(`INSERT INTO marketing_budget_uploads (id, accountId, uploadedFileId, fileName, gridJson, layout, analysisJson, status, year, scope, createdAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(manualId, accountId, null, 'Manually entered', JSON.stringify([]), 'manual', JSON.stringify(manualAnalysis), 'pending_category_mapping', year, scope, nowManual);
+        return sendJson(res, 201, { id: manualId, year, scope, layout: 'manual', status: 'pending_category_mapping', manual: true, note: manualAnalysis.note, headerRows: [], blocks: [], monthsRecognized: [], likelyGrandTotalRowIdxs: [], targetFields: MARKETING_BUDGET_TARGET_FIELDS });
+      }
+      if (!body.uploadedFileId) return sendJson(res, 400, { error: 'uploadedFileId is required — this file must go through POST .../uploads (purpose=marketing_budget) first' });
+      const uploadedFile = db.prepare('SELECT * FROM uploaded_files WHERE id = ? AND accountId = ?').get(body.uploadedFileId, accountId);
+      if (!uploadedFile || uploadedFile.status !== 'accepted') return sendJson(res, 400, { error: 'uploadedFileId must reference a scanned, accepted upload on this account' });
+      if (!Array.isArray(body.grid) || !body.grid.length) return sendJson(res, 400, { error: 'grid (array of rows) is required' });
       const analysis = analyzeMarketingBudgetGrid(body.grid);
       const id = generateId('MBU');
       const now = new Date().toISOString();
@@ -15437,6 +15468,107 @@ Submit your findings via the submit_brand_categories tool.`;
         activeChannels = recomputeAccountActiveChannels(accountId, byVerilumeCategory);
       }
       return sendJson(res, 200, { uploadId, status: allMapped ? 'confirmed' : 'pending_category_mapping', available: allMapped, stillUnmapped, activeChannels });
+    }
+
+    // POST /api/accounts/:id/marketing-budget-uploads/carry-forward — Round
+    // 2026-09-05 (Plan Setup reorg), per direct instruction: "leverage
+    // previous year" as a Setup option alongside Manually add / Upload.
+    // Body: { year, scope, sourceUploadId } — sourceUploadId must be a
+    // CONFIRMED upload on this account (any year/scope); copies its line
+    // items (raw category/status/month/amount/annualTotal/verilumeCategory,
+    // same shape POST .../confirm would have produced) and its category
+    // overrides into a brand-new upload row for the target year/scope.
+    // Same 409 duplicate-year gate as a real upload/manual create.
+    // Deliberately lands as 'pending_category_mapping' (a draft), NOT
+    // 'confirmed' — a straight copy of last year's numbers is very likely
+    // stale (new vendors, different total, channels that changed) and
+    // silently letting it overwrite Active Channels/Media Plan prefill
+    // without a human looking at it first would be the wrong default. The
+    // user reviews it on the same "Imported budget" screen a real upload
+    // uses (every raw category already has its verilumeCategory carried
+    // over, so review is normally just "confirm the numbers still look
+    // right, then Submit as final") — reuses mbuCategoryLedgerForUpload/
+    // confirm-categories/recomputeAccountActiveChannels exactly as every
+    // other path into 'confirmed' does, nothing duplicated here.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[4] === 'carry-forward'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const year = parseInt(body.year, 10);
+      if (!year || year < 2000 || year > 2100) return sendJson(res, 400, { error: 'a valid target year is required' });
+      const scope = body.scope === 'international' ? 'international' : 'domestic';
+      if (!body.sourceUploadId) return sendJson(res, 400, { error: 'sourceUploadId (a confirmed upload on this account to copy from) is required' });
+      const source = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(body.sourceUploadId, accountId);
+      if (!source) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      if (source.status !== 'confirmed') return sendJson(res, 400, { error: 'sourceUploadId must reference a confirmed budget — nothing to leverage from an unfinished upload' });
+      const existingConfirmed = db.prepare("SELECT id, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND COALESCE(scope, 'domestic') = ? AND status = 'confirmed'").get(accountId, year, scope);
+      if (existingConfirmed){
+        return sendJson(res, 409, {
+          error: `${year} already has a confirmed ${scope} budget ("${existingConfirmed.fileName || 'untitled file'}", confirmed ${existingConfirmed.confirmedAt}). Adjust its category totals from that upload's own review screen instead, or delete it first if you truly need to start over.`,
+          existingUploadId: existingConfirmed.id, year, scope
+        });
+      }
+      const newId = generateId('MBU');
+      const nowCf = new Date().toISOString();
+      const cfAnalysis = {
+        layout: source.layout || 'manual', status: 'pending_category_mapping',
+        note: `Carried forward from ${source.year} (${(source.scope || 'domestic')}) — review the numbers below, then Submit as final.`,
+        headerRows: [], blocks: [], monthsRecognized: [], likelyGrandTotalRowIdxs: []
+      };
+      db.prepare(`INSERT INTO marketing_budget_uploads (id, accountId, uploadedFileId, fileName, gridJson, layout, analysisJson, status, year, scope, createdAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(newId, accountId, null, `Carried forward from ${source.year}`, JSON.stringify([]), cfAnalysis.layout, JSON.stringify(cfAnalysis), 'pending_category_mapping', year, scope, nowCf);
+      const sourceLineItems = db.prepare('SELECT category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory FROM marketing_budget_line_items WHERE uploadId = ?').all(body.sourceUploadId);
+      const insLi = db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+      sourceLineItems.forEach(li => {
+        insLi.run(generateId('MBLI'), newId, accountId, li.category, li.status, li.month, li.amount, li.annualTotal, li.sourceRowIndex, li.verilumeCategory);
+      });
+      const sourceOverrides = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(body.sourceUploadId);
+      const insOv = db.prepare(`INSERT INTO marketing_budget_category_overrides (uploadId, verilumeCategory, overrideTotal, updatedAt) VALUES (?, ?, ?, ?)`);
+      sourceOverrides.forEach(ov => { insOv.run(newId, ov.verilumeCategory, ov.overrideTotal, nowCf); });
+      return sendJson(res, 201, { id: newId, year, scope, status: 'pending_category_mapping', copiedFrom: body.sourceUploadId, lineItemsCopied: sourceLineItems.length, overridesCopied: sourceOverrides.length });
+    }
+
+    // GET /api/accounts/:id/marketing-budget-uploads/:uploadId/export.csv —
+    // Round 2026-09-05 (Plan Setup reorg), per direct instruction: "Excel
+    // exports should be monthly detail views as the default." Rows = each
+    // Verilume budget category actually present on this (confirmed) upload,
+    // columns = Jan..Dec + Total, same plain-CSV-not-real-xlsx approach as
+    // GET /api/marketing-budget-upload-template.csv above (xlsx_gen.py's
+    // Python subprocess doesn't run on Vercel's Node serverless runtime).
+    // Uses computeByVerilumeCategoryMonthlyForUpload (the same rolled-up-by-
+    // Verilume-category monthly data the "Imported budget" screen itself
+    // shows) rather than raw per-file-category rows, so the export matches
+    // what the client actually confirmed, not the file's original wording.
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'export.csv'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      if (upload.status !== 'confirmed') return sendJson(res, 400, { error: 'this budget is not confirmed yet — monthly detail is only available once every category is mapped and submitted as final' });
+      const byVerilumeCategoryMonthly = computeByVerilumeCategoryMonthlyForUpload(uploadId);
+      const byVerilumeCategoryTotal = computeByVerilumeCategoryForUpload(uploadId);
+      const monthHeaders = MARKETING_BUDGET_MONTHS.map(m => MARKETING_BUDGET_MONTH_LABELS[m]);
+      const header = ['Category', ...monthHeaders, 'Total'];
+      const csvEscape = v => {
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const categories = Object.keys(byVerilumeCategoryTotal).sort((a, b) => (byVerilumeCategoryTotal[b] || 0) - (byVerilumeCategoryTotal[a] || 0));
+      const rows = categories.map(cat => {
+        const months = byVerilumeCategoryMonthly[cat] || {};
+        const monthVals = MARKETING_BUDGET_MONTHS.map(m => months[m] || 0);
+        return [cat, ...monthVals, byVerilumeCategoryTotal[cat] || 0];
+      });
+      const csv = [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+      const safeName = `verilume-budget-${upload.year}-${upload.scope || 'domestic'}-monthly-detail.csv`;
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${safeName}"`
+      });
+      res.end(csv);
+      return;
     }
 
     // GET /api/accounts/:id/active-channels — Round 132bx follow-on. Reports
@@ -16572,4 +16704,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
