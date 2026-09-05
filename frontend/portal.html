@@ -23671,6 +23671,9 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
 }
 
 async function renderMediaPlanStep(fromUpload){
+  // Captured before the first await: goToStep() calls mbuResetImport() right
+  // after this function starts, which clears mbuAnalysis.
+  const uploadYear = (fromUpload && mbuAnalysis && mbuAnalysis.year) ? Number(mbuAnalysis.year) : null;
   // Round 7 (2026-09-05): every visit starts from the page's own state --
   // no Setup path pre-selected, so a year with no budget shows Plan Setup
   // alone and a year with one shows the reporting view.
@@ -23687,7 +23690,12 @@ async function renderMediaPlanStep(fromUpload){
   // returning to this page lands where someone left off) over always
   // defaulting to the current calendar year; falls back to this year if the
   // account has no saved plan at all yet.
-  if (mpHistoryData.length){
+  if (uploadYear){
+    // Round 8e: arriving from a just-confirmed upload, stay on THAT year
+    // (not the most-recently-saved plan's year) so the seeding below finds
+    // the upload it's meant to build from.
+    mpSelectedYear = uploadYear;
+  } else if (mpHistoryData.length){
     mpSelectedYear = mpHistoryData.reduce((latest, y) => (
       !latest || new Date(y.updatedAt) > new Date(latest.updatedAt) ? y : latest
     ), null).year;
@@ -25472,8 +25480,16 @@ async function mbuHandleFile(event){
 async function mbuUploadAndAnalyze(){
   const statusEl = document.getElementById('mbuStatus');
   try {
+    // Round 8e (2026-09-05), per direct report ("Backend unreachable" on a
+    // real upload): authedFetch's default 12s timeout is too short for this
+    // call on a cold serverless start -- it stores the file, runs the virus
+    // scan (an external provider round trip) and parses the workbook before
+    // replying. The abort surfaced as the generic "unreachable" message even
+    // though the request had reached the server. 90s here (the scan
+    // provider's own timeout is 60s), 60s on analyze/confirm below, and the
+    // catch now says "timed out" when that's what actually happened.
     const uploadResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/uploads`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 90000,
       body: JSON.stringify({
         purpose: 'marketing_budget',
         filename: mbuFileName,
@@ -25497,7 +25513,7 @@ async function mbuUploadAndAnalyze(){
     }
     mbuUploadedFileId = uploadData.id;
     const analyzeResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000,
       body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, uploadedFileId: mbuUploadedFileId, fileName: mbuFileName, grid: mbuGrid })
     });
     const analyzeData = await analyzeResp.json().catch(() => ({}));
@@ -25548,7 +25564,10 @@ async function mbuUploadAndAnalyze(){
     // multi-step wizard the client has to click through block by block.
     await mbuConfirmImport();
   } catch (e){
-    if (statusEl) statusEl.textContent = 'Backend unreachable — could not scan/analyze this file.';
+    console.error('[mbuUploadAndAnalyze]', e);
+    if (statusEl) statusEl.textContent = (e && e.name === 'AbortError')
+      ? 'The server took too long to scan/analyze this file (timed out). It may still finish on its own — wait a moment and check Upload history, or try again.'
+      : `Could not scan/analyze this file — ${e && e.message ? e.message : 'the server could not be reached'}. Try again; if it keeps happening, check Upload history for what was recorded.`;
   }
 }
 
@@ -25751,7 +25770,7 @@ async function mbuConfirmImport(){
   if (resultEl) resultEl.textContent = 'Importing…';
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/confirm`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000,
       body: JSON.stringify({ blocks })
     });
     const data = await resp.json().catch(() => ({}));
@@ -25763,7 +25782,10 @@ async function mbuConfirmImport(){
     await mbuLoadCategoryMapping();
     mbuLoadHistory();
   } catch (e){
-    if (resultEl) resultEl.textContent = 'Backend unreachable — could not complete the import.';
+    console.error('[mbuConfirmImport]', e);
+    if (resultEl) resultEl.textContent = (e && e.name === 'AbortError')
+      ? 'The server took too long to import this file (timed out). Check Upload history — it may have finished — or try again.'
+      : `Could not complete the import — ${e && e.message ? e.message : 'the server could not be reached'}.`;
   }
 }
 
