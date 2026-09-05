@@ -4395,6 +4395,15 @@ function mbuIsTotalLikeCategoryLabel(text){
 // test) — still only ever a 'suggested' confidence a human confirms on
 // the mapping screen, never silently applied without being shown.
 const MARKETING_BUDGET_STATUS_TOKEN_RE = /^(non[\s-]?working|working)([\s-]*(media|partner|audience|channel|trade|spend))?$/i;
+// Backend mirror of the frontend's mbuIsNonWorkingStatus() (portal.html) —
+// same rule (a looser substring match than the exact-token regex above,
+// deliberately: this classifies a STORED status value already narrowed down
+// by that regex at import time, not a raw column value), kept in sync
+// rather than shared over the wire since one runs at review/confirm time
+// server-side and the other at render time client-side.
+function mbuIsNonWorkingStatus(status){
+  return /non[\s-]*wo?rking/i.test(String(status || ''));
+}
 const MARKETING_BUDGET_TARGET_FIELDS = [
   { key: 'category', label: 'Category / Line Item' },
   { key: 'status', label: 'Working / Non-Working' },
@@ -4543,29 +4552,99 @@ function recomputeAccountActiveChannels(accountId, byVerilumeCategory){
   return [...active];
 }
 
+// Round 2026-09-05, per direct product simplification: "We only need to map
+// working media. Non-working will list exactly what the client lists per
+// month or as a total." One raw category's line items are all inserted from
+// the SAME source row (see POST .../confirm) so they share one status value
+// in the ordinary case; the "mixed status" possibility this majority check
+// guards against is a raw category name that happens to repeat across two
+// different rows of the file with different Working/Non-Working tags —
+// unusual, but handled the same honest way the frontend's pre-existing
+// combinedBucketFor() already did for the post-mapping ledger: whichever
+// status holds the larger share of the dollars wins.
+//
+// Shared building block for: the category-mapping review screen (which now
+// splits into a Working list that needs a Verilume-category dropdown per
+// raw category, and a Non-Working list that's pure pass-through), the
+// confirm-categories completeness check (only Working categories are
+// required to be mapped), and the final confirmed view's monthly breakdown
+// (per direct request: "once categories are mapped we can show the actual
+// amounts per month").
+function mbuCategoryLedgerForUpload(uploadId){
+  const rows = db.prepare('SELECT category, status, month, amount, annualTotal, verilumeCategory FROM marketing_budget_line_items WHERE uploadId = ?').all(uploadId);
+  const byCategory = {};
+  rows.forEach(r => {
+    if (!byCategory[r.category]) byCategory[r.category] = { category: r.category, verilumeCategory: null, workingAmount: 0, nonWorkingAmount: 0, months: {}, hasAnnualTotal: false, annualTotal: 0 };
+    const c = byCategory[r.category];
+    if (r.verilumeCategory) c.verilumeCategory = r.verilumeCategory;
+    const isNonWorking = mbuIsNonWorkingStatus(r.status);
+    const amt = r.month ? (r.amount || 0) : 0;
+    if (isNonWorking) c.nonWorkingAmount += amt; else c.workingAmount += amt;
+    if (r.month){
+      if (!c.months[r.month]) c.months[r.month] = 0;
+      c.months[r.month] += (r.amount || 0);
+    }
+    if (r.annualTotal != null){ c.hasAnnualTotal = true; c.annualTotal = r.annualTotal; }
+  });
+  return Object.values(byCategory).map(c => {
+    const status = c.nonWorkingAmount > c.workingAmount ? 'nonworking' : 'working';
+    const total = c.hasAnnualTotal ? c.annualTotal : (c.workingAmount + c.nonWorkingAmount);
+    return { category: c.category, status, total, months: c.months, verilumeCategory: c.verilumeCategory };
+  });
+}
+
 // Shared by the confirm-categories endpoint (to (re)compute this account's
 // active channels the moment an upload becomes confirmed) and the final-
 // results GET endpoint (to display the same numbers) — kept in one place so
-// they can't drift apart.
+// they can't drift apart. Working Media only as of the 2026-09-05
+// simplification above — Non-Working dollars never had a real MMM channel
+// to activate anyway (see VERILUME_TO_MMM_CHANNEL_MAP's own comment), and
+// mixing them into "Other/Uncategorized" here would have silently hidden
+// real Non-Working spend inside a bucket meant for genuine mapping gaps.
 function computeByVerilumeCategoryForUpload(uploadId){
-  const lineItems = db.prepare('SELECT category, annualTotal, verilumeCategory FROM marketing_budget_line_items WHERE uploadId = ?').all(uploadId);
-  const byCategory = {};
-  lineItems.forEach(li => {
-    if (!byCategory[li.category]) byCategory[li.category] = { verilumeCategory: li.verilumeCategory || null, annualTotal: li.annualTotal ?? null, sumOfMonths: 0 };
-    if (li.annualTotal == null) byCategory[li.category].sumOfMonths += 0; // months are summed by the caller's own query when needed; annualTotal is the common case
-  });
-  // Re-derive sumOfMonths properly (annualTotal isn't always present per row).
-  const monthRows = db.prepare('SELECT category, amount FROM marketing_budget_line_items WHERE uploadId = ? AND month IS NOT NULL').all(uploadId);
-  monthRows.forEach(r => { if (byCategory[r.category]) byCategory[r.category].sumOfMonths += (r.amount || 0); });
+  const ledger = mbuCategoryLedgerForUpload(uploadId).filter(c => c.status === 'working' && !mbuIsTotalLikeCategoryLabel(c.category));
   const byVerilumeCategory = {};
-  Object.values(byCategory).forEach(c => {
+  ledger.forEach(c => {
     const key = c.verilumeCategory || 'Other/Uncategorized';
     if (!byVerilumeCategory[key]) byVerilumeCategory[key] = 0;
-    byVerilumeCategory[key] += (c.annualTotal != null ? c.annualTotal : c.sumOfMonths);
+    byVerilumeCategory[key] += c.total;
   });
   const overrideRows = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(uploadId);
   overrideRows.forEach(r => { byVerilumeCategory[r.verilumeCategory] = r.overrideTotal; });
   return byVerilumeCategory;
+}
+
+// Monthly companion to computeByVerilumeCategoryForUpload — per Verilume
+// category, Jan–Dec dollars summed across every raw category mapped to it
+// (Working Media only, same scope as the total-only function above). An
+// override (see marketing_budget_category_overrides) replaces the TOTAL
+// shown elsewhere but has no month-level detail of its own to redistribute,
+// so the monthly breakdown here stays the computed, un-overridden figures —
+// informational detail, not the number of record.
+function computeByVerilumeCategoryMonthlyForUpload(uploadId){
+  const ledger = mbuCategoryLedgerForUpload(uploadId).filter(c => c.status === 'working' && !mbuIsTotalLikeCategoryLabel(c.category));
+  const byVerilumeCategory = {};
+  ledger.forEach(c => {
+    const key = c.verilumeCategory || 'Other/Uncategorized';
+    if (!byVerilumeCategory[key]) byVerilumeCategory[key] = {};
+    MARKETING_BUDGET_MONTHS.forEach(m => {
+      if (c.months[m] == null) return;
+      byVerilumeCategory[key][m] = (byVerilumeCategory[key][m] || 0) + c.months[m];
+    });
+  });
+  return byVerilumeCategory;
+}
+
+// Non-Working Media's own ledger — raw category, exactly as the client
+// labeled it, with whatever monthly figures or single total their file
+// gave. No Verilume-category mapping, no suggestion, no Exceptions —
+// per direct instruction, Non-Working "will list exactly what the client
+// lists per month or as a total."
+function computeNonWorkingLedgerForUpload(uploadId){
+  return mbuCategoryLedgerForUpload(uploadId)
+    .filter(c => c.status === 'nonworking' && !mbuIsTotalLikeCategoryLabel(c.category))
+    .map(c => ({ category: c.category, total: c.total, months: c.months }))
+    .sort((a, b) => b.total - a.total);
 }
 
 // Heuristic ONLY — every result here is a 'suggested' starting point a
@@ -15140,63 +15219,57 @@ Submit your findings via the submit_brand_categories tool.`;
     }
 
     // GET /api/accounts/:id/marketing-budget-uploads/:uploadId/category-mapping
-    // — the visual mapping view per direct instruction: "row by row mapping
-    // based on the total not month." One row per DISTINCT raw category
-    // found in this upload's committed line items, with its real annual
-    // total (summed across whatever months/annualTotal are on file for it —
-    // never per-month, matching the instruction), a heuristic Verilume-
-    // category suggestion (never auto-applied), and its current confirmed
-    // mapping if this has been done before (so re-opening this screen shows
-    // prior answers, not a blank form).
+    // — the visual mapping view. Round 2026-09-05, per direct product
+    // simplification ("We only need to map working media. Non-working will
+    // list exactly what the client lists per month or as a total"): this
+    // now returns two separate lists instead of one mixed one —
+    // workingCategories (needs a Verilume-category choice, same heuristic
+    // suggestion as before) and nonWorkingCategories (pure pass-through: the
+    // client's own raw label, their own numbers, no mapping, no
+    // suggestion). Both carry a per-month breakdown now too (not just the
+    // annual total), per direct request: "once categories are mapped we can
+    // show the actual amounts per month."
     if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'category-mapping'){
       const accountId = decodeURIComponent(parts[2]);
       const uploadId = parts[4];
       if (!requireAccount(req, res, accountId)) return;
       const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
       if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
-      const rows = db.prepare('SELECT category, status, amount, annualTotal, verilumeCategory FROM marketing_budget_line_items WHERE uploadId = ?').all(uploadId);
-      const byCategory = {};
-      rows.forEach(r => {
-        if (!byCategory[r.category]) byCategory[r.category] = { category: r.category, status: r.status, total: 0, hasAnnualTotal: false, verilumeCategory: r.verilumeCategory || null };
-        // Prefer the file's own stated annual total when present (real
-        // number, not a re-derived sum); fall back to summing whatever
-        // monthly amounts are on file for rows with no annual total.
-        // Round 132bx follow-on (2026-08-16), found while verifying the
-        // total-row fix above against a ledger-style file (monthly figures
-        // on every line item, no per-row annual total): the old `total ===
-        // 0` gate on the amount-summing branch meant only the FIRST month's
-        // amount ever got added -- every category's shown total silently
-        // collapsed to a single month's spend instead of the real annual
-        // sum the moment annualTotal wasn't present. Tracked explicitly with
-        // hasAnnualTotal instead, since checking `=== 0` can't tell "no
-        // months summed yet" apart from "already summed, happens to be 0."
-        if (r.annualTotal != null){ byCategory[r.category].total = r.annualTotal; byCategory[r.category].hasAnnualTotal = true; }
-        else if (!byCategory[r.category].hasAnnualTotal && r.amount != null) byCategory[r.category].total += r.amount;
-      });
-      const gaps = Object.values(byCategory).map(c => ({
+      const ledger = mbuCategoryLedgerForUpload(uploadId).filter(c => !mbuIsTotalLikeCategoryLabel(c.category));
+      const workingCategories = ledger.filter(c => c.status === 'working').map(c => ({
         category: c.category,
-        status: c.status,
         total: c.total,
+        months: c.months,
         currentVerilumeCategory: c.verilumeCategory,
         // Round 132bx follow-on — a remembered mapping from this account's
         // own past confirm-categories decisions (see mbuRecallCategoryMapping)
         // wins over the generic rule-based heuristic when both exist, since
         // it reflects a real human choice for this exact raw text rather
-        // than a keyword guess.
-        suggested: c.verilumeCategory ? null : (mbuRecallCategoryMapping(accountId, c.category) || mbuSuggestVerilumeCategory(c.category))
+        // than a keyword guess. Always computed now (not just when there's
+        // no currentVerilumeCategory yet) — per direct request, every
+        // working row shows the client's own category text next to OUR
+        // assumption as an editable dropdown, not just unresolved ones.
+        suggested: mbuRecallCategoryMapping(accountId, c.category) || mbuSuggestVerilumeCategory(c.category)
+      })).sort((a, b) => b.total - a.total);
+      const nonWorkingCategories = ledger.filter(c => c.status === 'nonworking').map(c => ({
+        category: c.category, total: c.total, months: c.months
       })).sort((a, b) => b.total - a.total);
       // Client-created categories (see confirm-categories below) — any
       // verilumeCategory value already saved on this upload that ISN'T one
       // of the 20 standard ones. Reported separately so the client's own
       // single-screen review can list them as their own rows alongside the
       // standard 20, not lose them into "Other/Uncategorized."
-      const customCategoriesInUse = [...new Set(Object.values(byCategory)
-        .map(c => c.verilumeCategory)
+      const customCategoriesInUse = [...new Set(workingCategories
+        .map(c => c.currentVerilumeCategory)
         .filter(v => v && !VERILUME_BUDGET_CATEGORIES.includes(v)))];
       const overrideRows = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(uploadId);
       const overrides = {};
       overrideRows.forEach(r => { overrides[r.verilumeCategory] = r.overrideTotal; });
-      return sendJson(res, 200, { uploadId, uploadStatus: upload.status, verilumeCategories: VERILUME_BUDGET_CATEGORIES, customCategoriesInUse, overrides, categories: gaps, allMapped: gaps.every(g => g.currentVerilumeCategory) });
+      return sendJson(res, 200, {
+        uploadId, uploadStatus: upload.status, verilumeCategories: VERILUME_BUDGET_CATEGORIES, customCategoriesInUse, overrides,
+        workingCategories, nonWorkingCategories,
+        allMapped: workingCategories.every(g => g.currentVerilumeCategory)
+      });
     }
 
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-overrides
@@ -15270,9 +15343,15 @@ Submit your findings via the submit_brand_categories tool.`;
       // in case it was imported before this fix, or via any path this
       // doesn't anticipate. A total-like row is simply never required to
       // have a mapping, the same as it's never shown as something to map.
-      const distinctCategories = db.prepare('SELECT DISTINCT category FROM marketing_budget_line_items WHERE uploadId = ?').all(uploadId)
-        .map(r => r.category).filter(cat => !mbuIsTotalLikeCategoryLabel(cat));
-      const stillUnmapped = distinctCategories.filter(cat => {
+      // Round 2026-09-05, per direct simplification: Non-Working categories
+      // are pure pass-through now (see mbuCategoryLedgerForUpload /
+      // computeNonWorkingLedgerForUpload) — they never get a Verilume
+      // category and never should block "confirmed," so only Working
+      // categories are checked here.
+      const workingCategories = mbuCategoryLedgerForUpload(uploadId)
+        .filter(c => c.status === 'working' && !mbuIsTotalLikeCategoryLabel(c.category))
+        .map(c => c.category);
+      const stillUnmapped = workingCategories.filter(cat => {
         const row = db.prepare('SELECT verilumeCategory FROM marketing_budget_line_items WHERE uploadId = ? AND category = ? LIMIT 1').get(uploadId, cat);
         return !row || !row.verilumeCategory;
       });
@@ -15385,6 +15464,15 @@ Submit your findings via the submit_brand_categories tool.`;
       // to use" rollup — the underlying line items are untouched, only what's
       // reported here changes. See computeByVerilumeCategoryForUpload.
       const byVerilumeCategory = upload.status === 'confirmed' ? computeByVerilumeCategoryForUpload(uploadId) : {};
+      // Per direct request: "once categories are mapped we can show the
+      // actual amounts per month" — Working Media's Jan–Dec breakdown by
+      // Verilume category, plus Non-Working Media's own pass-through ledger
+      // (client's raw category text, their own monthly/annual numbers, no
+      // mapping applied — see computeNonWorkingLedgerForUpload's own
+      // comment). Both only meaningful once confirmed, same as
+      // byVerilumeCategory above.
+      const byVerilumeCategoryMonthly = upload.status === 'confirmed' ? computeByVerilumeCategoryMonthlyForUpload(uploadId) : {};
+      const nonWorkingLedger = upload.status === 'confirmed' ? computeNonWorkingLedgerForUpload(uploadId) : [];
       // Round 2026-09-05, per direct bug report: "Users should not need to
       // reimport." Before this, the column-mapping screen (which block's
       // column is Category/Status/month/Total) was only ever reachable
@@ -15416,6 +15504,8 @@ Submit your findings via the submit_brand_categories tool.`;
         confirmedMapping,
         categories: Object.values(byCategory),
         byVerilumeCategory: upload.status === 'confirmed' ? byVerilumeCategory : null,
+        byVerilumeCategoryMonthly: upload.status === 'confirmed' ? byVerilumeCategoryMonthly : null,
+        nonWorkingLedger: upload.status === 'confirmed' ? nonWorkingLedger : null,
         available: upload.status === 'confirmed'
       });
     }
