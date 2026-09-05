@@ -7593,6 +7593,12 @@
       <div class="exec-chart-card" id="budgetTrackingChartCard"></div>
       <div class="exec-chart-card" id="channelMixChartCard"></div>
     </div>
+    <!-- Round 9 (2026-09-05): Plan Pacing / Budget Tracking / Channel Media
+         Mix are campaign-tracking reports for the year in progress; for a
+         historical or future budget year they'd only duplicate the Budget
+         detail above with data from a different year, so this strip takes
+         their place. -->
+    <div id="mbuYearStatusStrip" class="hint" style="display:none;margin:0 0 18px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;"></div>
 
     <!-- ================= Media Plan steps (Round 7, 2026-09-05) =================
          The "Manually add" path IS the Media Plan: Step 1 Annual budget (typed,
@@ -7682,6 +7688,7 @@
       </div>
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Each stage's budget is split across its channels using our channel-by-stage weights — industry-specific where we have them, adjusted for your audience's generation and wealth profile — limited to your Active channels. Every Annual $ is editable, and you can add a channel to any stage below.</p>
+        <div id="mpKaizenPanel" style="display:none;"></div>
         <div id="mpPeriodViewCard" style="display:none;">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 6px;">
             <div class="field" style="margin:0;min-width:220px;">
@@ -11535,9 +11542,30 @@ const BANKING_STAGE_CHANNEL_WEIGHTS = {
 // only Auto and Financial Services/Banking do, so every one of those 5
 // clusters correctly falls through to the same generic STAGE_CHANNEL_WEIGHTS
 // either way; there was nothing to consolidate on this side.
+// Round 9 (2026-09-05), per direct report that the research rebuild was
+// "horribly wrong ... for a luxury cruise line targeting affluent, baby
+// boomers and older generations" -- with no industry table the account fell
+// to the cross-industry table, whose Consideration/Purchase rows are
+// search/social/programmatic-led and carry no Magazines and little Direct
+// Mail at all, so no audience multiplier could make the mix look like a
+// luxury-travel plan. This table encodes the luxury-travel pattern: an
+// agent/consult-driven purchase (Field / ABM = travel-agent trade), past-
+// guest repeat as the core Loyalty/Advocacy engine, and print + direct mail
+// as primary channels for an older, affluent audience. Editorial starting
+// table (same disclosed-placeholder convention as STAGE_CHANNEL_WEIGHTS),
+// not a claim of measured performance; audience multipliers still apply on
+// top. Rows sum to 1.
+const LUXURY_CRUISE_STAGE_CHANNEL_WEIGHTS = {
+  'Awareness': { 'Direct Mail — Prospects': 0.22, 'Magazines': 0.16, 'Linear TV': 0.14, 'PR': 0.12, 'OTV': 0.08, 'CTV': 0.08, 'Paid Social': 0.08, 'Newspapers': 0.06, 'Out-of-Home': 0.03, 'Radio': 0.03 },
+  'Consideration': { 'Direct Mail — Prospects': 0.16, 'Direct Mail — Inquiries': 0.16, 'Magazines': 0.10, 'Brand Search': 0.10, 'Non-Brand Search': 0.10, 'Programmatic Display': 0.08, 'Partner Media': 0.08, 'Paid Social': 0.07, 'Newspapers': 0.05, 'OTV': 0.05, 'CTV': 0.05 },
+  'Purchase': { 'Direct Mail — Inquiries': 0.24, 'Direct Mail — Past Guests': 0.14, 'Brand Search': 0.14, 'Field / ABM': 0.12, 'Internal Email': 0.10, 'Non-Brand Search': 0.08, 'Programmatic Display': 0.06, 'Email — Remarketing': 0.05, 'Paid Social': 0.04, 'Partner Media': 0.03 },
+  'Loyalty': { 'Direct Mail — Past Guests': 0.40, 'Internal Email': 0.30, 'Partner Media': 0.10, 'Magazines': 0.08, 'Paid Social': 0.06, 'PR': 0.06 },
+  'Advocacy': { 'PR': 0.34, 'Internal Email': 0.20, 'Direct Mail — Past Guests': 0.16, 'Partner Media': 0.16, 'Paid Social': 0.14 }
+};
 const INDUSTRY_STAGE_CHANNEL_WEIGHTS = {
   'Automotive Sales & Service': AUTO_DEALER_STAGE_CHANNEL_WEIGHTS,
   'Financial Services / Banking': BANKING_STAGE_CHANNEL_WEIGHTS,
+  'Cruise Lines — Luxury': LUXURY_CRUISE_STAGE_CHANNEL_WEIGHTS,
 };
 // Round 8b (2026-09-05), per direct instruction: "Validate that weighting
 // incorporates media consumption trends based on client customer
@@ -13063,9 +13091,15 @@ function mswRenderStageWeightCard(){
     </div>
     <div class="hint" id="mswSaveStatus" style="margin-top:6px;"></div>
     <div class="btn-row" id="mpApplyMixRow" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-      <button type="button" class="btn-primary" onclick="applyRecommendedMix()" ${budget > 0 ? '' : 'disabled'}>${(state.mediaPlan && (state.mediaPlan.allocations || []).length) ? 'Rebuild channel mix from this split →' : 'Continue → build channel mix'}</button>
+      ${MP_PHASE1_TEMPLATE_MODE
+        ? ((state.mediaPlan && (state.mediaPlan.allocations || []).length)
+          ? `<button type="button" class="btn-ghost" onclick="mpTplBuildFromActiveChannels()" ${budget > 0 ? '' : 'disabled'}>Add any missing Active channels to the template →</button>`
+          : `<button type="button" class="btn-primary" onclick="mpTplBuildFromActiveChannels()" ${budget > 0 ? '' : 'disabled'}>Continue → set up the sub-channel template</button>`)
+        : (state.mediaPlan && (state.mediaPlan.allocations || []).length)
+        ? `<button type="button" class="btn-primary" onclick="mpRefitStagesKeepChannels()" ${budget > 0 ? '' : 'disabled'}>Re-fit channels to this split →</button>`
+        : `<button type="button" class="btn-primary" onclick="applyRecommendedMix()" ${budget > 0 ? '' : 'disabled'}>Continue → build channel mix</button>`}
     </div>
-    <p class="hint" style="margin:6px 0 0;">Every stage's dollars then split across channels by our channel-by-stage weights, industry-specific where we have them, adjusted for your audience's generation and wealth profile. Only Active channels are considered.</p>
+    <p class="hint" style="margin:6px 0 0;">${MP_PHASE1_TEMPLATE_MODE ? 'These stage targets carry into Step 3, where each stage lists its best-practice sub-channels and audience targets and you enter the dollars per sub-channel. We don\'t forecast sub-channel spend in this release.' : (state.mediaPlan && (state.mediaPlan.allocations || []).length) ? `Re-fit keeps every channel\'s total as it is (your uploaded or edited mix) and re-spreads each channel across the stages to match this split. To move the mix itself toward our research, use "Adjust toward research" at the top of Step 3 — one bounded step at a time. <a href="#" style="color:var(--muted);" onclick="event.preventDefault(); if (confirm('Start over? This throws away every channel row and rebuilds the mix from our research alone. Your current amounts will be lost. Most clients should use Adjust toward research in Step 3 instead.')) applyRecommendedMix();">Start over from research instead</a>` : 'Every stage\'s dollars then split across channels by our channel-by-stage weights, industry-specific where we have them, adjusted for your audience\'s generation and wealth profile. Only Active channels are considered.'}</p>
     <div class="hint" id="mpApplyMixFlag" style="display:none;"></div>`;
 }
 // Rebalance helper: set `stage` to `share` (0..1) and scale the other four
@@ -22342,6 +22376,20 @@ async function loadMpYearActiveChannels(){
     mpYearActiveChannelsMeta = data;
     if (data.restricted && Array.isArray(data.activeChannels)) mpYearActiveChannels = new Set(data.activeChannels);
   } catch (e){ console.warn('loadMpYearActiveChannels failed', e); }
+  // Round 9 (2026-09-05), per "the Active Channels section is not reading
+  // the subchannels added": the year's confirmed budget is recomputed live
+  // by this endpoint (so a crosswalk fix or a sub-channel added on the
+  // review screen shows up without re-confirming), and any channel that
+  // budget carries is switched on in Active Channels. Union only -- a
+  // channel the client switched on by hand is never switched off here.
+  if (mpYearActiveChannels && state.activeChannels){
+    let added = 0;
+    mpYearActiveChannels.forEach(ch => { if (MMM_CATEGORIES.includes(ch) && !state.activeChannels.has(ch)){ state.activeChannels.add(ch); added++; } });
+    if (added){
+      if (typeof mbuRenderActiveChannels === 'function') mbuRenderActiveChannels();
+      if (typeof mbuSaveActiveChannels === 'function') mbuSaveActiveChannels();
+    }
+  }
 }
 // 3 years back, 2 forward — matches how most marketing orgs actually plan
 // and look back; keeps the year-chip row and the trend chart readable. A
@@ -22610,6 +22658,405 @@ function viewPeriodLabel(){
   return mpViewPeriod;
 }
 
+// Round 8f (2026-09-05), per direct report: "Rebuild Channel mix from this
+// [split] basically rebuilt the entire budget with paid social now almost
+// 50%... direct mail and consumer print advertising components ignored."
+// Rebuilding meant applyRecommendedMix(), which regenerates every channel
+// row from the research weights alone -- the uploaded (or hand-edited)
+// channel mix was discarded. This keeps the channel totals exactly as they
+// are and only re-spreads each channel across the five stages so the stage
+// totals match the Step 2 split: an iterative proportional fit with the
+// current rows as the seed (a channel only flows into stages where it
+// already sits, or where the research says it can). If the working budget
+// changed since the rows were built, channel totals scale to it.
+function mpRefitStagesKeepChannels(){
+  const plan = state.mediaPlan;
+  if (!plan || !(plan.allocations || []).length){ applyRecommendedMix(); return; }
+  const working = Number((document.getElementById('mpTotalBudget') || {}).value) || Number(plan.totalBudget) || 0;
+  if (!(working > 0)){ validateMediaPlanBudget(); return; }
+  const weights = getIndustryStageWeights(state.industry);
+  const channels = [...new Set(plan.allocations.map(a => a.channel))];
+  const colTarget = {};
+  channels.forEach(ch => { colTarget[ch] = plan.allocations.filter(a => a.channel === ch).reduce((s, a) => s + (Number(a.approvedAmount) || 0), 0); });
+  // Channel totals are NOT scaled to the working budget: dollars the plan
+  // can't place on a channel row (e.g. an International total-only line)
+  // stay in the budget, not inflated onto other channels. The stage split
+  // is applied to the dollars actually on channel rows.
+  const colSum = channels.reduce((s, ch) => s + colTarget[ch], 0);
+  const placed = colSum > 0 ? colSum : working;
+  const rowTarget = {};
+  MEDIA_LOOP_STAGES.forEach(st => { rowTarget[st] = (weights[st] || 0) * placed; });
+  // seed matrix
+  const M = {};
+  MEDIA_LOOP_STAGES.forEach(st => {
+    M[st] = {};
+    const w = effectiveStageChannelWeights(st);
+    channels.forEach(ch => {
+      const existing = plan.allocations.filter(a => a.stage === st && a.channel === ch).reduce((s, a) => s + (Number(a.approvedAmount) || 0), 0);
+      M[st][ch] = existing > 0 ? existing : ((w[ch] || 0) > 0 ? (w[ch] * placed * 0.01) : 0);
+    });
+  });
+  // a channel with no cell at all (no research for it anywhere) keeps its stage(s) as they are: give it a seed on its current stage
+  channels.forEach(ch => { if (!MEDIA_LOOP_STAGES.some(st => M[st][ch] > 0)){ const a = plan.allocations.find(x => x.channel === ch); M[a ? a.stage : MEDIA_LOOP_STAGES[0]][ch] = colTarget[ch] || 1; } });
+  for (let iter = 0; iter < 80; iter++){
+    MEDIA_LOOP_STAGES.forEach(st => { const rs = channels.reduce((s, ch) => s + M[st][ch], 0); if (rs > 0){ const f = rowTarget[st] / rs; channels.forEach(ch => { M[st][ch] *= f; }); } });
+    channels.forEach(ch => { const cs = MEDIA_LOOP_STAGES.reduce((s, st) => s + M[st][ch], 0); if (cs > 0){ const f = colTarget[ch] / cs; MEDIA_LOOP_STAGES.forEach(st => { M[st][ch] *= f; }); } });
+  }
+  ensurePlanMonthlyDefaults();
+  const next = [];
+  MEDIA_LOOP_STAGES.forEach(st => channels.forEach(ch => {
+    const amt = Math.round(M[st][ch]);
+    if (amt < 1) return;
+    const existing = plan.allocations.find(a => a.stage === st && a.channel === ch);
+    if (existing){ existing.approvedAmount = amt; existing.recommendedAmount = amt; existing.periods = computePlanMonthlyPeriods(amt); next.push(existing); }
+    else next.push({ id: `alloc-${mpSelectedYear}-${Date.now()}-${next.length}-${Math.random().toString(36).slice(2, 7)}`, stage: st, channel: ch, recommendedAmount: amt, approvedAmount: amt, cpm: ILLUSTRATIVE_CHANNEL_CPM[ch] || DEFAULT_BLENDED_CPM, audienceType: defaultAudienceTypeForChannel(ch), periods: computePlanMonthlyPeriods(amt) });
+  }));
+  plan.allocations = next;
+  plan.totalBudget = working;
+  plan.lastExcludedFromMix = [];
+  renderMediaPlanGrid();
+  renderMpFooter();
+  renderPlanPacingChart(); renderBudgetTrackingChart(); renderChannelMixChart();
+  const flag = document.getElementById('mpApplyMixFlag');
+  if (flag){
+    const achieved = {}; plan.allocations.forEach(a => { achieved[a.stage] = (achieved[a.stage] || 0) + a.approvedAmount; });
+    const achievedNote = MEDIA_LOOP_STAGES.map(st => `${st} ${placed > 0 ? ((achieved[st] || 0) / placed * 100).toFixed(1) : '0.0'}%`).join(' · ');
+    flag.textContent = `Re-fit — every channel keeps its total (${channels.length} channel${channels.length === 1 ? '' : 's'}, ${fmtMoney(placed)} on channel rows); each is spread across the stages as close to your split as its channels allow: ${achievedNote}. Review below, then Save plan.`;
+    flag.style.display = '';
+  }
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
+  const stepEl = document.getElementById('mpChannelStep');
+  if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// ============ Phase 1 template mode (2026-09-05) ============
+// Per direct decision: "Given the lack of omni-channel MMM data per industry
+// that includes print, digital and TV allocations the safest bet for phase
+// 1 release is to stop at loop % allocations based on best practices and
+// mapping subchannels and audience type targets for clients without
+// forecasting specific spend at the subchannel level. Clients can upload or
+// manually add this. We can start with the template and then advance the
+// product and our internal feedback loop as budgets are activated."
+// With this flag on, the product recommends no dollars: Step 2 is the
+// best-practice Loop % split (editable), Step 3 is a template -- each Loop
+// stage lists its best-practice sub-channels with the audience-type target
+// beside each, the client types (or the upload fills) $ per sub-channel,
+// and a running assigned-vs-Loop-target remainder shows per stage. The
+// research recommendation surfaces (computeRecommendedMix on the page,
+// Re-fit, the Kaizen panel, Start over) stay in the code, switched off
+// here, to return as MMM data and activated-budget feedback arrive.
+const MP_PHASE1_TEMPLATE_MODE = true;
+// Best-practice primary Loop stage + audience-type target per sub-channel.
+// A mapping, not a forecast: it says where a sub-channel's job sits in the
+// Loop and who it reaches, never how much to spend. The client can move a
+// row to another stage or add the same sub-channel to a second stage.
+const MP_SUBCHANNEL_PRIMARY_STAGE = {
+  'Linear TV':                 { stage: 'Awareness',     target: 'Broad reach — new-to-brand' },
+  'OTV':                       { stage: 'Awareness',     target: 'Broad reach — new-to-brand' },
+  'CTV':                       { stage: 'Awareness',     target: 'Addressable reach — new-to-brand households' },
+  'Out-of-Home':               { stage: 'Awareness',     target: 'Broad reach — new-to-brand' },
+  'Radio':                     { stage: 'Awareness',     target: 'Broad reach — new-to-brand' },
+  'Magazines':                 { stage: 'Awareness',     target: 'Affluent readers — new-to-brand' },
+  'Direct Mail — Prospects':   { stage: 'Awareness',     target: 'New-to-brand prospect lists' },
+  'Non-Brand Search':          { stage: 'Consideration', target: 'In-market searchers — new-to-brand' },
+  'Paid Social':               { stage: 'Consideration', target: 'Prospects and hand-raisers — blended' },
+  'Programmatic Display':      { stage: 'Consideration', target: 'In-market prospects — addressable' },
+  'Newspapers':                { stage: 'Consideration', target: 'Local / affluent readers — new-to-brand' },
+  'Podcasts':                  { stage: 'Consideration', target: 'Engaged listeners — new-to-brand' },
+  'Brand Search':              { stage: 'Purchase',      target: 'Hand-raisers searching the brand' },
+  'Direct Mail — Inquiries':   { stage: 'Purchase',      target: 'Hand-raisers / inquiries' },
+  'Email — Remarketing':       { stage: 'Purchase',      target: 'Known contacts who have not booked' },
+  'Remarketing':               { stage: 'Purchase',      target: 'Site visitors who have not booked' },
+  'Retail Media':              { stage: 'Purchase',      target: 'Bookers on partner platforms' },
+  'Field / ABM':               { stage: 'Purchase',      target: 'Travel-agent / trade partners' },
+  'Internal Email':            { stage: 'Loyalty',       target: 'Past customers' },
+  'Direct Mail — Past Guests': { stage: 'Loyalty',       target: 'Past customers' },
+  'PR':                        { stage: 'Advocacy',      target: 'Earned reach through customers and press' },
+  'Partner Media':             { stage: 'Advocacy',      target: 'Partners and referrers' }
+};
+function mpTplPrimaryStage(ch){ return (MP_SUBCHANNEL_PRIMARY_STAGE[ch] || {}).stage || 'Consideration'; }
+function mpTplTargetText(ch){ return (MP_SUBCHANNEL_PRIMARY_STAGE[ch] || {}).target || 'Blended'; }
+function mpTplNewRow(stage, channel, amount){
+  const amt = Math.round(Number(amount) || 0);
+  return { id: `alloc-${mpSelectedYear}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, stage, channel, recommendedAmount: 0, approvedAmount: amt, cpm: ILLUSTRATIVE_CHANNEL_CPM[channel] || DEFAULT_BLENDED_CPM, audienceType: defaultAudienceTypeForChannel(channel), periods: computePlanMonthlyPeriods(amt) };
+}
+function mpTplWorking(){
+  return Number((document.getElementById('mpTotalBudget') || {}).value) || Number((state.mediaPlan || {}).totalBudget) || 0;
+}
+// Step 2 "Continue": lay out the template -- one $0 row per Active channel
+// at its best-practice stage -- then open Step 3. Existing rows are kept.
+function mpTplBuildFromActiveChannels(){
+  const working = mpTplWorking();
+  if (!(working > 0)){ validateMediaPlanBudget(); const input = document.getElementById('mpTotalBudget'); if (input) input.focus(); return; }
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: working, allocations: [] };
+  const plan = state.mediaPlan;
+  plan.totalBudget = working;
+  ensurePlanMonthlyDefaults();
+  const active = (mpYearActiveChannels && mpYearActiveChannels.size) ? mpYearActiveChannels : state.activeChannels;
+  MMM_CATEGORIES.forEach(ch => {
+    if (active && !active.has(ch)) return;
+    if (plan.allocations.some(a => a.channel === ch)) return;
+    plan.allocations.push(mpTplNewRow(mpTplPrimaryStage(ch), ch, 0));
+  });
+  plan.lastExcludedFromMix = [];
+  renderMediaPlanGrid();
+  renderMpFooter();
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  const stepEl = document.getElementById('mpChannelStep');
+  if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function mpTplAddRow(stage){
+  const sel = document.getElementById(`mpTplAdd-${stage.replace(/[^a-z]/gi, '')}`);
+  const channel = sel ? sel.value : '';
+  if (!channel || !state.mediaPlan) return;
+  if (state.mediaPlan.allocations.some(a => a.stage === stage && a.channel === channel)) return;
+  ensurePlanMonthlyDefaults();
+  state.mediaPlan.allocations.push(mpTplNewRow(stage, channel, 0));
+  renderMediaPlanGrid();
+  renderMpFooter();
+}
+function mpTplMoveRow(id, stage){
+  const a = state.mediaPlan && state.mediaPlan.allocations.find(x => x.id === id);
+  if (!a || !MEDIA_LOOP_STAGES.includes(stage)) return;
+  const dup = state.mediaPlan.allocations.find(x => x.id !== id && x.stage === stage && x.channel === a.channel);
+  if (dup){ dup.approvedAmount = (Number(dup.approvedAmount) || 0) + (Number(a.approvedAmount) || 0); dup.periods = computePlanMonthlyPeriods(dup.approvedAmount); state.mediaPlan.allocations = state.mediaPlan.allocations.filter(x => x.id !== id); }
+  else a.stage = stage;
+  renderMediaPlanGrid();
+  renderMpFooter();
+}
+function mpTplRemoveRow(id){
+  if (!state.mediaPlan) return;
+  state.mediaPlan.allocations = state.mediaPlan.allocations.filter(x => x.id !== id);
+  renderMediaPlanGrid();
+  renderMpFooter();
+}
+function mpTplAmountChanged(id, value){
+  updateAllocationApproved(id, value);
+  mpTplRefreshTotals();
+}
+function mpTplStageTargets(){
+  const working = mpTplWorking();
+  const weights = getIndustryStageWeights(state.industry);
+  const out = {};
+  MEDIA_LOOP_STAGES.forEach(st => { out[st] = { pct: weights[st] || 0, target: (weights[st] || 0) * working }; });
+  return { working, targets: out };
+}
+function mpTplRefreshTotals(){
+  const plan = state.mediaPlan; if (!plan) return;
+  const { working, targets } = mpTplStageTargets();
+  let assignedAll = 0;
+  MEDIA_LOOP_STAGES.forEach(st => {
+    const assigned = plan.allocations.filter(a => a.stage === st).reduce((s, a) => s + (Number(a.approvedAmount) || 0), 0);
+    assignedAll += assigned;
+    const t = targets[st].target;
+    const diff = t - assigned;
+    const el = document.getElementById(`mpTplFoot-${st}`);
+    if (el) el.innerHTML = `Assigned <b>${fmtMoney(Math.round(assigned))}</b> · Loop target ${fmtMoney(Math.round(t))} (${(targets[st].pct * 100).toFixed(1)}%) · <span style="color:${Math.abs(diff) < 1 ? 'var(--muted)' : (diff > 0 ? '#b8860b' : 'var(--cx)')};">${Math.abs(diff) < 1 ? 'on target' : (diff > 0 ? `${fmtMoney(Math.round(diff))} still to assign` : `${fmtMoney(Math.round(-diff))} over target`)}</span>`;
+    const assEl = document.getElementById(`mpTplAss-${st}`);
+    if (assEl) assEl.textContent = fmtMoney(Math.round(assigned));
+    const shareEl = document.getElementById(`mpTplShare-${st}`);
+    if (shareEl) shareEl.textContent = `${working > 0 ? (assigned / working * 100).toFixed(1) : '0.0'}%`;
+  });
+  const sum = document.getElementById('mpTplSummary');
+  if (sum){
+    const left = working - assignedAll;
+    sum.innerHTML = `Assigned <b>${fmtMoney(Math.round(assignedAll))}</b> of the ${fmtMoney(Math.round(working))} working budget${Math.abs(left) < 1 ? ' — fully assigned.' : (left > 0 ? ` — <span style="color:#b8860b;">${fmtMoney(Math.round(left))} not yet assigned to a sub-channel.</span>` : ` — <span style="color:var(--cx);">${fmtMoney(Math.round(-left))} over the working budget.</span>`)}`;
+  }
+}
+function mpRenderTemplateGrid(el, plan){
+  const intro = document.querySelector('#mpChannelStep .sk-card-body > p.hint');
+  if (intro) intro.textContent = 'Each Loop stage lists its best-practice sub-channels with the audience-type target beside each. Enter the annual $ you plan to spend on each sub-channel (an uploaded budget fills these in); the stage footer keeps a running total against the Loop target from Step 2. Move a sub-channel to another stage or add one to a second stage — this is a mapping of where each sub-channel does its job, not a spend recommendation.';
+  const { working, targets } = mpTplStageTargets();
+  const stageJob = { Awareness: 'Reach people who do not know the brand yet.', Consideration: 'Give in-market people reasons to choose you.', Purchase: 'Convert hand-raisers and known contacts.', Loyalty: 'Bring past customers back.', Advocacy: 'Turn customers and partners into referrers.' };
+  const cards = MEDIA_LOOP_STAGES.map(st => {
+    const rows = plan.allocations.filter(a => a.stage === st);
+    const inStage = new Set(rows.map(a => a.channel));
+    const addOptions = MMM_CATEGORIES.filter(ch => !inStage.has(ch)).map(ch => `<option value="${escapeHtml(ch)}">${escapeHtml(ch)}${mpTplPrimaryStage(ch) === st ? '' : ` (usually ${mpTplPrimaryStage(ch)})`}</option>`).join('');
+    const rowsHtml = rows.map(a => `
+      <tr>
+        <td style="font-weight:600;">${escapeHtml(a.channel)}${mpTplPrimaryStage(a.channel) === st ? '' : `<div class="hint" style="font-weight:400;">usually ${mpTplPrimaryStage(a.channel)}</div>`}</td>
+        <td class="hint">${escapeHtml(mpTplTargetText(a.channel))}</td>
+        <td><div class="field" style="margin:0;min-width:150px;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" id="allocAnnual-${a.id}" value="${a.approvedAmount || 0}" style="padding-left:24px;" oninput="mpTplAmountChanged('${a.id}', this.value)"></div></div></td>
+        <td><select style="font-size:0.8125rem;padding:5px 8px;" onchange="mpTplMoveRow('${a.id}', this.value)">${MEDIA_LOOP_STAGES.map(s => `<option value="${s}"${s === st ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
+        <td><button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mpTplRemoveRow('${a.id}')">Remove</button></td>
+      </tr>`).join('');
+    return `
+    <div class="sk-card">
+      <div class="sk-card-head cx">
+        <div class="htext"><h3>${st}</h3><div class="kicker">Loop target ${fmtMoney(Math.round(targets[st].target))} · ${(targets[st].pct * 100).toFixed(1)}%</div></div>
+        <div class="hicon">${st[0]}</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin:0 0 8px;">${stageJob[st]}</p>
+        <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
+          <thead><tr><th>Sub-channel</th><th>Audience target</th><th>Annual $</th><th>Stage</th><th></th></tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="5" class="hint">No sub-channels in ${st} yet — add one below.</td></tr>`}</tbody>
+        </table></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;">
+          <select id="mpTplAdd-${st.replace(/[^a-z]/gi, '')}" style="font-size:0.8125rem;padding:5px 8px;min-width:220px;"><option value="">— add a sub-channel —</option>${addOptions}</select>
+          <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;" onclick="mpTplAddRow('${st}')">+ Add to ${st}</button>
+          <span class="hint" id="mpTplFoot-${st}" style="margin-left:auto;"></span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  const summary = `
+    <div class="sk-card">
+      <div class="sk-card-head ink"><div class="htext"><h3>Your dollars by Loop stage</h3><div class="kicker">vs. the best-practice split from Step 2</div></div><div class="hicon">◔</div></div>
+      <div class="sk-card-body">
+        <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
+          <thead><tr><th>Stage</th><th style="text-align:right;">Best practice</th><th style="text-align:right;">Target $</th><th style="text-align:right;">Assigned $</th><th style="text-align:right;">Your share</th></tr></thead>
+          <tbody>${MEDIA_LOOP_STAGES.map(st => `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${STAGE_LOOP_COLORS[st]};margin-right:8px;vertical-align:middle;"></span>${st}</td><td style="text-align:right;">${(targets[st].pct * 100).toFixed(1)}%</td><td style="text-align:right;">${fmtMoney(Math.round(targets[st].target))}</td><td style="text-align:right;font-weight:600;" id="mpTplAss-${st}"></td><td style="text-align:right;" id="mpTplShare-${st}"></td></tr>`).join('')}</tbody>
+        </table></div>
+        <p class="hint" id="mpTplSummary" style="margin:8px 0 0;"></p>
+      </div>
+    </div>`;
+  el.innerHTML = cards + summary;
+  mpTplRefreshTotals();
+}
+// ============ Round 9 (2026-09-05) — Kaizen: adjust toward research one step at a time ============
+// Per direct instruction: "Think more about applying the budget to specific
+// marketing loop subchannels + audience target that we have identified for
+// each loop stage vs. starting from scratch. Think incremental change
+// (Kaizen) vs. blowing up what the client knows."
+// The client's own mix (uploaded or edited) is the anchor. This panel sits
+// at the top of Step 3 and shows, channel by channel, what the client
+// spends today next to what our research would suggest for the same
+// placed dollars, then applies a bounded step (10 / 25 / 50 % of the gap)
+// to EVERY channel at once. Each existing channel keeps its stage spread
+// and its audience target (the rows are scaled, not rebuilt); a channel
+// the research recommends that the client doesn't run yet enters at the
+// step's share of its suggestion, on the stages the research puts it on;
+// nothing is thrown away, and nothing is saved until Save plan. "Start
+// over from research" is the only destructive path and is demoted to a
+// confirmed text link in Step 2.
+let mpKaizenStep = 25;
+// Audience target for a channel row: the Segments this account has
+// selected that the channel can reach (SEGMENT_CHANNEL_ELIGIBILITY), else
+// the row's own Audience Type tag (Direct Mail's list-driven default).
+function mpAudienceTargetText(channel, audienceType){
+  const segs = [...(selectedSegments || [])].filter(s => (SEGMENT_CHANNEL_ELIGIBILITY[s] || []).includes(channel));
+  if (segs.length) return segs.join(', ');
+  const at = AUDIENCE_TYPES.find(x => x.key === audienceType);
+  return at ? at.label : 'Blended / Not Split';
+}
+function mpKaizenPreview(stepFraction){
+  const plan = state.mediaPlan;
+  if (!plan || !(plan.allocations || []).length) return null;
+  const cur = {};
+  plan.allocations.forEach(a => { cur[a.channel] = (cur[a.channel] || 0) + (Number(a.approvedAmount) || 0); });
+  const placed = Object.values(cur).reduce((s, v) => s + v, 0);
+  if (!(placed > 0)) return null;
+  const rec = computeRecommendedMix(placed);
+  const target = {};
+  const recByChannel = {};
+  (rec.rows || []).forEach(r => {
+    target[r.channel] = (target[r.channel] || 0) + (Number(r.recommendedAmount) || 0);
+    (recByChannel[r.channel] = recByChannel[r.channel] || []).push(r);
+  });
+  const channels = [...new Set([...Object.keys(cur), ...Object.keys(target)])];
+  // Kaizen means few changes per step: a channel the client doesn't run
+  // yet only enters when the research gives it a real share (>= 5% of the
+  // placed dollars); smaller suggestions are listed, not added, so one step
+  // doesn't sprinkle a dozen new rows across the plan.
+  const enterFloor = placed * 0.05;
+  const rows = channels.map(ch => {
+    const c = cur[ch] || 0, t = target[ch] || 0;
+    const heldBack = !(c > 0) && t < enterFloor;
+    const after = heldBack ? 0 : c + stepFraction * (t - c);
+    const audienceType = (plan.allocations.find(a => a.channel === ch) || {}).audienceType || defaultAudienceTypeForChannel(ch);
+    return { channel: ch, current: c, target: t, after, delta: heldBack ? 0 : t - c, isNew: !(c > 0), heldBack, audience: mpAudienceTargetText(ch, audienceType) };
+  }).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  // the dollars a held-back channel would have taken stay in the plan:
+  // renormalise the step so the placed total never changes
+  const sumAfter = rows.reduce((s, r) => s + r.after, 0);
+  if (sumAfter > 0 && Math.abs(sumAfter - placed) > 0.5){ const f = placed / sumAfter; rows.forEach(r => { r.after *= f; }); }
+  const moved = rows.reduce((s, r) => s + Math.abs(r.after - r.current), 0) / 2;
+  return { placed, rows, moved, recByChannel, historyBlend: rec.historyBlend };
+}
+function mpSetKaizenStep(v){ mpKaizenStep = Number(v) || 25; mpRenderKaizenPanel(true); }
+function mpRenderKaizenPanel(hasAllocations){
+  const el = document.getElementById('mpKaizenPanel');
+  if (!el) return;
+  if (!hasAllocations){ el.innerHTML = ''; el.style.display = 'none'; return; }
+  let pv = null;
+  try { pv = mpKaizenPreview(mpKaizenStep / 100); } catch (e){ pv = null; }
+  if (!pv){ el.innerHTML = ''; el.style.display = 'none'; return; }
+  const gap = pv.rows.reduce((s, r) => s + Math.abs(r.delta), 0) / 2;
+  const aligned = gap < Math.max(1000, pv.placed * 0.005);
+  const stepBtn = (n) => `<button type="button" class="${mpKaizenStep === n ? 'btn-primary' : 'btn-ghost'}" style="padding:5px 12px;font-size:0.8125rem;" onclick="mpSetKaizenStep(${n})">${n}%</button>`;
+  const fmtDelta = (d) => { const r = Math.round(d); if (Math.abs(r) < 1) return '<span class="hint">—</span>'; return `<span style="color:${r > 0 ? 'var(--cx)' : 'var(--muted)'};">${r > 0 ? '+' : '−'}${fmtMoney(Math.abs(r))}</span>`; };
+  const held = pv.rows.filter(r => r.heldBack);
+  const heldNote = held.length ? `<p class="hint" style="margin:8px 0 0;">Also suggested, but below 5% of the mix so not added by a step: ${held.map(r => `${escapeHtml(r.channel)} (${fmtMoney(Math.round(r.target))})`).join(', ')} — add any of these by hand below if you want them.</p>` : '';
+  const rowsHtml = pv.rows.filter(r => !r.heldBack).map(r => `
+      <tr>
+        <td style="font-weight:600;">${escapeHtml(r.channel)}${r.isNew ? ' <span class="camp-tag" style="margin-left:4px;">not in your mix yet</span>' : ''}<div class="hint" style="font-weight:400;">Audience: ${escapeHtml(r.audience)}</div></td>
+        <td style="text-align:right;">${r.current > 0 ? fmtMoney(Math.round(r.current)) : '<span class="hint">—</span>'}</td>
+        <td style="text-align:right;" class="hint">${fmtMoney(Math.round(r.target))}</td>
+        <td style="text-align:right;font-weight:600;">${fmtMoney(Math.round(r.after))}</td>
+        <td style="text-align:right;">${fmtDelta(r.after - r.current)}</td>
+      </tr>`).join('');
+  el.style.display = '';
+  el.innerHTML = `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 16px;">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <div style="font-weight:700;font-size:0.9375rem;">Adjust toward research — one step at a time</div>
+        <span class="hint">Your mix is the anchor. Nothing changes until you apply a step, and nothing is saved until Save plan.</span>
+      </div>
+      ${aligned
+        ? `<p class="hint" style="margin:8px 0 0;">Your channel mix is already within ${fmtMoney(Math.round(gap))} of what our research suggests for the ${fmtMoney(Math.round(pv.placed))} on channel rows — no step needed.</p>`
+        : `<p class="hint" style="margin:8px 0 10px;">Today vs. what our channel-by-stage research suggests for the same ${fmtMoney(Math.round(pv.placed))}${pv.historyBlend && pv.historyBlend.yearsUsed ? `, blended with ${pv.historyBlend.yearsUsed} year${pv.historyBlend.yearsUsed === 1 ? '' : 's'} of this account's own history` : ''}. Each step moves every channel ${mpKaizenStep}% of the way there — existing channels keep their stage spread and audience target; a channel you don't run yet comes in small, on the stages the research puts it on. Apply a step, look, and stop whenever it feels right.</p>
+      <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
+        <thead><tr><th>Channel · audience target</th><th style="text-align:right;">Today</th><th style="text-align:right;">Research suggests</th><th style="text-align:right;">After this step</th><th style="text-align:right;">Change</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr><td style="font-weight:700;">Total on channel rows</td><td style="text-align:right;font-weight:700;">${fmtMoney(Math.round(pv.placed))}</td><td style="text-align:right;" class="hint">${fmtMoney(Math.round(pv.placed))}</td><td style="text-align:right;font-weight:700;">${fmtMoney(Math.round(pv.placed))}</td><td style="text-align:right;" class="hint">${fmtMoney(Math.round(pv.moved))} moves</td></tr></tfoot>
+      </table></div>${heldNote}
+      <div class="btn-row" style="margin-top:10px;align-items:center;gap:8px;">
+        <span class="hint" style="margin-right:4px;">Step size</span>${stepBtn(10)}${stepBtn(25)}${stepBtn(50)}
+        <button type="button" class="btn-primary" style="margin-left:auto;" onclick="mpApplyKaizenStep()">Apply this step →</button>
+      </div>`}
+    </div>`;
+}
+function mpApplyKaizenStep(){
+  const plan = state.mediaPlan;
+  const pv = mpKaizenPreview(mpKaizenStep / 100);
+  if (!plan || !pv) return;
+  ensurePlanMonthlyDefaults();
+  const next = [];
+  pv.rows.forEach(r => {
+    const after = Math.max(0, r.after);
+    if (r.current > 0){
+      // scale the channel's existing rows -- stage spread and audience target untouched
+      const f = after / r.current;
+      plan.allocations.filter(a => a.channel === r.channel).forEach(a => {
+        const amt = Math.round((Number(a.approvedAmount) || 0) * f);
+        if (amt < 1) return;
+        a.approvedAmount = amt; a.recommendedAmount = amt; a.periods = computePlanMonthlyPeriods(amt);
+        next.push(a);
+      });
+    } else if (after >= 1){
+      // new channel: on the stages the research puts it on, in proportion
+      const recRows = pv.recByChannel[r.channel] || [];
+      const recSum = recRows.reduce((s, x) => s + (Number(x.recommendedAmount) || 0), 0);
+      recRows.forEach(x => {
+        const amt = Math.round(after * ((Number(x.recommendedAmount) || 0) / (recSum || 1)));
+        if (amt < 1) return;
+        next.push({ id: `alloc-${mpSelectedYear}-${Date.now()}-${next.length}-${Math.random().toString(36).slice(2, 7)}`, stage: x.stage, channel: r.channel, recommendedAmount: amt, approvedAmount: amt, cpm: ILLUSTRATIVE_CHANNEL_CPM[r.channel] || DEFAULT_BLENDED_CPM, audienceType: defaultAudienceTypeForChannel(r.channel), periods: computePlanMonthlyPeriods(amt) });
+      });
+    }
+  });
+  plan.allocations = next;
+  plan.lastExcludedFromMix = [];
+  renderMediaPlanGrid();
+  renderMpFooter();
+  renderPlanPacingChart(); renderBudgetTrackingChart(); renderChannelMixChart();
+  const flag = document.getElementById('mpApplyMixFlag');
+  if (flag){
+    flag.textContent = `Applied a ${mpKaizenStep}% step toward research — ${fmtMoney(Math.round(pv.moved))} moved across channels; every channel kept its stage spread and audience target. Apply another step or Save plan.`;
+    flag.style.display = '';
+  }
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+}
 function applyRecommendedMix(){
   const total = Number(document.getElementById('mpTotalBudget').value) || 0;
   // Round 113 (2026-08-07) — fixes a real usability bug: with Gross annual
@@ -22945,6 +23392,19 @@ function renderMediaPlanGrid(){
   const controlsCard = document.getElementById('mpAllocationsControlsCard');
   const hasAllocations = !!(plan && plan.allocations && plan.allocations.length);
   if (controlsCard) controlsCard.style.display = hasAllocations ? '' : 'none';
+  if (typeof mpRenderKaizenPanel === 'function') mpRenderKaizenPanel(hasAllocations && !MP_PHASE1_TEMPLATE_MODE);
+  if (MP_PHASE1_TEMPLATE_MODE){
+    const viewCardT = document.getElementById('mpPeriodViewCard');
+    if (viewCardT) viewCardT.style.display = 'none';
+    if (!hasAllocations){
+      el.innerHTML = `<p class="lede" style="margin:0;">No sub-channel template yet — set the Working Marketing Budget in Step 1, review the Loop split in Step 2, then click "Continue → set up the sub-channel template."</p>`;
+      renderMpFooter();
+      return;
+    }
+    mpRenderTemplateGrid(el, plan);
+    renderMpFooter();
+    return;
+  }
   if (!hasAllocations){
     // Round 7 (2026-09-05): the separate "Add a channel by hand" card no
     // longer renders in the empty state -- the wizard (Step 1 budget ->
@@ -23017,7 +23477,7 @@ function renderMediaPlanGrid(){
             <div class="field" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:0;">
               <div style="flex:1 1 140px;">
                 <label>${a.channel}${isDemandFulfillment ? ' <span class="camp-tag" style="margin-left:4px;">demand fulfillment</span>' : ''}</label>
-                <div class="hint">Recommended ${fmtMoney(a.recommendedAmount)} · committed ${fmtMoney(committed)}</div>
+                <div class="hint">Recommended ${fmtMoney(a.recommendedAmount)} · committed ${fmtMoney(committed)} · audience: ${escapeHtml(mpAudienceTargetText(a.channel, a.audienceType))}</div>
               </div>
               <!-- Round 117 (2026-08-08), per direct instruction: relabeled
                    "Forecasted" -> "Annual" — this field is the annual
@@ -23747,12 +24207,25 @@ async function renderMediaPlanStep(fromUpload){
   await mpAutoPrefillIfBlank();
   // Round 8d: arriving from a just-confirmed upload seeds Steps 1-4 from it
   // (totals -> Loop split -> channel rows -> months) and opens on Step 2.
-  if (fromUpload && !(state.mediaPlan && (state.mediaPlan.allocations || []).length)){
+  // Round 9 (2026-09-05), per "I added the subcategory amounts per channel
+  // when reviewing the budget upload. We need to make sure that they
+  // carried forward to the next step": a re-confirmed review also re-seeds
+  // when the plan on screen is still an unsaved draft or was itself seeded
+  // from an upload -- the client's own numbers just changed, so the plan
+  // follows them. A saved, hand-edited plan is left alone and offered the
+  // "Re-seed the plan from this budget" action instead.
+  const hasRows = !!(state.mediaPlan && (state.mediaPlan.allocations || []).length);
+  const draftOrSeeded = hasRows && (!state.mediaPlan.id || !!state.mediaPlan.seededFromUpload);
+  if (fromUpload && (!hasRows || draftOrSeeded)){
     renderMediaPlanFieldsAndCharts(false);
     const seeded = await mpBuildPlanFromUpload();
     if (seeded){ mswLoadStageWeights(); return; }
   }
   renderMediaPlanFieldsAndCharts(fromUpload);
+  if (fromUpload && hasRows){
+    const flag = document.getElementById('mpApplyMixFlag');
+    if (flag){ flag.textContent = 'Your budget review changed. This year already has a saved media plan, so its channel rows were kept — use "Re-seed the plan from this budget" on the Budget detail card to carry the new category and sub-channel amounts into the plan, or leave the plan as you edited it.'; flag.style.display = ''; }
+  }
   // Round 132c[7] (2026-08-17) — buildout item #7. Loads independently of
   // the plan/budget data above (it's account-scoped, not plan-scoped) so a
   // slow/failed stage-weights fetch never blocks the rest of the page.
@@ -26551,6 +27024,12 @@ function mbdStageSharesForVerilume(cat, crosswalk){
   const chans = (crosswalk && crosswalk[cat]) || [];
   const raw = {};
   let sum = 0;
+  if (MP_PHASE1_TEMPLATE_MODE && chans.length){
+    // Phase 1: each sub-channel sits on its best-practice primary stage
+    MEDIA_LOOP_STAGES.forEach(st => { raw[st] = 0; });
+    chans.forEach(ch => { raw[mpTplPrimaryStage(ch)] += 1 / chans.length; });
+    return { shares: raw, derived: true };
+  }
   MEDIA_LOOP_STAGES.forEach(stage => {
     const w = effectiveStageChannelWeights(stage);
     raw[stage] = chans.reduce((s, ch) => s + (w[ch] || 0), 0);
@@ -26570,7 +27049,10 @@ function mbdSumMonths(list){
 function mbdModelFromUpload(detail){
   const byCat = detail.byVerilumeCategory || {};
   const byCatMonthly = detail.byVerilumeCategoryMonthly || {};
-  const crosswalk = detail.verilumeToMmm || {};
+  // Round 9: the same seed crosswalk the Media Plan uses, so a sub-channel
+  // the client assigned dollars to on the review screen derives its Loop
+  // stages the same way here as it lands on plan rows.
+  const crosswalk = Object.assign({}, (typeof MBD_SEED_CROSSWALK !== 'undefined' ? MBD_SEED_CROSSWALK : {}), detail.verilumeToMmm || {});
   const groups = {};
   const stages = {}; MEDIA_LOOP_STAGES.forEach(st => { stages[st] = 0; });
   let derivedCount = 0, fallbackCount = 0;
@@ -26593,7 +27075,7 @@ function mbdModelFromUpload(detail){
   return {
     source: 'upload', uploadId: detail.id, stagesAssigned: !!assigned, editableStages: true,
     title: `${detail.year || ''} ${detail.scope === 'international' ? 'International' : 'Domestic'} budget — from "${detail.fileName || 'upload'}"`.trim(),
-    stages, stageBasis: assigned ? 'Loop stages as you assigned them — edit any amount; the others rebalance to the working total.' : (derivedCount ? `Loop stages derived from our channel-by-stage research${fallbackCount ? ` (${fallbackCount} categor${fallbackCount === 1 ? 'y' : 'ies'} with no channel research use the account's stage split)` : ''} — edit any amount to assign your own.` : "Loop stages use the account's stage split (no channel research for these categories) — edit any amount to assign your own."),
+    stages, stageBasis: assigned ? 'Loop stages as you assigned them — edit any amount; the others rebalance to the working total.' : (derivedCount ? `Loop stages by the best-practice sub-channel mapping (each sub-channel on the stage where it does its job)${fallbackCount ? ` (${fallbackCount} categor${fallbackCount === 1 ? 'y' : 'ies'} with no channel research use the account's stage split)` : ''} — edit any amount to assign your own.` : "Loop stages use the account's stage split (no channel research for these categories) — edit any amount to assign your own."),
     channels, months: mbdSumMonths(channels.flatMap(g => g.subs.map(s => s.months))), nonWorking, monthlyMode: null
   };
 }
@@ -26659,13 +27141,11 @@ function mbdRenderUnified(model, opts){
   // (d) monthly
   const nwMonths = mbdSumMonths(model.nonWorking.map(r => r.months));
   const monthHeads = MBD_MONTHS.map(m => `<th style="text-align:right;">${m[0].toUpperCase()}${m.slice(1)}</th>`).join('');
-  const monthlyHtml = (model.months || nwMonths) ? `
+  const monthlyHtml = model.months ? `
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;min-width:1020px;">
       <thead><tr><th></th>${monthHeads}<th style="text-align:right;">Total</th></tr></thead>
       <tbody>
-        <tr><td style="font-weight:600;">Working media</td>${mbdMoneyCells(model.months)}<td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td></tr>
-        <tr><td style="font-weight:600;">Non-working</td>${mbdMoneyCells(nwMonths)}<td style="text-align:right;font-weight:700;">$${Math.round(nonWorkingTotal).toLocaleString()}</td></tr>
-        <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total marketing spend</td>${mbdMoneyCells(mbdSumMonths([model.months, nwMonths]), true)}<td style="text-align:right;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</td></tr>
+        <tr><td style="font-weight:600;">Working media</td>${mbdMoneyCells(model.months, true)}<td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td></tr>
       </tbody>
     </table></div>
     ${model.monthlyMode ? `<p class="hint" style="margin:6px 0 0;">Monthly curve: ${({ flat: 'Flat (even split)', curve: 'Revenue curve', manual: 'Custom %' })[model.monthlyMode] || model.monthlyMode}.</p>` : ''}` : '<p class="hint">No month-by-month figures on file — totals only.</p>';
@@ -26680,12 +27160,9 @@ function mbdRenderUnified(model, opts){
     <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
       <thead><tr><th>Working media</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th></tr></thead>${channelRows}
       <tbody><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td><td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td><td style="text-align:right;">100%</td></tr></tbody>
-      <thead><tr><th style="padding-top:14px;">Non-working media</th><th style="text-align:right;padding-top:14px;">Budget</th><th></th></tr></thead>
-      <tbody>${model.nonWorking.map(r => `<tr><td>${escapeHtml(r.label)}</td><td style="text-align:right;font-weight:600;">$${Math.round(r.total).toLocaleString()}</td><td></td></tr>`).join('') || '<tr><td colspan="3" class="hint">No non-working spend on file.</td></tr>'}
-      <tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total non-working media</td><td style="text-align:right;font-weight:700;">$${Math.round(nonWorkingTotal).toLocaleString()}</td><td></td></tr></tbody>
     </table></div>
     <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:12px;padding-top:8px;">
-      <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working + non-working, read-only)</span></span>
+      <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working $${Math.round(working).toLocaleString()} + non-working $${Math.round(nonWorkingTotal).toLocaleString()}, read-only — non-working lines are managed in <a onclick="(document.getElementById('mpNonWorkingCard')||{scrollIntoView(){}}).scrollIntoView({ behavior: 'smooth', block: 'start' })" style="cursor:pointer;">Non-Working Media</a> below)</span></span>
       <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</span>
     </div>
     ${sectionHead('D', 'Monthly distribution')}
@@ -26788,6 +27265,15 @@ const MBD_SEED_CROSSWALK = {
   'Digital — Addressable': ['Programmatic Display'],
   'Digital — Partnerships': ['Partner Media'],
   'Direct Mail — Customers': ['Direct Mail — Past Guests'],
+  // Round 9 (2026-09-05), per "I added the subcategory amounts per channel
+  // when reviewing the budget upload. We need to make sure that they
+  // carried forward": the two Direct Mail sub-channels added in R8d had no
+  // seed entry, so their dollars were reported as unplaceable instead of
+  // landing on a plan row. Customers Pending is a customer list (Past
+  // Guests); Identity Resolution resolves unknown households, a prospect
+  // list.
+  'Direct Mail — Customers Pending': ['Direct Mail — Past Guests'],
+  'Direct Mail — Identity Resolution': ['Direct Mail — Prospects'],
   'Direct Mail — Inquiries': ['Direct Mail — Inquiries'],
   'Direct Mail — Prospects': ['Direct Mail — Prospects'],
   'Direct Mail — ID Resolution': ['Direct Mail — Prospects'],
@@ -26819,7 +27305,10 @@ async function mpSeedPlanFromUpload(detail, opts){
   const weights = {};
   let wsum = 0;
   MEDIA_LOOP_STAGES.forEach(st => { weights[st] = Math.round(((model.stages[st] || 0) / working) * 10000) / 10000; wsum += weights[st]; });
-  if (wsum > 0){
+  // Phase 1 template mode: Step 2 stays the best-practice Loop split (the
+  // target); the client's own dollars are compared against it in Step 3
+  // rather than overwriting it.
+  if (wsum > 0 && !MP_PHASE1_TEMPLATE_MODE){
     weights[MEDIA_LOOP_STAGES[0]] = Math.round((weights[MEDIA_LOOP_STAGES[0]] + (1 - wsum)) * 10000) / 10000;
     mswStageWeightsOverride = weights;
     if (!opts.skipSaveWeights){ try { await mswSaveWeights(weights); } catch (e){ /* card re-renders below regardless */ } }
@@ -26833,10 +27322,22 @@ async function mpSeedPlanFromUpload(detail, opts){
     if (!(amt > 0)) return;
     const chans = (crosswalk[cat] || []).filter(ch => MMM_CATEGORIES.includes(ch));
     if (!chans.length){ skipped.push({ cat, amt }); return; }
+    if (MP_PHASE1_TEMPLATE_MODE){
+      // mapping, not forecasting: the category's dollars go to its
+      // sub-channel(s) -- split evenly when a group total maps to several --
+      // each at its best-practice Loop stage
+      chans.forEach(ch => { const key = `${mpTplPrimaryStage(ch)}||${ch}`; rows[key] = (rows[key] || 0) + amt / chans.length; });
+      return;
+    }
     // weight of each (stage, channel) cell from the channel-by-stage research
     const cells = [];
     let cellSum = 0;
-    MEDIA_LOOP_STAGES.forEach(st => { const w = effectiveStageChannelWeights(st); chans.forEach(ch => { const v = w[ch] || 0; if (v > 0){ cells.push({ st, ch, v }); cellSum += v; } }); });
+    // Round 9 (Kaizen): a channel none of this account's selected Segments
+    // can reach still takes its share (it's the client's money and the
+    // client's category), just a dampened one, so the dollars lean toward
+    // the sub-channels that reach the audience targets already identified.
+    const eligible = (typeof cmpSegmentEligibleChannels === 'function') ? cmpSegmentEligibleChannels() : null;
+    MEDIA_LOOP_STAGES.forEach(st => { const w = effectiveStageChannelWeights(st); chans.forEach(ch => { let v = w[ch] || 0; if (eligible && !eligible.has(ch)) v *= 0.35; if (v > 0){ cells.push({ st, ch, v }); cellSum += v; } }); });
     if (!cellSum){
       // no research for these channels: equal split across channels, the
       // account's stage split across stages
@@ -26998,7 +27499,14 @@ function mbuRenderResults(data){
     // start"), the Budget detail shows the plan -- the refined result -- with
     // the upload named as its source; until then, the upload itself.
     const planRows = (state.mediaPlan && (state.mediaPlan.allocations || []).length && Number(state.mediaPlan.year) === Number(data.year) && (data.scope || 'domestic') === 'domestic') ? state.mediaPlan : null;
-    const model = planRows ? Object.assign(mbdModelFromPlan(planRows), { title: `${data.year || ''} Domestic budget — uploaded "${data.fileName || 'file'}", refined in the Media Plan${planRows.id ? '' : ' (unsaved draft)'}` }) : mbdModelFromUpload(data);
+    const uploadModel = mbdModelFromUpload(data);
+    let model = uploadModel;
+    if (planRows){
+      model = Object.assign(mbdModelFromPlan(planRows), { title: `${data.year || ''} Domestic budget — uploaded "${data.fileName || 'file'}", refined in the Media Plan${planRows.id ? '' : ' (unsaved draft)'}` });
+      // The plan's own non-working rows if it has any; otherwise the
+      // upload's non-working lines (they're the same budget).
+      if (!model.nonWorking.length) model.nonWorking = uploadModel.nonWorking;
+    }
     body.innerHTML = statusLine + mbdRenderUnified(model, { actionsHtml: actions }) + lineItemsHtml;
   } else {
     body.innerHTML = statusLine + actions + lineItemsHtml;
@@ -27385,7 +27893,19 @@ function mbuApplyPageMode(){
   // by the flows that populate it (mbuRenderCategoryMapping, mbuOpenExistingUpload);
   // it's only force-hidden in the bare Setup state so nothing stale lingers.
   if (!exists && !path) show('mbuResultsCard', false);
-  show('budgetChartGrid', exists);
+  // Round 9: the three tracking charts only for the current calendar year;
+  // a historical year is recorded as complete, a future year as not yet
+  // in market (see the strip in the markup).
+  const nowYear = new Date().getFullYear();
+  const isCurrentYear = Number(mbuSelectedYear) === nowYear;
+  show('budgetChartGrid', exists && isCurrentYear);
+  const strip = document.getElementById('mbuYearStatusStrip');
+  if (strip){
+    strip.style.display = (exists && !isCurrentYear) ? '' : 'none';
+    if (exists && !isCurrentYear) strip.innerHTML = Number(mbuSelectedYear) < nowYear
+      ? `<b>${mbuSelectedYear} is a historical year.</b> This budget is the record of a completed year — every allocation is treated as complete. Plan Pacing, Budget Tracking and Channel Media Mix report on campaigns in the current year (${nowYear}) and aren't shown here.`
+      : `<b>${mbuSelectedYear} isn't in market yet.</b> Plan Pacing, Budget Tracking and Channel Media Mix will report here once ${mbuSelectedYear} campaigns run.`;
+  }
   // Round 8: once a budget exists, the unified Budget detail card is the
   // view; the Media Plan steps (the editing surface) only show while the
   // person is editing/building the plan (mpStartEditingPlan).
