@@ -7469,20 +7469,20 @@
          section heading instead, same weight as "Recommended Media Mix —
          review & confirm" further down this page, not a second page title
          stacked under "Annual Media Plan." -->
+    <!-- Round 7 (2026-09-05), per direct instruction: "We're still trying to
+         show too much at once and duplicating content/functions." This page
+         now has ONE controller for what's visible -- mbuApplyPageMode() --
+         driven by two things: does a budget exist for the selected
+         year+scope (a confirmed Marketing Budget Upload, or a saved Media
+         Plan), and which Setup path (Upload / Manually add / Leverage) the
+         person picked. With no budget, ONLY Plan Setup shows. Picking a path
+         reveals just that path's cards, in order. Once a budget exists, the
+         reporting view shows: charts, budget detail, the plan steps, Active
+         Channels, Non-Working Media, and Upload history (audit) last. -->
     <div style="margin:24px 0 4px;">
-      <h3 style="margin:0 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);">Budget upload</h3>
-      <p class="hint" style="margin:0;">Upload your annual marketing budget in whatever format it's already in — the platform tries to auto-recognize a standard layout (Category, Working/Non-Working, Jan–Dec, Total) and tells you plainly what it found: a clean match, or specific columns/rows that need you to confirm before anything is saved.</p>
+      <h3 style="margin:0 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);">Budget setup</h3>
+      <p class="hint" style="margin:0;">One place to set up and manage each year's marketing budget — upload the file you already have, build it by hand from a total or a revenue target, or start from a previous year.</p>
     </div>
-
-    <div class="cfd cfd-ws" style="margin-bottom:18px;">
-      <div class="cfd-standup" style="margin-bottom:0;">
-        <div class="cfd-avatar">✦</div>
-        <div class="cfd-bubble">
-          This looks for month names (Jan–Dec) across every row to find your file's header(s) — if it finds exactly one, that's a standard flat table. If it finds several (a client export that repeats a header block per category, like a real Print/Direct Mail/Digital/Trade section layout), that's reported as a multi-block file: month and total columns still auto-recognize from their own header text, but the category-name and Working/Non-Working columns usually aren't labeled clearly enough to guess, so you confirm those. It also checks the math — if one row's total equals the sum of the others in its block, that's very likely a subtotal, not its own line item, and gets flagged so it isn't double-counted (or silently dropped).
-        </div>
-      </div>
-    </div>
-
 
     <!-- Round 2026-09-05 (Plan Setup reorg), per direct instruction: "1)
          Top under section intro: Plan Setup should be the first module
@@ -7498,11 +7498,11 @@
          mbuRenderPlanSetup() for the Active/Setup status logic. -->
     <div class="sk-card" id="mbuPlanSetupCard" style="margin-bottom:18px;">
       <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">1</div><h3>Plan Setup</h3></div>
+        <div class="htext"><div class="kicker">Start here</div><h3>Plan Setup</h3></div>
         <div class="hicon">🗓</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Pick a budget scope and year -- below shows whether a confirmed budget already drives this year's Media Plan (Active) or still needs to be set up.</p>
+        <p class="hint" style="margin-top:0;">Pick a budget scope and year. If a budget already exists for it you'll see it marked Active below; if not, choose how to set it up — Upload, Manually add, or Leverage a previous year.</p>
         <div class="field" style="max-width:420px;">
           <label>Budget scope</label>
           <div class="stage-row" id="mbuScopeRow"></div>
@@ -7517,49 +7517,6 @@
       </div>
     </div>
 
-    <!-- Round 6 (2026-09-05), per direct instruction: "Selecting Manual
-         should start with the Annual Marketing total or option to
-         calculate based Gross Revenue (manual) * Target Marketing
-         Allocation % as the starting point. The next view will be the
-         total channel recommendations incorporating our channel
-         weighting research." Step A of the restructured Manual flow —
-         hidden until mbuStartManual() reveals it; "Continue" (Step B,
-         mbuManualSetupContinue()) creates the upload and pre-fills the
-         category grid before mbuResultsCard is shown. -->
-    <div class="sk-card" id="mbuManualSetupCard" style="display:none;margin-top:18px;">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Setup — Manual</div><h3>Set your Annual Marketing Budget</h3></div>
-        <div class="hicon">✎</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Start with your Annual Marketing Budget — type it directly, or calculate it from Gross Revenue × Target Marketing Allocation %. The next step pre-fills a category grid using our channel-weighting research, which you review and adjust before saving.</p>
-        <div class="stage-row" style="margin-bottom:12px;">
-          <button type="button" class="stage-tile selected" id="mbuManualModeDirectBtn" onclick="mbuSetManualBudgetMode('direct')">Type an amount</button>
-          <button type="button" class="stage-tile" id="mbuManualModeCalcBtn" onclick="mbuSetManualBudgetMode('calc')">Calculate from revenue</button>
-        </div>
-        <div class="field" id="mbuManualDirectField">
-          <label>Annual Marketing Budget (USD)</label>
-          <input type="number" id="mbuManualBudgetInput" min="0" step="1000" placeholder="e.g. 1200000" oninput="mbuUpdateManualBudgetPreview()">
-        </div>
-        <div id="mbuManualCalcFields" style="display:none;">
-          <div class="field">
-            <label>Gross annual revenue (USD)</label>
-            <input type="number" id="mbuManualGrossRevenueInput" min="0" step="1000" placeholder="e.g. 15000000" oninput="mbuUpdateManualBudgetPreview()">
-          </div>
-          <div class="field">
-            <label>Target Marketing Allocation (%)</label>
-            <input type="number" id="mbuManualAllocationPctInput" min="0" max="100" step="0.1" placeholder="e.g. 7" oninput="mbuUpdateManualBudgetPreview()">
-          </div>
-          <p class="hint" id="mbuManualCalcPreview"></p>
-        </div>
-        <div class="btn-row" style="margin-top:10px;">
-          <button type="button" class="btn-primary" onclick="mbuManualSetupContinue()">Continue → pre-fill recommended mix</button>
-          <button type="button" class="btn-ghost" onclick="mbuCancelManualSetup()">Cancel</button>
-        </div>
-        <p class="hint" id="mbuManualSetupStatus" style="margin-top:8px;"></p>
-      </div>
-    </div>
-
     <div class="sk-card" id="mbuUploadCard" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
         <div class="htext"><div class="kicker">Setup — Upload</div><h3>Upload your budget file</h3></div>
@@ -7567,6 +7524,14 @@
       </div>
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Accepts .csv or .xlsx, any layout — standard flat table or a multi-section export like a real annual budget workbook.</p>
+        <div class="cfd cfd-ws" style="margin:0 0 14px;">
+          <div class="cfd-standup" style="margin-bottom:0;">
+            <div class="cfd-avatar">✦</div>
+            <div class="cfd-bubble">
+              This looks for month names (Jan–Dec) across every row to find your file's header(s) — if it finds exactly one, that's a standard flat table. If it finds several (a client export that repeats a header block per category, like a real Print/Direct Mail/Digital/Trade section layout), that's reported as a multi-block file: month and total columns still auto-recognize from their own header text, but the category-name and Working/Non-Working columns usually aren't labeled clearly enough to guess, so you confirm those. It also checks the math — if one row's total equals the sum of the others in its block, that's very likely a subtotal, not its own line item, and gets flagged so it isn't double-counted (or silently dropped).
+            </div>
+          </div>
+        </div>
         <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
              "Uploads should be single year only with user selecting year
              before uploading file. A budget year can't be uploaded again."
@@ -7600,6 +7565,13 @@
       </div>
     </div>
 
+    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Budget detail</div><h3>Imported budget</h3></div>
+        <div class="hicon">📊</div>
+      </div>
+      <div class="sk-card-body" id="mbuResultsBody"></div>
+    </div>
 
     <!-- Round 27 (2026-08-05), per direct instruction: 3 charts lead the
          Budget screens, ahead of Plan setup — a) Plan Pacing (donut,
@@ -7621,308 +7593,69 @@
       <div class="exec-chart-card" id="channelMixChartCard"></div>
     </div>
 
-    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Budget detail</div><h3>Imported budget</h3></div>
-        <div class="hicon">📊</div>
-      </div>
-      <div class="sk-card-body" id="mbuResultsBody"></div>
-    </div>
-
-    <div class="mediaplan-setup-row">
-    <div class="sk-card">
-      <div class="sk-card-head ink">
-        <div class="htext"><h3>Budget &amp; Allocation Detail</h3><div class="kicker">Annual</div></div>
+    <!-- ================= Media Plan steps (Round 7, 2026-09-05) =================
+         The "Manually add" path IS the Media Plan: Step 1 Annual budget (typed,
+         or Gross Revenue x a target % of working marketing spend, 3-25%,
+         default 7%) -> Step 2 Stage Weighting (dollar totals per Media Loop
+         stage, auto-filled from the split, editable, with the Marketing Loop
+         pie beside it) -> Step 3 Channel mix (recommended, editable, add a
+         channel inline) -> Step 4 Monthly distribution (Flat / Revenue curve /
+         Custom) -> Save plan. The same cards are the budget-detail view once
+         a budget exists. Round 6's separate #mbuManualSetupCard (a second
+         copy of the revenue x % calculator) and the old A/B/C option boxes
+         (Prefill / Build by hand) are gone -- that was the duplication. -->
+    <div id="mpPlanSection" style="display:none;">
+    <div class="sk-card" id="mpBudgetCard">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Step 1 of 4</div><h3>Annual Marketing Budget</h3></div>
         <div class="hicon">$</div>
       </div>
       <div class="sk-card-body">
-        <!-- Round 132bx (2026-08-15), per direct instruction: "Media Plan
-             Upload not present within plan section... Provide users with
-             opportunity to upload budget, review our mapping, correct
-             mapping, manually update empty cells and categorize as working
-             and non-working spend." That whole flow already exists —
-             Marketing Budget Upload (step-marketingBudgetUpload) does
-             exactly this — it just wasn't reachable from here, only from
-             the Analysis tools list. This is a discoverability fix, not a
-             rebuild: a real entry point into the existing flow, not a
-             second upload path. -->
-        <!-- Round 132bx follow-on (2026-08-15), per direct correction: Plan
-             year now comes first — set the year this plan is actually for
-             before jumping to Upload budget, rather than the reverse. The
-             upload flow itself doesn't take a year argument (Marketing
-             Budget Upload is a whole-account annual file, not scoped to one
-             plan year), so this doesn't change what happens on that screen
-             — it just puts the fields in the order a person would fill them
-             in, and means Plan year is already set (and, once Save plan has
-             run once, persisted) by the time someone comes back from
-             uploading. -->
-        <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
-             "add opportunities to multiple years of history and forecasts.
-             All should make our product smarter and more relevant to the
-             client when making recommendations." Plan year used to be a
-             plain number field with no actual effect — media_plans.year was
-             always saved, but every GET/POST only ever read/wrote one plan
-             per account regardless of what year was in this field, so
-             changing it just relabeled the same single plan rather than
-             switching to a different year's data. Replaced with a real
-             year switcher (chips, same stage-tile pattern as Flat/Manual
-             above): a 6-year window, 3 back through 2 forward from today,
-             each tagged Actual (past, saved data expected)/Current/Forecast
-             (future) so it's clear which years are look-back vs. planning-
-             ahead. See renderMpYearRow()/setMpYear() and the now year-scoped
-             loadMediaPlan(year)/saveMediaPlan(). -->
-        <div id="mpCarryForwardPrompt"></div>
-        <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
-             "Selecting Prefill from existing makes sense when beginning a
-             new session. I would place that option next to Upload to make
-             it a A or B choice vs. stacked." Upload and Prefill are two
-             starting points for the SAME goal (get this year's real budget
-             numbers into the plan) — Upload for a year with no confirmed
-             budget on file yet, Prefill for one that already does — so they
-             now sit side by side as an explicit either/or rather than two
-             separate stacked hint rows that read as sequential steps. Per
-             the round's other instruction below, the Annual Marketing
-             Budget field itself now auto-fills the moment a confirmed
-             upload exists for the selected year (see
-             mpAutoPrefillIfBlank()/renderMediaPlanStep()/setMpYear()) — so
-             in practice this Prefill button is mainly for a fresh session
-             where that auto-fill hasn't run yet (e.g. it was cleared by
-             hand), or to explicitly re-pull Non-Working Media rows. -->
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-          <!-- Round 132bx follow-on (2026-08-15), per direct correction: a
-               confirmed Marketing Budget Upload wasn't actually connected to
-               this plan — the Annual Marketing Budget field and Non-Working
-               Media table stayed empty even after confirming an upload, so
-               "review the mapping... and categorize working vs. non-working
-               spend" above didn't yet lead anywhere on THIS page. This button
-               pulls that upload's numbers in explicitly: Annual Marketing
-               Budget from the upload's Working Media total, and one
-               Non-Working Media row per non-working category (category name
-               as the starting Vendor Name — the upload doesn't collect real
-               vendor names, so this is a labeled placeholder, not a guess
-               dressed up as one — spend split flat across 12 months). Both
-               are strictly fill-if-empty: won't touch an Annual Marketing
-               Budget that already has a value, and won't add rows if
-               Non-Working Media already has any — see
-               mpPrefillFromConfirmedUpload()'s own comment for the exact
-               rule and why. -->
-          <div class="hint" style="flex:1 1 260px;display:flex;flex-direction:column;gap:8px;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;">
-            <span><strong>B.</strong> Already confirmed an upload for <span id="mpPrefillOptionYear">this year</span>?</span>
-            <span>Its numbers fill in automatically below — use this to re-pull them by hand (e.g. starting a new session, or after clearing a field).</span>
-            <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mpPrefillFromConfirmedUpload()">↻ Prefill from confirmed upload →</button>
+        <p class="hint" style="margin-top:0;">Type your working-media budget for <span id="mpBudgetYearLabel"></span>, or calculate it from gross revenue and a target % of working marketing spend.</p>
+        <div class="stage-row" style="margin-bottom:12px;">
+          <button type="button" class="stage-tile selected" id="mpBudgetModeDirectBtn" onclick="mpSetBudgetMode('direct')">Type an amount</button>
+          <button type="button" class="stage-tile" id="mpBudgetModeCalcBtn" onclick="mpSetBudgetMode('calc')">Calculate from revenue</button>
+        </div>
+        <div id="mpBudgetCalcFields" style="display:none;">
+          <div class="field" id="mpGrossRevenueField">
+            <label id="mpGrossRevenueLabel" style="margin-bottom:4px;">Gross annual revenue (USD)</label>
+            <input type="number" id="mpGrossRevenue" min="0" step="1000" placeholder="e.g. 15000000" oninput="updateBudgetRevenueContext(); mpUpdateBudgetCalcPreview(); mpRenderRevenueFraming();">
+            <div class="hint" id="mpGrossRevenueHint" style="margin-top:4px;">Not required, and never shown or shared outside this plan.</div>
+            <div id="mpRevenueRecognitionBreakdown" style="margin-top:8px;"></div>
           </div>
-          <!-- Round 132c12 (2026-08-17), per direct instruction: gross
-               revenue used to be a standalone field shown unconditionally
-               above Annual Marketing Budget, regardless of whether the
-               budget came from an upload (A/B, where a real number already
-               exists — revenue context adds little) or was typed by hand
-               (where sizing/contextualizing the number as it's built is
-               genuinely useful). Moved here as its own C option, alongside
-               A/B, so it's offered specifically to someone building the
-               budget manually. Still purely optional context (budget ÷
-               revenue, no benchmark or recommendation — see Round 110's
-               comment below on why a generic suggested-budget table was
-               removed rather than kept), and still not required to use the
-               Annual Marketing Budget field below regardless of which path
-               was used to get there. Auto-expands on load if this plan
-               already has a saved grossRevenue (see
-               renderMediaPlanFieldsAndCharts()) so existing data isn't
-               hidden behind a collapsed toggle. -->
-          <div class="hint" style="flex:1 1 260px;display:flex;flex-direction:column;gap:8px;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;">
-            <span><strong>C.</strong> Building this budget by hand?</span>
-            <span>Add gross annual revenue (optional) to see what % of revenue your budget represents as you build it below.</span>
-            <button type="button" class="btn-ghost" id="mpManualRevenueToggleBtn" style="align-self:flex-start;" onclick="mpToggleManualRevenueField()">＋ Add gross revenue</button>
-            <div class="field" id="mpGrossRevenueField" style="display:none;margin:2px 0 0;">
-              <!-- Round 132c14 (2026-08-17), per direct instruction: "it's
-                   important that we position our revenue ask as the
-                   Purchase Year not the revenue reporting year." Travel's
-                   long advance-booking window means the calendar year a
-                   trip is BOOKED (Purchase Year) and the calendar year(s)
-                   its revenue actually RECOGNIZES/reports are different —
-                   for Luxury Cruise specifically, a real, sourced 3-year
-                   split (25% same year / 50% CY+1 / 25% CY+2). Marketing
-                   and Revenue Management both plan against Purchase Year,
-                   so asking "what's your revenue?" without saying which
-                   year framing invites the wrong number — someone could
-                   type this calendar year's *reported* revenue (a blend of
-                   3 different purchase years' bookings), which understates
-                   what this Plan Year's marketing is actually working
-                   toward. Label/hint/breakdown all swap based on industry
-                   — see mpRenderRevenueFraming(). Every non-Travel industry
-                   keeps the original "Gross annual revenue" framing
-                   unchanged (this isn't a universal travel-industry fact,
-                   generalizing to Retail or B2B would be wrong). -->
-              <label id="mpGrossRevenueLabel" style="margin-bottom:4px;">Gross annual revenue (USD)</label>
-              <input type="number" id="mpGrossRevenue" min="0" step="1000" placeholder="e.g. 15000000" oninput="updateBudgetRevenueContext(); mpRenderRevenuePctApply(); mpRenderRevenueFraming();">
-              <div class="hint" id="mpGrossRevenueHint" style="margin-top:4px;">Not required, and never shown or shared outside this plan.</div>
-              <div id="mpRevenueRecognitionBreakdown" style="margin-top:8px;"></div>
-              <!-- Round 132c13 (2026-08-17), per direct instruction: "give
-                   the user the option to apply a percentage." Two
-                   independent percent-of-revenue lines — Marketing budget
-                   and Sales/Trade Marketing — each with its own %, its own
-                   live-computed dollar figure, and its own explicit Apply
-                   button. Deliberately NOT a suggested/default %: per
-                   Round 110's own lesson (a guessed revenue-tier benchmark
-                   table got removed for being a substitute for real
-                   numbers), both % fields start blank for every account —
-                   this is a calculator the user drives with their own real
-                   figure (e.g. Atlas's board-approved 2027 targets: 7%
-                   marketing / 2% sales-trade), never a platform guess.
-                   Applying either one is a one-time explicit action, same
-                   as typing a number directly — it doesn't create a live
-                   link that keeps recalculating the budget field if
-                   revenue changes later. See mpRenderRevenuePctApply()/
-                   mpApplyRevenuePct(). -->
-              <div id="mpRevenuePctApply" style="margin-top:10px;"></div>
-              <!-- Round 132c15 (2026-08-17), per direct instruction: a
-                   mirrored Flat/Manual Monthly Distribution toggle, here in
-                   the manual-build section too — not a second, independent
-                   setting, the same plan-wide state.mediaPlan.monthlyMode
-                   the full control (12-month table, Load AOV seasonality,
-                   Reset to flat — still after "Apply recommended mix",
-                   unchanged, per the 132bx instruction that put it there)
-                   already drives. Clicking either toggle updates both — see
-                   renderMpMonthlyModeRow(), which now renders into this
-                   mirror container too whenever it exists. -->
-              <div style="margin-top:10px;">
-                <div class="hint" style="font-weight:600;margin-bottom:4px;">Monthly distribution</div>
-                <div class="stage-row" id="mpMonthlyModeRowMirror"></div>
-                <div class="hint" style="margin-top:4px;">Flat splits each channel's annual $ evenly across 12 months; Manual lets you set your own monthly shares — the full month-by-month table is below, after "Apply recommended mix."</div>
-              </div>
-            </div>
+          <div class="field" style="max-width:420px;">
+            <label>Target % of working marketing spend</label>
+            <select id="mpTargetPctSelect" class="tbl-select" onchange="mpUpdateBudgetCalcPreview()"></select>
+            <div class="hint" style="margin-top:4px;">Starts at 7% — a common working-media benchmark — and ranges 3%–25%. Pick the target your leadership has approved.</div>
+          </div>
+          <div class="btn-row" style="margin-top:4px;align-items:center;">
+            <button type="button" class="btn-ghost" onclick="mpApplyBudgetCalc()">Use this as the Annual Marketing Budget →</button>
+            <span class="hint" id="mpBudgetCalcPreview" style="margin:0;"></span>
           </div>
         </div>
-        <p class="hint" id="mpPrefillFlag" style="margin:0 0 16px;"></p>
-        <!-- Round 108 (2026-08-07), per direct instruction: revenue collection
-             moved out of the free assessment entirely (assessment.html no
-             longer asks for it, or guesses it, anywhere) and lands here
-             instead, in the paid portal's budget planning step.
-             Round 109 (2026-08-07), per direct instruction: field relabeled
-             "Annual total budget" -> "Annual Marketing Budget" (this field
-             has always meant the marketing budget specifically, never the
-             company's total operating budget — the new label just says so).
-             Round 110 (2026-08-07), per direct instruction: removed the
-             "Suggest budget from revenue" action and the generic illustrative
-             industry-baseline benchmark text — too generic (a flat
-             revenue-tier table isn't a substitute for real numbers; e.g. the
-             account's own AOV is 7.5%, and luxury cruise lines run 7–10% in
-             general, per direct instruction — figures like that should come
-             from the user or a real dataset, not a guessed table). Revenue
-             stays as a simple optional input: the % of revenue readout below
-             is now nothing more than budget ÷ revenue, no benchmark, no
-             explanation.
-             Round 132c12 (2026-08-17): the Gross annual revenue field itself
-             moved up into option C above — this comment block stays here
-             since it explains the % readout immediately below, which is
-             unchanged. -->
         <div class="field">
-          <label>Annual Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
-          <input type="number" id="mpTotalBudget" min="0" step="1000" placeholder="e.g. 1200000" required oninput="renderMediaPlanGrid(); clearMediaPlanBudgetError(); updateBudgetRevenueContext(); renderNwmSummary(); renderMediaLoopMixChart(); renderMpTotalMarketingBudget();" onblur="validateMediaPlanBudget()">
+          <label>Annual Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— working media, required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
+          <input type="number" id="mpTotalBudget" min="0" step="1000" placeholder="e.g. 1200000" required oninput="renderMediaPlanGrid(); clearMediaPlanBudgetError(); updateBudgetRevenueContext(); renderNwmSummary(); renderMediaLoopMixChart(); renderMpTotalMarketingBudget(); mswRenderStageWeightCard(); mpRenderPlanSteps();" onblur="validateMediaPlanBudget()">
           <div class="rr-error" id="mpTotalBudgetError" style="display:none;"></div>
           <div class="hint" id="mpBudgetRevenuePct" style="display:none;"></div>
           <div id="mpForecastSuggestion"></div>
+          <p class="hint" id="mpPrefillFlag" style="margin:6px 0 0;"></p>
         </div>
-        <!-- Round 6 (2026-09-05), per direct instruction: "Add a Total
-             Marketing Budget that is SUM of Working and Non-Working
-             media." Read-only, always computed -- never directly
-             editable, never out of sync -- from the Annual Marketing
-             Budget above (Working Media) plus the Non-Working Media
-             table's own Spend total below. See renderMpTotalMarketingBudget(),
-             called from mpTotalBudget's own oninput and from
-             renderNwmSummary() (so either side changing keeps this
-             current), plus once on initial paint
-             (renderMediaPlanFieldsAndCharts()). -->
         <div class="field">
           <label>Total Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— Working + Non-Working, calculated</span></label>
           <input type="text" id="mpTotalMarketingBudgetDisplay" readonly disabled style="background:var(--paper-dim);color:var(--ink);cursor:not-allowed;">
-          <div class="hint">Always Annual Marketing Budget (Working Media, above) plus the Non-Working Media table's Spend total (below) — not editable here directly; change either of those to change this.</div>
+          <div class="hint">Annual Marketing Budget (working media) plus the Non-Working Media table's Spend total — not editable directly.</div>
         </div>
-        <!-- Round 132c13 (2026-08-17), per direct instruction — a second,
-             separate budget line for sales/trade marketing (e.g. trade-show
-             sponsorships, travel-advisor co-op, dealer incentives):
-             deliberately its own field, not folded into Annual Marketing
-             Budget above (a different funnel entirely — sales enablement,
-             not the working-media stage/channel allocations "Apply
-             recommended mix" builds from) and not the same thing as
-             Non-Working Media below (agency/analytics/production vendor
-             spend). Optional, editable directly or via the Apply button
-             above once gross revenue + a Sales/Trade % are entered. -->
         <div class="field">
           <label>Sales &amp; Trade Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></label>
           <input type="number" id="mpTradeMarketingBudget" min="0" step="1000" placeholder="e.g. 2640000" oninput="clearMediaPlanBudgetError();">
-          <div class="hint">Separate from the Annual Marketing Budget above — trade-show sponsorships, travel-advisor/dealer co-op, and similar sales-enablement spend that isn't part of the channel mix "Apply recommended mix" builds. Not included in any chart or export that totals working-media channel spend.</div>
+          <div class="hint">Trade-show sponsorships, travel-advisor/dealer co-op, and similar sales-enablement spend — kept separate from the channel mix and not included in any working-media total.</div>
         </div>
-        <!-- Round 132bx follow-on (2026-08-16), per direct instruction:
-             "Apply Monthly Distribution should follow Apply Media Mix to
-             maintain the correct flow." Reverses Round 116's placement
-             (monthly distribution used to sit here, before this button) —
-             this button now comes first. No functional change was needed
-             to make this safe: setMpMonthlyMode() (below) already calls
-             reapplyPlanMonthlyToAllAllocations() any time the mode changes,
-             recomputing every existing channel's monthly periods in place —
-             so picking a channel mix first, then setting/adjusting how it
-             splits across months, was already how the underlying logic
-             worked; only the on-screen order was backwards. -->
-        <div class="btn-row" id="mpApplyMixRow">
-          <button class="btn-primary" onclick="applyRecommendedMix()">Apply recommended mix →</button>
-        </div>
-        <!-- Round 114 (2026-08-08) — clicking Apply recommended mix builds
-             allocation cards well below the fold (past the 3-chart grid),
-             with nothing visible changing right next to this button. That
-             read as "doesn't work" even when it succeeded. Fixed with an
-             inline confirmation here, plus applyRecommendedMix() now
-             scrolls the result into view instead of leaving it invisible. -->
-        <div class="hint" id="mpApplyMixFlag" style="display:none;"></div>
-        <!-- Round 116 (2026-08-08), per direct instruction: monthly
-             distribution — set here, right after "Apply recommended mix"
-             above (see round 132bx follow-on comment on that button; this
-             field used to sit before it). One shared shape (Flat or Manual)
-             applies to every channel alike: each channel's own Forecasted
-             $ gets spread using this same curve, so channels differ in
-             dollars but not in seasonality shape. -->
-        <div class="field" style="margin-top:20px;">
-          <label>Monthly distribution</label>
-          <div class="stage-row" id="mpMonthlyModeRow"></div>
-          <!-- Round 132bx follow-on #3 (2026-08-15), per direct instruction:
-               "Apply flat or manual only focuses on monthly totals not
-               channel mix at this level." This was already true of the
-               underlying logic — computePlanMonthlyPeriods() only ever
-               re-splits a channel's already-decided annual $ across months,
-               it never touches which channels get how much of the budget
-               (that's "Apply recommended mix" above, and per-channel Annual
-               $ edits in the grid it builds) — but the copy here didn't say
-               so, so it was easy to read as a channel-mix control. Made
-               that explicit. -->
-          <div class="hint">Sets how each channel's own annual $ is spread across the 12 months — Flat splits it evenly, Manual lets you set each month's share yourself (same curve applied to every channel alike). This does not change which channels get how much of the budget — that's decided by "Apply recommended mix" above, or by editing a channel's Annual $ directly once it's been applied.</div>
-        </div>
-        <!-- Round 132bx (2026-08-16), per direct bug report: "Selecting
-             Flat does not show the table or provide the user with a
-             confirmation that the budget will be added equally across all
-             media." This field used to be Manual-only (hidden entirely for
-             Flat, via inline display:none) — now always visible, rendered
-             by renderMpMonthlyModeRow() as either a read-only 12-cell
-             confirmation (Flat, via renderMpMonthlyFlatRow()) or the
-             original editable one (Manual, via renderMpMonthlyManualRow()),
-             so Flat gets the same explicit, visible confirmation Manual
-             already had instead of silent trust that it did the right
-             thing. -->
-        <div class="field" id="mpMonthlyManualField">
-          <label id="mpMonthlyFieldLabel">Monthly % of annual budget</label>
-          <div id="mpMonthlyManualRow" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
-          <div class="btn-row" id="mpMonthlyFieldButtons" style="margin-top:8px;">
-            <button type="button" class="btn-ghost" onclick="applyAovSeasonalityToPlan()">Load actual AOV seasonality →</button>
-            <button type="button" class="btn-ghost" onclick="resetPlanMonthlyToFlat()">Reset to flat →</button>
-          </div>
-          <div class="hint" id="mpMonthlyPctSumHint"></div>
-        </div>
+        <p class="hint" id="mpStep1Next" style="margin:0;"></p>
       </div>
     </div>
 
-      <div class="exec-chart-card" id="mediaLoopMixChartCard"></div>
-    </div>
-    <!-- /.mediaplan-setup-row -->
-
-
+    <div class="mediaplan-setup-row" id="mpStageWeightRow" style="display:none;margin-top:18px;">
     <!-- Round 132c[7] (2026-08-17) — buildout item #7: make the stage-budget
          split ("Apply recommended mix" above splits by STAGE_BUDGET_WEIGHTS)
          and the min-viable-spend channel cutoff tunable per account from
@@ -7936,112 +7669,22 @@
          existing account's recommended mix, so opt-in). -->
     <div class="sk-card" id="mpStageWeightCard">
       <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Media Plan · Tuning</div><h3>Stage Weighting</h3></div>
+        <div class="htext"><div class="kicker">Step 2 of 4</div><h3>Stage Weighting</h3></div>
         <div class="hicon">⚖</div>
       </div>
       <div class="sk-card-body" id="mpStageWeightBody"><p class="hint">Loading…</p></div>
     </div>
 
-
-    <!-- Round 117 (2026-08-08), per direct instruction: Non-Working Media —
-         agency fees, advanced analytics, creative asset production,
-         licenses, martech, and similar vendor spend, tracked separately
-         from the channel media allocations below. Always visible (not
-         gated behind "Apply recommended mix" — a plan can have non-working
-         media vendors entered before or independent of the channel mix).
-         The ~20% figure is an informational reference only; it is never
-         subtracted from the Annual Marketing Budget used for the working-
-         media channel allocations. -->
-    <div class="sk-card">
-      <div class="sk-card-head ink">
-        <div class="htext"><h3>Non-Working Media</h3><div class="kicker">Agency, Analytics &amp; Production</div></div>
-        <div class="hicon">◈</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin:0 0 12px;">Spend that supports the plan but isn't media itself — agency fees, advanced analytics, creative asset production, licenses, martech, and similar. Tracked here by vendor and month, separate from the channel allocations below; it is not subtracted from the Annual Marketing Budget those allocations draw from. Typically runs roughly 20% of total marketing budget, shown below for reference only.</p>
-        <div id="nwmList"></div>
-        <div class="btn-row" style="margin-top:4px;align-items:center;">
-          <button type="button" class="btn-ghost" onclick="addNonWorkingMediaRow()">+ Add vendor →</button>
-          <!-- Round 132bx (2026-08-15), per direct review comment: "Provide
-               separate non-working media upload option mapping to our
-               view." A lightweight client-side CSV parser (no backend round
-               trip needed for 5 fixed columns) — separate and simpler than
-               the full Marketing Budget Upload flow (which handles
-               arbitrary/multi-block layouts); this one expects the same
-               columns the table itself shows: Vendor Name, Marketing
-               Function Support, Start Date, End Date, Spend. See
-               nwmHandleUpload()/nwmParseUploadCsv() below. -->
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">
-            📤 Upload vendors (.csv)
-            <input type="file" accept=".csv" id="nwmUploadInput" style="display:none;" onchange="nwmHandleUpload(event)">
-          </label>
-        </div>
-        <p class="hint" id="nwmUploadStatus" style="margin-top:6px;"></p>
-        <div class="hint" id="nwmSummary" style="margin-top:10px;"></div>
-      </div>
+      <div class="exec-chart-card" id="mediaLoopMixChartCard"></div>
     </div>
+    <!-- /.mediaplan-setup-row -->
 
-
-    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: multiple
-         years of history/forecasts should make recommendations smarter, not
-         just be a switcher. This card shows the trend across every saved
-         year (Total Budget by year, tagged Actual/Current/Forecast) so a
-         human can see it at a glance, and is also where "Apply recommended
-         mix" explains when/how it adjusted its split using this account's
-         own history (see applyRecommendedMix()'s historical-blend note and
-         computeRecommendedMix()'s internal mpHistoricalChannelShares() blend).
-         Hidden entirely when fewer than 2 years of history exist — a trend
-         chart of one point isn't a trend. -->
-    <div class="sk-card" id="mpHistoryCard" style="display:none;">
-      <div class="sk-card-head ink">
-        <div class="htext"><h3>Budget History &amp; Forecast</h3><div class="kicker">Year over year</div></div>
-        <div class="hicon">↗</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" id="mpHistoryIntro" style="margin:0 0 14px;"></p>
-        <div id="mpHistoryChartMount"></div>
-      </div>
+    <div id="mpChannelStep" style="display:none;">
+    <div style="margin:24px 0 14px;">
+      <div class="kicker" style="margin-bottom:4px;">Step 3 of 4</div>
+      <h3 style="margin:0 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);">Channel mix — review &amp; adjust</h3>
+      <p class="hint" style="margin:0;">Each stage's budget is split across its channels using industry best-practice weights, limited to your Active channels. Every Annual $ is editable, and you can add a channel to any stage below.</p>
     </div>
-
-
-    <!-- Round 109 (2026-08-07), per direct instruction: Save Plan moved out
-         of Plan setup and down into the section that shows the actual
-         budget allocations — it only matters once "Apply recommended mix"
-         has produced something to save. Hidden (via renderMediaPlanGrid()'s
-         display toggle) until the plan has at least one allocation.
-         Round 116 (2026-08-08), per direct instruction: monthly
-         distribution is no longer a per-channel control — it's set once,
-         plan-wide, in Plan setup above, before "Apply recommended mix"
-         runs. This card is Save Plan only. -->
-    <div class="sk-card" id="mpAllocationsControlsCard" style="display:none;">
-      <div class="sk-card-head ink">
-        <div class="htext"><h3>Allocation settings</h3><div class="kicker">Save</div></div>
-        <div class="hicon">▤</div>
-      </div>
-      <div class="sk-card-body">
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-ghost" onclick="saveMediaPlan()">Save plan →</button>
-        </div>
-        <div class="hint" id="mpSaveFlag"></div>
-      </div>
-      <div class="sk-card-footer" id="mpFooter"></div>
-    </div>
-
-
-    <!-- Round 114 (2026-08-08), per direct instruction: removed the entire
-         text "Plan pacing" card (Round 55) — it was redundant with the
-         Plan Pacing donut in the chart grid above, which shares the same
-         computePlanPacingTotals() data and the same Director/CMO role
-         scoping. The donut is the only remaining pacing summary; the
-         stage/channel commit-vs-approved breakdown that used to live here
-         is gone too, not just its duplicated headline row (Round 112). -->
-    <!-- Round 116 (2026-08-08), per direct instruction: a period selector
-         to view the plan as the Full Year, a single quarter, or a single
-         month — filters the $ and Impressions shown per channel below to
-         that period, without touching the underlying annual numbers (which
-         stay editable only at the annual level, per the earlier "leave the
-         annual alone" direction). Hidden until the plan has allocations,
-         same as the grid it controls. -->
     <div class="sk-card" id="mpPeriodViewCard" style="display:none;">
       <div class="sk-card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
         <label style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.8438rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0;">View budget</label>
@@ -8091,6 +7734,69 @@
     </div>
     <div id="mediaPlanGrid"></div>
 
+
+    <div class="sk-card" id="mpMonthlyCard" style="margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Step 4 of 4</div><h3>Monthly distribution</h3></div>
+        <div class="hicon">📅</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">How each channel's annual $ spreads across the 12 months — the same curve applies to every channel. Flat splits evenly; Revenue curve follows your seasonality; Custom lets you set each month's share.</p>
+        <div class="field">
+          <div class="stage-row" id="mpMonthlyModeRow"></div>
+        </div>
+        <div class="field" id="mpMonthlyManualField">
+          <label id="mpMonthlyFieldLabel">Monthly % of annual budget</label>
+          <div id="mpMonthlyManualRow" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
+          <div class="btn-row" id="mpMonthlyFieldButtons" style="margin-top:8px;">
+            <button type="button" class="btn-ghost" onclick="applyAovSeasonalityToPlan()">Reload revenue curve →</button>
+            <button type="button" class="btn-ghost" onclick="resetPlanMonthlyToFlat()">Reset to flat →</button>
+          </div>
+          <div class="hint" id="mpMonthlyPctSumHint"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mpAllocationsControlsCard" style="display:none;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Finish</div><h3>Save plan</h3></div>
+        <div class="hicon">▤</div>
+      </div>
+      <div class="sk-card-body">
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn-primary" onclick="saveMediaPlan()">Save plan →</button>
+        </div>
+        <div class="hint" id="mpSaveFlag"></div>
+      </div>
+      <div class="sk-card-footer" id="mpFooter"></div>
+    </div>
+
+    </div>
+    <!-- /#mpChannelStep -->
+    <!-- Round 132bx follow-on (2026-08-16), per direct instruction: multiple
+         years of history/forecasts should make recommendations smarter, not
+         just be a switcher. This card shows the trend across every saved
+         year (Total Budget by year, tagged Actual/Current/Forecast) so a
+         human can see it at a glance, and is also where "Apply recommended
+         mix" explains when/how it adjusted its split using this account's
+         own history (see applyRecommendedMix()'s historical-blend note and
+         computeRecommendedMix()'s internal mpHistoricalChannelShares() blend).
+         Hidden entirely when fewer than 2 years of history exist — a trend
+         chart of one point isn't a trend. -->
+    <div class="sk-card" id="mpHistoryCard" style="display:none;">
+      <div class="sk-card-head ink">
+        <div class="htext"><h3>Budget History &amp; Forecast</h3><div class="kicker">Year over year</div></div>
+        <div class="hicon">↗</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" id="mpHistoryIntro" style="margin:0 0 14px;"></p>
+        <div id="mpHistoryChartMount"></div>
+      </div>
+    </div>
+
+    </div>
+    <!-- /#mpPlanSection -->
+
     <!-- 2026-08-26 account-management reorg, per direct instruction: "The
          Activate channels should be part of the overall budget setup."
          Moved here from Account Setup — see mbuToggleActiveChannel()'s own
@@ -8109,6 +7815,44 @@
         </div>
         <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
         <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
+      </div>
+    </div>
+
+    <!-- Round 117 (2026-08-08), per direct instruction: Non-Working Media —
+         agency fees, advanced analytics, creative asset production,
+         licenses, martech, and similar vendor spend, tracked separately
+         from the channel media allocations below. Always visible (not
+         gated behind "Apply recommended mix" — a plan can have non-working
+         media vendors entered before or independent of the channel mix).
+         The ~20% figure is an informational reference only; it is never
+         subtracted from the Annual Marketing Budget used for the working-
+         media channel allocations. -->
+    <div class="sk-card" id="mpNonWorkingCard">
+      <div class="sk-card-head ink">
+        <div class="htext"><h3>Non-Working Media</h3><div class="kicker">Agency, Analytics &amp; Production</div></div>
+        <div class="hicon">◈</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin:0 0 12px;">Spend that supports the plan but isn't media itself — agency fees, advanced analytics, creative asset production, licenses, martech, and similar. Tracked here by vendor and month, separate from the channel allocations above; it is not subtracted from the Annual Marketing Budget those allocations draw from. Typically runs roughly 20% of total marketing budget, shown below for reference only.</p>
+        <div id="nwmList"></div>
+        <div class="btn-row" style="margin-top:4px;align-items:center;">
+          <button type="button" class="btn-ghost" onclick="addNonWorkingMediaRow()">+ Add vendor →</button>
+          <!-- Round 132bx (2026-08-15), per direct review comment: "Provide
+               separate non-working media upload option mapping to our
+               view." A lightweight client-side CSV parser (no backend round
+               trip needed for 5 fixed columns) — separate and simpler than
+               the full Marketing Budget Upload flow (which handles
+               arbitrary/multi-block layouts); this one expects the same
+               columns the table itself shows: Vendor Name, Marketing
+               Function Support, Start Date, End Date, Spend. See
+               nwmHandleUpload()/nwmParseUploadCsv() below. -->
+          <label class="btn-ghost" style="cursor:pointer;margin:0;">
+            📤 Upload vendors (.csv)
+            <input type="file" accept=".csv" id="nwmUploadInput" style="display:none;" onchange="nwmHandleUpload(event)">
+          </label>
+        </div>
+        <p class="hint" id="nwmUploadStatus" style="margin-top:6px;"></p>
+        <div class="hint" id="nwmSummary" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -12032,6 +11776,11 @@ function baseStageBudgetWeights(){
 }
 function getIndustryStageWeights(industryLabel){
   const base = baseStageBudgetWeights();
+  // Round 7 (2026-09-05): an explicit saved override is the account's own
+  // decision (edited in the Stage Weighting card) -- return it exactly, no
+  // industry nudge on top, so the % / $ a person typed there is what the
+  // pie shows and what the channel mix uses.
+  if (mswStageWeightsOverride) return { ...base };
   const weakStage = INDUSTRY_WEAK_STAGE[industryLabel];
   if (!weakStage || !base[weakStage]) return { ...base };
   const others = MEDIA_LOOP_STAGES.filter(s => s !== weakStage);
@@ -13226,41 +12975,84 @@ async function mswLoadStageWeights(){
   } catch (e){ body.innerHTML = '<p class="hint">Backend unreachable — can\'t load stage weighting.</p>'; }
 }
 function mswPct(v){ return `${Math.round((v || 0) * 100)}%`; }
+// Round 7 (2026-09-05), per direct instruction: "We automatically add
+// totals in the stage weighting section with the marketing loop pie chart
+// shown to the right. Calibrate minimum-viable spend thresholds can be
+// removed from the page. Users can edit the amounts." This card is now
+// Step 2 of the Manual flow: every Media Loop stage shows its share AND its
+// dollar total against the Annual Marketing Budget (Step 1), both editable.
+// Editing one stage rebalances the other four proportionally so the split
+// always totals 100% (the backend rejects anything else), and the result
+// saves immediately as this account's override -- the same override
+// computeRecommendedMix()/renderMediaLoopMixChart() already read, so the
+// pie beside this card and the channel mix built in Step 3 both follow the
+// edit. The AOV min-viable-spend calibration toggle is no longer rendered
+// (mswToggleCalibration/channelMinViableSpend are untouched; the saved
+// setting simply keeps whatever value it has).
+function mswStageWeightsInUse(){
+  return getIndustryStageWeights(state.industry);
+}
 function mswRenderStageWeightCard(){
   const body = document.getElementById('mpStageWeightBody');
   if (!body || !mswStageWeightsData) return;
   const d = mswStageWeightsData;
-  const active = d.override || d.default;
-  const stageRows = MEDIA_LOOP_STAGES.map(stage => `
+  const active = mswStageWeightsInUse();
+  const budget = Number((document.getElementById('mpTotalBudget') || {}).value) || (state.mediaPlan && state.mediaPlan.totalBudget) || 0;
+  const stageRows = MEDIA_LOOP_STAGES.map(stage => {
+    const pct = Math.round((active[stage] || 0) * 1000) / 10;
+    const dollars = Math.round((active[stage] || 0) * budget);
+    return `
     <tr>
-      <td>${stage}</td>
-      <td class="hint">${mswPct(d.default[stage])}</td>
-      <td class="hint">${d.suggested ? mswPct(d.suggested[stage]) : '—'}</td>
-      <td style="font-weight:600;">${mswPct(active[stage])}</td>
-    </tr>`).join('');
+      <td style="font-weight:600;"><span class="swatch" style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${STAGE_LOOP_COLORS[stage]};margin-right:8px;vertical-align:middle;"></span>${stage}</td>
+      <td class="hint">${mswPct(d.default[stage])}${d.suggested ? ` · suggested ${mswPct(d.suggested[stage])}` : ''}</td>
+      <td><div style="display:flex;align-items:center;gap:4px;"><input type="number" min="0" max="100" step="0.5" value="${pct}" style="width:84px;padding:6px 8px;" onchange="mswEditStagePct('${stage}', this.value)"><span class="hint">%</span></div></td>
+      <td><div style="position:relative;min-width:150px;"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;">$</span><input type="number" min="0" step="1000" value="${dollars}" style="padding:6px 8px 6px 22px;width:100%;" ${budget > 0 ? '' : 'disabled title="Enter an Annual Marketing Budget in Step 1 first"'} onchange="mswEditStageDollars('${stage}', this.value)"></div></td>
+    </tr>`;
+  }).join('');
   const hasSuggestion = !!d.suggested;
   const hasOverride = !!d.override;
-  const aovLine = d.suggestedMinViableSpendMultiplier != null
-    ? `Average order value on file suggests a ${d.suggestedMinViableSpendMultiplier}× multiplier on channel minimum-viable-spend thresholds (reference AOV: $${d.minViableSpendReferenceAov}) — a higher-AOV account can justify testing a channel at a lower dollar floor.`
-    : `Answer "Average order value" in the <a onclick="goToStep('onboardingSurvey')" style="cursor:pointer;">Business &amp; Revenue Profile</a> survey to get a suggested minimum-viable-spend calibration.`;
   body.innerHTML = `
-    <p class="hint" style="margin-top:0;">Splits "Apply recommended mix" across the 5 Media Loop stages. Default is the same generic split every account starts from; Suggested is computed from this account's own <a onclick="goToStep('onboardingSurvey')" style="cursor:pointer;">Business &amp; Revenue Profile</a> survey answers (sales-cycle length, repeat-vs-one-time) once they're filled in. Applying a split here doesn't change any plan already saved — it only changes what "Apply recommended mix" computes next.</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-      <thead><tr><th>Stage</th><th>Default</th><th>Suggested</th><th>Active</th></tr></thead>
+    <p class="hint" style="margin-top:0;">${budget > 0 ? `Your ${fmtMoney(budget)} Annual Marketing Budget, split across the 5 Media Loop stages.` : 'Enter an Annual Marketing Budget in Step 1 to see dollar totals per stage.'} ${hasOverride ? 'Using this account\'s own saved split.' : (INDUSTRY_WEAK_STAGE[state.industry] ? `Using the ${state.industry} industry split (weighted toward ${INDUSTRY_WEAK_STAGE[state.industry]}).` : 'Using the default split.')} Edit any % or $ — the other stages rebalance so the total stays at 100%, and the change saves to this account.</p>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
+      <thead><tr><th>Stage</th><th>Default</th><th>Share</th><th>Budget</th></tr></thead>
       <tbody>${stageRows}</tbody>
+      <tfoot><tr><td style="font-weight:700;">Total</td><td></td><td style="font-weight:700;">100%</td><td style="font-weight:700;">${budget > 0 ? fmtMoney(budget) : '—'}</td></tr></tfoot>
     </table></div>
     <div class="btn-row" style="margin-top:12px;">
-      ${hasSuggestion ? `<button type="button" class="btn-primary" onclick="mswApplySuggested()">Apply suggested split →</button>` : ''}
+      ${hasSuggestion ? `<button type="button" class="btn-ghost" onclick="mswApplySuggested()">Use suggested split →</button>` : ''}
       ${hasOverride ? `<button type="button" class="btn-ghost" onclick="mswResetToDefault()">Reset to default →</button>` : ''}
     </div>
     <div class="hint" id="mswSaveStatus" style="margin-top:6px;"></div>
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <label class="hint" style="display:flex;align-items:flex-start;gap:8px;font-weight:600;">
-        <input type="checkbox" id="mswCalibrationToggle" ${d.minViableSpendCalibrationEnabled ? 'checked' : ''} onchange="mswToggleCalibration(this.checked)" ${d.suggestedMinViableSpendMultiplier == null ? 'disabled' : ''}>
-        Calibrate minimum-viable-spend thresholds to this account's AOV
-      </label>
-      <div class="hint" style="margin:4px 0 0 24px;">${aovLine}</div>
-    </div>`;
+    <div class="btn-row" id="mpApplyMixRow" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+      <button type="button" class="btn-primary" onclick="applyRecommendedMix()" ${budget > 0 ? '' : 'disabled'}>${(state.mediaPlan && (state.mediaPlan.allocations || []).length) ? 'Rebuild channel mix from this split →' : 'Continue → build channel mix'}</button>
+    </div>
+    <div class="hint" id="mpApplyMixFlag" style="display:none;"></div>`;
+}
+// Rebalance helper: set `stage` to `share` (0..1) and scale the other four
+// proportionally so the five still sum to 1.
+function mswRebalancedWeights(stage, share){
+  const cur = mswStageWeightsInUse();
+  const v = Math.max(0, Math.min(1, share));
+  const others = MEDIA_LOOP_STAGES.filter(s => s !== stage);
+  const othersSum = others.reduce((s, st) => s + (cur[st] || 0), 0);
+  const out = { [stage]: v };
+  others.forEach(st => { out[st] = othersSum > 0 ? (cur[st] || 0) * ((1 - v) / othersSum) : (1 - v) / others.length; });
+  // round to 4 places and push any rounding residue onto the edited stage
+  let sum = 0;
+  MEDIA_LOOP_STAGES.forEach(st => { out[st] = Math.round(out[st] * 10000) / 10000; sum += out[st]; });
+  out[stage] = Math.round((out[stage] + (1 - sum)) * 10000) / 10000;
+  return out;
+}
+function mswEditStagePct(stage, value){
+  const pct = Number(value);
+  if (isNaN(pct)) { mswRenderStageWeightCard(); return; }
+  mswSaveWeights(mswRebalancedWeights(stage, pct / 100));
+}
+function mswEditStageDollars(stage, value){
+  const budget = Number((document.getElementById('mpTotalBudget') || {}).value) || 0;
+  const dollars = Number(value);
+  if (!budget || isNaN(dollars)) { mswRenderStageWeightCard(); return; }
+  mswSaveWeights(mswRebalancedWeights(stage, dollars / budget));
 }
 async function mswSaveWeights(weights){
   const status = document.getElementById('mswSaveStatus');
@@ -13273,7 +13065,12 @@ async function mswSaveWeights(weights){
     await mswLoadStageWeights();
     const status2 = document.getElementById('mswSaveStatus');
     if (status2) status2.textContent = 'Saved.';
-    renderMediaPlanFieldsAndCharts();
+    // Round 7 (2026-09-05): used to re-run renderMediaPlanFieldsAndCharts()
+    // here, which resets #mpTotalBudget to the SAVED plan value -- wiping a
+    // budget the person had just typed in Step 1 but not saved yet. Only the
+    // pie (and the card itself, via mswLoadStageWeights above) need to
+    // follow a stage-weight edit; the channel mix rebuilds on request.
+    renderMediaLoopMixChart();
   } catch (e){ if (status) status.textContent = 'Backend unreachable — not saved.'; }
 }
 function mswApplySuggested(){
@@ -21246,15 +21043,25 @@ function computeRecommendedMix(totalBudget){
   // Budget Upload's own category-mapping screen — adding a category there
   // maps it to a real channel and it becomes eligible here on the next
   // recompute, no separate control needed on this page.
+  // Round 7 (2026-09-05), per direct instruction: "Active Channels are only
+  // considered to spend allocation if selected. Uploads will automatically
+  // unselect categories not mapped." The Active Channels tiles on this page
+  // (state.activeChannels) are now the single gate -- a confirmed upload
+  // already rewrites that set to its mapped channels (backend
+  // recomputeAccountActiveChannels, echoed back on confirm), so the
+  // separate per-year restriction is no longer applied on top of it (kept
+  // only for the "restricted to..." note below).
   const yearRestriction = mpYearActiveChannels;
-  const stageWeights = baseStageBudgetWeights();
+  // Same stage split the Stage Weighting card and the Marketing Loop pie
+  // show -- one source of truth for all three (Round 7).
+  const stageWeights = getIndustryStageWeights(state.industry);
   MEDIA_LOOP_STAGES.forEach(stage => {
     const stageTotal = total * (stageWeights[stage] || 0);
     // Round 132c[10] — industry-specific baseline (Auto Dealers, Banking)
     // when this account's industry has one; generic STAGE_CHANNEL_WEIGHTS
     // otherwise. See effectiveStageChannelWeights()'s own comment.
     const chanWeights = effectiveStageChannelWeights(stage);
-    const eligible = Object.keys(chanWeights).filter(ch => (yearRestriction ? yearRestriction.has(ch) : state.activeChannels.has(ch)));
+    const eligible = Object.keys(chanWeights).filter(ch => state.activeChannels.has(ch));
     const eligibleWeightSum = eligible.reduce((s, ch) => s + chanWeights[ch], 0) || 1;
     const histSumForStage = eligible.reduce((s, ch) => s + (hist.shares[ch] || 0), 0);
     let candidates = eligible.map(channel => {
@@ -21673,14 +21480,76 @@ function defaultAudienceTypeForChannel(channel){
 // id are untouched, so updateBudgetRevenueContext() and the save/load code
 // (saveMediaPlan(), renderMediaPlanFieldsAndCharts()) all keep working
 // exactly as before; this only changes whether the field is visible.
+// Round 7 (2026-09-05): the old "C. Building this budget by hand?" toggle is
+// gone -- Step 1 of the Media Plan now has an explicit Type an amount /
+// Calculate from revenue mode instead (mpSetBudgetMode). Kept as a shim so
+// any remaining caller just opens the Calculate mode.
 function mpToggleManualRevenueField(forceOpen){
-  const field = document.getElementById('mpGrossRevenueField');
-  const btn = document.getElementById('mpManualRevenueToggleBtn');
-  if (!field) return;
-  const open = forceOpen === true || (forceOpen !== false && field.style.display === 'none');
-  field.style.display = open ? '' : 'none';
-  if (btn) btn.style.display = open ? 'none' : '';
-  if (open){ mpRenderRevenuePctApply(); mpRenderRevenueFraming(); }
+  if (forceOpen === true) mpSetBudgetMode('calc');
+}
+// Step 1 -- "Selecting Manual opens the manual creation view asking user for
+// a total budget or total gross revenue * a drop-down including a target %
+// of working marketing spend starting a 7%. with ranges from 3%-25%."
+let mpBudgetMode = 'direct';
+const MP_TARGET_PCT_MIN = 3, MP_TARGET_PCT_MAX = 25, MP_TARGET_PCT_DEFAULT = 7;
+function mpPopulateTargetPctSelect(savedPct){
+  const sel = document.getElementById('mpTargetPctSelect');
+  if (!sel) return;
+  const current = Number(savedPct) || Number(sel.value) || MP_TARGET_PCT_DEFAULT;
+  const opts = [];
+  for (let p = MP_TARGET_PCT_MIN; p <= MP_TARGET_PCT_MAX; p++) opts.push(p);
+  // a saved % outside the whole-number ladder (e.g. 7.5) still shows as its own option
+  if (!opts.includes(current) && current >= MP_TARGET_PCT_MIN && current <= MP_TARGET_PCT_MAX) opts.push(current);
+  opts.sort((a, b) => a - b);
+  sel.innerHTML = opts.map(p => `<option value="${p}" ${p === current ? 'selected' : ''}>${p}%${p === MP_TARGET_PCT_DEFAULT ? ' (typical starting point)' : ''}</option>`).join('');
+}
+function mpSetBudgetMode(mode){
+  mpBudgetMode = mode === 'calc' ? 'calc' : 'direct';
+  const calc = document.getElementById('mpBudgetCalcFields');
+  if (calc) calc.style.display = mpBudgetMode === 'calc' ? '' : 'none';
+  const dBtn = document.getElementById('mpBudgetModeDirectBtn');
+  const cBtn = document.getElementById('mpBudgetModeCalcBtn');
+  if (dBtn) dBtn.classList.toggle('selected', mpBudgetMode === 'direct');
+  if (cBtn) cBtn.classList.toggle('selected', mpBudgetMode === 'calc');
+  if (mpBudgetMode === 'calc'){ mpRenderRevenueFraming(); mpUpdateBudgetCalcPreview(); }
+}
+function mpBudgetCalcAmount(){
+  const revenue = Number((document.getElementById('mpGrossRevenue') || {}).value) || 0;
+  const pct = Number((document.getElementById('mpTargetPctSelect') || {}).value) || 0;
+  return Math.round(revenue * (pct / 100));
+}
+function mpUpdateBudgetCalcPreview(){
+  const el = document.getElementById('mpBudgetCalcPreview');
+  if (!el) return;
+  const amount = mpBudgetCalcAmount();
+  const pct = Number((document.getElementById('mpTargetPctSelect') || {}).value) || 0;
+  el.textContent = amount > 0 ? `= ${fmtMoney(amount)} (${pct}% of revenue)` : 'Enter gross revenue to see the result.';
+}
+// One-time, explicit apply -- same as typing the number in directly. The
+// chosen % is remembered on the plan (marketingBudgetPct) so the dropdown
+// re-selects it next time this year is opened; it is not a live formula.
+function mpApplyBudgetCalc(){
+  const amount = mpBudgetCalcAmount();
+  if (!(amount > 0)){ mpUpdateBudgetCalcPreview(); return; }
+  const input = document.getElementById('mpTotalBudget');
+  if (!input) return;
+  input.value = amount;
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: 0, allocations: [] };
+  state.mediaPlan.marketingBudgetPct = Number((document.getElementById('mpTargetPctSelect') || {}).value) || null;
+  input.dispatchEvent(new Event('input'));
+}
+// Progressive reveal for the Media Plan steps (Round 7): Step 2 appears once
+// an Annual Marketing Budget exists, Steps 3-4 once a channel mix has been
+// built. Everything shows when a budget already exists for the year.
+function mpRenderPlanSteps(){
+  const exists = (typeof mbuBudgetExists === 'function') ? mbuBudgetExists() : false;
+  const budget = Number((document.getElementById('mpTotalBudget') || {}).value) || 0;
+  const hasAlloc = !!(state.mediaPlan && (state.mediaPlan.allocations || []).length);
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('mpStageWeightRow', exists || budget > 0);
+  show('mpChannelStep', exists || hasAlloc);
+  const next = document.getElementById('mpStep1Next');
+  if (next) next.textContent = (!exists && !(budget > 0)) ? 'Next: enter the budget above to unlock the stage weighting (Step 2).' : '';
 }
 
 // Round 132c14 (2026-08-17), per direct instruction — Purchase Year vs.
@@ -21868,7 +21737,9 @@ function flatMonthlyPct(){
   return pct;
 }
 function computePlanMonthlyPeriods(total){
-  if (!state.mediaPlan || state.mediaPlan.monthlyMode !== 'manual'){
+  // Round 7 (2026-09-05): 'curve' (revenue/AOV seasonality) splits by the
+  // same monthlyPct table 'manual' does -- only Flat is the even split.
+  if (!state.mediaPlan || (state.mediaPlan.monthlyMode !== 'manual' && state.mediaPlan.monthlyMode !== 'curve')){
     return evenSplitPeriods(total, MONTH_LABELS);
   }
   const pct = state.mediaPlan.monthlyPct || flatMonthlyPct();
@@ -21897,28 +21768,20 @@ function renderMpMonthlyModeRow(){
   if (!row) return;
   ensurePlanMonthlyDefaults();
   const mode = state.mediaPlan ? state.mediaPlan.monthlyMode : 'flat';
-  const options = [ { key: 'flat', label: 'Flat' }, { key: 'manual', label: 'Manual' } ];
-  const buttonsHtml = options.map(o => `
+  // Round 7 (2026-09-05), per direct instruction: "allocate flat by month or
+  // apply specific % of spend based on revenue curves." Three tiles: Flat
+  // (even split), Revenue curve (the account's AOV seasonality, still
+  // editable per month), Custom (type every month's share). 'curve' and
+  // 'manual' both persist their monthlyPct table -- see
+  // computePlanMonthlyPeriods().
+  const options = [ { key: 'flat', label: 'Flat' }, { key: 'curve', label: 'Revenue curve' }, { key: 'manual', label: 'Custom %' } ];
+  row.innerHTML = options.map(o => `
     <button type="button" class="stage-tile${mode === o.key ? ' selected' : ''}" onclick="setMpMonthlyMode('${o.key}')">${o.label}</button>
   `).join('');
-  row.innerHTML = buttonsHtml;
-  // Round 132c15 (2026-08-17) — mirrored toggle in the manual-build (Option
-  // C) section; same buttonsHtml, same onclick, so clicking either one
-  // updates the single shared state.mediaPlan.monthlyMode and both toggles
-  // re-render in sync (this function runs on every mode change via
-  // setMpMonthlyMode()). Guarded — only present when Option C is in the
-  // DOM, which it always is on this page, but keeping the null-check
-  // consistent with how every other optional mount point on this page is
-  // handled.
-  const mirrorRow = document.getElementById('mpMonthlyModeRowMirror');
-  if (mirrorRow) mirrorRow.innerHTML = buttonsHtml;
-  // Round 132bx (2026-08-16) — this field is now always visible (see the
-  // HTML comment above it); label and controls swap based on mode instead
-  // of the whole thing hiding for Flat.
   const label = document.getElementById('mpMonthlyFieldLabel');
   const buttons = document.getElementById('mpMonthlyFieldButtons');
-  if (mode === 'manual'){
-    if (label) label.textContent = 'Monthly % of annual budget';
+  if (mode === 'manual' || mode === 'curve'){
+    if (label) label.textContent = mode === 'curve' ? 'Monthly % of annual budget (revenue curve — edit any month)' : 'Monthly % of annual budget';
     if (buttons) buttons.style.display = '';
     renderMpMonthlyManualRow();
   } else {
@@ -21927,10 +21790,6 @@ function renderMpMonthlyModeRow(){
     renderMpMonthlyFlatRow();
   }
 }
-// Round 132bx (2026-08-16), per direct bug report: Flat used to show
-// nothing at all -- no table, no confirmation the split would be equal.
-// Read-only 12-cell view (same visual shape as the Manual row, so the two
-// modes look like siblings) plus an explicit confirmation sentence.
 function renderMpMonthlyFlatRow(){
   const row = document.getElementById('mpMonthlyManualRow');
   if (!row) return;
@@ -21942,13 +21801,19 @@ function renderMpMonthlyFlatRow(){
     </div>`).join('');
   const hint = document.getElementById('mpMonthlyPctSumHint');
   if (hint){
-    hint.textContent = `✓ Flat — every channel's annual $ is split equally across all 12 months (${evenPct.toFixed(1)}% each). Switch to Manual to set your own monthly shares.`;
+    hint.textContent = `✓ Flat — every channel's annual $ is split equally across all 12 months (${evenPct.toFixed(1)}% each).`;
     hint.style.color = 'var(--muted)';
   }
 }
 function setMpMonthlyMode(mode){
-  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: new Date().getFullYear(), totalBudget: 0, allocations: [] };
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear || new Date().getFullYear(), totalBudget: 0, allocations: [] };
   ensurePlanMonthlyDefaults();
+  if (mode === 'curve'){
+    // Picking the revenue curve loads the seasonality table as the starting
+    // point every time the tile is chosen; edits after that stick until
+    // Flat/Custom is picked or "Reload revenue curve" is clicked.
+    state.mediaPlan.monthlyPct = { ...AOV_MONTHLY_SEASONALITY_PCT };
+  }
   state.mediaPlan.monthlyMode = mode;
   renderMpMonthlyModeRow();
   reapplyPlanMonthlyToAllAllocations();
@@ -21982,19 +21847,16 @@ function renderMpMonthlyPctSumHint(){
   hint.style.color = matches ? 'var(--muted)' : 'var(--advocacy)';
 }
 // Loads the account's actual AOV seasonality (from BUDGETALLOCATION.xlsx)
-// as the plan-wide Manual curve — a starting point, still hand-editable
-// afterward per month.
+// as the plan-wide Revenue-curve table -- a starting point, still
+// hand-editable afterward per month.
 function applyAovSeasonalityToPlan(){
-  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: new Date().getFullYear(), totalBudget: 0, allocations: [] };
-  state.mediaPlan.monthlyMode = 'manual';
-  state.mediaPlan.monthlyPct = { ...AOV_MONTHLY_SEASONALITY_PCT };
-  renderMpMonthlyModeRow();
-  reapplyPlanMonthlyToAllAllocations();
+  setMpMonthlyMode('curve');
 }
 function resetPlanMonthlyToFlat(){
   if (!state.mediaPlan) return;
   state.mediaPlan.monthlyPct = flatMonthlyPct();
-  renderMpMonthlyManualRow();
+  state.mediaPlan.monthlyMode = 'flat';
+  renderMpMonthlyModeRow();
   reapplyPlanMonthlyToAllAllocations();
 }
 
@@ -22813,14 +22675,17 @@ function applyRecommendedMix(){
     // adjustment" convention as historyNote above — someone comparing this
     // mix to their uploaded budget shouldn't have to guess why a channel is
     // (or isn't) missing.
-    const restrictionNote = yearBudgetRestriction && yearBudgetRestriction.active
-      ? ` Restricted to categories mapped from ${mpSelectedYear}'s confirmed budget upload${yearBudgetRestriction.fileName ? ` ("${yearBudgetRestriction.fileName}")` : ''} — add a category with $0 on that upload's review screen if you want another channel eligible here.`
-      : ` No confirmed budget upload for ${mpSelectedYear}, so this used the full channel heuristic instead of being restricted to real budget categories.`;
-    flag.textContent = `Applied — ${channelCount} channel${channelCount === 1 ? '' : 's'} allocated across the Media Loop. See the charts above and the breakdown below.${historyNote}${restrictionNote}`;
+    // Round 7 (2026-09-05): the gate is the Active Channels tiles now (see
+    // computeRecommendedMix); say so, and where to change it.
+    const restrictionNote = ` Limited to your ${state.activeChannels.size} Active channel${state.activeChannels.size === 1 ? '' : 's'}${yearBudgetRestriction && yearBudgetRestriction.active ? ` (set from ${mpSelectedYear}'s confirmed budget upload)` : ''} — toggle a channel on or off in Active channels below, then rebuild the mix to include or exclude it.`;
+    flag.textContent = `Applied — ${channelCount} channel${channelCount === 1 ? '' : 's'} allocated across the Media Loop. Review and adjust them in Step 3 below.${historyNote}${restrictionNote}`;
     flag.style.display = '';
   }
-  const grid = document.getElementById('mediaPlanGrid');
-  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Round 7 (2026-09-05): Step 3 (channel mix) and Step 4 (monthly) only
+  // appear once there's a mix to review -- reveal them now, then scroll.
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  const stepEl = document.getElementById('mpChannelStep') || document.getElementById('mediaPlanGrid');
+  if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function evenSplitPeriods(total, labels){
@@ -23064,7 +22929,12 @@ function renderMediaPlanGrid(){
   const hasAllocations = !!(plan && plan.allocations && plan.allocations.length);
   if (controlsCard) controlsCard.style.display = hasAllocations ? '' : 'none';
   if (!hasAllocations){
-    el.innerHTML = `<p class="lede">No allocations yet — enter an annual marketing budget above and click "Apply recommended mix" to seed a starting split, or add a channel by hand below.</p>` + mpRenderAddChannelCard();
+    // Round 7 (2026-09-05): the separate "Add a channel by hand" card no
+    // longer renders in the empty state -- the wizard (Step 1 budget ->
+    // Step 2 stage weighting -> "Continue -> build channel mix") is the one
+    // way in; adding a channel is an inline option under the mix once it
+    // exists (see mpRenderAddChannelCard, incorporated below).
+    el.innerHTML = `<p class="lede" style="margin:0;">No channel mix yet — set the Annual Marketing Budget in Step 1, review the stage split in Step 2, then click "Continue → build channel mix."</p>`;
     renderMpFooter();
     return;
   }
@@ -23099,11 +22969,10 @@ function renderMediaPlanGrid(){
   // a status or an action, just a section header. Plain heading + subtitle
   // instead, matching the typographic weight (not the color) of every
   // other section break on the page.
-  const reviewHeading = hasAllocations ? `
-    <div style="margin:24px 0 14px;">
-      <h3 style="margin:0 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);">Recommended Media Mix — review &amp; confirm</h3>
-      <p class="hint" style="margin:0;">Every amount below is a starting point, not a lock — edit any channel's Annual $, Est. CPM, or (Monthly distribution above) its monthly curve, then use "Save plan" once it looks right.</p>
-    </div>` : '';
+  // Round 7 (2026-09-05): the static "Step 3 of 4 — Channel mix" header in
+  // the HTML (#mpChannelStep) carries this framing now; rendering a second
+  // heading here was one of the duplicates called out.
+  const reviewHeading = '';
   el.innerHTML = reviewHeading + MEDIA_LOOP_STAGES.map(stage => {
     const rows = plan.allocations.filter(a => a.stage === stage);
     if (!rows.length) return '';
@@ -23210,9 +23079,9 @@ function mpRenderAddChannelCard(){
   const channelOptions = MMM_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
   return `
     <div class="sk-card" id="mpAddChannelCard" style="margin-top:16px;">
-      <div class="sk-card-head ink"><div class="htext"><h3>Add a channel by hand</h3><div class="kicker">Manual allocation</div></div></div>
+      <div class="sk-card-head ink"><div class="htext"><h3>Add a channel</h3><div class="kicker">Not in the mix above?</div></div></div>
       <div class="sk-card-body">
-        <p class="hint" style="margin:0 0 10px;">Not offered by the recommended mix, or want to run something outside it? Add any channel with a starting Annual $ — it becomes a normal, fully editable row above once added.</p>
+        <p class="hint" style="margin:0 0 10px;">Add any channel to a stage with a starting Annual $ — it becomes a normal, fully editable row above. Channels not marked Active are left out of the recommended mix; adding one here includes it anyway.</p>
         <div class="field" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:0;">
           <div style="flex:1 1 160px;"><label>Stage</label><select id="mpAddChannelStage">${stageOptions}</select></div>
           <div style="flex:1 1 200px;"><label>Channel</label><select id="mpAddChannelName">${channelOptions}</select></div>
@@ -23355,6 +23224,12 @@ async function saveMediaPlan(){
     renderMpYearRow();
     renderMediaPlanHistoryCard();
   }
+  // Round 7 (2026-09-05): a saved plan IS this year's budget -- Plan Setup
+  // flips to Active and the reporting view (charts, Active channels,
+  // Non-Working Media, Upload history) appears.
+  if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
+  if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
+  renderPlanPacingChart(); renderBudgetTrackingChart(); renderChannelMixChart();
 }
 
 // ============ Round 27 — the 3 charts leading the Budget screens ============
@@ -23683,7 +23558,7 @@ function renderMediaLoopMixChart(){
     </div>
     <div class="donut-svg-wrap" style="margin:0 auto 18px;display:flex;justify-content:center;">${pie.svg}</div>
     <div class="donut-legend">${legend}</div>
-    <p class="exec-caption">${usingDollars ? 'Recommended default split of the Annual Marketing Budget to the left' : 'Recommended default split, shown as % — enter an Annual Marketing Budget to the left to see it in dollars'} across the 5 Media Loop stages, updating live as you edit it. <span class="illustrative-tag">Editorial heuristic, not a live MMM model</span> — ${industryNote} "Apply recommended mix →" builds the full stage-then-channel allocation grid from this same split.</p>`;
+    <p class="exec-caption">${usingDollars ? 'Your Annual Marketing Budget split' : 'Default split, shown as % — enter an Annual Marketing Budget in Step 1 to see dollars'} across the 5 Media Loop stages — the same numbers as the Stage Weighting table beside this, updating live as you edit either. <span class="illustrative-tag">Editorial heuristic, not a live MMM model</span> — ${mswStageWeightsOverride ? 'Using this account\'s own saved split.' : industryNote}</p>`;
 }
 
 function toggleBudgetChartExpand(which){
@@ -23711,19 +23586,21 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
   document.getElementById('mpTotalBudget').value = plan ? plan.totalBudget || '' : '';
   document.getElementById('mpGrossRevenue').value = plan ? plan.grossRevenue || '' : '';
   document.getElementById('mpTradeMarketingBudget').value = plan ? plan.tradeMarketingBudget || '' : '';
-  // Round 132c12 — the field is nested under option C now; auto-expand it
-  // when this plan/year already has a saved value so existing data isn't
-  // hidden behind a collapsed toggle, otherwise leave it collapsed.
-  mpToggleManualRevenueField(!!(plan && plan.grossRevenue));
+  // Round 7 (2026-09-05): Step 1 has two modes -- Type an amount / Calculate
+  // from revenue. Open on Calculate when this plan already carries a gross
+  // revenue figure, otherwise Type.
+  mpPopulateTargetPctSelect(plan && plan.marketingBudgetPct);
+  mpSetBudgetMode(plan && plan.grossRevenue ? 'calc' : 'direct');
+  const yearLabel = document.getElementById('mpBudgetYearLabel');
+  if (yearLabel) yearLabel.textContent = mpSelectedYear;
   clearMediaPlanBudgetError();
   updateBudgetRevenueContext();
   const applyFlag = document.getElementById('mpApplyMixFlag');
   if (applyFlag){ applyFlag.textContent = ''; applyFlag.style.display = 'none'; }
   renderMpYearRow();
-  const prefillYearLabel = document.getElementById('mpPrefillOptionYear');
-  if (prefillYearLabel) prefillYearLabel.textContent = mpSelectedYear;
   renderMpCarryForwardPrompt();
   renderMpForecastSuggestion();
+  mswRenderStageWeightCard();
   // Round 53 — solo accounts used to have a tranche choice to hide; Round
   // 116's plan-wide Flat/Manual monthly control (below) applies the same
   // regardless of org_model, so there's nothing solo-specific left to
@@ -23732,7 +23609,11 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
   renderMediaPlanGrid();
   renderNonWorkingMedia();
   renderMpUnplannedList();
-  if (typeof mbuUpdateBudgetChartGridVisibility === 'function') mbuUpdateBudgetChartGridVisibility();
+  // Round 7 (2026-09-05): one controller decides what's visible on this
+  // page (see mbuApplyPageMode) -- a saved plan for this year counts as an
+  // existing budget, so it's re-evaluated every time the plan (re)loads.
+  if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
+  if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
   renderPlanPacingChart();
   // Round 132bx (2026-08-15) — renderBudgetTrackingChart() now renders
   // #mediaPlanExportButtons itself (relocated inside that card); no
@@ -23767,6 +23648,10 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
 }
 
 async function renderMediaPlanStep(fromUpload){
+  // Round 7 (2026-09-05): every visit starts from the page's own state --
+  // no Setup path pre-selected, so a year with no budget shows Plan Setup
+  // alone and a year with one shows the reporting view.
+  if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
   // Round 132bx follow-on (2026-08-16) — history loads first so the year
   // row's "has saved data" dots and the default-year resolution just below
   // both have it available on the very first paint, not one render behind.
@@ -25441,6 +25326,7 @@ function renderMbuScopeRow(){
 }
 function setMbuScope(scope){
   mbuSelectedScope = scope === 'international' ? 'international' : 'domestic';
+  if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null; // Round 7: a new scope starts back at the Setup tiles
   renderMbuScopeRow();
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
@@ -25467,6 +25353,7 @@ function renderMbuYearRow(){
 }
 function setMbuYear(year){
   mbuSelectedYear = year;
+  if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null; // Round 7: a new year starts back at the Setup tiles
   renderMbuYearRow();
   mbuRenderDuplicateYearNotice();
   if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
@@ -26057,54 +25944,6 @@ function mbuToggleMonthlyDetail(detailId){
 // un-selects a real saved value), and mbuRenderCategoryMapping's "+ Add
 // category" control filters its own addable list against this too.
 const MBU_RETIRED_CATEGORIES = ['Display/Programmatic'];
-
-// Round 6 (2026-09-05) — a frontend mirror of backend/server.js's
-// VERILUME_TO_MMM_CHANNEL_MAP, used ONLY for the Manual Setup pre-fill
-// (mbuComputeRecommendedCategoryPrefill, below) — the Media Plan's own
-// channel-mix engine (computeRecommendedMix) speaks MMM_CATEGORIES, not
-// Verilume's budget-category taxonomy, and that crosswalk lives
-// server-side only. Kept in sync by hand with the backend copy (same
-// "kept in sync by hand" convention already used elsewhere on this page,
-// e.g. MC_CATEGORIES' own comment) — deliberately excludes the retired
-// 'Video/CTV' legacy key (irrelevant to a fresh pre-fill) and every
-// MBU_RETIRED_CATEGORIES entry (Display/Programmatic — see that
-// constant's own comment; a category no longer offered for a NEW
-// selection shouldn't be reintroduced silently by an automatic pre-fill
-// either).
-const MBU_VERILUME_TO_MMM_MAP = {
-  'Search': ['Brand Search', 'Non-Brand Search'],
-  'Social': ['Paid Social'],
-  'CTV': ['CTV'],
-  'OTV': ['OTV'],
-  'Email': ['Internal Email', 'Email — Remarketing'],
-  'PR/Earned': ['PR'],
-  'Linear TV': ['Linear TV'],
-  'Direct Mail': ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
-  'Events': ['Field / ABM'],
-  'Podcasts': ['Podcasts'],
-  'Radio': ['Radio'],
-  'Magazines/Print': ['Magazines', 'Newspapers'],
-  'Out-of-Home': ['Out-of-Home'],
-  'Partner/Affiliate Media': ['Partner Media', 'Retail Media'],
-  'Trade/B2B Marketing': ['Field / ABM']
-};
-// Sums computeRecommendedMix(annualBudget)'s per-MMM-channel recommended
-// amounts back onto Verilume budget categories via the crosswalk above —
-// a category with no crosswalk entry (every round-3/round-6 additive
-// Digital/Direct Mail/TV/Print-Advertising subcategory, per the
-// pre-answered decision) simply has no key in the returned object and
-// starts at $0 in the grid, same as a blank manual category always has.
-function mbuComputeRecommendedCategoryPrefill(annualBudget){
-  const mix = (typeof computeRecommendedMix === 'function') ? computeRecommendedMix(annualBudget) : { rows: [] };
-  const mmmTotals = {};
-  (mix.rows || []).forEach(r => { mmmTotals[r.channel] = (mmmTotals[r.channel] || 0) + (r.recommendedAmount || 0); });
-  const prefill = {};
-  Object.entries(MBU_VERILUME_TO_MMM_MAP).forEach(([verilumeCat, mmmChans]) => {
-    const sum = mmmChans.reduce((s, ch) => s + (mmmTotals[ch] || 0), 0);
-    if (sum > 0) prefill[verilumeCat] = Math.round(sum);
-  });
-  return prefill;
-}
 function mbuGroupedCategoryOptionsHtml(verilumeCats, choice){
   const available = new Set(verilumeCats.filter(c => c === choice || !MBU_RETIRED_CATEGORIES.includes(c)));
   const placed = new Set();
@@ -26424,6 +26263,17 @@ async function mbuSubmitFinal(){
       resultEl.style.fontWeight = '600';
       resultEl.textContent = '✓ Confirmed — this budget is now available to use. Taking you to your Media Plan…';
     }
+    // Round 7 (2026-09-05), per direct instruction: "Uploads will
+    // automatically unselect categories not mapped." The backend already
+    // rewrites this account's Active Channels to the confirmed upload's
+    // mapped channels (recomputeAccountActiveChannels) and returns the new
+    // set -- adopt it here so the Active channels tiles and the recommended
+    // mix gate agree with it immediately, not after the next full reload.
+    if (Array.isArray(data.activeChannels)){
+      state.activeChannels = new Set(data.activeChannels);
+      if (typeof mbuRenderActiveChannels === 'function') mbuRenderActiveChannels();
+    }
+    if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
     const detailResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}`);
     if (detailResp.ok) mbuRenderResults(await detailResp.json());
     mbuLoadHistory();
@@ -26897,42 +26747,61 @@ async function mbuLoadYearsList(){
   if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
 }
 
-// ---------- Plan Setup (Round 2026-09-05 reorg) ----------
-// Per direct instruction: "Plan Setup should be the first module... Show
-// Active if budget exists or Setup if no budget exists. Active links to the
-// budget detail screen. Inactive provides options manually add, leverage
-// previous year, upload." Replaces the old always-visible "Budgets on file"
-// table (#mbuYearsCard, deleted) entirely — this status block, scoped to
-// whichever year+scope is currently selected above, IS the "budgets on
-// file" view now: one year+scope at a time, with the specific next action
-// for whichever state it's in, rather than a flat table of every year at
-// once (still fully reachable per-year via the year chips above).
-// Round 6 (2026-09-05), per direct instruction: "We can't show the report
-// charts when no budget has been added. They category should be hidden
-// until budgets exist." Reuses the exact same "is there a confirmed
-// upload for the selected year+scope" check mbuRenderPlanSetup's own
-// Active/Setup status already computes -- one source of truth, not a
-// second detector that could disagree with it. Called from
-// mbuRenderPlanSetup() (below) and from renderMediaPlanFieldsAndCharts()
-// (media-plan.html's own chart-refresh pass), so the grid stays in sync
-// with either the year/scope picker or the Setup->Active transition,
-// whichever changes first.
+// ---------- Plan Setup (Round 2026-09-05 reorg; Round 7 controller) ----------
+// Per direct instruction (Round 5): "Plan Setup should be the first module...
+// Show Active if budget exists or Setup if no budget exists. Active links to
+// the budget detail screen." Per direct instruction (Round 7): "Only show
+// the Plan Setup Section when opening the page and no budget exists. Upload
+// Budget should be the first tile. Manually Add is the second. Leverage
+// Previous Year is 3rd. Selecting Upload opens the upload function and then
+// the mapping evaluation workflow. Selecting Manual opens the manual creation
+// view..." -- mbuApplyPageMode() below is the ONE place that decides which
+// cards are visible, from two inputs: does a budget exist for the selected
+// year+scope, and which Setup path (if any) was picked.
+//
+// "Budget exists" = a CONFIRMED Marketing Budget Upload for this year+scope,
+// OR (Domestic only -- media_plans have no scope) a saved Media Plan for this
+// year. The Manual path builds the Media Plan directly, so saving it is what
+// flips this page from Setup to Active.
 function mbuHasActiveBudget(){
   return mbuYearsData.some(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
 }
-function mbuUpdateBudgetChartGridVisibility(){
-  const grid = document.getElementById('budgetChartGrid');
-  if (!grid) return;
-  grid.style.display = mbuHasActiveBudget() ? '' : 'none';
+function mpHasSavedPlan(){
+  // Persisted only (has a backend id): an in-progress Manual draft (budget
+  // typed, mix applied, not yet saved) is still "Setup," not "Active".
+  const p = state.mediaPlan;
+  return !!(p && p.id && Number(p.year) === Number(mpSelectedYear));
 }
+function mbuBudgetExists(){
+  return mbuHasActiveBudget() || (mbuSelectedScope === 'domestic' && mpHasSavedPlan());
+}
+// null | 'upload' | 'manual' | 'leverage' -- which Setup tile was picked for
+// the current (budget-less) year+scope. Reset whenever the year/scope
+// changes (see setMbuYear/setMbuScope callers of mbuRenderPlanSetup).
+let mbuSetupPath = null;
+function mbuApplyPageMode(){
+  const exists = mbuBudgetExists();
+  const path = exists ? null : mbuSetupPath;
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('mbuUploadCard', !exists && path === 'upload');
+  // #mbuResultsCard (the mapping-evaluation / budget-detail screen) is shown
+  // by the flows that populate it (mbuRenderCategoryMapping, mbuOpenExistingUpload);
+  // it's only force-hidden in the bare Setup state so nothing stale lingers.
+  if (!exists && !path) show('mbuResultsCard', false);
+  show('budgetChartGrid', exists);
+  show('mpPlanSection', exists || path === 'manual');
+  show('mbuActiveChannelsCard', exists || path === 'manual');
+  show('mpNonWorkingCard', exists);
+  show('mbuHistoryCard', exists);
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+}
+// Back-compat name (older call sites) -- same controller.
+function mbuUpdateBudgetChartGridVisibility(){ mbuApplyPageMode(); }
+
 // Round 6 (2026-09-05), per pre-answered decision: "add a 'Total-only'
 // toggle at Plan Setup when International scope is selected -- an
 // alternative to the full category-by-category mapping that skips line
-// items entirely and stores a single total budget number instead." Local
-// UI state only (not persisted until Save Total is actually clicked) --
-// whether an upload itself used this path is the separate, persisted
-// `totalOnly` flag on the upload row (see mbuRenderPlanSetup's Active
-// branch below), which is what actually decides the view on reopen.
+// items entirely and stores a single total budget number instead."
 let mbuInternationalTotalOnly = false;
 function mbuToggleInternationalTotalOnly(checked){
   mbuInternationalTotalOnly = !!checked;
@@ -26941,16 +26810,9 @@ function mbuToggleInternationalTotalOnly(checked){
 function mbuRenderPlanSetup(){
   const mount = document.getElementById('mbuPlanSetupStatus');
   if (!mount) return;
-  mbuUpdateBudgetChartGridVisibility();
+  mbuApplyPageMode();
   const active = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (active){
-    // Round 6 (2026-09-05) — a Total-only budget shows its own simplified
-    // Active view (the one number, editable in place) instead of "View
-    // budget detail →", which would otherwise open an empty-looking full
-    // category grid with nothing in it to review. Persisted on the upload
-    // row itself (active.totalOnly), not just this session's toggle state,
-    // so reopening this year later shows the right view regardless of what
-    // the toggle above happens to be set to right now.
     if (active.totalOnly){
       mount.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
@@ -26961,17 +26823,32 @@ function mbuRenderPlanSetup(){
     }
     mount.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
-        <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} ${mbuScopeLabel(mbuSelectedScope)} budget is confirmed and driving this year's Media Plan.</span>
+        <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} ${mbuScopeLabel(mbuSelectedScope)} budget is confirmed${active.fileName ? ` ("${escapeHtml(active.fileName)}")` : ''} and driving this year's Media Plan.</span>
         <button type="button" class="btn-primary" onclick="mbuOpenExistingUpload('${active.id}')">View budget detail →</button>
       </div>`;
     return;
   }
-  // Round 6 (2026-09-05) — International-only toggle, shown above the
-  // Setup options whenever the International scope is selected. Checking
-  // it swaps the three normal options out for a single lightweight
-  // total-dollar entry (mbuStartTotalOnly below); a link switches back to
-  // the full options without losing anything (nothing's been created yet
-  // at this point either way).
+  if (mbuSelectedScope === 'domestic' && mpHasSavedPlan()){
+    const p = state.mediaPlan;
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
+        <span style="color:var(--cx);font-weight:700;">✓ Active — ${mbuSelectedYear} Media Plan saved${Number(p.totalBudget) > 0 ? ` (${fmtMoney(p.totalBudget)} working media, ${(p.allocations || []).length} channel${(p.allocations || []).length === 1 ? '' : 's'})` : ''}.</span>
+        <button type="button" class="btn-primary" onclick="document.getElementById('mpPlanSection').scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>
+      </div>`;
+    return;
+  }
+  // ---- Setup state ----
+  const scopeWord = mbuScopeLabel(mbuSelectedScope).toLowerCase();
+  const backLink = mbuSetupPath ? `<a onclick="mbuBackToSetup()" style="cursor:pointer;font-size:0.8125rem;">← Choose a different way to set up ${mbuSelectedYear}</a>` : '';
+  if (mbuSetupPath){
+    const pathLabel = { upload: 'Upload — pick your file below, then review the mapping.', manual: 'Manually add — work through Steps 1–4 below, then Save plan.', leverage: 'Leverage previous year — review the copied budget below, then Submit as final.' }[mbuSetupPath] || '';
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
+        <span style="font-weight:700;color:#b8860b;">Setting up ${mbuSelectedYear} ${scopeWord} budget · ${pathLabel}</span>
+        ${backLink}
+      </div>`;
+    return;
+  }
   const totalOnlyToggleHtml = mbuSelectedScope === 'international' ? `
     <label class="hint" style="display:flex;align-items:center;gap:8px;margin:0 0 12px;cursor:pointer;">
       <input type="checkbox" ${mbuInternationalTotalOnly ? 'checked' : ''} onchange="mbuToggleInternationalTotalOnly(this.checked)">
@@ -26990,43 +26867,58 @@ function mbuRenderPlanSetup(){
       </div>`;
     return;
   }
-  // Setup — no confirmed budget for this year+scope yet. Three options, per
-  // direct instruction, in the order given: Manually add, Leverage previous
-  // year, Upload.
-  const priorConfirmed = mbuYearsData.filter(u => u.status === 'confirmed').sort((a, b) => (b.year || 0) - (a.year || 0));
-  const leverageOptions = priorConfirmed.map(u => `<option value="${u.id}">${u.year} — ${mbuScopeLabel(u.scope || 'domestic')}</option>`).join('');
+  // Three tiles, in the order given (Round 7): Upload, Manually add,
+  // Leverage previous year. "Leverage" offers both prior confirmed uploads
+  // (any year/scope) and prior saved Media Plans (Domestic) as sources --
+  // one picker, not two separate carry-forward mechanisms.
+  const priorUploads = mbuYearsData.filter(u => u.status === 'confirmed' && !(u.year === mbuSelectedYear && (u.scope || 'domestic') === mbuSelectedScope)).sort((a, b) => (b.year || 0) - (a.year || 0));
+  const priorPlans = (mbuSelectedScope === 'domestic' && typeof mpHistoryData !== 'undefined' && Array.isArray(mpHistoryData))
+    ? mpHistoryData.filter(y => y.year !== mbuSelectedYear && (y.totalBudget > 0 || Object.keys(y.channelTotals || {}).length)).sort((a, b) => b.year - a.year)
+    : [];
+  const leverageOptions = priorUploads.map(u => `<option value="upload:${u.id}">${u.year} — ${mbuScopeLabel(u.scope || 'domestic')} budget${u.fileName ? ` (${escapeHtml(u.fileName)})` : ''}</option>`).join('')
+    + priorPlans.map(y => `<option value="plan:${y.year}">${y.year} — Media Plan (${fmtMoney(y.totalBudget || 0)})</option>`).join('');
+  const manualTile = mbuSelectedScope === 'domestic' ? `
+        <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+          <span style="color:var(--ink);"><strong>2. Manually add</strong></span>
+          <span>Start from a total budget — or gross revenue × a target % — then set stage weighting, channel mix, and monthly distribution.</span>
+          <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartManual()">✎ Manually add →</button>
+        </div>` : `
+        <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+          <span style="color:var(--ink);"><strong>2. Manually add</strong></span>
+          <span>For an International budget, use the total-only option above or upload/leverage a file — the channel-level Media Plan builder is Domestic-only for now.</span>
+        </div>`;
   mount.innerHTML = `
     <div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;">
-      <p style="margin:0 0 10px;font-weight:700;color:#b8860b;">Setup — no confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget for ${mbuSelectedYear} yet.</p>
+      <p style="margin:0 0 10px;font-weight:700;color:#b8860b;">Setup — no ${scopeWord} budget for ${mbuSelectedYear} yet. How would you like to start?</p>
       ${totalOnlyToggleHtml}
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
         <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
-          <span style="color:var(--ink);"><strong>Manually add</strong></span>
-          <span>Start with your Annual Marketing Budget, then a category grid pre-filled from our channel-weighting research to review and adjust.</span>
-          <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartManual()">＋ Manually add →</button>
+          <span style="color:var(--ink);"><strong>1. Upload budget</strong></span>
+          <span>Upload a budget file in whatever format it's already in — we auto-recognize the layout, then you review the category mapping.</span>
+          <button type="button" class="btn-primary" style="align-self:flex-start;" onclick="mbuStartUpload()">📤 Upload budget →</button>
         </div>
+        ${manualTile}
         <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
-          <span style="color:var(--ink);"><strong>Leverage previous year</strong></span>
-          <span>Copy a prior confirmed budget's categories and amounts as a draft to review and adjust.</span>
+          <span style="color:var(--ink);"><strong>3. Leverage previous year</strong></span>
+          <span>Copy a prior year's budget as a draft to review and adjust.</span>
           ${leverageOptions ? `
-          <select id="mbuLeverageSelect" style="max-width:220px;">${leverageOptions}</select>
+          <select id="mbuLeverageSelect" class="tbl-select" style="max-width:260px;">${leverageOptions}</select>
           <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartLeverage()">↻ Leverage previous year →</button>
-          ` : `<span style="font-style:italic;">No confirmed budget on any year yet to leverage from.</span>`}
-        </div>
-        <div class="hint" style="flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:8px;">
-          <span style="color:var(--ink);"><strong>Upload</strong></span>
-          <span>Upload a budget file in whatever format it's already in — we'll auto-recognize the layout.</span>
-          <button type="button" class="btn-ghost" style="align-self:flex-start;" onclick="mbuStartUpload()">📤 Upload →</button>
+          ` : `<span style="font-style:italic;">No prior budget on file yet to leverage from.</span>`}
         </div>
       </div>
     </div>`;
 }
+function mbuBackToSetup(){
+  mbuSetupPath = null;
+  const card = document.getElementById('mbuResultsCard'); if (card) card.style.display = 'none';
+  mbuRenderPlanSetup();
+  const setup = document.getElementById('mbuPlanSetupCard'); if (setup) setup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 // Round 6 (2026-09-05) — the International "Total-only" path: one number,
 // no channel detail, auto-confirmed by the backend the moment it's created
-// (see POST .../marketing-budget-uploads' body.totalOnly branch) since
-// there's nothing left to map. Same 409 duplicate-year+scope handling as
-// every other Setup path.
+// (see POST .../marketing-budget-uploads' body.totalOnly branch).
 async function mbuStartTotalOnly(){
   if (!state.companyId) return;
   const input = document.getElementById('mbuTotalOnlyInput');
@@ -27050,10 +26942,6 @@ async function mbuStartTotalOnly(){
     alert('Backend unreachable — could not save that total.');
   }
 }
-// "Edit total" — a Total-only budget has exactly one line item, already
-// mapped to the fixed synthetic 'Other/Uncategorized' Verilume category
-// (see MBU_TOTAL_ONLY_VERILUME_CATEGORY, backend), so changing it reuses
-// the existing category-overrides endpoint rather than a new one.
 async function mbuEditTotalOnly(uploadId, currentAmount){
   const next = prompt('New total budget (USD):', currentAmount || '');
   if (next === null) return;
@@ -27071,129 +26959,52 @@ async function mbuEditTotalOnly(uploadId, currentAmount){
   }
 }
 
-// Round 6 (2026-09-05), per direct instruction: "Selecting Manual should
-// start with the Annual Marketing total or option to calculate based Gross
-// Revenue (manual) * Target Marketing Allocation % as the starting point.
-// The next view will be the total channel recommendations incorporating
-// our channel weighting research." Restructured "Manually add" into two
-// steps — Step A here (mbuStartManual opens #mbuManualSetupCard; grep for
-// "Gross Revenue"/"Target Marketing Allocation" found the Media Plan's own
-// C-option calculator (mpApplyRevenuePct/mpRenderRevenuePctApply) doing
-// exactly this same Revenue × % math, but its fields live on a different
-// card that isn't populated yet at this point in a brand-new Setup flow —
-// this reimplements the same one-time, explicit-Apply calculation with its
-// own small self-contained inputs rather than reaching across cards for
-// DOM elements that may not exist yet), Step B in mbuManualSetupContinue()
-// below (creates the upload, then pre-fills the category grid from the
-// existing recommendation engine — see mbuComputeRecommendedCategoryPrefill).
-let mbuManualBudgetMode = 'direct';
+// "Manually add" (Round 7) -- opens the Media Plan builder (Step 1 Annual
+// budget -> Step 2 Stage weighting -> Step 3 Channel mix -> Step 4 Monthly
+// distribution -> Save plan). No separate manual card and no synthetic
+// upload row anymore: the Media Plan IS the manually-built budget.
 function mbuStartManual(){
-  const card = document.getElementById('mbuManualSetupCard');
-  if (!card) return;
-  ['mbuManualBudgetInput', 'mbuManualGrossRevenueInput', 'mbuManualAllocationPctInput'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
-  const statusEl = document.getElementById('mbuManualSetupStatus');
-  if (statusEl) statusEl.textContent = '';
-  mbuSetManualBudgetMode('direct');
-  card.style.display = '';
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-function mbuCancelManualSetup(){
-  const card = document.getElementById('mbuManualSetupCard');
-  if (card) card.style.display = 'none';
-}
-function mbuSetManualBudgetMode(mode){
-  mbuManualBudgetMode = mode === 'calc' ? 'calc' : 'direct';
-  const directField = document.getElementById('mbuManualDirectField');
-  const calcFields = document.getElementById('mbuManualCalcFields');
-  if (directField) directField.style.display = mbuManualBudgetMode === 'direct' ? '' : 'none';
-  if (calcFields) calcFields.style.display = mbuManualBudgetMode === 'calc' ? '' : 'none';
-  const directBtn = document.getElementById('mbuManualModeDirectBtn');
-  const calcBtn = document.getElementById('mbuManualModeCalcBtn');
-  if (directBtn) directBtn.classList.toggle('selected', mbuManualBudgetMode === 'direct');
-  if (calcBtn) calcBtn.classList.toggle('selected', mbuManualBudgetMode === 'calc');
-  mbuUpdateManualBudgetPreview();
-}
-function mbuComputeManualBudgetAmount(){
-  if (mbuManualBudgetMode === 'calc'){
-    const revenue = Number((document.getElementById('mbuManualGrossRevenueInput') || {}).value) || 0;
-    const pct = Number((document.getElementById('mbuManualAllocationPctInput') || {}).value) || 0;
-    return Math.round(revenue * (pct / 100));
-  }
-  return Number((document.getElementById('mbuManualBudgetInput') || {}).value) || 0;
-}
-function mbuUpdateManualBudgetPreview(){
-  const el = document.getElementById('mbuManualCalcPreview');
-  if (el) el.textContent = mbuManualBudgetMode === 'calc' ? `= ${fmtMoney(mbuComputeManualBudgetAmount())} Annual Marketing Budget` : '';
-}
-// Step B — creates the upload (same body.manual:true shape as before),
-// then pre-fills the (otherwise blank) category grid from
-// mbuComputeRecommendedCategoryPrefill(amount) before the review screen is
-// ever shown, so the user reviews/adjusts a real starting recommendation
-// instead of an empty grid. A one-time computation at this exact moment,
-// not a live link back to the Media Plan's own recommended-mix engine —
-// per direct instruction, editing any prefilled amount afterward behaves
-// exactly like editing any other manually-added category.
-async function mbuManualSetupContinue(){
-  if (!state.companyId) return;
-  const statusEl = document.getElementById('mbuManualSetupStatus');
-  const amount = mbuComputeManualBudgetAmount();
-  if (!(amount > 0)){
-    if (statusEl) statusEl.textContent = 'Enter an Annual Marketing Budget greater than 0 — directly, or via Gross Revenue × Target Marketing Allocation %.';
-    return;
-  }
-  mbuResetImport();
-  if (statusEl) statusEl.textContent = 'Creating…';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, manual: true })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      if (resp.status === 409 && data.existingUploadId){ await mbuLoadYearsList(); return; }
-      if (statusEl) statusEl.textContent = data.error || 'Could not start a manual budget.';
-      return;
-    }
-    mbuAnalysis = { id: data.id, layout: 'manual', status: data.status, year: data.year };
-    await mbuLoadCategoryMapping();
-    const prefill = mbuComputeRecommendedCategoryPrefill(amount);
-    Object.entries(prefill).forEach(([cat, amt]) => {
-      mbuManualCategories.add(cat);
-      mbuManualCategoryBucket[cat] = 'working';
-      mbuCategoryOverrides[cat] = amt;
-    });
-    mbuRenderCategoryMapping();
-    mbuLoadHistory();
-    mbuCancelManualSetup();
-    const card = document.getElementById('mbuResultsCard');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e){
-    if (statusEl) statusEl.textContent = 'Backend unreachable — could not start a manual budget.';
-  }
+  mbuSetupPath = 'manual';
+  mbuRenderPlanSetup();
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: 0, allocations: [] };
+  mpSetBudgetMode('direct');
+  const card = document.getElementById('mpBudgetCard');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const input = document.getElementById('mpTotalBudget');
+  if (input) setTimeout(() => input.focus(), 400);
 }
 
-// "Leverage previous year" — copies the selected prior confirmed upload's
-// line items/overrides into a new DRAFT upload for the current year+scope
-// (see the backend endpoint's own comment on why this lands as a draft —
-// 'pending_category_mapping' — rather than auto-confirmed) and opens the
-// same category-mapping review screen to confirm/adjust before it goes
-// live.
+// "Leverage previous year" -- source is either a confirmed upload
+// ("upload:<id>", copied server-side into a DRAFT for this year+scope and
+// opened on the mapping-review screen) or a saved Media Plan
+// ("plan:<year>", copied client-side by mpCarryForwardFromYear() into an
+// unsaved draft and opened in the Manual steps).
 async function mbuStartLeverage(){
   const sel = document.getElementById('mbuLeverageSelect');
-  const sourceUploadId = sel && sel.value;
-  if (!sourceUploadId || !state.companyId) return;
+  const value = sel && sel.value;
+  if (!value || !state.companyId) return;
+  const [kind, ref] = value.split(':');
+  if (kind === 'plan'){
+    mbuSetupPath = 'manual';
+    mbuRenderPlanSetup();
+    await mpCarryForwardFromYear(Number(ref));
+    const card = document.getElementById('mpBudgetCard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  mbuSetupPath = 'leverage';
+  mbuRenderPlanSetup();
   mbuResetImport();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/carry-forward`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, sourceUploadId })
+      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, sourceUploadId: ref })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){
       if (resp.status === 409 && data.existingUploadId){ await mbuLoadYearsList(); return; }
       alert(data.error || 'Could not leverage that year.');
+      mbuBackToSetup();
       return;
     }
     mbuAnalysis = { id: data.id, layout: 'manual', status: data.status, year: data.year };
@@ -27203,19 +27014,19 @@ async function mbuStartLeverage(){
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e){
     alert('Backend unreachable — could not leverage that year.');
+    mbuBackToSetup();
   }
 }
 
-// "Upload" — reveals the existing Step 1 upload card (#mbuUploadCard, kept
-// in the DOM exactly as it was, just hidden by default now that Plan Setup
-// is the entry point) and scrolls to it. Every existing upload mechanism
-// (mbuHandleFile/mbuUploadAndAnalyze/mbuConfirmImport/mbuLoadCategoryMapping)
-// is unchanged.
+// "Upload" -- reveals the upload card (mbuApplyPageMode shows it for the
+// 'upload' path) and scrolls to it. mbuHandleFile/mbuUploadAndAnalyze/
+// mbuLoadCategoryMapping then take over: the mapping-evaluation screen
+// (#mbuResultsCard) appears below once the file is analyzed.
 function mbuStartUpload(){
+  mbuSetupPath = 'upload';
+  mbuRenderPlanSetup();
   const card = document.getElementById('mbuUploadCard');
-  if (!card) return;
-  card.style.display = '';
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function mbuStatusLabel(s){
   return ({
