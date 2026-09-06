@@ -21503,6 +21503,10 @@ async function saveMediaMix(){
 // by the couple of call sites that predate multi-year and don't yet care
 // which year, e.g. quick lookups elsewhere in the app that just want
 // "whatever's current").
+// The in-flight plan load for the selected year, so the Budget detail can
+// wait for it and paint once with the refined (plan) model rather than
+// painting the upload model first and the plan model a moment later.
+let mpPlanLoadPromise = null;
 async function loadMediaPlan(year){
   if (dataSourceLabel === 'backend'){
     try {
@@ -22520,7 +22524,8 @@ function renderMpYearRow(){
 // on state.mediaPlan.
 async function setMpYear(year){
   mpSelectedYear = year;
-  await loadMediaPlan(year);
+  mpPlanLoadPromise = loadMediaPlan(year);
+  await mpPlanLoadPromise;
   await loadMpYearActiveChannels();
   if (typeof mbdLoadYearResults === 'function'){
     await mbdLoadYearResults(year);
@@ -24333,7 +24338,8 @@ async function renderMediaPlanStep(fromUpload){
     if (typeof mbuRenderDuplicateYearNotice === 'function') mbuRenderDuplicateYearNotice();
     if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
   }
-  await loadMediaPlan(mpSelectedYear);
+  mpPlanLoadPromise = loadMediaPlan(mpSelectedYear);
+  await mpPlanLoadPromise;
   await loadMpYearActiveChannels();
   if (typeof mbdLoadYearResults === 'function') await mbdLoadYearResults(mpSelectedYear);
   if (typeof mpRenderLearningInputs === 'function') mpRenderLearningInputs();
@@ -27841,6 +27847,8 @@ async function mbdShowForUpload(uploadId){
     // already the final recap (revenue strip, variance, ROAS) rather than a
     // bare version that fills in after a save.
     if (typeof mbdLoadYearResults === 'function' && mbdYearResults[detail.year] === undefined) await mbdLoadYearResults(detail.year);
+    if (mpPlanLoadPromise){ try { await mpPlanLoadPromise; } catch (e){} }
+    if (mbdLoadedUploadId !== uploadId) return; // the year changed while we waited
     mbuRenderResults(detail);
   } catch (e){ /* leave whatever is showing */ }
 }
