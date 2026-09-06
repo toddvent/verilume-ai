@@ -991,6 +991,11 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-09-06 review: planned vs actual revenue, variance and ROAS live on
+// the Budget detail; unique transactions + average revenue per transaction
+// need a home too (average is derived, never stored).
+ensureColumn('account_year_results', 'plannedRevenue', 'REAL');
+ensureColumn('account_year_results', 'transactions', 'INTEGER');
 ensureColumn('media_plans', 'nonWorkingMediaJson', 'TEXT');
 ensureColumn('media_plans', 'monthlyMode', "TEXT DEFAULT 'flat'");
 ensureColumn('media_plans', 'monthlyPctJson', 'TEXT');
@@ -6031,6 +6036,7 @@ const LEGACY_CASING_COLUMNS = [
   ['account_year_results', 'accountId'],
   ['account_year_results', 'grossRevenue'],
   ['account_year_results', 'updatedAt'],
+  ['account_year_results', 'plannedRevenue'],
   ['zip_dma_master', 'dmaCode'],
   ['zip_dma_master', 'dmaName'],
   ['zip_dma_master', 'sourceLabel'],
@@ -16353,59 +16359,62 @@ Submit your findings via the submit_brand_categories tool.`;
       const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
       const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
       const parseJson = (t, fallback) => { try { return t ? JSON.parse(t) : fallback; } catch (e){ return fallback; } };
-      const gather = (key, label, addAt, fn) => {
+      // route: the portal step (goToStep name) where the input is added or
+      // reviewed; updatedAt: when the input last changed, when known.
+      const gather = (key, label, addAt, fn, route) => {
         try {
           const out = fn() || {};
-          return Object.assign({ key, label, addAt, available: false, value: null, source: null, note: null }, out);
+          return Object.assign({ key, label, addAt, route: route || null, available: false, value: null, source: null, note: null, updatedAt: null }, out);
         } catch (e){
-          return { key, label, addAt, available: false, value: null, source: null, note: `not readable (${String(e && e.message || e).slice(0, 120)})` };
+          return { key, label, addAt, route: route || null, available: false, value: null, source: null, updatedAt: null, note: `not readable (${String(e && e.message || e).slice(0, 120)})` };
         }
       };
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {};
       const inputs = [];
       // 1. budget total + channel allocation for the year
       let workingSpend = null;
-      inputs.push(gather('budget', `${year} budget total and channel allocation`, 'Media Plan & Budget → upload or enter the year\'s budget', () => {
+      inputs.push(gather('budget', `${year} budget and channel allocation`, 'Media Plan & Budget → upload or enter the year\'s budget', () => {
         const up = db.prepare("SELECT id, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(scope, 'domestic') = 'domestic' ORDER BY confirmedAt DESC LIMIT 1").get(accountId, year);
         if (up){
           const byCat = computeByVerilumeCategoryForUpload(up.id) || {};
           const byChannel = {};
           Object.entries(byCat).forEach(([cat, total]) => { if (num(total) > 0) byChannel[cat] = num(total); });
           workingSpend = Object.values(byChannel).reduce((s, v) => s + v, 0);
-          return { available: workingSpend > 0, value: { workingSpend, byCategory: byChannel }, source: `confirmed upload "${up.fileName || up.id}"` };
+          return { available: workingSpend > 0, value: { workingSpend, byCategory: byChannel }, source: `confirmed upload "${up.fileName || up.id}"`, updatedAt: up.confirmedAt || null };
         }
-        const plan = db.prepare('SELECT id, totalBudget FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+        const plan = db.prepare('SELECT id, totalBudget, updatedAt FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
         if (!plan) return { note: 'no confirmed upload or saved media plan for this year' };
         const allocs = db.prepare('SELECT stage, channel, approvedAmount FROM media_plan_allocations WHERE mediaPlanId = ?').all(plan.id);
         const byChannel = {};
         allocs.forEach(a => { const v = num(a.approvedAmount) || 0; if (v > 0) byChannel[a.channel] = (byChannel[a.channel] || 0) + v; });
         workingSpend = Object.values(byChannel).reduce((s, v) => s + v, 0) || num(plan.totalBudget);
-        return { available: !!(workingSpend > 0), value: { workingSpend, byCategory: byChannel }, source: 'saved media plan' };
-      }));
+        return { available: !!(workingSpend > 0), value: { workingSpend, byCategory: byChannel }, source: 'saved media plan', updatedAt: plan.updatedAt || null };
+      }, 'mediaplan'));
       // 2. final gross revenue for the year + ROAS
-      inputs.push(gather('results', `${year} final gross revenue and ROAS`, 'Media Plan & Budget → Continuous learning card → enter final gross revenue', () => {
-        const r = db.prepare('SELECT grossRevenue, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
-        let revenue = r ? num(r.grossRevenue) : null;
-        let source = r ? 'year results (final)' : null;
-        if (revenue == null){
-          const plan = db.prepare('SELECT grossRevenue FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
-          if (plan && num(plan.grossRevenue) > 0){ revenue = num(plan.grossRevenue); source = 'media plan (planned revenue, not final)'; }
-        }
-        if (revenue == null) return { note: 'final gross revenue not entered' };
-        const roas = (workingSpend > 0) ? Math.round((revenue / workingSpend) * 100) / 100 : null;
-        return { available: true, value: { grossRevenue: revenue, workingSpend, roas, isFinal: !!(r && num(r.grossRevenue) != null), notes: r ? (r.notes || null) : null }, source, note: roas == null ? 'ROAS needs the year\'s working spend (input 1)' : null };
-      }));
+      inputs.push(gather('results', `${year} revenue, transactions and ROAS`, 'Media Plan & Budget → Budget detail → Revenue & results', () => {
+        const r = db.prepare('SELECT grossRevenue, plannedRevenue, transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+        const plan = db.prepare('SELECT grossRevenue FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+        const actual = r ? num(r.grossRevenue) : null;
+        const planned = (r && num(r.plannedRevenue) != null) ? num(r.plannedRevenue) : (plan && num(plan.grossRevenue) > 0 ? num(plan.grossRevenue) : null);
+        const transactions = r ? num(r.transactions) : null;
+        if (actual == null && planned == null && transactions == null) return { note: 'planned and actual revenue not entered yet' };
+        const roasActual = (actual != null && workingSpend > 0) ? Math.round((actual / workingSpend) * 100) / 100 : null;
+        const roasPlanned = (planned != null && workingSpend > 0) ? Math.round((planned / workingSpend) * 100) / 100 : null;
+        const variance = (actual != null && planned != null) ? actual - planned : null;
+        const avgPerTransaction = (actual != null && transactions > 0) ? Math.round((actual / transactions) * 100) / 100 : null;
+        return { available: actual != null, value: { plannedRevenue: planned, grossRevenue: actual, variance, transactions, avgRevenuePerTransaction: avgPerTransaction, workingSpend, roasPlanned, roas: roasActual, isFinal: actual != null, notes: r ? (r.notes || null) : null }, source: actual != null ? 'year results (final)' : 'planned only', updatedAt: r ? r.updatedAt : null, note: actual == null ? 'actual revenue not entered yet' : (roasActual == null ? 'ROAS needs the year\'s working spend (input 1)' : null) };
+      }, 'mediaplan'));
       // 3. key DMA markets
       inputs.push(gather('markets', 'Key DMA markets', 'Advanced Analytics → Match Market Builder → upload customer transactions by zip', () => {
         const mu = db.prepare('SELECT id, label, createdAt FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId);
-        if (!mu) return { note: 'no customer-by-zip upload yet (DMA roll-up needs one)' };
+        if (!mu) return { note: 'no customer-by-postal-code upload yet' };
         const rows = db.prepare('SELECT zip, customerCount FROM market_customer_rows WHERE marketUploadId = ? ORDER BY customerCount DESC LIMIT 25').all(mu.id);
         const total = db.prepare('SELECT SUM(customerCount) AS t, COUNT(*) AS n FROM market_customer_rows WHERE marketUploadId = ?').get(mu.id) || {};
         let dma = null;
         try { dma = computeDmaRollup(db.prepare('SELECT zip, customerCount, revenue FROM market_customer_rows WHERE marketUploadId = ?').all(mu.id), 'count'); } catch (e){ dma = null; }
         const topDmas = dma && dma.available ? dma.dmas.slice(0, 10).map(d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, customers: d.volume, share: d.share, populationIndex: d.populationIndex })) : null;
-        return { available: rows.length > 0, value: { upload: mu.label || mu.id, zipCount: num(total.n) || 0, customers: num(total.t) || 0, topZips: rows.map(r => ({ zip: r.zip, customers: num(r.customerCount) || 0 })), topDmas, dmaDisclosure: dma ? dma.disclosure : null, unmappedZips: dma && dma.available ? dma.unmappedZips : null }, source: topDmas ? 'Match Market Builder customer upload, rolled up to DMA' : 'Match Market Builder customer upload', note: topDmas ? (dma.licensed ? null : 'DMA roll-up uses a public approximation of DMA boundaries, not Nielsen-licensed') : 'zip level only — load a zip→DMA crosswalk (Match Market Builder → Reference data) for the DMA roll-up' };
-      }));
+        return { available: rows.length > 0, value: { upload: mu.label || mu.id, zipCount: num(total.n) || 0, customers: num(total.t) || 0, topZips: rows.map(r => ({ zip: r.zip, customers: num(r.customerCount) || 0 })), topDmas, dmaDisclosure: dma ? dma.disclosure : null, unmappedZips: dma && dma.available ? dma.unmappedZips : null }, source: topDmas ? 'Match Market Builder customer upload, rolled up to market' : 'Match Market Builder customer upload', updatedAt: mu.createdAt || null, note: topDmas ? (dma.licensed ? null : 'market roll-up uses public/statistical boundaries, not licensed audience-measurement definitions') : 'postal-code level only — load a market crosswalk (Match Market Builder → Reference data) for the market roll-up' };
+      }, 'marketOptimization'));
       // 4. assessment / profile
       inputs.push(gather('profile', 'Free Assessment profile (industry, generations, wealth, sales region, org structure)', 'Company Profile', () => {
         const generations = String(account.audience || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -16413,46 +16422,56 @@ Submit your findings via the submit_brand_categories tool.`;
         const value = { industry: account.industry || null, generations, wealth, salesRegion: account.footprint || null, orgStructure: account.orgModel || null, onboardingSurvey: !!account.onboardingSurveyJson, assessedStages: parseJson(account.assessedStagesJson, null) };
         const have = ['industry', 'salesRegion', 'orgStructure'].filter(k => value[k]).length + (generations.length ? 1 : 0) + (wealth.length ? 1 : 0);
         const missing = [!value.industry && 'industry', !generations.length && 'target generations', !wealth.length && 'wealth tier', !value.salesRegion && 'sales region', !value.orgStructure && 'org structure'].filter(Boolean);
-        return { available: have > 0, value, source: 'accounts (assessment + Company Profile)', note: missing.length ? `missing: ${missing.join(', ')}` : null };
-      }));
+        return { available: have > 0, value, source: 'accounts (assessment + Company Profile)', updatedAt: account.updatedAt || account.createdAt || null, note: missing.length ? `missing: ${missing.join(', ')}` : null };
+      }, 'companyProfile'));
       // 5. competitors + battle briefs
       inputs.push(gather('competitors', 'Key competitors and battle briefs', 'Company Profile → Competitive Positioning; Intelligence refresh for briefs', () => {
         const comps = parseJson(account.competitorsJson, []);
         const list = Array.isArray(comps) ? comps.map(c => (typeof c === 'string' ? c : (c && (c.name || c.competitor)) || null)).filter(Boolean) : [];
         const intel = parseJson(account.accountIntelligenceJson, null);
-        return { available: list.length > 0, value: { competitors: list, battleBriefs: !!intel, briefsGeneratedAt: account.accountIntelligenceGeneratedAt || null }, source: 'accounts.competitorsJson / accountIntelligenceJson', note: list.length && !intel ? 'competitors named, no intelligence brief generated yet' : (list.length ? null : 'no competitors named') };
-      }));
+        return { available: list.length > 0, value: { competitors: list, battleBriefs: !!intel, briefsGeneratedAt: account.accountIntelligenceGeneratedAt || null }, source: 'accounts.competitorsJson / accountIntelligenceJson', updatedAt: account.accountIntelligenceGeneratedAt || null, note: list.length && !intel ? 'competitors named, no intelligence brief generated yet' : (list.length ? null : 'no competitors named') };
+      }, 'competitivePositioning'));
       // 6. internal channel cost (CPM)
       inputs.push(gather('internalCpm', 'Internal channel cost (CPM)', 'Campaign line items with spend + impressions; or edit Est. CPM on the media plan', () => {
-        const rows = db.prepare('SELECT li.category AS category, SUM(li.spend) AS spend, SUM(li.impressions) AS impressions FROM campaign_mmm_line_items li JOIN campaigns c ON c.id = li.campaignId WHERE c.accountId = ? GROUP BY li.category').all(accountId);
+        const rows = db.prepare('SELECT li.category AS category, SUM(li.spend) AS spend, SUM(li.impressions) AS impressions, MAX(li.updatedAt) AS updatedAt FROM campaign_mmm_line_items li JOIN campaigns c ON c.id = li.campaignId WHERE c.accountId = ? GROUP BY li.category').all(accountId);
+        const cpmUpdated = rows.reduce((m, r) => (r.updatedAt && (!m || r.updatedAt > m)) ? r.updatedAt : m, null);
         const measured = {};
         rows.forEach(r => { const sp = num(r.spend), im = num(r.impressions); if (sp > 0 && im > 0) measured[r.category] = Math.round((sp / im) * 1000 * 100) / 100; });
         const plan = db.prepare('SELECT id FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
         const entered = {};
         if (plan){ db.prepare('SELECT channel, cpm FROM media_plan_allocations WHERE mediaPlanId = ?').all(plan.id).forEach(a => { const v = num(a.cpm); if (v > 0 && entered[a.channel] == null) entered[a.channel] = v; }); }
         const measuredCount = Object.keys(measured).length;
-        return { available: measuredCount > 0, value: { measured, planEntered: entered }, source: measuredCount ? 'campaign line items (spend ÷ impressions)' : null, note: measuredCount ? null : (Object.keys(entered).length ? 'only plan-entered CPMs on file (illustrative defaults unless edited) — no measured spend/impressions yet' : 'no campaign spend/impressions on file') };
-      }));
+        return { available: measuredCount > 0, value: { measured, planEntered: entered }, source: measuredCount ? 'campaign line items (spend ÷ impressions)' : null, updatedAt: cpmUpdated, note: measuredCount ? null : (Object.keys(entered).length ? 'only plan-entered CPMs on file (illustrative defaults unless edited) — no measured spend/impressions yet' : 'no campaign spend/impressions on file') };
+      }, 'campaigns'));
       // 7. internal MMM / attribution channel performance
       inputs.push(gather('mmmPerformance', 'Internal channel performance (MMM or direct attribution)', 'Advanced Analytics → MMM data inputs', () => {
-        const rows = db.prepare('SELECT channel, COUNT(*) AS n, MAX(periodLabel) AS latest, SUM(spend) AS spend, SUM(outcomeValue) AS outcome, MAX(outcomeMetric) AS metric FROM mmm_inputs WHERE accountId = ? GROUP BY channel').all(accountId);
+        const rows = db.prepare('SELECT channel, COUNT(*) AS n, MAX(periodLabel) AS latest, SUM(spend) AS spend, SUM(outcomeValue) AS outcome, MAX(outcomeMetric) AS metric, MAX(createdAt) AS createdAt FROM mmm_inputs WHERE accountId = ? GROUP BY channel').all(accountId);
         if (!rows.length) return { note: 'no MMM inputs on file' };
         const byChannel = {};
         rows.forEach(r => { byChannel[r.channel] = { periods: num(r.n) || 0, latestPeriod: r.latest || null, spend: num(r.spend), outcome: num(r.outcome), metric: r.metric || null, outcomePerDollar: (num(r.spend) > 0 && num(r.outcome) != null) ? Math.round((num(r.outcome) / num(r.spend)) * 10000) / 10000 : null }; });
         const anyOutcome = Object.values(byChannel).some(c => c.outcome != null && c.outcome > 0);
-        return { available: true, value: { channels: byChannel }, source: 'mmm_inputs', note: anyOutcome ? null : 'spend by period only — no outcome values yet, so no channel performance can be read from it' };
-      }));
+        return { available: true, value: { channels: byChannel }, source: 'mmm_inputs', updatedAt: rows.reduce((m, r) => (r.createdAt && (!m || r.createdAt > m)) ? r.createdAt : m, null), note: anyOutcome ? null : 'spend by period only — no outcome values yet, so no channel performance can be read from it' };
+      }, 'measurementCoverage'));
       // 8. external research
       inputs.push(gather('externalResearch', 'External research (estimated CPM, media consumption by generation and wealth)', 'Editorial tables in the product (portal.html) — replace with licensed data when available', () => ({
         available: true,
         value: { tables: ['ILLUSTRATIVE_CHANNEL_CPM', 'STAGE_CHANNEL_WEIGHTS + industry tables', 'GENERATION_CHANNEL_AFFINITY', 'WEALTH_CHANNEL_AFFINITY', 'CHANNEL_MIN_VIABLE_SPEND'], licensed: false },
         source: 'editorial starting tables shipped with the product',
         note: 'directional, not measured — lowest-trust input; every internal input above outranks it when populated'
-      })));
+      }), 'mediaplan'));
       const populated = inputs.filter(i => i.available).length;
       return sendJson(res, 200, { accountId, year, populated, total: inputs.length, inputs, generatedAt: new Date().toISOString() });
     }
 
+    // GET /api/accounts/:id/year-results?year=YYYY — the year's results row
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'year-results'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const year = parseInt(url.searchParams.get('year'), 10);
+      if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
+      const r = db.prepare('SELECT grossRevenue, plannedRevenue, transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+      return sendJson(res, 200, Object.assign({ accountId, year, grossRevenue: null, plannedRevenue: null, transactions: null, notes: null, updatedAt: null }, r || {}));
+    }
     // POST /api/accounts/:id/year-results — final gross revenue for a year
     // (input 2 above). { year, grossRevenue, notes }
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'year-results'){
@@ -16461,13 +16480,27 @@ Submit your findings via the submit_brand_categories tool.`;
       const body = await readBody(req);
       const year = parseInt(body.year, 10);
       if (!Number.isFinite(year) || year < 2000 || year > 2100) return sendJson(res, 400, { error: 'year is required' });
-      const revenue = (body.grossRevenue === null || body.grossRevenue === undefined || body.grossRevenue === '') ? null : Number(body.grossRevenue);
-      if (revenue !== null && !(Number.isFinite(revenue) && revenue >= 0)) return sendJson(res, 400, { error: 'grossRevenue must be a non-negative number or null' });
+      const numOrNull = (v, label, integer) => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = Number(v);
+        if (!(Number.isFinite(n) && n >= 0) || (integer && !Number.isInteger(n))) throw new Error(`${label} must be a non-negative ${integer ? 'whole ' : ''}number or blank`);
+        return n;
+      };
+      let revenue, planned, transactions;
+      try { revenue = numOrNull(body.grossRevenue, 'grossRevenue'); planned = numOrNull(body.plannedRevenue, 'plannedRevenue'); transactions = numOrNull(body.transactions, 'transactions', true); }
+      catch (e){ return sendJson(res, 400, { error: e.message }); }
       const now = new Date().toISOString();
-      const existing = db.prepare('SELECT accountId FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
-      if (existing) db.prepare('UPDATE account_year_results SET grossRevenue = ?, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ?').run(revenue, body.notes || null, now, accountId, year);
-      else db.prepare('INSERT INTO account_year_results (accountId, year, grossRevenue, notes, updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, year, revenue, body.notes || null, now);
-      return sendJson(res, 200, { accountId, year, grossRevenue: revenue, notes: body.notes || null, updatedAt: now });
+      const existing = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+      // only fields present in the body change; a missing key keeps the stored value
+      const next = {
+        grossRevenue: 'grossRevenue' in body ? revenue : (existing ? existing.grossRevenue : null),
+        plannedRevenue: 'plannedRevenue' in body ? planned : (existing ? existing.plannedRevenue : null),
+        transactions: 'transactions' in body ? transactions : (existing ? existing.transactions : null),
+        notes: 'notes' in body ? (body.notes || null) : (existing ? existing.notes : null)
+      };
+      if (existing) db.prepare('UPDATE account_year_results SET grossRevenue = ?, plannedRevenue = ?, transactions = ?, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ?').run(next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now, accountId, year);
+      else db.prepare('INSERT INTO account_year_results (accountId, year, grossRevenue, plannedRevenue, transactions, notes, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, year, next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now);
+      return sendJson(res, 200, Object.assign({ accountId, year, updatedAt: now }, next));
     }
 
     // GET /api/accounts/:id/marketing-budget-uploads — history, most recent
@@ -17561,4 +17594,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
