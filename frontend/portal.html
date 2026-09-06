@@ -5455,7 +5455,7 @@
       <div class="cfd-standup" style="margin-bottom:0;">
         <div class="cfd-avatar">✦</div>
         <div class="cfd-bubble">
-          US zip codes only — a non-US postal code (letters in the code, e.g. Canadian or European formats) is rejected outright rather than silently coerced into a real US zip that doesn't match the actual address, and every rejection stays on this upload's audit trail. Count-weighted by default; upload a revenue/order-value column and every zip has to have one before this will offer revenue-weighting instead — a partial revenue file stays count-weighted rather than quietly averaging over the gaps. The composite score/opportunity tier blend (two-thirds volume, one-third index by default) and the Holdout group size (about a sixth of scoreable zips by default) are both open, adjustable assumptions, not settled facts — flagged as such in the results below. This is zip-level only for now (DMA rollup needs a licensed Nielsen crosswalk or the FCC's public approximation, neither loaded in this build yet), and match-market pairing is based on who lives in a zip today, not real campaign performance history or geographic media-market adjacency — treat it as a starting shortlist for your own judgment, not a finished test plan.
+          One file for every market: US, Canada, Australia, the UK, Germany, France, Spain and Italy. Each row is keyed at the unit its country publishes population for (US zip, Canadian forward sortation area, Australian postcode, UK postcode district, five-digit codes in Germany, France, Spain and Italy). Five-digit codes look alike across countries, so a Country column in the file, or the default country above, tells them apart. Anything else is rejected rather than silently coerced into a real code that doesn't match the address, and every rejection stays on this upload's audit trail. Count-weighted by default; upload a revenue/order-value column and every zip has to have one before this will offer revenue-weighting instead — a partial revenue file stays count-weighted rather than quietly averaging over the gaps. The composite score/opportunity tier blend (two-thirds volume, one-third index by default) and the Holdout group size (about a sixth of scoreable zips by default) are both open, adjustable assumptions, not settled facts — flagged as such in the results below. This is zip-level only for now (DMA rollup needs a licensed Nielsen crosswalk or the FCC's public approximation, neither loaded in this build yet), and match-market pairing is based on who lives in a zip today, not real campaign performance history or geographic media-market adjacency — treat it as a starting shortlist for your own judgment, not a finished test plan.
         </div>
       </div>
     </div>
@@ -5469,6 +5469,20 @@
         <p class="hint" style="margin-top:0;">Accepts .csv or .xlsx. Needs at minimum a zip code column — one row per transaction is the normal case (each row counts as one), or map a Customer Count column if the file already arrives pre-aggregated by zip. A revenue/order-value column is optional and unlocks revenue-weighting once every zip has one. Any extra columns are fine, just leave them mapped to "Ignore" below.</p>
         <label class="hint" for="mouUploadedBy" style="display:block;margin-bottom:4px;">Uploaded by (optional, for the record)</label>
         <input type="text" id="mouUploadedBy" placeholder="Your name" style="margin-bottom:10px;">
+        <div class="field" style="margin:0 0 10px;max-width:420px;">
+          <label>Default country for numeric postal codes</label>
+          <select id="mouDefaultCountry" onchange="mouDefaultCountry = this.value; if (mouParsedHeaders.length) mouRenderMappingPanel();">
+            <option value="US">United States (5-digit zip)</option>
+            <option value="CA">Canada (postal code / FSA)</option>
+            <option value="AU">Australia (4-digit postcode)</option>
+            <option value="GB">United Kingdom (postcode)</option>
+            <option value="DE">Germany (5-digit PLZ)</option>
+            <option value="FR">France (5-digit code postal)</option>
+            <option value="ES">Spain (5-digit código postal)</option>
+            <option value="IT">Italy (5-digit CAP)</option>
+          </select>
+          <span class="hint">A Country column in the file overrides this per row. Canadian and UK codes are recognised by their letters either way.</span>
+        </div>
         <input type="file" id="mouFileInput" accept=".csv,.xlsx" onchange="mouHandleFile(event)">
         <p class="hint" id="mouStatus" style="margin-top:8px;"></p>
         <div id="mouMappingPanel"></div>
@@ -5483,6 +5497,50 @@
       <div class="sk-card-body" id="mouResultsBody"></div>
     </div>
 
+    <!-- Reference data (2026-09-06, item 4a): shared across accounts --
+         Census ZCTA population + a zip→DMA crosswalk. See mrf* functions. -->
+    <!-- Stores (2026-09-06): local retail plans on a radius trade area around
+         each store. See mst* functions. -->
+    <div class="sk-card" id="mstCard" style="margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Local retail</div><h3>Stores and trade areas</h3></div>
+        <div class="hicon">📍</div>
+      </div>
+      <div class="sk-card-body" id="mstBody"><p class="hint">Loading…</p></div>
+    </div>
+    <div class="sk-card" id="mrfCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Shared across accounts</div><h3>Reference data — population and DMA</h3></div>
+        <div class="hicon">🗺</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">The Population Index and the DMA roll-up need two reference files that no client supplies: population by zip (U.S. Census, free) and a zip→DMA crosswalk. DMA boundaries are Nielsen's; the free crosswalk is a public approximation and is labelled that way wherever a DMA appears. A licensed Nielsen file can be loaded below and replaces it.</p>
+        <div id="mrfStatus"><p class="hint">Checking…</p></div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-primary" id="mrfLoadPublicBtn" onclick="mrfLoadPublic()">Load public reference data →</button>
+          <span class="hint">2020 Census ZCTA population (api.census.gov) + public zip→DMA crosswalk, fetched by your browser and saved to the backend in batches.</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+          <div class="field" style="margin:0;flex:1 1 260px;"><label>Upload a crosswalk file — source (required)</label><input type="text" id="mrfDmaSource" placeholder='e.g. "Nielsen ZIP Code by DMA 2026, licensed"'></div>
+          <div class="field" style="margin:0;flex:1 1 200px;"><label>Method / note</label><input type="text" id="mrfDmaMethod" placeholder="e.g. official Nielsen boundaries"></div>
+          <div class="field" style="margin:0;"><label>CSV or TSV: zip, DMA code, DMA name</label><input type="file" id="mrfDmaFile" accept=".csv,.tsv,.txt" onchange="mrfHandleDmaFile(event)"></div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+          <div class="field" style="margin:0;flex:1 1 320px;"><label>Zip centroids for store trade areas — Census ZCTA Gazetteer (.txt from the zip archive)</label><input type="file" accept=".txt,.csv,.tsv" onchange="mrfHandleCentroidFile(event)"></div>
+          <a class="btn-ghost" href="https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip" target="_blank" rel="noopener" style="display:inline-block;">⬇ Download the gazetteer</a>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+          <p class="hint" style="margin:0 0 8px;"><b>Other countries.</b> Pick the country, then upload its population, centroids and market crosswalk from the national statistics office (Statistics Canada by FSA; ABS by postcode; ONS postcode lookup for the UK; Destatis, INSEE, INE and ISTAT by postal code, with Eurostat's postal-code-to-NUTS table as the market layer). Columns are found by name and by value pattern; every market label says which definition it uses.</p>
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
+            <div class="field" style="margin:0;flex:0 0 200px;"><label>Country</label><select id="mrfCountry"><option value="CA">Canada</option><option value="AU">Australia</option><option value="GB">United Kingdom</option><option value="DE">Germany</option><option value="FR">France</option><option value="ES">Spain</option><option value="IT">Italy</option></select></div>
+            <div class="field" style="margin:0;flex:1 1 200px;"><label>Population by postal unit</label><input type="file" accept=".csv,.tsv,.txt" onchange="mrfHandleCountryFile(event, 'population')"></div>
+            <div class="field" style="margin:0;flex:1 1 200px;"><label>Centroids (lat / long)</label><input type="file" accept=".csv,.tsv,.txt" onchange="mrfHandleCountryFile(event, 'centroids')"></div>
+            <div class="field" style="margin:0;flex:1 1 200px;"><label>Postal unit → market crosswalk</label><input type="file" accept=".csv,.tsv,.txt" onchange="mrfHandleCountryFile(event, 'markets')"></div>
+          </div>
+        </div>
+        <p class="hint" id="mrfLoadStatus" style="margin:8px 0 0;"></p>
+      </div>
+    </div>
     <div class="sk-card" id="mouHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -7847,6 +7905,17 @@
         <p class="hint" id="nwmUploadStatus" style="margin-top:6px;"></p>
         <div class="hint" id="nwmSummary" style="margin-top:10px;"></div>
       </div>
+    </div>
+
+    <!-- Continuous learning (2026-09-05): the eight inputs the budgeting
+         logic learns from, with status per year, and the year's final gross
+         revenue entry (ROAS). NULL-safe by design -- see mpRenderLearningInputs. -->
+    <div class="sk-card" id="mpLearningCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker" id="mpLearningKicker">Inputs on file</div><h3>Continuous learning</h3></div>
+        <div class="hicon">↻</div>
+      </div>
+      <div class="sk-card-body" id="mpLearningBody"></div>
     </div>
 
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
@@ -22435,6 +22504,7 @@ async function setMpYear(year){
   mpSelectedYear = year;
   await loadMediaPlan(year);
   await loadMpYearActiveChannels();
+  if (typeof mpRenderLearningInputs === 'function') mpRenderLearningInputs();
   await mpAutoPrefillIfBlank();
   renderMediaPlanFieldsAndCharts(false);
 }
@@ -22728,6 +22798,97 @@ function mpRefitStagesKeepChannels(){
   if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
   const stepEl = document.getElementById('mpChannelStep');
   if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// ============ Continuous learning — inputs on file (2026-09-05) ============
+// Per direct instruction: "make sure that our budgeting process is wired to
+// support our continuous learning mission. Data to use when populated.
+// Important that self-learning does not break when some data is NULL."
+// One card per budget year listing the eight inputs the budgeting logic can
+// learn from (GET .../learning-inputs?year=), each with a populated / not-
+// yet status, its source, and where to add it. The card is where the
+// year's FINAL gross revenue is entered (POST .../year-results), which
+// gives ROAS against that year's working spend. Everything here is
+// NULL-safe: an input that is missing renders as "not yet" with the place
+// to add it; a fetch failure renders a one-line note; nothing throws.
+let mpLearningData = null;
+function mpLearningNum(v){ const n = Number(v); return Number.isFinite(n) ? n : null; }
+async function mpRenderLearningInputs(){
+  const mount = document.getElementById('mpLearningBody');
+  if (!mount) return;
+  const year = Number(mbuSelectedYear || mpSelectedYear) || new Date().getFullYear();
+  const kick = document.getElementById('mpLearningKicker');
+  if (kick) kick.textContent = `Inputs on file for ${year}`;
+  if (!state.companyId || dataSourceLabel !== 'backend'){
+    mount.innerHTML = '<p class="hint" style="margin:0;">Learning inputs are read from the backend once this account is connected.</p>';
+    return;
+  }
+  mount.innerHTML = '<p class="hint" style="margin:0;">Checking what\'s on file…</p>';
+  let data = null;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/learning-inputs?year=${encodeURIComponent(year)}`);
+    if (resp.ok) data = await resp.json();
+  } catch (e){ data = null; }
+  mpLearningData = data;
+  if (!data || !Array.isArray(data.inputs)){
+    mount.innerHTML = '<p class="hint" style="margin:0;">Couldn\'t read the learning inputs right now — the budget itself is unaffected.</p>';
+    return;
+  }
+  const summarize = (i) => {
+    const v = i.value || {};
+    try {
+      switch (i.key){
+        case 'budget': { const n = Object.keys(v.byCategory || {}).length; return v.workingSpend ? `${fmtMoney(Math.round(v.workingSpend))} across ${n} categor${n === 1 ? 'y' : 'ies'}` : ''; }
+        case 'results': return v.grossRevenue != null ? `${fmtMoney(Math.round(v.grossRevenue))} gross revenue${v.roas != null ? ` · ROAS ${v.roas.toFixed(2)}×` : ''}${v.isFinal ? '' : ' (planned figure, not final)'}` : '';
+        case 'markets': return v.zipCount ? `${v.zipCount.toLocaleString()} zips · ${(v.customers || 0).toLocaleString()} customers · top ${(v.topDmas || []).length ? 'DMAs: ' + v.topDmas.slice(0, 5).map(d => `${d.dmaName}${d.populationIndex != null ? ` (index ${d.populationIndex})` : ''}`).join(', ') : 'zips: ' + (v.topZips || []).slice(0, 5).map(z => z.zip).join(', ')}` : '';
+        case 'profile': return [v.industry, (v.generations || []).length ? `${v.generations.length} generation${v.generations.length === 1 ? '' : 's'}` : null, (v.wealth || []).length ? `${v.wealth.length} wealth tier${v.wealth.length === 1 ? '' : 's'}` : null, v.salesRegion, v.orgStructure].filter(Boolean).join(' · ');
+        case 'competitors': return (v.competitors || []).length ? `${v.competitors.join(', ')}${v.battleBriefs ? ' · briefs on file' : ' · no briefs yet'}` : '';
+        case 'internalCpm': { const m = Object.keys(v.measured || {}).length, p = Object.keys(v.planEntered || {}).length; return m ? `${m} channel${m === 1 ? '' : 's'} with measured CPM` : (p ? `${p} plan-entered CPM${p === 1 ? '' : 's'} (not measured)` : ''); }
+        case 'mmmPerformance': { const n = Object.keys((v.channels) || {}).length; return n ? `${n} channel${n === 1 ? '' : 's'} with MMM inputs` : ''; }
+        case 'externalResearch': return `${(v.tables || []).length} editorial tables${v.licensed ? '' : ' (not licensed data)'}`;
+        default: return '';
+      }
+    } catch (e){ return ''; }
+  };
+  const rows = data.inputs.map((i, n) => `
+    <tr>
+      <td style="white-space:nowrap;">${i.available ? '<span style="color:var(--cx);font-weight:700;">●</span> on file' : '<span style="color:var(--muted);">○</span> not yet'}</td>
+      <td><div style="font-weight:600;">${n + 1}. ${escapeHtml(i.label || i.key)}</div>${i.available ? `<div class="hint">${escapeHtml(summarize(i))}${i.source ? ` — <i>${escapeHtml(i.source)}</i>` : ''}</div>` : ''}${i.note ? `<div class="hint">${escapeHtml(i.note)}</div>` : ''}</td>
+      <td class="hint">${i.available ? '' : escapeHtml(i.addAt || '')}</td>
+    </tr>`).join('');
+  const results = data.inputs.find(i => i.key === 'results') || {};
+  const rv = results.value || {};
+  const finalVal = (results.available && rv.isFinal && rv.grossRevenue != null) ? rv.grossRevenue : '';
+  mount.innerHTML = `
+    <p class="hint" style="margin:0 0 10px;"><b>${data.populated} of ${data.total}</b> learning inputs on file for ${year}. The budget works with whatever is here — a missing input is skipped, never guessed. As inputs fill in, they outrank the editorial research tables in this order: your own results and measured costs first, then your profile and markets, then external research.</p>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
+      <thead><tr><th>Status</th><th>Input</th><th>Where to add it</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
+      <div class="field" style="margin:0;min-width:240px;">
+        <label>${year} final gross revenue (USD)</label>
+        <div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="1000" id="mpLearningRevenue" value="${finalVal === '' ? '' : Math.round(finalVal)}" placeholder="enter when the year closes" style="padding-left:24px;"></div>
+      </div>
+      <div class="field" style="margin:0;flex:1 1 220px;"><label>Note (optional)</label><input type="text" id="mpLearningRevenueNote" value="${escapeHtml(rv.notes || '')}" placeholder="e.g. audited, or preliminary"></div>
+      <button type="button" class="btn-ghost" onclick="mpSaveYearResults()">Save final revenue →</button>
+      <span class="hint" id="mpLearningSaveStatus"></span>
+    </div>
+    <p class="hint" style="margin:8px 0 0;">${rv.roas != null ? `ROAS ${rv.roas.toFixed(2)}× = ${fmtMoney(Math.round(rv.grossRevenue))} ÷ ${fmtMoney(Math.round(rv.workingSpend))} working spend.` : 'ROAS appears once both the year\'s working spend and its final gross revenue are on file.'}</p>`;
+}
+async function mpSaveYearResults(){
+  const status = document.getElementById('mpLearningSaveStatus');
+  const raw = (document.getElementById('mpLearningRevenue') || {}).value;
+  const notes = (document.getElementById('mpLearningRevenueNote') || {}).value || '';
+  const year = Number(mbuSelectedYear || mpSelectedYear) || new Date().getFullYear();
+  const grossRevenue = raw === '' || raw == null ? null : Number(raw);
+  if (grossRevenue !== null && !(Number.isFinite(grossRevenue) && grossRevenue >= 0)){ if (status) status.textContent = 'Enter a non-negative number.'; return; }
+  if (status) status.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/year-results`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, grossRevenue, notes }) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+    mpRenderLearningInputs();
+  } catch (e){ if (status) status.textContent = 'Could not save — try again.'; }
 }
 // ============ Phase 1 template mode (2026-09-05) ============
 // Per direct decision: "Given the lack of omni-channel MMM data per industry
@@ -24177,6 +24338,7 @@ async function renderMediaPlanStep(fromUpload){
   }
   await loadMediaPlan(mpSelectedYear);
   await loadMpYearActiveChannels();
+  if (typeof mpRenderLearningInputs === 'function') mpRenderLearningInputs();
   // Round 132bx follow-on #3 (2026-08-15), per direct correction: "Apply
   // Recommended Mix asks user to manually type in budget vs. reading from
   // uploaded or manually created budget" / "we do not need to manually ask
@@ -24835,11 +24997,15 @@ let mouFileDataUrl = null, mouFileName = null, mouFileMimeType = null;
 let mouWeightMode = 'count';
 const MOU_TARGET_FIELDS = [
   { key: 'zip', label: 'Zip Code' },
+  { key: 'dma', label: 'Nielsen DMA code or name (instead of Zip — lower confidence)' },
+  { key: 'country', label: 'Country (ISO code or name — optional; rows without one use the default country)' },
   { key: 'customerCount', label: 'Customer Count (optional — leave unmapped if this is transaction-level, one row per booking)' },
   { key: 'revenue', label: 'Revenue / Order Value (optional)' }
 ];
 const MOU_HEADER_PATTERNS = [
   { key: 'zip', re: /zip|postal/i },
+  { key: 'dma', re: /\bdma\b|designated market|market area/i },
+  { key: 'country', re: /country|nation|iso/i },
   { key: 'revenue', re: /revenue|order.?value|aov|gross|amount|sales/i },
   { key: 'customerCount', re: /customer|count|volume|households?|subscribers?/i }
 ];
@@ -24937,22 +25103,51 @@ function mouColumnMapChanged(idx, value){
 // outright. (2) legitimate ZIP+4 format ("02110-1339") used to get
 // rejected as "too many digits" — now recognized and truncated to the
 // real 5-digit zip, which is the correct, standard interpretation.
-function mouNormalizeZip(raw){
-  const s = String(raw || '').trim();
+// Country packs (2026-09-06) -- mirrors GEO_COUNTRY_PACKS in server.js.
+// US keys are bare zips (compatibility); every other country keys
+// "<ISO2>:<unit>". Five-digit codes are ambiguous across US/DE/FR/ES/IT, so
+// each row is read with a country hint: the file's Country column when
+// mapped, else the upload's default country (mouDefaultCountry).
+const MOU_COUNTRY_PACKS = {
+  US: { name: 'United States', unit: 'zip code', parse: (s) => { const p4 = s.match(/^(\d{5})[-\s]\d{4}$/); if (p4) return p4[1]; if (/^\d{1,5}$/.test(s)) return s.padStart(5, '0'); return null; } },
+  CA: { name: 'Canada', unit: 'forward sortation area (A1A)', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^([A-Z]\d[A-Z])(\d[A-Z]\d)?$/); return m ? m[1] : null; } },
+  AU: { name: 'Australia', unit: 'postcode (4 digits)', parse: (s) => (/^\d{4}$/.test(s) ? s : (/^\d{3}$/.test(s) ? s.padStart(4, '0') : null)) },
+  GB: { name: 'United Kingdom', unit: 'postcode district (e.g. SW1A)', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})?$/); return m ? m[1] : null; } },
+  DE: { name: 'Germany', unit: 'Postleitzahl (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  FR: { name: 'France', unit: 'code postal (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  ES: { name: 'Spain', unit: 'código postal (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  IT: { name: 'Italy', unit: 'CAP (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) }
+};
+const MOU_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT' };
+let mouDefaultCountry = 'US';
+function mouNormalizeCountry(raw){ const s = String(raw == null ? '' : raw).trim().toUpperCase(); if (!s) return null; if (MOU_COUNTRY_PACKS[s]) return s; return MOU_COUNTRY_ALIASES[s] || null; }
+function mouNormalizeZip(raw, countryHint){
+  const s = String(raw || '').trim().toUpperCase();
   if (!s) return { zip: '', reason: 'missing_zip' };
-  const plus4 = s.match(/^(\d{5})[-\s]\d{4}$/);
-  if (plus4) return { zip: plus4[1], reason: null };
-  if (/[a-zA-Z]/.test(s)) return { zip: '', reason: 'non_us_format' };
+  const keyed = s.match(/^([A-Z]{2}):(.+)$/);
+  if (keyed && MOU_COUNTRY_PACKS[keyed[1]] && keyed[1] !== 'US'){ const u = MOU_COUNTRY_PACKS[keyed[1]].parse(keyed[2]); return u ? { zip: `${keyed[1]}:${u}`, reason: null, country: keyed[1] } : { zip: '', reason: 'malformed_zip' }; }
+  const hint = mouNormalizeCountry(countryHint) || mouDefaultCountry || 'US';
+  if (/[A-Z]/.test(s)){
+    const ca = MOU_COUNTRY_PACKS.CA.parse(s), gb = MOU_COUNTRY_PACKS.GB.parse(s);
+    const fullCa = /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/.test(s);
+    if (hint === 'GB' && gb && !fullCa) return { zip: `GB:${gb}`, reason: null, country: 'GB' };
+    if (ca && (hint === 'CA' || fullCa || s.replace(/\s+/g, '').length === 3)) return { zip: `CA:${ca}`, reason: null, country: 'CA' };
+    if (gb) return { zip: `GB:${gb}`, reason: null, country: 'GB' };
+    return { zip: '', reason: 'non_us_format' };
+  }
   const digitsOnly = s.replace(/[^\d]/g, '');
   if (!digitsOnly) return { zip: '', reason: 'missing_zip' };
-  if (digitsOnly.length > 5) return { zip: '', reason: 'malformed_zip' };
-  return { zip: digitsOnly.padStart(5, '0'), reason: null };
+  const pack = MOU_COUNTRY_PACKS[hint] || MOU_COUNTRY_PACKS.US;
+  const unit = pack.parse(/^\d+$/.test(s) ? s : digitsOnly);
+  if (!unit) return { zip: '', reason: 'malformed_zip' };
+  return hint === 'US' ? { zip: unit, reason: null, country: 'US' } : { zip: `${hint}:${unit}`, reason: null, country: hint };
 }
+function mouGeoLabel(key){ const k = String(key || ''); const m = k.match(/^([A-Z]{2}):(.+)$/); return (m && MOU_COUNTRY_PACKS[m[1]]) ? `${m[2]} (${m[1]})` : k; }
 
 const MOU_REASON_LABELS = {
   missing_zip: 'Missing zip code',
-  non_us_format: 'Not a US zip format (contains letters — likely a foreign postal code)',
-  malformed_zip: 'Zip code has too many digits to be a valid US zip/ZIP+4',
+  non_us_format: 'Not a recognised postal code for a supported country (US, Canada, Australia, UK, Germany, France, Spain, Italy)',
+  malformed_zip: 'Postal code does not match the format for its country (check the Country column or the default country)',
   missing_volume: 'No transaction count or revenue value for this row'
 };
 
@@ -24967,13 +25162,18 @@ function mouBuildMappedRows(){
   Object.keys(mouColumnMap).forEach(idx => { if (mouColumnMap[idx] !== 'ignore') idxByField[mouColumnMap[idx]] = Number(idx); });
   return mouParsedRows.map(r => {
     const rawZip = idxByField.zip != null ? r[idxByField.zip] : '';
-    const { zip, reason: zipReason } = idxByField.zip != null ? mouNormalizeZip(rawZip) : { zip: '', reason: 'missing_zip' };
+    const rowCountry = idxByField.country != null ? r[idxByField.country] : null;
+    let { zip, reason: zipReason } = idxByField.zip != null ? mouNormalizeZip(rawZip, rowCountry) : { zip: '', reason: 'missing_zip' };
+    // DMA-level fallback (2026-09-06): no zip column but a DMA column — the
+    // geo key becomes "DMA:<code or name>" and the upload is flagged lower
+    // confidence on the backend.
+    if (idxByField.zip == null && idxByField.dma != null){ const d = String(r[idxByField.dma] || '').trim(); if (d){ zip = `DMA:${d}`; zipReason = null; } else zipReason = 'missing_zip'; }
     const hasCountCol = idxByField.customerCount != null;
     const rawCount = hasCountCol ? cfiNumberOrNull(r[idxByField.customerCount]) : 1;
     const customerCount = hasCountCol ? rawCount : 1;
     const revenue = idxByField.revenue != null ? cfiNumberOrNull(r[idxByField.revenue]) : null;
     let reason = null;
-    if (idxByField.zip == null) reason = 'missing_zip';
+    if (idxByField.zip == null && idxByField.dma == null) reason = 'missing_zip';
     else if (zipReason) reason = zipReason;
     else if (hasCountCol && (customerCount == null || customerCount < 0)) reason = 'missing_volume';
     return { zip, customerCount, revenue, valid: !reason, reason };
@@ -25028,7 +25228,7 @@ function mouRenderMappingPanel(){
 
   const previewRows = mapped.slice(0, 8).map(r => `
     <tr style="${r.valid ? '' : 'opacity:0.5;'}">
-      <td>${escapeHtml(r.zip || '—')}</td>
+      <td>${escapeHtml(mouGeoLabel(r.zip) || '—')}</td>
       <td>${r.customerCount != null ? Number(r.customerCount).toLocaleString() : '—'}</td>
       <td>${r.revenue != null ? '$' + Number(r.revenue).toLocaleString() : '—'}</td>
       <td>${r.valid ? '✓' : escapeHtml(MOU_REASON_LABELS[r.reason] || r.reason || 'Skipped')}</td>
@@ -25081,10 +25281,13 @@ async function mouConfirmImport(){
   const aggregated = mouAggregateByZip(allMapped);
   const reasonCounts = {};
   allMapped.filter(r => !r.valid).forEach(r => { reasonCounts[r.reason] = (reasonCounts[r.reason] || 0) + 1; });
+  const byCountry = {};
+  aggregated.forEach(z => { const m = String(z.zip).match(/^([A-Z]{2}):/); const c = (m && MOU_COUNTRY_PACKS[m[1]]) ? m[1] : 'US'; byCountry[c] = (byCountry[c] || 0) + 1; });
   const audit = {
     totalRowsProvided: allMapped.length,
     mappedRowCount: mapped.length,
     uniqueZipsMapped: aggregated.length,
+    byCountry,
     excludedByReason: reasonCounts
   };
   if (resultEl) resultEl.textContent = 'Screening file for PII and scanning for threats…';
@@ -25121,6 +25324,8 @@ async function mouConfirmImport(){
         uploadedFileId: uploadData.id,
         label: mouFileName,
         weightMode: mouWeightMode,
+        defaultCountry: mouDefaultCountry,
+        geoLevel: (Object.values(mouColumnMap).includes('zip') || !Object.values(mouColumnMap).includes('dma')) ? 'zip' : 'dma',
         audit,
         rows: aggregated
       })
@@ -25144,6 +25349,329 @@ async function mouConfirmImport(){
   }
 }
 
+// ============ Match Market reference data — zip→DMA + population (2026-09-06, item 4a) ============
+// Per direct instruction ("scope it and build it out"): the reference-data
+// foundation the 2026-08-16 memo called 4a. Two shared masters -- Census
+// ZCTA population and a zip→DMA crosswalk -- loaded once for every account.
+// "Load public reference data" fetches both from their public sources IN
+// THE BROWSER (Census API + a public crosswalk, both CORS-open) and posts
+// them to the backend in chunks, so nothing here depends on a long-running
+// serverless request. A licensed Nielsen file loads through the same CSV
+// path with its own source label, and the disclosure text everywhere
+// follows the label. Nothing in this block invents a number.
+const MRF_PUBLIC_SOURCES = {
+  population: {
+    url: 'https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*',
+    sourceLabel: 'U.S. Census Bureau, 2020 Decennial Census (DHC), table P1 total population by ZCTA — api.census.gov',
+    parse: (json) => { const out = []; (Array.isArray(json) ? json.slice(1) : []).forEach(r => { const zip = String(r[1] || '').padStart(5, '0'); const pop = Number(r[0]); if (/^\d{5}$/.test(zip) && Number.isFinite(pop) && pop >= 0) out.push({ zip, population: pop }); }); return out; }
+  },
+  dma: {
+    url: 'https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw',
+    sourceLabel: 'Public zip→DMA crosswalk (GitHub gist "clarkenheim", TSV)',
+    method: 'zip centroid placed inside DMA polygon — public approximation, not Nielsen-licensed',
+    parse: (text) => { const out = []; String(text).split(/\r?\n/).forEach((line, i) => { if (!line.trim()) return; const c = line.split(/\t|,/); if (i === 0 && !/^\d/.test(c[0].trim())) return; const zip = String(c[0] || '').trim().padStart(5, '0'); const code = String(c[1] || '').trim(); const name = (c.slice(2).join(' ') || '').trim(); if (/^\d{5}$/.test(zip) && code) out.push({ zip, dmaCode: code, dmaName: name }); }); return out; }
+  }
+};
+async function mrfPostChunks(path, rows, extra, onProgress){
+  const size = 2000; let inserted = 0; const errors = [];
+  for (let i = 0; i < rows.length; i += size){
+    const resp = await authedFetch(`${BACKEND_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ rows: rows.slice(i, i + size) }, extra)), timeoutMs: 60000 });
+    if (!resp.ok){ const t = await resp.text().catch(() => ''); throw new Error(`HTTP ${resp.status} ${t.slice(0, 120)}`); }
+    const j = await resp.json();
+    inserted += j.inserted || 0; (j.errors || []).slice(0, 5).forEach(e => { if (errors.length < 10) errors.push(e); });
+    if (onProgress) onProgress(Math.min(rows.length, i + size), rows.length);
+  }
+  return { inserted, errors };
+}
+async function mrfLoadStatus(){
+  const el = document.getElementById('mrfStatus');
+  if (!el) return;
+  if (dataSourceLabel !== 'backend'){ el.innerHTML = '<p class="hint" style="margin:0;">Reference data lives on the backend.</p>'; return; }
+  let pop = null, dma = null;
+  try { const r = await authedFetch(`${BACKEND_URL}/api/market-population-master/status`); if (r.ok) pop = await r.json(); } catch (e){}
+  try { const r = await authedFetch(`${BACKEND_URL}/api/market-dma-master/status`); if (r.ok) dma = await r.json(); } catch (e){}
+  let cen = null;
+  try { const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/status`); if (r.ok) cen = await r.json(); } catch (e){}
+  const cenLine = cen ? (cen.zipsLoaded ? `<b>${Number(cen.zipsLoaded).toLocaleString()} zips/FSAs</b> with centroids${cc(cen)} — ${(cen.sources || []).map(escapeHtml).join('; ')}` : 'No zip centroids loaded yet — store trade areas stay off until they are (download the gazetteer below and upload the .txt).') : 'Centroid status unavailable.';
+  const cc = (o) => o && o.byCountry && Object.keys(o.byCountry).length ? ` <span class="hint">(${Object.entries(o.byCountry).map(([c, n]) => `${c} ${Number(n).toLocaleString()}`).join(' · ')})</span>` : '';
+  const popLine = pop ? (pop.zipsLoaded ? `<b>${Number(pop.zipsLoaded).toLocaleString()} zips/FSAs</b> with population${cc(pop)} — ${(pop.sources || []).map(escapeHtml).join('; ')}` : 'No population data loaded yet.') : 'Population status unavailable.';
+  const dmaLine = dma ? (dma.zipsLoaded ? `<b>${Number(dma.zipsLoaded).toLocaleString()} zips/FSAs → ${Number(dma.dmaCount).toLocaleString()} markets</b>${cc(dma)} — ${(dma.sources || []).map(x => `${escapeHtml(x.sourceLabel)}${x.method ? ` (${escapeHtml(x.method)})` : ''}`).join('; ')}${dma.licensed ? ' · <span style="color:var(--cx);font-weight:600;">licensed</span>' : ' · <span style="color:#b8860b;font-weight:600;">approximation, not Nielsen-licensed</span>'}` : 'No zip→DMA crosswalk loaded yet — DMA views stay off until one is.') : 'DMA status unavailable.';
+  el.innerHTML = `
+    <table class="data-table" style="font-size:0.8125rem;">
+      <tbody>
+        <tr><td style="white-space:nowrap;font-weight:600;">Population by zip</td><td>${popLine}</td></tr>
+        <tr><td style="white-space:nowrap;font-weight:600;">Zip → DMA</td><td>${dmaLine}</td></tr>
+        <tr><td style="white-space:nowrap;font-weight:600;">Zip centroids</td><td>${cenLine}</td></tr>
+      </tbody>
+    </table>`;
+}
+async function mrfLoadPublic(){
+  const status = document.getElementById('mrfLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  const btn = document.getElementById('mrfLoadPublicBtn'); if (btn) btn.disabled = true;
+  try {
+    say('Fetching 2020 Census ZCTA population from api.census.gov…');
+    const pr = await fetch(MRF_PUBLIC_SOURCES.population.url);
+    if (!pr.ok) throw new Error(`Census API HTTP ${pr.status}`);
+    const popRows = MRF_PUBLIC_SOURCES.population.parse(await pr.json());
+    if (!popRows.length) throw new Error('Census API returned no ZCTA rows');
+    say(`Loading ${popRows.length.toLocaleString()} population rows…`);
+    const p = await mrfPostChunks('/api/market-population-master', popRows, { sourceLabel: MRF_PUBLIC_SOURCES.population.sourceLabel }, (d, n) => say(`Loading population ${d.toLocaleString()} / ${n.toLocaleString()}…`));
+    say('Fetching the public zip→DMA crosswalk…');
+    const dr = await fetch(MRF_PUBLIC_SOURCES.dma.url);
+    if (!dr.ok) throw new Error(`crosswalk HTTP ${dr.status}`);
+    const dmaRows = MRF_PUBLIC_SOURCES.dma.parse(await dr.text());
+    if (!dmaRows.length) throw new Error('crosswalk returned no rows');
+    const d = await mrfPostChunks('/api/market-dma-master', dmaRows, { sourceLabel: MRF_PUBLIC_SOURCES.dma.sourceLabel, method: MRF_PUBLIC_SOURCES.dma.method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${p.inserted.toLocaleString()} population rows and ${d.inserted.toLocaleString()} zip→DMA rows loaded.${(p.errors.length || d.errors.length) ? ` Some rows were skipped: ${[...p.errors, ...d.errors].slice(0, 3).join(' · ')}` : ''}`);
+    mrfLoadStatus();
+  } catch (e){
+    say(`Couldn't load: ${e && e.message ? e.message : e}. If a public source blocks the browser, download the file and use "Upload a crosswalk file" instead.`);
+  } finally { if (btn) btn.disabled = false; }
+}
+// Manual path: a CSV/TSV with zip, DMA code, DMA name (a licensed Nielsen
+// export, or any crosswalk you trust). Source label is required and
+// becomes the disclosure text.
+async function mrfHandleDmaFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mrfLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  const sourceLabel = ((document.getElementById('mrfDmaSource') || {}).value || '').trim();
+  if (!sourceLabel){ say('Enter the source of this crosswalk first (e.g. "Nielsen ZIP Code by DMA 2026, licensed").'); event.target.value = ''; return; }
+  const method = ((document.getElementById('mrfDmaMethod') || {}).value || '').trim() || 'as supplied';
+  try {
+    const text = await file.text();
+    const rows = MRF_PUBLIC_SOURCES.dma.parse(text);
+    if (!rows.length) throw new Error('no rows recognised — expected columns: zip, DMA code, DMA name');
+    say(`Loading ${rows.length.toLocaleString()} rows…`);
+    const d = await mrfPostChunks('/api/market-dma-master', rows, { sourceLabel, method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} zip→DMA rows loaded from "${file.name}".`);
+    mrfLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
+}
+function mrfDmaSectionHtml(dma){
+  if (!dma) return '';
+  if (!dma.available) return `<h4 style="margin:18px 0 6px;">By DMA</h4><p class="hint" style="margin:0;">${escapeHtml(dma.note || dma.disclosure || 'DMA roll-up unavailable.')}</p>`;
+  const rows = dma.dmas.map(d => `<tr><td>${escapeHtml(d.dmaName || d.dmaCode)} <span class="hint">${escapeHtml(String(d.dmaCode))}${d.marketType ? ` · ${d.marketType}` : ''}</span></td><td style="text-align:right;">${dma.weightMode === 'revenue' ? '$' + Number(d.volume).toLocaleString() : Number(d.volume).toLocaleString()}</td><td style="text-align:right;">${d.share != null ? d.share.toFixed(1) + '%' : '—'}</td><td style="text-align:right;">${d.population != null ? Number(d.population).toLocaleString() : '<span class="hint">—</span>'}</td><td style="text-align:right;font-weight:600;">${d.populationIndex != null ? d.populationIndex : '<span class="hint">—</span>'}</td></tr>`).join('');
+  return `
+    <h4 style="margin:18px 0 6px;">By market <span class="hint" style="font-weight:400;">${dma.dmaCount} market${dma.dmaCount === 1 ? '' : 's'}${dma.unmappedZips ? ` · ${dma.unmappedZips} zip${dma.unmappedZips === 1 ? '' : 's'} not in the crosswalk (${dma.weightMode === 'revenue' ? '$' + Number(dma.unmappedVolume).toLocaleString() : Number(dma.unmappedVolume).toLocaleString()})` : ''}</span></h4>
+    <p class="hint" style="margin:0 0 8px;${dma.licensed ? '' : 'color:#b8860b;'}">${escapeHtml(dma.disclosure || '')}${dma.populationCoverage ? '' : ' Population Index needs the population master loaded.'}</p>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
+      <thead><tr><th>DMA</th><th style="text-align:right;">${dma.weightMode === 'revenue' ? 'Revenue' : 'Records'}</th><th style="text-align:right;">Share</th><th style="text-align:right;">Population</th><th style="text-align:right;">Pop. index</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="hint" style="margin:6px 0 0;">Population Index = the DMA's share of your volume ÷ its share of covered population × 100. 100 converts in proportion to size; above 100 over-indexes.</p>`;
+}
+// ============ Stores, zip centroids, DMA-level uploads (2026-09-06) ============
+// Local retail plans on a radius trade area around each store, not a DMA.
+// Store list: CSV/XLSX or typed rows (store id, name, address, optional
+// lat/lng); addresses without coordinates are geocoded in the browser
+// through the Census Geocoder (free, US) and saved with the source. Zip
+// centroids come from the Census ZCTA Gazetteer (free), loaded once for
+// every account like the other reference masters.
+MRF_PUBLIC_SOURCES.centroids = {
+  url: 'https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip',
+  sourceLabel: 'U.S. Census Bureau, 2023 ZCTA Gazetteer (internal point lat/long)',
+  note: 'The gazetteer is a zip archive; download it, unzip the .txt, and upload that file below (GEOID, INTPTLAT, INTPTLONG columns are read automatically).'
+};
+function mrfParseCentroidText(text){
+  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
+  const head = lines[0].split(/\t|,/).map(h => h.trim().toLowerCase());
+  let zi = head.findIndex(h => /^(geoid|zcta5|zcta|zip)/.test(h)), la = head.findIndex(h => /lat/.test(h)), lo = head.findIndex(h => /lon|lng/.test(h));
+  const hasHeader = zi >= 0 && la >= 0 && lo >= 0;
+  if (!hasHeader){ zi = 0; la = 1; lo = 2; }
+  const out = [];
+  lines.slice(hasHeader ? 1 : 0).forEach(l => { const c = l.split(/\t|,/); const zip = String(c[zi] || '').trim().padStart(5, '0'); const lat = Number(c[la]), lng = Number(c[lo]); if (/^\d{5}$/.test(zip) && Number.isFinite(lat) && Number.isFinite(lng)) out.push({ zip, lat, lng }); });
+  return out;
+}
+async function mrfHandleCentroidFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mrfLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  try {
+    const rows = mrfParseCentroidText(await file.text());
+    if (!rows.length) throw new Error('no rows recognised — expected GEOID / INTPTLAT / INTPTLONG (or zip, lat, lng)');
+    const d = await mrfPostChunks('/api/market-zip-centroids', rows, { sourceLabel: `${MRF_PUBLIC_SOURCES.centroids.sourceLabel} — file "${file.name}"` }, (done, n) => say(`Loading centroids ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} zip centroids loaded from "${file.name}".`);
+    mrfLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
+}
+// Country reference files (2026-09-06): generic column finder so a
+// national-statistics export works without hand-mapping -- the postal-unit
+// column is found by header name, else by which column's values parse for
+// the chosen country; the others by header name.
+function mrfParseCountryFile(text, kind, country){
+  const pack = MOU_COUNTRY_PACKS[country]; if (!pack) return [];
+  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const splitCsv = (l) => { const out = []; let cur = '', q = false; for (const ch of l){ if (ch === '"'){ q = !q; continue; } if ((ch === ',' || ch === ';') && !q){ out.push(cur); cur = ''; continue; } cur += ch; } out.push(cur); return out; };
+  const split = (l) => (l.includes('\t') ? l.split('\t') : splitCsv(l));
+  const head = split(lines[0]).map(h => String(h || '').trim().toLowerCase().replace(/^"|"$/g, ''));
+  const sample = split(lines[1]).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
+  let fi = head.findIndex(h => /forward sortation|\bfsa\b|postcode|postal|\bpoa\b|\bplz\b|\bcap\b|code.?postal|codigo.?postal|c[oó]digo|\bzip\b|pcd|outward/.test(h));
+  if (fi < 0) fi = sample.findIndex(v => !!pack.parse(String(v).toUpperCase()));
+  const find = (re) => head.findIndex(h => re.test(h));
+  const pi = find(/population|tot_p|\bpop\b|einwohner|habitant|poblaci|popolaz|persons|usual resident/), la = find(/lat/), lo = find(/lon|lng|long/), ci = find(/nuts|cma.?(code|uid|id)|cmauid|market.?(code|id)|region.?(code|id)|itv|dma|\bcode\b|\bid\b/), cn = find(/market.?name|region.?name|cma.?name|census metropolitan|\bname\b|label|region|market/);
+  if (fi < 0) return [];
+  const out = [];
+  lines.slice(1).forEach(l => {
+    const c = split(l).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
+    const unit = pack.parse(String(c[fi] || '').toUpperCase());
+    if (!unit) return;
+    const key = `${country}:${unit}`;
+    if (kind === 'population'){ const p = Number(String(c[pi] || '').replace(/[^\d.]/g, '')); if (pi >= 0 && Number.isFinite(p)) out.push({ zip: key, population: p }); }
+    else if (kind === 'centroids'){ const lat = Number(c[la]), lng = Number(c[lo]); if (la >= 0 && lo >= 0 && Number.isFinite(lat) && Number.isFinite(lng)) out.push({ zip: key, lat, lng }); }
+    else if (kind === 'markets'){ const code = ci >= 0 && ci !== fi ? c[ci] : ''; if (code) out.push({ zip: key, dmaCode: `${country}-${code}`, dmaName: (cn >= 0 && cn !== fi && cn !== ci) ? c[cn] : code }); }
+  });
+  return out;
+}
+async function mrfHandleCountryFile(event, kind){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mrfLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  const country = ((document.getElementById('mrfCountry') || {}).value || 'CA');
+  const pack = MOU_COUNTRY_PACKS[country] || MOU_COUNTRY_PACKS.CA;
+  try {
+    const rows = mrfParseCountryFile(await file.text(), kind, country);
+    if (!rows.length) throw new Error(`no rows recognised for ${pack.name} ${kind} — check the column names and that codes match the ${pack.unit} format`);
+    const path = kind === 'population' ? '/api/market-population-master' : (kind === 'centroids' ? '/api/market-zip-centroids' : '/api/market-dma-master');
+    const extra = kind === 'markets' ? { country, sourceLabel: `${pack.name} market crosswalk — file "${file.name}"`, method: `${pack.name} statistical/market regions as published — not a licensed audience-measurement definition` } : { country, sourceLabel: `${pack.name} national statistics — file "${file.name}"` };
+    const d = await mrfPostChunks(path, rows, extra, (done, n) => say(`Loading ${pack.name} ${kind} ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} ${pack.name} ${kind} rows loaded from "${file.name}".${d.errors.length ? ` Skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
+    mrfLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
+}
+// ---- Stores ----
+let mstStores = [];
+async function mstLoad(){
+  const body = document.getElementById('mstBody');
+  if (!body) return;
+  if (dataSourceLabel !== 'backend' || !state.companyId){ body.innerHTML = '<p class="hint" style="margin:0;">Stores are kept on the backend.</p>'; return; }
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`); mstStores = r.ok ? ((await r.json()).stores || []) : []; } catch (e){ mstStores = []; }
+  mstRender();
+}
+function mstRender(){
+  const body = document.getElementById('mstBody');
+  if (!body) return;
+  const geocoded = mstStores.filter(s => s.lat != null && s.lng != null).length;
+  const rows = mstStores.map(s => `<tr><td>${escapeHtml(s.storeId || '')}</td><td>${escapeHtml(s.name || '')}</td><td>${escapeHtml(s.address || '')}${s.country && s.country !== 'US' ? ` <span class="hint">${escapeHtml(s.country)}</span>` : ''}</td><td>${s.lat != null ? `${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)} <span class="hint">${escapeHtml(s.geocodeSource || '')}</span>` : '<span style="color:#b8860b;">not geocoded</span>'}</td></tr>`).join('');
+  body.innerHTML = `
+    <p class="hint" style="margin:0 0 8px;">${mstStores.length ? `<b>${mstStores.length} store${mstStores.length === 1 ? '' : 's'}</b>, ${geocoded} geocoded.` : 'No stores on file yet.'} Upload a CSV with columns like Store ID, Name, Address (and Lat, Lng if you have them), or add one below. Addresses without coordinates are geocoded through the U.S. Census Geocoder.</p>
+    ${mstStores.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Store ID</th><th>Name</th><th>Address</th><th>Coordinates</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px;">
+      <div class="field" style="margin:0;flex:0 0 110px;"><label>Store ID</label><input type="text" id="mstNewId" placeholder="S-101"></div>
+      <div class="field" style="margin:0;flex:1 1 160px;"><label>Name</label><input type="text" id="mstNewName" placeholder="Palm Beach"></div>
+      <div class="field" style="margin:0;flex:2 1 260px;"><label>Address</label><input type="text" id="mstNewAddress" placeholder="150 Worth Ave, Palm Beach, FL 33480"></div>
+      <div class="field" style="margin:0;flex:0 0 120px;"><label>Country</label><select id="mstNewCountry">${Object.keys(MOU_COUNTRY_PACKS).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
+      <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
+      <div class="field" style="margin:0;"><label>Or upload a store list</label><input type="file" accept=".csv,.tsv,.txt,.xlsx" onchange="mstHandleFile(event)"></div>
+    </div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button type="button" class="btn-ghost" onclick="mstGeocodeMissing()" ${mstStores.some(s => s.lat == null && s.address) ? '' : 'disabled'}>Geocode addresses without coordinates →</button>
+      <span class="hint" id="mstStatus"></span>
+    </div>`;
+}
+async function mstSave(stores, replace){
+  const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stores, replace: !!replace }), timeoutMs: 60000 });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+async function mstAddOne(){
+  const storeId = ((document.getElementById('mstNewId') || {}).value || '').trim(), name = ((document.getElementById('mstNewName') || {}).value || '').trim(), address = ((document.getElementById('mstNewAddress') || {}).value || '').trim();
+  const status = document.getElementById('mstStatus');
+  if (!storeId && !name && !address){ if (status) status.textContent = 'Enter at least a store id, name or address.'; return; }
+  const country = ((document.getElementById('mstNewCountry') || {}).value || 'US');
+  try { await mstSave([{ storeId, name, address, country }], false); await mstLoad(); } catch (e){ if (status) status.textContent = 'Could not save the store.'; }
+}
+async function mstHandleFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mstStatus');
+  if (!file) return;
+  try {
+    let grid;
+    if (/\.xlsx$/i.test(file.name)){ await cfiLoadSheetJs(); const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' }); grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' }); }
+    else grid = cfiParseCsvText(await file.text());
+    if (!grid || grid.length < 2) throw new Error('no rows found');
+    const head = grid[0].map(h => String(h || '').trim().toLowerCase());
+    const col = (re) => head.findIndex(h => re.test(h));
+    const ci = { storeId: col(/store.?(id|#|no|number)|^id$/), name: col(/name|store$/), address: col(/address|street|location/), lat: col(/^lat/), lng: col(/^(lng|lon|long)/), country: col(/country|nation|iso/) };
+    if (ci.address < 0 && ci.name < 0 && ci.storeId < 0) throw new Error('no Store ID, Name or Address column recognised');
+    const stores = grid.slice(1).filter(r => r.some(c => String(c || '').trim())).map(r => ({ storeId: ci.storeId >= 0 ? r[ci.storeId] : '', name: ci.name >= 0 ? r[ci.name] : '', address: ci.address >= 0 ? r[ci.address] : '', lat: ci.lat >= 0 ? r[ci.lat] : null, lng: ci.lng >= 0 ? r[ci.lng] : null, country: ci.country >= 0 ? (mouNormalizeCountry(r[ci.country]) || 'US') : 'US', geocodeSource: (ci.lat >= 0 && ci.lng >= 0) ? 'supplied in file' : null }));
+    const replace = window.confirm(`Replace the current store list with the ${stores.length} store(s) in "${file.name}"? Cancel adds them alongside the existing list.`);
+    const out = await mstSave(stores, replace);
+    if (status) status.textContent = `Saved ${out.saved} store(s); ${out.geocoded} geocoded${out.notGeocoded && out.notGeocoded.length ? ` — ${out.notGeocoded.length} still need coordinates` : ''}.`;
+    await mstLoad();
+  } catch (e){ if (status) status.textContent = `Couldn't read "${file.name}": ${e && e.message ? e.message : e}`; }
+  event.target.value = '';
+}
+// U.S. Census Geocoder — public, no key, US addresses only. One address
+// per call; a miss leaves the store un-geocoded (never a guessed point).
+async function mstGeocodeAddress(address){
+  const u = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&format=json`;
+  const r = await fetch(u);
+  if (!r.ok) throw new Error(`geocoder HTTP ${r.status}`);
+  const j = await r.json();
+  const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+  if (!m || !m.coordinates) return null;
+  return { lat: Number(m.coordinates.y), lng: Number(m.coordinates.x), matched: m.matchedAddress || null };
+}
+async function mstGeocodeMissing(){
+  const status = document.getElementById('mstStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  const todo = mstStores.filter(s => s.lat == null && s.address);
+  if (!todo.length){ say('Every store with an address already has coordinates.'); return; }
+  let done = 0, missed = [];
+  const updates = [];
+  for (const s of todo){
+    say(`Geocoding ${done + 1} of ${todo.length}: ${s.name || s.address}…`);
+    // Outside the US no free geocoder is wired: place the store at the
+    // centroid of the postal unit found in its address (approximate,
+    // disclosed), or ask for lat/lng in the file.
+    const country = s.country && s.country !== 'US' ? s.country : null;
+    if (country){
+      const tokens = String(s.address || '').toUpperCase().split(/[,\s]+/).filter(Boolean);
+      let unit = null;
+      for (let i = tokens.length - 1; i >= 0 && !unit; i--){ unit = MOU_COUNTRY_PACKS[country] ? (MOU_COUNTRY_PACKS[country].parse(tokens[i]) || (i > 0 ? MOU_COUNTRY_PACKS[country].parse(tokens[i - 1] + tokens[i]) : null)) : null; }
+      if (!unit){ missed.push(`${s.name || s.address} (no ${country} postal code found in the address — add Lat/Lng to the file)`); done++; continue; }
+      try { const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/lookup?key=${encodeURIComponent(country + ':' + unit)}&country=${country}`); const c = r.ok ? await r.json() : null; if (c && c.found) updates.push({ storeId: s.storeId, name: s.name, address: s.address, country, lat: c.lat, lng: c.lng, geocodeSource: `${country} ${unit} centroid (approximate)` }); else missed.push(`${s.name || s.address} (no centroid for ${country} ${unit} — load ${country} centroids under Reference data, or add Lat/Lng to the file)`); }
+      catch (e){ missed.push(`${s.name || s.address} (${e.message})`); }
+      done++; continue;
+    }
+    try { const g = await mstGeocodeAddress(s.address); if (g){ updates.push({ storeId: s.storeId, name: s.name, address: s.address, country: 'US', lat: g.lat, lng: g.lng, geocodeSource: 'U.S. Census Geocoder' }); } else missed.push(s.name || s.address); }
+    catch (e){ missed.push(`${s.name || s.address} (${e.message})`); }
+    done++;
+  }
+  const canUpdate = updates.filter(u => u.storeId);
+  if (canUpdate.length){ try { await mstSave(canUpdate, false); } catch (e){ say('Geocoded, but saving failed.'); return; } }
+  say(`${canUpdate.length} store(s) geocoded${updates.length > canUpdate.length ? ` (${updates.length - canUpdate.length} without a Store ID couldn't be updated in place — add ids and retry)` : ''}${missed.length ? `; no match for: ${missed.slice(0, 5).join(', ')}` : ''}.`);
+  await mstLoad();
+}
+function mstTradeAreaSectionHtml(st){
+  if (!st) return '';
+  if (!st.available) return `<h4 style="margin:18px 0 6px;">By store trade area</h4><p class="hint" style="margin:0;">${escapeHtml(st.note || 'unavailable')}</p>`;
+  const rad = st.radiiMiles;
+  const rows = st.stores.map(s => `<tr><td>${escapeHtml(s.name)}${s.address ? `<div class="hint">${escapeHtml(s.address)}</div>` : ''}</td>${s.rings.map(r => `<td style="text-align:right;">${Number(r.volume).toLocaleString()}<div class="hint">${r.population != null ? Number(r.population).toLocaleString() + ' pop' : '—'}${r.index != null ? ` · idx ${r.index}` : ''}</div></td>`).join('')}<td style="text-align:right;font-weight:600;">${Number(s.assignedVolume).toLocaleString()}<div class="hint">${s.assignedZips} zip${s.assignedZips === 1 ? '' : 's'}</div></td></tr>`).join('');
+  const pairs = (st.pairs || []).map(p => `<tr><td>${escapeHtml(p.test)}</td><td>${escapeHtml(p.control)}</td><td style="text-align:right;">${p.distance}</td></tr>`).join('');
+  return `
+    <h4 style="margin:18px 0 6px;">By store trade area <span class="hint" style="font-weight:400;">${st.storesGeocoded} of ${st.storesTotal} stores geocoded · rings ${rad.join(' / ')} mi${st.beyondRingsZips ? ` · ${st.beyondRingsZips} zip${st.beyondRingsZips === 1 ? '' : 's'} (${Number(st.beyondRingsVolume).toLocaleString()}) beyond every ring` : ''}${st.unmappedZips ? ` · ${st.unmappedZips} without a centroid` : ''}</span></h4>
+    <p class="hint" style="margin:0 0 8px;">${escapeHtml(st.disclosure)}${st.populationCoverage ? '' : ' Ring population needs the population master loaded.'}</p>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
+      <thead><tr><th>Store</th>${rad.map(r => `<th style="text-align:right;">${r} mi ring</th>`).join('')}<th style="text-align:right;">Assigned (nearest store)</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="hint" style="margin:6px 0 10px;">Ring index = that store's penetration rate (volume ÷ ring population) against the average store at the same ring; 100 = average.</p>
+    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Matched store pairs</p>
+    <p class="hint" style="margin:0 0 6px;">${escapeHtml(st.pairNote || '')}</p>
+    ${pairs ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Test store</th><th>Control store</th><th style="text-align:right;">Similarity distance</th></tr></thead><tbody>${pairs}</tbody></table></div>` : ''}
+    ${(st.unpaired || []).length ? `<p class="hint" style="margin:6px 0 0;">Unpaired: ${st.unpaired.map(escapeHtml).join(', ')}</p>` : ''}`;
+}
 function mouRenderResults(data){
   const card = document.getElementById('mouResultsCard');
   const body = document.getElementById('mouResultsBody');
@@ -25159,7 +25687,7 @@ function mouRenderResults(data){
     if (p.flag === 'no_population_data' || p.flag === 'no_revenue_data'){
       const msg = p.flag === 'no_revenue_data' ? 'No revenue on file.' : 'No population data on file yet.';
       return `<tr>
-        <td>${escapeHtml(p.zip)}${holdoutTag}</td>
+        <td>${escapeHtml(mouGeoLabel(p.zip))}${holdoutTag}</td>
         <td>${volVal}</td>
         <td colspan="2" style="color:var(--muted);">${msg}</td>
         <td>—</td>
@@ -25167,7 +25695,7 @@ function mouRenderResults(data){
       </tr>`;
     }
     return `<tr>
-      <td>${escapeHtml(p.zip)}${holdoutTag}</td>
+      <td>${escapeHtml(mouGeoLabel(p.zip))}${holdoutTag}</td>
       <td>${volVal}</td>
       <td>${p.population.toLocaleString()}</td>
       <td>${(p.penetrationRate * 100).toFixed(3)}%</td>
@@ -25204,7 +25732,7 @@ function mouRenderResults(data){
         <tr><td>Total rows provided</td><td>${audit.totalRowsProvided.toLocaleString()}</td></tr>
         <tr><td>Mapped successfully</td><td>${audit.mappedRowCount.toLocaleString()}</td></tr>
         ${Object.entries(audit.excludedByReason || {}).map(([reason, n]) => `<tr><td>${escapeHtml(MOU_REASON_LABELS[reason] || reason)}</td><td>${n.toLocaleString()}</td></tr>`).join('')}
-        <tr><td>Rolled up to unique zips</td><td>${audit.uniqueZipsMapped.toLocaleString()}</td></tr>
+        <tr><td>Rolled up to unique zips / FSAs</td><td>${audit.uniqueZipsMapped.toLocaleString()}${audit.byCountry ? ` <span class="hint">(${Object.entries(audit.byCountry).map(([c, n]) => `${c} ${Number(n).toLocaleString()}`).join(' · ')})</span>` : ''}</td></tr>
       </tbody>
     </table></div>` : '';
 
@@ -25214,13 +25742,16 @@ function mouRenderResults(data){
 
   body.innerHTML = `
     ${auditHtml}
+    ${data.geoLevel === 'dma' ? `<p class="hint" style="margin:0 0 10px;color:#b8860b;font-weight:600;">DMA-level upload — ${escapeHtml(data.confidence || 'lower confidence')}</p>` : ''}
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Penetration index, composite score &amp; opportunity tier (weighted by ${escapeHtml(volLabel.toLowerCase())}, indexed to this file's own average = 100)</p>
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:6px;">
       <thead><tr><th>Zip</th><th>${escapeHtml(volLabel)}</th><th>Population</th><th>Rate</th><th>Index</th><th>Composite score / tier</th></tr></thead>
       <tbody>${penRows || '<tr><td colspan="6">No rows.</td></tr>'}</tbody>
     </table></div>
     <p class="hint" style="margin-bottom:16px;">Composite score defaults to two-thirds volume weight / one-third index weight — an open assumption per the design doc, not a settled fact; adjustable via this upload's analysis endpoint if a different weighting fits the account better.</p>
-    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Demographic index</p>
+    ${mrfDmaSectionHtml(data.dma)}
+    ${mstTradeAreaSectionHtml(data.stores)}
+    <p style="font-size:0.8125rem;font-weight:600;margin:18px 0 6px;">Demographic index</p>
     <div style="margin-bottom:16px;">${demoHtml}</div>
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Test / Control / Holdout</p>
     ${holdoutHtml}
@@ -27913,6 +28444,7 @@ function mbuApplyPageMode(){
   show('mbuActiveChannelsCard', exists || path === 'manual');
   show('mpNonWorkingCard', exists || (path === 'manual' && (typeof mpShowNonWorking !== 'undefined' && mpShowNonWorking)));
   show('mbuHistoryCard', exists);
+  show('mpLearningCard', exists);
   if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
 }
 // Back-compat name (older call sites) -- same controller.
@@ -39431,6 +39963,8 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'marketOptimization'){
     mouResetImport();
     mouLoadHistory();
+    if (typeof mrfLoadStatus === 'function') mrfLoadStatus();
+    if (typeof mstLoad === 'function') mstLoad();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
     // 2026-08-23 — Product & Campaign Groups, moved here from Marketing
