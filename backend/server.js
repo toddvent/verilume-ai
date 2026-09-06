@@ -16331,13 +16331,17 @@ Submit your findings via the submit_brand_categories tool.`;
         return sendJson(res, 200, { restricted: false, activeChannels: null });
       }
       const byVerilumeCategory = computeByVerilumeCategoryForUpload(latestConfirmed.id);
-      const active = new Set(MMM_CHANNELS_ALWAYS_ACTIVE);
+      const fromBudget = new Set();
       Object.entries(byVerilumeCategory).forEach(([vc, total]) => {
         if (!(total > 0)) return;
-        (VERILUME_TO_MMM_CHANNEL_MAP[vc] || []).forEach(ch => active.add(ch));
+        (VERILUME_TO_MMM_CHANNEL_MAP[vc] || []).forEach(ch => fromBudget.add(ch));
       });
+      const active = new Set([...MMM_CHANNELS_ALWAYS_ACTIVE, ...fromBudget]);
       const upload = db.prepare('SELECT fileName FROM marketing_budget_uploads WHERE id = ?').get(latestConfirmed.id);
-      return sendJson(res, 200, { restricted: true, activeChannels: [...active], uploadId: latestConfirmed.id, uploadFileName: upload ? upload.fileName : null });
+      // 2026-09-06 review (item 5): fromBudget = only the channels the
+      // year's budget identifies, without the always-on trio, for the
+      // year's Active Channels card.
+      return sendJson(res, 200, { restricted: true, activeChannels: [...active], fromBudget: [...fromBudget], uploadId: latestConfirmed.id, uploadFileName: upload ? upload.fileName : null });
     }
 
     // ============ Continuous learning inputs (2026-09-05) ============
@@ -17594,3 +17598,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
