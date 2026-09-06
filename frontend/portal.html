@@ -22522,7 +22522,11 @@ async function setMpYear(year){
   mpSelectedYear = year;
   await loadMediaPlan(year);
   await loadMpYearActiveChannels();
-  if (typeof mbdLoadYearResults === 'function') await mbdLoadYearResults(year);
+  if (typeof mbdLoadYearResults === 'function'){
+    await mbdLoadYearResults(year);
+    // if the detail for this year painted before the results arrived, repaint it once with them
+    if (mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(year) && mbdLoadedUploadId === mbdLastUploadDetail.id && !document.getElementById('mbuCategoryMappingResult')) mbuRenderResults(mbdLastUploadDetail);
+  }
   if (typeof mpRenderLearningInputs === 'function') mpRenderLearningInputs();
   await mpAutoPrefillIfBlank();
   renderMediaPlanFieldsAndCharts(false);
@@ -27784,7 +27788,7 @@ function mbdRevenueStripHtml(year, workingSpend){
       <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
         ${field('mbdPlannedRevenue', 'Planned gross revenue', planned, 1000)}
         ${field('mbdActualRevenue', 'Actual gross revenue', actual, 1000)}
-        ${ro('Variance', variance == null ? '—' : `${variance >= 0 ? '+' : '−'}${fmtMoney(Math.abs(Math.round(variance)))}${planned > 0 ? ` <span class="hint">(${variance >= 0 ? '+' : '−'}${Math.abs(variance / planned * 100).toFixed(1)}%)</span>` : ''}`, variance == null ? '' : (variance >= 0 ? 'color:#14532d;' : 'color:var(--advocacy);'))}
+        ${ro('Variance', variance == null ? '—' : (variance === 0 && planned === actual ? `<span class="hint" style="font-weight:400;">none — planned set to the final figure (no plan on record for this year)</span>` : `${variance >= 0 ? '+' : '−'}${fmtMoney(Math.abs(Math.round(variance)))}${planned > 0 ? ` <span class="hint">(${variance >= 0 ? '+' : '−'}${Math.abs(variance / planned * 100).toFixed(1)}%)</span>` : ''}`), variance == null || variance === 0 ? '' : (variance >= 0 ? 'color:#14532d;' : 'color:var(--advocacy);'))}
         ${field('mbdTransactions', 'Unique transactions', tx, 1)}
         ${ro('Avg revenue / transaction', money(avg))}
         <button type="button" class="btn-ghost" onclick="mbdSaveYearResults(${Number(year)})">Save →</button>
@@ -27799,7 +27803,7 @@ function mbdRoasLineHtml(year, workingSpend){
   const roas = (v) => (v != null && workingSpend > 0) ? `${(v / workingSpend).toFixed(2)}×` : '—';
   return `
     <div style="display:flex;justify-content:flex-end;gap:28px;align-items:baseline;margin-top:6px;padding-top:6px;">
-      <span style="font-size:0.8438rem;"><span class="hint">Planned ROAS</span> <b>${roas(planned)}</b></span>
+      <span style="font-size:0.8438rem;"><span class="hint">Planned ROAS</span> <b>${roas(planned)}</b>${(planned != null && actual != null && planned === actual) ? ' <span class="hint">(= final; no plan on record)</span>' : ''}</span>
       <span style="font-size:0.8438rem;"><span class="hint">Actual ROAS</span> <b style="color:var(--cx);">${roas(actual)}</b></span>
     </div>`;
 }
@@ -27832,6 +27836,11 @@ async function mbdShowForUpload(uploadId){
     mbdLoadedUploadId = uploadId;
     mbdLastUploadDetail = detail;
     mbuAnalysis = mbuAnalysis && mbuAnalysis.id === uploadId ? mbuAnalysis : { id: uploadId, layout: detail.layout, status: detail.status, year: detail.year };
+    // 2026-09-06 follow-up: one paint, not two -- the year's revenue and
+    // results are loaded before the detail renders, so the first view is
+    // already the final recap (revenue strip, variance, ROAS) rather than a
+    // bare version that fills in after a save.
+    if (typeof mbdLoadYearResults === 'function' && mbdYearResults[detail.year] === undefined) await mbdLoadYearResults(detail.year);
     mbuRenderResults(detail);
   } catch (e){ /* leave whatever is showing */ }
 }
