@@ -7626,14 +7626,6 @@
       </div>
     </div>
 
-    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Budget detail</div><h3>Imported budget</h3></div>
-        <div class="hicon">📊</div>
-      </div>
-      <div class="sk-card-body" id="mbuResultsBody"></div>
-    </div>
-
     <!-- Round 27 (2026-08-05), per direct instruction: 3 charts lead the
          Budget screens, ahead of Plan setup — a) Plan Pacing (donut,
          Committed vs Remaining of the approved plan, same role-scoping as
@@ -7656,9 +7648,17 @@
     <!-- Round 9 (2026-09-05): Plan Pacing / Budget Tracking / Channel Media
          Mix are campaign-tracking reports for the year in progress; for a
          historical or future budget year they'd only duplicate the Budget
-         detail above with data from a different year, so this strip takes
+         detail below with data from a different year, so this strip takes
          their place. -->
     <div id="mbuYearStatusStrip" class="hint" style="display:none;margin:0 0 18px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;"></div>
+
+    <div class="sk-card" id="mbuResultsCard" style="display:none;margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Budget detail</div><h3>Imported budget</h3></div>
+        <div class="hicon">📊</div>
+      </div>
+      <div class="sk-card-body" id="mbuResultsBody"></div>
+    </div>
 
     <!-- ================= Media Plan steps (Round 7, 2026-09-05) =================
          The "Manually add" path IS the Media Plan: Step 1 Annual budget (typed,
@@ -27716,6 +27716,7 @@ function mbdModelFromPlan(plan){
   const allocs = (plan && plan.allocations) || [];
   const groups = {};
   const stages = {}; MEDIA_LOOP_STAGES.forEach(st => { stages[st] = 0; });
+  const stageChannels = {}; // stage -> { channel: $ } -- what section A's "view details" expands to for a saved plan
   allocs.forEach(a => {
     const amt = Number(a.approvedAmount) || 0;
     const g = MBD_MMM_TO_GROUP[a.channel] || 'Other';
@@ -27728,6 +27729,7 @@ function mbdModelFromPlan(plan){
     if (existing){ existing.total += amt; if (anyMonth){ MBD_MONTHS.forEach(m => { if (months[m] != null) existing.months = Object.assign(existing.months || {}, { [m]: ((existing.months || {})[m] || 0) + months[m] }); }); } }
     else groups[g].subs.push({ label: a.channel, total: amt, months: anyMonth ? months : null });
     if (stages[a.stage] != null) stages[a.stage] += amt;
+    if (amt > 0){ if (!stageChannels[a.stage]) stageChannels[a.stage] = {}; stageChannels[a.stage][a.channel] = (stageChannels[a.stage][a.channel] || 0) + amt; }
   });
   const channels = Object.values(groups).map(g => { g.subs.sort((a, b) => b.total - a.total); return g; }).sort((a, b) => b.total - a.total);
   const nonWorking = ((plan && plan.nonWorkingMedia) || []).map(r => {
@@ -27742,7 +27744,7 @@ function mbdModelFromPlan(plan){
   return {
     source: 'plan', title: `${(plan && plan.year) || mpSelectedYear} Domestic budget — Media Plan`,
     stages, stageBasis: 'Loop stages as allocated in the plan.',
-    channels, months: mbdSumMonths(channels.flatMap(g => g.subs.map(s => s.months))), nonWorking, monthlyMode: (plan && plan.monthlyMode) || 'flat'
+    channels, months: mbdSumMonths(channels.flatMap(g => g.subs.map(s => s.months))), nonWorking, monthlyMode: (plan && plan.monthlyMode) || 'flat', stageChannels
   };
 }
 function mbdMoneyCells(months, strong){
@@ -27754,53 +27756,66 @@ function mbdRenderUnified(model, opts){
   const working = model.channels.reduce((s, g) => s + g.total, 0);
   const nonWorkingTotal = model.nonWorking.reduce((s, r) => s + r.total, 0);
   const uid = `mbd${Date.now().toString(36)}`;
-  // (a) Marketing Loop allocations
-  const stageRows = MEDIA_LOOP_STAGES.map(st => {
+  // (a) Marketing Loop allocations -- 2026-09-06 (Todd: "would be good if it
+  // presented in a way consistent with the other charts on the page and
+  // there was an option to select each stage to view and edit details"):
+  // a donut + legend, the same visual language as Plan Pacing/Channel Media
+  // Mix above, with each stage a clickable row that expands into its own
+  // detail -- the dollar input for an editable (uploaded) budget, or the
+  // channels that make up that stage for a saved plan.
+  const stageSegs = MEDIA_LOOP_STAGES.map(st => ({ label: st, value: model.stages[st] || 0, color: STAGE_LOOP_COLORS[st] }));
+  const stageDonut = buildDonutSvg(working > 0 ? stageSegs.filter(s => s.value > 0) : [{ label: 'none', value: 1, color: 'var(--paper-dim)' }], 'sm');
+  const stageLegendRows = MEDIA_LOOP_STAGES.map((st, si) => {
     const amt = model.stages[st] || 0; const pct = working > 0 ? amt / working : 0;
-    const amountCell = model.editableStages
-      ? `<td style="text-align:right;"><div class="field" style="margin:0;min-width:150px;display:inline-block;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="1000" value="${Math.round(amt)}" style="padding-left:24px;" onchange="mbdEditUploadStage('${model.uploadId}', '${st}', this.value)"></div></div></td>`
-      : `<td style="text-align:right;font-weight:600;">$${Math.round(amt).toLocaleString()}</td>`;
-    return `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${STAGE_LOOP_COLORS[st]};margin-right:8px;vertical-align:middle;"></span>${st}</td>${amountCell}<td style="text-align:right;color:var(--muted);">${(pct * 100).toFixed(1)}%</td><td style="width:40%;"><div style="height:8px;background:var(--paper-dim);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${Math.min(100, pct * 100).toFixed(1)}%;background:${STAGE_LOOP_COLORS[st]};"></div></div></td></tr>`;
+    const detailId = `${uid}-stage-${si}`;
+    let detailHtml;
+    if (model.editableStages){
+      detailHtml = `<div style="display:flex;align-items:center;gap:8px;padding:8px 0 8px 26px;"><div class="field" style="margin:0;min-width:150px;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="1000" value="${Math.round(amt)}" style="padding-left:24px;" onchange="mbdEditUploadStage('${model.uploadId}', '${st}', this.value)"></div></div><span class="hint">of $${Math.round(working).toLocaleString()} working media — the other four stages rebalance to keep the total.</span></div>`;
+    } else if (model.stageChannels && model.stageChannels[st] && Object.keys(model.stageChannels[st]).length){
+      const rows = Object.entries(model.stageChannels[st]).sort((a, b) => b[1] - a[1]);
+      detailHtml = `<div style="padding:4px 0 8px 26px;">${rows.map(([ch, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;font-size:0.8125rem;padding:3px 0;"><span style="color:var(--muted);">↳ ${escapeHtml(ch)}</span><span style="font-weight:600;">$${Math.round(v).toLocaleString()}</span></div>`).join('')}</div>`;
+    } else {
+      detailHtml = `<p class="hint" style="padding:4px 0 8px 26px;">No channel is assigned to ${escapeHtml(st)} yet.</p>`;
+    }
+    return `<div class="donut-legend-item" style="cursor:pointer;" onclick="mbdToggle('${detailId}')"><span class="swatch" style="background:${STAGE_LOOP_COLORS[st]};"></span><span class="lname">${st}</span><span class="lval">$${Math.round(amt).toLocaleString()} (${(pct * 100).toFixed(1)}%)</span></div>
+      <div id="${detailId}" hidden>${detailHtml}</div>`;
   }).join('');
-  const stageReset = (model.editableStages && model.stagesAssigned) ? `<p class="hint" style="margin:4px 0 0;"><a onclick="mbdResetUploadStages('${model.uploadId}')" style="cursor:pointer;">Reset to the derived split →</a></p>` : '';
-  // (b)+(c) channel totals with sub-channels; right column non-working
-  const channelRows = model.channels.map((g, gi) => {
-    const subId = `${uid}-g${gi}`;
-    const subRows = g.subs.map(sb => `<tr class="mbd-sub"><td style="padding-left:28px;color:var(--muted);">↳ ${escapeHtml(sb.label)}</td><td style="text-align:right;">$${Math.round(sb.total).toLocaleString()}</td><td style="text-align:right;color:var(--muted);">${working > 0 ? ((sb.total / working) * 100).toFixed(1) : '0.0'}%</td></tr>`).join('');
-    return `<tr style="border-top:1px solid var(--line);"><td style="font-weight:700;"><button type="button" class="btn-ghost" style="font-size:0.7rem;padding:1px 7px;margin-right:6px;" onclick="mbdToggle('${subId}')">${g.subs.length}</button>${escapeHtml(g.label)}</td><td style="text-align:right;font-weight:700;">$${Math.round(g.total).toLocaleString()}</td><td style="text-align:right;color:var(--muted);">${working > 0 ? ((g.total / working) * 100).toFixed(1) : '0.0'}%</td></tr>
-      <tbody id="${subId}" hidden>${subRows}</tbody>`;
-  }).join('');
-  const nwRows = model.nonWorking.map(r => `<tr><td>${escapeHtml(r.label)}</td><td style="text-align:right;font-weight:600;">$${Math.round(r.total).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="2" class="hint">No non-working spend on file.</td></tr>';
-  // (d) monthly
-  const nwMonths = mbdSumMonths(model.nonWorking.map(r => r.months));
+  const stageReset = (model.editableStages && model.stagesAssigned) ? `<p class="hint" style="margin:8px 0 0;"><a onclick="mbdResetUploadStages('${model.uploadId}')" style="cursor:pointer;">Reset to the derived split →</a></p>` : '';
+  // (b)+(c)+(d) 2026-09-06 (Todd: "Aggregate Channel totals and
+  // sub-channels duplicates the chart to the right. The cleaner monthly
+  // view should be a simple monthly chart that includes the working media
+  // channel name listed in column A."): the old channel-totals table
+  // repeated the Channel Media Mix chart above at the group level: one
+  // table now carries the detail that chart doesn't -- every working-media
+  // sub-channel with its month-by-month spend, channel name in column A.
+  const allSubs = model.channels.flatMap(g => g.subs.map(sb => Object.assign({}, sb, { group: g.label })));
+  allSubs.sort((a, b) => b.total - a.total);
   const monthHeads = MBD_MONTHS.map(m => `<th style="text-align:right;">${m[0].toUpperCase()}${m.slice(1)}</th>`).join('');
-  const monthlyHtml = model.months ? `
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;min-width:1020px;">
-      <thead><tr><th></th>${monthHeads}<th style="text-align:right;">Total</th></tr></thead>
+  const anySubMonths = allSubs.some(sb => sb.months);
+  const monthlyByChannelHtml = allSubs.length ? `
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;min-width:1120px;">
+      <thead><tr><th>Working media channel</th>${anySubMonths ? monthHeads : ''}<th style="text-align:right;">Total</th></tr></thead>
       <tbody>
-        <tr><td style="font-weight:600;">Working media</td>${mbdMoneyCells(model.months, true)}<td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td></tr>
+        ${allSubs.map(sb => `<tr><td>${escapeHtml(sb.label)}<div class="hint" style="font-weight:400;">${escapeHtml(sb.group)}</div></td>${anySubMonths ? mbdMoneyCells(sb.months, false) : ''}<td style="text-align:right;font-weight:700;">$${Math.round(sb.total).toLocaleString()}</td></tr>`).join('')}
       </tbody>
+      <tfoot><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td>${anySubMonths ? mbdMoneyCells(model.months, true) : ''}<td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td></tr></tfoot>
     </table></div>
-    ${model.monthlyMode ? `<p class="hint" style="margin:6px 0 0;">Monthly curve: ${({ flat: 'Flat (even split)', curve: 'Revenue curve', manual: 'Custom %' })[model.monthlyMode] || model.monthlyMode}.</p>` : ''}` : '<p class="hint">No month-by-month figures on file — totals only.</p>';
+    ${!anySubMonths ? '<p class="hint" style="margin-top:6px;">No month-by-month figures on file for these channels — totals only.</p>' : ''}
+    ${model.monthlyMode ? `<p class="hint" style="margin:6px 0 0;">Monthly curve: ${({ flat: 'Flat (even split)', curve: 'Revenue curve', manual: 'Custom %' })[model.monthlyMode] || model.monthlyMode}.</p>` : ''}` : '<p class="hint">No working-media channels on file yet.</p>';
   const sectionHead = (n, title, hint) => `<div style="margin:18px 0 8px;"><span class="kicker" style="margin-right:8px;">${n}</span><span style="font-weight:700;">${title}</span>${hint ? `<span class="hint" style="margin-left:8px;">${hint}</span>` : ''}</div>`;
   return `
     ${opts.hideTitle ? '' : `<p class="hint" style="margin:0 0 4px;">${escapeHtml(model.title)}</p>`}
     ${opts.actionsHtml || ''}
     ${sectionHead('A', 'Marketing Loop allocations', model.stageBasis)}
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;"><thead><tr><th>Stage</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th><th></th></tr></thead><tbody>${stageRows}</tbody></table></div>
+    <div class="exec-visual-row"><div class="donut-svg-wrap">${stageDonut.svg}<div class="donut-center"><div class="num">$${(working / 1000000).toFixed(1)}M</div><div class="lbl">Working media</div></div></div><div class="donut-side-col"><div class="donut-legend">${stageLegendRows}</div></div></div>
     ${stageReset}
-    ${sectionHead('B · C', 'Channel totals and sub-channels', 'Sub-channels roll up to each total — click the count to expand.')}
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
-      <thead><tr><th>Working media</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Share</th></tr></thead>${channelRows}
-      <tbody><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td><td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td><td style="text-align:right;">100%</td></tr></tbody>
-    </table></div>
+    ${sectionHead('B · C', 'Channel monthly detail', 'Every working-media channel by month — the mix by group is above in Channel Media Mix.')}
+    ${monthlyByChannelHtml}
     <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:12px;padding-top:8px;">
       <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working $${Math.round(working).toLocaleString()} + non-working $${Math.round(nonWorkingTotal).toLocaleString()}, read-only — non-working lines are managed in <a onclick="(document.getElementById('mpNonWorkingCard')||{scrollIntoView(){}}).scrollIntoView({ behavior: 'smooth', block: 'start' })" style="cursor:pointer;">Non-Working Media</a> below)</span></span>
       <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</span>
     </div>
-    ${opts.roasHtml || ''}
-    ${sectionHead('D', 'Monthly distribution')}
-    ${monthlyHtml}`;
+    ${opts.roasHtml || ''}`;
 }
 // Show the unified view for the selected year's budget: a confirmed upload
 // wins (it's the client's real numbers); otherwise the saved Media Plan.
