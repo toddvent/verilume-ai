@@ -227,6 +227,7 @@
   "phoneVerifiedAt",
   "piiScanFindings",
   "plannedImpressions",
+  "plannedRevenue",
   "playbookAudience",
   "playbookCreative",
   "playbookKpi",
