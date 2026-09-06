@@ -27290,6 +27290,7 @@ function mbuRenderCategoryMapping(){
   const card = document.getElementById('mbuResultsCard');
   const body = document.getElementById('mbuResultsBody');
   if (!card || !body || !mbuCategoryMappingData) return;
+  mbdResultsBodyView = 'mapping';
   card.style.display = '';
   // Only Working Media goes through mapping/grouping now. Total/subtotal
   // rows are already dropped server-side (mbuIsTotalLikeCategoryLabel).
@@ -27431,7 +27432,9 @@ function mbuRenderCategoryMapping(){
       </div>`;
   }).join('');
 
+  const isEditingConfirmed = (mbuCategoryMappingData && mbuCategoryMappingData.uploadStatus === 'confirmed') || (mbuAnalysis && mbuAnalysis.status === 'confirmed');
   body.innerHTML = `
+    ${isEditingConfirmed ? `<button type="button" class="btn-ghost" onclick="mbuBackToBudgetDetail()" style="margin-bottom:10px;">← Back to budget detail (discard unsaved changes)</button>` : ''}
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 4px;">Review your budget</p>
     <p class="hint" style="margin:0 0 12px;">Working media first: each of your categories, its amount, and our best-guess Verilume category (a single "International" line can map to International — total only; a "Total/Unspecified" bucket can be split into its sub-channels). Non-working spend follows in the same columns with a label you can rename or lines you add. Total marketing spend closes the statement.</p>
     ${workingSectionHtml}
@@ -27449,6 +27452,26 @@ function mbuRenderCategoryMapping(){
     <div id="mbuCategoryMappingResult" class="hint" style="margin-top:8px;"></div>`;
 }
 
+// Todd (2026-09-06): the mapping/review screen had no way out except
+// Save -- switching years or scope didn't help either, since
+// mbdShowForUpload trusted its "already showing" cache even though the
+// mapping screen had silently replaced the Budget detail in the same
+// card. This forces a real repaint of the worksheet.
+function mbuViewBudgetDetail(uploadId){
+  mbdLoadedUploadId = null; // force mbdShowForUpload to repaint even if this id was shown before (it may have been replaced by the mapping screen since)
+  mbdPaintedUploadId = null;
+  Promise.resolve(mbdShowForUpload(uploadId)).then(() => {
+    const card = document.getElementById('mbuResultsCard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+function mbuBackToBudgetDetail(){
+  const id = mbuAnalysis && mbuAnalysis.id;
+  mbdLoadedUploadId = null;
+  mbdPaintedUploadId = null;
+  if (id && typeof mbdShowForUpload === 'function') mbdShowForUpload(id);
+  else if (mbdLastUploadDetail) mbuRenderResults(mbdLastUploadDetail);
+}
 function mbuCategoryChoiceChanged(category, value){
   mbuCategoryMappingChoices[category] = value;
   mbuRenderCategoryMapping();
@@ -27783,6 +27806,19 @@ function mbdRenderUnified(model, opts){
 // wins (it's the client's real numbers); otherwise the saved Media Plan.
 let mbdLoadedUploadId = null;
 let mbdPaintedUploadId = null; // the upload whose Budget detail card is on screen (set once its first, seeded paint lands)
+// Which screen currently occupies #mbuResultsBody: 'budget' (the Budget
+// detail worksheet) or 'mapping' (the raw category-mapping/review screen,
+// mbuRenderCategoryMapping). Todd (2026-09-06): "we are back to showing
+// the new process section [mapping] attached first vs. showing the proper
+// budget detail worksheet" -- mbdShowForUpload's own "already showing"
+// cache only checked the upload id, so once Edit categories/Review &
+// adjust replaced the DOM with the mapping screen, nothing ever painted
+// the Budget detail back over it again (a year switch, "View budget
+// detail", even reopening the page section) -- the mapping screen just
+// sat there mistaken for the resting/default view. Tracked here so every
+// path back to the Budget detail can tell the two apart and force a
+// repaint instead of trusting a stale "same id, must still be showing".
+let mbdResultsBodyView = null;
 let mpPlanEditing = false;
 // ---------- Closed-period charts (2026-09-06 review, item 10) ----------
 // For a historical year the three chart cards show the budget's final
@@ -27947,7 +27983,7 @@ async function mbdSaveYearResults(year){
 }
 async function mbdShowForUpload(uploadId){
   if (!uploadId || !state.companyId) return;
-  if (mbdLoadedUploadId === uploadId && mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId) return; // already showing
+  if (mbdLoadedUploadId === uploadId && mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId && mbdResultsBodyView === 'budget') return; // the Budget detail worksheet is already the screen showing
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}`);
     if (!resp.ok) return;
@@ -27990,6 +28026,7 @@ function mbdShowForPlan(){
   const body = document.getElementById('mbuResultsBody');
   if (!card || !body || !state.mediaPlan) return;
   mbdLoadedUploadId = null;
+  mbdResultsBodyView = 'budget';
   card.style.display = '';
   const actions = `<div class="btn-row" style="margin:6px 0 10px;">
       <button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button>
@@ -28205,6 +28242,7 @@ function mbuRenderResults(data){
   const card = document.getElementById('mbuResultsCard');
   const body = document.getElementById('mbuResultsBody');
   if (!card || !body) return;
+  mbdResultsBodyView = 'budget';
   card.style.display = '';
   const cats = data.categories || [];
   const grand = cats.reduce((s, c) => s + (c.sumOfMonths || 0), 0);
@@ -28771,7 +28809,7 @@ function mbuRenderPlanSetup(){
     const period = mbuPeriodFor(mbuSelectedYear);
     const scopeName = mbuScopeLabel(mbuSelectedScope);
     const fileNote = active.fileName ? ` ("${escapeHtml(active.fileName)}")` : '';
-    const viewBtn = `<button type="button" class="btn-primary" onclick="(document.getElementById('mbuResultsCard') || document.body).scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>`;
+    const viewBtn = `<button type="button" class="btn-primary" onclick="mbuViewBudgetDetail('${active.id}')">View budget detail →</button>`;
     const csvBtn = `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${active.id}')">⬇ Monthly detail (CSV) →</button>`;
     const deleteBtn = `<button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${active.id}')">Delete →</button>`;
     if (active.totalOnly){
