@@ -7672,6 +7672,16 @@
          copy of the revenue x % calculator) and the old A/B/C option boxes
          (Prefill / Build by hand) are gone -- that was the duplication. -->
     <div id="mpPlanSection" style="display:none;">
+    <!-- 2026-09-06 review (items 5, 6, 11): the year's planned / actual
+         revenue, variance, transactions and average revenue per
+         transaction, above the budget. Rendered by mpRenderResultsCard. -->
+    <div class="sk-card" id="mpResultsCard" style="display:none;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker" id="mpResultsKicker">Results</div><h3>Revenue &amp; results</h3></div>
+        <div class="hicon">◎</div>
+      </div>
+      <div class="sk-card-body" id="mpResultsBody"></div>
+    </div>
     <div class="sk-card" id="mpBudgetCard">
       <div class="sk-card-head cx">
         <div class="htext"><div class="kicker">Step 1 of 4</div><h3>Budget</h3></div>
@@ -7721,6 +7731,7 @@
           <label>Total Sales and Marketing (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— calculated</span></label>
           <input type="text" id="mpTotalMarketingBudgetDisplay" readonly disabled style="background:var(--paper-dim);color:var(--ink);cursor:not-allowed;">
           <div class="hint">Working + Non-working + Sales. Not editable directly.</div>
+          <div id="mpRoasLine" style="margin-top:6px;"></div>
         </div>
         <p class="hint" id="mpStep1Next" style="margin:0;"></p>
       </div>
@@ -7861,7 +7872,7 @@
         <div class="hicon">📡</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
+        <p class="hint" style="margin-top:0;" id="mbuActiveChannelsHint">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
         <div class="btn-row" style="margin:0 0 8px;">
           <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
           <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
@@ -22175,6 +22186,24 @@ function removeNonWorkingMediaRow(id){
   state.mediaPlan.nonWorkingMedia = state.mediaPlan.nonWorkingMedia.filter(r => r.id !== id);
   renderNonWorkingMedia();
 }
+// Vendor dropdown (2026-09-06 review, item 6): every vendor already named
+// on this account's non-working rows, plus "+ New vendor…".
+function nwmKnownVendors(current){
+  const set = new Set();
+  ((state.mediaPlan && state.mediaPlan.nonWorkingMedia) || []).forEach(r => { if ((r.vendorName || '').trim()) set.add(r.vendorName.trim()); });
+  (state.partners || []).forEach(p => { if (typeof p === 'string' && p.trim()) set.add(p.trim()); });
+  if (current && current.trim()) set.add(current.trim());
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+function nwmVendorSelected(id, sel){
+  if (sel.value === '__new__'){
+    const name = window.prompt('Vendor name');
+    if (name && name.trim()){ updateNwmVendorName(id, name.trim()); renderNonWorkingMedia(); }
+    else sel.value = '';
+    return;
+  }
+  updateNwmVendorName(id, sel.value);
+}
 function updateNwmVendorName(id, value){
   ensureNonWorkingMedia();
   const row = state.mediaPlan.nonWorkingMedia.find(r => r.id === id);
@@ -22248,8 +22277,9 @@ function renderNwmSummary(){
     el.textContent = `${fmtMoney(total)} total non-working media — set an Annual Marketing Budget above to compare against the ~${NON_WORKING_MEDIA_GUIDELINE_PCT}% guideline.`;
     return;
   }
-  const pct = (total / budget) * 100;
-  el.textContent = `${fmtMoney(total)} total non-working media — ${pct.toFixed(1)}% of the ${fmtMoney(budget)} Annual Marketing Budget (reference guideline: ~${NON_WORKING_MEDIA_GUIDELINE_PCT}%, or ${fmtMoney(guideline)}).`;
+  // 2026-09-06 review (item 6): the summary sentence is gone; the total
+  // lives in Step 1's Total Sales and Marketing figure.
+  el.textContent = '';
   renderMpTotalMarketingBudget();
 }
 // Round 6 (2026-09-05), per direct instruction: "Add a Total Marketing
@@ -22389,11 +22419,13 @@ function renderNonWorkingMedia(){
             <td data-label="Client Label"><input type="text" value="${(r.clientLabel || '').replace(/"/g, '&quot;')}" placeholder="Your label for this line" class="tbl-input" oninput="updateNwmClientLabel('${r.id}', this.value)"></td>
             <td class="num" data-label="Start Date"><input type="date" value="${r.startDate || ''}" class="tbl-input" oninput="updateNwmStartDate('${r.id}', this.value)"></td>
             <td class="num" data-label="End Date"><input type="date" value="${r.endDate || ''}" class="tbl-input" oninput="updateNwmEndDate('${r.id}', this.value)"></td>
-            <td class="num" data-label="Spend">
-              <span id="nwmRowTotal-${r.id}">${fmtMoney(nwmRowTotal(r))}</span>
-              <a class="flink" style="display:block;font-size:0.75rem;" onclick="nwmToggleMonthly('${r.id}')">${expanded ? 'Hide monthly' : 'Edit monthly →'}</a>
+            <td data-label="Vendor">
+              <select onchange="nwmVendorSelected('${r.id}', this)" class="tbl-select">
+                <option value="">— Add later —</option>
+                ${nwmKnownVendors(r.vendorName).map(v => `<option value="${escapeHtml(v)}"${r.vendorName === v ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('')}
+                <option value="__new__">+ New vendor…</option>
+              </select>
             </td>
-            <td data-label="Vendor"><input type="text" value="${(r.vendorName || '').replace(/"/g, '&quot;')}" placeholder="Add later" oninput="updateNwmVendorName('${r.id}', this.value)" class="tbl-input"></td>
             <td data-label="Campaign">
               <select onchange="updateNwmCampaignId('${r.id}', this.value)" class="tbl-select">
                 <option value="">— Add later —</option>
@@ -22404,6 +22436,10 @@ function renderNonWorkingMedia(){
               <select onchange="updateNwmFunction('${r.id}', this.value)" class="tbl-select">
                 ${NON_WORKING_MEDIA_FUNCTIONS.map(f => `<option value="${f}"${r.supportingFunction === f ? ' selected' : ''}>${f}</option>`).join('')}
               </select>
+            </td>
+            <td class="num" data-label="Spend">
+              <span id="nwmRowTotal-${r.id}">${fmtMoney(nwmRowTotal(r))}</span>
+              <a class="flink" style="display:block;font-size:0.75rem;" onclick="nwmToggleMonthly('${r.id}')">${expanded ? 'Hide monthly' : 'Edit monthly →'}</a>
             </td>
             <td data-label=""><button type="button" class="btn-ghost" style="padding:6px 14px;font-size:0.75rem;" onclick="removeNonWorkingMediaRow('${r.id}')">Remove →</button></td>
           </tr>${monthlyRow}`;
@@ -22417,10 +22453,10 @@ function renderNonWorkingMedia(){
             <th>Client Label</th>
             <th class="num">Start Date</th>
             <th class="num">End Date</th>
-            <th class="num">Spend</th>
             <th>Vendor <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></th>
             <th>Campaign <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></th>
             <th>Function Support</th>
+            <th class="num">Spend</th>
             <th></th>
           </tr>
         </thead>
@@ -22473,10 +22509,15 @@ async function loadMpYearActiveChannels(){
   // review screen shows up without re-confirming), and any channel that
   // budget carries is switched on in Active Channels. Union only -- a
   // channel the client switched on by hand is never switched off here.
-  if (mpYearActiveChannels && state.activeChannels){
-    let added = 0;
-    mpYearActiveChannels.forEach(ch => { if (MMM_CATEGORIES.includes(ch) && !state.activeChannels.has(ch)){ state.activeChannels.add(ch); added++; } });
-    if (added){
+  // 2026-09-06 review (item 5): with a budget on file for the year, Active
+  // Channels is exactly the set that budget identifies (fromBudget: the
+  // crosswalk of its categories, without the always-on trio). The client
+  // can still switch a channel on by hand afterwards.
+  if (mpYearActiveChannelsMeta && mpYearActiveChannelsMeta.restricted && Array.isArray(mpYearActiveChannelsMeta.fromBudget)){
+    const next = new Set(mpYearActiveChannelsMeta.fromBudget.filter(ch => MMM_CATEGORIES.includes(ch)));
+    const same = state.activeChannels && next.size === state.activeChannels.size && [...next].every(ch => state.activeChannels.has(ch));
+    if (!same){
+      state.activeChannels = next;
       if (typeof mbuRenderActiveChannels === 'function') mbuRenderActiveChannels();
       if (typeof mbuSaveActiveChannels === 'function') mbuSaveActiveChannels();
     }
@@ -22865,15 +22906,15 @@ async function mpRenderLearningInputs(){
   const fmtDate = (iso) => { if (!iso) return '<span class="hint">—</span>'; const d = new Date(iso); return isNaN(d) ? '<span class="hint">—</span>' : d.toLocaleDateString(); };
   const rows = data.inputs.map((i, n) => `
     <tr>
-      <td style="text-align:center;width:60px;"><span title="${i.available ? 'On file' : 'Not yet'}" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${i.available ? '#14532d' : '#b91c1c'};"></span></td>
-      <td><div style="font-weight:600;">${escapeHtml(i.label || i.key)}</div>${i.note ? `<div class="hint">${escapeHtml(i.note)}</div>` : ''}</td>
-      <td style="white-space:nowrap;">${fmtDate(i.updatedAt)}</td>
-      <td>${i.route ? `<a class="flink" onclick="${i.route === 'mediaplan' ? (i.key === 'results' ? "document.getElementById('mbuResultsCard') && document.getElementById('mbuResultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' })" : "document.getElementById('mbuPlanSetupStatus') && document.getElementById('mbuPlanSetupStatus').scrollIntoView({ behavior: 'smooth', block: 'start' })") : `goToStep('${i.route}')`}">${i.available ? 'Review' : 'Add'} — ${escapeHtml(routeLabel[i.route] || i.route)} →</a>` : `<span class="hint">${escapeHtml(i.addAt || '')}</span>`}</td>
+      <td style="text-align:center;width:70px;padding-right:24px;"><span title="${i.available ? 'On file' : 'Not yet'}" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${i.available ? '#14532d' : '#b91c1c'};"></span></td>
+      <td style="padding-right:32px;">${escapeHtml(i.label || i.key)}</td>
+      <td style="white-space:nowrap;padding-right:32px;">${fmtDate(i.updatedAt)}</td>
+      <td>${i.route ? `<a class="flink" style="font-size:inherit;" onclick="${i.route === 'mediaplan' ? (i.key === 'results' ? "document.getElementById('mpResultsCard') && document.getElementById('mpResultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' })" : "document.getElementById('mbuPlanSetupStatus') && document.getElementById('mbuPlanSetupStatus').scrollIntoView({ behavior: 'smooth', block: 'start' })") : `goToStep('${i.route}')`}">${escapeHtml(routeLabel[i.route] || i.route)} →</a>` : `<span class="hint">${escapeHtml(i.addAt || '')}</span>`}</td>
     </tr>`).join('');
   mount.innerHTML = `
-    <p class="hint" style="margin:0 0 10px;">Agentic recommendations learn continuously: every completed budget and results period, the company profile, market data and external macro events feed the next recommendation. <b>${data.populated} of ${data.total}</b> inputs are on file for ${year}; a missing input is skipped, never guessed. Internal results and measured costs outrank the profile and markets, which outrank external research.</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-      <thead><tr><th style="text-align:center;">Status</th><th>Input</th><th>Updated</th><th>Where to add or review</th></tr></thead>
+    <p style="margin:0 0 12px;">Agentic recommendations learn continuously: every completed budget and results period, the company profile, market data and external macro events feed the next recommendation. <b>${data.populated} of ${data.total}</b> inputs are on file for ${year}; a missing input is skipped, never guessed.</p>
+    <div class="table-scroll"><table class="data-table">
+      <thead><tr><th style="text-align:center;padding-right:24px;">Status</th><th style="padding-right:32px;">Human Inputs</th><th style="padding-right:32px;">Updated</th><th>Where to add or review</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
 }
@@ -23883,6 +23924,7 @@ async function saveMediaPlan(){
 // a) Plan Pacing donut — same numbers and role-scoping as the text pacing
 // panel below (computePlanPacingTotals(), shared), just led with a chart.
 function renderPlanPacingChart(){
+  if (typeof mbdHistoricalMode === 'function' && mbdHistoricalMode() && typeof mbdRenderHistoricalCharts === 'function'){ mbdRenderHistoricalCharts(); return; }
   const card = document.getElementById('planPacingChartCard');
   if (!card) return;
   const p = computePlanPacingTotals();
@@ -23891,7 +23933,7 @@ function renderPlanPacingChart(){
     <div class="exec-chart-head">
       <h3>Plan Pacing</h3>
       <div class="exec-chart-head-actions">
-        <button type="button" class="exec-chart-expand-btn" title="Download this chart's data as CSV" onclick="downloadPlanPacingCsv()">⬇ CSV</button>
+        <button type="button" class="exec-chart-expand-btn" title="Share / export" onclick="mbdToggleChartShare('pacing')">⇪</button>
         <button type="button" class="exec-chart-expand-btn" onclick="toggleBudgetChartExpand('pacing')">${isExpanded ? '⤡ Collapse' : '⤢ Expand'}</button>
       </div>
     </div>`;
@@ -24002,6 +24044,7 @@ function getBudgetTrackingBuckets(){
 // Snapshot's IMPRESSIONS_SNAPSHOT/CAMPAIGNS_SNAPSHOT.
 const SAMPLE_BUDGET_BUCKETS = { unplanned: 92000, planned: 168000, active: 145000, completed: 210000 };
 function renderBudgetTrackingChart(){
+  if (typeof mbdHistoricalMode === 'function' && mbdHistoricalMode() && typeof mbdRenderHistoricalCharts === 'function'){ mbdRenderHistoricalCharts(); return; }
   const card = document.getElementById('budgetTrackingChartCard');
   if (!card) return;
   const isExpanded = state.budgetChartExpanded === 'tracking';
@@ -24024,7 +24067,7 @@ function renderBudgetTrackingChart(){
     <div class="exec-chart-head">
       <h3>Budget Tracking</h3>
       <div class="exec-chart-head-actions">
-        <button type="button" class="exec-chart-expand-btn" title="Download this chart's data as CSV" onclick="downloadBudgetTrackingCsv()">⬇ CSV</button>
+        <button type="button" class="exec-chart-expand-btn" title="Share / export" onclick="mbdToggleChartShare('tracking')">⇪</button>
         <button type="button" class="exec-chart-expand-btn" onclick="toggleBudgetChartExpand('tracking')">${isExpanded ? '⤡ Collapse' : '⤢ Expand'}</button>
       </div>
     </div>
@@ -24119,6 +24162,7 @@ function setBudgetMixRange(rangeKey){
 // still visibly does something even while showing sample data.
 const SAMPLE_CHANNEL_MIX_YTD = { video: 145000, digital: 210000, directmail: 62000, ooh: 54000, print: 38000, radio: 28000 };
 function renderChannelMixChart(){
+  if (typeof mbdHistoricalMode === 'function' && mbdHistoricalMode() && typeof mbdRenderHistoricalCharts === 'function'){ mbdRenderHistoricalCharts(); return; }
   const card = document.getElementById('channelMixChartCard');
   if (!card) return;
   const isExpanded = state.budgetChartExpanded === 'mix';
@@ -24141,7 +24185,7 @@ function renderChannelMixChart(){
     <div class="exec-chart-head">
       <h3>Channel Media Mix</h3>
       <div class="exec-chart-head-actions">
-        <button type="button" class="exec-chart-expand-btn" title="Download this chart's data as CSV" onclick="downloadChannelMixCsv()">⬇ CSV</button>
+        <button type="button" class="exec-chart-expand-btn" title="Share / export" onclick="mbdToggleChartShare('mix')">⇪</button>
         <button type="button" class="exec-chart-expand-btn" onclick="toggleBudgetChartExpand('mix')">${isExpanded ? '⤡ Collapse' : '⤢ Expand'}</button>
       </div>
     </div>
@@ -24228,6 +24272,7 @@ function toggleBudgetChartExpand(which){
 // setup above it (history fetch, initial year resolution, the fromUpload
 // scroll hand-off).
 function renderMediaPlanFieldsAndCharts(fromUpload){
+  if (typeof mpRenderResultsCard === 'function') setTimeout(mpRenderResultsCard, 0);
   const plan = state.mediaPlan;
   document.getElementById('mpTotalBudget').value = plan ? plan.totalBudget || '' : '';
   document.getElementById('mpGrossRevenue').value = plan ? plan.grossRevenue || '' : '';
@@ -27736,6 +27781,10 @@ let mpPlanEditing = false;
 // results -- spend complete, Loop-stage mix, channel mix -- built from the
 // Budget detail model, so the year reads as the benchmark for what follows.
 let mbdHistoricalChart = null;
+function mbdHistoricalMode(){
+  if (typeof mbuPeriodFor !== 'function' || typeof mbuBudgetExists !== 'function') return false;
+  return mbuPeriodFor(mbuSelectedYear).closed && mbuBudgetExists();
+}
 function mbdRenderHistoricalCharts(){
   const detail = mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(mbuSelectedYear) ? mbdLastUploadDetail : null;
   const plan = (state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && (state.mediaPlan.allocations || []).length) ? state.mediaPlan : null;
@@ -27746,30 +27795,74 @@ function mbdRenderHistoricalCharts(){
   const nonWorking = model.nonWorking.reduce((s, r) => s + r.total, 0);
   const head = (title, kind) => `<div class="exec-chart-head"><h3>${title}</h3><div class="exec-chart-head-actions"><span class="hint">${mbuSelectedYear} · final</span></div></div>`;
   const legendOf = (segs, total) => segs.map(x => `<div class="donut-legend-item"><span class="swatch" style="background:${x.color};"></span><span class="lname">${escapeHtml(x.label)}</span><span class="lval">${fmtMoney(Math.round(x.value))} (${total > 0 ? Math.round((x.value / total) * 100) : 0}%)</span></div>`).join('');
-  // a) spend complete
+  // a) Plan Pacing: 100% paced -- every dollar of a closed year is committed
   const pacing = document.getElementById('planPacingChartCard');
   if (pacing){
-    const segs = [{ label: 'Working media', value: working, color: 'var(--cx)' }, { label: 'Non-working', value: nonWorking, color: 'var(--advocacy)' }].filter(x => x.value > 0);
-    const total = working + nonWorking;
-    const d = buildDonutSvg(segs.length ? segs : [{ label: 'Working media', value: 1, color: 'var(--paper-dim)' }], 'sm');
-    pacing.innerHTML = `${head('Plan Pacing')}<div class="exec-visual-row"><div class="donut-svg-wrap">${d.svg}<div class="donut-center"><div class="num">100%</div><div class="lbl">Complete</div></div></div><div class="donut-side-col"><div class="donut-legend">${legendOf(segs, total)}</div></div></div><p class="exec-caption">${fmtMoney(Math.round(total))} total marketing spend for ${mbuSelectedYear} — closed period, every allocation complete.</p>`;
+    const segs = [{ label: 'Committed', value: working, color: 'var(--cx)' }];
+    const d = buildDonutSvg(working > 0 ? segs : [{ label: 'Committed', value: 1, color: 'var(--paper-dim)' }], 'sm');
+    pacing.innerHTML = `${mbdChartHead('Plan Pacing', 'pacing')}<div class="exec-visual-row"><div class="donut-svg-wrap">${d.svg}<div class="donut-center"><div class="num">100%</div><div class="lbl">Paced</div></div></div><div class="donut-side-col"><div class="donut-legend">${legendOf([{ label: 'Committed', value: working, color: 'var(--cx)' }, { label: 'Remaining', value: 0, color: 'var(--paper-dim)' }], working)}</div></div></div><p class="exec-caption">${fmtMoney(Math.round(working))} committed of ${fmtMoney(Math.round(working))} — ${mbuSelectedYear} is a closed period.</p>${mbdChartShareMenu('pacing')}`;
   }
-  // b) loop-stage mix
+  // b) Budget Tracking: 100% complete
   const tracking = document.getElementById('budgetTrackingChartCard');
   if (tracking){
-    const segs = MEDIA_LOOP_STAGES.map(st => ({ label: st, value: model.stages[st] || 0, color: STAGE_LOOP_COLORS[st] })).filter(x => x.value > 0);
-    const d = buildDonutSvg(segs.length ? segs : [{ label: '—', value: 1, color: 'var(--paper-dim)' }], 'sm');
-    tracking.innerHTML = `${head('Marketing Loop Mix')}<div class="exec-visual-row"><div class="donut-svg-wrap">${d.svg}<div class="donut-center"><div class="num">${MEDIA_LOOP_STAGES.filter(st => (model.stages[st] || 0) > 0).length}</div><div class="lbl">Stages</div></div></div><div class="donut-side-col"><div class="donut-legend">${legendOf(segs, working)}</div></div></div><p class="exec-caption">Final working-media split by Loop stage — the benchmark for next year's Step 2.</p>`;
+    const total = working + nonWorking;
+    tracking.innerHTML = `${mbdChartHead('Budget Tracking', 'tracking')}<div class="budget-track-bar" style="margin-top:14px;height:16px;"><div style="width:100%;background:var(--cx);" title="Completed: ${fmtMoney(Math.round(total))}"></div></div><div class="budget-track-legend"><div class="donut-legend-item"><span class="swatch" style="background:var(--cx);"></span><span class="lname">Completed Spend</span><span class="lval">${fmtMoney(Math.round(total))} (100%)</span></div></div><p class="exec-caption"><b>100% of Total Spend Complete</b> — ${fmtMoney(Math.round(working))} working + ${fmtMoney(Math.round(nonWorking))} non-working, ${mbuSelectedYear} closed.</p>${mbdChartShareMenu('tracking')}`;
   }
-  // c) channel mix
+  // c) Channel Media Mix: the actual mix, in the same groups the live chart uses
   const mix = document.getElementById('channelMixChartCard');
   if (mix){
-    const rows = model.channels.map(g => ({ label: g.label, value: g.total })).sort((a, b) => b.value - a.value);
+    const totals = {};
+    CHANNEL_MIX_GROUPS.forEach(g => { totals[g.key] = 0; });
+    let other = 0;
+    model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); if (grp) totals[grp.key] += sb.total; else other += sb.total; }));
+    const rows = CHANNEL_MIX_GROUPS.map(g => ({ label: g.label, value: totals[g.key] || 0 })).filter(r => r.value > 0).sort((a, b) => b.value - a.value);
+    if (other > 0) rows.push({ label: 'Other / total-only lines', value: other });
+    const grand = rows.reduce((s, r) => s + r.value, 0) || 1;
     const maxVal = Math.max(...rows.map(r => r.value), 1);
-    mix.innerHTML = `${head('Channel Media Mix')}<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">${rows.map(r => `<div style="display:flex;align-items:center;gap:8px;font-size:0.8125rem;"><span style="flex:0 0 150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.label)}</span><div style="flex:1;height:10px;background:var(--paper-dim);border-radius:5px;overflow:hidden;"><div style="width:${Math.round((r.value / maxVal) * 100)}%;height:100%;background:var(--cx);"></div></div><span style="flex:0 0 120px;text-align:right;font-weight:600;">${fmtMoney(Math.round(r.value))} <span class="hint">${working > 0 ? Math.round((r.value / working) * 100) : 0}%</span></span></div>`).join('')}</div><p class="exec-caption">Final channel-group mix of ${fmtMoney(Math.round(working))} working media.</p>`;
+    mix.innerHTML = `${mbdChartHead('Channel Media Mix', 'mix')}<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">${rows.map(r => `<div style="display:flex;align-items:center;gap:8px;font-size:0.8125rem;"><span style="flex:0 0 150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.label)}</span><div style="flex:1;height:10px;background:var(--paper-dim);border-radius:5px;overflow:hidden;"><div style="width:${Math.round((r.value / maxVal) * 100)}%;height:100%;background:var(--cx);"></div></div><span style="flex:0 0 130px;text-align:right;font-weight:600;">${fmtMoney(Math.round(r.value))} <span class="hint">${Math.round((r.value / grand) * 100)}%</span></span></div>`).join('')}</div><p class="exec-caption">Actual ${mbuSelectedYear} mix of ${fmtMoney(Math.round(working))} working media.</p>${mbdChartShareMenu('mix')}`;
   }
+  mbdHistoricalChartRows = {
+    pacing: [['Metric', 'Amount (USD)'], ['Approved', Math.round(working)], ['Committed', Math.round(working)], ['% paced', '100%']],
+    tracking: [['Bucket', 'Amount (USD)'], ['Completed Spend', Math.round(working + nonWorking)], ['% complete', '100%']],
+    mix: [['Channel group', 'Amount (USD)']].concat((() => { const t = {}; model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); const k = grp ? grp.label : 'Other'; t[k] = (t[k] || 0) + sb.total; })); return Object.entries(t).map(([k, v]) => [k, Math.round(v)]); })())
+  };
 }
-// ---------- Revenue & results strip (2026-09-06 review, items 5, 6, 11) ----------
+// ---------- Share menu on every chart card (2026-09-06 review, item 3) ----------
+// One share icon per card; the expanded row offers every supported format.
+let mbdHistoricalChartRows = {};
+let mbdChartShareOpen = null;
+function mbdChartHead(title, key){
+  return `<div class="exec-chart-head"><h3>${title}</h3><div class="exec-chart-head-actions"><span class="hint">${mbuSelectedYear} · final</span><button type="button" class="exec-chart-expand-btn" title="Share / export" onclick="mbdToggleChartShare('${key}')">⇪</button></div></div>`;
+}
+function mbdChartShareMenu(key){
+  if (mbdChartShareOpen !== key) return '';
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><span class="hint" style="align-self:center;">Export as</span><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;" onclick="mbdChartExport('${key}', 'csv')">CSV</button><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;" onclick="mbdChartExport('${key}', 'xlsx')">Excel</button><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;" onclick="mbdChartExport('${key}', 'sheets')">Google Sheets (copy)</button></div>`;
+}
+function mbdToggleChartShare(key){
+  mbdChartShareOpen = mbdChartShareOpen === key ? null : key;
+  if (mbdHistoricalMode()) mbdRenderHistoricalCharts();
+  else { renderPlanPacingChart(); renderBudgetTrackingChart(); renderChannelMixChart(); }
+}
+function mbdChartRows(key){
+  if (mbdHistoricalMode() && mbdHistoricalChartRows[key]) return mbdHistoricalChartRows[key];
+  if (key === 'pacing'){ const p = computePlanPacingTotals(); return p.status === 'ok' ? [['Metric', 'Amount (USD)'], ['Approved', p.totals.approved], ['Committed', p.totals.committed], ['% paced', p.pct + '%']] : [['Metric', 'Amount (USD)'], ['No plan pacing data', '']]; }
+  if (key === 'tracking'){ const b = getBudgetTrackingBuckets(); return [['Bucket', 'Amount (USD)'], ['Unplanned', b.unplanned], ['Planned', b.planned], ['Active', b.active], ['Completed', b.completed]]; }
+  const t = getChannelMediaMix(state.budgetMixRange || 'ytd'); return [['Channel group', 'Amount (USD)']].concat(CHANNEL_MIX_GROUPS.map(g => [g.label, Math.round(t[g.key] || 0)]));
+}
+async function mbdChartExport(key, format){
+  const rows = mbdChartRows(key);
+  const name = { pacing: 'plan-pacing', tracking: 'budget-tracking', mix: 'channel-media-mix' }[key] || key;
+  if (format === 'csv'){ downloadCsvFile(`${name}-${mbuSelectedYear}.csv`, rows); return; }
+  if (format === 'xlsx'){
+    try { await cfiLoadSheetJs(); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31)); XLSX.writeFile(wb, `${name}-${mbuSelectedYear}.xlsx`); }
+    catch (e){ downloadCsvFile(`${name}-${mbuSelectedYear}.csv`, rows); }
+    return;
+  }
+  // Google Sheets: tab-separated text on the clipboard pastes straight into a sheet
+  const tsv = rows.map(r => r.join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(tsv); alert('Copied — paste into a Google Sheet (Ctrl/Cmd+V).'); } catch (e){ downloadCsvFile(`${name}-${mbuSelectedYear}.csv`, rows); }
+}
+// ---------- Revenue & results strip// ---------- Revenue & results strip (2026-09-06 review, items 5, 6, 11) ----------
 let mbdYearResults = {};
 async function mbdLoadYearResults(year){
   try {
@@ -27778,7 +27871,22 @@ async function mbdLoadYearResults(year){
   } catch (e){ mbdYearResults[year] = null; }
   return mbdYearResults[year];
 }
-function mbdRevenueStripHtml(year, workingSpend){
+function mpRenderResultsCard(){
+  const card = document.getElementById('mpResultsCard');
+  const body = document.getElementById('mpResultsBody');
+  if (!card || !body) return;
+  const year = Number(mpSelectedYear) || new Date().getFullYear();
+  const working = Number((document.getElementById('mpTotalBudget') || {}).value) || Number((state.mediaPlan || {}).totalBudget) || 0;
+  const period = (typeof mbuPeriodFor === 'function') ? mbuPeriodFor(year) : { label: '' };
+  const kick = document.getElementById('mpResultsKicker');
+  if (kick) kick.textContent = `${period.label} · ${year}`;
+  card.style.display = '';
+  body.innerHTML = mbdRevenueStripHtml(year, working, { bare: true });
+  const roas = document.getElementById('mpRoasLine');
+  if (roas) roas.innerHTML = mbdRoasLineHtml(year, working);
+}
+function mbdRevenueStripHtml(year, workingSpend, opts){
+  opts = opts || {};
   const r = mbdYearResults[year] || {};
   const planned = r.plannedRevenue != null ? Number(r.plannedRevenue) : ((state.mediaPlan && Number(state.mediaPlan.year) === Number(year) && Number(state.mediaPlan.grossRevenue) > 0) ? Number(state.mediaPlan.grossRevenue) : null);
   const actual = r.grossRevenue != null ? Number(r.grossRevenue) : null;
@@ -27789,8 +27897,8 @@ function mbdRevenueStripHtml(year, workingSpend){
   const field = (id, label, value, step) => `<div class="field" style="margin:0;flex:1 1 160px;"><label>${label}</label><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">${step === 1 ? '#' : '$'}</span><input type="number" min="0" step="${step}" id="${id}" value="${value == null ? '' : Math.round(value)}" style="padding-left:24px;"></div></div>`;
   const ro = (label, text, tone) => `<div class="field" style="margin:0;flex:1 1 160px;"><label>${label}</label><div style="padding:9px 0;font-weight:700;font-size:1rem;${tone || ''}">${text}</div></div>`;
   return `
-    <div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 16px;">
-      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;"><span class="kicker">Revenue &amp; results</span><span class="hint">Planned revenue comes from Step 1 unless set here; actual revenue, transactions and the variance are the year's results.</span></div>
+    <div style="${opts.bare ? '' : 'border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:0 0 16px;'}">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;">${opts.bare ? '' : '<span class="kicker">Revenue &amp; results</span>'}<span class="hint">Planned revenue comes from Step 1 unless set here; actual revenue, transactions and the variance are the year's results.</span></div>
       <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
         ${field('mbdPlannedRevenue', 'Planned gross revenue', planned, 1000)}
         ${field('mbdActualRevenue', 'Actual gross revenue', actual, 1000)}
@@ -27823,16 +27931,17 @@ async function mbdSaveYearResults(year){
     if (!r.ok){ const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
     mbdYearResults[year] = await r.json();
     if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
-    if (mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(year)) mbuRenderResults(mbdLastUploadDetail); else if (typeof mbdShowForPlan === 'function') mbdShowForPlan();
+    if (typeof mpRenderResultsCard === 'function') mpRenderResultsCard();
     if (typeof mpRenderLearningInputs === 'function') mpRenderLearningInputs();
   } catch (e){ if (status) status.textContent = `Could not save — ${e.message}`; }
 }
 async function mbdShowForUpload(uploadId){
   if (!uploadId || !state.companyId) return;
-  if (mbdLoadedUploadId === uploadId && document.getElementById('mbuResultsCard') && document.getElementById('mbuResultsCard').style.display !== 'none'){
-    // Already loaded: re-render from the cached detail (the plan built from
-    // it may have changed) unless the review screen is open on it.
-    if (mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId && !document.getElementById('mbuCategoryMappingResult')) mbuRenderResults(mbdLastUploadDetail);
+  if (mbdLoadedUploadId === uploadId && mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId){
+    // Already loaded: the plan steps are the view; just make sure they are
+    // showing. No re-render here -- the field re-render calls Plan Setup,
+    // which calls back into this function.
+    if (!document.getElementById('mbuCategoryMappingResult')){ mpPlanEditing = true; if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode(); }
     return;
   }
   try {
@@ -27849,15 +27958,44 @@ async function mbdShowForUpload(uploadId){
     if (typeof mbdLoadYearResults === 'function' && mbdYearResults[detail.year] === undefined) await mbdLoadYearResults(detail.year);
     if (mpPlanLoadPromise){ try { await mpPlanLoadPromise; } catch (e){} }
     if (mbdLoadedUploadId !== uploadId) return; // the year changed while we waited
-    mbuRenderResults(detail);
+    await mbdShowPlanView(detail);
   } catch (e){ /* leave whatever is showing */ }
 }
+// The one budget view (2026-09-06 review, item 1): the Media Plan steps,
+// seeded from the confirmed upload when no saved plan exists for the year,
+// with the Revenue & results card at the top and the period-aware charts
+// above. No "Imported budget" rendering anywhere.
+let mbdShowingPlanView = false;
+async function mbdShowPlanView(detail){
+  if (mbdShowingPlanView) return; // re-entrancy guard: the field re-render below calls Plan Setup, which calls back here
+  mbdShowingPlanView = true;
+  try { await mbdShowPlanViewInner(detail); } finally { mbdShowingPlanView = false; }
+}
+async function mbdShowPlanViewInner(detail){
+  const year = Number((detail && detail.year) || mpSelectedYear);
+  const hasRows = !!(state.mediaPlan && Number(state.mediaPlan.year) === year && (state.mediaPlan.allocations || []).length);
+  if (!hasRows && detail && detail.status === 'confirmed' && typeof mpSeedPlanFromUpload === 'function'){
+    try { await mpSeedPlanFromUpload(detail, { skipSaveWeights: true }); } catch (e){}
+  }
+  mpPlanEditing = true;
+  const card = document.getElementById('mbuResultsCard');
+  if (card && !document.getElementById('mbuCategoryMappingResult')) card.style.display = 'none';
+  if (typeof mbuApplyPageMode === 'function') mbuApplyPageMode();
+  renderMediaPlanFieldsAndCharts(false);
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  if (typeof mpRenderResultsCard === 'function') mpRenderResultsCard();
+  if (typeof mbuRenderActiveChannels === 'function') mbuRenderActiveChannels();
+}
 function mbdShowForPlan(){
+  mbdLoadedUploadId = null;
+  const sec = document.getElementById('mpPlanSection');
+  if (mpPlanEditing && sec && sec.style.display !== 'none'){ if (typeof mpRenderResultsCard === 'function') mpRenderResultsCard(); return; }
+  mbdShowPlanView(null);
+  return;
   const card = document.getElementById('mbuResultsCard');
   const body = document.getElementById('mbuResultsBody');
   if (!card || !body || !state.mediaPlan) return;
   card.style.display = '';
-  mbdLoadedUploadId = null;
   const actions = `<div class="btn-row" style="margin:6px 0 10px;">
       <button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button>
       <button type="button" class="btn-ghost" onclick="mediaPlanExport && mediaPlanExport('csv')">⬇ Download plan (CSV) →</button>
@@ -28159,6 +28297,11 @@ function mbuRenderResults(data){
     </div>`;
   if (isAvailable){
     mbdLastUploadDetail = data;
+    // 2026-09-06 review (item 1): a confirmed upload is shown as the plan
+    // steps, never as the "Imported budget" card.
+    card.style.display = 'none';
+    mbdShowPlanView(data);
+    return;
     // Round 8d: once the plan has been built from this upload (the "head
     // start"), the Budget detail shows the plan -- the refined result -- with
     // the upload named as its source; until then, the upload itself.
@@ -28475,6 +28618,7 @@ async function mbuLoadHistory(){
   } catch (e){ body.innerHTML = '<p class="hint">Backend unreachable — can\'t load upload history.</p>'; }
 }
 let mbuHistoryShowOlder = false;
+let mbuHistoryShowAll = false;
 function mbuRenderHistory(uploads){
   const body = document.getElementById('mbuHistoryBody');
   if (!body) return;
@@ -28486,6 +28630,9 @@ function mbuRenderHistory(uploads){
   const recent = all.filter(u => new Date(u.createdAt).getTime() >= cutoff);
   const older = all.length - recent.length;
   uploads = mbuHistoryShowOlder ? all : recent;
+  const totalShown = uploads.length;
+  const hiddenMore = Math.max(0, totalShown - 5);
+  if (!mbuHistoryShowAll) uploads = uploads.slice(0, 5);
   if (!uploads.length){ body.innerHTML = `<p class="hint">No uploads in the last 60 days.${older ? ` <a class="flink" onclick="mbuHistoryShowOlder = true; mbuLoadHistory();">Show ${older} older →</a>` : ''}</p>`; return; }
   const statusLabel = s => ({
     accepted: '✓ Accepted', rejected_pii: '✗ Rejected — PII detected', rejected_virus: '✗ Rejected — threat detected',
@@ -28500,11 +28647,11 @@ function mbuRenderHistory(uploads){
       <td>${escapeHtml(u.uploadedBy || '—')}</td>
       <td>${new Date(u.createdAt).toLocaleString()}</td>
     </tr>`).join('');
-  body.innerHTML = `<div class="table-scroll" style="max-height:${uploads.length > 5 ? '248px' : 'none'};overflow-y:auto;"><table class="data-table" style="font-size:0.8125rem;">
+  body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
     <thead><tr><th>File</th><th>Size</th><th>Result</th><th>Uploaded by</th><th>When</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>
-  <p class="hint" style="margin:6px 0 0;">${uploads.length > 5 ? `Showing the last 5 of ${uploads.length} — scroll for more. ` : ''}${older && !mbuHistoryShowOlder ? `<a class="flink" onclick="mbuHistoryShowOlder = true; mbuLoadHistory();">Show ${older} older than 60 days →</a>` : (mbuHistoryShowOlder && older ? `<a class="flink" onclick="mbuHistoryShowOlder = false; mbuLoadHistory();">Hide older →</a>` : '')}</p>`;
+  <p class="hint" style="margin:6px 0 0;">${hiddenMore && !mbuHistoryShowAll ? `Showing the last 5 of ${totalShown}. <a class="flink" onclick="mbuHistoryShowAll = true; mbuLoadHistory();">Show ${hiddenMore} more →</a> ` : (mbuHistoryShowAll && totalShown > 5 ? `Showing all ${totalShown}. <a class="flink" onclick="mbuHistoryShowAll = false; mbuLoadHistory();">Show last 5 →</a> ` : '')}${older && !mbuHistoryShowOlder ? `<a class="flink" onclick="mbuHistoryShowOlder = true; mbuLoadHistory();">Show ${older} older than 60 days →</a>` : (mbuHistoryShowOlder && older ? `<a class="flink" onclick="mbuHistoryShowOlder = false; mbuLoadHistory();">Hide older →</a>` : '')}</p>`;
 }
 
 // Round 132bx follow-on (2026-08-16) — "Uploads should be single year only
@@ -28589,7 +28736,11 @@ function mbuApplyPageMode(){
   // Round 8: once a budget exists, the unified Budget detail card is the
   // view; the Media Plan steps (the editing surface) only show while the
   // person is editing/building the plan (mpStartEditingPlan).
-  show('mpPlanSection', (!exists && path === 'manual') || (exists && (typeof mpPlanEditing !== 'undefined' && mpPlanEditing)));
+  // 2026-09-06 review (item 1): the plan steps ARE the budget view for a
+  // confirmed year -- the separate "Imported budget" card no longer renders
+  // (the results card is only the review/mapping screen now).
+  show('mpPlanSection', (!exists && path === 'manual') || exists);
+  if (exists && !document.getElementById('mbuCategoryMappingResult')) show('mbuResultsCard', false);
   show('mbuActiveChannelsCard', exists || path === 'manual');
   show('mpNonWorkingCard', exists || (path === 'manual' && (typeof mpShowNonWorking !== 'undefined' && mpShowNonWorking)));
   show('mbuHistoryCard', exists);
@@ -28631,7 +28782,8 @@ function mbuRenderPlanSetup(){
     const period = mbuPeriodFor(mbuSelectedYear);
     const scopeName = mbuScopeLabel(mbuSelectedScope);
     const fileNote = active.fileName ? ` ("${escapeHtml(active.fileName)}")` : '';
-    const viewBtn = `<button type="button" class="btn-primary" onclick="document.getElementById('mbuResultsCard').scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>`;
+    const viewBtn = `<button type="button" class="btn-primary" onclick="(document.getElementById('mpPlanSection') || document.body).scrollIntoView({ behavior: 'smooth', block: 'start' })">View budget detail →</button>`;
+    const csvBtn = `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${active.id}')">⬇ Monthly detail (CSV) →</button>`;
     const deleteBtn = `<button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${active.id}')">Delete →</button>`;
     if (active.totalOnly){
       mount.innerHTML = `
@@ -28645,13 +28797,13 @@ function mbuRenderPlanSetup(){
       <div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
           <span><b style="color:#14532d;">${period.label}</b> — ${mbuSelectedYear} ${scopeName} budget on file${fileNote}.</span>
-          <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}${deleteBtn}</span>
+          <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}${csvBtn}${deleteBtn}</span>
         </div>
         <p class="hint" style="margin:8px 0 0;">${mbuSelectedYear} is a historical year: this budget is the record of a completed year and every allocation is treated as complete. The charts below show its final results as the historical benchmark for the years that follow.</p>
       </div>` : `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span><b style="color:var(--cx);">${period.label}</b> — ${mbuSelectedYear} ${scopeName} budget on file${fileNote}, driving this year's Media Plan.</span>
-        <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}<button type="button" class="btn-ghost" onclick="mbuOpenExistingUpload('${active.id}')">Review &amp; adjust →</button>${deleteBtn}</span>
+        <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}<button type="button" class="btn-ghost" onclick="mbuOpenExistingUpload('${active.id}')">Edit categories &amp; labels →</button>${csvBtn}<button type="button" class="btn-ghost" onclick="mpBuildPlanFromUpload()">↻ Re-seed from budget →</button>${deleteBtn}</span>
       </div>`;
     if (typeof mbdShowForUpload === 'function') mbdShowForUpload(active.id);
     return;
@@ -45827,6 +45979,10 @@ async function obsSaveClientCode(value){
 function mbuRenderActiveChannels(){
   const row = document.getElementById('mbuActiveChannelsRow');
   if (!row) return;
+  const hint = document.getElementById('mbuActiveChannelsHint');
+  if (hint) hint.textContent = (typeof mpYearActiveChannelsMeta !== 'undefined' && mpYearActiveChannelsMeta && mpYearActiveChannelsMeta.restricted)
+    ? `The channels identified in the ${mpSelectedYear} budget${mpYearActiveChannelsMeta.uploadFileName ? ` ("${mpYearActiveChannelsMeta.uploadFileName}")` : ''}. Switch one on by hand to add it for this account.`
+    : 'Only active channels are offered on Campaign Creation and recommended on the Media Plan.';
   row.innerHTML = MMM_CATEGORIES.map(ch => `
     <button type="button" class="select-tile${state.activeChannels.has(ch) ? ' selected' : ''}" onclick="mbuToggleActiveChannel('${ch}')">
       <span class="indicator">✓</span><span class="label">${ch}</span>
