@@ -977,6 +977,20 @@ ensureColumn('media_plans', 'trancheGranularity', "TEXT DEFAULT 'quarterly'");
 // JSON text rather than normalized tables, matching that precedent rather
 // than inventing new child tables for a prototype-stage feature.
 ensureColumn('media_plans', 'grossRevenue', 'REAL');
+// Continuous learning (2026-09-05) -- a year's FINAL gross revenue, entered
+// after the year closes, distinct from media_plans.grossRevenue (the
+// planned figure typed in Step 1). ROAS = final revenue / working spend.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_year_results (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    grossRevenue REAL,
+    notes TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 ensureColumn('media_plans', 'nonWorkingMediaJson', 'TEXT');
 ensureColumn('media_plans', 'monthlyMode', "TEXT DEFAULT 'flat'");
 ensureColumn('media_plans', 'monthlyPctJson', 'TEXT');
@@ -4061,6 +4075,279 @@ ensureColumn('market_customer_uploads', 'auditJson', 'TEXT');
 // never got one) honestly reports 'no_revenue_data' rather than treating
 // missing revenue as zero — a zero would understate that zip, not
 // correctly show it as unmeasured on this basis.
+// Zip → DMA crosswalk (2026-09-06, buildout item 4a). Starts empty, same
+// honest posture as zip_population_master; rows carry their source and
+// method so every DMA figure can say what it is (e.g. "zip-centroid-in-
+// DMA-polygon public approximation" vs. "Nielsen ZIP Code by DMA, licensed").
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS zip_dma_master (
+    zip TEXT PRIMARY KEY,
+    dmaCode TEXT NOT NULL,
+    dmaName TEXT,
+    sourceLabel TEXT NOT NULL,
+    method TEXT,
+    updatedAt TEXT NOT NULL
+  );
+`);
+// ============ US + Canada geography keys (2026-09-06) ============
+// Per direct decision ("Canada is an important market today... consolidated
+// which is easier for clients"): one upload, mixed rows, sorted by format.
+// A US zip (5 digits, or ZIP+4) keys as "01945"; a Canadian postal code
+// (A1A 1A1) or forward sortation area (A1A) keys as "CA:A1A" -- the FSA is
+// the Canadian aggregation unit (Statistics Canada publishes population and
+// boundaries by FSA; Numeris markets are not open data, so Canadian
+// "markets" in the roll-up are StatCan CMAs loaded into the same market
+// master with CMA codes). Every reference master (population, centroid,
+// market) uses these same keys, so the maths downstream never branches on
+// country -- only the labels do.
+// Country packs (2026-09-06, per "AU, UK, France, Spain, Italy and Germany
+// are also important cruise industry markets"): each pack is a postal-code
+// format, the unit it aggregates to, and what a "market" means there. Keys
+// are "<ISO2>:<unit>" for every country except the US (bare 5-digit zip,
+// kept for compatibility with everything already on file). Five-digit codes
+// are ambiguous across US / DE / FR / ES / IT, so a row is read with a
+// country hint -- the file's own Country column when it has one, else the
+// upload's default country (US unless the client changes it). Nothing
+// here fetches data: population, centroids and market crosswalks load per
+// country through the same reference endpoints with a source label.
+const GEO_COUNTRY_PACKS = {
+  US: { name: 'United States', unit: 'zip code', marketType: 'DMA', marketNote: 'DMA boundaries are Nielsen\'s; the free crosswalk is a public approximation.', parse: (s) => { const p4 = s.match(/^(\d{5})[-\s]\d{4}$/); if (p4) return p4[1]; if (/^\d{1,5}$/.test(s)) return s.padStart(5, '0'); return null; } },
+  CA: { name: 'Canada', unit: 'forward sortation area', marketType: 'CMA', marketNote: 'Canadian markets are Statistics Canada census metropolitan areas, not Numeris market definitions.', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^([A-Z]\d[A-Z])(\d[A-Z]\d)?$/); return m ? m[1] : null; } },
+  AU: { name: 'Australia', unit: 'postcode', marketType: 'TV market', marketNote: 'Australian markets follow the OzTAM metro / Regional TAM aggregate market split as publicly described, not licensed definitions.', parse: (s) => (/^\d{4}$/.test(s) ? s : (/^\d{3}$/.test(s) ? s.padStart(4, '0') : null)) },
+  GB: { name: 'United Kingdom', unit: 'postcode district', marketType: 'ITV region', marketNote: 'UK markets are ITV/BARB regions as publicly described; population and coordinates from the ONS postcode lookup (open data).', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})?$/); return m ? m[1] : null; } },
+  DE: { name: 'Germany', unit: 'Postleitzahl', marketType: 'Nielsengebiet', marketNote: 'German markets are the publicly known Nielsen regions (Nielsengebiete) by state, not a licensed crosswalk.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  FR: { name: 'France', unit: 'code postal', marketType: 'NUTS-3 region', marketNote: 'French markets are Eurostat NUTS-3 regions (départements) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  ES: { name: 'Spain', unit: 'código postal', marketType: 'NUTS-3 region', marketNote: 'Spanish markets are Eurostat NUTS-3 regions (provinces) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  IT: { name: 'Italy', unit: 'CAP', marketType: 'NUTS-3 region', marketNote: 'Italian markets are Eurostat NUTS-3 regions (provinces) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) }
+};
+const GEO_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT' };
+function normalizeCountry(raw){
+  const s = String(raw == null ? '' : raw).trim().toUpperCase();
+  if (!s) return null;
+  if (GEO_COUNTRY_PACKS[s]) return s;
+  return GEO_COUNTRY_ALIASES[s] || null;
+}
+// raw postal code + optional country hint -> { key, country } or null.
+// Already-keyed values ("CA:M5V", "AU:2000", "DMA:501") pass through.
+function normalizeGeoKey(raw, countryHint){
+  const s = String(raw == null ? '' : raw).trim().toUpperCase();
+  if (!s) return null;
+  const keyed = s.match(/^([A-Z]{2}):(.+)$/);
+  if (keyed && GEO_COUNTRY_PACKS[keyed[1]] && keyed[1] !== 'US'){ const u = GEO_COUNTRY_PACKS[keyed[1]].parse(keyed[2]); return u ? { key: `${keyed[1]}:${u}`, country: keyed[1] } : null; }
+  if (/^DMA:.+/.test(s)) return { key: s, country: 'US' };
+  const hint = normalizeCountry(countryHint) || 'US';
+  if (/[A-Z]/.test(s)){
+    // alphanumeric: Canada or the UK. A full Canadian postal code (A1A 1A1)
+    // is unambiguous; a bare FSA (A1A) also matches a UK outward code, so
+    // the hint decides and, without one, three characters read as Canada.
+    const ca = GEO_COUNTRY_PACKS.CA.parse(s), gb = GEO_COUNTRY_PACKS.GB.parse(s);
+    const fullCa = /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/.test(s);
+    if (hint === 'GB' && gb && !fullCa) return { key: `GB:${gb}`, country: 'GB' };
+    if (ca && (hint === 'CA' || fullCa || s.replace(/\s+/g, '').length === 3)) return { key: `CA:${ca}`, country: 'CA' };
+    if (gb) return { key: `GB:${gb}`, country: 'GB' };
+    return null;
+  }
+  // numeric codes: the hint decides
+  const pack = GEO_COUNTRY_PACKS[hint] || GEO_COUNTRY_PACKS.US;
+  const unit = pack.parse(s);
+  if (!unit) return null;
+  return hint === 'US' ? { key: unit, country: 'US' } : { key: `${hint}:${unit}`, country: hint };
+}
+function geoKeyCountry(key){ const m = String(key || '').match(/^([A-Z]{2}):/); return (m && GEO_COUNTRY_PACKS[m[1]]) ? m[1] : 'US'; }
+function geoKeyLabel(key){ const k = String(key || ''); const m = k.match(/^([A-Z]{2}):(.+)$/); return (m && GEO_COUNTRY_PACKS[m[1]]) ? `${m[2]} (${m[1]})` : k; }
+function countByCountry(table){
+  const rows = db.prepare(`SELECT zip FROM ${table}`).all();
+  const out = {};
+  rows.forEach(r => { const c = geoKeyCountry(r.zip); out[c] = (out[c] || 0) + 1; });
+  return out;
+}
+function dmaMasterStatus(){
+  const count = db.prepare('SELECT COUNT(*) AS n FROM zip_dma_master').get().n;
+  const sources = db.prepare('SELECT sourceLabel, method, COUNT(*) AS n, MAX(updatedAt) AS updatedAt FROM zip_dma_master GROUP BY sourceLabel, method').all();
+  const dmas = count ? db.prepare('SELECT COUNT(DISTINCT dmaCode) AS n FROM zip_dma_master').get().n : 0;
+  const licensed = sources.some(x => /nielsen/i.test(x.sourceLabel || '') && /licens/i.test(`${x.sourceLabel} ${x.method}`));
+  return { zipsLoaded: count, dmaCount: dmas, sources, licensed, byCountry: countByCountry('zip_dma_master'),
+    disclosure: count ? (licensed ? 'DMA boundaries from a licensed Nielsen ZIP Code by DMA crosswalk.' : `DMA boundaries are a public approximation (${sources.map(x => `${x.sourceLabel}${x.method ? ` — ${x.method}` : ''}`).join('; ')}), not Nielsen's licensed definitions — zips on DMA borders can differ from what a station or agency quotes.`) : 'No zip-to-DMA crosswalk loaded yet — DMA views are unavailable until one is.' };
+}
+// Roll a set of { zip, customerCount, revenue } rows up to DMA through the
+// crosswalk. Population per DMA is the sum of every ZCTA in that DMA on the
+// population master (through the same crosswalk, so a boundary
+// approximation cancels out consistently in the index rather than
+// compounding). Population Index = (DMA share of the client's volume) ÷
+// (DMA share of the population covered) × 100 -- 100 = converting in
+// proportion to size. Never throws: with no crosswalk it returns
+// available:false and the reason.
+function computeDmaRollup(rows, weightMode){
+  const status = dmaMasterStatus();
+  if (!status.zipsLoaded) return { available: false, note: status.disclosure, disclosure: status.disclosure, dmas: [], unmappedZips: 0, unmappedVolume: 0 };
+  const mode = weightMode === 'revenue' ? 'revenue' : 'count';
+  const byDma = {}; let unmappedZips = 0, unmappedVolume = 0, totalVolume = 0;
+  const lookup = db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE zip = ?');
+  (rows || []).forEach(r => {
+    const vol = mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0);
+    totalVolume += vol;
+    const key = String(r.zip || '');
+    let m = null;
+    if (/^DMA:/.test(key)){
+      const k = key.slice(4).trim();
+      m = db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE dmaCode = ? LIMIT 1').get(k) || db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE UPPER(dmaName) = UPPER(?) LIMIT 1').get(k) || null;
+    } else m = lookup.get(key.padStart(5, '0'));
+    if (!m){ unmappedZips++; unmappedVolume += vol; return; }
+    if (!byDma[m.dmaCode]) byDma[m.dmaCode] = { dmaCode: m.dmaCode, dmaName: m.dmaName || m.dmaCode, volume: 0, zips: 0, country: geoKeyCountry(key) };
+    byDma[m.dmaCode].volume += vol; byDma[m.dmaCode].zips++;
+  });
+  const codes = Object.keys(byDma);
+  // Population Index is computed WITHIN each country: a market's share of
+  // the client's volume in that country ÷ its share of that country's
+  // covered population -- so a partially loaded population master in one
+  // country never distorts the other's index.
+  let popTotal = 0; const popByDma = {}; const popTotalByCountry = {}; const volByCountry = {};
+  if (codes.length){
+    // population of each market = every unit in it, not just the client's
+    const popStmt = db.prepare('SELECT SUM(p.population) AS pop FROM zip_dma_master d JOIN zip_population_master p ON p.zip = d.zip WHERE d.dmaCode = ?');
+    codes.forEach(c => { const v = popStmt.get(c); popByDma[c] = v && v.pop != null ? Number(v.pop) : null; volByCountry[byDma[c].country] = (volByCountry[byDma[c].country] || 0) + byDma[c].volume; });
+    db.prepare('SELECT d.zip AS zip, p.population AS pop FROM zip_dma_master d JOIN zip_population_master p ON p.zip = d.zip').all().forEach(r => { const c = geoKeyCountry(r.zip); popTotalByCountry[c] = (popTotalByCountry[c] || 0) + (Number(r.pop) || 0); });
+    popTotal = Object.values(popTotalByCountry).reduce((a, b) => a + b, 0);
+  }
+  const mappedVolume = totalVolume - unmappedVolume;
+  const dmas = codes.map(c => {
+    const d = byDma[c];
+    const share = mappedVolume > 0 ? d.volume / mappedVolume : null;
+    const countryShare = volByCountry[d.country] > 0 ? d.volume / volByCountry[d.country] : null;
+    const pop = popByDma[c];
+    const popShare = (pop != null && popTotalByCountry[d.country] > 0) ? pop / popTotalByCountry[d.country] : null;
+    return { dmaCode: d.dmaCode, dmaName: d.dmaName, country: d.country, marketType: (GEO_COUNTRY_PACKS[d.country] || GEO_COUNTRY_PACKS.US).marketType, volume: Math.round(d.volume * 100) / 100, zips: d.zips, share: share != null ? Math.round(share * 10000) / 100 : null, population: pop, populationIndex: (countryShare != null && popShare > 0) ? Math.round((countryShare / popShare) * 100) : null };
+  }).sort((a, b) => b.volume - a.volume);
+  const countries = [...new Set(dmas.map(d => d.country))].filter(c => c !== 'US');
+  const notes = countries.map(c => GEO_COUNTRY_PACKS[c] ? GEO_COUNTRY_PACKS[c].marketNote : '').filter(Boolean).join(' ');
+  return { available: true, weightMode: mode, dmas, dmaCount: dmas.length, unmappedZips, unmappedVolume: Math.round(unmappedVolume * 100) / 100, populationCoverage: popTotal > 0, disclosure: status.disclosure + (notes ? ' ' + notes : ''), licensed: status.licensed, countries: [...new Set(dmas.map(d => d.country))] };
+}
+// ============ Store trade areas + DMA-level uploads (2026-09-06) ============
+// Per direct decision: local retail is planned on a radius trade area
+// around each store, not a DMA; zip stays the primary upload, a Nielsen-
+// DMA-coded file is accepted as a lower-confidence fallback. Two more
+// shared reference/account tables, all honest-empty until loaded.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS zip_centroid_master (
+    zip TEXT PRIMARY KEY,
+    lat REAL NOT NULL,
+    lng REAL NOT NULL,
+    sourceLabel TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_stores (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    storeId TEXT,
+    name TEXT,
+    address TEXT,
+    lat REAL,
+    lng REAL,
+    geocodeSource TEXT,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+ensureColumn('market_customer_uploads', 'geoLevel', "TEXT DEFAULT 'zip'");
+ensureColumn('account_stores', 'country', "TEXT DEFAULT 'US'");
+function haversineMiles(lat1, lng1, lat2, lng2){
+  const R = 3958.7613, toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+function centroidStatus(){
+  const count = db.prepare('SELECT COUNT(*) AS n FROM zip_centroid_master').get().n;
+  const sources = db.prepare('SELECT DISTINCT sourceLabel FROM zip_centroid_master').all().map(r => r.sourceLabel);
+  return { zipsLoaded: count, sources, byCountry: countByCountry('zip_centroid_master') };
+}
+// Straight-line rings around each geocoded store; a zip belongs to a ring
+// when its centroid is within the radius. Per store and ring: zips,
+// volume, population (population master), penetration rate, and an index
+// against the average rate of all stores at that same ring (100 = the
+// average store). "Assigned" volume puts each zip on its nearest store
+// within the largest ring so overlapping rings are not double-counted in
+// the store totals; the ring figures themselves are allowed to overlap and
+// say so. Matched store pairs use the largest ring's rate, assigned volume
+// and covered population. Never throws; returns available:false with the
+// reason when stores or centroids are missing.
+function computeStoreTradeAreas(rows, stores, radii, weightMode){
+  const disclosure = 'Trade areas are straight-line rings around each store address; each zip is placed by its centroid. Drive-time areas are not modelled, and a zip inside two stores\' rings counts in both rings (store totals assign it to the nearest store).';
+  const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null && s.lat !== '' && s.lng !== '' && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng)));
+  if (!(stores || []).length) return { available: false, note: 'no stores on file — add store addresses to see trade areas', disclosure, stores: [] };
+  if (!geocoded.length) return { available: false, note: 'stores on file but none geocoded yet', disclosure, stores: [] };
+  const cs = centroidStatus();
+  if (!cs.zipsLoaded) return { available: false, note: 'no zip centroids loaded — load the Census ZCTA gazetteer under Reference data', disclosure, stores: [] };
+  const mode = weightMode === 'revenue' ? 'revenue' : 'count';
+  const rad = (Array.isArray(radii) && radii.length ? radii : [3, 5, 10]).map(Number).filter(r => r > 0).sort((a, b) => a - b);
+  const maxR = rad[rad.length - 1];
+  const cStmt = db.prepare('SELECT lat, lng FROM zip_centroid_master WHERE zip = ?');
+  const pStmt = db.prepare('SELECT population FROM zip_population_master WHERE zip = ?');
+  const zips = {}; let unmappedZips = 0, unmappedVolume = 0, totalVolume = 0;
+  (rows || []).forEach(r => {
+    const zip = String(r.zip || '').padStart(5, '0');
+    const vol = mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0);
+    totalVolume += vol;
+    if (/^DMA:/.test(zip)){ unmappedZips++; unmappedVolume += vol; return; }
+    const c = cStmt.get(zip);
+    if (!c){ unmappedZips++; unmappedVolume += vol; return; }
+    const p = pStmt.get(zip);
+    zips[zip] = { zip, lat: c.lat, lng: c.lng, volume: (zips[zip] ? zips[zip].volume : 0) + vol, population: p ? Number(p.population) : null };
+  });
+  const zipList = Object.values(zips);
+  // ring population needs every zip in the ring, not just the client's — pull all centroids once (≈33k rows) only when a population master exists
+  let allCentroids = null;
+  if (db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n > 0){
+    allCentroids = db.prepare('SELECT c.zip AS zip, c.lat AS lat, c.lng AS lng, p.population AS population FROM zip_centroid_master c JOIN zip_population_master p ON p.zip = c.zip').all();
+  }
+  const out = geocoded.map(s => {
+    const lat = Number(s.lat), lng = Number(s.lng);
+    const rings = rad.map(r => {
+      const inRing = zipList.filter(z => haversineMiles(lat, lng, z.lat, z.lng) <= r);
+      const volume = inRing.reduce((a, z) => a + z.volume, 0);
+      let population = null;
+      if (allCentroids){ population = allCentroids.reduce((a, z) => a + (haversineMiles(lat, lng, z.lat, z.lng) <= r ? (Number(z.population) || 0) : 0), 0); }
+      const rate = (population > 0) ? volume / population : null;
+      return { radiusMiles: r, zips: inRing.length, volume: Math.round(volume * 100) / 100, population, penetrationRate: rate, index: null };
+    });
+    return { id: s.id, storeId: s.storeId || null, name: s.name || s.storeId || s.address || s.id, address: s.address || null, lat, lng, rings, assignedVolume: 0, assignedZips: 0 };
+  });
+  // index per ring vs. the average rate of stores with a rate at that ring
+  rad.forEach((r, ri) => {
+    const rates = out.map(s => s.rings[ri].penetrationRate).filter(v => v != null);
+    const avg = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+    out.forEach(s => { const v = s.rings[ri].penetrationRate; s.rings[ri].index = (v != null && avg > 0) ? Math.round((v / avg) * 100) : null; });
+  });
+  // nearest-store assignment within the largest ring
+  let beyondVolume = 0, beyondZips = 0;
+  zipList.forEach(z => {
+    let best = null, bestD = Infinity;
+    out.forEach(s => { const d = haversineMiles(s.lat, s.lng, z.lat, z.lng); if (d < bestD){ bestD = d; best = s; } });
+    if (best && bestD <= maxR){ best.assignedVolume += z.volume; best.assignedZips++; }
+    else { beyondVolume += z.volume; beyondZips++; }
+  });
+  out.forEach(s => { s.assignedVolume = Math.round(s.assignedVolume * 100) / 100; });
+  // matched store pairs on the largest ring: z-scored [log volume, rate, log population]
+  const feats = out.map(s => { const last = s.rings[rad.length - 1]; return { s, f: [Math.log1p(s.assignedVolume), last.penetrationRate != null ? last.penetrationRate : null, last.population != null ? Math.log1p(last.population) : null] }; }).filter(x => x.f.every(v => v != null));
+  const pairs = []; const unpaired = [];
+  if (feats.length >= 2){
+    const dims = 3, mean = [0, 0, 0], sd = [0, 0, 0];
+    for (let d = 0; d < dims; d++){ mean[d] = feats.reduce((a, x) => a + x.f[d], 0) / feats.length; sd[d] = Math.sqrt(feats.reduce((a, x) => a + (x.f[d] - mean[d]) ** 2, 0) / feats.length) || 1; }
+    const z = feats.map(x => x.f.map((v, d) => (v - mean[d]) / sd[d]));
+    const used = new Set();
+    const order = feats.map((x, i) => i).sort((a, b) => feats[b].s.assignedVolume - feats[a].s.assignedVolume);
+    order.forEach(i => {
+      if (used.has(i)) return;
+      let bj = -1, bd = Infinity;
+      order.forEach(j => { if (j === i || used.has(j)) return; const d = Math.sqrt(z[i].reduce((a, v, k) => a + (v - z[j][k]) ** 2, 0)); if (d < bd){ bd = d; bj = j; } });
+      if (bj >= 0){ used.add(i); used.add(bj); pairs.push({ test: feats[i].s.name, control: feats[bj].s.name, distance: Math.round(bd * 1000) / 1000 }); }
+      else unpaired.push(feats[i].s.name);
+    });
+  } else out.forEach(s => unpaired.push(s.name));
+  return { available: true, weightMode: mode, radiiMiles: rad, stores: out.sort((a, b) => b.assignedVolume - a.assignedVolume), storesGeocoded: geocoded.length, storesTotal: (stores || []).length, unmappedZips, unmappedVolume: Math.round(unmappedVolume * 100) / 100, beyondRingsZips: beyondZips, beyondRingsVolume: Math.round(beyondVolume * 100) / 100, populationCoverage: !!allCentroids, pairs, unpaired, disclosure, pairNote: feats.length >= 2 ? `Pairs match stores on ${maxR}-mile-ring penetration rate, assigned volume and covered population — a "who lives and buys here" match, not a performance-validated one.` : 'Pairing needs at least two geocoded stores with population coverage.' };
+}
 function computePenetrationIndex(rows, weightMode){
   const mode = weightMode === 'revenue' ? 'revenue' : 'count';
   const withPop = rows.map(r => {
@@ -5741,6 +6028,20 @@ const LEGACY_CASING_COLUMNS = [
   ['media_plans', 'accountId'],
   ['media_plans', 'createdAt'],
   ['media_plans', 'grossRevenue'],
+  ['account_year_results', 'accountId'],
+  ['account_year_results', 'grossRevenue'],
+  ['account_year_results', 'updatedAt'],
+  ['zip_dma_master', 'dmaCode'],
+  ['zip_dma_master', 'dmaName'],
+  ['zip_dma_master', 'sourceLabel'],
+  ['zip_dma_master', 'updatedAt'],
+  ['zip_centroid_master', 'sourceLabel'],
+  ['zip_centroid_master', 'updatedAt'],
+  ['account_stores', 'accountId'],
+  ['account_stores', 'storeId'],
+  ['account_stores', 'geocodeSource'],
+  ['account_stores', 'updatedAt'],
+  ['market_customer_uploads', 'geoLevel'],
   ['media_plans', 'marketingBudgetPct'],
   ['media_plans', 'monthlyMode'],
   ['media_plans', 'monthlyPctJson'],
@@ -15144,6 +15445,119 @@ Submit your findings via the submit_brand_categories tool.`;
       return sendJson(res, result.status, result.body);
     }
 
+    // ============ Zip centroids + stores (2026-09-06) ============
+    // POST /api/market-zip-centroids — { rows: [{zip, lat, lng}], sourceLabel }
+    if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-zip-centroids'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      const body = await readBody(req);
+      if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, lat, lng}) is required' });
+      if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did these centroids come from?' });
+      const now = new Date().toISOString();
+      let inserted = 0; const errors = [];
+      const stmt = db.prepare(`INSERT INTO zip_centroid_master (zip, lat, lng, sourceLabel, updatedAt) VALUES (?,?,?,?,?)
+        ON CONFLICT(zip) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`);
+      body.rows.forEach((r, i) => {
+        const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
+        const zip = g && !/^DMA:/.test(g.key) ? g.key : null;
+        const lat = Number(r.lat), lng = Number(r.lng);
+        if (!zip){ if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
+        if (!(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)){ if (errors.length < 50) errors.push(`row ${i}: lat/lng out of range`); return; }
+        stmt.run(zip, lat, lng, String(body.sourceLabel).trim(), now); inserted++;
+      });
+      return sendJson(res, 200, { inserted, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_centroid_master').get().n });
+    }
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-zip-centroids' && parts[2] === 'status'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      return sendJson(res, 200, centroidStatus());
+    }
+    // GET /api/market-country-packs — supported countries, units, market types
+    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-country-packs'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      return sendJson(res, 200, { countries: Object.entries(GEO_COUNTRY_PACKS).map(([code, p]) => ({ code, name: p.name, unit: p.unit, marketType: p.marketType, marketNote: p.marketNote })) });
+    }
+    // GET /api/market-zip-centroids/lookup?key=CA:M5V — one centroid (used
+    // to place a Canadian store by its postal code's FSA when no geocoder
+    // is available; disclosed as approximate).
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-zip-centroids' && parts[2] === 'lookup'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      const g = normalizeGeoKey(url.searchParams.get('key'), url.searchParams.get('country'));
+      if (!g || /^DMA:/.test(g.key)) return sendJson(res, 400, { error: 'key must be a postal code of a supported country (US, CA, AU, GB, DE, FR, ES, IT)' });
+      const c = db.prepare('SELECT zip, lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?').get(g.key);
+      return sendJson(res, 200, { key: g.key, country: g.country, found: !!c, lat: c ? c.lat : null, lng: c ? c.lng : null, sourceLabel: c ? c.sourceLabel : null });
+    }
+    // GET /api/accounts/:id/stores — the account's store list
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const stores = db.prepare("SELECT id, storeId, name, address, COALESCE(country, 'US') AS country, lat, lng, geocodeSource, updatedAt FROM account_stores WHERE accountId = ? ORDER BY name, storeId").all(accountId);
+      return sendJson(res, 200, { stores, geocoded: stores.filter(s => s.lat != null && s.lng != null).length });
+    }
+    // POST /api/accounts/:id/stores — { stores: [{storeId?, name?, address?, lat?, lng?, geocodeSource?}], replace?: true }
+    // Geocoding happens client-side (Census Geocoder, free) or the file
+    // brings lat/lng; the backend stores what it is given and says which
+    // stores still lack coordinates.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!Array.isArray(body.stores)) return sendJson(res, 400, { error: 'stores (array) is required' });
+      const now = new Date().toISOString();
+      if (body.replace) db.prepare('DELETE FROM account_stores WHERE accountId = ?').run(accountId);
+      let saved = 0; const errors = [];
+      body.stores.forEach((s, i) => {
+        const name = String(s.name || '').trim() || null, address = String(s.address || '').trim() || null, storeId = String(s.storeId || '').trim() || null;
+        if (!name && !address && !storeId){ if (errors.length < 50) errors.push(`row ${i}: needs a store id, name or address`); return; }
+        const lat = s.lat != null && s.lat !== '' ? Number(s.lat) : null, lng = s.lng != null && s.lng !== '' ? Number(s.lng) : null;
+        const ok = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+        const country = normalizeCountry(s.country) || 'US';
+        const existing = storeId ? db.prepare('SELECT id FROM account_stores WHERE accountId = ? AND storeId = ?').get(accountId, storeId) : null;
+        if (existing) db.prepare('UPDATE account_stores SET name = ?, address = ?, country = ?, lat = ?, lng = ?, geocodeSource = ?, updatedAt = ? WHERE id = ?').run(name, address, country, ok ? lat : null, ok ? lng : null, ok ? (s.geocodeSource || 'supplied') : null, now, existing.id);
+        else db.prepare('INSERT INTO account_stores (id, accountId, storeId, name, address, country, lat, lng, geocodeSource, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)').run(generateId('STORE'), accountId, storeId, name, address, country, ok ? lat : null, ok ? lng : null, ok ? (s.geocodeSource || 'supplied') : null, now);
+        saved++;
+      });
+      const stores = db.prepare('SELECT id, storeId, name, address, country, lat, lng, geocodeSource FROM account_stores WHERE accountId = ?').all(accountId);
+      return sendJson(res, 200, { saved, errors, total: stores.length, geocoded: stores.filter(s => s.lat != null).length, notGeocoded: stores.filter(s => s.lat == null).map(s => s.name || s.storeId || s.address) });
+    }
+
+    // ============ Zip → DMA reference (2026-09-06, buildout item 4a) ============
+    // Per direct instruction ("scope it and build it out"), closing the
+    // reference-data gap named in the 2026-08-16 match-market memo: a
+    // zip-to-DMA crosswalk plus the Census ZCTA population baseline, sourced
+    // once and shared across accounts. Not account-scoped (geography is not
+    // a client fact) but gated to any valid session. Every row carries the
+    // sourceLabel and method it came from, and every DMA figure shown in the
+    // product carries that disclosure -- a public approximation is never
+    // presented as Nielsen-licensed. Loading a licensed Nielsen crosswalk
+    // later is the same POST with a different sourceLabel/method.
+    //
+    // POST /api/market-dma-master — { rows: [{zip, dmaCode, dmaName}], sourceLabel, method }
+    if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-dma-master'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      const body = await readBody(req);
+      if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, dmaCode, dmaName}) is required' });
+      if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this crosswalk come from?' });
+      const method = String(body.method || '').trim() || 'unspecified';
+      const now = new Date().toISOString();
+      let inserted = 0; const errors = [];
+      const stmt = db.prepare(`INSERT INTO zip_dma_master (zip, dmaCode, dmaName, sourceLabel, method, updatedAt) VALUES (?,?,?,?,?,?)
+        ON CONFLICT(zip) DO UPDATE SET dmaCode = excluded.dmaCode, dmaName = excluded.dmaName, sourceLabel = excluded.sourceLabel, method = excluded.method, updatedAt = excluded.updatedAt`);
+      body.rows.forEach((r, i) => {
+        const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
+        const zip = g && !/^DMA:/.test(g.key) ? g.key : null;
+        if (!zip){ if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
+        const code = String(r.dmaCode == null ? '' : r.dmaCode).trim();
+        if (!code){ if (errors.length < 50) errors.push(`row ${i}: dmaCode is required`); return; }
+        stmt.run(zip, code, String(r.dmaName || '').trim() || null, String(body.sourceLabel).trim(), method, now);
+        inserted++;
+      });
+      return sendJson(res, 200, { inserted, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_dma_master').get().n });
+    }
+    // GET /api/market-dma-master/status
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-dma-master' && parts[2] === 'status'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      return sendJson(res, 200, dmaMasterStatus());
+    }
+
     // POST /api/market-population-master — CX Ops bulk-loads real
     // population figures (e.g. from a Census Bureau ZCTA export or an
     // account-supplied file) — { rows: [{zip, population}], sourceLabel }.
@@ -15152,17 +15566,19 @@ Submit your findings via the submit_brand_categories tool.`;
     // rather than duplicating it, so this can be safely re-run as fresher
     // Census data becomes available.
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-population-master'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       const body = await readBody(req);
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, population}) is required' });
       if (!body.sourceLabel || !body.sourceLabel.trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this population data come from?' });
       const now = new Date().toISOString();
       let inserted = 0, errors = [];
       body.rows.forEach((r, i) => {
-        if (!r.zip || !/^\d{5}$/.test(String(r.zip))) { errors.push(`row ${i}: zip must be a 5-digit code, got "${r.zip}"`); return; }
-        if (r.population == null || isNaN(Number(r.population)) || Number(r.population) < 0) { errors.push(`row ${i}: population must be a non-negative number, got "${r.population}"`); return; }
+        const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
+        if (!g || /^DMA:/.test(g.key)) { if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
+        if (r.population == null || isNaN(Number(r.population)) || Number(r.population) < 0) { if (errors.length < 50) errors.push(`row ${i}: population must be a non-negative number, got "${r.population}"`); return; }
         db.prepare(`INSERT INTO zip_population_master (zip, population, sourceLabel, updatedAt) VALUES (?,?,?,?)
           ON CONFLICT(zip) DO UPDATE SET population = excluded.population, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`)
-          .run(String(r.zip), Number(r.population), body.sourceLabel.trim(), now);
+          .run(g.key, Number(r.population), body.sourceLabel.trim(), now);
         inserted++;
       });
       return sendJson(res, 200, { inserted, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n });
@@ -15177,7 +15593,7 @@ Submit your findings via the submit_brand_categories tool.`;
       const count = db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n;
       const sources = db.prepare('SELECT DISTINCT sourceLabel FROM zip_population_master').all().map(r => r.sourceLabel);
       const demoAttrs = db.prepare('SELECT DISTINCT attribute FROM zip_demographic_master').all().map(r => r.attribute);
-      return sendJson(res, 200, { zipsLoaded: count, sources, demographicAttributes: demoAttrs });
+      return sendJson(res, 200, { zipsLoaded: count, sources, demographicAttributes: demoAttrs, byCountry: countByCountry('zip_population_master') });
     }
 
     // POST /api/accounts/:id/market-customer-uploads — commits a
@@ -15204,9 +15620,14 @@ Submit your findings via the submit_brand_categories tool.`;
       if (uploadedFile.purpose !== 'market_optimization') return sendJson(res, 400, { error: `that file was uploaded for purpose "${uploadedFile.purpose}", not "market_optimization"` });
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, customerCount, revenue?}) is required' });
       const weightMode = body.weightMode === 'revenue' ? 'revenue' : 'count';
+      // 2026-09-06: a Nielsen-DMA-coded file is accepted as a lower-
+      // confidence fallback (geoLevel 'dma'); rows carry "DMA:<code or
+      // name>" in the zip column so the row table is unchanged.
+      const geoLevel = body.geoLevel === 'dma' ? 'dma' : 'zip';
       const rowErrors = [];
       body.rows.forEach((r, i) => {
-        if (!r.zip || !/^\d{5}$/.test(String(r.zip))) rowErrors.push(`row ${i}: zip must be a 5-digit US zip, got "${r.zip}"`);
+        if (geoLevel === 'dma'){ if (!r.zip || !/^DMA:.+/.test(String(r.zip))) rowErrors.push(`row ${i}: expected a DMA code or name, got "${r.zip}"`); }
+        else { const g = normalizeGeoKey(r.zip, r.country || body.defaultCountry); if (!g || /^DMA:/.test(g.key)) rowErrors.push(`row ${i}: not a recognised postal code (${normalizeCountry(r.country || body.defaultCountry) || 'US'}), got "${r.zip}"`); else r.zip = g.key; }
         if (r.customerCount == null || isNaN(Number(r.customerCount)) || Number(r.customerCount) < 0) rowErrors.push(`row ${i}: customerCount must be a non-negative number, got "${r.customerCount}"`);
         if (r.revenue != null && (isNaN(Number(r.revenue)) || Number(r.revenue) < 0)) rowErrors.push(`row ${i}: revenue must be a non-negative number if provided, got "${r.revenue}"`);
       });
@@ -15217,11 +15638,11 @@ Submit your findings via the submit_brand_categories tool.`;
       const now = new Date().toISOString();
       const id = generateId('MKTUP');
       const auditJson = body.audit ? JSON.stringify(body.audit) : null;
-      db.prepare('INSERT INTO market_customer_uploads (id, accountId, uploadedFileId, label, createdAt, weightMode, auditJson) VALUES (?,?,?,?,?,?,?)')
-        .run(id, accountId, body.uploadedFileId, body.label || null, now, weightMode, auditJson);
+      db.prepare('INSERT INTO market_customer_uploads (id, accountId, uploadedFileId, label, createdAt, weightMode, auditJson, geoLevel) VALUES (?,?,?,?,?,?,?,?)')
+        .run(id, accountId, body.uploadedFileId, body.label || null, now, weightMode, auditJson, geoLevel);
       const insertRow = db.prepare('INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES (?,?,?,?,?)');
       body.rows.forEach(r => insertRow.run(generateId('MKTROW'), id, String(r.zip), Number(r.customerCount), r.revenue != null ? Number(r.revenue) : null));
-      return sendJson(res, 201, { id, rowCount: body.rows.length, weightMode });
+      return sendJson(res, 201, { id, rowCount: body.rows.length, weightMode, geoLevel });
     }
 
     // GET /api/accounts/:id/market-customer-uploads/:uploadId/analysis —
@@ -15246,17 +15667,34 @@ Submit your findings via the submit_brand_categories tool.`;
       const indexWeight = url.searchParams.has('indexWeight') ? Number(url.searchParams.get('indexWeight')) : (1 / 3);
       const holdoutFraction = url.searchParams.has('holdoutFraction') ? Number(url.searchParams.get('holdoutFraction')) : (1 / 6);
       const rows = db.prepare('SELECT zip, customerCount, revenue FROM market_customer_rows WHERE marketUploadId = ?').all(uploadId);
+      if ((upload.geoLevel || 'zip') === 'dma'){
+        let dmaOnly = null;
+        try { dmaOnly = computeDmaRollup(rows, upload.weightMode); } catch (e){ dmaOnly = { available: false, note: String(e && e.message || e).slice(0, 120), dmas: [] }; }
+        return sendJson(res, 200, { uploadId, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
+          confidence: 'lower — DMA-level upload: no zip-level penetration, no zip test/control pairs, no store trade areas. Upload zip-level data for the full analysis.',
+          penetration: [], compositeWeights: null, holdout: { zips: [], fraction: 0, note: 'not available at DMA level' }, demographic: { flag: 'no_demographic_data' }, matching: { pairs: [], unpaired: [], note: 'Test/control pairing at DMA level is not built yet — upload zip-level data for pairs.' },
+          audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, stores: { available: false, note: 'store trade areas need zip-level data', stores: [] } });
+      }
       const penetration = computePenetrationIndex(rows, upload.weightMode);
       const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
       const holdout = computeHoldoutSplit(composite.rows, holdoutFraction);
       const demographic = computeDemographicIndex(rows.map(r => r.zip));
       const matching = computeMatchedMarketPairs(composite.rows, demographic, holdout.holdoutZips);
       const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
+      let dma = null;
+      try { dma = computeDmaRollup(rows, upload.weightMode); } catch (e){ dma = { available: false, note: `DMA roll-up not readable (${String(e && e.message || e).slice(0, 120)})`, dmas: [] }; }
+      let stores = null;
+      try {
+        const radiiRaw = url.searchParams.get('radii');
+        const radii = radiiRaw ? radiiRaw.split(',').map(Number).filter(n => n > 0) : [3, 5, 10];
+        const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
+        stores = computeStoreTradeAreas(rows, storeRows, radii, upload.weightMode);
+      } catch (e){ stores = { available: false, note: `store trade areas not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] }; }
       return sendJson(res, 200, {
         uploadId, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
         penetration: composite.rows, compositeWeights: composite.weights,
         holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
-        demographic, matching, audit
+        demographic, matching, audit, dma, stores, geoLevel: 'zip'
       });
     }
 
@@ -15894,6 +16332,142 @@ Submit your findings via the submit_brand_categories tool.`;
       });
       const upload = db.prepare('SELECT fileName FROM marketing_budget_uploads WHERE id = ?').get(latestConfirmed.id);
       return sendJson(res, 200, { restricted: true, activeChannels: [...active], uploadId: latestConfirmed.id, uploadFileName: upload ? upload.fileName : null });
+    }
+
+    // ============ Continuous learning inputs (2026-09-05) ============
+    // Per direct instruction: "make sure that our budgeting process is wired
+    // to support our continuous learning mission. Data to use when
+    // populated. Important that self-learning does not break when some data
+    // is NULL." One read assembles the eight inputs the budgeting logic can
+    // learn from, each reported as { available, value, source, addAt } so a
+    // consumer branches on `available` and never dereferences a NULL. Every
+    // input is gathered inside its own try/catch: a missing table, a bad
+    // JSON blob or a NULL column degrades that one input to
+    // available:false with a `note`, never the whole response.
+    //
+    // GET /api/accounts/:id/learning-inputs?year=YYYY
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'learning-inputs'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const yearRaw = url.searchParams.get('year');
+      const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
+      const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+      const parseJson = (t, fallback) => { try { return t ? JSON.parse(t) : fallback; } catch (e){ return fallback; } };
+      const gather = (key, label, addAt, fn) => {
+        try {
+          const out = fn() || {};
+          return Object.assign({ key, label, addAt, available: false, value: null, source: null, note: null }, out);
+        } catch (e){
+          return { key, label, addAt, available: false, value: null, source: null, note: `not readable (${String(e && e.message || e).slice(0, 120)})` };
+        }
+      };
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {};
+      const inputs = [];
+      // 1. budget total + channel allocation for the year
+      let workingSpend = null;
+      inputs.push(gather('budget', `${year} budget total and channel allocation`, 'Media Plan & Budget → upload or enter the year\'s budget', () => {
+        const up = db.prepare("SELECT id, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(scope, 'domestic') = 'domestic' ORDER BY confirmedAt DESC LIMIT 1").get(accountId, year);
+        if (up){
+          const byCat = computeByVerilumeCategoryForUpload(up.id) || {};
+          const byChannel = {};
+          Object.entries(byCat).forEach(([cat, total]) => { if (num(total) > 0) byChannel[cat] = num(total); });
+          workingSpend = Object.values(byChannel).reduce((s, v) => s + v, 0);
+          return { available: workingSpend > 0, value: { workingSpend, byCategory: byChannel }, source: `confirmed upload "${up.fileName || up.id}"` };
+        }
+        const plan = db.prepare('SELECT id, totalBudget FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+        if (!plan) return { note: 'no confirmed upload or saved media plan for this year' };
+        const allocs = db.prepare('SELECT stage, channel, approvedAmount FROM media_plan_allocations WHERE mediaPlanId = ?').all(plan.id);
+        const byChannel = {};
+        allocs.forEach(a => { const v = num(a.approvedAmount) || 0; if (v > 0) byChannel[a.channel] = (byChannel[a.channel] || 0) + v; });
+        workingSpend = Object.values(byChannel).reduce((s, v) => s + v, 0) || num(plan.totalBudget);
+        return { available: !!(workingSpend > 0), value: { workingSpend, byCategory: byChannel }, source: 'saved media plan' };
+      }));
+      // 2. final gross revenue for the year + ROAS
+      inputs.push(gather('results', `${year} final gross revenue and ROAS`, 'Media Plan & Budget → Continuous learning card → enter final gross revenue', () => {
+        const r = db.prepare('SELECT grossRevenue, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+        let revenue = r ? num(r.grossRevenue) : null;
+        let source = r ? 'year results (final)' : null;
+        if (revenue == null){
+          const plan = db.prepare('SELECT grossRevenue FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+          if (plan && num(plan.grossRevenue) > 0){ revenue = num(plan.grossRevenue); source = 'media plan (planned revenue, not final)'; }
+        }
+        if (revenue == null) return { note: 'final gross revenue not entered' };
+        const roas = (workingSpend > 0) ? Math.round((revenue / workingSpend) * 100) / 100 : null;
+        return { available: true, value: { grossRevenue: revenue, workingSpend, roas, isFinal: !!(r && num(r.grossRevenue) != null), notes: r ? (r.notes || null) : null }, source, note: roas == null ? 'ROAS needs the year\'s working spend (input 1)' : null };
+      }));
+      // 3. key DMA markets
+      inputs.push(gather('markets', 'Key DMA markets', 'Advanced Analytics → Match Market Builder → upload customer transactions by zip', () => {
+        const mu = db.prepare('SELECT id, label, createdAt FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId);
+        if (!mu) return { note: 'no customer-by-zip upload yet (DMA roll-up needs one)' };
+        const rows = db.prepare('SELECT zip, customerCount FROM market_customer_rows WHERE marketUploadId = ? ORDER BY customerCount DESC LIMIT 25').all(mu.id);
+        const total = db.prepare('SELECT SUM(customerCount) AS t, COUNT(*) AS n FROM market_customer_rows WHERE marketUploadId = ?').get(mu.id) || {};
+        let dma = null;
+        try { dma = computeDmaRollup(db.prepare('SELECT zip, customerCount, revenue FROM market_customer_rows WHERE marketUploadId = ?').all(mu.id), 'count'); } catch (e){ dma = null; }
+        const topDmas = dma && dma.available ? dma.dmas.slice(0, 10).map(d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, customers: d.volume, share: d.share, populationIndex: d.populationIndex })) : null;
+        return { available: rows.length > 0, value: { upload: mu.label || mu.id, zipCount: num(total.n) || 0, customers: num(total.t) || 0, topZips: rows.map(r => ({ zip: r.zip, customers: num(r.customerCount) || 0 })), topDmas, dmaDisclosure: dma ? dma.disclosure : null, unmappedZips: dma && dma.available ? dma.unmappedZips : null }, source: topDmas ? 'Match Market Builder customer upload, rolled up to DMA' : 'Match Market Builder customer upload', note: topDmas ? (dma.licensed ? null : 'DMA roll-up uses a public approximation of DMA boundaries, not Nielsen-licensed') : 'zip level only — load a zip→DMA crosswalk (Match Market Builder → Reference data) for the DMA roll-up' };
+      }));
+      // 4. assessment / profile
+      inputs.push(gather('profile', 'Free Assessment profile (industry, generations, wealth, sales region, org structure)', 'Company Profile', () => {
+        const generations = String(account.audience || '').split(',').map(s => s.trim()).filter(Boolean);
+        const wealth = String(account.wealth || '').split(',').map(s => s.trim()).filter(Boolean);
+        const value = { industry: account.industry || null, generations, wealth, salesRegion: account.footprint || null, orgStructure: account.orgModel || null, onboardingSurvey: !!account.onboardingSurveyJson, assessedStages: parseJson(account.assessedStagesJson, null) };
+        const have = ['industry', 'salesRegion', 'orgStructure'].filter(k => value[k]).length + (generations.length ? 1 : 0) + (wealth.length ? 1 : 0);
+        const missing = [!value.industry && 'industry', !generations.length && 'target generations', !wealth.length && 'wealth tier', !value.salesRegion && 'sales region', !value.orgStructure && 'org structure'].filter(Boolean);
+        return { available: have > 0, value, source: 'accounts (assessment + Company Profile)', note: missing.length ? `missing: ${missing.join(', ')}` : null };
+      }));
+      // 5. competitors + battle briefs
+      inputs.push(gather('competitors', 'Key competitors and battle briefs', 'Company Profile → Competitive Positioning; Intelligence refresh for briefs', () => {
+        const comps = parseJson(account.competitorsJson, []);
+        const list = Array.isArray(comps) ? comps.map(c => (typeof c === 'string' ? c : (c && (c.name || c.competitor)) || null)).filter(Boolean) : [];
+        const intel = parseJson(account.accountIntelligenceJson, null);
+        return { available: list.length > 0, value: { competitors: list, battleBriefs: !!intel, briefsGeneratedAt: account.accountIntelligenceGeneratedAt || null }, source: 'accounts.competitorsJson / accountIntelligenceJson', note: list.length && !intel ? 'competitors named, no intelligence brief generated yet' : (list.length ? null : 'no competitors named') };
+      }));
+      // 6. internal channel cost (CPM)
+      inputs.push(gather('internalCpm', 'Internal channel cost (CPM)', 'Campaign line items with spend + impressions; or edit Est. CPM on the media plan', () => {
+        const rows = db.prepare('SELECT li.category AS category, SUM(li.spend) AS spend, SUM(li.impressions) AS impressions FROM campaign_mmm_line_items li JOIN campaigns c ON c.id = li.campaignId WHERE c.accountId = ? GROUP BY li.category').all(accountId);
+        const measured = {};
+        rows.forEach(r => { const sp = num(r.spend), im = num(r.impressions); if (sp > 0 && im > 0) measured[r.category] = Math.round((sp / im) * 1000 * 100) / 100; });
+        const plan = db.prepare('SELECT id FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+        const entered = {};
+        if (plan){ db.prepare('SELECT channel, cpm FROM media_plan_allocations WHERE mediaPlanId = ?').all(plan.id).forEach(a => { const v = num(a.cpm); if (v > 0 && entered[a.channel] == null) entered[a.channel] = v; }); }
+        const measuredCount = Object.keys(measured).length;
+        return { available: measuredCount > 0, value: { measured, planEntered: entered }, source: measuredCount ? 'campaign line items (spend ÷ impressions)' : null, note: measuredCount ? null : (Object.keys(entered).length ? 'only plan-entered CPMs on file (illustrative defaults unless edited) — no measured spend/impressions yet' : 'no campaign spend/impressions on file') };
+      }));
+      // 7. internal MMM / attribution channel performance
+      inputs.push(gather('mmmPerformance', 'Internal channel performance (MMM or direct attribution)', 'Advanced Analytics → MMM data inputs', () => {
+        const rows = db.prepare('SELECT channel, COUNT(*) AS n, MAX(periodLabel) AS latest, SUM(spend) AS spend, SUM(outcomeValue) AS outcome, MAX(outcomeMetric) AS metric FROM mmm_inputs WHERE accountId = ? GROUP BY channel').all(accountId);
+        if (!rows.length) return { note: 'no MMM inputs on file' };
+        const byChannel = {};
+        rows.forEach(r => { byChannel[r.channel] = { periods: num(r.n) || 0, latestPeriod: r.latest || null, spend: num(r.spend), outcome: num(r.outcome), metric: r.metric || null, outcomePerDollar: (num(r.spend) > 0 && num(r.outcome) != null) ? Math.round((num(r.outcome) / num(r.spend)) * 10000) / 10000 : null }; });
+        const anyOutcome = Object.values(byChannel).some(c => c.outcome != null && c.outcome > 0);
+        return { available: true, value: { channels: byChannel }, source: 'mmm_inputs', note: anyOutcome ? null : 'spend by period only — no outcome values yet, so no channel performance can be read from it' };
+      }));
+      // 8. external research
+      inputs.push(gather('externalResearch', 'External research (estimated CPM, media consumption by generation and wealth)', 'Editorial tables in the product (portal.html) — replace with licensed data when available', () => ({
+        available: true,
+        value: { tables: ['ILLUSTRATIVE_CHANNEL_CPM', 'STAGE_CHANNEL_WEIGHTS + industry tables', 'GENERATION_CHANNEL_AFFINITY', 'WEALTH_CHANNEL_AFFINITY', 'CHANNEL_MIN_VIABLE_SPEND'], licensed: false },
+        source: 'editorial starting tables shipped with the product',
+        note: 'directional, not measured — lowest-trust input; every internal input above outranks it when populated'
+      })));
+      const populated = inputs.filter(i => i.available).length;
+      return sendJson(res, 200, { accountId, year, populated, total: inputs.length, inputs, generatedAt: new Date().toISOString() });
+    }
+
+    // POST /api/accounts/:id/year-results — final gross revenue for a year
+    // (input 2 above). { year, grossRevenue, notes }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'year-results'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const year = parseInt(body.year, 10);
+      if (!Number.isFinite(year) || year < 2000 || year > 2100) return sendJson(res, 400, { error: 'year is required' });
+      const revenue = (body.grossRevenue === null || body.grossRevenue === undefined || body.grossRevenue === '') ? null : Number(body.grossRevenue);
+      if (revenue !== null && !(Number.isFinite(revenue) && revenue >= 0)) return sendJson(res, 400, { error: 'grossRevenue must be a non-negative number or null' });
+      const now = new Date().toISOString();
+      const existing = db.prepare('SELECT accountId FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+      if (existing) db.prepare('UPDATE account_year_results SET grossRevenue = ?, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ?').run(revenue, body.notes || null, now, accountId, year);
+      else db.prepare('INSERT INTO account_year_results (accountId, year, grossRevenue, notes, updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, year, revenue, body.notes || null, now);
+      return sendJson(res, 200, { accountId, year, grossRevenue: revenue, notes: body.notes || null, updatedAt: now });
     }
 
     // GET /api/accounts/:id/marketing-budget-uploads — history, most recent
