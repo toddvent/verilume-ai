@@ -5110,10 +5110,17 @@ const MBU_BUCKET_GROUPS = {
   'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
   'Consumer Print Advertising — Total/Unspecified': ['Consumer Print Advertising — Magazines', 'Print Advertising — Newspapers', 'Magazines/Print']
 };
-function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals){
+function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels){
   const manualRows = db.prepare(`SELECT category, SUM(annualTotal) as total FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = 'working' GROUP BY category`).all(uploadId, MBU_MANUAL_LINE_SOURCE_ROW);
   const manualByLabel = {};
-  manualRows.forEach(r => { manualByLabel[r.category] = Number(r.total) || 0; });
+  // Round 2026-09-07 (Review 15): a manual row for a label that ALSO has
+  // real, independently-imported dollars (realLabels, from the same
+  // duplicate-detection this call's caller already ran) is the spurious
+  // duplicate described in mbuExcludeDuplicateManualEntries's comment, not
+  // a legitimate split -- it must not be treated as "dollars moved out of
+  // the bucket" here either, or the bucket gets wrongly zeroed all over
+  // again exactly like the bug this whole round exists to fix.
+  manualRows.forEach(r => { if (!(realLabels && realLabels.has(r.category))) manualByLabel[r.category] = Number(r.total) || 0; });
   Object.entries(MBU_BUCKET_GROUPS).forEach(([bucket, siblings]) => {
     // Only a bucket that actually has real imported dollars of its own gets
     // recomputed -- matches the frontend's own guard (it bails when the
@@ -5125,8 +5132,33 @@ function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals){
     byVerilumeCategory[bucket] = Math.max(0, rawBucketTotal - subSum);
   });
 }
+// Round 2026-09-07 (Review 15), per direct bug report ("We're still not
+// recognizing the 4 DIGITAL LINE ITEMS AS SUBCHANNELS OF Digital
+// Marketing. We added four new channels with sub-channels for search and
+// social being duplicated"): a manual/split-sourced line item is always
+// self-mapped -- its raw `category` literally equals its own
+// `verilumeCategory`, since working-sub-lines inserts it that way (see
+// that endpoint's own comment). "Edit Digital sub-channels" used to offer
+// Search and Social as split targets even though they already had real,
+// independently-imported dollars under their OWN raw file categories
+// (62101/62102) -- saving that draft created a second, self-mapped
+// "Search"/"Social" line item alongside the real one, double-counting
+// those dollars everywhere this function is read (frontend fixed this
+// round too, in mbuGroupSplitLabels). If a label has BOTH a self-mapped
+// entry AND a real entry under a genuinely different raw category, the
+// self-mapped one is the spurious duplicate -- drop it here so any
+// already-saved duplicate self-heals retroactively, the same way a stale
+// bucket override does above.
+function mbuRealLabelsForLedger(ledger){
+  return new Set(ledger.filter(c => c.category !== c.verilumeCategory).map(c => c.verilumeCategory).filter(Boolean));
+}
+function mbuExcludeDuplicateManualEntries(ledger, realLabels){
+  return ledger.filter(c => !(c.category === c.verilumeCategory && realLabels.has(c.verilumeCategory)));
+}
 function computeByVerilumeCategoryForUpload(uploadId){
-  const ledger = mbuCategoryLedgerForUpload(uploadId).filter(c => c.status === 'working' && !mbuIsTotalLikeCategoryLabel(c.category));
+  const rawLedger = mbuCategoryLedgerForUpload(uploadId).filter(c => c.status === 'working' && !mbuIsTotalLikeCategoryLabel(c.category));
+  const realLabels = mbuRealLabelsForLedger(rawLedger);
+  const ledger = mbuExcludeDuplicateManualEntries(rawLedger, realLabels);
   const byVerilumeCategory = {};
   ledger.forEach(c => {
     const key = c.verilumeCategory || 'Other/Uncategorized';
@@ -5136,7 +5168,7 @@ function computeByVerilumeCategoryForUpload(uploadId){
   const rawTotals = Object.assign({}, byVerilumeCategory);
   const overrideRows = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(uploadId);
   overrideRows.forEach(r => { byVerilumeCategory[r.verilumeCategory] = r.overrideTotal; });
-  mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals);
+  mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels);
   return byVerilumeCategory;
 }
 
@@ -5183,6 +5215,25 @@ function mbuSuggestVerilumeCategory(rawCategory){
   const rules = [
     [/\bsem\b|\bsearch\b|\bppc\b|\badwords\b|\bgoogle ads\b/, 'Search'],
     [/\bsocial\b/, 'Social'],
+    // Round 2026-09-07 (Review 15), per direct bug report: a real digital
+    // sub-channel line ("621004 - Consumer Digital Marketing Partnreships"
+    // -- note the client file's own typo, "Partnreships") had no rule
+    // matching "partnership[s]" text before it ever reached the generic
+    // \bdigital\b catch-all below, so it fell into Digital — Total/
+    // Unspecified instead of the dedicated 'Digital — Partnerships'
+    // sub-channel that already exists in the taxonomy for exactly this.
+    // Matches loosely on "partn" (not the full word) specifically because
+    // real client files misspell it, same forgiving-fallback spirit as
+    // OTV's bare "video" and PR/Earned's bare "communications" rules
+    // above. 'Digital — Addressable' gets the same treatment for its own
+    // keyword, since it was equally unreachable by suggestion before this.
+    [/\bdigital\b.*\baddressable\b|\baddressable\b.*\bdigital\b/, 'Digital — Addressable'],
+    // Scoped to "digital" + "partn..." appearing together, not bare
+    // "partn..." alone -- a bare "partner" reference (a travel-agent /
+    // affiliate deal, no digital-channel context) should keep matching the
+    // separate, pre-existing 'Partner/Affiliate Media' rule further below,
+    // not get swept into this new Digital sub-channel by mistake.
+    [/\bdigital\b.*\bpartn|\bpartn\w*\b.*\bdigital\b/, 'Digital — Partnerships'],
     // Round 2026-09-07, per direct bug report (Todd's 2026 file, "621003-
     // Consumer Digital Marketing Display" row): 'Display/Programmatic' is a
     // legacy category the frontend has since retired (MBU_RETIRED_CATEGORIES)
@@ -17761,3 +17812,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
