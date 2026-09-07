@@ -24276,7 +24276,21 @@ function mbdActiveChartModel(){
 // confirmed budget shows by default), its own live snapshot is what the
 // user is looking at, so it wins over the plan here.
 function mbdCanonicalChartModel(){
-  if (typeof mbuWorkingMediaSnapshot !== 'undefined' && mbuWorkingMediaSnapshot && typeof mbuAnalysis !== 'undefined' && mbuAnalysis && mbuAnalysis.status === 'confirmed' && mbuWorkingMediaSnapshot.uploadId === mbuAnalysis.id && mbdLastUploadDetail && mbdLastUploadDetail.id === mbuAnalysis.id){
+  // Round 2026-09-07, per direct bug report: "the 2026 upload appears to
+  // have impacted the 2025 budget" — switching the year chip (setMbuYear)
+  // never clears mbuAnalysis / mbdLastUploadDetail / mbuWorkingMediaSnapshot
+  // (they're only reset when a NEW upload/mapping screen is opened), so
+  // after viewing 2026's worksheet and then clicking back to 2025, all
+  // three globals still pointed at the 2026 upload. This branch used to
+  // trust that trio purely on upload-id match, with no check against the
+  // year actually selected right now — so it kept returning 2026's
+  // snapshot-corrected model while every other card-rendering path had
+  // already moved on to 2025. Requiring mbdLastUploadDetail.year to equal
+  // mbuSelectedYear closes that gap; a stale cross-year snapshot now falls
+  // through to mbdActiveChartModel(), which already scopes correctly by
+  // year (see its own comment above).
+  const year = (typeof mbuSelectedYear !== 'undefined' && mbuSelectedYear) ? mbuSelectedYear : (typeof mpSelectedYear !== 'undefined' ? mpSelectedYear : null);
+  if (typeof mbuWorkingMediaSnapshot !== 'undefined' && mbuWorkingMediaSnapshot && typeof mbuAnalysis !== 'undefined' && mbuAnalysis && mbuAnalysis.status === 'confirmed' && mbuWorkingMediaSnapshot.uploadId === mbuAnalysis.id && mbdLastUploadDetail && mbdLastUploadDetail.id === mbuAnalysis.id && Number(mbdLastUploadDetail.year) === Number(year)){
     return mbdModelFromUpload(mbdLastUploadDetail); // internally snapshot-corrected, see mbdModelFromUpload
   }
   return mbdActiveChartModel();
@@ -27180,6 +27194,23 @@ function mbuNonWorkingLabelEdited(rawCategory, value){
   if (!clean || clean === rawCategory) delete mbuNonWorkingLabels[rawCategory]; else mbuNonWorkingLabels[rawCategory] = clean;
 }
 async function mbuLoadCategoryMapping(){
+  // Round 2026-09-07, per direct report: "It takes 15 seconds or so to
+  // show up... We may need a loading screen while we map categories if we
+  // can't speed it up." This GET does real work server-side (rolling up
+  // every raw line item into Verilume categories, computing suggestions
+  // for anything unmapped) and the screen gave no sign anything was
+  // happening in the meantime — it looked frozen, then jumped straight to
+  // the finished worksheet. A lightweight loading state now paints
+  // immediately, before the await, so there's always visible feedback;
+  // mbuRenderCategoryMapping() below replaces it the moment the real data
+  // is ready.
+  const mbuLoadingBody = document.getElementById('mbuResultsBody');
+  if (mbuLoadingBody){
+    mbuLoadingBody.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:32px 8px;color:var(--muted);">
+      <span class="spinner" aria-hidden="true" style="width:20px;height:20px;border:2px solid var(--line);border-top-color:var(--cx);border-radius:50%;display:inline-block;animation:mbuSpin 0.8s linear infinite;"></span>
+      <span>Mapping your budget's categories — this can take a few seconds…</span>
+    </div><style>@keyframes mbuSpin{to{transform:rotate(360deg);}}</style>`;
+  }
   const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-mapping`);
   if (!resp.ok) return;
   mbuCategoryMappingData = await resp.json();
@@ -27297,6 +27328,15 @@ function mbuGroupedCategoryOptionsHtml(verilumeCats, choice){
 const MBU_COL_A = 'flex:1 1 220px;min-width:180px;';
 const MBU_COL_B = 'flex:0 0 140px;';
 const MBU_COL_C = 'flex:1 1 220px;min-width:200px;';
+// Round 2026-09-07, per direct instruction ("Make Working Media and
+// Performance sections with a header and section lines around it similar
+// to Non-Working Media"): a shared bordered-section treatment — a header
+// label with a line under it, the whole block boxed with a line around it
+// — applied consistently to all three sections on this screen (Performance,
+// Working Media, Non-Working Media) so they read as one visual family
+// instead of Non-Working Media being the only one set apart.
+const MBU_SECTION_BOX_STYLE = 'border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;';
+const MBU_SECTION_HEADER_STYLE = 'font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);';
 function mbuColumnHeaderHtml(){
   return `
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:0 0 6px;">
@@ -27631,7 +27671,23 @@ function mbuActiveBudgetPrefixHtml(){
   const workingSpend = model.channels.reduce((s, g) => s + g.total, 0);
   const period = (typeof mbuPeriodFor === 'function') ? mbuPeriodFor(detail.year) : { label: '' };
   const titleLine = `<p class="hint" style="margin:0 0 10px;"><b style="color:${period.closed ? '#14532d' : 'var(--cx)'};">${period.label}</b> · ${detail.year || ''} ${(detail.scope || 'domestic') === 'international' ? 'International' : 'Domestic'} budget from "${escapeHtml(detail.fileName || 'upload')}"</p>`;
-  return titleLine + (typeof mbdRevenueStripHtml === 'function' ? mbdRevenueStripHtml(detail.year, workingSpend) : '') + (typeof mbdRoasLineHtml === 'function' ? mbdRoasLineHtml(detail.year, workingSpend) : '');
+  // Round 2026-09-07, per direct instruction ("Remove the planned roas text
+  // in the screen shot"): the Planned/Actual ROAS line here duplicated the
+  // dedicated ROAS chart card added to the Budget charts row (Round 133) —
+  // same Revenue ÷ Working Media Spend figures, shown twice on the same
+  // screen. The revenue strip (Revenue & results) stays; only the ROAS line
+  // itself is dropped from this Performance section.
+  // Same round, per point 5 ("Make Working Media and Performance sections
+  // with a header and section lines around it similar to Non-Working
+  // Media"): boxed in the same MBU_SECTION_BOX_STYLE/HEADER_STYLE treatment
+  // as the two category sections below it, with its own "Performance"
+  // header, so all three sections on this screen match visually.
+  // mbdRevenueStripHtml normally draws its own border + an unstyled
+  // "Performance" kicker label (its `.kicker` class only matches CSS in an
+  // unrelated context, so that label rendered as plain text) — bare:true
+  // skips both, so this one real header/box wraps it instead of nesting a
+  // second, redundant one around it.
+  return `<div style="${MBU_SECTION_BOX_STYLE}"><p style="${MBU_SECTION_HEADER_STYLE}">Performance</p>${titleLine}${(typeof mbdRevenueStripHtml === 'function' ? mbdRevenueStripHtml(detail.year, workingSpend, { bare: true }) : '')}</div>`;
 }
 function mbuRenderCategoryMapping(){
   const card = document.getElementById('mbuResultsCard');
@@ -27773,8 +27829,8 @@ function mbuRenderCategoryMapping(){
       <button type="button" class="btn-ghost" onclick="mbuAddManualCategory('working')">+ Add category</button>
     </div>` : '';
   const workingSectionHtml = `
-    <div style="margin:0 0 20px;">
-      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 6px;color:var(--cx);">Working Media</p>
+    <div style="${MBU_SECTION_BOX_STYLE}">
+      <p style="${MBU_SECTION_HEADER_STYLE}color:var(--cx);">Working Media</p>
       ${mbuColumnHeaderHtml()}
       ${groupBlocks || customHtml ? (groupBlocks + customHtml) : '<p class="hint">Nothing identified yet.</p>'}
       ${addControl}
@@ -27788,8 +27844,8 @@ function mbuRenderCategoryMapping(){
   const fileNonWorking = nonWorkingCats.filter(c => !c.manual);
   const nonWorkingTotal = fileNonWorking.reduce((s, c) => s + Number(c.total || 0), 0) + mbuManualNonWorking.reduce((s, r) => s + (Number(r.total) || 0), 0);
   const nonWorkingSectionHtml = `
-    <div style="margin:0 0 20px;" id="mbuNonWorkingSection">
-      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 6px;">Non-Working Media</p>
+    <div style="${MBU_SECTION_BOX_STYLE}" id="mbuNonWorkingSection">
+      <p style="${MBU_SECTION_HEADER_STYLE}">Non-Working Media</p>
       ${mbuColumnHeaderHtml()}
       ${fileNonWorking.length ? fileNonWorking.map(mbuNonWorkingCategoryRowHtml).join('') : (mbuManualNonWorking.length ? '' : '<p class="hint">Nothing in your file was tagged Non-Working.</p>')}
       ${mbuManualNonWorking.map(mbuManualNonWorkingRowHtml).join('')}
@@ -27822,13 +27878,18 @@ function mbuRenderCategoryMapping(){
   // calls straight into this). Performance (planned/actual revenue,
   // variance, ROAS) still leads the card, unchanged, above the categories.
   const prefixHtml = isEditingConfirmed ? mbuActiveBudgetPrefixHtml() : '';
-  const extrasHtml = isEditingConfirmed ? mbuActiveBudgetExtrasHtml : '';
+  // Round 2026-09-07, per direct instruction ("Remove download monthly
+  // detail through Review your budget copy. See screenshot."): the
+  // extras row (Download monthly detail / Edit media plan / Imported line
+  // items), the Discard-unsaved-changes button, and the "Review your
+  // budget" heading + explanatory paragraph all sat between Performance
+  // and the actual category table — exactly the block Todd's screenshot
+  // shows as one contiguous chunk of clutter to remove. The category
+  // table now follows straight after Performance. Media Plan is still
+  // reachable from the main nav ("Manage Budgets" → goToStep('mediaplan'))
+  // for anyone who used the "Edit media plan" shortcut that lived here.
   body.innerHTML = `
     ${prefixHtml}
-    ${extrasHtml}
-    ${isEditingConfirmed ? `<button type="button" class="btn-ghost" onclick="mbuBackToBudgetDetail()" style="margin-bottom:10px;">↻ Discard unsaved changes</button>` : ''}
-    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 4px;">Review your budget</p>
-    <p class="hint" style="margin:0 0 12px;">Working media first: each of your categories, its amount, and our best-guess Verilume category (a single "International" line can map to International — total only; a "Total/Unspecified" bucket can be split into its sub-channels). Non-working spend follows in the same columns with a label you can rename or lines you add. Total marketing spend closes the statement.</p>
     ${workingSectionHtml}
     ${nonWorkingSectionHtml}
     ${mbuTotalRowHtml('Total marketing spend', sectionTotal + nonWorkingTotal, { grand: true, accent: true, note: '(working + non-working, read-only)' })}
@@ -28049,6 +28110,113 @@ function mbdGroupForVerilume(cat){
   if (/^Client: /.test(cat)) return 'Your Categories';
   for (const [group, cats] of Object.entries(MBU_FUNCTIONAL_GROUPS)){ if (cats.includes(cat)) return group; }
   return 'Other';
+}
+// Round 2026-09-07, per direct bug report ("We lost the channel mix card
+// structure" — a Channel Media Mix card that used to break out Direct
+// Mail/Digital/Print Publications/Field/etc. collapsed to one "Other /
+// total-only lines 100%" line). CHANNEL_MIX_GROUPS.categories lists RAW MMM
+// channel names ('Programmatic Display', 'Direct Mail — Prospects', ...),
+// but Round 135's worksheet-snapshot fix (mbdModelFromUpload, above) made
+// model.channels[].subs[].label a worksheet-level Verilume category
+// ('Digital — Total/Unspecified', 'Direct Mail') for an uploaded budget's
+// model instead — CHANNEL_MIX_GROUPS never recognized those labels, so
+// every sub-channel fell into the "Other" catch-all below.
+// model.channels[].label (the FUNCTIONAL GROUP a sub-channel rolls up to,
+// e.g. 'Digital', 'Direct Mail', 'TV') is the one thing an uploaded budget
+// (MBU_FUNCTIONAL_GROUPS) and a saved Media Plan (MBD_MMM_TO_GROUP,
+// deliberately kept in the same vocabulary — see its own comment above)
+// always agree on regardless of which label format a sub-channel happens
+// to carry, so Channel Mix now groups by that instead of by sub-channel
+// label. Groups this chart doesn't break out on their own (Email, PR,
+// Events, Professional Services, Production, Fulfillment & Collateral,
+// Data & Technology, International, Your Categories, Other) are left
+// unmapped here on purpose — they still land in the "Other / total-only
+// lines" bucket below, exactly as before this fix.
+const MBD_GROUP_TO_CHANNEL_MIX_KEY = {
+  'TV': 'video',
+  'Consumer Print Advertising': 'print',
+  'Direct Mail': 'directmail',
+  'Digital': 'digital',
+  'Podcasts': 'digital',
+  'Partnerships': 'digital',
+  'Radio': 'radio',
+  'Out-of-Home': 'ooh',
+  'Trade': 'field'
+};
+// Shared by the Channel Mix card's on-screen breakdown and its export rows
+// (both below) so they can never disagree about how model.channels rolls
+// up into CHANNEL_MIX_GROUPS buckets.
+function mbdChannelMixTotals(model){
+  const totals = {};
+  CHANNEL_MIX_GROUPS.forEach(g => { totals[g.key] = 0; });
+  let other = 0;
+  model.channels.forEach(g => {
+    const key = MBD_GROUP_TO_CHANNEL_MIX_KEY[g.label];
+    if (key) totals[key] += g.total; else other += g.total;
+  });
+  return { totals, other };
+}
+// Round 2026-09-07, per direct feedback ("Marketing Loop download should
+// include the detailed spend within each loop stage to validate the card.
+// Channel Mix should show the channel mix detail to support the card. It
+// should be line item detail."): the group/sub-channel "Supporting detail"
+// rows Review 9 added only roll up to the worksheet's own Verilume
+// categories -- never the real rows in the client's uploaded file. This
+// pulls that real per-row detail (the raw category text exactly as the
+// client's file spelled it, e.g. "62101 - Consumer Digital Marketing
+// Search," plus which Verilume category it's mapped to and its real dollar
+// amount) straight from the confirmed upload's own line items
+// (mbdLastUploadDetail.categories — see GET .../marketing-budget-uploads/
+// :uploadId, one entry per distinct raw category row, already summed
+// across its months). Only meaningful for an upload-sourced model (a saved
+// Media Plan has no raw file rows to show) and only for the SAME upload the
+// model was actually built from — returns [] otherwise rather than show
+// stale or mismatched rows.
+function mbdRawLineItemsForModel(model){
+  if (!model || model.source !== 'upload' || typeof mbdLastUploadDetail === 'undefined' || !mbdLastUploadDetail || mbdLastUploadDetail.id !== model.uploadId || !Array.isArray(mbdLastUploadDetail.categories)) return [];
+  return mbdLastUploadDetail.categories
+    .filter(c => !mbuIsNonWorkingStatus(c.status))
+    .map(c => ({
+      category: c.category,
+      verilumeCategory: c.verilumeCategory || '(unmapped)',
+      amount: c.annualTotal != null ? Number(c.annualTotal) : (Number(c.sumOfMonths) || 0)
+    }))
+    .filter(it => Math.abs(it.amount) >= 1);
+}
+// Per-loop-stage line-item breakdown for the Marketing Loop export — each
+// raw file row's dollar contribution to each stage, via the same
+// crosswalk/share logic mbdModelFromUpload used to build the card's own
+// stage totals, so the export always adds back up to what the card shows.
+function mbdLoopLineItemRows(model){
+  const items = mbdRawLineItemsForModel(model);
+  if (!items.length) return [];
+  const crosswalk = Object.assign({}, (typeof MBD_SEED_CROSSWALK !== 'undefined' ? MBD_SEED_CROSSWALK : {}), (mbdLastUploadDetail && mbdLastUploadDetail.verilumeToMmm) || {});
+  const rows = [[], ['Supporting detail — file line items by stage', '', '', '']];
+  rows.push(['Loop stage', 'Category (as in your file)', 'Mapped Verilume category', 'Amount at this stage (USD)']);
+  MEDIA_LOOP_STAGES.forEach(st => {
+    items.forEach(it => {
+      const { shares } = mbdStageSharesForVerilume(it.verilumeCategory, crosswalk);
+      const amt = it.amount * (shares[st] || 0);
+      if (Math.round(amt) >= 1) rows.push([st, it.category, it.verilumeCategory, Math.round(amt)]);
+    });
+  });
+  return rows;
+}
+// Per-channel-group line-item breakdown for the Channel Mix export — each
+// raw file row under the Channel Mix group its mapped Verilume category
+// rolls up to (same MBD_GROUP_TO_CHANNEL_MIX_KEY the card itself uses).
+function mbdMixLineItemRows(model){
+  const items = mbdRawLineItemsForModel(model);
+  if (!items.length) return [];
+  const rows = [[], ['Supporting detail — file line items by channel group', '', '']];
+  rows.push(['Channel Mix group', 'Category (as in your file)', 'Amount (USD)']);
+  items.forEach(it => {
+    const grp = mbdGroupForVerilume(it.verilumeCategory);
+    const key = MBD_GROUP_TO_CHANNEL_MIX_KEY[grp];
+    const groupDef = key ? CHANNEL_MIX_GROUPS.find(g => g.key === key) : null;
+    rows.push([groupDef ? groupDef.label : 'Other / total-only lines', it.category, Math.round(it.amount)]);
+  });
+  return rows;
 }
 // Stage shares for one Verilume category: its crosswalked MMM channels'
 // weights per stage (the same channel-by-stage research the manual mix
@@ -28291,10 +28459,7 @@ function mbdRenderHistoricalCharts(){
   // c) Channel Media Mix: the actual mix, in the same groups the live chart uses
   const mix = document.getElementById('channelMixChartCard');
   if (mix){
-    const totals = {};
-    CHANNEL_MIX_GROUPS.forEach(g => { totals[g.key] = 0; });
-    let other = 0;
-    model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); if (grp) totals[grp.key] += sb.total; else other += sb.total; }));
+    const { totals, other } = mbdChannelMixTotals(model);
     const rows = CHANNEL_MIX_GROUPS.map(g => ({ label: g.label, value: totals[g.key] || 0 })).filter(r => r.value > 0).sort((a, b) => b.value - a.value);
     if (other > 0) rows.push({ label: 'Other / total-only lines', value: other });
     const grand = rows.reduce((s, r) => s + r.value, 0) || 1;
@@ -28324,10 +28489,18 @@ function mbdRenderHistoricalCharts(){
     const yr = mbdYearResults[mbuSelectedYear] || {};
     const revenue = yr.grossRevenue != null ? Number(yr.grossRevenue) : (yr.plannedRevenue != null ? Number(yr.plannedRevenue) : ((state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && Number(state.mediaPlan.grossRevenue) > 0) ? Number(state.mediaPlan.grossRevenue) : null));
     const roasVal = (revenue != null && working > 0) ? (revenue / working) : null;
+    // Round 2026-09-07, per direct instruction: "the 2025 ROAS card revenue
+    // $ reported and working media expense $ should be the same size as
+    // Marketing Loop spend. All cards should have identical $ # font
+    // sizes." Marketing Loop's own per-stage dollar figures (.eff-meter-
+    // head .val, CSS above) render at 1.125rem — this card's three
+    // headline numbers matched neither that nor each other before (they
+    // were all hardcoded to 1.375rem), so all three now share that same
+    // 1.125rem value size instead of a size unique to this card.
     roasCard.innerHTML = `${mbdChartHead('ROAS', 'roas')}<div class="stage-row" style="margin-top:12px;gap:24px;flex-wrap:wrap;">
-      <div><div class="hint">Revenue</div><div style="font-size:1.375rem;font-weight:700;">${revenue != null ? fmtMoney(Math.round(revenue)) : '—'}</div></div>
-      <div><div class="hint">Working Media Spend</div><div style="font-size:1.375rem;font-weight:700;">${fmtMoney(Math.round(working))}</div></div>
-      <div><div class="hint">ROAS</div><div style="font-size:1.375rem;font-weight:700;color:var(--cx);">${roasVal != null ? roasVal.toFixed(2) + '×' : '—'}</div></div>
+      <div><div class="hint">Revenue</div><div style="font-size:1.125rem;font-weight:700;">${revenue != null ? fmtMoney(Math.round(revenue)) : '—'}</div></div>
+      <div><div class="hint">Working Media Spend</div><div style="font-size:1.125rem;font-weight:700;">${fmtMoney(Math.round(working))}</div></div>
+      <div><div class="hint">ROAS</div><div style="font-size:1.125rem;font-weight:700;color:var(--cx);">${roasVal != null ? roasVal.toFixed(2) + '×' : '—'}</div></div>
     </div><p class="exec-caption">${yr.grossRevenue != null ? 'Actual' : 'Planned'} gross revenue ÷ working media spend for ${mbuSelectedYear} (closed period).</p>${mbdChartShareMenu('roas')}`;
   }
   // Round 134, per direct instruction: every summary total here is
@@ -28339,8 +28512,8 @@ function mbdRenderHistoricalCharts(){
   mbdHistoricalChartRows = {
     pacing: [['Metric', 'Amount (USD)'], ['Approved', Math.round(working)], ['Committed', Math.round(working)], ['% paced', '100%']].concat(channelDetailRows()),
     tracking: [['Bucket', 'Amount (USD)'], ['Completed Spend (working media)', Math.round(working)], ['% complete', '100%'], ['Non-working media (tracked separately)', Math.round(nonWorking)]].concat(channelDetailRows()),
-    mix: [['Channel group', 'Amount (USD)']].concat((() => { const t = {}; model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); const k = grp ? grp.label : 'Other'; t[k] = (t[k] || 0) + sb.total; })); return Object.entries(t).map(([k, v]) => [k, Math.round(v)]); })()).concat(channelDetailRows()),
-    loop: [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(model.stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(model.stages[st] || 0), Math.round(((model.stages[st] || 0) / total) * 100) + '%']).concat([['Total working media spend', Math.round(working), '100%']]); })()).concat(channelDetailRows()),
+    mix: [['Channel group', 'Amount (USD)']].concat((() => { const { totals, other } = mbdChannelMixTotals(model); const rows2 = CHANNEL_MIX_GROUPS.map(g => [g.label, Math.round(totals[g.key] || 0)]).filter(r => r[1] > 0); if (other > 0) rows2.push(['Other / total-only lines', Math.round(other)]); return rows2; })()).concat(channelDetailRows()).concat(mbdMixLineItemRows(model)),
+    loop: [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(model.stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(model.stages[st] || 0), Math.round(((model.stages[st] || 0) / total) * 100) + '%']).concat([['Total working media spend', Math.round(working), '100%']]); })()).concat(channelDetailRows()).concat(mbdLoopLineItemRows(model)),
     roas: (() => { const yr = mbdYearResults[mbuSelectedYear] || {}; const planned = yr.plannedRevenue != null ? Number(yr.plannedRevenue) : null; const actual = yr.grossRevenue != null ? Number(yr.grossRevenue) : null; const revenue = actual != null ? actual : planned; const roasOf = (v) => (v != null && working > 0) ? (v / working).toFixed(2) + '×' : '—'; const rows = [['Metric', 'Amount'], ['Revenue', revenue != null ? Math.round(revenue) : ''], ['Working Media Spend', Math.round(working)], ['ROAS', roasOf(revenue)], [], ['Supporting detail — revenue', ''], ['Planned gross revenue', planned != null ? Math.round(planned) : ''], ['Actual gross revenue', actual != null ? Math.round(actual) : ''], ['Unique transactions', yr.transactions != null ? Math.round(yr.transactions) : '']]; return rows.concat(channelDetailRows()); })()
   };
   if (typeof mbdApplyChartOrder === 'function') mbdApplyChartOrder();
