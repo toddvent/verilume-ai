@@ -27398,26 +27398,24 @@ function mbuWorkingCategoryRowHtml(c){
             const ov = mbuCategoryOverrides[key];
             const shown = (ov === undefined || ov === null) ? Number(c.total || 0) : ov;
             const safeKey = key.replace(/'/g, "\\'");
-            // Round 2026-09-07, per direct report ("It's a bit confusing to
-            // see Reset to Imported Amount when you are auditing the import
-            // for the first time... next to the Edit Digital sub-channels
-            // creates more confusion" + "I tried to split Print Magazines.
-            // It split them but did not create a total"): a Total/
-            // Unspecified bucket's override is often not a manual edit at
-            // all -- it's the auto-computed remainder after its "Edit X
-            // sub-channels" split (mbuAutoBucketOverride), recalculated on
-            // every render. Offering "Reset to imported amount" there is
-            // misleading -- deleting that override does nothing, since the
-            // very next render recomputes the same remainder from the split
-            // (see the auto-heal block above). Show a plain explanation
-            // instead, and only offer a real reset for an actual manual edit.
+            // Round 2026-09-07, per direct instruction ("Reset to Imported
+            // Amount still does not work and is beyond confusing in any
+            // state. It shouldn't exist. Users can just manually change the
+            // number as it is an editable field especially given that the
+            // import is an error so nothing should be reset."): removed the
+            // whole "Reset to imported amount" affordance -- the button, and
+            // the "Imported amount: $X" note that went with it, in both the
+            // genuine-manual-edit case and the prior round's auto-split-
+            // remainder case. The $ field is just a plain editable number
+            // now, full stop; no separate "original" value is tracked or
+            // offered back. A Total/Unspecified bucket that's the auto-
+            // computed remainder of a real split (mbuAutoBucketOverride)
+            // still can't be hand-typed over (it's derived from the split
+            // below it, same as always -- see the auto-heal block above),
+            // so it stays read-only with a plain tooltip explaining why,
+            // with no other UI.
             const isAutoSplitRemainder = mbuAutoBucketOverride.has(key);
-            const editedNote = (ov !== undefined && ov !== null && Math.round(ov) !== Math.round(Number(c.total || 0)))
-              ? (isAutoSplitRemainder
-                  ? `<div style="margin-top:2px;"><span class="hint" style="margin:0;">Imported amount: $${Number(c.total || 0).toLocaleString()} — the rest is assigned to sub-channels below</span></div>`
-                  : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;"><span class="hint" style="margin:0;">Imported amount: $${Number(c.total || 0).toLocaleString()}</span><button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;" onclick="delete mbuCategoryOverrides['${safeKey}']; mbuRenderCategoryMapping();">Reset to imported amount →</button></div>`)
-              : '';
-            return `<div class="field" style="margin:0;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(shown)}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeKey}', this.value)" onchange="mbuRenderCategoryMapping()"${isAutoSplitRemainder ? ' readonly title="Fully assigned to sub-channels below — edit those instead, or Edit sub-channels to change the split."' : ''}></div></div>${editedNote}`;
+            return `<div class="field" style="margin:0;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(shown)}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeKey}', this.value)" onchange="mbuRenderCategoryMapping()"${isAutoSplitRemainder ? ' readonly title="Fully assigned to sub-channels below — edit those instead, or Edit sub-channels to change the split."' : ''}></div></div>`;
           })() : `<div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>`}
         </div>
         <div style="${MBU_COL_C}">
@@ -27445,10 +27443,37 @@ function mbuWorkingCategoryRowHtml(c){
 // draft below (mbuStartSplitEdit) instead of committing the split
 // immediately, and offers "Edit ... sub-channels" once a split already
 // exists (mbuGroupSplitState) rather than disappearing once used.
+// Round 2026-09-07, per direct bug report ("We're still not recognizing
+// the 4 DIGITAL LINE ITEMS AS SUBCHANNELS OF Digital Marketing. We added
+// four new channels with sub-channels for search and social being
+// duplicated" + "The $3.4 million showed up until selecting Split for
+// Consumer Digital. It should not show up as $3.4 million unless we have
+// one digital channel with 4 sub-channels totaling that amount."): Search
+// and Social are the client's own separately-imported categories (real
+// file rows, e.g. 62101/62102), never split out of Digital — Total/
+// Unspecified -- but "Edit Digital sub-channels" used to offer EVERY other
+// label in the group (Search, Social, Digital — Addressable, Digital —
+// Partnerships) as something to "split into," prefilling Search/Social's
+// CURRENT real amounts into the draft (mbuStartSplitEdit's
+// mbuCurrentAmountFor). Saving that draft added Search/Social to
+// mbuManualCategories and re-persisted them as NEW manual working-sub-
+// lines (mbuPersistWorkingSplit) ALONGSIDE their real, already-imported
+// line items -- literally duplicating their dollars in the ledger, and
+// (via the Review 14 self-heal fix) then wrongly subtracting that
+// duplicated amount from the bucket, dropping Digital's true total from
+// $3,498,719 down to just Search + Social. A label the file already maps
+// its own real dollars to was never a legitimate split TARGET -- it's
+// already its own thing -- so it's excluded here from the sub-channels a
+// split can assign to; only a genuinely empty (or already-split-created)
+// label is offered.
+function mbuLabelHasRealIndependentItems(label){
+  const workingCats = (mbuCategoryMappingData && mbuCategoryMappingData.workingCategories) || [];
+  return workingCats.some(w => !w.manual && (mbuCategoryMappingChoices[w.category] || '').replace(/^Client: /, '') === label);
+}
 function mbuGroupSplitLabels(bucketLabel){
   const group = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(bucketLabel));
   if (!group) return null;
-  return { groupName: group[0], subs: group[1].filter(c => c !== bucketLabel && !MBU_RETIRED_CATEGORIES.includes(c) && c !== 'Magazines/Print') };
+  return { groupName: group[0], subs: group[1].filter(c => c !== bucketLabel && !MBU_RETIRED_CATEGORIES.includes(c) && c !== 'Magazines/Print' && !mbuLabelHasRealIndependentItems(c)) };
 }
 // Whether a sub-channel currently carries real dollars -- either a manual
 // row from this session, or a category already mapped from the file/a past
@@ -29705,6 +29730,32 @@ function mbuRenderPlanSetup(){
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span style="font-weight:700;color:#b8860b;">Setting up ${mbuSelectedYear} ${scopeWord} budget · ${pathLabel}</span>
         ${backLink}
+      </div>`;
+    return;
+  }
+  // Round 2026-09-07, per direct report: "2026 Disappearing — I clicked
+  // 2025 and then went directly back to 2026. View w/o budget attached. We
+  // don't appear to have concept of saving during sessions only actual
+  // Save as Final." Exactly right. An upload that's been analyzed and is
+  // mid category-review (status !== 'confirmed', e.g.
+  // 'pending_category_mapping') is a real record already sitting in
+  // mbuYearsData (GET .../marketing-budget-uploads returns every upload,
+  // any status) — but this function only ever looked for a CONFIRMED one,
+  // so switching years and back landed on the "no budget yet, how would
+  // you like to start?" tiles as if the upload never happened, even though
+  // it's still there and fully resumable (mbuOpenExistingUpload/"Review &
+  // adjust" already works for any status, not just confirmed). Surface it
+  // instead of silently hiding it and implying a reupload is needed.
+  const pending = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status !== 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
+  if (pending){
+    const pendingFileNote = pending.fileName ? ` ("${escapeHtml(pending.fileName)}")` : '';
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
+        <span><b style="color:#b8860b;">In progress</b> — ${mbuSelectedYear} ${scopeWord} budget${pendingFileNote} is still mid-review (${escapeHtml(mbuStatusLabel(pending.status))}) — nothing's been saved as final yet.</span>
+        <span style="display:flex;gap:8px;flex-shrink:0;">
+          <button type="button" class="btn-primary" onclick="mbuOpenExistingUpload('${pending.id}')">Continue reviewing →</button>
+          <button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${pending.id}')">Delete &amp; start over →</button>
+        </span>
       </div>`;
     return;
   }
