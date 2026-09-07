@@ -24258,6 +24258,29 @@ function mbdActiveChartModel(){
   const detail = mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(year) ? mbdLastUploadDetail : null;
   return plan ? mbdModelFromPlan(plan) : (detail && detail.status === 'confirmed' ? mbdModelFromUpload(detail) : null);
 }
+// Round 135, per direct instruction: "The card budgets still don't align
+// with the 2025 budget on the page that has working media at $7.4
+// million" / "The marketing loop card totals $7.155 million. It doesn't
+// match anything." Root cause: mbdActiveChartModel() prefers a saved
+// Media Plan (state.mediaPlan) over the confirmed upload whenever one
+// exists in memory — and per Review 5/2b, a Media Plan gets auto-seeded
+// from the upload the moment it's first opened, so one almost always
+// exists. Editing categories on the Review-your-budget worksheet
+// (mbuRenderCategoryMapping — a bucket auto-correction, a typed
+// override, a saved split) only ever touches the upload/worksheet side
+// (mbuCategoryOverrides, mbuWorkingMediaSnapshot); it never touches that
+// seeded plan. So the cards, reading the plan, silently drifted from
+// whatever the worksheet sitting right below them was actually showing.
+// When the worksheet currently open IS a confirmed upload (the normal
+// case per Review 5 — the worksheet, not a plan-based view, is what a
+// confirmed budget shows by default), its own live snapshot is what the
+// user is looking at, so it wins over the plan here.
+function mbdCanonicalChartModel(){
+  if (typeof mbuWorkingMediaSnapshot !== 'undefined' && mbuWorkingMediaSnapshot && typeof mbuAnalysis !== 'undefined' && mbuAnalysis && mbuAnalysis.status === 'confirmed' && mbuWorkingMediaSnapshot.uploadId === mbuAnalysis.id && mbdLastUploadDetail && mbdLastUploadDetail.id === mbuAnalysis.id){
+    return mbdModelFromUpload(mbdLastUploadDetail); // internally snapshot-corrected, see mbdModelFromUpload
+  }
+  return mbdActiveChartModel();
+}
 // Round 134, per direct instruction: "We need to align the spend total.
 // The detailed view is $8.7M, $7.464M working media, $1.316M non-working
 // media. Each card has a different amount. 1) We should show the total
@@ -24272,7 +24295,7 @@ function mbdActiveChartModel(){
 // is exactly the $8.7M vs $7.464M mismatch Todd flagged), so a figure
 // can't drift between cards again.
 function mbdCanonicalWorkingMediaTotal(){
-  const model = (typeof mbdActiveChartModel === 'function') ? mbdActiveChartModel() : null;
+  const model = (typeof mbdCanonicalChartModel === 'function') ? mbdCanonicalChartModel() : null;
   return model ? model.channels.reduce((s, g) => s + g.total, 0) : null;
 }
 const SAMPLE_LOOP_STAGE_SPEND = { Awareness: 210000, Consideration: 175000, Purchase: 340000, Loyalty: 95000, Advocacy: 30000 };
@@ -24289,7 +24312,7 @@ function renderMarketingLoopChart(){
         <button type="button" class="exec-chart-expand-btn" onclick="toggleBudgetChartExpand('loop')">${isExpanded ? '⤡ Collapse' : '⤢ Expand'}</button>
       </div>
     </div>`;
-  const model = mbdActiveChartModel();
+  const model = mbdCanonicalChartModel();
   const isSample = !model;
   const stages = isSample ? SAMPLE_LOOP_STAGE_SPEND : model.stages;
   const rows = MEDIA_LOOP_STAGES.map(st => ({ label: st, value: Math.round(stages[st] || 0), color: STAGE_LOOP_COLORS[st] }));
@@ -24319,7 +24342,7 @@ function renderRoasChart(){
       </div>
     </div>`;
   const year = (typeof mbuSelectedYear !== 'undefined' && mbuSelectedYear) ? mbuSelectedYear : (typeof mpSelectedYear !== 'undefined' ? mpSelectedYear : null);
-  const model = mbdActiveChartModel();
+  const model = mbdCanonicalChartModel();
   const budgetInputVal = Number((document.getElementById('mpTotalBudget') || {}).value) || 0;
   const workingSpend = model ? model.channels.reduce((s, g) => s + g.total, 0) : budgetInputVal;
   const r = mbdYearResults[year] || {};
@@ -27539,6 +27562,24 @@ let mbuAutoBucketOverride = new Set();
 // touched.
 let mbuSplitEditing = null;
 let mbuSplitDraft = {};
+// Round 135, per direct instruction ("The card budgets still don't align
+// with the 2025 budget on the page that has working media at $7.4
+// million" / "The marketing loop card totals $7.155 million. It doesn't
+// match anything.") — root cause found: mbdCanonicalWorkingMediaTotal()
+// (Round 134) unified the 5 chart cards with EACH OTHER, but all of them
+// derive from mbdModelFromUpload(detail)'s raw detail.byVerilumeCategory
+// -- the backend's plain file/line-item aggregate, which never reflects
+// what the user has done on the Review screen (a Total/Unspecified
+// bucket's auto-corrected remainder from Review 6, a typed-in override,
+// a saved split from Review 7). The worksheet's own "Total Working
+// Media" figure (sectionTotal below, mbuRenderCategoryMapping) is the
+// one place that already applies every override correctly -- so it's
+// the authoritative number, and the charts were still reading a
+// different, uncorrected source. This snapshot captures that same
+// per-label, override-applied total the instant the worksheet renders,
+// so the chart cards can read the EXACT same numbers instead of
+// re-deriving a second, divergent copy.
+let mbuWorkingMediaSnapshot = null;
 function mbuManualNonWorkingRowHtml(row, i){
   // 2026-09-06 review (8.1): a row being added shows "Add" until it has a
   // name and amount; an added row shows "Remove". No "no file line" hint.
@@ -27709,6 +27750,16 @@ function mbuRenderCategoryMapping(){
         ${rowsHtml}
       </div>`;
   })() : '';
+  // Round 135 — capture the exact per-label, override-applied totals this
+  // render just computed (sectionTotal is now final) so every chart card
+  // can read the SAME numbers instead of re-deriving them from the raw,
+  // uncorrected upload aggregate. Keyed to this upload id so a stale
+  // snapshot from a different upload/year can never leak into a card.
+  mbuWorkingMediaSnapshot = {
+    uploadId: mbuAnalysis && mbuAnalysis.id,
+    total: sectionTotal,
+    byLabel: (() => { const out = {}; allCategoryLabels.forEach(l => { if (bucketHasItems(l)) out[l] = shownTotalFor(l); }); return out; })()
+  };
   // "+ Add category" -- per direct instruction, hiding $0/no-item
   // categories needs a manual way back in.
   const addableLabels = stdCategories.filter(l => !bucketHasItems(l) && !MBU_RETIRED_CATEGORIES.includes(l));
@@ -27791,6 +27842,17 @@ function mbuRenderCategoryMapping(){
       <button type="button" class="btn-primary" onclick="mbuSubmitFinal()">${((mbuCategoryMappingData && mbuCategoryMappingData.uploadStatus === 'confirmed') || (mbuAnalysis && mbuAnalysis.status === 'confirmed')) ? 'Save changes' : 'Submit as final'}${exceptionCount ? ` (${exceptionCount} unresolved)` : ''} →</button>
     </div>
     <div id="mbuCategoryMappingResult" class="hint" style="margin-top:8px;"></div>`;
+  // Round 135, per direct instruction — this is where mbuWorkingMediaSnapshot
+  // (the authoritative, override-applied Total Working Media figure) was
+  // just set above. Without this, the 5 chart cards only pick up a fresh
+  // snapshot on whatever unrelated event next triggers their own render —
+  // on a normal page load that can mean they paint once from the raw
+  // upload aggregate BEFORE this worksheet has run at all, and then never
+  // repaint, staying stuck on the wrong total indefinitely. Refreshing
+  // them here — every time this function runs, i.e. every override edit,
+  // split save/cancel, category add/remove, not just the first paint —
+  // keeps them locked to whatever this worksheet is showing right now.
+  if (typeof mbdRenderBudgetChartGrid === 'function') mbdRenderBudgetChartGrid();
 }
 
 // Todd (2026-09-06): the mapping/review screen had no way out except
@@ -28021,7 +28083,30 @@ function mbdSumMonths(list){
   return any ? out : null;
 }
 function mbdModelFromUpload(detail){
-  const byCat = detail.byVerilumeCategory || {};
+  // Round 135, per direct instruction — apply the same per-label, override-
+  // applied totals the Review-screen worksheet is actually showing
+  // (mbuWorkingMediaSnapshot, set by mbuRenderCategoryMapping) whenever
+  // it's for THIS upload, instead of the raw detail.byVerilumeCategory
+  // aggregate alone. Without this, a Total/Unspecified bucket's Review-6
+  // auto-correction, a typed-in override, or a Review-7 saved split could
+  // all be reflected on the worksheet but not on the chart cards built
+  // from this model (Plan Pacing/Budget Tracking canonical total,
+  // Channel Mix, Marketing Loop, ROAS) — the exact "doesn't match
+  // anything" mismatch this fixes. Falls back to the raw aggregate
+  // whenever no matching snapshot exists yet (e.g. before the worksheet
+  // has rendered once for this upload).
+  // Replace, never merge: mbuWorkingMediaSnapshot.byLabel is already a
+  // COMPLETE per-label total (every label the worksheet's own
+  // shownTotalFor() falls back to the raw file amount for when there's
+  // no override) — merging it onto detail.byVerilumeCategory would
+  // double-count wherever the two sources describe the same dollars
+  // differently, e.g. a bucket the worksheet still shows unsplit
+  // (Digital — Total/Unspecified: $2,047,163) next to that same money
+  // already broken into persisted sub-channel rows on the raw aggregate
+  // (Search/Social/Digital — Addressable) — added together that's the
+  // Digital budget counted twice.
+  const snapshotByLabel = (typeof mbuWorkingMediaSnapshot !== 'undefined' && mbuWorkingMediaSnapshot && mbuWorkingMediaSnapshot.uploadId === detail.id) ? mbuWorkingMediaSnapshot.byLabel : null;
+  const byCat = snapshotByLabel || (detail.byVerilumeCategory || {});
   const byCatMonthly = detail.byVerilumeCategoryMonthly || {};
   // Round 9: the same seed crosswalk the Media Plan uses, so a sub-channel
   // the client assigned dollars to on the review screen derives its Loop
@@ -28172,9 +28257,15 @@ function mbdHistoricalMode(){
   return mbuPeriodFor(mbuSelectedYear).closed && mbuBudgetExists();
 }
 function mbdRenderHistoricalCharts(){
-  const detail = mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(mbuSelectedYear) ? mbdLastUploadDetail : null;
-  const plan = (state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && (state.mediaPlan.allocations || []).length) ? state.mediaPlan : null;
-  const model = plan ? mbdModelFromPlan(plan) : (detail && detail.status === 'confirmed' ? mbdModelFromUpload(detail) : null);
+  // Round 135 — same fix as mbdCanonicalChartModel(): prefer the
+  // worksheet currently open for THIS upload (its own live, override-
+  // applied snapshot) over an auto-seeded Media Plan that editing that
+  // worksheet never touches. See mbdCanonicalChartModel()'s comment.
+  const model = (typeof mbdCanonicalChartModel === 'function') ? mbdCanonicalChartModel() : (() => {
+    const detail = mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(mbuSelectedYear) ? mbdLastUploadDetail : null;
+    const plan = (state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && (state.mediaPlan.allocations || []).length) ? state.mediaPlan : null;
+    return plan ? mbdModelFromPlan(plan) : (detail && detail.status === 'confirmed' ? mbdModelFromUpload(detail) : null);
+  })();
   if (!model){ mbdHistoricalChart = null; return; }
   mbdHistoricalChart = model;
   const working = model.channels.reduce((s, g) => s + g.total, 0);
@@ -28249,7 +28340,7 @@ function mbdRenderHistoricalCharts(){
     pacing: [['Metric', 'Amount (USD)'], ['Approved', Math.round(working)], ['Committed', Math.round(working)], ['% paced', '100%']].concat(channelDetailRows()),
     tracking: [['Bucket', 'Amount (USD)'], ['Completed Spend (working media)', Math.round(working)], ['% complete', '100%'], ['Non-working media (tracked separately)', Math.round(nonWorking)]].concat(channelDetailRows()),
     mix: [['Channel group', 'Amount (USD)']].concat((() => { const t = {}; model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); const k = grp ? grp.label : 'Other'; t[k] = (t[k] || 0) + sb.total; })); return Object.entries(t).map(([k, v]) => [k, Math.round(v)]); })()).concat(channelDetailRows()),
-    loop: [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(model.stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(model.stages[st] || 0), Math.round(((model.stages[st] || 0) / total) * 100) + '%']); })()).concat(channelDetailRows()),
+    loop: [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(model.stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(model.stages[st] || 0), Math.round(((model.stages[st] || 0) / total) * 100) + '%']).concat([['Total working media spend', Math.round(working), '100%']]); })()).concat(channelDetailRows()),
     roas: (() => { const yr = mbdYearResults[mbuSelectedYear] || {}; const planned = yr.plannedRevenue != null ? Number(yr.plannedRevenue) : null; const actual = yr.grossRevenue != null ? Number(yr.grossRevenue) : null; const revenue = actual != null ? actual : planned; const roasOf = (v) => (v != null && working > 0) ? (v / working).toFixed(2) + '×' : '—'; const rows = [['Metric', 'Amount'], ['Revenue', revenue != null ? Math.round(revenue) : ''], ['Working Media Spend', Math.round(working)], ['ROAS', roasOf(revenue)], [], ['Supporting detail — revenue', ''], ['Planned gross revenue', planned != null ? Math.round(planned) : ''], ['Actual gross revenue', actual != null ? Math.round(actual) : ''], ['Unique transactions', yr.transactions != null ? Math.round(yr.transactions) : '']]; return rows.concat(channelDetailRows()); })()
   };
   if (typeof mbdApplyChartOrder === 'function') mbdApplyChartOrder();
@@ -28309,7 +28400,7 @@ function mbdChartRows(key){
     return rows;
   }
   if (key === 'loop'){
-    const m = mbdActiveChartModel();
+    const m = mbdCanonicalChartModel();
     const stages = m ? m.stages : SAMPLE_LOOP_STAGE_SPEND;
     const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(stages[st]) || 0), 0) || 1;
     const rows = [['Loop stage', 'Spend Amt (USD)', '% Spend']];
@@ -28323,7 +28414,7 @@ function mbdChartRows(key){
     return rows;
   }
   if (key === 'roas'){
-    const m = mbdActiveChartModel();
+    const m = mbdCanonicalChartModel();
     const workingSpend = m ? m.channels.reduce((s, g) => s + g.total, 0) : (Number((document.getElementById('mpTotalBudget') || {}).value) || 0);
     const r = mbdYearResults[mbuSelectedYear] || {};
     const planned = r.plannedRevenue != null ? Number(r.plannedRevenue) : ((state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && Number(state.mediaPlan.grossRevenue) > 0) ? Number(state.mediaPlan.grossRevenue) : null);
