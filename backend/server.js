@@ -4979,7 +4979,11 @@ const VERILUME_TO_MMM_CHANNEL_MAP = {
   'Direct Mail — Inquiries': ['Direct Mail — Inquiries'],
   'Direct Mail — Prospects': ['Direct Mail — Prospects'],
   'Direct Mail — ID Resolution': ['Direct Mail — Prospects'],
-  'Direct Mail — Identity Resolution': ['Direct Mail — Prospects'],
+  // Round 2026-09-07, per direct correction ("Direct Mail Inquiry or
+  // Identity Resolution = Consideration"): moved off Prospects (Awareness)
+  // onto Inquiries, its funnel-stage sibling — see the matching frontend
+  // MBD_SEED_CROSSWALK comment.
+  'Direct Mail — Identity Resolution': ['Direct Mail — Inquiries'],
   'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV'],
   'TV — Addressable': ['CTV'],
   'Print Advertising — Newspapers': ['Newspapers'],
