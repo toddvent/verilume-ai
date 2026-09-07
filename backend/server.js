@@ -4674,12 +4674,30 @@ createTableIfNeeded(`
 
 const MARKETING_BUDGET_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const MARKETING_BUDGET_MONTH_LABELS = { jan:'January', feb:'February', mar:'March', apr:'April', may:'May', jun:'June', jul:'July', aug:'August', sep:'September', oct:'October', nov:'November', dec:'December' };
+// Round 2026-09-07, per direct bug report ("Server Error trying to upload
+// the 2026 Budget"): the real file's own header row spells its months
+// "Jan 26", "Feb 26", ... — a plain month name plus a 2-/4-digit year, a very
+// common real-world budget-template convention this used to reject outright
+// (exact match only, "Jan" or "January" and nothing else). With every month
+// cell failing to match, mbuMonthMatchCount() returned 0 for the file's only
+// header-like row, headerRows came back empty, and analyzeMarketingBudgetGrid
+// fell straight to the 'unrecognized' branch — no blocks, so the front end's
+// auto-import (mbuConfirmImport(), which fires immediately after analyze)
+// posted an empty blocks array and the backend's own /confirm guard rejected
+// it with a 400. Each month regex now optionally accepts a trailing year —
+// space, hyphen, slash, or apostrophe separated, 2 or 4 digits ("Jan 26",
+// "Jan-26", "Jan/2026", "Jan '26", "Jan26") — alongside the exact bare/
+// full-name match this already handled.
 const MARKETING_BUDGET_MONTH_RE = {
-  jan: /^jan(uary)?$/i, feb: /^feb(ruary)?$/i, mar: /^mar(ch)?$/i, apr: /^apr(il)?$/i,
-  may: /^may$/i, jun: /^jun(e)?$/i, jul: /^jul(y)?$/i, aug: /^aug(ust)?$/i,
-  sep: /^sep(t|tember)?$/i, oct: /^oct(ober)?$/i, nov: /^nov(ember)?$/i, dec: /^dec(ember)?$/i
+  jan: /^jan(uary)?([\s\-\/']*(20)?\d{2})?$/i, feb: /^feb(ruary)?([\s\-\/']*(20)?\d{2})?$/i, mar: /^mar(ch)?([\s\-\/']*(20)?\d{2})?$/i, apr: /^apr(il)?([\s\-\/']*(20)?\d{2})?$/i,
+  may: /^may([\s\-\/']*(20)?\d{2})?$/i, jun: /^jun(e)?([\s\-\/']*(20)?\d{2})?$/i, jul: /^jul(y)?([\s\-\/']*(20)?\d{2})?$/i, aug: /^aug(ust)?([\s\-\/']*(20)?\d{2})?$/i,
+  sep: /^sep(t|tember)?([\s\-\/']*(20)?\d{2})?$/i, oct: /^oct(ober)?([\s\-\/']*(20)?\d{2})?$/i, nov: /^nov(ember)?([\s\-\/']*(20)?\d{2})?$/i, dec: /^dec(ember)?([\s\-\/']*(20)?\d{2})?$/i
 };
-const MARKETING_BUDGET_TOTAL_RE = /^(annual\s*)?total$|^budget\s*20\d{2}$|^fy\s*20\d{2}\s*total$/i;
+// Same round: this file's own annual-total column is headed "Jan - Dec 26"
+// (a month-range, not the word "Total" this regex used to require) — a
+// second real-world convention added alongside the existing "Total"/
+// "Budget 20XX"/"FY 20XX Total" matches, not a replacement for them.
+const MARKETING_BUDGET_TOTAL_RE = /^(annual\s*)?total$|^budget\s*20\d{2}$|^fy\s*20\d{2}\s*total$|^jan(uary)?\s*-\s*dec(ember)?([\s\-\/']*(20)?\d{2})?$/i;
 // Backend mirror of the frontend's mbuIsTotalLikeLabel() (portal.html) —
 // same rule, kept in sync deliberately rather than shared over the wire,
 // since this one runs at import/confirm time server-side while the
@@ -5257,10 +5275,25 @@ function mbuRecallCategoryMapping(accountId, rawCategory){
 
 function mbuNumberOrNull(raw){
   if (raw == null) return null;
-  const cleaned = String(raw).replace(/[$,\s%]/g, '');
-  if (cleaned === '') return null;
+  let s = String(raw).trim();
+  if (s === '') return null;
+  // Round 2026-09-07, alongside the month-header fix above, against the
+  // same real file: accounting-style negatives in parentheses ("$(23,399)")
+  // were silently dropped — Number("(23,399)") is NaN, so mbuNumberOrNull
+  // returned null and that month's spend vanished from the category's total
+  // rather than being counted as -23,399. The currency symbol sits BEFORE
+  // the opening paren in this file's own cells, not after it, so the match
+  // below tolerates a leading "$" (and whitespace) rather than requiring the
+  // string to start with "(" itself; the captured inner text becomes a
+  // negative number before the general $/,/%/whitespace strip below runs.
+  const parenMatch = s.match(/^\$?\s*\((.*)\)$/);
+  const parenNegative = !!parenMatch;
+  if (parenNegative) s = parenMatch[1];
+  const cleaned = s.replace(/[$,\s%]/g, '');
+  if (cleaned === '' || cleaned === '-') return null;
   const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return null;
+  return parenNegative ? -Math.abs(n) : n;
 }
 
 // Scans one row (array of cell strings) and returns how many cells match a
@@ -17649,4 +17682,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
