@@ -5077,6 +5077,54 @@ function mbuCategoryLedgerForUpload(uploadId){
 // to activate anyway (see VERILUME_TO_MMM_CHANNEL_MAP's own comment), and
 // mixing them into "Other/Uncategorized" here would have silently hidden
 // real Non-Working spend inside a bucket meant for genuine mapping gaps.
+// Round 2026-09-07 (Review 14 backend companion), per direct report ("2025
+// [export] correctly has $7.4 million..." — followed by uploading the real
+// 2025 monthly-detail CSV, which showed Digital — Total/Unspecified,
+// Consumer Print Advertising — Total/Unspecified, and bare Direct Mail all
+// reading Total: 0 in the CSV's own Total column, while their own Jan-Dec
+// monthly figures in that same file summed to real, correct, nonzero
+// numbers): a group's Total/Unspecified-style bucket is NEVER a free-
+// standing manual edit — the frontend always recomputes and overwrites it
+// on every render (see mbuRenderCategoryMapping's auto-heal block, and its
+// Round 2026-09-06 comment: "no subs showing means the bucket IS the file
+// total, always, not a trusted-forever stored number"). It's always either
+// the group's raw imported total, or that total minus whatever's been
+// split into real sub-channels via "Edit ... sub-channels" (POST
+// .../working-sub-lines, sourceRowIndex = MBU_MANUAL_LINE_SOURCE_ROW). So a
+// *stored* category-override row for one of these specific bucket labels
+// is really just a snapshot of what that live computation happened to
+// equal at the moment "Save"/"Submit as final" last ran — and it goes
+// stale the moment a split changes afterward without a resave, or (as
+// happened here) the moment the computation *itself* was buggy (see this
+// same round's frontend fix: Search/Social were wrongly subtracted from
+// Digital — Total/Unspecified, driving its stored override to 0 on every
+// prior save). Every backend consumer of computeByVerilumeCategoryForUpload
+// (export.csv, active-channels, historical charts, the confirmed-results
+// screen) was reading that stale, possibly-wrong stored number. Fixed by
+// recomputing these specific bucket labels fresh from real line items on
+// every call, the same way the frontend now does, instead of trusting
+// whatever was last persisted for them.
+const MBU_BUCKET_GROUPS = {
+  'Digital — Total/Unspecified': ['Search', 'Social', 'Digital — Addressable', 'Digital — Partnerships'],
+  'Direct Mail': ['Direct Mail — Customers', 'Direct Mail — Customers Pending', 'Direct Mail — Inquiries', 'Direct Mail — Prospects', 'Direct Mail — Identity Resolution', 'Direct Mail — ID Resolution'],
+  'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
+  'Consumer Print Advertising — Total/Unspecified': ['Consumer Print Advertising — Magazines', 'Print Advertising — Newspapers', 'Magazines/Print']
+};
+function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals){
+  const manualRows = db.prepare(`SELECT category, SUM(annualTotal) as total FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = 'working' GROUP BY category`).all(uploadId, MBU_MANUAL_LINE_SOURCE_ROW);
+  const manualByLabel = {};
+  manualRows.forEach(r => { manualByLabel[r.category] = Number(r.total) || 0; });
+  Object.entries(MBU_BUCKET_GROUPS).forEach(([bucket, siblings]) => {
+    // Only a bucket that actually has real imported dollars of its own gets
+    // recomputed -- matches the frontend's own guard (it bails when the
+    // bucket has no real line items at all), so a group with no Total/
+    // Unspecified row in this file is left untouched.
+    const rawBucketTotal = rawTotals[bucket];
+    if (rawBucketTotal == null) return;
+    const subSum = siblings.reduce((s, l) => s + (manualByLabel[l] || 0), 0);
+    byVerilumeCategory[bucket] = Math.max(0, rawBucketTotal - subSum);
+  });
+}
 function computeByVerilumeCategoryForUpload(uploadId){
   const ledger = mbuCategoryLedgerForUpload(uploadId).filter(c => c.status === 'working' && !mbuIsTotalLikeCategoryLabel(c.category));
   const byVerilumeCategory = {};
@@ -5085,8 +5133,10 @@ function computeByVerilumeCategoryForUpload(uploadId){
     if (!byVerilumeCategory[key]) byVerilumeCategory[key] = 0;
     byVerilumeCategory[key] += c.total;
   });
+  const rawTotals = Object.assign({}, byVerilumeCategory);
   const overrideRows = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(uploadId);
   overrideRows.forEach(r => { byVerilumeCategory[r.verilumeCategory] = r.overrideTotal; });
+  mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals);
   return byVerilumeCategory;
 }
 
@@ -17711,5 +17761,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
-
