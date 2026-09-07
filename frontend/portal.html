@@ -22984,14 +22984,24 @@ const MP_SUBCHANNEL_PRIMARY_STAGE = {
   'Programmatic Display':      { stage: 'Consideration', target: 'In-market prospects — addressable' },
   'Newspapers':                { stage: 'Consideration', target: 'Local / affluent readers — new-to-brand' },
   'Podcasts':                  { stage: 'Consideration', target: 'Engaged listeners — new-to-brand' },
+  // Round 2026-09-07, per direct correction with a worked example ("Direct
+  // Mail Prospect = Awareness ; Direct Mail Inquiry or Identity Resolution
+  // = Consideration ; Direct Mail Customer = Loyalty"): Inquiries moves
+  // from Purchase to Consideration -- an inquiry is someone raising a hand
+  // to learn more, not yet at the point of deciding/booking -- and
+  // Identity Resolution (unresolved households being matched to an
+  // identity, not yet even a named prospect) gets its own entry at
+  // Consideration instead of silently inheriting Prospects' Awareness
+  // stage via the crosswalk (see MBD_SEED_CROSSWALK below).
+  'Direct Mail — Inquiries':   { stage: 'Consideration', target: 'Hand-raisers / inquiries' },
+  'Direct Mail — Identity Resolution': { stage: 'Consideration', target: 'Unresolved households being identified' },
   'Brand Search':              { stage: 'Purchase',      target: 'Hand-raisers searching the brand' },
-  'Direct Mail — Inquiries':   { stage: 'Purchase',      target: 'Hand-raisers / inquiries' },
   'Email — Remarketing':       { stage: 'Purchase',      target: 'Known contacts who have not booked' },
   'Remarketing':               { stage: 'Purchase',      target: 'Site visitors who have not booked' },
   'Retail Media':              { stage: 'Purchase',      target: 'Bookers on partner platforms' },
   'Field / ABM':               { stage: 'Purchase',      target: 'Travel-agent / trade partners' },
   'Internal Email':            { stage: 'Loyalty',       target: 'Past customers' },
-  'Direct Mail — Past Guests': { stage: 'Loyalty',       target: 'Past customers' },
+  'Direct Mail — Past Guests': { stage: 'Loyalty',       target: 'Past customers — Direct Mail Customer' },
   'PR':                        { stage: 'Advocacy',      target: 'Earned reach through customers and press' },
   'Partner Media':             { stage: 'Advocacy',      target: 'Partners and referrers' }
 };
@@ -27234,6 +27244,15 @@ async function mbuLoadCategoryMapping(){
   mbuCustomCategories = (mbuCategoryMappingData.customCategoriesInUse || []).map(v => v.replace(/^Client: /, ''));
   mbuManualCategories = new Set();
   mbuManualCategoryBucket = {};
+  // Round 2026-09-07, same bug report as the mbuRenderResults fix above: a
+  // split-editor left open on one upload (a bucket name + its in-progress
+  // draft amounts, neither saved nor cancelled) is per-upload editing
+  // state, same as everything else reset above -- it has to be cleared
+  // whenever a genuinely different upload's mapping data loads, or the
+  // editor panel could reopen showing another upload's draft numbers
+  // against this one's categories.
+  mbuSplitEditing = null;
+  mbuSplitDraft = {};
   mbuRenderCategoryMapping();
 }
 
@@ -28508,7 +28527,24 @@ function mbdRenderHistoricalCharts(){
   // whole render pass is built from — never `working + nonWorking` (that
   // mismatch, $8.7M vs $7.464M in Todd's example, was the bug). Each
   // export also carries the channel/sub-channel detail behind its total.
-  const channelDetailRows = () => { const rows = [[], ['Supporting detail — by channel', '', '']]; rows.push(['Channel group', 'Sub-channel', 'Amount (USD)']); model.channels.forEach(g => g.subs.forEach(sb => rows.push([g.label, sb.label, Math.round(sb.total)]))); return rows; };
+  // Round 2026-09-07, per direct report ("Channel Mix detail is similar.
+  // We just repeat"): when a group was never split into real sub-channels
+  // (the common case for an uploaded total, e.g. one lump "Direct Mail"
+  // line), it has exactly one sub whose label is just the bucket itself --
+  // so this section used to print the same group name and the same dollar
+  // figure the top summary line already showed, with nothing new in it.
+  // Only groups with a genuine multi-row breakdown (subs.length > 1 --
+  // e.g. Search + Social + Digital — Addressable actually itemized under
+  // Digital) add anything this section doesn't already say, so a single-
+  // sub group is left out of it entirely now.
+  const channelDetailRows = () => {
+    const real = model.channels.filter(g => (g.subs || []).length > 1);
+    if (!real.length) return [];
+    const rows = [[], ['Supporting detail — by channel (only groups with more than one sub-channel)', '', '']];
+    rows.push(['Channel group', 'Sub-channel', 'Amount (USD)']);
+    real.forEach(g => g.subs.forEach(sb => rows.push([g.label, sb.label, Math.round(sb.total)])));
+    return rows;
+  };
   mbdHistoricalChartRows = {
     pacing: [['Metric', 'Amount (USD)'], ['Approved', Math.round(working)], ['Committed', Math.round(working)], ['% paced', '100%']].concat(channelDetailRows()),
     tracking: [['Bucket', 'Amount (USD)'], ['Completed Spend (working media)', Math.round(working)], ['% complete', '100%'], ['Non-working media (tracked separately)', Math.round(nonWorking)]].concat(channelDetailRows()),
@@ -28839,15 +28875,22 @@ const MBD_SEED_CROSSWALK = {
   // carried forward": the two Direct Mail sub-channels added in R8d had no
   // seed entry, so their dollars were reported as unplaceable instead of
   // landing on a plan row. Customers Pending is a customer list (Past
-  // Guests); Identity Resolution resolves unknown households, a prospect
-  // list.
+  // Guests).
   'Direct Mail — Customers Pending': ['Direct Mail — Past Guests'],
-  'Direct Mail — Identity Resolution': ['Direct Mail — Prospects'],
+  // Round 2026-09-07, per direct correction ("Direct Mail Inquiry or
+  // Identity Resolution = Consideration"): Identity Resolution used to
+  // ride on the Prospects MMM channel (Awareness), which put it on the
+  // wrong Loop stage and silently merged its dollars into Prospects'
+  // funnel position. It now rides on Inquiries instead — both are
+  // Consideration-stage per Todd's grouping, and there is no separate
+  // "Direct Mail — Identity Resolution" MMM channel in this platform's
+  // real channel taxonomy (MMM_CATEGORIES) to map it to on its own.
+  'Direct Mail — Identity Resolution': ['Direct Mail — Inquiries'],
   'Direct Mail — Inquiries': ['Direct Mail — Inquiries'],
   'Direct Mail — Prospects': ['Direct Mail — Prospects'],
+  // Legacy/retired category, kept mapped for historical data only (not a
+  // new-selection option) — see VERILUME_BUDGET_CATEGORIES' own comment.
   'Direct Mail — ID Resolution': ['Direct Mail — Prospects'],
-  'Direct Mail — Identity Resolution': ['Direct Mail — Prospects'],
-  'Direct Mail — Customers Pending': ['Direct Mail — Past Guests'],
   'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV'],
   'TV — Addressable': ['CTV'],
   'Consumer Print Advertising — Total/Unspecified': ['Magazines', 'Newspapers'],
@@ -29085,10 +29128,29 @@ async function mbuRenderResults(data){
       <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
     </div>` + lineItemsHtml;
     mbuAnalysis = mbuAnalysis && mbuAnalysis.id === data.id ? mbuAnalysis : { id: data.id, layout: data.layout, status: data.status, year: data.year };
-    // Skip the reload when the mapping data already on hand is for this
-    // same upload, so an unrelated re-render (e.g. saving Actual revenue
-    // below) doesn't wipe out categories someone is mid-edit on.
-    if (mbuCategoryMappingData && mbuAnalysis.id === data.id){
+    // Round 2026-09-07, per direct bug report with screenshots ("2026
+    // basically replacing 2025 budgets with both being wrong. The 2025
+    // working media went from $7.4 to $6.1") — a real data-integrity bug,
+    // not just a display glitch. This guard used to read
+    // `mbuAnalysis.id === data.id` to decide whether the category-mapping
+    // data already in memory (mbuCategoryMappingData) was safe to reuse —
+    // but the line directly above THIS one unconditionally forces
+    // mbuAnalysis.id to equal data.id no matter what, so that comparison
+    // was always true and the real condition collapsed to just
+    // "mbuCategoryMappingData is truthy." Switching from 2026's worksheet
+    // to 2025's: mbuCategoryMappingData still held 2026's categories,
+    // overrides and any open split-editor draft (mbuSplitDraft/
+    // mbuSplitEditing) — none of that is cleared on a year switch — so
+    // this branch rendered 2026's live data under the 2025 upload's id.
+    // Worse, mbuAnalysis.id was correctly the 2025 upload by then, so
+    // clicking Save on what looked like the 2025 screen would have posted
+    // 2026's numbers onto the 2025 record — exactly the kind of real
+    // overwrite the reported $7.4M → $6.1M drop describes. Now compares
+    // against mbuCategoryMappingData.uploadId (returned by the category-
+    // mapping endpoint), the one field that actually names which upload
+    // the cached data belongs to, so a stale cache for a different upload
+    // is correctly treated as stale and reloaded instead of reused.
+    if (mbuCategoryMappingData && mbuCategoryMappingData.uploadId === data.id){
       mbuRenderCategoryMapping();
     } else {
       await mbuLoadCategoryMapping();
