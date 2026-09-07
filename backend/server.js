@@ -4651,6 +4651,33 @@ createTableIfNeeded(`
   );
 `);
 
+// Round 2026-09-07 (Review 18), per direct instruction ("give every
+// category the opportunity to create a split... build the general version
+// now"): the split feature (a category's total is the remainder after
+// pulling dollars out to sub-channels) used to only exist for 4 hardcoded
+// groups (MBU_BUCKET_GROUPS/MBU_FUNCTIONAL_GROUPS — Digital, Direct Mail,
+// TV, Consumer Print Advertising). Opening splitting up to ANY category
+// means the parent/child relationship can no longer be a fixed, hardcoded
+// map — it has to be recorded per upload, for whatever pairing the client
+// actually chose via "+ Add category" inside the split editor. This table
+// is that record: one row per (parent, child) pair currently in force for
+// an upload. mbuAllBucketGroupsForUpload() below reads it and merges it
+// with the 4 legacy groups (still offered as sensible defaults, and still
+// how existing uploads keep working with zero migration), so the bucket
+// auto-heal math — the thing that stops a split from double-counting —
+// applies uniformly to a client-invented pairing exactly like it already
+// does for the 4 original ones.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS marketing_budget_category_splits (
+    id TEXT PRIMARY KEY,
+    uploadId TEXT NOT NULL,
+    parentCategory TEXT NOT NULL,
+    childCategory TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (uploadId) REFERENCES marketing_budget_uploads(id)
+  );
+`);
+
 // Round 132bx follow-on (2026-08-15), per direct instruction: "channels with
 // $0 becoming inactive by default" + "channels with $0 should be
 // automatically excluded from our campaign channel allocation UI and
@@ -5110,7 +5137,22 @@ const MBU_BUCKET_GROUPS = {
   'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
   'Consumer Print Advertising — Total/Unspecified': ['Consumer Print Advertising — Magazines', 'Print Advertising — Newspapers', 'Magazines/Print']
 };
+// Round 2026-09-07 (Review 18): the 4 legacy groups above, unioned with
+// whatever parent/child pairs this specific upload has actually recorded
+// in marketing_budget_category_splits (any category, added via "+ Add
+// category" inside the split editor) — see that table's own comment.
+function mbuAllBucketGroupsForUpload(uploadId){
+  const groups = {};
+  Object.entries(MBU_BUCKET_GROUPS).forEach(([parent, children]) => { groups[parent] = children.slice(); });
+  const rows = db.prepare('SELECT parentCategory, childCategory FROM marketing_budget_category_splits WHERE uploadId = ?').all(uploadId);
+  rows.forEach(r => {
+    if (!groups[r.parentCategory]) groups[r.parentCategory] = [];
+    if (!groups[r.parentCategory].includes(r.childCategory)) groups[r.parentCategory].push(r.childCategory);
+  });
+  return groups;
+}
 function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels, overridesByLabel){
+  const bucketGroups = mbuAllBucketGroupsForUpload(uploadId);
   const manualRows = db.prepare(`SELECT category, SUM(annualTotal) as total FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = 'working' GROUP BY category`).all(uploadId, MBU_MANUAL_LINE_SOURCE_ROW);
   const manualByLabel = {};
   // Round 2026-09-07 (Review 15): a manual row for a label that ALSO has
@@ -5121,7 +5163,7 @@ function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLab
   // the bucket" here either, or the bucket gets wrongly zeroed all over
   // again exactly like the bug this whole round exists to fix.
   manualRows.forEach(r => { if (!(realLabels && realLabels.has(r.category))) manualByLabel[r.category] = Number(r.total) || 0; });
-  Object.entries(MBU_BUCKET_GROUPS).forEach(([bucket, siblings]) => {
+  Object.entries(bucketGroups).forEach(([bucket, siblings]) => {
     // Only a bucket that actually has real imported dollars of its own gets
     // recomputed -- matches the frontend's own guard (it bails when the
     // bucket has no real line items at all), so a group with no Total/
@@ -15901,11 +15943,36 @@ Submit your findings via the submit_brand_categories tool.`;
         ['EXAMPLE — delete this row: Paid Search', 'Working', 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 60000],
         ['EXAMPLE — delete this row: Production (Photo/Video/Creative)', 'Non-Working', 2000, 0, 0, 3000, 0, 0, 0, 0, 2500, 0, 0, 0, 7500]
       ];
+      // Round 2026-09-07 (Review 18), per direct instruction: "Our sample
+      // upload spreadsheets should provide clear direction should a client
+      // want to group under a master channel containing subchannels." Two
+      // more example rows below show the recommended pattern for a client
+      // who tracks a channel like Digital at the sub-channel level (Search,
+      // Social, etc.) rather than as one lump sum — list EACH sub-channel as
+      // its OWN row, under its own exact name, with its own real monthly
+      // figures. That's the accurate, no-manual-work path: every dollar
+      // lands under the right category automatically, no review-screen
+      // splitting required afterward. (The alternative — upload one
+      // "Digital" row for the whole master-channel total, then use "Split
+      // into sub-channels" on the review screen to divide it by hand — also
+      // works and is explained in the footnote below, but needs that manual
+      // step since the file itself carries no sub-channel detail.) The one
+      // thing to never do: upload BOTH a master-channel row for the full
+      // amount AND separate sub-channel rows for the same spend — that
+      // double-counts it.
+      exampleRows.push(
+        ['EXAMPLE — delete this row: Search', 'Working', 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 36000],
+        ['EXAMPLE — delete this row: Social', 'Working', 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 18000]
+      );
       const csvEscape = v => {
         const s = String(v);
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
-      const csv = [header, ...exampleRows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+      const footnoteRows = [
+        [''],
+        ["Note: grouping a channel into sub-channels (e.g. Digital -> Search, Social, Display, Partnerships) — two ways to do it. (1) Recommended: list each sub-channel as its own row above, under its own exact name, with its own real monthly figures — most accurate, no extra steps after upload. (2) Upload one row for the whole channel's total (e.g. \"Digital\"), then use \"Split into sub-channels\" on the review screen after uploading to divide it by hand. Never do both for the same spend — a master-channel row for the full amount AND separate sub-channel rows double-counts it."]
+      ];
+      const csv = [header, ...exampleRows, ...footnoteRows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': 'attachment; filename="verilume-marketing-budget-template.csv"'
@@ -16177,9 +16244,17 @@ Submit your findings via the submit_brand_categories tool.`;
       const overrideRows = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(uploadId);
       const overrides = {};
       overrideRows.forEach(r => { overrides[r.verilumeCategory] = r.overrideTotal; });
+      // Round 2026-09-07 (Review 18): every parent/child split pairing on
+      // record for this upload, legacy groups included, so the frontend can
+      // restore "Split into ... sub-channels" exactly as the client last
+      // left it after a reload — see mbuAllBucketGroupsForUpload's comment.
+      const categorySplits = {};
+      Object.entries(mbuAllBucketGroupsForUpload(uploadId)).forEach(([parent, children]) => {
+        if (children.length) categorySplits[parent] = children;
+      });
       return sendJson(res, 200, {
         uploadId, uploadStatus: upload.status, verilumeCategories: VERILUME_BUDGET_CATEGORIES, customCategoriesInUse, overrides,
-        workingCategories, nonWorkingCategories, categoryLabels,
+        workingCategories, nonWorkingCategories, categoryLabels, categorySplits,
         // Round 8: the Verilume -> MMM crosswalk, so the unified Budget
         // detail view can derive Marketing Loop stage allocations for an
         // uploaded budget client-side (one source of truth, no hand-kept
@@ -16305,6 +16380,39 @@ Submit your findings via the submit_brand_categories tool.`;
         saved.push({ category, total: Math.round(total) });
       });
       return sendJson(res, 200, { uploadId, lines: saved });
+    }
+
+    // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-splits
+    // -- Round 2026-09-07 (Review 18), per direct instruction ("give every
+    // category the opportunity to create a split... build the general
+    // version now"): persists which sub-channel labels currently belong
+    // under a given parent category for THIS upload, so the split editor's
+    // own "+ Add category" (any client-invented pairing, not just the 4
+    // legacy groups) survives a reload and drives the same self-healing
+    // bucket math (mbuAllBucketGroupsForUpload/mbuApplyBucketAutoHeal) that
+    // Digital/Direct Mail/TV/Consumer Print Advertising already get. Body:
+    // { parentCategory, childCategories: [<standard category label>, ...] }
+    // -- full-replace semantics for that one parent, same pattern as
+    // working-sub-lines' `replace`: an empty childCategories list clears the
+    // parent back to just its legacy defaults (if any), never touches any
+    // OTHER parent's rows.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'category-splits'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      const body = await readBody(req);
+      const parentCategory = String((body && body.parentCategory) || '').trim().slice(0, 120);
+      if (!parentCategory) return sendJson(res, 400, { error: 'parentCategory is required' });
+      const childCategories = Array.isArray(body && body.childCategories)
+        ? [...new Set(body.childCategories.map(c => String(c || '').trim().slice(0, 120)).filter(c => c && c !== parentCategory))]
+        : [];
+      db.prepare('DELETE FROM marketing_budget_category_splits WHERE uploadId = ? AND parentCategory = ?').run(uploadId, parentCategory);
+      const nowSp = new Date().toISOString();
+      const insSp = db.prepare('INSERT INTO marketing_budget_category_splits (id, uploadId, parentCategory, childCategory, createdAt) VALUES (?,?,?,?,?)');
+      childCategories.forEach(child => insSp.run(generateId('MBCS'), uploadId, parentCategory, child, nowSp));
+      return sendJson(res, 200, { uploadId, parentCategory, childCategories });
     }
 
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-overrides
@@ -17868,4 +17976,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
