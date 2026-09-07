@@ -5110,7 +5110,7 @@ const MBU_BUCKET_GROUPS = {
   'TV — Total/Unspecified': ['Linear TV', 'OTV', 'CTV', 'TV — Addressable'],
   'Consumer Print Advertising — Total/Unspecified': ['Consumer Print Advertising — Magazines', 'Print Advertising — Newspapers', 'Magazines/Print']
 };
-function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels){
+function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels, overridesByLabel){
   const manualRows = db.prepare(`SELECT category, SUM(annualTotal) as total FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = 'working' GROUP BY category`).all(uploadId, MBU_MANUAL_LINE_SOURCE_ROW);
   const manualByLabel = {};
   // Round 2026-09-07 (Review 15): a manual row for a label that ALSO has
@@ -5128,7 +5128,30 @@ function mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLab
     // Unspecified row in this file is left untouched.
     const rawBucketTotal = rawTotals[bucket];
     if (rawBucketTotal == null) return;
-    const subSum = siblings.reduce((s, l) => s + (manualByLabel[l] || 0), 0);
+    // Round 2026-09-07 (Review 16), per direct report (a real 2025 export
+    // showing Digital — Total/Unspecified and bare Direct Mail BOTH still
+    // at their full, unreduced raw totals even though their own named
+    // sub-channels below them summed to exactly that same amount --
+    // meaning a genuine split really had happened, but wasn't being
+    // subtracted at all): "Edit ... sub-channels" (working-sub-lines) is
+    // not the only way a sub-channel gets its dollars. "+ Add category"
+    // (mbuAddManualCategory, the manual-category mechanism) assigns a
+    // label a total purely via a saved category-override, with NO backing
+    // line item at all -- so it never showed up in manualRows above, and
+    // this function silently treated it as "no split happened," leaving
+    // the bucket at its full raw total while the sub-channel ALSO counted
+    // its own dollars, effectively double-counting the same spend across
+    // two rows in every export. A sibling label counts as "split-sourced"
+    // (and gets subtracted) whenever it's not a genuinely independent
+    // import (realLabels) AND it carries dollars from EITHER path: a real
+    // manual line item (manualByLabel) or a plain saved override with
+    // nothing backing it (overridesByLabel) -- whichever exists.
+    const subSum = siblings.reduce((s, l) => {
+      if (realLabels && realLabels.has(l)) return s;
+      if (manualByLabel[l] != null) return s + manualByLabel[l];
+      if (overridesByLabel && overridesByLabel[l] != null) return s + (Number(overridesByLabel[l]) || 0);
+      return s;
+    }, 0);
     byVerilumeCategory[bucket] = Math.max(0, rawBucketTotal - subSum);
   });
 }
@@ -5167,8 +5190,9 @@ function computeByVerilumeCategoryForUpload(uploadId){
   });
   const rawTotals = Object.assign({}, byVerilumeCategory);
   const overrideRows = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(uploadId);
-  overrideRows.forEach(r => { byVerilumeCategory[r.verilumeCategory] = r.overrideTotal; });
-  mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels);
+  const overridesByLabel = {};
+  overrideRows.forEach(r => { byVerilumeCategory[r.verilumeCategory] = r.overrideTotal; overridesByLabel[r.verilumeCategory] = r.overrideTotal; });
+  mbuApplyBucketAutoHeal(uploadId, byVerilumeCategory, rawTotals, realLabels, overridesByLabel);
   return byVerilumeCategory;
 }
 
