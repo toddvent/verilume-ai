@@ -24064,19 +24064,40 @@ function renderBudgetTrackingChart(){
   const isExpanded = state.budgetChartExpanded === 'tracking';
   const real = getBudgetTrackingBuckets();
   const realTotal = real.unplanned + real.planned + real.active + real.completed;
-  const isSample = realTotal === 0;
-  const b = isSample ? SAMPLE_BUDGET_BUCKETS : real;
+  const canonical = mbdCanonicalWorkingMediaTotal();
+  const isSample = realTotal === 0 && !canonical;
+  let b, total, untracked = 0;
+  if (isSample){
+    b = SAMPLE_BUDGET_BUCKETS;
+    total = b.unplanned + b.planned + b.active + b.completed;
+  } else if (canonical != null){
+    // Round 134 — the bar's total is always the same canonical Total
+    // Working Media Spend every other card shows (never this card's own
+    // sum of campaign-tracked buckets, which can under- or over-count
+    // against the plan/budget). Campaign-tracked dollars keep their real
+    // Unplanned/Planned/Active/Completed split; anything in the budget
+    // that isn't yet reflected on a campaign shows as its own segment
+    // rather than being silently absorbed into — or omitted from — the
+    // total.
+    b = real;
+    untracked = Math.max(0, canonical - realTotal);
+    total = Math.max(canonical, realTotal);
+  } else {
+    b = real;
+    total = realTotal;
+  }
   const segs = [
     { key: 'unplanned', label: 'Unplanned Spend', value: b.unplanned, color: 'var(--muted)' },
     { key: 'planned', label: 'Planned Spend', value: b.planned, color: 'var(--advocacy)' },
     { key: 'active', label: 'Active Spend', value: b.active, color: 'var(--media)' },
     { key: 'completed', label: 'Completed Spend', value: b.completed, color: 'var(--cx)' }
   ];
-  const total = segs.reduce((s, x) => s + x.value, 0);
+  if (untracked > 0) segs.push({ key: 'untracked', label: 'Not Yet Campaign-Tracked', value: untracked, color: 'var(--paper-dim)' });
   const pctComplete = total ? Math.round((b.completed / total) * 100) : 0;
+  const overBudget = !isSample && canonical != null && realTotal > canonical;
   const disclosure = isSample
     ? `Sample figures — no campaigns with a budget yet on this account. <span class="illustrative-tag">PLACEHOLDER DATA</span> Unplanned/Planned/Active/Completed is a prototype default either way, see cxmedia-budget-tracking-scope.md`
-    : `${b.completed.toLocaleString('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0})} of ${total.toLocaleString('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0})} total — Unplanned/Planned/Active/Completed is a prototype default, see cxmedia-budget-tracking-scope.md`;
+    : `${b.completed.toLocaleString('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0})} of ${fmtMoney(Math.round(total))} total working media spend${overBudget ? ' (campaign-tracked spend exceeds the working media budget for this year)' : ''} — Unplanned/Planned/Active/Completed is a prototype default, see cxmedia-budget-tracking-scope.md`;
   card.innerHTML = `
     <div class="exec-chart-head">
       <h3>${typeof mbdChartYearPrefix === 'function' ? mbdChartYearPrefix() : ''}Budget Tracking</h3>
@@ -24192,9 +24213,17 @@ function renderChannelMixChart(){
   const grandTotal = rows.reduce((s, r) => s + r.value, 0);
   const maxVal = Math.max(...rows.map(r => r.value), 1);
   const rangeLabels = { ytd: 'YTD', qtd: 'QTD', mtd: 'MTD' };
+  // Round 134 — this card is deliberately date-windowed (YTD/QTD/MTD), so
+  // its own total is a real, smaller subset of the full-year Total Working
+  // Media Spend every other card shows — scaling it up to match would
+  // misrepresent partial-year attribution as the full budget. Instead it
+  // now names that full-year figure explicitly (same mbdCanonicalWorkingMediaTotal()
+  // every other card uses) so a reader sees $X of $Y, never a bare $X that
+  // looks like a fifth, disconnected total.
+  const canonicalMix = mbdCanonicalWorkingMediaTotal();
   const disclosure = isSample
     ? `Sample figures — no campaign spend with a startDate in this ${rangeLabels[range]} window yet. <span class="illustrative-tag">PLACEHOLDER DATA</span>`
-    : `${rangeLabels[range]} spend attributed by each campaign's start date. <span class="illustrative-tag">Internal Email &amp; PR excluded (owned/earned, $0 budget) — Podcasts folded into Digital — Addressable TV isn't a tracked category yet</span>`;
+    : `${fmtMoney(Math.round(grandTotal))}${canonicalMix != null ? ` of ${fmtMoney(Math.round(canonicalMix))} total working media spend` : ''} attributed by campaign start date, ${rangeLabels[range]}. <span class="illustrative-tag">Internal Email &amp; PR excluded (owned/earned, $0 budget) — Podcasts folded into Digital — Addressable TV isn't a tracked category yet</span>`;
   card.innerHTML = `
     <div class="exec-chart-head">
       <h3>${typeof mbdChartYearPrefix === 'function' ? mbdChartYearPrefix() : ''}Channel Media Mix</h3>
@@ -24229,6 +24258,23 @@ function mbdActiveChartModel(){
   const detail = mbdLastUploadDetail && Number(mbdLastUploadDetail.year) === Number(year) ? mbdLastUploadDetail : null;
   return plan ? mbdModelFromPlan(plan) : (detail && detail.status === 'confirmed' ? mbdModelFromUpload(detail) : null);
 }
+// Round 134, per direct instruction: "We need to align the spend total.
+// The detailed view is $8.7M, $7.464M working media, $1.316M non-working
+// media. Each card has a different amount. 1) We should show the total
+// working media spend only on each card. All reported spend should be
+// reporting from the same source." The Budget detail worksheet's own
+// "Total Working Media" figure comes from summing model.channels — the
+// exact same model mbdActiveChartModel()/mbdModelFromUpload/
+// mbdModelFromPlan already build for Marketing Loop and ROAS, and
+// mbdRenderHistoricalCharts()'s own `working` for a closed year. This is
+// the one function every card's headline dollar total now goes through
+// (never working + non-working — that's a different, larger number, and
+// is exactly the $8.7M vs $7.464M mismatch Todd flagged), so a figure
+// can't drift between cards again.
+function mbdCanonicalWorkingMediaTotal(){
+  const model = (typeof mbdActiveChartModel === 'function') ? mbdActiveChartModel() : null;
+  return model ? model.channels.reduce((s, g) => s + g.total, 0) : null;
+}
 const SAMPLE_LOOP_STAGE_SPEND = { Awareness: 210000, Consideration: 175000, Purchase: 340000, Loyalty: 95000, Advocacy: 30000 };
 function renderMarketingLoopChart(){
   if (typeof mbdHistoricalMode === 'function' && mbdHistoricalMode() && typeof mbdRenderHistoricalCharts === 'function'){ mbdRenderHistoricalCharts(); return; }
@@ -24256,7 +24302,7 @@ function renderMarketingLoopChart(){
         <div class="eff-meter-head"><span class="lbl">${r.label}</span><span><span class="val">${fmtMoney(r.value)}</span><span class="delta" style="color:var(--muted);">${Math.round((r.value/grandTotal)*100)}%</span></span></div>
         <div class="eff-meter-bar"><div style="width:${Math.round((r.value/maxVal)*100)}%;background:${r.color};"></div></div>
       </div>`).join('') : `<p class="lede">No Loop stage spend yet — set an Annual Marketing Budget and apply the recommended mix below.</p>`}
-    <p class="exec-caption">${isSample ? `Sample figures — no Media Plan or confirmed budget upload yet. <span class="illustrative-tag">PLACEHOLDER DATA</span>` : `${typeof mbdChartYearPrefix === 'function' ? mbdChartYearPrefix() : ''}spend by Marketing Loop stage (Awareness → Advocacy).`}</p>
+    <p class="exec-caption">${isSample ? `Sample figures — no Media Plan or confirmed budget upload yet. <span class="illustrative-tag">PLACEHOLDER DATA</span>` : `${fmtMoney(grandTotal)} total working media spend by Marketing Loop stage (Awareness → Advocacy).`}</p>
     ${mbdChartShareMenu('loop')}`;
 }
 function renderRoasChart(){
@@ -28141,11 +28187,15 @@ function mbdRenderHistoricalCharts(){
     const d = buildDonutSvg(working > 0 ? segs : [{ label: 'Committed', value: 1, color: 'var(--paper-dim)' }], 'sm');
     pacing.innerHTML = `${mbdChartHead('Plan Pacing', 'pacing')}<div class="exec-visual-row"><div class="donut-svg-wrap">${d.svg}<div class="donut-center"><div class="num">100%</div><div class="lbl">Paced</div></div></div><div class="donut-side-col"><div class="donut-legend">${legendOf([{ label: 'Committed', value: working, color: 'var(--cx)' }, { label: 'Remaining', value: 0, color: 'var(--paper-dim)' }], working)}</div></div></div><p class="exec-caption">${fmtMoney(Math.round(working))} committed of ${fmtMoney(Math.round(working))} — ${mbuSelectedYear} is a closed period.</p>${mbdChartShareMenu('pacing')}`;
   }
-  // b) Budget Tracking: 100% complete
+  // b) Budget Tracking: 100% complete. Round 134, per direct instruction —
+  // this used to total working + non-working ($8.7M in Todd's example),
+  // the one figure on the page that didn't match every other card's
+  // working-media-only total ($7.464M). Fixed to the same `working` total
+  // every other card here uses; non-working still gets a mention, just
+  // not folded into the headline total or the 100% bar.
   const tracking = document.getElementById('budgetTrackingChartCard');
   if (tracking){
-    const total = working + nonWorking;
-    tracking.innerHTML = `${mbdChartHead('Budget Tracking', 'tracking')}<div class="budget-track-bar" style="margin-top:14px;height:16px;"><div style="width:100%;background:var(--cx);" title="Completed: ${fmtMoney(Math.round(total))}"></div></div><div class="budget-track-legend"><div class="donut-legend-item"><span class="swatch" style="background:var(--cx);"></span><span class="lname">Completed Spend</span><span class="lval">${fmtMoney(Math.round(total))} (100%)</span></div></div><p class="exec-caption"><b>100% of Total Spend Complete</b> — ${fmtMoney(Math.round(working))} working + ${fmtMoney(Math.round(nonWorking))} non-working, ${mbuSelectedYear} closed.</p>${mbdChartShareMenu('tracking')}`;
+    tracking.innerHTML = `${mbdChartHead('Budget Tracking', 'tracking')}<div class="budget-track-bar" style="margin-top:14px;height:16px;"><div style="width:100%;background:var(--cx);" title="Completed: ${fmtMoney(Math.round(working))}"></div></div><div class="budget-track-legend"><div class="donut-legend-item"><span class="swatch" style="background:var(--cx);"></span><span class="lname">Completed Spend</span><span class="lval">${fmtMoney(Math.round(working))} (100%)</span></div></div><p class="exec-caption"><b>100% of Total Working Media Spend Complete</b> — ${fmtMoney(Math.round(working))} working media, ${mbuSelectedYear} closed. (Non-working media: ${fmtMoney(Math.round(nonWorking))}, tracked separately — see Non-Working Media below.)</p>${mbdChartShareMenu('tracking')}`;
   }
   // c) Channel Media Mix: the actual mix, in the same groups the live chart uses
   const mix = document.getElementById('channelMixChartCard');
@@ -28172,7 +28222,7 @@ function mbdRenderHistoricalCharts(){
       <div class="eff-meter">
         <div class="eff-meter-head"><span class="lbl">${r.label}</span><span><span class="val">${fmtMoney(r.value)}</span><span class="delta" style="color:var(--muted);">${Math.round((r.value/loopTotal)*100)}%</span></span></div>
         <div class="eff-meter-bar"><div style="width:${Math.round((r.value/loopMax)*100)}%;background:${r.color};"></div></div>
-      </div>`).join('')}<p class="exec-caption">${mbuSelectedYear} spend by Marketing Loop stage (Awareness → Advocacy) — final, ${mbuSelectedYear} is a closed period.</p>${mbdChartShareMenu('loop')}`;
+      </div>`).join('')}<p class="exec-caption">${fmtMoney(Math.round(working))} total working media spend by Marketing Loop stage (Awareness → Advocacy) — final, ${mbuSelectedYear} is a closed period.</p>${mbdChartShareMenu('loop')}`;
   }
   // e) ROAS: Revenue, Working Media Spend, ROAS metric — reuses the same
   // Revenue-strip figures (mbdYearResults[year]) the Performance strip and
@@ -28189,12 +28239,18 @@ function mbdRenderHistoricalCharts(){
       <div><div class="hint">ROAS</div><div style="font-size:1.375rem;font-weight:700;color:var(--cx);">${roasVal != null ? roasVal.toFixed(2) + '×' : '—'}</div></div>
     </div><p class="exec-caption">${yr.grossRevenue != null ? 'Actual' : 'Planned'} gross revenue ÷ working media spend for ${mbuSelectedYear} (closed period).</p>${mbdChartShareMenu('roas')}`;
   }
+  // Round 134, per direct instruction: every summary total here is
+  // `working` — the one canonical Total Working Media Spend figure this
+  // whole render pass is built from — never `working + nonWorking` (that
+  // mismatch, $8.7M vs $7.464M in Todd's example, was the bug). Each
+  // export also carries the channel/sub-channel detail behind its total.
+  const channelDetailRows = () => { const rows = [[], ['Supporting detail — by channel', '', '']]; rows.push(['Channel group', 'Sub-channel', 'Amount (USD)']); model.channels.forEach(g => g.subs.forEach(sb => rows.push([g.label, sb.label, Math.round(sb.total)]))); return rows; };
   mbdHistoricalChartRows = {
-    pacing: [['Metric', 'Amount (USD)'], ['Approved', Math.round(working)], ['Committed', Math.round(working)], ['% paced', '100%']],
-    tracking: [['Bucket', 'Amount (USD)'], ['Completed Spend', Math.round(working + nonWorking)], ['% complete', '100%']],
-    mix: [['Channel group', 'Amount (USD)']].concat((() => { const t = {}; model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); const k = grp ? grp.label : 'Other'; t[k] = (t[k] || 0) + sb.total; })); return Object.entries(t).map(([k, v]) => [k, Math.round(v)]); })()),
-    loop: [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(model.stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(model.stages[st] || 0), Math.round(((model.stages[st] || 0) / total) * 100) + '%']); })()),
-    roas: (() => { const yr = mbdYearResults[mbuSelectedYear] || {}; const revenue = yr.grossRevenue != null ? Number(yr.grossRevenue) : (yr.plannedRevenue != null ? Number(yr.plannedRevenue) : null); const roas = (revenue != null && working > 0) ? (revenue / working).toFixed(2) + '×' : '—'; return [['Metric', 'Amount'], ['Revenue', revenue != null ? Math.round(revenue) : ''], ['Working Media Spend', Math.round(working)], ['ROAS', roas]]; })()
+    pacing: [['Metric', 'Amount (USD)'], ['Approved', Math.round(working)], ['Committed', Math.round(working)], ['% paced', '100%']].concat(channelDetailRows()),
+    tracking: [['Bucket', 'Amount (USD)'], ['Completed Spend (working media)', Math.round(working)], ['% complete', '100%'], ['Non-working media (tracked separately)', Math.round(nonWorking)]].concat(channelDetailRows()),
+    mix: [['Channel group', 'Amount (USD)']].concat((() => { const t = {}; model.channels.forEach(g => g.subs.forEach(sb => { const grp = CHANNEL_MIX_GROUPS.find(x => x.categories.includes(sb.label)); const k = grp ? grp.label : 'Other'; t[k] = (t[k] || 0) + sb.total; })); return Object.entries(t).map(([k, v]) => [k, Math.round(v)]); })()).concat(channelDetailRows()),
+    loop: [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(model.stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(model.stages[st] || 0), Math.round(((model.stages[st] || 0) / total) * 100) + '%']); })()).concat(channelDetailRows()),
+    roas: (() => { const yr = mbdYearResults[mbuSelectedYear] || {}; const planned = yr.plannedRevenue != null ? Number(yr.plannedRevenue) : null; const actual = yr.grossRevenue != null ? Number(yr.grossRevenue) : null; const revenue = actual != null ? actual : planned; const roasOf = (v) => (v != null && working > 0) ? (v / working).toFixed(2) + '×' : '—'; const rows = [['Metric', 'Amount'], ['Revenue', revenue != null ? Math.round(revenue) : ''], ['Working Media Spend', Math.round(working)], ['ROAS', roasOf(revenue)], [], ['Supporting detail — revenue', ''], ['Planned gross revenue', planned != null ? Math.round(planned) : ''], ['Actual gross revenue', actual != null ? Math.round(actual) : ''], ['Unique transactions', yr.transactions != null ? Math.round(yr.transactions) : '']]; return rows.concat(channelDetailRows()); })()
   };
   if (typeof mbdApplyChartOrder === 'function') mbdApplyChartOrder();
 }
@@ -28216,13 +28272,98 @@ function mbdToggleChartShare(key){
   if (mbdHistoricalMode()) mbdRenderHistoricalCharts();
   else mbdRenderBudgetChartGrid();
 }
+// Round 134, per direct instruction — "The downloads should include the
+// details that support the card summary." Every export below now pairs
+// its headline summary rows with the line-item detail that adds up to
+// it (per-allocation, per-campaign, per-channel, per-stage), not just the
+// rolled-up numbers already on the card, and every summary total routes
+// through mbdCanonicalWorkingMediaTotal() (or the same `working` figure
+// mbdRenderHistoricalCharts() computed it from) so the exported total
+// always matches what every other card's export says too.
 function mbdChartRows(key){
   if (mbdHistoricalMode() && mbdHistoricalChartRows[key]) return mbdHistoricalChartRows[key];
-  if (key === 'pacing'){ const p = computePlanPacingTotals(); return p.status === 'ok' ? [['Metric', 'Amount (USD)'], ['Approved', p.totals.approved], ['Committed', p.totals.committed], ['% paced', p.pct + '%']] : [['Metric', 'Amount (USD)'], ['No plan pacing data', '']]; }
-  if (key === 'tracking'){ const b = getBudgetTrackingBuckets(); return [['Bucket', 'Amount (USD)'], ['Unplanned', b.unplanned], ['Planned', b.planned], ['Active', b.active], ['Completed', b.completed]]; }
-  if (key === 'loop'){ const m = mbdActiveChartModel(); const stages = m ? m.stages : SAMPLE_LOOP_STAGE_SPEND; return [['Loop stage', 'Spend Amt (USD)', '% Spend']].concat((() => { const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(stages[st]) || 0), 0) || 1; return MEDIA_LOOP_STAGES.map(st => [st, Math.round(stages[st] || 0), Math.round(((stages[st] || 0) / total) * 100) + '%']); })()); }
-  if (key === 'roas'){ const m = mbdActiveChartModel(); const workingSpend = m ? m.channels.reduce((s, g) => s + g.total, 0) : (Number((document.getElementById('mpTotalBudget') || {}).value) || 0); const r = mbdYearResults[mbuSelectedYear] || {}; const revenue = r.grossRevenue != null ? Number(r.grossRevenue) : (r.plannedRevenue != null ? Number(r.plannedRevenue) : null); const roas = (revenue != null && workingSpend > 0) ? (revenue / workingSpend).toFixed(2) + '×' : '—'; return [['Metric', 'Amount'], ['Revenue', revenue != null ? Math.round(revenue) : ''], ['Working Media Spend', Math.round(workingSpend)], ['ROAS', roas]]; }
-  const t = getChannelMediaMix(state.budgetMixRange || 'ytd'); return [['Channel group', 'Amount (USD)']].concat(CHANNEL_MIX_GROUPS.map(g => [g.label, Math.round(t[g.key] || 0)]));
+  const canonical = mbdCanonicalWorkingMediaTotal();
+  if (key === 'pacing'){
+    const p = computePlanPacingTotals();
+    if (p.status !== 'ok') return [['Metric', 'Amount (USD)'], ['No plan pacing data', '']];
+    const rows = [['Metric', 'Amount (USD)'], ['Approved', Math.round(p.totals.approved)], ['Committed', Math.round(p.totals.committed)], ['% paced', p.pct + '%'], ['Scope', p.scopeLabel], [], ['Supporting detail — by channel', '', '', '']];
+    rows.push(['Stage', 'Channel', 'Approved (USD)', 'Committed (USD)']);
+    (p.visibleAllocs || []).forEach(a => rows.push([a.stage, a.channel, Math.round(a.approvedAmount || 0), Math.round(mediaPlanCommittedForAllocation(a.id))]));
+    return rows;
+  }
+  if (key === 'tracking'){
+    const b = getBudgetTrackingBuckets();
+    const realTotal = b.unplanned + b.planned + b.active + b.completed;
+    const total = canonical != null ? Math.max(canonical, realTotal) : realTotal;
+    const untracked = canonical != null ? Math.max(0, canonical - realTotal) : 0;
+    const rows = [['Bucket', 'Amount (USD)'], ['Unplanned', Math.round(b.unplanned)], ['Planned', Math.round(b.planned)], ['Active', Math.round(b.active)], ['Completed', Math.round(b.completed)]];
+    if (untracked > 0) rows.push(['Not Yet Campaign-Tracked', Math.round(untracked)]);
+    rows.push(['Total working media spend', Math.round(total)]);
+    rows.push([], ['Supporting detail — by campaign', '', '', '', '']);
+    rows.push(['Campaign', 'Status', 'Funding source', 'Bucket', 'Amount (USD)']);
+    state.campaigns.filter(c => !c.isAdHoc && !c.cancelled).forEach(c => {
+      const amount = (c.actualSpend != null && c.actualSpend !== '') ? Number(c.actualSpend) : (Number(c.budget) || 0);
+      const bucket = c.status === 'Analysis' ? 'Completed' : (c.status === 'In Market' ? 'Active' : (c.fundingSource === 'plan' ? 'Planned' : 'Unplanned'));
+      rows.push([c.name || c.objective || 'Untitled Campaign', c.status || '', c.fundingSource || '', bucket, Math.round(amount)]);
+    });
+    return rows;
+  }
+  if (key === 'loop'){
+    const m = mbdActiveChartModel();
+    const stages = m ? m.stages : SAMPLE_LOOP_STAGE_SPEND;
+    const total = MEDIA_LOOP_STAGES.reduce((s, st) => s + (Number(stages[st]) || 0), 0) || 1;
+    const rows = [['Loop stage', 'Spend Amt (USD)', '% Spend']];
+    MEDIA_LOOP_STAGES.forEach(st => rows.push([st, Math.round(stages[st] || 0), Math.round(((stages[st] || 0) / total) * 100) + '%']));
+    rows.push(['Total working media spend', Math.round(total), '100%']);
+    if (m){
+      rows.push([], ['Supporting detail — by channel', '', '', '']);
+      rows.push(['Channel group', 'Sub-channel', 'Amount (USD)']);
+      m.channels.forEach(g => g.subs.forEach(sb => rows.push([g.label, sb.label, Math.round(sb.total)])));
+    }
+    return rows;
+  }
+  if (key === 'roas'){
+    const m = mbdActiveChartModel();
+    const workingSpend = m ? m.channels.reduce((s, g) => s + g.total, 0) : (Number((document.getElementById('mpTotalBudget') || {}).value) || 0);
+    const r = mbdYearResults[mbuSelectedYear] || {};
+    const planned = r.plannedRevenue != null ? Number(r.plannedRevenue) : ((state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && Number(state.mediaPlan.grossRevenue) > 0) ? Number(state.mediaPlan.grossRevenue) : null);
+    const actual = r.grossRevenue != null ? Number(r.grossRevenue) : null;
+    const revenue = actual != null ? actual : planned;
+    const roasOf = (v) => (v != null && workingSpend > 0) ? (v / workingSpend).toFixed(2) + '×' : '—';
+    const rows = [['Metric', 'Amount'],
+      ['Revenue', revenue != null ? Math.round(revenue) : ''],
+      ['Working Media Spend', Math.round(workingSpend)],
+      ['ROAS', roasOf(revenue)],
+      [],
+      ['Supporting detail — revenue', ''],
+      ['Planned gross revenue', planned != null ? Math.round(planned) : ''],
+      ['Actual gross revenue', actual != null ? Math.round(actual) : ''],
+      ['Planned ROAS', roasOf(planned)],
+      ['Actual ROAS', roasOf(actual)],
+      ['Unique transactions', r.transactions != null ? Math.round(r.transactions) : '']
+    ];
+    if (m){
+      rows.push([], ['Supporting detail — working media spend by channel', '']);
+      rows.push(['Channel group', 'Amount (USD)']);
+      m.channels.forEach(g => rows.push([g.label, Math.round(g.total)]));
+    }
+    return rows;
+  }
+  const t = getChannelMediaMix(state.budgetMixRange || 'ytd');
+  const rangeTotal = Object.values(t).reduce((s, v) => s + v, 0);
+  const rows = [['Channel group', 'Amount (USD)']].concat(CHANNEL_MIX_GROUPS.map(g => [g.label, Math.round(t[g.key] || 0)]));
+  rows.push(['Total (this window)', Math.round(rangeTotal)]);
+  if (canonical != null) rows.push(['Total working media spend (full year)', Math.round(canonical)]);
+  rows.push([], ['Supporting detail — by campaign', '', '', '']);
+  rows.push(['Campaign', 'Channels', 'Start date', 'Amount (USD)']);
+  const range = state.budgetMixRange || 'ytd';
+  const today = new Date(); const start = budgetMixRangeStart(range, today);
+  const startStr = start.toISOString().slice(0, 10), todayStr = today.toISOString().slice(0, 10);
+  state.campaigns.filter(c => !c.isAdHoc && !c.cancelled && c.startDate && c.startDate >= startStr && c.startDate <= todayStr).forEach(c => {
+    const amount = (c.actualSpend != null && c.actualSpend !== '') ? Number(c.actualSpend) : (Number(c.budget) || 0);
+    rows.push([c.name || c.objective || 'Untitled Campaign', c.channels || '', c.startDate || '', Math.round(amount)]);
+  });
+  return rows;
 }
 async function mbdChartExport(key, format){
   const rows = mbdChartRows(key);
