@@ -16507,7 +16507,39 @@ Submit your findings via the submit_brand_categories tool.`;
         const monthVals = MARKETING_BUDGET_MONTHS.map(m => months[m] || 0);
         return [cat, ...monthVals, byVerilumeCategoryTotal[cat] || 0];
       });
-      const csv = [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+      // Round 2026-09-07 (Review 17), per direct instruction: Todd correctly
+      // read a Total/monthly mismatch as expected behavior ("sub-channels do
+      // not reflect the broader category level monthly distribution... we
+      // only list totals") but asked for a footnote explaining it rather
+      // than leaving it silent. Two distinct patterns can produce a
+      // Total/monthly-sum mismatch, both from the same underlying cause
+      // (a category assigned a dollar amount without going through the
+      // month-by-month import): a sub-channel entered via the split editor
+      // or "+ Add category" has real months all-zero but a nonzero Total
+      // (it was typed in as one annual number); its parent bucket (Digital
+      // — Total/Unspecified, Direct Mail, etc.) still shows its real
+      // imported monthly detail, but its Total is reduced by exactly what
+      // was split out, so the two no longer visibly match. Flag whichever
+      // of the two actually appear in this export, rather than a static
+      // note that may not apply.
+      const noMonthlyDetailCats = categories.filter(cat => {
+        const months = byVerilumeCategoryMonthly[cat] || {};
+        const monthSum = MARKETING_BUDGET_MONTHS.reduce((s, m) => s + (Number(months[m]) || 0), 0);
+        return monthSum === 0 && (byVerilumeCategoryTotal[cat] || 0) !== 0;
+      });
+      const bucketRemainderCats = categories.filter(cat => Object.prototype.hasOwnProperty.call(MBU_BUCKET_GROUPS, cat));
+      const footnoteRows = [];
+      if (noMonthlyDetailCats.length || bucketRemainderCats.length){
+        footnoteRows.push(['']);
+        footnoteRows.push(['Note:']);
+        if (noMonthlyDetailCats.length){
+          footnoteRows.push([`${noMonthlyDetailCats.join('; ')} — Total shown, months blank. These were entered as a single annual split (via "+ Add category" or the sub-channel split editor), not part of the imported month-by-month file, so there's no monthly detail to show.`]);
+        }
+        if (bucketRemainderCats.length){
+          footnoteRows.push([`${bucketRemainderCats.join('; ')} — the monthly columns show this category's real imported monthly detail; the Total column shows what's left after subtracting any amount split out to its own sub-channels (listed separately above), so the two won't sum to the same figure when a split exists.`]);
+        }
+      }
+      const csv = [header, ...rows, ...footnoteRows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
       const safeName = `verilume-budget-${upload.year}-${upload.scope || 'domestic'}-monthly-detail.csv`;
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
