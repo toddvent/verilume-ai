@@ -16069,6 +16069,57 @@ Submit your findings via the submit_brand_categories tool.`;
       return sendJson(res, 200, { uploadId, lines: saved });
     }
 
+    // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/working-sub-lines
+    // -- Round 2026-09-06 (Todd, direct: splitting a group's Total/
+    // Unspecified bucket into sub-channels "changes the total category to 0
+    // while retaining the current subcategory values that no longer create
+    // the category total. We lose the formula... A better approach might be
+    // an edit function that saved the current category values until someone
+    // selects save. A Cancel function could collapse the subcategories and
+    // return user to previous value."): the working-media mirror of
+    // nonworking-lines above. A group's sub-channel split (Direct Mail,
+    // Digital, TV, Consumer Print Advertising) used to live ONLY in
+    // frontend memory (mbuManualCategories) -- real once "Save changes" sent
+    // its dollar amounts as overrides, but the fact that those categories
+    // were split out and should keep rendering as their own rows was never
+    // persisted, so a reload lost the breakdown and the bucket recompute had
+    // nothing to subtract, silently reverting to the untouched file total
+    // (see Review 6). Body: { replace: [<standard category label>, ...],
+    // lines: [{ category, total }] } -- `replace` names every sub-channel
+    // label in this bucket's group (whether or not this save assigns it a
+    // line), so a category removed from the split (0 lines entry) is
+    // deleted along with everything else in scope, and a save never touches
+    // a DIFFERENT bucket's rows. `verilumeCategory` is set equal to
+    // `category` on insert -- these are standard labels already, self-
+    // mapped, so they render as real working-media rows (byLabel[label]
+    // .items.length > 0) exactly like a file-sourced item would, no client-
+    // side "this is manual" tracking required to survive a reload.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads' && parts[5] === 'working-sub-lines'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
+      const body = await readBody(req);
+      const replace = Array.isArray(body && body.replace) ? [...new Set(body.replace.map(c => String(c || '').trim().slice(0, 120)).filter(Boolean))] : [];
+      const lines = Array.isArray(body && body.lines) ? body.lines : [];
+      if (replace.length){
+        const placeholders = replace.map(() => '?').join(',');
+        db.prepare(`DELETE FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = ? AND category IN (${placeholders})`)
+          .run(uploadId, MBU_MANUAL_LINE_SOURCE_ROW, 'working', ...replace);
+      }
+      const ins = db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+      const saved = [];
+      lines.forEach(l => {
+        const category = String((l && l.category) || '').trim().slice(0, 120);
+        const total = Number(l && l.total);
+        if (!category || !replace.includes(category) || isNaN(total) || total <= 0) return;
+        ins.run(generateId('MBLI'), uploadId, accountId, category, 'working', null, null, Math.round(total), MBU_MANUAL_LINE_SOURCE_ROW, category);
+        saved.push({ category, total: Math.round(total) });
+      });
+      return sendJson(res, 200, { uploadId, lines: saved });
+    }
+
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-overrides
     // — per direct instruction, the single-screen review lets a client
     // accept or manually edit the total shown for a Verilume category
