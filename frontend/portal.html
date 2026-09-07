@@ -27398,7 +27398,7 @@ function mbuWorkingCategoryRowHtml(c){
             const ov = mbuCategoryOverrides[key];
             const shown = (ov === undefined || ov === null) ? Number(c.total || 0) : ov;
             const safeKey = key.replace(/'/g, "\\'");
-            return `<div class="field" style="margin:0;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(shown)}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeKey}', this.value)" onchange="mbuRenderCategoryMapping()"></div></div>${(ov !== undefined && ov !== null && Math.round(ov) !== Math.round(Number(c.total || 0))) ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;"><span class="hint" style="margin:0;">file: $${Number(c.total || 0).toLocaleString()}</span><button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;" onclick="delete mbuCategoryOverrides['${safeKey}']; mbuRenderCategoryMapping();">↻ Restore to file total →</button></div>` : ''}`;
+            return `<div class="field" style="margin:0;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(shown)}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeKey}', this.value)" onchange="mbuRenderCategoryMapping()"></div></div>${(ov !== undefined && ov !== null && Math.round(ov) !== Math.round(Number(c.total || 0))) ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;"><span class="hint" style="margin:0;">Imported amount: $${Number(c.total || 0).toLocaleString()}</span><button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;" onclick="delete mbuCategoryOverrides['${safeKey}']; mbuRenderCategoryMapping();">Reset to imported amount →</button></div>` : ''}`;
           })() : `<div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>`}
         </div>
         <div style="${MBU_COL_C}">
@@ -27532,7 +27532,7 @@ function mbuSplitDraftPanelHtml(bucketLabel, fileTotal){
   }).join('');
   return `
     <div style="margin:8px 0 14px;padding:12px;background:rgba(0,0,0,0.03);border-radius:8px;border:1px dashed var(--line);">
-      <p class="hint" style="margin:0 0 8px;">Editing ${escapeHtml(info.groupName)} sub-channels — nothing changes here until you save. Assigned so far: $${draftSum.toLocaleString()} of $${Number(fileTotal || 0).toLocaleString()}${draftSum > Number(fileTotal || 0) ? ' <span style="color:#b8860b;">(over the file total)</span>' : ''}.</p>
+      <p class="hint" style="margin:0 0 8px;">Editing ${escapeHtml(info.groupName)} sub-channels — nothing changes here until you save. Assigned so far: $${draftSum.toLocaleString()} of $${Number(fileTotal || 0).toLocaleString()} imported${draftSum > Number(fileTotal || 0) ? ' <span style="color:#b8860b;">(over the imported amount)</span>' : ''}.</p>
       ${rows}
       <div class="btn-row" style="margin-top:8px;">
         <button type="button" class="btn-primary" onclick="mbuSaveSplitEdit()">Save split →</button>
