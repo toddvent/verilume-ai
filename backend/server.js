@@ -5129,7 +5129,16 @@ function mbuSuggestVerilumeCategory(rawCategory){
   const rules = [
     [/\bsem\b|\bsearch\b|\bppc\b|\badwords\b|\bgoogle ads\b/, 'Search'],
     [/\bsocial\b/, 'Social'],
-    [/\bdisplay\b|\bprogrammatic\b|\bbanner\b/, 'Display/Programmatic'],
+    // Round 2026-09-07, per direct bug report (Todd's 2026 file, "621003-
+    // Consumer Digital Marketing Display" row): 'Display/Programmatic' is a
+    // legacy category the frontend has since retired (MBU_RETIRED_CATEGORIES)
+    // and doesn't belong to any MBU_FUNCTIONAL_GROUPS bucket, so a row
+    // suggested into it fell into "Other" on the Working Media chart instead
+    // of "Digital," and had no matching option in the row's own dropdown.
+    // 'Digital — Total/Unspecified' is the current catch-all Digital bucket
+    // (see the 2026-09-05 taxonomy restructure below) and both belongs to
+    // MBU_FUNCTIONAL_GROUPS['Digital'] and remains selectable.
+    [/\bdisplay\b|\bprogrammatic\b|\bbanner\b/, 'Digital — Total/Unspecified'],
     // Round 132bx follow-on #3 (2026-08-15) — split from one merged
     // 'Video/CTV' rule now that the category itself is split (see
     // VERILUME_BUDGET_CATEGORIES). CTV gets its own specific keyword match;
@@ -17682,5 +17691,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
