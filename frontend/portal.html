@@ -27347,13 +27347,31 @@ function mbuRenderCategoryMapping(){
   // bucket's override is kept equal to its file amount minus the assigned
   // sub-channel dollars, so the group total, the Working total and what's
   // saved on Submit all agree.
+  //
+  // Round 2026-09-06 (Todd, direct: "The RESTORE issue is preventing us from
+  // showing the correct total media. The category groups Consumer Direct
+  // Mail, Consumer Digital Marketing, Consumer Print Advertising should
+  // reflect the sum of the subcategories vs 0."): this used to only sum
+  // mbuManualCategories -- a session-only Set that's empty again after any
+  // reload -- and only cleared a stale bucket override via another
+  // session-only Set (mbuAutoBucketOverride). So a bucket split earlier in
+  // one browser session, saved, then reloaded with its manual sub-channel
+  // rows gone (they were never persisted, only the bucket's remainder was),
+  // was stuck at that old remainder -- usually $0 -- forever: the file's
+  // real dollars silently vanished from the group and from Total marketing
+  // spend, with no way back short of re-splitting. Now the bucket's amount
+  // is fully derived on every render from whatever sub-channel rows
+  // actually exist right now (real file items or still-present manual
+  // rows, via the same bucketHasItems/shownTotalFor every other row uses) --
+  // no subs showing means the bucket IS the file total, always, not a
+  // trusted-forever stored number.
   Object.entries(MBU_FUNCTIONAL_GROUPS).forEach(([, labels]) => {
     const bucket = labels.find(l => / — Total\/Unspecified$/.test(l)) || (labels.includes('Direct Mail') ? 'Direct Mail' : null);
     if (!bucket || !byLabel[bucket] || !byLabel[bucket].items.length) return;
-    const subSum = labels.filter(l => l !== bucket && mbuManualCategories.has(l)).reduce((s2, l) => s2 + (Number(mbuCategoryOverrides[l]) || 0), 0);
-    if (subSum > 0) mbuCategoryOverrides[bucket] = Math.max(0, byLabel[bucket].total - subSum);
-    else if (mbuAutoBucketOverride.has(bucket)){ delete mbuCategoryOverrides[bucket]; }
-    if (subSum > 0) mbuAutoBucketOverride.add(bucket); else mbuAutoBucketOverride.delete(bucket);
+    const subLabels = labels.filter(l => l !== bucket && bucketHasItems(l));
+    const subSum = subLabels.reduce((s2, l) => s2 + shownTotalFor(l), 0);
+    mbuCategoryOverrides[bucket] = Math.max(0, byLabel[bucket].total - subSum);
+    if (subLabels.length) mbuAutoBucketOverride.add(bucket); else mbuAutoBucketOverride.delete(bucket);
   });
   const groupBlocks = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, labels]) => {
     const groupLabels = labels.filter(l => allCategoryLabels.includes(l) && bucketHasItems(l));
