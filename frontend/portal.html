@@ -7866,22 +7866,6 @@
          Moved here from Account Setup — see mbuToggleActiveChannel()'s own
          comment. Account-level, not tied to any one year's upload, so it
          sits ahead of Step 1 rather than inside it. -->
-    <div class="sk-card" id="mbuActiveChannelsCard" style="margin-bottom:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Account setting</div><h3>Active channels</h3></div>
-        <div class="hicon">📡</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;" id="mbuActiveChannelsHint">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
-        <div class="btn-row" style="margin:0 0 8px;">
-          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
-          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
-        </div>
-        <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
-        <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
-      </div>
-    </div>
-
     <!-- Round 117 (2026-08-08), per direct instruction: Non-Working Media —
          agency fees, advanced analytics, creative asset production,
          licenses, martech, and similar vendor spend, tracked separately
@@ -7929,6 +7913,22 @@
         <div class="hicon">↻</div>
       </div>
       <div class="sk-card-body" id="mpLearningBody"></div>
+    </div>
+
+    <div class="sk-card" id="mbuActiveChannelsCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting</div><h3>Active channels</h3></div>
+        <div class="hicon">📡</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;" id="mbuActiveChannelsHint">Only active channels are offered on Campaign Creation and recommended on the Media Plan.</p>
+        <div class="btn-row" style="margin:0 0 8px;">
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(true)">Activate all →</button>
+          <button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="mbuSetAllActiveChannels(false)">Deactivate all →</button>
+        </div>
+        <div class="select-tile-row" id="mbuActiveChannelsRow"></div>
+        <p class="hint" id="mbuActiveChannelsStatus" style="margin-top:8px;"></p>
+      </div>
     </div>
 
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
@@ -26967,6 +26967,12 @@ function mbuIsNonWorkingStatus(status){
   return /non[\s-]*wo?rking/i.test(String(status || ''));
 }
 
+// The download/media-plan/line-items actions belonging to the active
+// confirmed budget's card -- built by mbuRenderResults (it needs the raw
+// upload `data`, not just the mapping response) and rendered by
+// mbuRenderCategoryMapping whenever it's showing that budget's screen, so a
+// dropdown change or category edit re-render doesn't lose them.
+let mbuActiveBudgetExtrasHtml = '';
 let mbuCategoryMappingData = null, mbuCategoryMappingChoices = {};
 let mbuCategoryOverrides = {};   // verilumeCategory -> manually accepted/edited total (null clears)
 let mbuCustomCategories = [];    // client-created category names (bare, no "Client: " prefix)
@@ -27286,6 +27292,23 @@ function mbuAddManualNonWorking(){
   if (inputs.length) inputs[inputs.length - 1].focus();
 }
 
+// Performance (title line + Revenue & results strip + ROAS) for the active
+// budget's card, above the editable categories -- built from the same
+// upload detail/model mbdRenderUnified used to use for its worksheet.
+function mbuActiveBudgetPrefixHtml(){
+  const detail = mbdLastUploadDetail && mbuAnalysis && mbdLastUploadDetail.id === mbuAnalysis.id ? mbdLastUploadDetail : null;
+  if (!detail) return '';
+  // Same "refined by the plan, if there is one" choice mbuRenderResults used
+  // to make when it built the worksheet's revenue strip -- kept here so
+  // Performance reads the same numbers now that it lives on the editable
+  // categories screen instead.
+  const planRows = (state.mediaPlan && (state.mediaPlan.allocations || []).length && Number(state.mediaPlan.year) === Number(detail.year) && (detail.scope || 'domestic') === 'domestic') ? state.mediaPlan : null;
+  const model = planRows ? mbdModelFromPlan(planRows) : mbdModelFromUpload(detail);
+  const workingSpend = model.channels.reduce((s, g) => s + g.total, 0);
+  const period = (typeof mbuPeriodFor === 'function') ? mbuPeriodFor(detail.year) : { label: '' };
+  const titleLine = `<p class="hint" style="margin:0 0 10px;"><b style="color:${period.closed ? '#14532d' : 'var(--cx)'};">${period.label}</b> · ${detail.year || ''} ${(detail.scope || 'domestic') === 'international' ? 'International' : 'Domestic'} budget from "${escapeHtml(detail.fileName || 'upload')}"</p>`;
+  return titleLine + (typeof mbdRevenueStripHtml === 'function' ? mbdRevenueStripHtml(detail.year, workingSpend) : '') + (typeof mbdRoasLineHtml === 'function' ? mbdRoasLineHtml(detail.year, workingSpend) : '');
+}
 function mbuRenderCategoryMapping(){
   const card = document.getElementById('mbuResultsCard');
   const body = document.getElementById('mbuResultsBody');
@@ -27433,8 +27456,19 @@ function mbuRenderCategoryMapping(){
   }).join('');
 
   const isEditingConfirmed = (mbuCategoryMappingData && mbuCategoryMappingData.uploadStatus === 'confirmed') || (mbuAnalysis && mbuAnalysis.status === 'confirmed');
+  // 2026-09-06 (Todd, Review 5): "The import[ed] budget screen should show
+  // the editable categories that exist when someone selects Review Budget.
+  // They shouldn't need to select it." This screen -- not the Loop-donut
+  // worksheet -- is now what shows for the active/confirmed budget, no
+  // separate "Edit categories & labels" click required (mbuRenderResults
+  // calls straight into this). Performance (planned/actual revenue,
+  // variance, ROAS) still leads the card, unchanged, above the categories.
+  const prefixHtml = isEditingConfirmed ? mbuActiveBudgetPrefixHtml() : '';
+  const extrasHtml = isEditingConfirmed ? mbuActiveBudgetExtrasHtml : '';
   body.innerHTML = `
-    ${isEditingConfirmed ? `<button type="button" class="btn-ghost" onclick="mbuBackToBudgetDetail()" style="margin-bottom:10px;">← Back to budget detail (discard unsaved changes)</button>` : ''}
+    ${prefixHtml}
+    ${extrasHtml}
+    ${isEditingConfirmed ? `<button type="button" class="btn-ghost" onclick="mbuBackToBudgetDetail()" style="margin-bottom:10px;">↻ Discard unsaved changes</button>` : ''}
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 4px;">Review your budget</p>
     <p class="hint" style="margin:0 0 12px;">Working media first: each of your categories, its amount, and our best-guess Verilume category (a single "International" line can map to International — total only; a "Total/Unspecified" bucket can be split into its sub-channels). Non-working spend follows in the same columns with a label you can rename or lines you add. Total marketing spend closes the statement.</p>
     ${workingSectionHtml}
@@ -27781,38 +27815,24 @@ function mbdRenderUnified(model, opts){
       <div id="${detailId}" hidden>${detailHtml}</div>`;
   }).join('');
   const stageReset = (model.editableStages && model.stagesAssigned) ? `<p class="hint" style="margin:8px 0 0;"><a onclick="mbdResetUploadStages('${model.uploadId}')" style="cursor:pointer;">Reset to the derived split →</a></p>` : '';
-  // (b)+(c)+(d) 2026-09-06 (Todd: "Aggregate Channel totals and
-  // sub-channels duplicates the chart to the right. The cleaner monthly
-  // view should be a simple monthly chart that includes the working media
-  // channel name listed in column A."): the old channel-totals table
-  // repeated the Channel Media Mix chart above at the group level: one
-  // table now carries the detail that chart doesn't -- every working-media
-  // sub-channel with its month-by-month spend, channel name in column A.
-  const allSubs = model.channels.flatMap(g => g.subs.map(sb => Object.assign({}, sb, { group: g.label })));
-  allSubs.sort((a, b) => b.total - a.total);
-  const monthHeads = MBD_MONTHS.map(m => `<th style="text-align:right;">${m[0].toUpperCase()}${m.slice(1)}</th>`).join('');
-  const anySubMonths = allSubs.some(sb => sb.months);
-  const monthlyByChannelHtml = allSubs.length ? `
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;min-width:1120px;">
-      <thead><tr><th>Working media channel</th>${anySubMonths ? monthHeads : ''}<th style="text-align:right;">Total</th></tr></thead>
-      <tbody>
-        ${allSubs.map(sb => `<tr><td>${escapeHtml(sb.label)}<div class="hint" style="font-weight:400;">${escapeHtml(sb.group)}</div></td>${anySubMonths ? mbdMoneyCells(sb.months, false) : ''}<td style="text-align:right;font-weight:700;">$${Math.round(sb.total).toLocaleString()}</td></tr>`).join('')}
-      </tbody>
-      <tfoot><tr style="border-top:2px solid var(--ink);"><td style="font-weight:700;">Total working media</td>${anySubMonths ? mbdMoneyCells(model.months, true) : ''}<td style="text-align:right;font-weight:700;">$${Math.round(working).toLocaleString()}</td></tr></tfoot>
-    </table></div>
-    ${!anySubMonths ? '<p class="hint" style="margin-top:6px;">No month-by-month figures on file for these channels — totals only.</p>' : ''}
-    ${model.monthlyMode ? `<p class="hint" style="margin:6px 0 0;">Monthly curve: ${({ flat: 'Flat (even split)', curve: 'Revenue curve', manual: 'Custom %' })[model.monthlyMode] || model.monthlyMode}.</p>` : ''}` : '<p class="hint">No working-media channels on file yet.</p>';
+  // 2026-09-06 (Todd, Review 4): (3) the Loop-allocations donut should be
+  // the same format as Plan Pacing and the other chart cards -- boxed the
+  // same as an exec-chart-card so the legend doesn't stretch across the
+  // full worksheet the way it does un-contained. (4) the channel-by-month
+  // table duplicated the actions row's own "Download monthly detail (CSV)"
+  // (upload path) / "Download plan (CSV)" (plan-only path) button, so it's
+  // deleted from the worksheet -- that download is the only place for it
+  // now, per direct instruction ("can be deleted and accessible via a
+  // download option only").
   const sectionHead = (n, title, hint) => `<div style="margin:18px 0 8px;"><span class="kicker" style="margin-right:8px;">${n}</span><span style="font-weight:700;">${title}</span>${hint ? `<span class="hint" style="margin-left:8px;">${hint}</span>` : ''}</div>`;
   return `
     ${opts.hideTitle ? '' : `<p class="hint" style="margin:0 0 4px;">${escapeHtml(model.title)}</p>`}
     ${opts.actionsHtml || ''}
     ${sectionHead('A', 'Marketing Loop allocations', model.stageBasis)}
-    <div class="exec-visual-row"><div class="donut-svg-wrap">${stageDonut.svg}<div class="donut-center"><div class="num">$${(working / 1000000).toFixed(1)}M</div><div class="lbl">Working media</div></div></div><div class="donut-side-col"><div class="donut-legend">${stageLegendRows}</div></div></div>
+    <div class="exec-chart-card" style="max-width:460px;"><div class="exec-visual-row"><div class="donut-svg-wrap">${stageDonut.svg}<div class="donut-center"><div class="num">$${(working / 1000000).toFixed(1)}M</div><div class="lbl">Working media</div></div></div><div class="donut-side-col"><div class="donut-legend">${stageLegendRows}</div></div></div></div>
     ${stageReset}
-    ${sectionHead('B · C', 'Channel monthly detail', 'Every working-media channel by month — the mix by group is above in Channel Media Mix.')}
-    ${monthlyByChannelHtml}
-    <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:12px;padding-top:8px;">
-      <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working $${Math.round(working).toLocaleString()} + non-working $${Math.round(nonWorkingTotal).toLocaleString()}, read-only — non-working lines are managed in <a onclick="(document.getElementById('mpNonWorkingCard')||{scrollIntoView(){}}).scrollIntoView({ behavior: 'smooth', block: 'start' })" style="cursor:pointer;">Non-Working Media</a> below)</span></span>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--ink);margin-top:18px;padding-top:8px;">
+      <span style="font-size:0.8438rem;font-weight:700;">Total marketing spend <span class="hint" style="font-weight:400;">(working $${Math.round(working).toLocaleString()} + non-working $${Math.round(nonWorkingTotal).toLocaleString()}, read-only — channel and monthly detail is the download above; non-working lines are managed in <a onclick="(document.getElementById('mpNonWorkingCard')||{scrollIntoView(){}}).scrollIntoView({ behavior: 'smooth', block: 'start' })" style="cursor:pointer;">Non-Working Media</a> below)</span></span>
       <span style="font-size:1.0625rem;font-weight:700;color:var(--cx);">$${Math.round(working + nonWorkingTotal).toLocaleString()}</span>
     </div>
     ${opts.roasHtml || ''}`;
@@ -27998,7 +28018,7 @@ async function mbdSaveYearResults(year){
 }
 async function mbdShowForUpload(uploadId){
   if (!uploadId || !state.companyId) return;
-  if (mbdLoadedUploadId === uploadId && mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId && mbdResultsBodyView === 'budget') return; // the Budget detail worksheet is already the screen showing
+  if (mbdLoadedUploadId === uploadId && mbdLastUploadDetail && mbdLastUploadDetail.id === uploadId && mbdResultsBodyView === (mbdLastUploadDetail.status === 'confirmed' ? 'mapping' : 'budget')) return; // the right screen for this upload is already showing
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}`);
     if (!resp.ok) return;
@@ -28253,7 +28273,7 @@ async function mpBuildPlanFromUpload(){
 }
 
 
-function mbuRenderResults(data){
+async function mbuRenderResults(data){
   const card = document.getElementById('mbuResultsCard');
   const body = document.getElementById('mbuResultsBody');
   if (!card || !body) return;
@@ -28345,25 +28365,38 @@ function mbuRenderResults(data){
     </div>`;
   if (isAvailable){
     mbdLastUploadDetail = data;
-    // Round 8d: once the plan has been built from this upload (the "head
-    // start"), the Budget detail shows the plan -- the refined result -- with
-    // the upload named as its source; until then, the upload itself.
-    const planRows = (state.mediaPlan && (state.mediaPlan.allocations || []).length && Number(state.mediaPlan.year) === Number(data.year) && (data.scope || 'domestic') === 'domestic') ? state.mediaPlan : null;
-    const uploadModel = mbdModelFromUpload(data);
-    let model = uploadModel;
-    if (planRows){
-      model = Object.assign(mbdModelFromPlan(planRows), { title: `${data.year || ''} Domestic budget — uploaded "${data.fileName || 'file'}", refined in the Media Plan${planRows.id ? '' : ' (unsaved draft)'}` });
-      // The plan's own non-working rows if it has any; otherwise the
-      // upload's non-working lines (they're the same budget).
-      if (!model.nonWorking.length) model.nonWorking = uploadModel.nonWorking;
-    }
-    const workingSpend = model.channels.reduce((s, g) => s + g.total, 0);
-    const period = (typeof mbuPeriodFor === 'function') ? mbuPeriodFor(data.year) : { label: '' };
-    const titleLine = `<p class="hint" style="margin:0 0 10px;"><b style="color:${period.closed ? '#14532d' : 'var(--cx)'};">${period.label}</b> · ${data.year || ''} ${(data.scope || 'domestic') === 'international' ? 'International' : 'Domestic'} budget from "${escapeHtml(data.fileName || 'upload')}"${outliers.length ? ` · <span style="color:#b8860b;">${outliers.length} categor${outliers.length === 1 ? 'y' : 'ies'} over 35% of the file (${outliers.map(o => escapeHtml(o.category)).join(', ')}) — check for an un-excluded subtotal</span>` : ''}</p>`;
-    body.innerHTML = titleLine + mbdRevenueStripHtml(data.year, workingSpend) + mbdRenderUnified(model, { actionsHtml: actions, roasHtml: mbdRoasLineHtml(data.year, workingSpend), hideTitle: true }) + lineItemsHtml;
     mbdPaintedUploadId = data.id;
+    // 2026-09-06 (Todd, direct: "The import budget screen should show the
+    // editable categories that exist when someone selects Review Budget.
+    // They shouldn't need to select it.") -- the confirmed/active budget's
+    // card IS the editable-categories screen now, not the Loop-donut
+    // worksheet (mbdRenderUnified is still used for mbdShowForPlan, when
+    // there's a saved Media Plan with no upload behind it). The download/
+    // media-plan/line-items actions the worksheet used to show still belong
+    // here -- everything from `actions` except the now-redundant "Edit
+    // categories" button, which mbuRenderCategoryMapping renders whenever
+    // it's rendering the confirmed budget's screen.
+    mbuActiveBudgetExtrasHtml = `
+    <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
+      <button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>
+      ${(data.scope || 'domestic') === 'domestic' && !(typeof mbuPeriodFor === 'function' && mbuPeriodFor(data.year).closed) ? ((state.mediaPlan && (state.mediaPlan.allocations || []).length)
+        ? `<button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button><button type="button" class="btn-ghost" onclick="mpBuildPlanFromUpload()">↻ Re-seed the plan from this budget →</button>`
+        : `<button type="button" class="btn-primary" onclick="mpBuildPlanFromUpload()">▶ Build the media plan from this budget (Steps 1–4) →</button>`) : ''}
+      <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
+    </div>` + lineItemsHtml;
+    mbuAnalysis = mbuAnalysis && mbuAnalysis.id === data.id ? mbuAnalysis : { id: data.id, layout: data.layout, status: data.status, year: data.year };
+    // Skip the reload when the mapping data already on hand is for this
+    // same upload, so an unrelated re-render (e.g. saving Actual revenue
+    // below) doesn't wipe out categories someone is mid-edit on.
+    if (mbuCategoryMappingData && mbuAnalysis.id === data.id){
+      mbuRenderCategoryMapping();
+    } else {
+      await mbuLoadCategoryMapping();
+    }
+    const period = (typeof mbuPeriodFor === 'function') ? mbuPeriodFor(data.year) : { label: '' };
     if (typeof mbdRenderHistoricalCharts === 'function' && period.closed) mbdRenderHistoricalCharts();
   } else {
+    mbdResultsBodyView = 'budget';
     body.innerHTML = statusLine + actions + lineItemsHtml;
   }
 }
