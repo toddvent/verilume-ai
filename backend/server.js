@@ -16005,11 +16005,27 @@ Submit your findings via the submit_brand_categories tool.`;
       const upload = db.prepare('SELECT * FROM marketing_budget_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
       if (!upload) return sendJson(res, 404, { error: 'no such marketing budget upload on this account' });
       const ledger = mbuCategoryLedgerForUpload(uploadId).filter(c => !mbuIsTotalLikeCategoryLabel(c.category));
+      // Round 2026-09-07, per direct report ("Reset to Imported Amount does
+      // not change anything. The budget amount is still $0" — traced to the
+      // Digital group, where Search/Social are the client's own separately-
+      // imported categories, not sub-channels split out of Digital — Total/
+      // Unspecified, yet the frontend's self-healing bucket math treated
+      // them as if they were and always subtracted them from the bucket):
+      // flag which working rows are split-editor-created lines (POST
+      // .../working-sub-lines, sourceRowIndex = MBU_MANUAL_LINE_SOURCE_ROW,
+      // self-mapped category === verilumeCategory) versus real rows that
+      // came from the client's own file. Mirrors the nonWorking `manual`
+      // flag below. Only THESE manual rows represent dollars that were
+      // moved OUT of a Total/Unspecified bucket by the split UI — a real,
+      // independently-imported sub-channel (like Search/Social here) never
+      // was part of the bucket's total and must not be subtracted from it.
+      const manualWSet = new Set(db.prepare('SELECT category FROM marketing_budget_line_items WHERE uploadId = ? AND sourceRowIndex = ? AND status = ?').all(uploadId, MBU_MANUAL_LINE_SOURCE_ROW, 'working').map(r => r.category));
       const workingCategories = ledger.filter(c => c.status === 'working').map(c => ({
         category: c.category,
         total: c.total,
         months: c.months,
         currentVerilumeCategory: c.verilumeCategory,
+        manual: manualWSet.has(c.category),
         // Round 132bx follow-on — a remembered mapping from this account's
         // own past confirm-categories decisions (see mbuRecallCategoryMapping)
         // wins over the generic rule-based heuristic when both exist, since
@@ -17695,4 +17711,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
