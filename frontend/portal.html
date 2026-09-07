@@ -27194,6 +27194,20 @@ let mbuCustomCategories = [];    // client-created category names (bare, no "Cli
 // status from.
 let mbuManualCategories = new Set();
 let mbuManualCategoryBucket = {};
+// Round 2026-09-07 (Review 18), per direct instruction ("give every
+// category the opportunity to create a split... build the general version
+// now"): { [parentCategory]: [childLabel, ...] } -- every sub-channel
+// pairing this upload has actually recorded, legacy 4-group defaults
+// included (mirrors the backend's mbuAllBucketGroupsForUpload). Loaded from
+// mbuCategoryMappingData.categorySplits on every mbuLoadCategoryMapping();
+// updated locally the moment a split is saved so the UI reflects it without
+// waiting on a reload.
+let mbuCustomSplitChildren = {};
+// Labels the user has added to the CURRENT split draft via "+ Add
+// category" this editing session, before Save -- layered on top of
+// mbuGroupSplitLabels()'s persisted list purely so the draft panel can show
+// them immediately. Cleared on every start/cancel/save.
+let mbuSplitDraftExtraLabels = [];
 
 // Round 8 (2026-09-05): client-editable display labels for Non-Working
 // categories ({ rawCategory: label }), loaded from the upload and saved with
@@ -27244,6 +27258,30 @@ async function mbuLoadCategoryMapping(){
   mbuCustomCategories = (mbuCategoryMappingData.customCategoriesInUse || []).map(v => v.replace(/^Client: /, ''));
   mbuManualCategories = new Set();
   mbuManualCategoryBucket = {};
+  // Round 2026-09-07 (Review 16), per direct report (a real 2025 export
+  // showing Digital — Total/Unspecified and bare Direct Mail BOTH still at
+  // their full, unreduced raw totals even though the named sub-channels
+  // below them summed to exactly that amount -- meaning a genuine split
+  // had happened via "+ Add category", not the split-editor): a "+ Add
+  // category" manual row (mbuAddManualCategory) has no real file items
+  // behind it at all -- only a saved override. mbuManualCategories always
+  // reset to empty above, and nothing repopulated it for a label like
+  // this, so on every reload it silently stopped rendering as a worksheet
+  // row at all (bucketHasItems only shows a label with real items OR the
+  // manual-category flag) and its bucket's auto-heal (mbuSplitSourcedAmountFor,
+  // gated on the very same flag) stopped subtracting it -- both bugs at
+  // once, from the same missing bit of state. Recreate it here for any
+  // override whose label has no real working-category item choosing it.
+  {
+    const choiceLabels = new Set(Object.values(mbuCategoryMappingChoices).map(v => (v || '').replace(/^Client: /, '')).filter(Boolean));
+    const stdCats = mbuCategoryMappingData.verilumeCategories || [];
+    Object.keys(mbuCategoryOverrides).forEach(label => {
+      if (!choiceLabels.has(label) && stdCats.includes(label)){
+        mbuManualCategories.add(label);
+        mbuManualCategoryBucket[label] = 'working';
+      }
+    });
+  }
   // Round 2026-09-07, same bug report as the mbuRenderResults fix above: a
   // split-editor left open on one upload (a bucket name + its in-progress
   // draft amounts, neither saved nor cancelled) is per-upload editing
@@ -27253,6 +27291,13 @@ async function mbuLoadCategoryMapping(){
   // against this one's categories.
   mbuSplitEditing = null;
   mbuSplitDraft = {};
+  mbuSplitDraftExtraLabels = [];
+  // Round 2026-09-07 (Review 18): restore every parent/child split pairing
+  // this upload has on record (legacy 4-group defaults included, per
+  // mbuAllBucketGroupsForUpload on the backend) so "Split into ... sub-
+  // channels" -- now offered on any category -- shows exactly what the
+  // client last set up after a reload, not just the 4 original groups.
+  mbuCustomSplitChildren = Object.assign({}, mbuCategoryMappingData.categorySplits || {});
   mbuRenderCategoryMapping();
 }
 
@@ -27470,10 +27515,25 @@ function mbuLabelHasRealIndependentItems(label){
   const workingCats = (mbuCategoryMappingData && mbuCategoryMappingData.workingCategories) || [];
   return workingCats.some(w => !w.manual && (mbuCategoryMappingChoices[w.category] || '').replace(/^Client: /, '') === label);
 }
+// Round 2026-09-07 (Review 18), per direct instruction ("give every
+// category the opportunity to create a split... build the general version
+// now" + "I would just give every category the opportunity to create a
+// split. Give the clients options."): splitting used to only exist for the
+// 4 hardcoded MBU_FUNCTIONAL_GROUPS (Digital, Direct Mail, TV, Consumer
+// Print Advertising). Now ANY category can be split -- its sub-channel list
+// is the union of its legacy group siblings (if it has one) and whatever
+// this upload has recorded in mbuCustomSplitChildren (persisted via POST
+// .../category-splits, restored in mbuLoadCategoryMapping, kept in sync
+// with the backend's own mbuAllBucketGroupsForUpload). Never returns null
+// any more -- a category with no siblings yet just gets an empty subs list,
+// which is exactly what the "+ Add category" control inside the draft
+// panel below is for.
 function mbuGroupSplitLabels(bucketLabel){
   const group = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(bucketLabel));
-  if (!group) return null;
-  return { groupName: group[0], subs: group[1].filter(c => c !== bucketLabel && !MBU_RETIRED_CATEGORIES.includes(c) && c !== 'Magazines/Print' && !mbuLabelHasRealIndependentItems(c)) };
+  const legacySubs = group ? group[1].filter(c => c !== bucketLabel && !MBU_RETIRED_CATEGORIES.includes(c) && c !== 'Magazines/Print') : [];
+  const customSubs = mbuCustomSplitChildren[bucketLabel] || [];
+  const subs = Array.from(new Set([...legacySubs, ...customSubs])).filter(c => c !== bucketLabel && !mbuLabelHasRealIndependentItems(c));
+  return { groupName: group ? group[0] : bucketLabel, subs };
 }
 // Whether a sub-channel currently carries real dollars -- either a manual
 // row from this session, or a category already mapped from the file/a past
@@ -27483,10 +27543,13 @@ function mbuSubLabelInUse(label){
   const workingCats = (mbuCategoryMappingData && mbuCategoryMappingData.workingCategories) || [];
   return workingCats.some(w => (mbuCategoryMappingChoices[w.category] || '').replace(/^Client: /, '') === label);
 }
+// Every category can now offer a split -- the only requirement is a real
+// choice to split FROM. mbuSplitDraftPanelHtml's own "+ Add category"
+// control is how a category with no siblings yet gets its first one.
 function mbuGroupSplitState(choice){
-  if (!choice || !(/ — Total\/Unspecified$/.test(choice) || choice === 'Direct Mail')) return null;
-  const info = mbuGroupSplitLabels(choice);
-  if (!info || !info.subs.length) return null;
+  const key = (choice || '').replace(/^Client: /, '');
+  if (!key) return null;
+  const info = mbuGroupSplitLabels(key);
   return Object.assign({ hasSplit: info.subs.some(mbuSubLabelInUse) }, info);
 }
 // The amount a sub-channel currently shows, outside of an in-progress
@@ -27498,16 +27561,17 @@ function mbuCurrentAmountFor(label){
   return workingCats.filter(w => (mbuCategoryMappingChoices[w.category] || '').replace(/^Client: /, '') === label).reduce((s, w) => s + Number(w.total || 0), 0);
 }
 function mbuSplitControlHtml(choice){
+  const key = (choice || '').replace(/^Client: /, '');
   const stateInfo = mbuGroupSplitState(choice);
-  if (!stateInfo || mbuSplitEditing === choice) return ''; // the draft panel below takes over while editing
-  const safe = choice.replace(/'/g, "\\'");
+  if (!stateInfo || mbuSplitEditing === key) return ''; // the draft panel below takes over while editing
+  const safe = key.replace(/'/g, "\\'");
   return `<button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;margin-top:6px;" onclick="mbuStartSplitEdit('${safe}')">${stateInfo.hasSplit ? 'Edit' : 'Split into'} ${escapeHtml(stateInfo.groupName)} sub-channels →</button>`;
 }
 function mbuStartSplitEdit(bucketLabel){
-  const info = mbuGroupSplitLabels(bucketLabel);
-  if (!info) return;
   mbuSplitEditing = bucketLabel;
   mbuSplitDraft = {};
+  mbuSplitDraftExtraLabels = [];
+  const info = mbuGroupSplitLabels(bucketLabel);
   info.subs.forEach(label => { mbuSplitDraft[label] = Math.round(mbuCurrentAmountFor(label)); });
   mbuRenderCategoryMapping();
 }
@@ -27517,56 +27581,105 @@ function mbuCancelSplitEdit(){
   // showed before editing opened, with no further work.
   mbuSplitEditing = null;
   mbuSplitDraft = {};
+  mbuSplitDraftExtraLabels = [];
   mbuRenderCategoryMapping();
+}
+// Adds a category to the CURRENT split draft, the same "+ Add category"
+// mechanism the top-level Working Media section already uses (mbuAddManualCategory)
+// -- per direct instruction, offered from the same full standard-category
+// list, so a client can build a split for a category that has no fixed
+// sub-channel list at all (or add something beyond the 4 legacy groups'
+// defaults). Only affects the in-progress draft; nothing is saved or
+// persisted until "Save split" runs.
+function mbuAddSplitCategory(){
+  if (!mbuSplitEditing) return;
+  const sel = document.getElementById('mbuSplitAddSelect');
+  const label = sel && sel.value;
+  if (!label) return;
+  if (!mbuSplitDraftExtraLabels.includes(label)) mbuSplitDraftExtraLabels.push(label);
+  if (mbuSplitDraft[label] == null) mbuSplitDraft[label] = 0;
+  mbuRenderCategoryMapping();
+}
+// Sends this bucket's currently-persisted sub-channel MEMBERSHIP (legacy
+// defaults + whatever's been added via "+ Add category") to the backend
+// (POST .../category-splits) so it drives the same self-healing bucket math
+// as the 4 original groups after a reload -- see marketing_budget_category_splits'
+// own comment. Kept separate from mbuPersistWorkingSplit below, which only
+// persists the DOLLAR amounts (real line items) currently assigned.
+function mbuPersistCategorySplitChildren(bucketLabel, childCategories){
+  if (!mbuAnalysis || !mbuAnalysis.id || !state.companyId) return;
+  authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-splits`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parentCategory: bucketLabel, childCategories })
+  }).catch(() => {});
 }
 // Sends this group's current split to the backend as real working-media
 // line items (POST .../working-sub-lines) so it survives a reload instead
 // of only living in mbuManualCategories -- see Review 6/7's root cause.
 // `replace` always lists every sub-channel in the group, even ones with no
-// current line, so removing one here deletes it there too.
-function mbuPersistWorkingSplit(bucketLabel){
+// current line, so removing one here deletes it there too. `subs`, when
+// given, overrides the default (current, persisted) list -- mbuSaveSplitEdit
+// passes the freshly-merged list so a category just added via "+ Add
+// category" this same save is included in `replace`, not just future opens.
+function mbuPersistWorkingSplit(bucketLabel, subs){
   if (!mbuAnalysis || !mbuAnalysis.id || !state.companyId) return;
-  const info = mbuGroupSplitLabels(bucketLabel);
-  if (!info) return;
-  const lines = info.subs.filter(c => mbuManualCategories.has(c)).map(c => ({ category: c, total: Math.round(Number(mbuCategoryOverrides[c]) || 0) })).filter(l => l.total > 0);
+  const list = subs || mbuGroupSplitLabels(bucketLabel).subs;
+  if (!list.length) return;
+  const lines = list.filter(c => mbuManualCategories.has(c)).map(c => ({ category: c, total: Math.round(Number(mbuCategoryOverrides[c]) || 0) })).filter(l => l.total > 0);
   authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/working-sub-lines`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ replace: info.subs, lines })
+    body: JSON.stringify({ replace: list, lines })
   }).catch(() => {});
 }
 function mbuSaveSplitEdit(){
   if (!mbuSplitEditing) return;
   const bucketLabel = mbuSplitEditing;
-  const info = mbuGroupSplitLabels(bucketLabel);
-  (info ? info.subs : []).forEach(label => {
+  const priorSubs = mbuGroupSplitLabels(bucketLabel).subs;
+  const mergedLabels = Array.from(new Set([...priorSubs, ...mbuSplitDraftExtraLabels]));
+  mergedLabels.forEach(label => {
     const amt = Math.round(Number(mbuSplitDraft[label]) || 0);
     if (amt > 0){ mbuManualCategories.add(label); mbuManualCategoryBucket[label] = 'working'; mbuCategoryOverrides[label] = amt; }
     else { mbuManualCategories.delete(label); delete mbuCategoryOverrides[label]; }
   });
+  // Remember this bucket's full sub-channel membership locally (so the UI
+  // reflects it immediately) and persist it, so "Split into ... sub-
+  // channels" -- now available on any category -- shows what was actually
+  // built here after a reload, not just the 4 legacy groups.
+  if (mergedLabels.length) mbuCustomSplitChildren[bucketLabel] = mergedLabels; else delete mbuCustomSplitChildren[bucketLabel];
+  mbuPersistCategorySplitChildren(bucketLabel, mergedLabels);
   mbuSplitEditing = null;
   mbuSplitDraft = {};
-  mbuPersistWorkingSplit(bucketLabel);
+  mbuSplitDraftExtraLabels = [];
+  mbuPersistWorkingSplit(bucketLabel, mergedLabels);
   mbuRenderCategoryMapping();
 }
-// The functional group a SUB-channel label belongs to, i.e. whose bucket
+// The parent category a SUB-channel label belongs to, i.e. whose bucket
 // needs its working-sub-lines re-sent if this label's split membership
 // changes (via the plain "Remove" on an already-saved split row, outside
-// the edit/save/cancel flow above). Null for the bucket label itself, or a
-// label with no such group (a single-item group has no split at all).
+// the edit/save/cancel flow above). Checks both the 4 legacy groups and any
+// client-invented pairing recorded in mbuCustomSplitChildren. Null if this
+// label isn't currently anyone's sub-channel.
 function mbuBucketForSubLabel(label){
-  const entry = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(label));
-  if (!entry) return null;
-  const bucket = entry[1].find(l => / — Total\/Unspecified$/.test(l)) || (entry[1].includes('Direct Mail') ? 'Direct Mail' : null);
-  return (bucket && bucket !== label) ? bucket : null;
+  const legacyEntry = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(label));
+  if (legacyEntry){
+    const bucket = legacyEntry[1].find(l => / — Total\/Unspecified$/.test(l)) || (legacyEntry[1].includes('Direct Mail') ? 'Direct Mail' : null);
+    if (bucket && bucket !== label) return bucket;
+  }
+  const customEntry = Object.entries(mbuCustomSplitChildren).find(([, children]) => children.includes(label));
+  return customEntry ? customEntry[0] : null;
 }
 // The draft panel shown in place of the normal sub-channel rows while
 // mbuSplitEditing === bucketLabel -- everything here writes to mbuSplitDraft
 // only, so nothing changes on the page's saved data until Save is clicked.
+// The "+ Add category" control at the bottom lets the client build a split
+// from scratch (or extend one) using the same full standard-category list
+// the top-level Working Media "+ Add category" offers -- per direct
+// instruction, not restricted to a "family" of related categories.
 function mbuSplitDraftPanelHtml(bucketLabel, fileTotal){
   const info = mbuGroupSplitLabels(bucketLabel);
-  if (!info) return '';
-  const draftSum = info.subs.reduce((s, l) => s + (Number(mbuSplitDraft[l]) || 0), 0);
-  const rows = info.subs.map(label => {
+  const subs = Array.from(new Set([...info.subs, ...mbuSplitDraftExtraLabels]));
+  const draftSum = subs.reduce((s, l) => s + (Number(mbuSplitDraft[l]) || 0), 0);
+  const rows = subs.map(label => {
     const safeLabel = label.replace(/'/g, "\\'");
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:5px 0;flex-wrap:wrap;">
@@ -27574,10 +27687,22 @@ function mbuSplitDraftPanelHtml(bucketLabel, fileTotal){
       <div class="field" style="margin:0;width:150px;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(mbuSplitDraft[label] || 0)}" style="padding-left:24px;" oninput="mbuSplitDraft['${safeLabel}'] = Number(this.value) || 0" onchange="mbuRenderCategoryMapping()"></div></div>
     </div>`;
   }).join('');
+  const stdCats = (mbuCategoryMappingData && mbuCategoryMappingData.verilumeCategories) || [];
+  const addableForSplit = stdCats.filter(l => l !== bucketLabel && !subs.includes(l) && !MBU_RETIRED_CATEGORIES.includes(l) && !mbuLabelHasRealIndependentItems(l));
+  const addControl = addableForSplit.length ? `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:${subs.length ? '10px' : '0'} 0 4px;">
+      <div class="field" style="margin:0;max-width:280px;">
+        <select id="mbuSplitAddSelect">
+          ${addableForSplit.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('')}
+        </select>
+      </div>
+      <button type="button" class="btn-ghost" onclick="mbuAddSplitCategory()">+ Add category</button>
+    </div>` : '';
   return `
     <div style="margin:8px 0 14px;padding:12px;background:rgba(0,0,0,0.03);border-radius:8px;border:1px dashed var(--line);">
       <p class="hint" style="margin:0 0 8px;">Editing ${escapeHtml(info.groupName)} sub-channels — nothing changes here until you save. Assigned so far: $${draftSum.toLocaleString()} of $${Number(fileTotal || 0).toLocaleString()} imported${draftSum > Number(fileTotal || 0) ? ' <span style="color:#b8860b;">(over the imported amount)</span>' : ''}.</p>
-      ${rows}
+      ${rows || '<p class="hint" style="margin:0 0 8px;">No sub-channels yet — add one below.</p>'}
+      ${addControl}
       <div class="btn-row" style="margin-top:8px;">
         <button type="button" class="btn-primary" onclick="mbuSaveSplitEdit()">Save split →</button>
         <button type="button" class="btn-ghost" onclick="mbuCancelSplitEdit()">Cancel</button>
@@ -27830,13 +27955,23 @@ function mbuRenderCategoryMapping(){
   // rows, via the same bucketHasItems/shownTotalFor every other row uses) --
   // no subs showing means the bucket IS the file total, always, not a
   // trusted-forever stored number.
-  Object.entries(MBU_FUNCTIONAL_GROUPS).forEach(([, labels]) => {
-    const bucket = labels.find(l => / — Total\/Unspecified$/.test(l)) || (labels.includes('Direct Mail') ? 'Direct Mail' : null);
-    if (!bucket || !byLabel[bucket] || !byLabel[bucket].items.length) return;
-    const subLabels = labels.filter(l => l !== bucket && mbuSplitSourcedAmountFor(l) > 0);
+  // Round 2026-09-07 (Review 18), per direct instruction ("give every
+  // category the opportunity to create a split... build the general
+  // version now"): generalized beyond the 4 legacy "X — Total/Unspecified"/
+  // "Direct Mail"-named buckets. ANY category the client has split -- real
+  // file items of its own, plus a recorded sub-channel list via
+  // mbuGroupSplitLabels (legacy group siblings ∪ mbuCustomSplitChildren) --
+  // gets the same live-recomputed remainder here, so splitting a plain
+  // category like PR/Earned behaves identically to splitting Digital.
+  // allCategoryLabels covers every standard + custom category; a label with
+  // no real items or no split-sourced subs is a no-op, same guard as before.
+  allCategoryLabels.forEach(bucket => {
+    if (!byLabel[bucket] || !byLabel[bucket].items.length) return;
+    const subLabels = mbuGroupSplitLabels(bucket).subs.filter(l => mbuSplitSourcedAmountFor(l) > 0);
+    if (!subLabels.length){ mbuAutoBucketOverride.delete(bucket); return; }
     const subSum = subLabels.reduce((s2, l) => s2 + mbuSplitSourcedAmountFor(l), 0);
     mbuCategoryOverrides[bucket] = Math.max(0, byLabel[bucket].total - subSum);
-    if (subLabels.length) mbuAutoBucketOverride.add(bucket); else mbuAutoBucketOverride.delete(bucket);
+    mbuAutoBucketOverride.add(bucket);
   });
   const groupBlocks = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, labels]) => {
     // Round 2026-09-06 (Review 7): while this group's bucket is mid-split-
@@ -27855,10 +27990,15 @@ function mbuRenderCategoryMapping(){
       return rowHtml + (mbuSplitEditing === label ? mbuSplitDraftPanelHtml(label, byLabel[label] ? byLabel[label].total : 0) : '');
     }).join('');
     sectionTotal += groupTotal;
-    // Round 8c: a group whose Total/Unspecified bucket was split into
-    // sub-channels shows what's still unallocated against that bucket.
-    const totalBucket = groupLabels.find(l => / — Total\/Unspecified$/.test(l)) || (groupLabels.includes('Direct Mail') ? 'Direct Mail' : null);
-    const subSum = groupLabels.filter(l => l !== totalBucket).reduce((s2, l) => s2 + mbuSplitSourcedAmountFor(l), 0);
+    // Round 8c: a group whose bucket was split into sub-channels shows
+    // what's still unallocated against that bucket. Round 2026-09-07
+    // (Review 18): generalized -- the "bucket" is whichever label in this
+    // group actually has split-sourced subs assigned right now, not just
+    // the 4 legacy "Total/Unspecified"-named ones (a single-item group like
+    // "Public Relations": ['PR/Earned'] can now be split too, via "+ Add
+    // category" inside its own draft).
+    const totalBucket = groupLabels.find(l => mbuGroupSplitLabels(l).subs.some(s => mbuSplitSourcedAmountFor(s) > 0));
+    const subSum = totalBucket ? mbuGroupSplitLabels(totalBucket).subs.reduce((s2, l) => s2 + mbuSplitSourcedAmountFor(l), 0) : 0;
     const remainderNote = (totalBucket && subSum > 0) ? `<span style="font-weight:400;text-transform:none;letter-spacing:normal;"> · ${fmtMoney(subSum)} assigned to sub-channels, ${fmtMoney(shownTotalFor(totalBucket))} still in ${escapeHtml(totalBucket)}</span>` : '';
     return `
       <div style="margin:0 0 16px;">
