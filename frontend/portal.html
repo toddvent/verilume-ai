@@ -27177,22 +27177,124 @@ function mbuWorkingCategoryRowHtml(c){
 // into sub-channels" control that adds that group's sub-channels as
 // editable $ rows (the same manual-category mechanism "+ Add category"
 // uses); the Total/Unspecified row then shows what's left unallocated.
-function mbuSplitControlHtml(choice){
-  if (!choice || !(/ — Total\/Unspecified$/.test(choice) || choice === 'Direct Mail')) return '';
-  const group = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(choice));
-  if (!group) return '';
-  const subs = group[1].filter(c => c !== choice && !MBU_RETIRED_CATEGORIES.includes(c) && !mbuManualCategories.has(c));
-  if (!subs.length) return '';
-  const safe = choice.replace(/'/g, "\\'");
-  return `<button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;margin-top:6px;" onclick="mbuSplitIntoSubChannels('${safe}')">Split into ${escapeHtml(group[0])} sub-channels →</button>`;
+//
+// Round 2026-09-06 (Review 7): the button now opens the edit/save/cancel
+// draft below (mbuStartSplitEdit) instead of committing the split
+// immediately, and offers "Edit ... sub-channels" once a split already
+// exists (mbuGroupSplitState) rather than disappearing once used.
+function mbuGroupSplitLabels(bucketLabel){
+  const group = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(bucketLabel));
+  if (!group) return null;
+  return { groupName: group[0], subs: group[1].filter(c => c !== bucketLabel && !MBU_RETIRED_CATEGORIES.includes(c) && c !== 'Magazines/Print') };
 }
-function mbuSplitIntoSubChannels(totalCategory){
-  const group = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(totalCategory));
-  if (!group) return;
-  group[1].filter(c => c !== totalCategory && !MBU_RETIRED_CATEGORIES.includes(c) && c !== 'Magazines/Print').forEach(c => {
-    if (!mbuManualCategories.has(c)){ mbuManualCategories.add(c); mbuManualCategoryBucket[c] = 'working'; if (mbuCategoryOverrides[c] == null) mbuCategoryOverrides[c] = 0; }
-  });
+// Whether a sub-channel currently carries real dollars -- either a manual
+// row from this session, or a category already mapped from the file/a past
+// working-sub-lines save (mbuCategoryMappingChoices resolves to it).
+function mbuSubLabelInUse(label){
+  if (mbuManualCategories.has(label)) return true;
+  const workingCats = (mbuCategoryMappingData && mbuCategoryMappingData.workingCategories) || [];
+  return workingCats.some(w => (mbuCategoryMappingChoices[w.category] || '').replace(/^Client: /, '') === label);
+}
+function mbuGroupSplitState(choice){
+  if (!choice || !(/ — Total\/Unspecified$/.test(choice) || choice === 'Direct Mail')) return null;
+  const info = mbuGroupSplitLabels(choice);
+  if (!info || !info.subs.length) return null;
+  return Object.assign({ hasSplit: info.subs.some(mbuSubLabelInUse) }, info);
+}
+// The amount a sub-channel currently shows, outside of an in-progress
+// draft: its own override if one's stored, else whatever the file/a past
+// split saved for it under that same Verilume category.
+function mbuCurrentAmountFor(label){
+  if (mbuCategoryOverrides[label] != null) return Number(mbuCategoryOverrides[label]) || 0;
+  const workingCats = (mbuCategoryMappingData && mbuCategoryMappingData.workingCategories) || [];
+  return workingCats.filter(w => (mbuCategoryMappingChoices[w.category] || '').replace(/^Client: /, '') === label).reduce((s, w) => s + Number(w.total || 0), 0);
+}
+function mbuSplitControlHtml(choice){
+  const stateInfo = mbuGroupSplitState(choice);
+  if (!stateInfo || mbuSplitEditing === choice) return ''; // the draft panel below takes over while editing
+  const safe = choice.replace(/'/g, "\\'");
+  return `<button type="button" class="btn-ghost" style="font-size:0.75rem;padding:3px 9px;margin-top:6px;" onclick="mbuStartSplitEdit('${safe}')">${stateInfo.hasSplit ? 'Edit' : 'Split into'} ${escapeHtml(stateInfo.groupName)} sub-channels →</button>`;
+}
+function mbuStartSplitEdit(bucketLabel){
+  const info = mbuGroupSplitLabels(bucketLabel);
+  if (!info) return;
+  mbuSplitEditing = bucketLabel;
+  mbuSplitDraft = {};
+  info.subs.forEach(label => { mbuSplitDraft[label] = Math.round(mbuCurrentAmountFor(label)); });
   mbuRenderCategoryMapping();
+}
+function mbuCancelSplitEdit(){
+  // Nothing outside the draft was touched, so canceling is just clearing
+  // it -- the sub-channel rows collapse and the bucket shows whatever it
+  // showed before editing opened, with no further work.
+  mbuSplitEditing = null;
+  mbuSplitDraft = {};
+  mbuRenderCategoryMapping();
+}
+// Sends this group's current split to the backend as real working-media
+// line items (POST .../working-sub-lines) so it survives a reload instead
+// of only living in mbuManualCategories -- see Review 6/7's root cause.
+// `replace` always lists every sub-channel in the group, even ones with no
+// current line, so removing one here deletes it there too.
+function mbuPersistWorkingSplit(bucketLabel){
+  if (!mbuAnalysis || !mbuAnalysis.id || !state.companyId) return;
+  const info = mbuGroupSplitLabels(bucketLabel);
+  if (!info) return;
+  const lines = info.subs.filter(c => mbuManualCategories.has(c)).map(c => ({ category: c, total: Math.round(Number(mbuCategoryOverrides[c]) || 0) })).filter(l => l.total > 0);
+  authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/working-sub-lines`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ replace: info.subs, lines })
+  }).catch(() => {});
+}
+function mbuSaveSplitEdit(){
+  if (!mbuSplitEditing) return;
+  const bucketLabel = mbuSplitEditing;
+  const info = mbuGroupSplitLabels(bucketLabel);
+  (info ? info.subs : []).forEach(label => {
+    const amt = Math.round(Number(mbuSplitDraft[label]) || 0);
+    if (amt > 0){ mbuManualCategories.add(label); mbuManualCategoryBucket[label] = 'working'; mbuCategoryOverrides[label] = amt; }
+    else { mbuManualCategories.delete(label); delete mbuCategoryOverrides[label]; }
+  });
+  mbuSplitEditing = null;
+  mbuSplitDraft = {};
+  mbuPersistWorkingSplit(bucketLabel);
+  mbuRenderCategoryMapping();
+}
+// The functional group a SUB-channel label belongs to, i.e. whose bucket
+// needs its working-sub-lines re-sent if this label's split membership
+// changes (via the plain "Remove" on an already-saved split row, outside
+// the edit/save/cancel flow above). Null for the bucket label itself, or a
+// label with no such group (a single-item group has no split at all).
+function mbuBucketForSubLabel(label){
+  const entry = Object.entries(MBU_FUNCTIONAL_GROUPS).find(([, cats]) => cats.includes(label));
+  if (!entry) return null;
+  const bucket = entry[1].find(l => / — Total\/Unspecified$/.test(l)) || (entry[1].includes('Direct Mail') ? 'Direct Mail' : null);
+  return (bucket && bucket !== label) ? bucket : null;
+}
+// The draft panel shown in place of the normal sub-channel rows while
+// mbuSplitEditing === bucketLabel -- everything here writes to mbuSplitDraft
+// only, so nothing changes on the page's saved data until Save is clicked.
+function mbuSplitDraftPanelHtml(bucketLabel, fileTotal){
+  const info = mbuGroupSplitLabels(bucketLabel);
+  if (!info) return '';
+  const draftSum = info.subs.reduce((s, l) => s + (Number(mbuSplitDraft[l]) || 0), 0);
+  const rows = info.subs.map(label => {
+    const safeLabel = label.replace(/'/g, "\\'");
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:5px 0;flex-wrap:wrap;">
+      <div style="flex:1 1 220px;font-size:0.875rem;">${escapeHtml(label)}</div>
+      <div class="field" style="margin:0;width:150px;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(mbuSplitDraft[label] || 0)}" style="padding-left:24px;" oninput="mbuSplitDraft['${safeLabel}'] = Number(this.value) || 0" onchange="mbuRenderCategoryMapping()"></div></div>
+    </div>`;
+  }).join('');
+  return `
+    <div style="margin:8px 0 14px;padding:12px;background:rgba(0,0,0,0.03);border-radius:8px;border:1px dashed var(--line);">
+      <p class="hint" style="margin:0 0 8px;">Editing ${escapeHtml(info.groupName)} sub-channels — nothing changes here until you save. Assigned so far: $${draftSum.toLocaleString()} of $${Number(fileTotal || 0).toLocaleString()}${draftSum > Number(fileTotal || 0) ? ' <span style="color:#b8860b;">(over the file total)</span>' : ''}.</p>
+      ${rows}
+      <div class="btn-row" style="margin-top:8px;">
+        <button type="button" class="btn-primary" onclick="mbuSaveSplitEdit()">Save split →</button>
+        <button type="button" class="btn-ghost" onclick="mbuCancelSplitEdit()">Cancel</button>
+      </div>
+    </div>`;
 }
 // A manually-added standard category with no file items behind it (see
 // mbuAddManualCategory / mbuSplitIntoSubChannels) -- its own editable total
@@ -27222,6 +27324,11 @@ function mbuRemoveManualCategory(label){
   mbuManualCategories.delete(label);
   delete mbuManualCategoryBucket[label];
   delete mbuCategoryOverrides[label];
+  // If this was a working-media split sub-channel (not a plain "+ Add
+  // category" addition), re-send that group's split so the removal is
+  // reflected in what's persisted, not just on screen (see Review 7).
+  const bucket = mbuBucketForSubLabel(label);
+  if (bucket) mbuPersistWorkingSplit(bucket);
   mbuRenderCategoryMapping();
 }
 // Non-working row (Round 8c): same three columns -- A the category as the
@@ -27256,6 +27363,20 @@ let mbuManualNonWorking = [];
 // Buckets whose override is being maintained automatically by the split
 // logic above (so a cleared split releases the override again).
 let mbuAutoBucketOverride = new Set();
+// Round 2026-09-06 (Review 7, Todd, direct): "When you select Split Into
+// Subcategories it changes the total category to 0 while retaining the
+// current subcategory values that no longer create the category total. We
+// lose the formula. A better approach might be an edit function that saved
+// the current category values until someone selects save. A Cancel
+// function could collapse the subcategories and return user to previous
+// value." -- mbuSplitEditing names the one Total/Unspecified bucket
+// currently being split/re-split (or null); mbuSplitDraft holds its
+// sub-channel amounts as a local draft nothing else reads until
+// mbuSaveSplitEdit commits them -- Cancel just clears both, discarding the
+// draft, with nothing to undo since nothing outside this draft was ever
+// touched.
+let mbuSplitEditing = null;
+let mbuSplitDraft = {};
 function mbuManualNonWorkingRowHtml(row, i){
   // 2026-09-06 review (8.1): a row being added shows "Add" until it has a
   // name and amount; an added row shows "Remove". No "no file line" hint.
@@ -27374,14 +27495,20 @@ function mbuRenderCategoryMapping(){
     if (subLabels.length) mbuAutoBucketOverride.add(bucket); else mbuAutoBucketOverride.delete(bucket);
   });
   const groupBlocks = Object.entries(MBU_FUNCTIONAL_GROUPS).map(([groupName, labels]) => {
-    const groupLabels = labels.filter(l => allCategoryLabels.includes(l) && bucketHasItems(l));
+    // Round 2026-09-06 (Review 7): while this group's bucket is mid-split-
+    // edit, its other sub-channel rows are hidden in favor of the draft
+    // panel appended after the bucket's own row below -- editing an
+    // existing split shouldn't show both the live rows AND the draft at
+    // once.
+    const editingThisGroup = mbuSplitEditing && labels.includes(mbuSplitEditing);
+    const groupLabels = labels.filter(l => allCategoryLabels.includes(l) && bucketHasItems(l) && !(editingThisGroup && l !== mbuSplitEditing));
     if (!groupLabels.length) return '';
     let groupTotal = 0;
     const rowsHtml = groupLabels.map(label => {
       groupTotal += shownTotalFor(label);
       const items = byLabel[label].items;
-      if (!items.length) return mbuManualCategoryRowHtml(label);
-      return items.map(mbuWorkingCategoryRowHtml).join('');
+      const rowHtml = !items.length ? mbuManualCategoryRowHtml(label) : items.map(mbuWorkingCategoryRowHtml).join('');
+      return rowHtml + (mbuSplitEditing === label ? mbuSplitDraftPanelHtml(label, byLabel[label] ? byLabel[label].total : 0) : '');
     }).join('');
     sectionTotal += groupTotal;
     // Round 8c: a group whose Total/Unspecified bucket was split into
