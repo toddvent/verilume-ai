@@ -27398,7 +27398,26 @@ function mbuWorkingCategoryRowHtml(c){
             const ov = mbuCategoryOverrides[key];
             const shown = (ov === undefined || ov === null) ? Number(c.total || 0) : ov;
             const safeKey = key.replace(/'/g, "\\'");
-            return `<div class="field" style="margin:0;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(shown)}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeKey}', this.value)" onchange="mbuRenderCategoryMapping()"></div></div>${(ov !== undefined && ov !== null && Math.round(ov) !== Math.round(Number(c.total || 0))) ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;"><span class="hint" style="margin:0;">Imported amount: $${Number(c.total || 0).toLocaleString()}</span><button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;" onclick="delete mbuCategoryOverrides['${safeKey}']; mbuRenderCategoryMapping();">Reset to imported amount →</button></div>` : ''}`;
+            // Round 2026-09-07, per direct report ("It's a bit confusing to
+            // see Reset to Imported Amount when you are auditing the import
+            // for the first time... next to the Edit Digital sub-channels
+            // creates more confusion" + "I tried to split Print Magazines.
+            // It split them but did not create a total"): a Total/
+            // Unspecified bucket's override is often not a manual edit at
+            // all -- it's the auto-computed remainder after its "Edit X
+            // sub-channels" split (mbuAutoBucketOverride), recalculated on
+            // every render. Offering "Reset to imported amount" there is
+            // misleading -- deleting that override does nothing, since the
+            // very next render recomputes the same remainder from the split
+            // (see the auto-heal block above). Show a plain explanation
+            // instead, and only offer a real reset for an actual manual edit.
+            const isAutoSplitRemainder = mbuAutoBucketOverride.has(key);
+            const editedNote = (ov !== undefined && ov !== null && Math.round(ov) !== Math.round(Number(c.total || 0)))
+              ? (isAutoSplitRemainder
+                  ? `<div style="margin-top:2px;"><span class="hint" style="margin:0;">Imported amount: $${Number(c.total || 0).toLocaleString()} — the rest is assigned to sub-channels below</span></div>`
+                  : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;"><span class="hint" style="margin:0;">Imported amount: $${Number(c.total || 0).toLocaleString()}</span><button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;" onclick="delete mbuCategoryOverrides['${safeKey}']; mbuRenderCategoryMapping();">Reset to imported amount →</button></div>`)
+              : '';
+            return `<div class="field" style="margin:0;"><div style="position:relative;"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span><input type="number" min="0" step="100" value="${Math.round(shown)}" style="padding-left:24px;" oninput="mbuCategoryTotalEdited('${safeKey}', this.value)" onchange="mbuRenderCategoryMapping()"${isAutoSplitRemainder ? ' readonly title="Fully assigned to sub-channels below — edit those instead, or Edit sub-channels to change the split."' : ''}></div></div>${editedNote}`;
           })() : `<div style="padding:6px 0;font-family:'Inter';font-size:0.9062rem;color:var(--ink);font-weight:600;">$${Number(c.total || 0).toLocaleString()}</div>`}
         </div>
         <div style="${MBU_COL_C}">
@@ -27738,6 +27757,28 @@ function mbuRenderCategoryMapping(){
     if (override !== undefined && override !== null) return override;
     return byLabel[label] ? byLabel[label].total : 0;
   };
+  // Round 2026-09-07, per direct report ("Reset to Imported Amount does not
+  // change anything. The budget amount is still $0" — the Digital group,
+  // where Search ($1,840,750) and Social ($501,859) are the client's own
+  // separately-imported categories, not sub-channels ever split out of
+  // Digital — Total/Unspecified; Digital's real total is Search + Social +
+  // Display + Partnerships = $3,498,722, confirmed against the client's own
+  // file): a label only represents dollars that were moved OUT of a group's
+  // Total/Unspecified bucket by the "Edit X sub-channels" split UI when it's
+  // either (a) still an in-progress/just-saved split this session
+  // (mbuManualCategories, before a reload folds it into real backend rows),
+  // or (b) a real row the backend flagged `manual` (working-sub-lines,
+  // sourceRowIndex = MBU_MANUAL_LINE_SOURCE_ROW — see the category-mapping
+  // endpoint). A real, independently-imported sub-channel like Search/Social
+  // here was never part of the bucket's total to begin with, so it must
+  // never be subtracted from it — only ADDED alongside it to the group's
+  // total (which shownTotalFor/groupTotal below already does for every
+  // label regardless of this distinction).
+  const mbuSplitSourcedAmountFor = label => {
+    if (mbuManualCategories.has(label)) return shownTotalFor(label);
+    const items = byLabel[label] ? byLabel[label].items : [];
+    return items.filter(i => i && i.manual).reduce((s, i) => s + Number(i.total || 0), 0);
+  };
 
   let sectionTotal = 0;
   // Round 8c: when a group's Total/Unspecified bucket has been split into
@@ -27767,8 +27808,8 @@ function mbuRenderCategoryMapping(){
   Object.entries(MBU_FUNCTIONAL_GROUPS).forEach(([, labels]) => {
     const bucket = labels.find(l => / — Total\/Unspecified$/.test(l)) || (labels.includes('Direct Mail') ? 'Direct Mail' : null);
     if (!bucket || !byLabel[bucket] || !byLabel[bucket].items.length) return;
-    const subLabels = labels.filter(l => l !== bucket && bucketHasItems(l));
-    const subSum = subLabels.reduce((s2, l) => s2 + shownTotalFor(l), 0);
+    const subLabels = labels.filter(l => l !== bucket && mbuSplitSourcedAmountFor(l) > 0);
+    const subSum = subLabels.reduce((s2, l) => s2 + mbuSplitSourcedAmountFor(l), 0);
     mbuCategoryOverrides[bucket] = Math.max(0, byLabel[bucket].total - subSum);
     if (subLabels.length) mbuAutoBucketOverride.add(bucket); else mbuAutoBucketOverride.delete(bucket);
   });
@@ -27792,7 +27833,7 @@ function mbuRenderCategoryMapping(){
     // Round 8c: a group whose Total/Unspecified bucket was split into
     // sub-channels shows what's still unallocated against that bucket.
     const totalBucket = groupLabels.find(l => / — Total\/Unspecified$/.test(l)) || (groupLabels.includes('Direct Mail') ? 'Direct Mail' : null);
-    const subSum = groupLabels.filter(l => l !== totalBucket && mbuManualCategories.has(l)).reduce((s2, l) => s2 + shownTotalFor(l), 0);
+    const subSum = groupLabels.filter(l => l !== totalBucket).reduce((s2, l) => s2 + mbuSplitSourcedAmountFor(l), 0);
     const remainderNote = (totalBucket && subSum > 0) ? `<span style="font-weight:400;text-transform:none;letter-spacing:normal;"> · ${fmtMoney(subSum)} assigned to sub-channels, ${fmtMoney(shownTotalFor(totalBucket))} still in ${escapeHtml(totalBucket)}</span>` : '';
     return `
       <div style="margin:0 0 16px;">
