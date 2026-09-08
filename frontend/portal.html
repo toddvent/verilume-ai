@@ -7688,6 +7688,21 @@
          a budget exists. Round 6's separate #mbuManualSetupCard (a second
          copy of the revenue x % calculator) and the old A/B/C option boxes
          (Prefill / Build by hand) are gone -- that was the duplication. -->
+    <!-- Round 2026-09-07, per direct instruction: editing an existing
+         budget's plan (Steps 1-4) and viewing it (Imported budget, the
+         reporting charts, Budget History) are now mutually exclusive modes
+         (see mbuApplyPageMode's editingExistingBudget switch) rather than
+         both showing at once. This banner is the one visible cue for which
+         mode is active and the way back to viewing without losing the
+         in-progress edit (mpStopEditingPlan doesn't discard anything typed
+         — it just returns to the view; "Save plan" at the end of Step 4 is
+         still what actually persists changes). -->
+    <div id="mpEditingBanner" style="display:none;margin:0 0 18px;">
+      <div style="padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--paper-dim);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <span><b style="color:var(--cx);">Editing this year's budget</b> — Steps 1–4 below. Nothing here is final until you Save plan at the end.</span>
+        <button type="button" class="btn-ghost" onclick="mpStopEditingPlan()">← Back to budget view →</button>
+      </div>
+    </div>
     <div id="mpPlanSection" style="display:none;">
     <!-- 2026-09-06 review (items 5, 6, 11): the year's planned / actual
          revenue, variance, transactions and average revenue per
@@ -21942,8 +21957,19 @@ function renderMpMonthlyFlatRow(){
       <input type="text" value="${evenPct.toFixed(1)}%" readonly disabled style="padding:8px 10px;background:var(--paper-dim);color:var(--muted);cursor:default;">
     </div>`).join('');
   const hint = document.getElementById('mpMonthlyPctSumHint');
+  // Round 2026-09-07, per direct feedback ("Monthly distribution rules are
+  // valid when we don't have them"): Flat is this step's untouched default,
+  // not a distribution anyone has actually reviewed and confirmed — a "✓"
+  // checkmark here read as if the account's real monthly pattern had been
+  // validated, when nothing has been set yet. Says plainly that it's the
+  // default, and — since editing an already-imported budget can have real
+  // monthly detail on file that this flat split would override once
+  // allocations are re-split — names that risk instead of staying silent.
   if (hint){
-    hint.textContent = `✓ Flat — every channel's annual $ is split equally across all 12 months (${evenPct.toFixed(1)}% each).`;
+    const hasRealMonthlyDetail = !!(mbdLastUploadDetail && mbdLastUploadDetail.byVerilumeCategoryMonthly && Object.keys(mbdLastUploadDetail.byVerilumeCategoryMonthly).length);
+    hint.textContent = hasRealMonthlyDetail
+      ? `Default — not yet reviewed. Every channel's annual $ would split equally across all 12 months (${evenPct.toFixed(1)}% each) if left as-is. Note: this budget has real imported monthly detail on file — applying Flat (or Revenue curve) here re-splits the plan's channel allocations on this even/curve basis instead, so review before leaving this as the default.`
+      : `Default — not yet reviewed. Every channel's annual $ would split equally across all 12 months (${evenPct.toFixed(1)}% each) if left as-is.`;
     hint.style.color = 'var(--muted)';
   }
 }
@@ -24031,7 +24057,12 @@ function renderPlanPacingChart(){
         <div class="donut-legend">${legend}</div>
       </div>
     </div>
-    <p class="exec-caption">${fmtMoney(p.totals.committed)} committed of ${fmtMoney(p.totals.approved)} approved (${p.scopeLabel}). <a class="flink" onclick="goToStep('mediaplan')">Full breakdown below ↓</a></p>`;
+    <p class="exec-caption">${fmtMoney(p.totals.committed)} committed of ${fmtMoney(p.totals.approved)} approved (${p.scopeLabel}). <a class="flink" onclick="goToStep('mediaplan')">Full breakdown below ↓</a></p>
+    <p class="hint" style="margin:4px 0 0;">
+      ${p.totals.committed === 0 && p.totals.approved > 0
+        ? `<b>Approved</b> is this year's planned $ by channel from the budget. <b>Committed</b> only counts $ actually drawn by a real campaign — it reads $0 here because no campaign has drawn against this plan yet, not because the budget is missing.`
+        : `<b>Approved</b> = this year's planned $ by channel. <b>Committed</b> = $ actually drawn by real campaigns against that plan.`}
+    </p>`;
 }
 
 // b) Budget Tracking — a single stacked bar across the 4 buckets Todd asked
@@ -24556,10 +24587,19 @@ async function renderMediaPlanStep(fromUpload){
   // no Setup path pre-selected, so a year with no budget shows Plan Setup
   // alone and a year with one shows the reporting view.
   if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
-  // Round 8: arriving from a just-confirmed upload opens the Media Plan
-  // steps so the plan can be built from it; any other visit shows the
-  // unified Budget detail with the steps tucked behind "Edit media plan."
-  if (typeof mpPlanEditing !== 'undefined') mpPlanEditing = !!fromUpload;
+  // Round 2026-09-07, per direct instruction ("You can't combine upload and
+  // manual into an experience that includes already uploaded budgets and
+  // then ask the user on the same page to fill out a manual experience that
+  // duplicates the uploaded information in a different page section"):
+  // arriving here right after confirming an upload used to force-open the
+  // Step 1-4 wizard (Round 8's "opens the Media Plan steps so the plan can
+  // be built from it") — that's exactly the duplicated-experience Todd is
+  // naming. A confirmed upload's budget is now shown once, as the
+  // categories worksheet (mbuRenderResults/mbuRenderCategoryMapping); the
+  // Step 1-4 wizard is reserved for the true from-scratch manual path (no
+  // upload at all), entered only via mpStartEditingPlan(). fromUpload no
+  // longer opens it.
+  if (typeof mpPlanEditing !== 'undefined') mpPlanEditing = false;
   // Round 132bx follow-on (2026-08-16) — history loads first so the year
   // row's "has saved data" dots and the default-year resolution just below
   // both have it available on the very first paint, not one render behind.
@@ -28278,21 +28318,23 @@ async function mbuSubmitFinal(){
     if (detailResp.ok) mbuRenderResults(await detailResp.json());
     mbuLoadHistory();
     if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
-    // Round 132bx follow-on (2026-08-15), per direct bug report: "Submit as
-    // final... doesn't take you back to the budget screen with the budget
-    // amount populated. It just recognizes that you selected the budget."
-    // Confirming here used to just sit on this page showing a status line
-    // — the whole point of a Marketing Budget Upload is to feed the Media
-    // Plan, so a successful confirm now takes the user there directly
-    // rather than leaving them to find their own way back (via the
-    // breadcrumb or Dashboard). renderMediaPlanStep() (run by goToStep
-    // below) already auto-prefills Annual Marketing Budget/Non-Working
-    // Media from this exact upload the moment it loads with a blank
-    // budget field — see the "genuinely first-ever visit" fix earlier —
-    // so this just gets the user there to see it happen instead of
-    // requiring a manual click. A brief pause keeps the "Confirmed" message
-    // above from flashing past unread before the page changes under it.
-    setTimeout(() => { goToStep('mediaplan', 'fromUpload'); }, 900);
+    // Round 2026-09-07, per direct instruction ("You can't combine upload
+    // and manual into an experience that includes already uploaded budgets
+    // and then ask the user on the same page to fill out a manual
+    // experience that duplicates the uploaded information in a different
+    // page section... It's a god awful experience"): this used to redirect
+    // into the Step 1-4 Media Plan wizard 900ms after confirming (Round
+    // 132bx follow-on's fix below, now superseded) — auto-seeding a whole
+    // separate media_plan record from the upload and opening the wizard on
+    // it. That's exactly the duplicated experience Todd is naming. A
+    // confirmed upload's budget is already rendered above
+    // (mbuRenderResults, a few lines up) as the one categories worksheet —
+    // nothing else to do here but let the "Confirmed" message be seen, then
+    // scroll to it.
+    setTimeout(() => {
+      const card = document.getElementById('mbuResultsCard');
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 900);
   } catch (e){
     mbuShowSubmitError(resultEl, 'Backend unreachable — could not save.');
   }
@@ -29293,9 +29335,6 @@ async function mbuRenderResults(data){
     <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
       <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">✎ Edit categories &amp; labels →</button>
       ${isAvailable ? `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>` : ''}
-      ${isAvailable && (data.scope || 'domestic') === 'domestic' && !(typeof mbuPeriodFor === 'function' && mbuPeriodFor(data.year).closed) ? ((state.mediaPlan && (state.mediaPlan.allocations || []).length)
-        ? `<button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button><button type="button" class="btn-ghost" onclick="mpBuildPlanFromUpload()">↻ Re-seed the plan from this budget →</button>`
-        : `<button type="button" class="btn-primary" onclick="mpBuildPlanFromUpload()">▶ Build the media plan from this budget (Steps 1–4) →</button>`) : ''}
       <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
     </div>`;
   const statusLine = `
@@ -29325,12 +29364,15 @@ async function mbuRenderResults(data){
     // here -- everything from `actions` except the now-redundant "Edit
     // categories" button, which mbuRenderCategoryMapping renders whenever
     // it's rendering the confirmed budget's screen.
+    // Round 2026-09-07, per direct instruction: the "Edit media plan
+    // (Steps 1-4)" / "Build the media plan from this budget" buttons that
+    // used to live here are gone — an uploaded budget is edited in exactly
+    // one place (this categories worksheet), never handed off to the
+    // separate wizard. That wizard is reserved for the true from-scratch
+    // manual path with no upload at all (mbdShowForPlan's own actions).
     mbuActiveBudgetExtrasHtml = `
     <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
       <button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>
-      ${(data.scope || 'domestic') === 'domestic' && !(typeof mbuPeriodFor === 'function' && mbuPeriodFor(data.year).closed) ? ((state.mediaPlan && (state.mediaPlan.allocations || []).length)
-        ? `<button type="button" class="btn-ghost" onclick="mpStartEditingPlan()">✎ Edit media plan (Steps 1–4) →</button><button type="button" class="btn-ghost" onclick="mpBuildPlanFromUpload()">↻ Re-seed the plan from this budget →</button>`
-        : `<button type="button" class="btn-primary" onclick="mpBuildPlanFromUpload()">▶ Build the media plan from this budget (Steps 1–4) →</button>`) : ''}
       <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
     </div>` + lineItemsHtml;
     mbuAnalysis = mbuAnalysis && mbuAnalysis.id === data.id ? mbuAnalysis : { id: data.id, layout: data.layout, status: data.status, year: data.year };
@@ -29759,10 +29801,20 @@ function mbuApplyPageMode(){
   const path = exists ? null : mbuSetupPath;
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('mbuUploadCard', !exists && path === 'upload');
+  // Round 2026-09-07 (Todd, direct: "we merged the upload and manual budget
+  // development process instead of figuring out a consistent process" —
+  // screenshots showed "Imported budget" and the Step 1-4 editing wizard
+  // both on screen at once after clicking "Edit media plan"). This page has
+  // exactly two modes for a budget that exists: VIEWING it (the Imported
+  // budget/Budget detail card, the four reporting charts, Budget History)
+  // or EDITING it (the Step 1-4 wizard, one screen at a time — never both
+  // stacked). mpPlanEditing is the single switch between them.
+  const editingExistingBudget = exists && (typeof mpPlanEditing !== 'undefined' && mpPlanEditing);
   // #mbuResultsCard (the mapping-evaluation / budget-detail screen) is shown
   // by the flows that populate it (mbuRenderCategoryMapping, mbuOpenExistingUpload);
-  // it's only force-hidden in the bare Setup state so nothing stale lingers.
-  if (!exists && !path) show('mbuResultsCard', false);
+  // it's only force-hidden in the bare Setup state, or while editing the
+  // plan, so nothing stale lingers or duplicates the wizard below it.
+  if ((!exists && !path) || editingExistingBudget) show('mbuResultsCard', false);
   // Round 9: the three tracking charts only for the current calendar year;
   // a historical year is recorded as complete, a future year as not yet
   // in market (see the strip in the markup).
@@ -29770,24 +29822,35 @@ function mbuApplyPageMode(){
   // final results (the historical benchmark) instead of live tracking; an
   // upcoming period shows a one-line note until its campaigns run.
   const period = mbuPeriodFor(mbuSelectedYear);
-  show('budgetChartGrid', exists && !period.future);
+  // Round 2026-09-07: the reporting charts (Plan Pacing, Budget Tracking,
+  // Marketing Loop Spend Distribution, Channel Media Mix, ROAS) are the
+  // VIEW mode's numbers — Marketing Loop Spend Distribution in particular
+  // is the exact same stage split Step 2 (Stage Weighting) lets you edit,
+  // so showing both at once is the "duplicated card" Todd flagged. Hidden
+  // while editing; back once editing ends (Save plan, or "View budget
+  // instead").
+  show('budgetChartGrid', exists && !period.future && !editingExistingBudget);
   const strip = document.getElementById('mbuYearStatusStrip');
   if (strip){
-    strip.style.display = (exists && period.future) ? '' : 'none';
-    if (exists && period.future) strip.innerHTML = `<b>${mbuSelectedYear} isn't in market yet.</b> Plan Pacing, Budget Tracking and Channel Media Mix will report here once ${mbuSelectedYear} campaigns run.`;
+    strip.style.display = (exists && period.future && !editingExistingBudget) ? '' : 'none';
+    if (exists && period.future && !editingExistingBudget) strip.innerHTML = `<b>${mbuSelectedYear} isn't in market yet.</b> Plan Pacing, Budget Tracking and Channel Media Mix will report here once ${mbuSelectedYear} campaigns run.`;
   }
   mbdHistoricalChart = null;
-  if (exists && period.closed && typeof mbdRenderHistoricalCharts === 'function') mbdRenderHistoricalCharts();
+  if (exists && period.closed && !editingExistingBudget && typeof mbdRenderHistoricalCharts === 'function') mbdRenderHistoricalCharts();
   // Round 8: once a budget exists, the unified Budget detail card is the
   // view; the Media Plan steps (the editing surface) only show while the
   // person is editing/building the plan (mpStartEditingPlan).
   // 2026-09-06: the unified Budget detail card (version B, plan model) is
   // the budget view; the steps open only while editing.
-  show('mpPlanSection', (!exists && path === 'manual') || (exists && (typeof mpPlanEditing !== 'undefined' && mpPlanEditing)));
+  show('mpPlanSection', (!exists && path === 'manual') || editingExistingBudget);
+  show('mpEditingBanner', editingExistingBudget);
   show('mbuActiveChannelsCard', exists || path === 'manual');
   show('mpNonWorkingCard', exists || (path === 'manual' && (typeof mpShowNonWorking !== 'undefined' && mpShowNonWorking)));
-  show('mbuHistoryCard', exists);
-  show('mpLearningCard', exists);
+  // Budget History and the Learning Inputs card are reference material for
+  // VIEWING the year's picture, not inputs the Step 1-4 wizard needs — same
+  // declutter as the reporting charts above.
+  show('mbuHistoryCard', exists && !editingExistingBudget);
+  show('mpLearningCard', exists && !editingExistingBudget);
   if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
 }
 // Back-compat name (older call sites) -- same controller.
