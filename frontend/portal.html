@@ -397,6 +397,10 @@
      Overview only (#cpCrumb) — see that page's own markup comment for why
      this doesn't reverse the 2026-08-26 portal-wide hide. */
   #cpCrumb{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;letter-spacing:0.04em;text-align:left;margin-bottom:10px;}
+  /* Company Overview — mobile-first: Industry/Footprint stack under a
+     narrow viewport, sit side by side once there's room (see round 22c's
+     own comment on cpAssessmentSummaryCard in the HTML). */
+  @media (max-width:900px){ #cpProfileGrid{grid-template-columns:1fr;} }
 
   /* Dashboard */
   .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:32px;}
@@ -4158,57 +4162,91 @@
          Description card below. -->
     <p class="lede">Industry, footprint, audience, wealth tier, and products &amp; services live only in the free assessment — edit those there, not here, so there's one source of truth. This page is your brand description and the account-level settings the assessment doesn't ask about.</p>
 
-    <!-- 2026-08-20 fix, per direct QA feedback: "Your Company Profile and
-         Product themes are not part of the final assessment." The round
-         above (2026-08-19) correctly stopped these fields from being
-         *editable* here — they're the free assessment's data now — but it
-         also removed the only place that *displayed* them, and nothing
-         replaced it: companyProfileSummary() (the one-line summary used in
-         the Brand Groundwork checklist) only ever showed
-         industry/footprint/audience/wealth, never product themes. Net
-         effect: a visitor could fill that field out in the assessment and
-         then never see them again anywhere in the real account. Read-only
-         by design (per the lede above — edit in the assessment, not here),
-         sourced from the same state fields the backend already returns
-         (state.industry/footprint/audience/wealth/productsServices — see
-         the account load a few hundred lines up), populated by
-         renderCompanyProfileStep() below. Brand description moved out of
-         this card in round 22 (see cpBrandDescriptionCard) since it now has
-         its own edit/approve/feedback workflow, not just a read-only line. -->
-    <div class="field" id="cpAssessmentSummaryCard" style="background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
-      <label style="margin-bottom:8px;">From your free assessment <span style="font-weight:400;text-transform:none;color:var(--muted);">— read-only here, edit in a new assessment pass</span></label>
-      <div id="cpAssessmentSummaryBody" style="font-size:0.875rem;color:var(--ink);line-height:1.6;"></div>
-    </div>
-
-    <!-- Brand Description — round 22 (2026-09-08), per direct instruction:
-         "The brand description should be the generative version and we
-         should give users option to edit, approve and provide a feedback
-         loop assessment." The text itself is still state.assessmentDescription
-         (the free assessment's generated write-up, from HANDOFF.description)
-         — this card is what turns it from a read-only line into something
-         the account can edit, approve, and leave dated feedback notes
-         against, same "approved" + timestamped-history conventions Brand
-         Voice and Continuous Monitoring already use elsewhere, applied here
-         via saveBrandDescriptionEdit()/approveBrandDescription()/
-         addBrandDescriptionFeedback() and the account's own
-         brandDescriptionApproved/brandDescriptionFeedbackJson columns. -->
-    <div class="field" id="cpBrandDescriptionCard" style="background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
-      <label style="margin-bottom:4px;">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></label>
-      <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
-      <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
-      <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn-ghost" onclick="saveBrandDescriptionEdit()">Save edit</button>
-        <button type="button" class="btn-primary" onclick="approveBrandDescription()">Approve this description →</button>
+    <!-- 2026-09-08 fix (round 22c), per direct report — 3rd time raised,
+         two real problems fixed together this pass:
+         (1) "Why are we only using a portion of the page when we have page
+         width defined across the website?" — .field's global 640px
+         max-width (a form-input-readability cap, reasonable for something
+         like Product Themes' textarea) was also capping these two whole
+         CARDS, which is why the page read as a narrow column with the rest
+         of the site's defined 1440px .wrap sitting empty beside it. Both
+         cards below now opt out of that cap (max-width:none) and sit
+         side-by-side in a wrap-at-narrow-viewports flex row — mobile-first
+         (stacked under ~900px, side-by-side above), same layout pattern
+         already used for the Media CX Index / quadrant pair on Continuous
+         Monitoring, so the two pages this round touched now read as one
+         consistent system rather than two different one-off layouts.
+         (2) "Everything from the free assessment should be editable as it
+         does impact our continuous learning." Reverses the 2026-08-19
+         decision that made this card read-only — Industry, Footprint,
+         Target audience, Wealth tier, and Product themes are editable
+         again, same controls this app used before that round (a select,
+         a select, two toggle-tile multi-selects, a textarea), still
+         populated by renderCompanyProfileStep() and now also written back
+         to state by cpSetIndustry()/cpSetFootprint()/cpToggleAudience()/
+         cpToggleWealth()/cpProductThemesChanged() below. Saved through the
+         existing Save → button (saveCompanyProfile(), unchanged — it was
+         already sending these fields to POST /api/accounts/:id/profile,
+         just with nothing on the page able to change them until now). -->
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+      <div class="field" id="cpAssessmentSummaryCard" style="flex:1 1 420px;max-width:none;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
+        <label style="margin-bottom:4px;">From your free assessment</label>
+        <div class="hint" style="margin-bottom:12px;">Editable here — changes feed Verilume's ongoing read of this account, the same way the free assessment's answers originally did.</div>
+        <div id="cpProfileGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Industry</label>
+            <select id="cpIndustrySelect" style="width:100%;" onchange="cpSetIndustry(this.value)"></select>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Footprint</label>
+            <select id="cpFootprintSelect" style="width:100%;" onchange="cpSetFootprint(this.value)"></select>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Target audience</label>
+          <div id="cpAudienceTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+        <div style="margin-top:14px;">
+          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Wealth tier</label>
+          <div id="cpWealthTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+        <div style="margin-top:14px;">
+          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Product themes</label>
+          <textarea id="cpProductThemesInput" rows="2" style="width:100%;" placeholder="e.g. Polar Expeditions, Cultural Expeditions, small luxury expedition yachts" oninput="cpProductThemesChanged(this.value)"></textarea>
+        </div>
       </div>
-      <div id="cpBrandDescSaveFlag" class="hint" style="margin-top:8px;"></div>
 
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-        <label style="margin-bottom:6px;">Feedback loop</label>
-        <div class="hint" style="margin-bottom:8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
-        <div id="cpBrandDescFeedbackList" style="margin-bottom:8px;"></div>
-        <div style="display:flex;gap:10px;">
-          <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads" style="flex:1;">
-          <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()">+ Add feedback</button>
+      <!-- Brand Description — round 22 (2026-09-08), per direct instruction:
+           "The brand description should be the generative version and we
+           should give users option to edit, approve and provide a feedback
+           loop assessment." The text itself is still state.assessmentDescription
+           (the free assessment's real AI-generated synthesis as of round
+           22b — see applyAiGeneratedReadout() in assessment.html) — this
+           card is what turns it from a read-only line into something the
+           account can edit, approve, and leave dated feedback notes
+           against, same "approved" + timestamped-history conventions Brand
+           Voice and Continuous Monitoring already use elsewhere, applied
+           here via saveBrandDescriptionEdit()/approveBrandDescription()/
+           addBrandDescriptionFeedback() and the account's own
+           brandDescriptionApproved/brandDescriptionFeedbackJson columns. -->
+      <div class="field" id="cpBrandDescriptionCard" style="flex:1 1 420px;max-width:none;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
+        <label style="margin-bottom:4px;">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></label>
+        <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
+        <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-ghost" onclick="saveBrandDescriptionEdit()">Save edit</button>
+          <button type="button" class="btn-primary" onclick="approveBrandDescription()">Approve this description →</button>
+        </div>
+        <div id="cpBrandDescSaveFlag" class="hint" style="margin-top:8px;"></div>
+
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+          <label style="margin-bottom:6px;">Feedback loop</label>
+          <div class="hint" style="margin-bottom:8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
+          <div id="cpBrandDescFeedbackList" style="margin-bottom:8px;"></div>
+          <div style="display:flex;gap:10px;">
+            <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads" style="flex:1;">
+            <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()">+ Add feedback</button>
+          </div>
         </div>
       </div>
     </div>
@@ -47280,49 +47318,67 @@ async function saveVisionLongformEdits(){
   }
 }
 
-// Round 19 — Company Profile (Brand Foundations) edit page. Reworked
-// 2026-08-19 (login redesign, round 2), per direct instruction, to drop
-// everything the free assessment already owns (Industry, Footprint, Target
-// Audience, Wealth Tier, Products & Services, the "from your assessment"
-// context tile) — those fields still live in state (read elsewhere, e.g.
-// companyProfileSummary()) but are no longer editable here, only in
-// assessment.html. Round 22 (2026-09-08): Partners list removed (see the
-// HTML's own comment — "integration workstream" now covers this) and Brand
-// Description split out into its own edit/approve/feedback card
-// (renderBrandDescriptionCard() below), so this function now renders only
-// the read-only assessment summary (industry/footprint/audience/wealth/
-// product themes — brand description no longer among them, it has its own
-// card) plus the Media CX Index panel used to live below it — that moved to
-// Continuous Monitoring, see step-monitor's markup, so it's no longer
-// rendered from here either.
+// Round 19 — Company Profile (Brand Foundations) edit page. Made read-only
+// on 2026-08-19 (login redesign, round 2), then made editable again on
+// 2026-09-08 (round 22c), per direct instruction: "Everything from the free
+// assessment should be editable as it does impact our continuous learning."
+// Industry, Footprint, Target audience, Wealth tier, and Product themes are
+// real inputs again — same fields, same POST /api/accounts/:id/profile
+// endpoint saveCompanyProfile() already called even while this card was
+// read-only (it was sending state.industry/footprint/etc. unchanged; now
+// there's a way to actually change them first). Brand Description has its
+// own separate edit/approve/feedback card (renderBrandDescriptionCard()
+// below) with its own endpoint, since approval/feedback don't apply to
+// these fields. The Media CX Index panel that used to render from here
+// moved to Continuous Monitoring — see step-monitor's markup.
 function renderCompanyProfileStep(){
-  // 2026-08-20 fix — see cpAssessmentSummaryCard's own comment in the HTML
-  // above: product themes were being collected in the free assessment and
-  // saved to the account, but never shown anywhere in the real Portal. This
-  // renders it read-only, alongside the same industry/footprint/audience/
-  // wealth fields companyProfileSummary() already surfaces in the Brand
-  // Groundwork checklist, so nothing the visitor typed in the assessment
-  // disappears once they're a real account.
-  const summaryBodyEl = document.getElementById('cpAssessmentSummaryBody');
-  if (summaryBodyEl){
-    const audienceLabels = GENERATIONS.filter(g => state.audience.has(g.key)).map(g => g.label);
-    const wealthLabels = WEALTH_TIERS.filter(w => state.wealth.has(w.key)).map(w => w.label);
-    const rows = [
-      ['Industry', state.industry],
-      ['Footprint', state.footprint],
-      ['Target audience', audienceLabels.length ? audienceLabels.join(', ') : ''],
-      ['Wealth tier', wealthLabels.length ? wealthLabels.join(', ') : ''],
-      ['Product themes', state.productsServices]
-    ].filter(([, val]) => val);
-    summaryBodyEl.innerHTML = rows.length
-      ? rows.map(([label, val]) => `<div style="margin-bottom:6px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>`).join('')
-      : '<p class="hint" style="margin:0;">Nothing on file yet — this fills in once the free assessment collects it.</p>';
+  const industrySelect = document.getElementById('cpIndustrySelect');
+  if (industrySelect && !industrySelect.options.length){
+    industrySelect.innerHTML = `<option value="">— Select —</option>` + INDUSTRY_LABELS.map(label => `<option value="${escapeHtml(label)}">${escapeHtml(label)}</option>`).join('');
   }
+  if (industrySelect) industrySelect.value = state.industry || '';
+
+  const footprintSelect = document.getElementById('cpFootprintSelect');
+  if (footprintSelect && !footprintSelect.options.length){
+    footprintSelect.innerHTML = `<option value="">— Select —</option>` + FOOTPRINTS.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+  }
+  if (footprintSelect) footprintSelect.value = state.footprint || '';
+
+  const audienceEl = document.getElementById('cpAudienceTiles');
+  if (audienceEl){
+    audienceEl.innerHTML = GENERATIONS.map(g => `
+      <button type="button" class="select-tile${state.audience.has(g.key) ? ' selected' : ''}" onclick="cpToggleAudience('${g.key}')">
+        <span class="indicator">✓</span><span class="label">${escapeHtml(g.label)}</span>
+      </button>`).join('');
+  }
+
+  const wealthEl = document.getElementById('cpWealthTiles');
+  if (wealthEl){
+    wealthEl.innerHTML = WEALTH_TIERS.map(t => `
+      <button type="button" class="select-tile${state.wealth.has(t.key) ? ' selected' : ''}" onclick="cpToggleWealth('${t.key}')">
+        <span class="indicator">✓</span><span class="label">${escapeHtml(t.label)}</span>
+      </button>`).join('');
+  }
+
+  const themesEl = document.getElementById('cpProductThemesInput');
+  if (themesEl && document.activeElement !== themesEl) themesEl.value = state.productsServices || '';
 
   document.getElementById('companyProfileSaveFlag').textContent = '';
 
   renderBrandDescriptionCard();
 }
+
+function cpSetIndustry(value){ state.industry = value; }
+function cpSetFootprint(value){ state.footprint = value; }
+function cpToggleAudience(key){
+  if (state.audience.has(key)) state.audience.delete(key); else state.audience.add(key);
+  renderCompanyProfileStep();
+}
+function cpToggleWealth(key){
+  if (state.wealth.has(key)) state.wealth.delete(key); else state.wealth.add(key);
+  renderCompanyProfileStep();
+}
+function cpProductThemesChanged(value){ state.productsServices = value; }
 
 // Brand Description — edit/approve/feedback loop (round 22, 2026-09-08).
 // See cpBrandDescriptionCard's own comment in the HTML for the instruction
