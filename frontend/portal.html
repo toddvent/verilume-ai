@@ -30689,9 +30689,24 @@ async function mbuStartLeverage(){
   mbuRenderPlanSetup();
   mbuResetImport();
   try {
+    // 2026-09-08 fix, per direct bug report (Todd hit "Backend unreachable
+    // — could not leverage that year" copying Atlas's 2026 budget forward
+    // into 2027). Root cause: this copy can be a multi-row server-side
+    // operation (every line item + category override on the source
+    // budget), and on the production Supabase path each of those used to
+    // be its own network round trip — see the matching 2026-09-08 comment
+    // on the backend's carry-forward endpoint, now fixed to batch those
+    // inserts. This client-side default (12s, authedFetch's timeoutMs
+    // default) was tuned for ordinary single-row calls and is too tight
+    // for this specific endpoint even after that backend fix, especially
+    // on a cold Supabase connection (its own reconnect backoff can take
+    // several seconds on its own) — raised just for this call rather than
+    // the shared default, so an unrelated call elsewhere isn't left
+    // waiting longer than it should on a real outage.
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/carry-forward`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, sourceUploadId: ref })
+      body: JSON.stringify({ year: mbuSelectedYear, scope: mbuSelectedScope, sourceUploadId: ref }),
+      timeoutMs: 30000
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){
@@ -30706,7 +30721,23 @@ async function mbuStartLeverage(){
     const card = document.getElementById('mbuResultsCard');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e){
-    alert('Backend unreachable — could not leverage that year.');
+    // 2026-09-08 fix: even with the timeout raised above, a slow request
+    // can still be aborted client-side while the copy actually finishes
+    // server-side a moment later — the earlier version left mbuYearsData
+    // stale here, so the setup screen went back to "no budget yet, how
+    // would you like to start?" as if nothing happened. If Todd (or
+    // anyone) picked "Leverage previous year" again from there, the copy
+    // would run a second time and leave a second, duplicate draft sitting
+    // behind the first (the backend's duplicate-year guard only blocks a
+    // second CONFIRMED budget, not a second in-progress draft). Re-fetch
+    // the real year list before falling back to the setup tiles, so a
+    // copy that actually succeeded shows up as "In progress — Continue
+    // reviewing" instead of inviting a duplicate.
+    await mbuLoadYearsList();
+    const alreadyThere = mbuYearsData.find(u => u.year === mbuSelectedYear && (u.scope || 'domestic') === mbuSelectedScope);
+    if (!alreadyThere){
+      alert('Backend unreachable — could not leverage that year. (If this keeps happening, the copy may just be slow — try again in a moment.)');
+    }
     mbuBackToSetup();
   }
 }
