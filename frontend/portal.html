@@ -398,7 +398,7 @@
      this doesn't reverse the 2026-08-26 portal-wide hide. */
   #cpCrumb{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;letter-spacing:0.04em;text-align:left;margin-bottom:10px;}
   /* Company Overview — mobile-first: Industry/Footprint stack under a
-     narrow viewport, sit side by side once there's room (see round 22c's
+     narrow viewport, sit side by side once there's room (see round 22d's
      own comment on cpAssessmentSummaryCard in the HTML). */
   @media (max-width:900px){ #cpProfileGrid{grid-template-columns:1fr;} }
 
@@ -4130,13 +4130,11 @@
        missed a real design inconsistency: this page's cards used
        background:var(--panel, #f7f7f8) with an 8px radius, an inline,
        ad hoc pattern that does NOT match how cards look anywhere else in
-       the app. The real site-wide card convention (`.dash-tile`,
-       `.exec-chart-card`, `.monitor-card`, `.module`) is
-       background:var(--white), a 1px var(--line) border, and a 14-18px
-       radius. Every card on this page (cpAssessmentSummaryCard,
-       cpBrandDescriptionCard) now matches that — same fix applied to the
-       relocated Media CX Index card and its new quadrant snapshot on
-       Continuous Monitoring (see mcxIndexCard/monQuadCard there). -->
+       the app. NOTE: the white-bg/14-18px-radius `.dash-tile` fix this
+       comment originally described was itself superseded in round 22d —
+       see that comment further down for the pattern actually in use now
+       (the unclassed, no-background, 10px-radius, full-width
+       MBU_SECTION_BOX_STYLE pattern from Marketing Budget Upload). -->
   <div class="step" id="step-companyProfile">
     <!-- Breadcrumbs are hidden portal-wide (see .crumb{display:none} and its
          own comment, 2026-08-26: "We really don't need breadcrumbs in the
@@ -4162,91 +4160,101 @@
          Description card below. -->
     <p class="lede">Industry, footprint, audience, wealth tier, and products &amp; services live only in the free assessment — edit those there, not here, so there's one source of truth. This page is your brand description and the account-level settings the assessment doesn't ask about.</p>
 
-    <!-- 2026-09-08 fix (round 22c), per direct report — 3rd time raised,
-         two real problems fixed together this pass:
-         (1) "Why are we only using a portion of the page when we have page
-         width defined across the website?" — .field's global 640px
-         max-width (a form-input-readability cap, reasonable for something
-         like Product Themes' textarea) was also capping these two whole
-         CARDS, which is why the page read as a narrow column with the rest
-         of the site's defined 1440px .wrap sitting empty beside it. Both
-         cards below now opt out of that cap (max-width:none) and sit
-         side-by-side in a wrap-at-narrow-viewports flex row — mobile-first
-         (stacked under ~900px, side-by-side above), same layout pattern
-         already used for the Media CX Index / quadrant pair on Continuous
-         Monitoring, so the two pages this round touched now read as one
-         consistent system rather than two different one-off layouts.
-         (2) "Everything from the free assessment should be editable as it
-         does impact our continuous learning." Reverses the 2026-08-19
-         decision that made this card read-only — Industry, Footprint,
-         Target audience, Wealth tier, and Product themes are editable
-         again, same controls this app used before that round (a select,
-         a select, two toggle-tile multi-selects, a textarea), still
-         populated by renderCompanyProfileStep() and now also written back
-         to state by cpSetIndustry()/cpSetFootprint()/cpToggleAudience()/
-         cpToggleWealth()/cpProductThemesChanged() below. Saved through the
-         existing Save → button (saveCompanyProfile(), unchanged — it was
-         already sending these fields to POST /api/accounts/:id/profile,
-         just with nothing on the page able to change them until now). -->
-    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
-      <div class="field" id="cpAssessmentSummaryCard" style="flex:1 1 420px;max-width:none;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
-        <label style="margin-bottom:4px;">From your free assessment</label>
-        <div class="hint" style="margin-bottom:12px;">Editable here — changes feed Verilume's ongoing read of this account, the same way the free assessment's answers originally did.</div>
-        <div id="cpProfileGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div>
-            <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Industry</label>
-            <select id="cpIndustrySelect" style="width:100%;" onchange="cpSetIndustry(this.value)"></select>
-          </div>
-          <div>
-            <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Footprint</label>
-            <select id="cpFootprintSelect" style="width:100%;" onchange="cpSetFootprint(this.value)"></select>
-          </div>
+    <!-- 2026-09-08 fix (round 22d), per direct report — 4th time raised,
+         and the first three attempts were all wrong in the same way: each
+         one still treated the page width problem as something to solve
+         INSIDE a card (widen it, pair it with another card to fill the
+         row) instead of matching how every other page on the site actually
+         uses the full page. Direct instruction: "Each section should be
+         designed like every other page on the site. I didn't ask you to
+         take the bottom part of the page and move it to fill white space!
+         ...We're using the entire page," with the Marketing Budget Upload
+         page's Performance / Working Media sections given as the reference.
+         Those sections (mbdRevenueStripHtml(), the Working Media /
+         Non-Working Media boxes — see MBU_SECTION_BOX_STYLE /
+         MBU_SECTION_HEADER_STYLE in the script) are NOT paired side by
+         side and are NOT background:var(--white) 14-18px-radius cards —
+         each is its own independent, unclassed, full-width box
+         (border:1px solid var(--line);border-radius:10px;padding:14px
+         16px 16px;margin:0 0 20px — no background, no max-width) with a
+         plain bold label + bottom-rule header, stacked one after another
+         down the page. The two sections below now use that exact pattern
+         instead of Review 22b's white-card convention or 22c's
+         side-by-side flex pairing — no class="field" on the section
+         itself (that's what was capping width at 640px three rounds
+         running), no pairing, just two full-width sections stacked
+         normally, same as Performance/Working Media are on the Marketing
+         Budget Upload page. The Media CX Index / quadrant pairing on
+         Continuous Monitoring has the identical side-by-side-pairing
+         problem and gets the same fix — see mcxIndexCard/monQuadCard
+         there.
+         Editability (2nd part of the 22c report, not re-raised, unchanged
+         here): "Everything from the free assessment should be editable as
+         it does impact our continuous learning." Industry, Footprint,
+         Target audience, Wealth tier, and Product themes stay editable —
+         populated by renderCompanyProfileStep(), written back to state by
+         cpSetIndustry()/cpSetFootprint()/cpToggleAudience()/
+         cpToggleWealth()/cpProductThemesChanged() below, saved through the
+         existing saveCompanyProfile() → POST /api/accounts/:id/profile. -->
+    <div id="cpAssessmentSummaryCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">From your free assessment</p>
+      <div class="hint" style="margin-bottom:12px;">Editable here — changes feed Verilume's ongoing read of this account, the same way the free assessment's answers originally did.</div>
+      <div id="cpProfileGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Industry</label>
+          <select id="cpIndustrySelect" style="width:100%;" onchange="cpSetIndustry(this.value)"></select>
         </div>
-        <div style="margin-top:14px;">
-          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Target audience</label>
-          <div id="cpAudienceTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-        </div>
-        <div style="margin-top:14px;">
-          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Wealth tier</label>
-          <div id="cpWealthTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-        </div>
-        <div style="margin-top:14px;">
-          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Product themes</label>
-          <textarea id="cpProductThemesInput" rows="2" style="width:100%;" placeholder="e.g. Polar Expeditions, Cultural Expeditions, small luxury expedition yachts" oninput="cpProductThemesChanged(this.value)"></textarea>
+        <div>
+          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Footprint</label>
+          <select id="cpFootprintSelect" style="width:100%;" onchange="cpSetFootprint(this.value)"></select>
         </div>
       </div>
+      <div style="margin-top:14px;">
+        <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Target audience</label>
+        <div id="cpAudienceTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      </div>
+      <div style="margin-top:14px;">
+        <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Wealth tier</label>
+        <div id="cpWealthTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      </div>
+      <div style="margin-top:14px;">
+        <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Product themes</label>
+        <textarea id="cpProductThemesInput" rows="2" style="width:100%;" placeholder="e.g. Polar Expeditions, Cultural Expeditions, small luxury expedition yachts" oninput="cpProductThemesChanged(this.value)"></textarea>
+      </div>
+    </div>
 
-      <!-- Brand Description — round 22 (2026-09-08), per direct instruction:
-           "The brand description should be the generative version and we
-           should give users option to edit, approve and provide a feedback
-           loop assessment." The text itself is still state.assessmentDescription
-           (the free assessment's real AI-generated synthesis as of round
-           22b — see applyAiGeneratedReadout() in assessment.html) — this
-           card is what turns it from a read-only line into something the
-           account can edit, approve, and leave dated feedback notes
-           against, same "approved" + timestamped-history conventions Brand
-           Voice and Continuous Monitoring already use elsewhere, applied
-           here via saveBrandDescriptionEdit()/approveBrandDescription()/
-           addBrandDescriptionFeedback() and the account's own
-           brandDescriptionApproved/brandDescriptionFeedbackJson columns. -->
-      <div class="field" id="cpBrandDescriptionCard" style="flex:1 1 420px;max-width:none;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
-        <label style="margin-bottom:4px;">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></label>
-        <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
-        <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
-        <div class="btn-row" style="margin-top:10px;">
-          <button type="button" class="btn-ghost" onclick="saveBrandDescriptionEdit()">Save edit</button>
-          <button type="button" class="btn-primary" onclick="approveBrandDescription()">Approve this description →</button>
-        </div>
-        <div id="cpBrandDescSaveFlag" class="hint" style="margin-top:8px;"></div>
+    <!-- Brand Description — round 22 (2026-09-08), per direct instruction:
+         "The brand description should be the generative version and we
+         should give users option to edit, approve and provide a feedback
+         loop assessment." The text itself is still state.assessmentDescription
+         (the free assessment's real AI-generated synthesis as of round
+         22b — see applyAiGeneratedReadout() in assessment.html) — this
+         section is what turns it from a read-only line into something the
+         account can edit, approve, and leave dated feedback notes
+         against, same "approved" + timestamped-history conventions Brand
+         Voice and Continuous Monitoring already use elsewhere, applied
+         here via saveBrandDescriptionEdit()/approveBrandDescription()/
+         addBrandDescriptionFeedback() and the account's own
+         brandDescriptionApproved/brandDescriptionFeedbackJson columns.
+         Styling matches cpAssessmentSummaryCard above (round 22d — see its
+         comment for why: full-width, unclassed, no max-width). -->
+    <div id="cpBrandDescriptionCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></p>
+      <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
+      <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
+      <div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="btn-ghost" onclick="saveBrandDescriptionEdit()">Save edit</button>
+        <button type="button" class="btn-primary" onclick="approveBrandDescription()">Approve this description →</button>
+      </div>
+      <div id="cpBrandDescSaveFlag" class="hint" style="margin-top:8px;"></div>
 
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-          <label style="margin-bottom:6px;">Feedback loop</label>
-          <div class="hint" style="margin-bottom:8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
-          <div id="cpBrandDescFeedbackList" style="margin-bottom:8px;"></div>
-          <div style="display:flex;gap:10px;">
-            <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads" style="flex:1;">
-            <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()">+ Add feedback</button>
-          </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <label style="margin-bottom:6px;">Feedback loop</label>
+        <div class="hint" style="margin-bottom:8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
+        <div id="cpBrandDescFeedbackList" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;">
+          <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads" style="flex:1;">
+          <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()">+ Add feedback</button>
         </div>
       </div>
     </div>
@@ -4632,6 +4640,39 @@
     <h1>Partner Integrations</h1>
     <p class="lede">Where this account's ad platforms and reputation/listening vendors connect in. Click the <span class="ai-thought-icon" style="display:inline-flex;position:relative;top:5px;">💭</span> on any partner for what connecting it actually involves — none of these have a live connection wired up yet, so this is guidance, not a working "Connect" button.</p>
     <div id="partnerIntegrationsGrid"><p class="hint">Loading…</p></div>
+
+    <!-- Your Partners & Vendors — round 22e (2026-09-08), per direct
+         instruction: "We have a dedicated Partner Integration workstream
+         location within the Account section. Any functionality related
+         to integrating partners should exist within that workstream."
+         This is a different list from PARTNER_INTEGRATIONS_GROUPS above
+         (a fixed catalog of known ad/analytics/listening platforms) — it's
+         the free-text account-specific partner/vendor names (an agency,
+         a freelancer, a local vendor) that populate the Partner dropdown
+         on Creative Asset Selection and the Non-Working Media vendor
+         list. It used to live on Company Overview (Company Basics); round
+         22 removed it from there per Todd's original instruction ("We
+         have an integration workstream") but the actual editor for it was
+         never rebuilt anywhere, leaving both of those downstream
+         dropdowns with no way to add a new name — flagged as an open gap
+         in that round's notes. Rebuilt here instead, its real home.
+         addPartner()/removePartner() are unchanged (same state.partners
+         array, same POST /api/accounts/:id/profile via
+         saveCompanyProfile()) — only the render target
+         (renderPartnersVendorsSection(), new) and this markup are new.
+         Styled as its own full-width section matching the
+         MBU_SECTION_BOX_STYLE pattern (see Company Overview's round 22d
+         comment for why) rather than a card paired with anything else. -->
+    <div id="partnersVendorsSection" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:20px 0 0;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Your partners &amp; vendors</p>
+      <div class="hint" style="margin-bottom:12px;">Agencies, freelancers, or local vendors this account works with — not a platform connection above, just a name. These populate the Partner dropdown on Creative Asset Selection and the vendor list on Non-Working Media.</div>
+      <div id="cpPartnersList" style="margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" id="cpNewPartnerName" placeholder="e.g. Coastal Creative Agency" style="flex:1 1 260px;">
+        <button type="button" class="btn-ghost" onclick="addPartner()">+ Add partner</button>
+      </div>
+      <div id="partnersVendorsSaveFlag" class="hint" style="margin-top:8px;"></div>
+    </div>
   </div>
 
   <!-- ================= COMPETITIVE POSITIONING (Brand Foundations) ================= -->
@@ -5876,48 +5917,56 @@
          Same ids/functions as before the move (mcxIndexCard/mcxIndexVal/
          mcxStageRows/mcxSaveFlag, renderMediaCxIndexPanel()/
          saveMediaCxIndexGaps()) — only the location changed. The quadrant
-         snapshot to its right is new: a compact, read-only view of this
-         account's Media/CX Strength placement, reusing the same
+         snapshot is new: a compact, read-only view of this account's
+         Media/CX Strength placement, reusing the same
          computeQuadrantScores()/quadrantFor() the Advanced Analytics page's
          full quadrant already uses (see renderQuadrant() there) rather than
          a second invented scoring pass — just rendered into its own ids
          (monQuad*) so it doesn't collide with that page's copy, since both
          are in the DOM at once. renderMonitorQuadrantSnapshot() below
-         populates it; called from renderMonitorCards(). -->
-    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:22px;">
-      <div class="field" id="mcxIndexCard" style="flex:1 1 360px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;">
-        <label style="margin-bottom:4px;">Refine your Verilume Media CX Index</label>
-        <div class="hint" style="margin-bottom:12px;">The free assessment estimates each stage from self-ratings. Add real numbers or a confident self-rating below — quantitative or qualitative, not both required — and that stage's contribution to the Index becomes measured instead of estimated.</div>
-        <div style="text-align:center;margin-bottom:14px;">
-          <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Verilume Media CX Index</div>
-          <div id="mcxIndexVal" style="font-size:2.375rem;font-weight:700;color:var(--ink);">—</div>
-          <div id="mcxIndexNote" class="hint" style="margin-top:2px;"></div>
-        </div>
-        <div id="mcxStageRows"></div>
-        <div class="btn-row" style="margin-top:10px;">
-          <button class="btn-primary" onclick="saveMediaCxIndexGaps()">Save refinements →</button>
-        </div>
-        <div id="mcxSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
+         populates it; called from renderMonitorCards().
+         Round 22d (2026-09-08), per direct report — Todd pointed at the
+         Marketing Budget Upload page's Performance/Working Media sections
+         as the correct pattern: "I didn't ask you to take the bottom part
+         of the page and move it to fill white space! ...We're using the
+         entire page." These two panels were originally paired side by
+         side the same way Company Overview's two cards were (same defect
+         — see that page's round 22d comment for the full explanation) —
+         now stacked as two independent, full-width sections matching
+         MBU_SECTION_BOX_STYLE/MBU_SECTION_HEADER_STYLE, same as Working
+         Media and Non-Working Media are on that reference page. -->
+    <div id="mcxIndexCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:22px 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Refine your Verilume Media CX Index</p>
+      <div class="hint" style="margin-bottom:12px;">The free assessment estimates each stage from self-ratings. Add real numbers or a confident self-rating below — quantitative or qualitative, not both required — and that stage's contribution to the Index becomes measured instead of estimated.</div>
+      <div style="text-align:center;margin-bottom:14px;">
+        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Verilume Media CX Index</div>
+        <div id="mcxIndexVal" style="font-size:2.375rem;font-weight:700;color:var(--ink);">—</div>
+        <div id="mcxIndexNote" class="hint" style="margin-top:2px;"></div>
       </div>
+      <div id="mcxStageRows"></div>
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn-primary" onclick="saveMediaCxIndexGaps()">Save refinements →</button>
+      </div>
+      <div id="mcxSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
+    </div>
 
-      <div class="field" id="monQuadCard" style="flex:1 1 300px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;">
-        <label style="margin-bottom:4px;">Where this sits on the Media/CX Quadrant</label>
-        <div class="hint" style="margin-bottom:12px;">A snapshot of the same placement the Dashboard tracks, using this account's currently assessed data.</div>
-        <div class="quad-visual" id="monQuadVisual" style="max-width:260px;margin:0 auto;">
-          <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">The Complete Brand</div>
-          <div class="qcell q3">Invisible &amp; Inconsistent</div>
-          <div class="qcell q4">All Promise, No Delivery</div>
-          <div class="quad-marker" id="monQuadMarker" title="Overall"></div>
-        </div>
-        <div class="quad-name" id="monQuadName" style="margin-top:10px;text-align:center;"></div>
-        <div class="score-pair stacked" style="margin-top:8px;">
-          <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="monMediaScoreVal"></div></div>
-          <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="monCxScoreVal"></div></div>
-        </div>
-        <div class="btn-row" style="margin-top:14px;">
-          <a class="btn-ghost" onclick="goToStep('analyticsSetup')">Review all marketing functions →</a>
-        </div>
+    <div id="monQuadCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Where this sits on the Media/CX Quadrant</p>
+      <div class="hint" style="margin-bottom:12px;">A snapshot of the same placement the Dashboard tracks, using this account's currently assessed data.</div>
+      <div class="quad-visual" id="monQuadVisual" style="max-width:260px;margin:0 auto;">
+        <div class="qcell q2">Hidden Gem</div>
+        <div class="qcell q1">The Complete Brand</div>
+        <div class="qcell q3">Invisible &amp; Inconsistent</div>
+        <div class="qcell q4">All Promise, No Delivery</div>
+        <div class="quad-marker" id="monQuadMarker" title="Overall"></div>
+      </div>
+      <div class="quad-name" id="monQuadName" style="margin-top:10px;text-align:center;"></div>
+      <div class="score-pair stacked" style="margin-top:8px;">
+        <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="monMediaScoreVal"></div></div>
+        <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="monCxScoreVal"></div></div>
+      </div>
+      <div class="btn-row" style="margin-top:14px;">
+        <a class="btn-ghost" onclick="goToStep('analyticsSetup')">Review all marketing functions →</a>
       </div>
     </div>
   </div>
@@ -15707,6 +15756,23 @@ function renderPartnerIntegrationsStep(){
         }).join('')}
       </div>
     </div>`).join('');
+  renderPartnersVendorsSection();
+}
+// Round 22e (2026-09-08) — "Your partners & vendors" list, rebuilt on
+// Partner Integrations after round 22 removed it from Company Overview
+// with nowhere to go (see #partnersVendorsSection's own comment in the
+// HTML). Same state.partners array as before; addPartner()/removePartner()
+// below are unchanged apart from rendering here instead of
+// renderCompanyProfileStep().
+function renderPartnersVendorsSection(){
+  const el = document.getElementById('cpPartnersList');
+  if (!el) return; // not on this page yet
+  const partners = state.partners || [];
+  el.innerHTML = partners.length ? partners.map((name, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;${i < partners.length - 1 ? 'border-bottom:1px solid var(--line);' : ''}">
+      <span>${escapeHtml(name)}</span>
+      <button type="button" class="btn-ghost" onclick="removePartner(${i})">Remove</button>
+    </div>`).join('') : '<p class="hint">No partners or vendors added yet.</p>';
 }
 // 2026-08-23 (nav redesign, round 16) — Brand/Marketer/Data Scientist real
 // designed shells, same pattern as STRATEGY_SHELL_GROUPS and
@@ -47670,17 +47736,33 @@ function mbuSetAllActiveChannels(allActive){
 }
 // Round 132zz (2026-08-11) — Partners list add/remove, same simple pattern
 // as the rest of Company Profile's account-setup fields.
+// Round 22e (2026-09-08) — this editor moved from Company Overview to
+// Partner Integrations (see renderPartnersVendorsSection() and
+// #partnersVendorsSection's own comment); renders there now instead of
+// renderCompanyProfileStep(), and saves immediately on each add/remove
+// since this page has no separate page-level Save button the way Company
+// Overview does.
 function addPartner(){
   const el = document.getElementById('cpNewPartnerName');
   const name = el ? el.value.trim() : '';
   if (!name || state.partners.includes(name)) return;
   state.partners.push(name);
   if (el) el.value = '';
-  renderCompanyProfileStep();
+  renderPartnersVendorsSection();
+  savePartnersVendors();
 }
 function removePartner(i){
   state.partners.splice(i, 1);
-  renderCompanyProfileStep();
+  renderPartnersVendorsSection();
+  savePartnersVendors();
+}
+async function savePartnersVendors(){
+  const flag = document.getElementById('partnersVendorsSaveFlag');
+  if (flag) flag.textContent = 'Saving…';
+  const persisted = await saveCompanyProfile();
+  if (flag) flag.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
 }
 
 async function saveCompanyProfile(){
@@ -47699,11 +47781,17 @@ async function saveCompanyProfile(){
       if (resp.ok) persisted = true;
     } catch (e){ console.warn('saveCompanyProfile: backend write failed, saved locally only.', e); }
   }
+  // Round 22e (2026-09-08): this function is now also called from
+  // savePartnersVendors() on the Partner Integrations page, which has no
+  // #companyProfileSaveFlag element — guarded so that call site doesn't
+  // throw; it renders its own status onto #partnersVendorsSaveFlag
+  // separately.
   const flag = document.getElementById('companyProfileSaveFlag');
-  flag.textContent = persisted
+  if (flag) flag.textContent = persisted
     ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
   renderBrandFoundationsModule();
+  return persisted;
 }
 
 // Round 20 — Style Guide: Colors & Fonts (Brand Foundations). Renders the
