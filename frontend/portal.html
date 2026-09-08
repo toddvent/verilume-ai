@@ -4158,7 +4158,14 @@
          second, easy-to-drift-out-of-sync copy of that same data. Brand
          description is the one exception as of round 22 — see the Brand
          Description card below. -->
-    <p class="lede">Industry, footprint, audience, wealth tier, and products &amp; services live only in the free assessment — edit those there, not here, so there's one source of truth. This page is your brand description and the account-level settings the assessment doesn't ask about.</p>
+    <!-- 2026-09-08 fix (round 22f), per direct report: this lede was still
+         capped by p.lede's own site-wide 640px default (see that rule's
+         comment in the stylesheet) even after 22d put the rest of the page
+         at full width — the same class of bug as the fields below, just on
+         a different element. .lede-full is the existing, already-used
+         escape hatch for this (see Competitive Positioning's lede above)
+         — not a new pattern. -->
+    <p class="lede lede-full">Industry, footprint, audience, wealth tier, and products &amp; services live only in the free assessment — edit those there, not here, so there's one source of truth. This page is your brand description and the account-level settings the assessment doesn't ask about.</p>
 
     <!-- 2026-09-08 fix (round 22d), per direct report — 4th time raised,
          and the first three attempts were all wrong in the same way: each
@@ -4196,30 +4203,51 @@
          cpSetIndustry()/cpSetFootprint()/cpToggleAudience()/
          cpToggleWealth()/cpProductThemesChanged() below, saved through the
          existing saveCompanyProfile() → POST /api/accounts/:id/profile. -->
+    <!-- 2026-09-08 fix (round 22f), per direct report: "the field style
+         does not match the site defined style guide." Root cause — a real
+         regression introduced by round 22d's own width fix, not a new
+         problem: .field select/input/textarea/label are all DESCENDANT
+         selectors (see the stylesheet's .field rules, ~line 1532) that only
+         apply to fields living somewhere under an ancestor carrying
+         class="field". Round 22d correctly stripped class="field" off the
+         CARD containers (that's what was capping their width at 640px —
+         see that round's comment above), but never put class="field" back
+         on the individual field wrappers inside — so every select/textarea/
+         input on this page silently fell back to unstyled browser defaults
+         (no 10px radius, no custom chevron, no focus ring, no uppercase
+         mono label) the moment the card stopped carrying the class. Fixed
+         by giving each actual field its own class="field" wrapper again —
+         same reuse-the-real-class pattern the Marketing Budget Upload
+         reference page's own field() helper uses (small class="field"
+         wrappers laid out in a flex/grid row, not one field-classed
+         container around everything) — with the hand-rolled inline label
+         styling removed so labels inherit the real, site-wide .field
+         label rule (uppercase, muted, IBM Plex Mono-adjacent) instead of
+         a one-off approximation of it. -->
     <div id="cpAssessmentSummaryCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
       <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">From your free assessment</p>
       <div class="hint" style="margin-bottom:12px;">Editable here — changes feed Verilume's ongoing read of this account, the same way the free assessment's answers originally did.</div>
       <div id="cpProfileGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-        <div>
-          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Industry</label>
-          <select id="cpIndustrySelect" style="width:100%;" onchange="cpSetIndustry(this.value)"></select>
+        <div class="field" style="margin-bottom:0;">
+          <label>Industry</label>
+          <select id="cpIndustrySelect" onchange="cpSetIndustry(this.value)"></select>
         </div>
-        <div>
-          <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Footprint</label>
-          <select id="cpFootprintSelect" style="width:100%;" onchange="cpSetFootprint(this.value)"></select>
+        <div class="field" style="margin-bottom:0;">
+          <label>Footprint</label>
+          <select id="cpFootprintSelect" onchange="cpSetFootprint(this.value)"></select>
         </div>
       </div>
-      <div style="margin-top:14px;">
-        <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Target audience</label>
+      <div class="field" style="margin:14px 0 0;max-width:none;">
+        <label>Target audience</label>
         <div id="cpAudienceTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
-      <div style="margin-top:14px;">
-        <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;">Wealth tier</label>
+      <div class="field" style="margin:14px 0 0;max-width:none;">
+        <label>Wealth tier</label>
         <div id="cpWealthTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
-      <div style="margin-top:14px;">
-        <label style="font-size:0.75rem;font-weight:600;color:var(--ink);display:block;margin-bottom:4px;">Product themes</label>
-        <textarea id="cpProductThemesInput" rows="2" style="width:100%;" placeholder="e.g. Polar Expeditions, Cultural Expeditions, small luxury expedition yachts" oninput="cpProductThemesChanged(this.value)"></textarea>
+      <div class="field" style="margin:14px 0 0;max-width:none;">
+        <label>Product themes</label>
+        <textarea id="cpProductThemesInput" rows="2" placeholder="e.g. Polar Expeditions, Cultural Expeditions, small luxury expedition yachts" oninput="cpProductThemesChanged(this.value)"></textarea>
       </div>
     </div>
 
@@ -4241,7 +4269,14 @@
     <div id="cpBrandDescriptionCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
       <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></p>
       <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
-      <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
+      <!-- class="field" + max-width:none: real .field textarea styling
+           (radius/focus ring), but spans the full section width rather
+           than capping at .field's default 640px, same override pattern
+           used throughout this page — see this section's own round 22f
+           comment above. -->
+      <div class="field" style="margin:0;max-width:none;">
+        <textarea id="cpBrandDescriptionText" rows="4" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
+      </div>
       <div class="btn-row" style="margin-top:10px;">
         <button type="button" class="btn-ghost" onclick="saveBrandDescriptionEdit()">Save edit</button>
         <button type="button" class="btn-primary" onclick="approveBrandDescription()">Approve this description →</button>
@@ -4249,12 +4284,18 @@
       <div id="cpBrandDescSaveFlag" class="hint" style="margin-top:8px;"></div>
 
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-        <label style="margin-bottom:6px;">Feedback loop</label>
-        <div class="hint" style="margin-bottom:8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
+        <!-- Not a form field (no input directly labeled) -- a subheading,
+             so it uses the same section-subheading treatment as "Brand
+             description"/"From your free assessment" above rather than
+             .field label's form-field typography. -->
+        <p style="font-size:0.8438rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 6px;">Feedback loop</p>
+        <div class="hint" style="margin:0 0 8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
         <div id="cpBrandDescFeedbackList" style="margin-bottom:8px;"></div>
         <div style="display:flex;gap:10px;">
-          <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads" style="flex:1;">
-          <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()">+ Add feedback</button>
+          <div class="field" style="margin:0;max-width:none;flex:1;">
+            <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads">
+          </div>
+          <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()" style="align-self:flex-start;">+ Add feedback</button>
         </div>
       </div>
     </div>
@@ -4667,8 +4708,14 @@
       <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Your partners &amp; vendors</p>
       <div class="hint" style="margin-bottom:12px;">Agencies, freelancers, or local vendors this account works with — not a platform connection above, just a name. These populate the Partner dropdown on Creative Asset Selection and the vendor list on Non-Working Media.</div>
       <div id="cpPartnersList" style="margin-bottom:10px;"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="text" id="cpNewPartnerName" placeholder="e.g. Coastal Creative Agency" style="flex:1 1 260px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+        <!-- Round 22f fix: this input shipped in round 22e without a
+             class="field" ancestor, so it rendered with no radius/focus
+             ring/etc. -- same regression as Company Overview's fields
+             above, same fix. -->
+        <div class="field" style="margin:0;max-width:none;flex:1 1 260px;">
+          <input type="text" id="cpNewPartnerName" placeholder="e.g. Coastal Creative Agency">
+        </div>
         <button type="button" class="btn-ghost" onclick="addPartner()">+ Add partner</button>
       </div>
       <div id="partnersVendorsSaveFlag" class="hint" style="margin-top:8px;"></div>
