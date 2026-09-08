@@ -1262,6 +1262,40 @@ createTableIfNeeded(`
   );
 `);
 
+// Round 2026-09-07 (Review 19), per direct instruction ("the next step is
+// to create campaigns that pull from the budgets within specific months for
+// each category... keep this as simple as possible and try to maintain one
+// area... it's ok if the client goes over budget... we always want to use
+// the need to get to 100 different clients as we build for self-service
+// scale"): a campaign's planned dollars now draw directly against the
+// Marketing Budget Upload — the ONE real budget system (see
+// marketing_budget_uploads/marketing_budget_line_items and this file's
+// whole MBU_* section below) — by Verilume category and calendar month,
+// instead of the separate media_plan_allocations system. This table is
+// NOT a second copy of budget data (the budget of record stays exactly
+// where it's always been, in MBU's own tables) — it's a ledger of what
+// each campaign has committed to draw against that budget, same relationship
+// campaign_allocation_draws already had to media_plan_allocations, just
+// pointed at MBU's real category+month figures instead. Deliberately
+// generic (accountId/year/scope/verilumeCategory/month, no per-client
+// assumptions) so the same code works identically for every account, not
+// just the one this was built against — per direct instruction to always
+// build with 100 self-service clients in mind.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS campaign_mbu_draws (
+    id TEXT PRIMARY KEY,
+    campaignId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    verilumeCategory TEXT NOT NULL,
+    month TEXT NOT NULL,
+    amount REAL NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (campaignId) REFERENCES campaigns(id)
+  );
+`);
+
 // Round 102 — Channel Planning Extended Fields, Secure Client Workflow,
 // Taxonomy, Marketing Calendar, per cxmedia-round102-channel-planning-
 // extended-fields-marketing-calendar.md. Two new tables:
@@ -5257,6 +5291,113 @@ function computeByVerilumeCategoryMonthlyForUpload(uploadId){
     });
   });
   return byVerilumeCategory;
+}
+
+// Round 2026-09-07 (Review 19) — campaign planning against the Marketing
+// Budget Upload. Everything below is deliberately generic (no per-account
+// assumptions) so it works identically for any account with a confirmed
+// MBU, per direct instruction to build with 100 self-service clients in
+// mind, not just the one account this was tested against.
+
+// The one canonical way to resolve "this account's confirmed MBU for this
+// year+scope" — every existing call site in this file inlines this same
+// COALESCE(scope, 'domestic') + status='confirmed' idiom separately; this
+// is that idiom, factored out for the new campaign-planning code below so
+// it isn't re-typed (and possibly drifted) at each new call site.
+function mbuConfirmedUploadForAccountYearScope(accountId, year, scope){
+  const sc = scope === 'international' ? 'international' : 'domestic';
+  return db.prepare("SELECT * FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND COALESCE(scope, 'domestic') = ? AND status = 'confirmed'").get(accountId, year, sc);
+}
+
+// Rule 1 (direct instruction): "the channel or sub-channel must exist with
+// the channel at a minimum having a budget. The sub-channel does not need
+// to have a budget since it is pulling from the master." A category is
+// eligible for a campaign to draw against when EITHER it has real budget of
+// its own, OR it's a listed sub-channel (mbuAllBucketGroupsForUpload, any
+// parent — not just the 4 legacy groups, since Review 18 generalized
+// splitting to every category) of a parent whose GROUP total (parent + all
+// its children's real dollars combined) is nonzero. A sub-channel with $0
+// of its own is eligible precisely because its parent bucket carries real
+// spend — it's drawing from the master, exactly as instructed.
+function mbuCategoryEligibility(uploadId, category){
+  const byVerilumeCategory = computeByVerilumeCategoryForUpload(uploadId);
+  const ownBudget = Number(byVerilumeCategory[category]) || 0;
+  if (ownBudget > 0) return { eligible: true, ownBudget, parentCategory: null, parentGroupTotal: null };
+  const groups = mbuAllBucketGroupsForUpload(uploadId);
+  const parentEntry = Object.entries(groups).find(([, children]) => children.includes(category));
+  if (parentEntry){
+    const [parentCategory, children] = parentEntry;
+    const groupTotal = (Number(byVerilumeCategory[parentCategory]) || 0) + children.reduce((s, c) => s + (Number(byVerilumeCategory[c]) || 0), 0);
+    if (groupTotal > 0) return { eligible: true, ownBudget, parentCategory, parentGroupTotal: groupTotal };
+  }
+  return { eligible: false, ownBudget, parentCategory: parentEntry ? parentEntry[0] : null, parentGroupTotal: null };
+}
+
+// Every category eligible for campaign channel selection this account/year/
+// scope, per Rule 1 above — the full standard taxonomy is checked, not just
+// categories already mapped in this upload, since VERILUME_BUDGET_CATEGORIES
+// is the same fixed list every account maps into.
+function mbuEligibleCampaignCategories(accountId, year, scope){
+  const upload = mbuConfirmedUploadForAccountYearScope(accountId, year, scope);
+  if (!upload) return { available: false, categories: [] };
+  const categories = VERILUME_BUDGET_CATEGORIES
+    .map(cat => Object.assign({ category: cat }, mbuCategoryEligibility(upload.id, cat)))
+    .filter(c => c.eligible);
+  return { available: true, uploadId: upload.id, categories };
+}
+
+// A category's real budget for one specific month, from MBU's own imported
+// monthly detail. Per computeByVerilumeCategoryMonthlyForUpload's own
+// documented limitation, this is the raw, un-overridden monthly figure — a
+// category whose annual total was hand-adjusted (an override, or a "+ Add
+// category"/split-editor entry with no monthly detail at all) has no real
+// month-level figure to read here, so this returns 0 for it. Flagged in the
+// return shape (hasMonthlyDetail) rather than silently treated the same as
+// a genuine $0 month, so a caller/UI can tell the difference.
+function mbuCategoryMonthBudget(uploadId, category, month){
+  const monthly = computeByVerilumeCategoryMonthlyForUpload(uploadId);
+  const forCategory = monthly[category];
+  const hasMonthlyDetail = !!(forCategory && Object.keys(forCategory).length);
+  return { amount: (forCategory && Number(forCategory[month])) || 0, hasMonthlyDetail };
+}
+
+// Sum of every OTHER campaign's committed draws against this exact
+// account/year/scope/category/month — "committed so far," the figure the
+// 15% overspend alert (direct instruction) compares a NEW or edited draw
+// against. excludeCampaignId lets an edit-in-progress compare against
+// everyone ELSE's commitment, not its own prior draw.
+function mbuCampaignCommittedForCategoryMonth(accountId, year, scope, category, month, excludeCampaignId){
+  const sc = scope === 'international' ? 'international' : 'domestic';
+  const rows = excludeCampaignId
+    ? db.prepare('SELECT SUM(amount) as total FROM campaign_mbu_draws WHERE accountId = ? AND year = ? AND scope = ? AND verilumeCategory = ? AND month = ? AND campaignId != ?').get(accountId, year, sc, category, month, excludeCampaignId)
+    : db.prepare('SELECT SUM(amount) as total FROM campaign_mbu_draws WHERE accountId = ? AND year = ? AND scope = ? AND verilumeCategory = ? AND month = ?').get(accountId, year, sc, category, month);
+  return Number(rows && rows.total) || 0;
+}
+
+// The full status a campaign-planning UI needs for one category+month draw:
+// the real MBU budget, what's already committed (by everyone else), what a
+// proposed new amount would bring the total to, and whether that crosses
+// the 15%-over alert threshold. Per direct instruction, overspend is
+// EXPECTED and allowed as long as the campaign started from a reasonable
+// budget — this never blocks, it only reports, so the caller can show the
+// "significant alert message" instruction called for without stopping
+// anyone from saving.
+function mbuBudgetStatusForCategoryMonth(accountId, year, scope, category, month, proposedAmount, excludeCampaignId){
+  const upload = mbuConfirmedUploadForAccountYearScope(accountId, year, scope);
+  if (!upload) return { available: false };
+  const { amount: budget, hasMonthlyDetail } = mbuCategoryMonthBudget(upload.id, category, month);
+  const committedElsewhere = mbuCampaignCommittedForCategoryMonth(accountId, year, scope, category, month, excludeCampaignId);
+  const totalCommitted = committedElsewhere + (Number(proposedAmount) || 0);
+  const overPct = budget > 0 ? ((totalCommitted - budget) / budget) * 100 : (totalCommitted > 0 ? Infinity : 0);
+  return {
+    available: true, uploadId: upload.id, category, month, budget, hasMonthlyDetail,
+    committedElsewhere, proposedAmount: Number(proposedAmount) || 0, totalCommitted,
+    remaining: Math.max(0, budget - totalCommitted),
+    overPct: isFinite(overPct) ? Math.round(overPct * 10) / 10 : overPct,
+    // Direct instruction: "A significant alert message should be part of
+    // the UI if they exceed a budget by more than 15%."
+    alert: overPct > 15
+  };
 }
 
 // Non-Working Media's own ledger — raw category, exactly as the client
@@ -12999,6 +13140,74 @@ Submit your findings via the submit_brand_categories tool.`;
       return sendJson(res, 201, { campaignId, campaignCode });
     }
 
+    // POST /api/accounts/:id/campaigns/:campaignId/mbu-draws — Round
+    // 2026-09-07 (Review 19), per direct instruction: a campaign's planned
+    // dollars are now drawn directly against the Marketing Budget Upload,
+    // by Verilume category and calendar month, instead of media_plan_
+    // allocations. Body: { year, scope, draws: [{ category, month, amount }] }
+    // — full-replace semantics for this campaign's draws, same "delete +
+    // reinsert wholesale" convention as working-sub-lines/category-splits
+    // above. Rule 1 (channel/sub-channel must have real MBU budget, a sub-
+    // channel inheriting from its parent bucket) is enforced here — a draw
+    // against an ineligible category is REJECTED outright (this is the one
+    // hard rule; per direct instruction it's the only thing that blocks).
+    // Overspend past the category+month's budget is explicitly allowed
+    // ("it's ok if the client goes over budget as long as they start with a
+    // reasonable budget") — never blocked, only reported back per-draw via
+    // mbuBudgetStatusForCategoryMonth so the UI can show the required 15%-
+    // over alert.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaigns' && parts[5] === 'mbu-draws'){
+      const accountId = decodeURIComponent(parts[2]);
+      const campaignId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const campaign = db.prepare('SELECT id FROM campaigns WHERE id = ? AND accountId = ?').get(campaignId, accountId);
+      if (!campaign) return sendJson(res, 404, { error: 'no such campaign on this account' });
+      const body = await readBody(req);
+      const year = parseInt(body.year, 10);
+      if (!year) return sendJson(res, 400, { error: 'a valid year is required' });
+      const scope = body.scope === 'international' ? 'international' : 'domestic';
+      const upload = mbuConfirmedUploadForAccountYearScope(accountId, year, scope);
+      if (!upload) return sendJson(res, 400, { error: `no confirmed marketing budget upload for ${year} (${scope}) on this account -- a campaign can't draw from a budget that doesn't exist yet` });
+      const incoming = Array.isArray(body.draws) ? body.draws : [];
+      const saved = [];
+      const rejected = [];
+      incoming.forEach(d => {
+        const category = String((d && d.category) || '').trim();
+        const month = String((d && d.month) || '').trim();
+        const amount = Number(d && d.amount);
+        if (!category || !MARKETING_BUDGET_MONTHS.includes(month) || isNaN(amount) || amount < 0){
+          rejected.push({ category, month, reason: 'malformed draw (category, a valid month, and a non-negative amount are required)' });
+          return;
+        }
+        const eligibility = mbuCategoryEligibility(upload.id, category);
+        if (!eligibility.eligible){
+          rejected.push({ category, month, reason: 'this category has no budget on the confirmed upload (directly, or via a parent bucket) -- not eligible for a campaign to draw against (Rule 1)' });
+          return;
+        }
+        saved.push({ category, month, amount });
+      });
+      db.prepare('DELETE FROM campaign_mbu_draws WHERE campaignId = ?').run(campaignId);
+      const nowDr = new Date().toISOString();
+      const insDr = db.prepare('INSERT INTO campaign_mbu_draws (id, campaignId, accountId, year, scope, verilumeCategory, month, amount, createdAt) VALUES (?,?,?,?,?,?,?,?,?)');
+      saved.forEach(d => insDr.run(generateId('MBD'), campaignId, accountId, year, scope, d.category, d.month, d.amount, nowDr));
+      // Report each saved draw's budget status (including the 15%-over
+      // alert) so the caller can render it immediately without a second
+      // round trip per draw.
+      const statuses = saved.map(d => Object.assign({ category: d.category, month: d.month }, mbuBudgetStatusForCategoryMonth(accountId, year, scope, d.category, d.month, d.amount, null)));
+      return sendJson(res, 200, { campaignId, year, scope, draws: saved, rejected, statuses });
+    }
+
+    // GET /api/accounts/:id/campaigns/:campaignId/mbu-draws — the campaign's
+    // currently-saved MBU draws, each with fresh budget status (Review 19).
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaigns' && parts[5] === 'mbu-draws'){
+      const accountId = decodeURIComponent(parts[2]);
+      const campaignId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT verilumeCategory as category, month, amount, year, scope FROM campaign_mbu_draws WHERE campaignId = ? AND accountId = ?').all(campaignId, accountId);
+      const statuses = rows.map(r => Object.assign({ category: r.category, month: r.month, amount: r.amount }, mbuBudgetStatusForCategoryMonth(accountId, r.year, r.scope, r.category, r.month, r.amount, campaignId)));
+      return sendJson(res, 200, { campaignId, draws: statuses });
+    }
+
     // POST /api/campaigns/:id — round 16: update a campaign's lifecycle
     // status and/or its manual Analysis-step inputs (actualSpend,
     // actualImpressions, actualConversions, analysisNotes). Merge-update —
@@ -16413,6 +16622,44 @@ Submit your findings via the submit_brand_categories tool.`;
       const insSp = db.prepare('INSERT INTO marketing_budget_category_splits (id, uploadId, parentCategory, childCategory, createdAt) VALUES (?,?,?,?,?)');
       childCategories.forEach(child => insSp.run(generateId('MBCS'), uploadId, parentCategory, child, nowSp));
       return sendJson(res, 200, { uploadId, parentCategory, childCategories });
+    }
+
+    // GET /api/accounts/:id/mbu-campaign-eligibility?year=&scope= — Round
+    // 2026-09-07 (Review 19). Rule 1 (direct instruction): a channel/sub-
+    // channel is eligible for a campaign to draw against only if it (or its
+    // bucket parent) actually has budget on this account's confirmed MBU
+    // for the given year/scope. Used by campaign creation's channel picker
+    // so a client can only select something real money was actually
+    // budgeted for.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'mbu-campaign-eligibility'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const year = parseInt(url.searchParams.get('year'), 10);
+      if (!year) return sendJson(res, 400, { error: 'a valid year query parameter is required' });
+      const scope = url.searchParams.get('scope') === 'international' ? 'international' : 'domestic';
+      return sendJson(res, 200, mbuEligibleCampaignCategories(accountId, year, scope));
+    }
+
+    // GET /api/accounts/:id/mbu-budget-status?year=&scope=&category=&month=&amount=&excludeCampaignId=
+    // — Round 2026-09-07 (Review 19). Real MBU budget for one category+
+    // month, what's already committed by other campaigns, and whether the
+    // proposed amount (query `amount`, default 0) would cross the 15%-over
+    // alert threshold (direct instruction). Never blocks -- overspend is
+    // allowed by design; this just reports so the UI can show the required
+    // alert.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'mbu-budget-status'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const year = parseInt(url.searchParams.get('year'), 10);
+      const category = url.searchParams.get('category');
+      const month = url.searchParams.get('month');
+      if (!year || !category || !month) return sendJson(res, 400, { error: 'year, category and month query parameters are required' });
+      const scope = url.searchParams.get('scope') === 'international' ? 'international' : 'domestic';
+      const amount = Number(url.searchParams.get('amount')) || 0;
+      const excludeCampaignId = url.searchParams.get('excludeCampaignId') || null;
+      const status = mbuBudgetStatusForCategoryMonth(accountId, year, scope, category, month, amount, excludeCampaignId);
+      if (!status.available) return sendJson(res, 404, { error: 'no confirmed marketing budget upload for this account/year/scope', available: false });
+      return sendJson(res, 200, status);
     }
 
     // POST /api/accounts/:id/marketing-budget-uploads/:uploadId/category-overrides
