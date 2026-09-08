@@ -16997,14 +16997,44 @@ Submit your findings via the submit_brand_categories tool.`;
       db.prepare(`INSERT INTO marketing_budget_uploads (id, accountId, uploadedFileId, fileName, gridJson, layout, analysisJson, status, year, scope, createdAt)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
         .run(newId, accountId, null, `Carried forward from ${source.year}`, JSON.stringify([]), cfAnalysis.layout, JSON.stringify(cfAnalysis), 'pending_category_mapping', year, scope, nowCf);
+      // 2026-09-08 fix, per direct bug report (Todd: "Backend unreachable —
+      // could not leverage that year" leveraging Atlas's 2026 budget
+      // forward into 2027) — root-caused to this endpoint's original
+      // per-row insert loop. On the production Supabase/Postgres path
+      // (DATABASE_URL set), every db.prepare(...).run() call is a REAL
+      // network round trip through the pg-sync-bridge worker thread (see
+      // pg-sync-bridge.js's Atomics.wait bridge) — so a source budget with
+      // many line items (one row per raw category × month) meant dozens-
+      // to-hundreds of sequential round trips. Stacked on top of
+      // Supabase's own cold-start reconnect backoff (up to ~6s, see
+      // pg-sync-worker.js's queryWithRetry), that easily blew past
+      // authedFetch's 12s client-side abort timeout even though nothing
+      // was actually broken server-side — the copy was often still
+      // quietly succeeding after the browser had already given up and
+      // shown the alert. Batching every source row into chunked
+      // multi-row INSERTs (below) cuts this from N+1 sequential round
+      // trips to a small constant number regardless of how large the
+      // source budget is.
       const sourceLineItems = db.prepare('SELECT category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory FROM marketing_budget_line_items WHERE uploadId = ?').all(body.sourceUploadId);
-      const insLi = db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory) VALUES (?,?,?,?,?,?,?,?,?,?)`);
-      sourceLineItems.forEach(li => {
-        insLi.run(generateId('MBLI'), newId, accountId, li.category, li.status, li.month, li.amount, li.annualTotal, li.sourceRowIndex, li.verilumeCategory);
-      });
+      const LI_CHUNK_SIZE = 100;
+      for (let i = 0; i < sourceLineItems.length; i += LI_CHUNK_SIZE){
+        const chunk = sourceLineItems.slice(i, i + LI_CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
+        const params = [];
+        chunk.forEach(li => {
+          params.push(generateId('MBLI'), newId, accountId, li.category, li.status, li.month, li.amount, li.annualTotal, li.sourceRowIndex, li.verilumeCategory);
+        });
+        db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex, verilumeCategory) VALUES ${placeholders}`).run(...params);
+      }
       const sourceOverrides = db.prepare('SELECT verilumeCategory, overrideTotal FROM marketing_budget_category_overrides WHERE uploadId = ?').all(body.sourceUploadId);
-      const insOv = db.prepare(`INSERT INTO marketing_budget_category_overrides (uploadId, verilumeCategory, overrideTotal, updatedAt) VALUES (?, ?, ?, ?)`);
-      sourceOverrides.forEach(ov => { insOv.run(newId, ov.verilumeCategory, ov.overrideTotal, nowCf); });
+      const OV_CHUNK_SIZE = 100;
+      for (let i = 0; i < sourceOverrides.length; i += OV_CHUNK_SIZE){
+        const chunk = sourceOverrides.slice(i, i + OV_CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?)').join(',');
+        const params = [];
+        chunk.forEach(ov => { params.push(newId, ov.verilumeCategory, ov.overrideTotal, nowCf); });
+        db.prepare(`INSERT INTO marketing_budget_category_overrides (uploadId, verilumeCategory, overrideTotal, updatedAt) VALUES ${placeholders}`).run(...params);
+      }
       return sendJson(res, 201, { id: newId, year, scope, status: 'pending_category_mapping', copiedFrom: body.sourceUploadId, lineItemsCopied: sourceLineItems.length, overridesCopied: sourceOverrides.length });
     }
 
