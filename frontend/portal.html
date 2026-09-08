@@ -2647,8 +2647,8 @@
                used to create the 3 letter code in the client header."
                Distinct from the longer #acctClientIdDisplay pill below
                (that's state.companyId, an internal record ID) — this is
-               the 3-letter state.partnerCode, set on Business & Revenue
-               Profile (see obsClientCodeCard), populated by
+               the 3-letter state.partnerCode, set on Company Profile
+               (see cpPartnerCodeCard, Round 22g) and populated by
                renderAccountLogo(). -->
           <div class="co-code" id="acctClientCodeDisplay" style="display:none;"></div>
         </div>
@@ -4301,17 +4301,6 @@
     </div>
 
     <!-- 2026-08-26 account-management reorg, per direct instruction: "The
-         Partner Code should be client code and be adjacent to the company
-         name wherever it is in the portal... It should be a field next to
-         the Company Name in the profile section. This is used to create the
-         3 letter code in the client header." Moved to Business & Revenue
-         Profile (step-onboardingSurvey), next to the company name there, and
-         renamed Client Code throughout the UI — see obsClientCodeCard.
-         state.partnerCode and the backend accounts.partnerCode column keep
-         their original names (Campaign ID generation and the DB schema
-         already depend on them); only the user-facing label changed. -->
-
-    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
          Activate channels should be part of the overall budget setup." Moved
          to Marketing Budget Upload (step-marketingBudgetUpload) — see
          mbuActiveChannelsRow there. -->
@@ -4331,6 +4320,64 @@
          codebase; worth a follow-up decision on where Creative Asset
          Selection's partner list should be populated from now, since this
          was its only editor. -->
+
+    <!-- Round 22g (2026-09-08) — Partner Code, moved back here from the now-
+         retired Business & Revenue Profile page, per direct instruction:
+         "Move the Partner Code to the Settings Company Profile page." Same
+         field, same state.partnerCode / accounts.partnerCode column, same
+         3-letter Campaign-ID-prefix behavior (obsSaveClientCode's old
+         sanitize-and-uppercase logic, now cpSavePartnerCode()) — just
+         relocated, not rebuilt. -->
+    <div id="cpPartnerCodeCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Partner code</p>
+      <div class="field" style="margin:0;max-width:160px;">
+        <label>3-letter code</label>
+        <input type="text" id="cpPartnerCode" maxlength="3" style="text-transform:uppercase;" placeholder="AOV" onblur="cpSavePartnerCode(this.value)">
+      </div>
+      <div class="hint" id="cpPartnerCodeSaveStatus" style="margin-top:8px;">Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
+    </div>
+
+    <!-- Round 22g (2026-09-08) — "How you sell", per direct instruction:
+         restructure the old Business & Revenue Profile section down to only
+         what contextually aligns. These two questions describe the
+         account's own sales structure (not geography — see the new View My
+         Customers page for the National/Local split) so they live here with
+         the rest of the account's company-level classification. Always
+         shown, regardless of Industry. -->
+    <div id="cpHowYouSellCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">How you sell</p>
+      <div class="hint" style="margin-bottom:12px;">Feeds copy, media planning and analysis wherever a third party or channel partner is part of the transaction path.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="field" style="margin:0;">
+          <label>Primary path to transaction</label>
+          <select id="cpPrimaryTransactionPath" onchange="cpSaveHowYouSellField('primaryTransactionPath', this.value)"></select>
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Does a third party close the transaction?</label>
+          <select id="cpThirdPartyCloses" onchange="cpSaveHowYouSellField('thirdPartyCloses', this.value)"></select>
+        </div>
+      </div>
+      <div class="hint" id="cpHowYouSellSaveFlag" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- Round 22g (2026-09-08) — industry-conditional detail, per direct
+         instruction ("Healthcare should probably be part of the company
+         overview page... Does that work?" / "Suggestions are fine" —
+         approving Financial Services joining Healthcare's compliance
+         question, and B2B's account list size landing here too). Gated on
+         this account's real Industry classification (state.industry /
+         INDUSTRY_LABELS) — NOT the old onboardingIndustryCode module system,
+         which was a second, otherwise-unused industry taxonomy and is
+         retired. Hidden entirely for an industry with no conditional
+         question. Real Estate's equivalent field (listingVsBuyerSide) and
+         Auto Dealers' storefronts questions moved instead to the 2nd/3rd
+         branches of the new View My Customers page. -->
+    <div id="cpIndustryDetailsCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;" hidden>
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Industry details</p>
+      <div class="hint" style="margin-bottom:12px;">Shown based on the Industry selected above — feeds copy, media planning and analysis built for accounts like this one.</div>
+      <div id="cpIndustryDetailsBody" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;"></div>
+      <div class="hint" id="cpIndustryDetailsSaveFlag" style="margin-top:8px;"></div>
+    </div>
 
     <div class="btn-row">
       <button class="btn-primary" onclick="saveCompanyProfile()">Save →</button>
@@ -4356,56 +4403,85 @@
          page no longer prescribes a single "next" step. -->
   </div>
 
-  <!-- Round 132c[6] (2026-08-16) — Business & Revenue Profile, buildout
-       item #6's two-layer onboarding survey. Universal core (8 questions —
-       the memo's 9th, "existing measurement infrastructure," lives at
-       Analysis → Measurement Coverage instead, see that page's own
-       comment) plus one industry module selected by an illustrative
-       NAICS/SIC code. -->
-  <div class="step" id="step-onboardingSurvey">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('manageAccount')">Manage Account</a> / Business &amp; Revenue Profile</div>
-    <div class="eyebrow">Manage Account · Onboarding Survey</div>
-    <h1>Business &amp; Revenue Profile</h1>
-    <p class="lede lede-full">How this account actually converts revenue — this feeds the recommended Media Plan stage-budget split (see Stage Weighting on the Media Plan page) and every alternative-approach recommendation that reasons about your real sales cycle. Editable any time. Already have your measurement setup on file? That lives at <a onclick="goToStep('measurementCoverage')" style="cursor:pointer;">Analysis → Measurement Coverage</a> instead of here, so it's never asked twice.</p>
+  <!-- Round 22g (2026-09-08) — View My Customers, replacing the retired
+       Business & Revenue Profile page, per direct instruction: "I would
+       rethink the entire workstream and only have questions where they
+       contextually align... this section might be more valuable as a
+       Customer Geographic Region that supports the Customer Zip Uploads &
+       include questions related to how the client sells." Two branches,
+       per the follow-up decisions:
+       1) NATIONAL OR GLOBAL — the Match Market Builder upload (zip/postal
+          customer files, matched to real market/DMA/CBSA boundaries) is the
+          entry point; "No Comparison is needed. It would just be a query
+          run by a team member in the future" — so this branch is a light
+          summary + link, not a rebuild of that page's own analysis.
+       2) LOCAL — "Add the information from the assessment with the radius
+          mapping to address service radius" — a real haversine read (see
+          GET .../customers-near, server.js) against this account's own
+          geocoded address and its uploaded customer zips. Real Estate's
+          Primary focus question (listingVsBuyerSide) lives here, gated on
+          Industry = Real Estate, since it's a question about how a
+          Real-Estate account's local footprint works.
+       "3) How do you sell" from the original 3-branch proposal does not
+       survive as its own page area — per direct instruction ("Business &
+       Revenue does not survive") its content (primary transaction path,
+       third-party closes, Auto Dealers' storefronts questions) moved to
+       Company Overview instead, see cpHowYouSellCard/cpIndustryDetailsCard
+       there. -->
+  <div class="step" id="step-viewMyCustomers">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('manageAccount')">Manage Account</a> / View My Customers</div>
+    <div class="eyebrow">Manage Account · Customer Geography</div>
+    <h1>View My Customers</h1>
+    <p class="lede lede-full">Where this account's customers actually are — a National/Global view for zip-level uploads matched to real market boundaries, or a Local view reading your uploaded customer zips against a service radius around this account's own address.</p>
 
-    <!-- 2026-08-26 account-management reorg, per direct instruction: "The
-         Partner Code should be client code and be adjacent to the company
-         name wherever it is in the portal... It should be a field next to
-         the Company Name in the profile section. This is used to create the
-         3 letter code in the client header." Moved here from Account Setup
-         (see that step's own comment). Company Name itself has no edit
-         surface anywhere in the app today (it's set at account creation) —
-         shown read-only rather than fabricating an edit capability that
-         doesn't exist elsewhere. Client Code stays a plain input, same
-         3-letter convention as before, still the source for
-         generateCampaignCode() on Campaign Creation and now also for the
-         header badge next to the company name (see acctClientCodeDisplay). -->
-    <div class="field" id="obsClientCodeCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:18px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;">
-      <div>
-        <label style="margin-bottom:8px;">Company name</label>
-        <div id="obsCompanyNameDisplay" style="font-size:1rem;font-weight:600;color:var(--ink);">—</div>
-      </div>
-      <div>
-        <label>Partner Code <span style="font-weight:400;text-transform:none;color:var(--muted);">(3 letters — shown next to the company name in the header, and used in every Campaign ID, e.g. AOV)</span></label>
-        <input type="text" id="obsClientCode" maxlength="3" style="text-transform:uppercase;width:120px;" placeholder="AOV" onblur="obsSaveClientCode(this.value)">
-        <div class="hint" id="obsClientCodeSaveStatus" style="margin-top:6px;">Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
+    <div style="display:flex;gap:8px;margin-bottom:18px;">
+      <button type="button" class="btn-ghost" id="vmcTabNational" onclick="vmcShowBranch('national')">National / Global</button>
+      <button type="button" class="btn-ghost" id="vmcTabLocal" onclick="vmcShowBranch('local')">Local</button>
+    </div>
+
+    <div id="vmcNationalPane" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">National / Global</p>
+      <div class="hint" style="margin-bottom:12px;">Upload customer zip/postal data by time period — matched to real market/DMA/CBSA boundaries in the Match Market Builder, where Strategy and Performance Marketers can build test/control reports and maps from what's uploaded here. No automatic period-over-period comparison is built; each upload is just labeled by the period it covers for a team member to query later.</div>
+      <div id="vmcUploadsList"><p class="hint">Loading…</p></div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button type="button" class="btn-primary" onclick="goToStep('marketOptimization')">Go to Match Market Builder →</button>
       </div>
     </div>
 
-    <div class="sk-card" id="obsCoreCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Universal core</div><h3>Every account answers these</h3></div>
-        <div class="hicon">📋</div>
+    <div id="vmcLocalPane" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Local</p>
+      <div class="hint" style="margin-bottom:12px;">Geocode this account's own address once, then read your uploaded customer zips (from the National/Global branch above) against a service radius around it.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+        <div class="field" style="margin:0;flex:1 1 320px;">
+          <label>Account address</label>
+          <input type="text" id="vmcAddressInput" placeholder="e.g. 123 Main St, Springfield, IL 62701">
+        </div>
+        <button type="button" class="btn-ghost" onclick="vmcGeocodeAndSaveAddress()">Geocode &amp; save →</button>
       </div>
-      <div class="sk-card-body" id="obsCoreBody"><p class="hint">Loading…</p></div>
-    </div>
-
-    <div class="sk-card" id="obsIndustryCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Industry module</div><h3>Specific to your vertical</h3></div>
-        <div class="hicon">🏷</div>
+      <div class="hint" id="vmcAddressStatus" style="margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">
+        <div class="field" style="margin:0;max-width:140px;">
+          <label>Radius (miles)</label>
+          <input type="number" id="vmcRadiusInput" value="25" min="1" max="500" onchange="vmcLoadCustomersNear()">
+        </div>
       </div>
-      <div class="sk-card-body" id="obsIndustryBody"><p class="hint">Loading…</p></div>
+      <div id="vmcRadiusResults"><p class="hint">Set an address above to see your customers near this account.</p></div>
+      <!-- Real Estate's Primary focus question, gated on Industry = Real
+           Estate — this is the only industry-conditional field that landed
+           on this page rather than Company Overview, since it's a question
+           about how a Real-Estate account's local footprint works. -->
+      <div id="vmcRealEstateField" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);" hidden>
+        <div class="field" style="margin:0;max-width:320px;">
+          <label>Primary focus</label>
+          <select id="vmcListingVsBuyerSide" onchange="vmcSaveListingVsBuyerSide(this.value)">
+            <option value="">— Select —</option>
+            <option value="Listing/seller side">Listing/seller side</option>
+            <option value="Buyer side">Buyer side</option>
+            <option value="Both">Both</option>
+          </select>
+        </div>
+        <div class="hint" id="vmcRealEstateSaveFlag" style="margin-top:8px;"></div>
+      </div>
     </div>
   </div>
 
@@ -5661,6 +5737,14 @@
       </div>
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Accepts .csv or .xlsx. Needs at minimum a zip code column — one row per transaction is the normal case (each row counts as one), or map a Customer Count column if the file already arrives pre-aggregated by zip. A revenue/order-value column is optional and unlocks revenue-weighting once every zip has one. Any extra columns are fine, just leave them mapped to "Ignore" below.</p>
+        <!-- Round 22g (2026-09-08), per direct instruction: "This is a
+             natural location for uploads by time frame." No comparison
+             logic reads this — it's just how a later manual query (per
+             direct instruction: "It would just be a query run by a team
+             member in the future") tells uploads apart by the period they
+             cover. See the new View My Customers page, which links here. -->
+        <label class="hint" for="mouPeriodLabel" style="display:block;margin-bottom:4px;">Period this upload covers (optional, e.g. "Q3 2026")</label>
+        <input type="text" id="mouPeriodLabel" placeholder="e.g. Q3 2026" style="margin-bottom:10px;">
         <label class="hint" for="mouUploadedBy" style="display:block;margin-bottom:4px;">Uploaded by (optional, for the record)</label>
         <input type="text" id="mouUploadedBy" placeholder="Your name" style="margin-bottom:10px;">
         <div class="field" style="margin:0 0 10px;max-width:420px;">
@@ -8024,6 +8108,26 @@
           <div id="mpStageWeightBody"><p class="hint">Loading…</p></div>
           <div class="exec-chart-card" id="mediaLoopMixChartCard" style="position:static;"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Round 22g (2026-09-08) — the 7 surviving Business & Revenue Profile
+         survey fields, relocated here from the retired standalone survey
+         page per direct instruction: "restructure the section to only ask
+         for information that supports the Agentic Support features that we
+         built." These are the only real, live consumers among that page's
+         old questions — see suggestStageBudgetWeights()/
+         suggestMinViableSpendMultiplier() in server.js — so they now live
+         right next to the Stage Weighting split they feed, instead of on a
+         disconnected page. -->
+    <div class="sk-card" id="mpBusinessSignalsCard" style="margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Feeds the split above</div><h3>How this account converts</h3></div>
+        <div class="hicon">📈</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Answer what you know — each field saves as soon as you leave it, and the Stage Weighting suggestion above (and the minimum-viable-spend calibration used to build your channel mix) updates immediately.</p>
+        <div id="mpBusinessSignalsBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
 
@@ -13413,6 +13517,82 @@ async function mswLoadStageWeights(){
     if (typeof renderMediaLoopMixChart === 'function') renderMediaLoopMixChart();
   } catch (e){ body.innerHTML = '<p class="hint">Backend unreachable — can\'t load stage weighting.</p>'; }
 }
+// Round 22g (2026-09-08) — the 7 surviving Business & Revenue Profile
+// fields, now rendered here instead of the retired standalone survey page,
+// since these are the only ones with a real downstream consumer:
+// suggestStageBudgetWeights() (averageOrderValue, avgTimeToTransaction,
+// repeatVsOneTime, avgRepeatIntervalMonths, repeatIntervalShrinksWithTenure,
+// loyalTransactionCount all feed the Stage Weighting suggestion above) and
+// suggestMinViableSpendMultiplier() (averageOrderValue feeds the min-
+// viable-spend calibration used to build the channel mix — see the
+// disclosed correction to Todd, round 22g: this field was almost cut as a
+// believed pure duplicate before that consumer was found). seasonality has
+// no direct formula consumer yet but stays here as background context for
+// the same "how this account converts" picture — always yours to skip.
+const MEDIA_PLAN_SURVEY_FIELDS = [
+  { key: 'averageOrderValue', label: 'Average order value ($)', type: 'number' },
+  { key: 'avgTimeToTransaction', label: 'Average time from first exposure to transaction (days)', type: 'number' },
+  { key: 'seasonality', label: 'Does demand have strong seasonality?', type: 'select',
+    options: ['Yes, strongly seasonal', 'Some seasonality', 'Little to no seasonality'] },
+  { key: 'repeatVsOneTime', label: 'Is this primarily a one-time purchase or a repeat/renewal relationship?', type: 'select',
+    options: ['One-time purchase', 'Occasional repeat', 'Regular repeat / subscription / renewal'] },
+  { key: 'avgRepeatIntervalMonths', label: 'Average time between repeat transactions (months)', type: 'number',
+    showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } },
+  { key: 'repeatIntervalShrinksWithTenure', label: "Does the interval between repeat transactions shorten as a guest's tenure grows?", type: 'select',
+    options: ['Yes', 'No', 'Not sure'],
+    showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } },
+  { key: 'loyalTransactionCount', label: 'Number of transactions at which a guest/customer is considered loyal', type: 'number',
+    showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } }
+];
+function mpSurveyQuestionVisible(q, core){
+  if (!q.showIf) return true;
+  const gateVal = core[q.showIf.key];
+  if (gateVal == null || gateVal === '') return false;
+  return gateVal !== q.showIf.notEquals;
+}
+async function loadMpBusinessSignals(){
+  await loadOnboardingSurvey();
+  renderMpBusinessSignalsCard();
+}
+function renderMpBusinessSignalsCard(){
+  const body = document.getElementById('mpBusinessSignalsBody');
+  if (!body) return;
+  const core = (state.onboardingSurvey && state.onboardingSurvey.core) || {};
+  const rows = MEDIA_PLAN_SURVEY_FIELDS.filter(q => mpSurveyQuestionVisible(q, core)).map(q => {
+    const val = core[q.key] != null ? core[q.key] : '';
+    if (q.type === 'select'){
+      return `<div class="field">
+        <label>${escapeHtml(q.label)}</label>
+        <select id="mpSurvey_${q.key}" onchange="mpSaveBusinessSignal('${q.key}', this.value)">
+          <option value="">— Select —</option>
+          ${q.options.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    return `<div class="field">
+      <label>${escapeHtml(q.label)}</label>
+      <input type="number" id="mpSurvey_${q.key}" value="${escapeHtml(String(val))}" onblur="mpSaveBusinessSignal('${q.key}', this.value)">
+    </div>`;
+  }).join('');
+  body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">${rows}</div>
+    <div class="hint" id="mpBusinessSignalsSaveFlag" style="margin-top:6px;"></div>`;
+}
+async function mpSaveBusinessSignal(key, value){
+  const flag = document.getElementById('mpBusinessSignalsSaveFlag');
+  if (flag) flag.textContent = 'Saving…';
+  const core = await saveSurveyCoreField(key, value);
+  if (!core){ if (flag) flag.textContent = "Couldn't save — try again."; return; }
+  renderMpBusinessSignalsCard();
+  const flag2 = document.getElementById('mpBusinessSignalsSaveFlag');
+  if (flag2) flag2.textContent = 'Saved — refreshing the suggested split…';
+  // These fields feed suggestStageBudgetWeights()/
+  // suggestMinViableSpendMultiplier() server-side — re-fetch so the
+  // "suggested X%" hint text and calibration multiplier above reflect the
+  // new answer immediately, not just on next page load.
+  await mswLoadStageWeights();
+  const flag3 = document.getElementById('mpBusinessSignalsSaveFlag');
+  if (flag3) flag3.textContent = 'Saved.';
+}
 function mswPct(v){ return `${Math.round((v || 0) * 100)}%`; }
 // Round 7 (2026-09-05), per direct instruction: "We automatically add
 // totals in the stage weighting section with the marketing loop pie chart
@@ -15657,7 +15837,13 @@ const STRATEGY_SHELL_GROUPS = [
   ]},
   { label: 'Research', items: [
     { label: 'Product & Destination Positioning', desc: 'Where offerings sit vs. the category' },
-    { label: 'Consumer Trends', desc: 'Demand signals informing planning' }
+    { label: 'Consumer Trends', desc: 'Demand signals informing planning' },
+    // Round 22g (2026-09-08), per direct instruction: "Strategy and
+    // Performance Marketers would have access to produce reports and maps
+    // leveraging the imported data" — a real link, not a description-only
+    // tile, to the account's own customer-geography data (National/Global
+    // upload + Local radius read).
+    { label: 'View My Customers', step: 'viewMyCustomers', desc: 'Where this account\'s customers actually are — National/Global upload, or a Local service-radius read' }
   ]},
   { label: 'Competitive & Market Intelligence', items: [
     { label: 'Competitor Tracking', step: 'competitivePositioning', desc: 'Ongoing monitoring' },
@@ -15695,7 +15881,7 @@ function strategyShellHtml(){
 const ACCOUNT_MGMT_TILE_GROUPS = [
   { label: 'Company Basics', items: [
     { label: 'Company Profile', step: 'companyProfile' },
-    { label: 'Business & Revenue Profile', step: 'onboardingSurvey' },
+    { label: 'View My Customers', step: 'viewMyCustomers', desc: 'Customer geography — National/Global upload or Local service-radius read' },
     { label: 'Partner Integrations', step: 'partnerIntegrations', desc: 'Meta, Google Ads, The Trade Desk, plus reputation & listening add-ons' }
   ]},
   { label: 'Brand Foundation', items: [
@@ -15884,7 +16070,12 @@ const MARKETER_SHELL_GROUPS = [
     { label: 'Lifecycle Marketing', badge: 'pending' }
   ], note: "Each of these two paths will get its own dashboard view under this tab — the top-3-chart row (and possibly the rest of default content) will need a view switcher rather than one shared metric set." },
   { label: 'Testing', items: [
-    { label: 'A/B / Multi-Variant Testing' }
+    { label: 'A/B / Multi-Variant Testing' },
+    // Round 22g (2026-09-08), per direct instruction: "Match Market testing
+    // asks would be added to the analytics dashboards... Strategy and
+    // Performance Marketers would have access to produce reports and maps
+    // leveraging the imported data."
+    { label: 'View My Customers', step: 'viewMyCustomers', desc: 'Match Market Builder uploads, and a Local service-radius read against uploaded customer zips' }
   ]}
 ];
 function marketerShellHtml(){
@@ -18374,15 +18565,19 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         }
       },
       {
-        title: 'Business &amp; Revenue Profile',
+        // Round 22g (2026-09-08) — replaces the retired "Business & Revenue
+        // Profile" card. That workstream is dissolved: Partner Code/How you
+        // sell/industry details moved to Company Profile above, the
+        // business-signals fields that actually feed a formula moved to
+        // Media Plan (Manage Budgets), and the geography/customer-location
+        // questions became this new page — see step-viewMyCustomers.
+        title: 'View My Customers',
         category: 'manual',
-        source: 'Onboarding Survey',
-        route: 'onboardingSurvey',
-        desc: 'How this account actually converts revenue — primary transaction path, AOV, sales-cycle length, geographic concentration, repeat vs. one-time — plus an industry module for the specifics of this vertical. Feeds the recommended stage-budget split (Manage Budgets → Stage Weighting) and every alternative-approach recommendation that reasons about this account\'s real sales cycle.',
+        source: 'Customer Geography',
+        route: 'viewMyCustomers',
+        desc: 'Where this account\'s customers actually are — the National/Global Match Market Builder upload, or a Local service-radius read against a geocoded account address — plus a couple of industry-specific questions (Real Estate, Auto Dealers) that belong with geography, not company profile.',
         status(){
-          const c = onboardingSurveyCoreAnsweredCount();
-          if (c.answered === 0) return { text: 'Not started', tone: 'pending' };
-          return { text: `${c.answered}/${c.total} core questions answered${state.onboardingSurvey && state.onboardingSurvey.industryCode ? ' + industry module' : ''}`, tone: c.answered >= c.total ? 'ok' : 'pending' };
+          return vmcHubStatus();
         }
       },
       // 2026-08-26 account-management reorg, round 2, per direct
@@ -18774,178 +18969,39 @@ async function aipoSetAiTrainingIncluded(checked){
     } catch (e){ console.warn('aipoSetAiTrainingIncluded: backend write failed, local only.', e); }
   }
 }
-// Round 132c[6] (2026-08-17) — buildout item #6, Onboarding Survey. Two
-// layers: ONBOARDING_CORE_QUESTIONS (every account answers these — sales-
-// cycle length, AOV, repeat-vs-one-time, etc.) and an industry module (a
-// short set of vertical-specific questions once an industryCode is chosen).
-// The question/module SHAPE comes from the backend (static, cached once —
-// obsModulesCache) since it's the same definitions server-side logic
-// (suggestStageBudgetWeights(), suggestMinViableSpendMultiplier()) reads;
-// the account's own ANSWERS come from GET/POST .../onboarding-survey.
-let obsModulesCache = null; // { coreQuestions, industryModules } — static, fetch once
-// Round 132c[9] (2026-08-17) — a core question can carry a showIf
-// ({ key, notEquals }, mirrors backend/server.js's ONBOARDING_CORE_QUESTIONS)
-// gating it behind another question's answer — used for the repeat-interval
-// questions, which are meaningless for a 'One-time purchase' account. A
-// gated question that hasn't had its gate answered yet is treated as not
-// (yet) applicable, not as answered-but-hidden, so it neither renders nor
-// counts toward the "n/total" denominator until the gate is resolved.
-function obsQuestionVisible(q, core){
-  if (!q.showIf) return true;
-  const gateVal = core[q.showIf.key];
-  if (gateVal == null || gateVal === '') return false;
-  if (q.showIf.notEquals != null) return gateVal !== q.showIf.notEquals;
-  return true;
-}
-function onboardingSurveyCoreAnsweredCount(){
-  if (!state.onboardingSurvey || !obsModulesCache) return { answered: 0, total: 0 };
-  const core = state.onboardingSurvey.core || {};
-  const applicable = obsModulesCache.coreQuestions.filter(q => obsQuestionVisible(q, core));
-  const answered = applicable.filter(q => core[q.key] != null && core[q.key] !== '').length;
-  return { answered, total: applicable.length };
-}
-async function obsLoadModules(){
-  if (obsModulesCache) return obsModulesCache;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/onboarding-survey-modules`);
-    if (resp.ok) obsModulesCache = await resp.json();
-  } catch (e){ /* obsModulesCache stays null — renderOnboardingSurveyStep() shows an error */ }
-  return obsModulesCache;
-}
+// Round 22g (2026-09-08) — the old standalone "Business & Revenue Profile"
+// page (step-onboardingSurvey) and its generic two-layer renderer are
+// retired; every surviving question now renders on the page that actually
+// consumes it (Company Overview, Media Plan, View My Customers — see each
+// page's own render function). What's left here is just the shared
+// account-answers loader and a shared save-one-field helper, both still
+// backed by the same GET/POST .../onboarding-survey endpoint and the same
+// onboardingSurveyJson column — no data migration needed, only where it's
+// rendered changed. onboardingIndustryCode/industryAnswers are no longer
+// written by anything (the old module-code industry taxonomy is retired in
+// favor of gating on the account's real Industry — state.industry —
+// everywhere a field used to be industry-conditional); state.onboardingSurvey
+// still carries them through if an old row has them on file, just unused.
 async function loadOnboardingSurvey(){
-  await obsLoadModules();
   if (!state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/onboarding-survey`);
     if (resp.ok) state.onboardingSurvey = await resp.json();
-  } catch (e){ /* leaves state.onboardingSurvey as whatever it was — render function shows its own error */ }
+  } catch (e){ /* leaves state.onboardingSurvey as whatever it was — callers show their own error */ }
 }
-async function renderOnboardingSurveyStep(){
-  // 2026-08-26 account-management reorg — Company Name + Client Code, moved
-  // here from Account Setup. See obsClientCodeCard's own comment in the HTML.
-  const nameDisplayEl = document.getElementById('obsCompanyNameDisplay');
-  if (nameDisplayEl) nameDisplayEl.textContent = state.company || '—';
-  const clientCodeEl = document.getElementById('obsClientCode');
-  if (clientCodeEl) clientCodeEl.value = state.partnerCode || '';
-  const coreBody = document.getElementById('obsCoreBody');
-  const industryBody = document.getElementById('obsIndustryBody');
-  if (coreBody) coreBody.innerHTML = '<p class="hint">Loading…</p>';
-  if (industryBody) industryBody.innerHTML = '<p class="hint">Loading…</p>';
-  await loadOnboardingSurvey();
-  if (!obsModulesCache){
-    if (coreBody) coreBody.innerHTML = '<p class="hint">Couldn\'t load the survey right now — try again.</p>';
-    if (industryBody) industryBody.innerHTML = '';
-    return;
-  }
-  obsRenderCore();
-  obsRenderIndustry();
-}
-function obsRenderCore(){
-  const body = document.getElementById('obsCoreBody');
-  if (!body || !obsModulesCache) return;
-  const core = (state.onboardingSurvey && state.onboardingSurvey.core) || {};
-  const rows = obsModulesCache.coreQuestions.filter(q => obsQuestionVisible(q, core)).map(q => {
-    const val = core[q.key] != null ? core[q.key] : '';
-    if (q.type === 'select'){
-      return `<div class="field">
-        <label>${escapeHtml(q.label)}</label>
-        <select id="obsCore_${q.key}" onchange="obsSaveCoreField('${q.key}', this.value)">
-          <option value="">— Select —</option>
-          ${q.options.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
-      </div>`;
-    }
-    return `<div class="field">
-      <label>${escapeHtml(q.label)}</label>
-      <input type="number" id="obsCore_${q.key}" value="${escapeHtml(String(val))}" onblur="obsSaveCoreField('${q.key}', this.value)">
-    </div>`;
-  }).join('');
-  body.innerHTML = `
-    <p class="hint" style="margin-top:0;">Every field here is editable any time and saves as soon as you leave it — there's no separate "submit."</p>
-    ${rows}
-    <div class="hint" id="obsCoreSaveStatus" style="margin-top:6px;"></div>`;
-}
-function obsRenderIndustry(){
-  const body = document.getElementById('obsIndustryBody');
-  if (!body || !obsModulesCache) return;
-  const survey = state.onboardingSurvey || { industryCode: null, industryAnswers: {} };
-  const moduleOptions = obsModulesCache.industryModules.map(m =>
-    `<option value="${escapeHtml(m.code)}" ${survey.industryCode === m.code ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('');
-  const activeModule = obsModulesCache.industryModules.find(m => m.code === survey.industryCode);
-  const answers = survey.industryAnswers || {};
-  const questionRows = activeModule ? activeModule.questions.map(q => {
-    const val = answers[q.key] != null ? answers[q.key] : '';
-    if (q.type === 'select'){
-      return `<div class="field">
-        <label>${escapeHtml(q.label)}</label>
-        <select id="obsInd_${q.key}" onchange="obsSaveIndustryField('${q.key}', this.value)">
-          <option value="">— Select —</option>
-          ${q.options.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
-      </div>`;
-    }
-    return `<div class="field">
-      <label>${escapeHtml(q.label)}</label>
-      <input type="number" id="obsInd_${q.key}" value="${escapeHtml(String(val))}" onblur="obsSaveIndustryField('${q.key}', this.value)">
-    </div>`;
-  }).join('') : '';
-  body.innerHTML = `
-    <div class="field">
-      <label>Industry module</label>
-      <select id="obsIndustrySelect" onchange="obsSaveIndustryCode(this.value)">
-        <option value="">— None selected —</option>
-        ${moduleOptions}
-      </select>
-      ${activeModule ? `<div class="hint" style="margin-top:4px;">${escapeHtml(activeModule.naicsSic)}</div>` : ''}
-    </div>
-    ${questionRows}
-    <div class="hint" id="obsIndustrySaveStatus" style="margin-top:6px;"></div>`;
-}
-async function obsSaveCoreField(key, value){
-  const status = document.getElementById('obsCoreSaveStatus');
-  if (status) status.textContent = 'Saving…';
+// Generic single-field save: merges { [key]: value } into the account's
+// core survey answers and returns the fresh core object, or null on
+// failure. Callers own their own status text and any re-render.
+async function saveSurveyCoreField(key, value){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/onboarding-survey`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ core: { [key]: value } })
     });
-    if (!resp.ok){ if (status) status.textContent = 'Couldn\'t save — try again.'; return; }
+    if (!resp.ok) return null;
     const data = await resp.json();
     state.onboardingSurvey = Object.assign({}, state.onboardingSurvey, { core: data.core });
-    // Round 132c[9] (2026-08-17) — re-render rather than just updating the
-    // status line: the field just saved might be a showIf gate
-    // (repeatVsOneTime), so the set of visible questions itself can change.
-    // Safe to do after every save (not just gate changes) since it only
-    // fires post-commit, on blur/change — never mid-keystroke.
-    obsRenderCore();
-    const status2 = document.getElementById('obsCoreSaveStatus');
-    if (status2) status2.textContent = 'Saved.';
-  } catch (e){ if (status) status.textContent = 'Backend unreachable — not saved.'; }
-}
-async function obsSaveIndustryCode(code){
-  const status = document.getElementById('obsIndustrySaveStatus');
-  if (status) status.textContent = 'Saving…';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/onboarding-survey`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ industryCode: code || null })
-    });
-    if (!resp.ok){ const err = await resp.json().catch(() => ({})); if (status) status.textContent = err.error || 'Couldn\'t save — try again.'; return; }
-    const data = await resp.json();
-    state.onboardingSurvey = Object.assign({}, state.onboardingSurvey, { industryCode: data.industryCode, industryAnswers: data.industryAnswers });
-    obsRenderIndustry();
-  } catch (e){ if (status) status.textContent = 'Backend unreachable — not saved.'; }
-}
-async function obsSaveIndustryField(key, value){
-  const status = document.getElementById('obsIndustrySaveStatus');
-  if (status) status.textContent = 'Saving…';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/onboarding-survey`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ industryAnswers: { [key]: value } })
-    });
-    if (!resp.ok){ if (status) status.textContent = 'Couldn\'t save — try again.'; return; }
-    const data = await resp.json();
-    state.onboardingSurvey = Object.assign({}, state.onboardingSurvey, { industryAnswers: data.industryAnswers });
-    if (status) status.textContent = 'Saved.';
-  } catch (e){ if (status) status.textContent = 'Backend unreachable — not saved.'; }
+    return data.core;
+  } catch (e){ return null; }
 }
 function renderAiPartnerOnboardingHub(skipMmmFetch){
   const mount = document.getElementById('aipoMount');
@@ -25199,7 +25255,7 @@ async function renderMediaPlanStep(fromUpload){
   if (fromUpload && (!hasRows || draftOrSeeded)){
     renderMediaPlanFieldsAndCharts(false);
     const seeded = await mpBuildPlanFromUpload();
-    if (seeded){ mswLoadStageWeights(); return; }
+    if (seeded){ mswLoadStageWeights(); loadMpBusinessSignals(); return; }
   }
   renderMediaPlanFieldsAndCharts(fromUpload);
   if (fromUpload && hasRows){
@@ -25210,6 +25266,10 @@ async function renderMediaPlanStep(fromUpload){
   // the plan/budget data above (it's account-scoped, not plan-scoped) so a
   // slow/failed stage-weights fetch never blocks the rest of the page.
   mswLoadStageWeights();
+  // Round 22g (2026-09-08) — same independent-load posture, for the
+  // Business & Revenue Profile fields that feed the stage-weights
+  // suggestion above.
+  loadMpBusinessSignals();
 }
 
 // Round 70 — Analytics Integration setup, within Fundamentals Setup.
@@ -26141,6 +26201,7 @@ async function mouConfirmImport(){
       body: JSON.stringify({
         uploadedFileId: uploadData.id,
         label: mouFileName,
+        periodLabel: (document.getElementById('mouPeriodLabel') || {}).value || '',
         weightMode: mouWeightMode,
         defaultCountry: mouDefaultCountry,
         geoLevel: (Object.values(mouColumnMap).includes('zip') || !Object.values(mouColumnMap).includes('dma')) ? 'zip' : 'dma',
@@ -41894,12 +41955,12 @@ function goToStep(step, arg, arg2, arg3){
     renderAiPartnerOnboardingHub();
     // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-manageAccount').classList.add('active');
-    // Round 132c[6] (2026-08-17) — the hub's "Business & Revenue Profile"
-    // card status (onboardingSurveyCoreAnsweredCount()) needs the account's
-    // real saved answers, not just the empty state.onboardingSurvey = null
-    // default. First paint above renders with whatever's already in memory
-    // (instant); this backfills it and redraws once the real data is in.
-    loadOnboardingSurvey().then(() => renderAiPartnerOnboardingHub(true));
+    // Round 22g (2026-09-08) — the hub's "View My Customers" card status
+    // (vmcHubStatus()) needs the account's real saved address/upload state,
+    // not just empty defaults. First paint above renders with whatever's
+    // already in memory (instant); this backfills it and redraws once the
+    // real data is in.
+    Promise.all([loadOnboardingSurvey(), vmcLoadStatus()]).then(() => renderAiPartnerOnboardingHub(true));
   } else if (step === 'bulkUpload'){
     resetBulkUploadState();
     renderBulkUploadActorRoleRow();
@@ -41930,9 +41991,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'measurementCoverage'){
     mcLoadCoverage();
     document.getElementById('step-measurementCoverage').classList.add('active');
-  } else if (step === 'onboardingSurvey'){
-    renderOnboardingSurveyStep();
-    document.getElementById('step-onboardingSurvey').classList.add('active');
+  } else if (step === 'viewMyCustomers'){
+    renderViewMyCustomersStep();
+    document.getElementById('step-viewMyCustomers').classList.add('active');
   } else if (step === 'websiteTraffic'){
     renderWebsiteTrafficStep();
     document.getElementById('step-websiteTraffic').classList.add('active');
@@ -47479,10 +47540,281 @@ function renderCompanyProfileStep(){
   document.getElementById('companyProfileSaveFlag').textContent = '';
 
   renderBrandDescriptionCard();
+
+  // Round 22g (2026-09-08) — Partner Code, How you sell, and the industry-
+  // conditional detail block, all relocated here from the retired Business
+  // & Revenue Profile page. Partner Code comes straight from state (already
+  // loaded with the account); the other two need this account's saved
+  // survey answers, so load first, then populate.
+  const partnerCodeEl = document.getElementById('cpPartnerCode');
+  if (partnerCodeEl) partnerCodeEl.value = state.partnerCode || '';
+  loadOnboardingSurvey().then(() => {
+    renderCpHowYouSellFields();
+    renderCpIndustryDetailsCard();
+  });
 }
 
-function cpSetIndustry(value){ state.industry = value; }
+function cpSetIndustry(value){
+  state.industry = value;
+  // Round 22g (2026-09-08) — the industry-conditional detail block's
+  // visibility (and which fields it shows) depends on Industry, so a change
+  // here has to redraw it immediately, not just on next page load.
+  renderCpIndustryDetailsCard();
+}
 function cpSetFootprint(value){ state.footprint = value; }
+
+// Round 22g (2026-09-08) — Partner Code, relocated from the retired
+// Business & Revenue Profile page (obsClientCodeCard/obsSaveClientCode),
+// per direct instruction: "Move the Partner Code to the Settings Company
+// Profile page." Same sanitize-and-uppercase behavior, same state.partnerCode
+// / accounts.partnerCode column and saveCompanyProfile() round-trip — this
+// field already flowed through that endpoint (see its body), so relocating
+// it here needed no backend change.
+function cpSavePartnerCode(value){
+  state.partnerCode = (value || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
+  const el = document.getElementById('cpPartnerCode');
+  if (el && el.value !== state.partnerCode) el.value = state.partnerCode;
+  if (typeof renderAccountLogo === 'function') renderAccountLogo(); // refreshes the header's Client Code badge, see acctClientCodeDisplay
+  const status = document.getElementById('cpPartnerCodeSaveStatus');
+  saveCompanyProfile().then(persisted => {
+    if (status) status.textContent = (persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend. `
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session. `)
+      + 'Used to build every Campaign ID on this account, e.g. AOV-POL-27-04 (Partner-Product-Year-Month). Set once; changing it later doesn\'t rename Campaign IDs already generated.';
+  });
+}
+
+// Round 22g (2026-09-08) — "How you sell", relocated from the retired
+// Business & Revenue Profile page (the only two of its core questions that
+// aren't a Media Plan formula input — see MEDIA_PLAN_SURVEY_FIELDS). Always
+// shown, saved through the same shared saveSurveyCoreField() helper Media
+// Plan uses.
+const CP_HOW_YOU_SELL_FIELDS = [
+  { key: 'primaryTransactionPath', label: 'Primary path to transaction',
+    options: ['Call center', 'E-commerce / website', 'Retail / storefront', 'Field sales', 'Third-party channel partner'] },
+  { key: 'thirdPartyCloses', label: 'Does a third party (agent, dealer, advisor) close the transaction?',
+    options: ['Yes, and we can trace it back to our marketing', 'Yes, but we cannot trace it back', 'No — we close direct'] }
+];
+function renderCpHowYouSellFields(){
+  const path = document.getElementById('cpPrimaryTransactionPath');
+  const closes = document.getElementById('cpThirdPartyCloses');
+  if (!path || !closes) return;
+  const core = (state.onboardingSurvey && state.onboardingSurvey.core) || {};
+  CP_HOW_YOU_SELL_FIELDS.forEach(q => {
+    const el = document.getElementById(q.key === 'primaryTransactionPath' ? 'cpPrimaryTransactionPath' : 'cpThirdPartyCloses');
+    if (!el.options.length){
+      el.innerHTML = `<option value="">— Select —</option>` + q.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+    }
+    el.value = core[q.key] != null ? core[q.key] : '';
+  });
+}
+async function cpSaveHowYouSellField(key, value){
+  const flag = document.getElementById('cpHowYouSellSaveFlag');
+  if (flag) flag.textContent = 'Saving…';
+  const core = await saveSurveyCoreField(key, value);
+  if (flag) flag.textContent = core ? 'Saved.' : "Couldn't save — try again.";
+}
+
+// Round 22g (2026-09-08) — industry-conditional detail, per direct
+// instruction ("Healthcare should probably be part of the company overview
+// page... Does that work?" / "Suggestions are fine" approving Financial
+// Services joining Healthcare's compliance question, and B2B's account list
+// size landing here). Gated on the real Industry classification
+// (state.industry / INDUSTRY_LABELS), not the retired onboardingIndustryCode
+// module system.
+const CP_INDUSTRY_DETAIL_GROUPS = [
+  { industries: ['Healthcare — Outpatient / Clinics', 'Healthcare — Hospitals & Systems', 'Financial Services / Banking'],
+    fields: [
+      { key: 'complianceConstraints', label: 'Regulatory/compliance constraints on marketing or tracking (HIPAA, FINRA, state, etc.)?', type: 'select',
+        options: ['Yes', 'No', 'Not sure'] }
+    ] },
+  { industries: ['Professional Services (B2B)'],
+    fields: [
+      { key: 'accountListSize', label: 'Target account list size (# of named accounts, if ABM)', type: 'number' }
+    ] },
+  { industries: ['Automotive Sales & Service'],
+    fields: [
+      { key: 'coOpFundingShare', label: 'Share of media funded via manufacturer co-op (%)', type: 'number' },
+      { key: 'dealerNetworkSize', label: 'Number of dealer locations in this market', type: 'number' }
+    ] }
+];
+function renderCpIndustryDetailsCard(){
+  const card = document.getElementById('cpIndustryDetailsCard');
+  const body = document.getElementById('cpIndustryDetailsBody');
+  if (!card || !body) return;
+  const group = CP_INDUSTRY_DETAIL_GROUPS.find(g => g.industries.includes(state.industry));
+  if (!group){ card.hidden = true; body.innerHTML = ''; return; }
+  card.hidden = false;
+  const core = (state.onboardingSurvey && state.onboardingSurvey.core) || {};
+  body.innerHTML = group.fields.map(q => {
+    const val = core[q.key] != null ? core[q.key] : '';
+    if (q.type === 'select'){
+      return `<div class="field" style="margin:0;">
+        <label>${escapeHtml(q.label)}</label>
+        <select id="cpIndDetail_${q.key}" onchange="cpSaveIndustryDetailField('${q.key}', this.value)">
+          <option value="">— Select —</option>
+          ${q.options.map(o => `<option value="${escapeHtml(o)}" ${val === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    return `<div class="field" style="margin:0;">
+      <label>${escapeHtml(q.label)}</label>
+      <input type="number" id="cpIndDetail_${q.key}" value="${escapeHtml(String(val))}" onblur="cpSaveIndustryDetailField('${q.key}', this.value)">
+    </div>`;
+  }).join('');
+}
+async function cpSaveIndustryDetailField(key, value){
+  const flag = document.getElementById('cpIndustryDetailsSaveFlag');
+  if (flag) flag.textContent = 'Saving…';
+  const core = await saveSurveyCoreField(key, value);
+  if (flag) flag.textContent = core ? 'Saved.' : "Couldn't save — try again.";
+}
+
+// ============ View My Customers (Round 22g, 2026-09-08) ============
+// Replaces the retired Business & Revenue Profile page — see this page's
+// own HTML comment (step-viewMyCustomers) for the full rationale. Two
+// branches (National/Global, Local); vmcActiveBranch remembers which is
+// showing so a re-render (e.g. after a save) doesn't reset the toggle.
+let vmcActiveBranch = 'national';
+function vmcShowBranch(which){
+  vmcActiveBranch = which;
+  const nat = document.getElementById('vmcNationalPane');
+  const local = document.getElementById('vmcLocalPane');
+  const tabNat = document.getElementById('vmcTabNational');
+  const tabLocal = document.getElementById('vmcTabLocal');
+  if (nat) nat.style.display = which === 'national' ? '' : 'none';
+  if (local) local.style.display = which === 'local' ? '' : 'none';
+  if (tabNat) tabNat.className = which === 'national' ? 'btn-primary' : 'btn-ghost';
+  if (tabLocal) tabLocal.className = which === 'local' ? 'btn-primary' : 'btn-ghost';
+}
+async function renderViewMyCustomersStep(){
+  // Default the visible branch to whatever this account's Footprint already
+  // says (Local -> Local branch; National/Franchise -> National branch), so
+  // an account doesn't have to re-choose something it already told the free
+  // assessment. Still just a starting point — either tab is always a click
+  // away.
+  vmcShowBranch(state.footprint === 'Local' ? 'local' : 'national');
+  const addrEl = document.getElementById('vmcAddressInput');
+  if (addrEl) addrEl.value = state.vmcAddressLabel || '';
+  await Promise.all([vmcLoadUploads(), vmcLoadCustomersNear(), loadOnboardingSurvey()]);
+  vmcRenderRealEstateField();
+}
+function vmcRenderRealEstateField(){
+  const wrap = document.getElementById('vmcRealEstateField');
+  const sel = document.getElementById('vmcListingVsBuyerSide');
+  if (!wrap || !sel) return;
+  if (state.industry !== 'Real Estate'){ wrap.hidden = true; return; }
+  wrap.hidden = false;
+  const core = (state.onboardingSurvey && state.onboardingSurvey.core) || {};
+  sel.value = core.listingVsBuyerSide != null ? core.listingVsBuyerSide : '';
+}
+async function vmcSaveListingVsBuyerSide(value){
+  const flag = document.getElementById('vmcRealEstateSaveFlag');
+  if (flag) flag.textContent = 'Saving…';
+  const core = await saveSurveyCoreField('listingVsBuyerSide', value);
+  if (flag) flag.textContent = core ? 'Saved.' : "Couldn't save — try again.";
+}
+// National/Global branch — lightweight list of what's already been
+// uploaded via the Match Market Builder (see mouCommitUpload's periodLabel
+// field), no analysis computation here.
+async function vmcLoadUploads(){
+  const body = document.getElementById('vmcUploadsList');
+  if (!body || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads`);
+    if (!resp.ok){ body.innerHTML = '<p class="hint">Couldn\'t load uploads right now.</p>'; return; }
+    const data = await resp.json();
+    const uploads = data.uploads || [];
+    if (!uploads.length){ body.innerHTML = '<p class="hint">No customer uploads on file yet — start one in the Match Market Builder below.</p>'; return; }
+    body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
+      <thead><tr><th>Period</th><th>File</th><th>Uploaded</th><th>Geography</th></tr></thead>
+      <tbody>${uploads.map(u => `<tr>
+        <td>${escapeHtml(u.periodLabel || '—')}</td>
+        <td>${escapeHtml(u.label || '—')}</td>
+        <td>${escapeHtml(new Date(u.createdAt).toLocaleDateString())}</td>
+        <td>${u.geoLevel === 'dma' ? 'DMA' : 'Zip'} · ${u.weightMode === 'revenue' ? 'revenue-weighted' : 'count-weighted'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch (e){ body.innerHTML = '<p class="hint">Backend unreachable — can\'t load uploads.</p>'; }
+}
+// Local branch — geocode once (free Census Geocoder, same service
+// assessment.html already uses for the free assessment's own address step;
+// no account or API key required), save the result, then read the real
+// haversine radius endpoint.
+async function vmcGeocodeAndSaveAddress(){
+  const input = document.getElementById('vmcAddressInput');
+  const status = document.getElementById('vmcAddressStatus');
+  const address = (input && input.value || '').trim();
+  if (!address){ if (status) status.textContent = 'Enter an address first.'; return; }
+  if (status) status.textContent = 'Geocoding…';
+  try {
+    const url = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&vintage=Current_Current&layers=Counties&format=json`;
+    const geoResp = await fetch(url);
+    if (!geoResp.ok) throw new Error(`Geocoder HTTP ${geoResp.status}`);
+    const geoData = await geoResp.json();
+    const match = geoData && geoData.result && geoData.result.addressMatches && geoData.result.addressMatches[0];
+    if (!match || !match.coordinates){ if (status) status.textContent = 'No match found for that address — try adding city/state/zip.'; return; }
+    const lat = match.coordinates.y, lng = match.coordinates.x, label = match.matchedAddress || address;
+    const saveResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/address`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat, lng, label })
+    });
+    if (!saveResp.ok){ if (status) status.textContent = 'Geocoded, but saving failed — try again.'; return; }
+    state.vmcAddressLabel = label;
+    if (input) input.value = label;
+    if (status) status.textContent = `Saved — geocoded to ${label}.`;
+    vmcLoadCustomersNear();
+  } catch (e){ if (status) status.textContent = 'Geocoder unreachable — try again.'; }
+}
+async function vmcLoadCustomersNear(){
+  const body = document.getElementById('vmcRadiusResults');
+  if (!body || !state.companyId) return;
+  const radiusInput = document.getElementById('vmcRadiusInput');
+  const radiusMiles = Math.max(1, Math.min(500, Number(radiusInput && radiusInput.value) || 25));
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/customers-near?radiusMiles=${radiusMiles}`);
+    if (!resp.ok){ body.innerHTML = '<p class="hint">Couldn\'t load — try again.</p>'; return; }
+    const d = await resp.json();
+    if (!d.hasAddress){ body.innerHTML = '<p class="hint">Set an address above to see your customers near this account.</p>'; return; }
+    const addrEl = document.getElementById('vmcAddressInput');
+    if (addrEl && d.center && d.center.label) addrEl.value = d.center.label;
+    if (!d.hasUpload){ body.innerHTML = '<p class="hint">Address on file — no customer upload yet to measure against. Upload one in the National/Global branch above, then come back here.</p>'; return; }
+    const rows = d.zips.slice(0, 25).map(z => `<tr>
+      <td>${escapeHtml(z.zip)}</td>
+      <td>${z.customerCount}</td>
+      <td>${z.distanceMiles != null ? z.distanceMiles + ' mi' : 'no centroid on file'}</td>
+      <td>${z.inRadius == null ? '—' : (z.inRadius ? 'In radius' : 'Outside radius')}</td>
+    </tr>`).join('');
+    body.innerHTML = `
+      <p class="hint" style="margin-top:0;">${d.inRadius.customerCount} customer(s) across ${d.inRadius.zipCount} zip(s) within ${radiusMiles} miles of ${escapeHtml(d.center.label || 'this address')}; ${d.outsideRadius.customerCount} customer(s) across ${d.outsideRadius.zipCount} zip(s) outside it.${d.noCentroidData.zipCount ? ` ${d.noCentroidData.zipCount} zip(s) (${d.noCentroidData.customerCount} customers) have no centroid on file, so distance couldn't be computed for them.` : ''} From the ${escapeHtml(d.uploadLabel || 'most recent')} upload (${escapeHtml(new Date(d.uploadedAt).toLocaleDateString())}).</p>
+      <div class="table-scroll"><table class="data-table" style="font-size:0.8438rem;">
+        <thead><tr><th>Zip</th><th>Customers</th><th>Distance</th><th>In radius?</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${d.zips.length > 25 ? `<p class="hint" style="margin-top:6px;">Showing the 25 nearest of ${d.zips.length} zips.</p>` : ''}`;
+  } catch (e){ body.innerHTML = '<p class="hint">Backend unreachable — can\'t load.</p>'; }
+}
+// Manage Account hub card status (see AI_PARTNER_ONBOARDING_GROUPS above).
+let vmcHubStatusCache = { hasAddress: false, hasUpload: false, uploadCount: 0 };
+async function vmcLoadStatus(){
+  if (!state.companyId) return;
+  try {
+    const [addrResp, uploadsResp] = await Promise.all([
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/customers-near?radiusMiles=25`),
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads`)
+    ]);
+    const addrData = addrResp.ok ? await addrResp.json() : {};
+    const uploadsData = uploadsResp.ok ? await uploadsResp.json() : { uploads: [] };
+    vmcHubStatusCache = { hasAddress: !!addrData.hasAddress, hasUpload: !!addrData.hasUpload, uploadCount: (uploadsData.uploads || []).length };
+  } catch (e){ /* leaves vmcHubStatusCache as whatever it was */ }
+}
+function vmcHubStatus(){
+  const c = vmcHubStatusCache;
+  if (!c.hasAddress && !c.uploadCount) return { text: 'Not started', tone: 'pending' };
+  const parts = [];
+  if (c.uploadCount) parts.push(`${c.uploadCount} customer upload${c.uploadCount === 1 ? '' : 's'} on file`);
+  if (c.hasAddress) parts.push('address geocoded');
+  return { text: parts.join(', '), tone: (c.hasAddress && c.uploadCount) ? 'ok' : 'pending' };
+}
 function cpToggleAudience(key){
   if (state.audience.has(key)) state.audience.delete(key); else state.audience.add(key);
   renderCompanyProfileStep();
@@ -47706,35 +48038,9 @@ async function saveMediaCxIndexGaps(){
   }
   renderMediaCxIndexPanel();
 }
-// Round 132c17 (2026-08-17), moved to Business & Revenue Profile 2026-08-26
-// (see obsClientCodeCard's own comment) — letters only, capped at 3,
-// uppercased live (matches how it's used inside every generated Campaign
-// Code). Unlike the Universal Core fields on this same page, this one still
-// goes through the accounts/profile endpoint (same one Account Setup's Save
-// used) since that's where partnerCode already lives server-side.
-async function obsSaveClientCode(value){
-  state.partnerCode = (value || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
-  const el = document.getElementById('obsClientCode');
-  if (el && el.value !== state.partnerCode) el.value = state.partnerCode;
-  renderAccountLogo(); // refreshes the header's Client Code badge, see acctClientCodeDisplay
-  const status = document.getElementById('obsClientCodeSaveStatus');
-  let persisted = false;
-  if (dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
-      });
-      persisted = resp.ok;
-    } catch (e){ console.warn('obsSaveClientCode: backend write failed, saved locally only.', e); }
-  }
-  if (status){
-    status.innerHTML = (persisted
-      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
-      : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`)
-      + ` Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.`;
-  }
-}
+// obsSaveClientCode() retired (Round 22g, 2026-09-08) — superseded by
+// cpSavePartnerCode() on Company Profile, now that Partner Code moved back
+// there. See that function's own comment.
 // 2026-08-26 account-management reorg, per direct instruction: "The
 // Activate channels should be part of the overall budget setup." Moved
 // from Account Setup to Marketing Budget Upload (step-marketingBudgetUpload)
