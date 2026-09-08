@@ -4122,6 +4122,17 @@
        user-facing copy on this page (step id, function names, and the
        backend endpoint keep their original names — nothing else in the app
        references this page by its display text). -->
+  <!-- 2026-09-08 fix, per direct report — the first pass of this round
+       missed a real design inconsistency: this page's cards used
+       background:var(--panel, #f7f7f8) with an 8px radius, an inline,
+       ad hoc pattern that does NOT match how cards look anywhere else in
+       the app. The real site-wide card convention (`.dash-tile`,
+       `.exec-chart-card`, `.monitor-card`, `.module`) is
+       background:var(--white), a 1px var(--line) border, and a 14-18px
+       radius. Every card on this page (cpAssessmentSummaryCard,
+       cpBrandDescriptionCard) now matches that — same fix applied to the
+       relocated Media CX Index card and its new quadrant snapshot on
+       Continuous Monitoring (see mcxIndexCard/monQuadCard there). -->
   <div class="step" id="step-companyProfile">
     <!-- Breadcrumbs are hidden portal-wide (see .crumb{display:none} and its
          own comment, 2026-08-26: "We really don't need breadcrumbs in the
@@ -4164,7 +4175,7 @@
          renderCompanyProfileStep() below. Brand description moved out of
          this card in round 22 (see cpBrandDescriptionCard) since it now has
          its own edit/approve/feedback workflow, not just a read-only line. -->
-    <div class="field" id="cpAssessmentSummaryCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:22px;">
+    <div class="field" id="cpAssessmentSummaryCard" style="background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
       <label style="margin-bottom:8px;">From your free assessment <span style="font-weight:400;text-transform:none;color:var(--muted);">— read-only here, edit in a new assessment pass</span></label>
       <div id="cpAssessmentSummaryBody" style="font-size:0.875rem;color:var(--ink);line-height:1.6;"></div>
     </div>
@@ -4181,7 +4192,7 @@
          via saveBrandDescriptionEdit()/approveBrandDescription()/
          addBrandDescriptionFeedback() and the account's own
          brandDescriptionApproved/brandDescriptionFeedbackJson columns. -->
-    <div class="field" id="cpBrandDescriptionCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:22px;">
+    <div class="field" id="cpBrandDescriptionCard" style="background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:22px;">
       <label style="margin-bottom:4px;">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></label>
       <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
       <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
@@ -5836,7 +5847,7 @@
          are in the DOM at once. renderMonitorQuadrantSnapshot() below
          populates it; called from renderMonitorCards(). -->
     <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:22px;">
-      <div class="field" id="mcxIndexCard" style="flex:1 1 360px;background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;">
+      <div class="field" id="mcxIndexCard" style="flex:1 1 360px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;">
         <label style="margin-bottom:4px;">Refine your Verilume Media CX Index</label>
         <div class="hint" style="margin-bottom:12px;">The free assessment estimates each stage from self-ratings. Add real numbers or a confident self-rating below — quantitative or qualitative, not both required — and that stage's contribution to the Index becomes measured instead of estimated.</div>
         <div style="text-align:center;margin-bottom:14px;">
@@ -5851,7 +5862,7 @@
         <div id="mcxSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
       </div>
 
-      <div class="field" id="monQuadCard" style="flex:1 1 300px;background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;">
+      <div class="field" id="monQuadCard" style="flex:1 1 300px;background:var(--white);border:1px solid var(--line);border-radius:16px;padding:18px 20px;">
         <label style="margin-bottom:4px;">Where this sits on the Media/CX Quadrant</label>
         <div class="hint" style="margin-bottom:12px;">A snapshot of the same placement the Dashboard tracks, using this account's currently assessed data.</div>
         <div class="quad-visual" id="monQuadVisual" style="max-width:260px;margin:0 auto;">

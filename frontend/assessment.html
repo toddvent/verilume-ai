@@ -6256,6 +6256,23 @@ async function applyAiGeneratedReadout(){
     if (result && result.synthesis){
       const introEl = document.getElementById('reportSynthesisText');
       if (introEl) introEl.textContent = result.synthesis;
+      // 2026-09-08 (Brand Groundwork reorg, round 22), per direct report:
+      // "The brand description is not the generative version that we're
+      // using when producing the free assessment." Confirmed — state.description
+      // (what travels to the Portal as accounts.assessmentDescription, see
+      // buildAccountCreationPayload's own comment below) was only ever set
+      // from guessProfileFromInput()'s simulated guess or, for this build's
+      // one demo domain, a hand-researched KNOWN_BRAND_OVERVIEWS lookup —
+      // never from this function's real Anthropic-generated synthesis, even
+      // though this IS the actual generative content the free assessment
+      // produces. The dedicated recap edit field this used to flow through
+      // (#recapDescInput) was deleted 2026-08-31 as dead code, so there's no
+      // in-assessment review step to preserve here — safe to overwrite
+      // outright on a real success. On failure (no API key, rate-limited,
+      // network error) this simply never runs, and state.description keeps
+      // whatever guessProfileFromInput() already put there, same as before
+      // this round.
+      state.description = result.synthesis;
     }
     if (result && result.opportunity){
       const target = document.getElementById('journeyBP');
