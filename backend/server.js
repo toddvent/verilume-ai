@@ -15997,83 +15997,20 @@ Submit your findings via the submit_brand_categories tool.`;
       const c = db.prepare('SELECT zip, lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?').get(g.key);
       return sendJson(res, 200, { key: g.key, country: g.country, found: !!c, lat: c ? c.lat : null, lng: c ? c.lng : null, sourceLabel: c ? c.sourceLabel : null });
     }
-    // ============ View My Customers — Local branch (2026-09-08) ============
-    // Round 22g, per direct instruction: "LOCAL: Add the information from
-    // the assessment with the radius mapping to address service radius."
-    // No account record held a persisted geocoded address before this round
-    // (grep-verified) — the free assessment's Census Geocoder calls never
-    // wrote back to the account. This is that missing persistence, plus a
-    // real haversine radius read against the account's own uploaded
-    // customer zips (market_customer_rows via the latest market_customer_
-    // uploads row) and the real lat/lng in zip_centroid_master. Honestly
-    // reports when there's no address on file yet or no customer upload to
-    // measure against, rather than guessing.
-    //
-    // POST /api/accounts/:id/address — save the geocoded center point.
-    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'address'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const body = await readBody(req);
-      const lat = Number(body.lat), lng = Number(body.lng);
-      if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180){
-        return sendJson(res, 400, { error: 'lat/lng must be valid coordinates' });
-      }
-      const label = String(body.label || '').slice(0, 300);
-      const geocodedAt = new Date().toISOString();
-      db.prepare('UPDATE accounts SET accountAddressLabel = ?, accountLat = ?, accountLng = ?, accountAddressGeocodedAt = ? WHERE accountId = ?')
-        .run(label, lat, lng, geocodedAt, accountId);
-      return sendJson(res, 200, { label, lat, lng, geocodedAt });
-    }
-    // GET /api/accounts/:id/customers-near?radiusMiles=25 — radius read
-    // against this account's own uploaded customer zips (from its most
-    // recent market_customer_uploads row), not a generic "all US zips within
-    // radius" listing — the point is showing THIS account's actual customer
-    // footprint relative to its service radius, not a directory of nearby
-    // zip codes.
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'customers-near'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountLat, accountLng, accountAddressLabel FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const radiusMiles = Math.max(1, Math.min(500, Number(url.searchParams.get('radiusMiles')) || 25));
-      if (account.accountLat == null || account.accountLng == null){
-        return sendJson(res, 200, { hasAddress: false, hasUpload: false, radiusMiles });
-      }
-      const upload = db.prepare('SELECT id, label, createdAt FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId);
-      if (!upload){
-        return sendJson(res, 200, { hasAddress: true, center: { lat: account.accountLat, lng: account.accountLng, label: account.accountAddressLabel }, hasUpload: false, radiusMiles });
-      }
-      const rows = db.prepare('SELECT r.zip AS zip, r.customerCount AS customerCount, c.lat AS lat, c.lng AS lng FROM market_customer_rows r LEFT JOIN zip_centroid_master c ON c.zip = r.zip WHERE r.marketUploadId = ?').all(upload.id);
-      const toRad = (d) => d * Math.PI / 180;
-      const haversineMiles = (lat1, lng1, lat2, lng2) => {
-        const R = 3958.8;
-        const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
-        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      };
-      let inRadiusZips = 0, inRadiusCustomers = 0, outsideRadiusZips = 0, outsideRadiusCustomers = 0, noCentroidZips = 0, noCentroidCustomers = 0;
-      const zips = rows.map(r => {
-        if (r.lat == null || r.lng == null){
-          noCentroidZips++; noCentroidCustomers += r.customerCount || 0;
-          return { zip: r.zip, customerCount: r.customerCount, distanceMiles: null, inRadius: null };
-        }
-        const distanceMiles = Math.round(haversineMiles(account.accountLat, account.accountLng, r.lat, r.lng) * 10) / 10;
-        const inRadius = distanceMiles <= radiusMiles;
-        if (inRadius){ inRadiusZips++; inRadiusCustomers += r.customerCount || 0; }
-        else { outsideRadiusZips++; outsideRadiusCustomers += r.customerCount || 0; }
-        return { zip: r.zip, customerCount: r.customerCount, distanceMiles, inRadius };
-      }).sort((a, b) => (a.distanceMiles == null ? 1 : a.distanceMiles) - (b.distanceMiles == null ? 1 : b.distanceMiles));
-      return sendJson(res, 200, {
-        hasAddress: true, center: { lat: account.accountLat, lng: account.accountLng, label: account.accountAddressLabel },
-        hasUpload: true, uploadId: upload.id, uploadLabel: upload.label, uploadedAt: upload.createdAt, radiusMiles,
-        inRadius: { zipCount: inRadiusZips, customerCount: inRadiusCustomers },
-        outsideRadius: { zipCount: outsideRadiusZips, customerCount: outsideRadiusCustomers },
-        noCentroidData: { zipCount: noCentroidZips, customerCount: noCentroidCustomers },
-        zips
-      });
-    }
+    // 2026-09-08: the single-address/single-radius "View My Customers —
+    // Local branch" endpoints that used to live here (POST .../address,
+    // GET .../customers-near) are retired, per direct instruction that the
+    // page that called them shouldn't have existed as its own destination.
+    // Everything they did — geocode an address, read uploaded customer
+    // zips against a radius — is superseded by the "Stores and trade
+    // areas" feature below (GET/POST .../stores, plus computeStoreTradeAreas
+    // used from the Match Market Builder analysis endpoint), which already
+    // did this for potentially many store locations with ring-banded
+    // distance buckets and population indexing, not just one address and
+    // one flat radius. accounts.accountLat/accountLng/accountAddressLabel/
+    // accountAddressGeocodedAt stay in the schema (harmless if unused —
+    // removing columns is a real migration risk this fix doesn't need to
+    // take on) but nothing writes or reads them anymore.
     // GET /api/accounts/:id/stores — the account's store list
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
@@ -18431,6 +18368,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
-
 
