@@ -2566,6 +2566,25 @@ ensureColumn('accounts', 'minViableSpendCalibrationEnabled', 'INTEGER DEFAULT 0'
 // above — see POST /api/accounts/:id/media-cx-index below.
 ensureColumn('accounts', 'mediaCxIndexGapDataJson', 'TEXT');
 
+// 2026-09-08 (Brand Groundwork reorg, round 22) — Brand Description
+// edit/approve/feedback loop, per direct instruction: "The brand
+// description should be the generative version and we should give users
+// option to edit, approve and provide a feedback loop assessment." The
+// description text itself already lives in the existing assessmentDescription
+// column (populated from the free assessment's generated write-up); these
+// two new columns hold the review state layered on top of it.
+// brandDescriptionApproved: 0/1, set true once the account approves the
+// current text. brandDescriptionFeedbackJson: a plain JSON array of
+// { date, note } entries — same lightweight, timestamped, append-only
+// history convention as scoreHistory in Continuous Monitoring, applied
+// here to a free-text note instead of a Behind/On par/Ahead rating since
+// nothing in the instruction calls for a new rating scale.
+// Both registered in LEGACY_CASING_COLUMNS below and in
+// schema-identifiers.json — deploy BOTH files together (see that array's
+// own comment for why this matters on Postgres).
+ensureColumn('accounts', 'brandDescriptionApproved', 'INTEGER');
+ensureColumn('accounts', 'brandDescriptionFeedbackJson', 'TEXT');
+
 // 2026-08-29 — continuous competitor monitoring, per direct instruction:
 // "I wouldn't leave the AOV competitors untouched. Competitive info
 // changes over time. We should continuously monitor defined competitors
@@ -6150,6 +6169,8 @@ const LEGACY_CASING_COLUMNS = [
   ['accounts', 'assessmentDescription'],
   ['accounts', 'bodyFontName'],
   ['accounts', 'bodyFontNotes'],
+  ['accounts', 'brandDescriptionApproved'],
+  ['accounts', 'brandDescriptionFeedbackJson'],
   ['accounts', 'brandKeywordsJson'],
   ['accounts', 'colorHierarchyNotes'],
   ['accounts', 'competitivePositioningApproved'],
@@ -11417,6 +11438,39 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE accounts SET mediaCxIndexGapDataJson = ? WHERE accountId = ?')
         .run(JSON.stringify(merged), accountId);
       return sendJson(res, 200, { saved: true, gaps: merged });
+    }
+
+    // POST /api/accounts/:id/brand-description — round 22 (Brand Groundwork
+    // reorg, 2026-09-08), per direct instruction: "The brand description
+    // should be the generative version and we should give users option to
+    // edit, approve and provide a feedback loop assessment." Body shape:
+    // { description?: string, approved?: boolean, feedback?: string }, all
+    // optional and independently settable (same partial-save convention as
+    // /media-cx-index above) — editing the text does not require also
+    // re-approving or leaving feedback in the same call, and vice versa.
+    // A non-empty `feedback` string appends one { date, note } entry to
+    // brandDescriptionFeedbackJson rather than replacing it, so the
+    // feedback loop keeps its full history.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-description'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const existing = db.prepare('SELECT assessmentDescription, brandDescriptionApproved, brandDescriptionFeedbackJson FROM accounts WHERE accountId = ?').get(accountId);
+      if (!existing) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+
+      const nextDescription = (typeof body.description === 'string') ? body.description : existing.assessmentDescription;
+      const nextApproved = (typeof body.approved === 'boolean') ? (body.approved ? 1 : 0) : (existing.brandDescriptionApproved || 0);
+
+      let feedbackHistory = [];
+      try { feedbackHistory = existing.brandDescriptionFeedbackJson ? JSON.parse(existing.brandDescriptionFeedbackJson) : []; } catch (e) { feedbackHistory = []; }
+      if (!Array.isArray(feedbackHistory)) feedbackHistory = [];
+      if (typeof body.feedback === 'string' && body.feedback.trim()){
+        feedbackHistory = [...feedbackHistory, { date: new Date().toISOString(), note: body.feedback.trim() }];
+      }
+
+      db.prepare('UPDATE accounts SET assessmentDescription = ?, brandDescriptionApproved = ?, brandDescriptionFeedbackJson = ? WHERE accountId = ?')
+        .run(nextDescription, nextApproved, JSON.stringify(feedbackHistory), accountId);
+      return sendJson(res, 200, { saved: true, description: nextDescription, approved: !!nextApproved, feedback: feedbackHistory });
     }
 
     // POST /api/accounts/:id/voice — round 18, Brand Foundations (Voice).
@@ -18223,5 +18277,3 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
-
