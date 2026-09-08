@@ -7769,11 +7769,16 @@
       </div>
     </div>
 
-    <!-- Step 2 (Round 8b): one full-width card; the Marketing Loop pie sits
-         inside the section beside the weighting table. -->
+    <!-- Step 2 (Round 2026-09-07, per direct instruction: "Manual should be
+         a fun interactive, streamlined experience with Agentic Guidance" --
+         (b) start with pre-populated Channels or Loop Stages, with
+         industry recommendations shown). Replaces the old static Stage
+         Weighting table with a starting-point choice; mpManualStartMode
+         (null until chosen) gates which is shown. The Marketing Loop pie
+         stays as a live running picture of state.mediaPlan as it fills in. -->
     <div class="sk-card" id="mpStageWeightRow" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Step 2 of 4</div><h3>Stage Weighting</h3></div>
+        <div class="htext"><div class="kicker">Step 2 of 4</div><h3>Choose your starting point</h3></div>
         <div class="hicon">⚖</div>
       </div>
       <div class="sk-card-body">
@@ -7786,11 +7791,17 @@
 
     <div class="sk-card" id="mpChannelStep" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Step 3 of 4</div><h3>Channel mix — review &amp; adjust</h3></div>
+        <div class="htext"><div class="kicker">Step 3 of 4</div><h3>Adjust &amp; confirm</h3></div>
         <div class="hicon">▤</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Each stage's budget is split across its channels using our channel-by-stage weights — industry-specific where we have them, adjusted for your audience's generation and wealth profile — limited to your Active channels. Every Annual $ is editable, and you can add a channel to any stage below.</p>
+        <!-- (c) "Client adjusts spends for each and then open next channel
+             or loop stage" -- one item at a time, guided by the industry
+             recommendation, instead of the full grid all at once. Hidden
+             once mpManualStartMode's queue is exhausted; the full grid
+             below then serves as the review/edit-anything-again view. -->
+        <div id="mpManualWalkthrough"></div>
+        <p class="hint" style="margin-top:0;" id="mpChannelStepIntro">Each stage's budget is split across its channels using our channel-by-stage weights — industry-specific where we have them, adjusted for your audience's generation and wealth profile — limited to your Active channels. Every Annual $ is editable, and you can add a channel to any stage below.</p>
         <div id="mpKaizenPanel" style="display:none;"></div>
         <div id="mpPeriodViewCard" style="display:none;">
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 6px;">
@@ -7837,7 +7848,7 @@
         <div class="hicon">📅</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">How each channel's annual $ spreads across the 12 months — the same curve applies to every channel. Flat splits evenly; Revenue curve follows your seasonality; Custom lets you set each month's share.</p>
+        <p class="hint" style="margin-top:0;">How each channel's annual $ spreads across the 12 months — even split, or specific months. Flat splits evenly across all 12; Revenue curve or Custom let you set specific months' share instead (Revenue curve starts from your account's seasonality, still editable per month).</p>
         <div class="field">
           <div class="stage-row" id="mpMonthlyModeRow"></div>
         </div>
@@ -21737,12 +21748,212 @@ function mpRenderPlanSteps(){
   const exists = (typeof mbuBudgetExists === 'function') ? mbuBudgetExists() : false;
   const budget = Number((document.getElementById('mpTotalBudget') || {}).value) || 0;
   const hasAlloc = !!(state.mediaPlan && (state.mediaPlan.allocations || []).length);
+  // Round 2026-09-07: Step 3 (Adjust & confirm) now unlocks the moment a
+  // starting point is chosen in Step 2 (mpManualStartMode), not only once
+  // allocations already exist — the whole point of the guided walkthrough
+  // is to CREATE those allocations one at a time, so gating Step 3 behind
+  // "allocations already exist" would make it unreachable on a first pass.
+  const manualStarted = typeof mpManualStartMode !== 'undefined' && !!mpManualStartMode;
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('mpStageWeightRow', exists || budget > 0);
-  show('mpChannelStep', exists || hasAlloc);
-  show('mpChannelTail', exists || hasAlloc);
+  show('mpChannelStep', exists || hasAlloc || manualStarted);
+  show('mpChannelTail', exists || hasAlloc || (manualStarted && typeof mpManualQueueIndex !== 'undefined' && mpManualQueueIndex >= (mpManualQueue || []).length));
   const next = document.getElementById('mpStep1Next');
-  if (next) next.textContent = (!exists && !(budget > 0)) ? 'Next: enter the budget above to unlock the stage weighting (Step 2).' : '';
+  if (next) next.textContent = (!exists && !(budget > 0)) ? 'Next: enter the budget above to unlock Step 2 — choose your starting point.' : '';
+  if (typeof mpRenderManualStartChoice === 'function') mpRenderManualStartChoice();
+  if (typeof mpRenderManualWalkthrough === 'function') mpRenderManualWalkthrough();
+}
+
+// ============ Round 2026-09-07 — guided manual budget flow ============
+// Per direct instruction: "Manual should be a fun interactive, streamlined
+// experience with Agentic Guidance." Applies only to the true from-scratch
+// manual path (no upload at all -- Review 20 already made sure the wizard
+// is unreachable once a budget's been uploaded, so mbuBudgetExists()
+// short-circuits every function below defensively too).
+//   a) Step 1: year + total budget, or Revenue x target % (existing Step 1
+//      -- Budget card above already does this, untouched).
+//   b) Step 2: choose a starting point -- Channels or Loop Stages -- with
+//      industry-recommended amounts shown (computeRecommendedMix, the same
+//      engine "Apply recommended mix" already used elsewhere).
+//   c) Step 3: one item at a time -- adjust its $, confirm, move to the
+//      next -- rather than the whole grid at once.
+//   d) Step 4: monthly, even split or specific months (existing Step 4,
+//      copy updated above).
+// "Agentic Guidance" here means the same disclosed, rule-based industry
+// recommendation this app already uses everywhere (stage weights, channel
+// weights, historical blend) -- surfaced as a one-line "why" next to each
+// item, not a live AI call this prototype has no other integration for.
+let mpManualStartMode = null; // 'channels' | 'stages'
+let mpManualQueue = [];
+let mpManualQueueIndex = 0;
+let mpManualMixSnapshot = null;
+
+function mpManualTotalBudget(){
+  const input = document.getElementById('mpTotalBudget');
+  const typed = input ? Number(input.value) || 0 : 0;
+  return typed || (state.mediaPlan ? Number(state.mediaPlan.totalBudget) || 0 : 0);
+}
+
+function mpManualBuildQueue(mode){
+  const total = mpManualTotalBudget();
+  const mix = (typeof computeRecommendedMix === 'function') ? computeRecommendedMix(total) : { rows: [] };
+  mpManualMixSnapshot = mix;
+  const industryLabel = escapeHtml(state.industry || 'your industry');
+  if (mode === 'stages'){
+    return MEDIA_LOOP_STAGES.map(st => {
+      const subRows = mix.rows.filter(r => r.stage === st);
+      const amt = subRows.reduce((s, r) => s + r.recommendedAmount, 0);
+      const pct = total > 0 ? Math.round((amt / total) * 100) : 0;
+      return {
+        key: st, mode: 'stages', label: st, recommendedAmount: amt, value: amt, subRows,
+        guidance: amt > 0
+          ? `Industry-recommended for ${industryLabel}: ${fmtMoney(Math.round(amt))} (${pct}% of working media) to ${st}, split across ${subRows.length} channel${subRows.length === 1 ? '' : 's'}.`
+          : `No industry recommendation for ${st} with your current Active channels — add channels below if this stage should have spend.`
+      };
+    });
+  }
+  const byChannel = {};
+  mix.rows.forEach(r => { (byChannel[r.channel] = byChannel[r.channel] || []).push(r); });
+  return Object.keys(byChannel).sort((a, b) => {
+    const sa = byChannel[a].reduce((s, r) => s + r.recommendedAmount, 0);
+    const sb = byChannel[b].reduce((s, r) => s + r.recommendedAmount, 0);
+    return sb - sa;
+  }).map(ch => {
+    const subRows = byChannel[ch];
+    const amt = subRows.reduce((s, r) => s + r.recommendedAmount, 0);
+    const pct = total > 0 ? Math.round((amt / total) * 100) : 0;
+    return {
+      key: ch, mode: 'channels', label: ch, recommendedAmount: amt, value: amt, subRows,
+      guidance: `Industry-recommended for ${industryLabel}: ${fmtMoney(Math.round(amt))} (${pct}% of working media) for ${ch}.`
+    };
+  });
+}
+
+function mpManualChooseStart(mode){
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear || new Date().getFullYear(), totalBudget: mpManualTotalBudget(), allocations: [] };
+  state.mediaPlan.totalBudget = mpManualTotalBudget();
+  mpManualStartMode = mode;
+  mpManualQueue = mpManualBuildQueue(mode);
+  mpManualQueueIndex = 0;
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  requestAnimationFrame(() => { const t = document.getElementById('mpChannelStep'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+}
+function mpManualChangeStart(){
+  mpManualStartMode = null;
+  mpManualQueue = [];
+  mpManualQueueIndex = 0;
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+}
+function mpManualCommittedSoFar(){
+  return mpManualQueue.slice(0, mpManualQueueIndex).reduce((s, it) => s + (Number(it.value) || 0), 0);
+}
+function mpManualUpdateCurrentValue(value){
+  const item = mpManualQueue[mpManualQueueIndex];
+  if (!item) return;
+  item.value = Math.max(0, Number(value) || 0);
+  const runningEl = document.getElementById('mpManualRunningTotal');
+  if (runningEl) runningEl.textContent = fmtMoney(mpManualCommittedSoFar() + item.value);
+}
+// Commits one queue item's dollar total into state.mediaPlan.allocations,
+// distributing it across its (stage, channel) sub-rows in the same
+// proportion the industry recommendation used, so adjusting a stage's or
+// channel's overall number doesn't also require hand-splitting it further.
+function mpManualCommitItem(item){
+  const plan = state.mediaPlan;
+  if (!plan) return;
+  const subRows = (item.subRows && item.subRows.length) ? item.subRows : [];
+  const originalTotal = subRows.reduce((s, r) => s + r.recommendedAmount, 0) || 1;
+  subRows.forEach(r => {
+    const share = r.recommendedAmount / originalTotal;
+    const amount = Math.round((item.value || 0) * share);
+    const existing = plan.allocations.find(a => a.stage === r.stage && a.channel === r.channel);
+    if (existing){
+      existing.approvedAmount = amount;
+      existing.recommendedAmount = r.recommendedAmount;
+      existing.periods = computePlanMonthlyPeriods(amount);
+    } else {
+      plan.allocations.push({
+        id: `alloc-${mpSelectedYear}-${Date.now()}-${plan.allocations.length}-${Math.random().toString(36).slice(2, 7)}`,
+        stage: r.stage, channel: r.channel, recommendedAmount: r.recommendedAmount, approvedAmount: amount,
+        cpm: ILLUSTRATIVE_CHANNEL_CPM[r.channel] || DEFAULT_BLENDED_CPM,
+        audienceType: defaultAudienceTypeForChannel(r.channel), periods: computePlanMonthlyPeriods(amount)
+      });
+    }
+  });
+}
+function mpManualConfirmCurrentAndNext(){
+  const item = mpManualQueue[mpManualQueueIndex];
+  if (item) mpManualCommitItem(item);
+  mpManualQueueIndex++;
+  if (typeof renderMediaPlanFieldsAndCharts === 'function') renderMediaPlanFieldsAndCharts(false);
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+  if (mpManualQueueIndex >= mpManualQueue.length){
+    requestAnimationFrame(() => { const t = document.getElementById('mpMonthlyCard'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  }
+}
+function mpManualSkipCurrent(){
+  mpManualQueueIndex++;
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+}
+function mpManualGoBack(){
+  if (mpManualQueueIndex > 0) mpManualQueueIndex--; else { mpManualChangeStart(); return; }
+  if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
+}
+function mpRenderManualStartChoice(){
+  const mount = document.getElementById('mpStageWeightBody');
+  if (!mount) return;
+  const exists = (typeof mbuBudgetExists === 'function') ? mbuBudgetExists() : false;
+  if (exists) return; // Review 20: this guided flow is the from-scratch manual path only
+  if (mpManualStartMode){
+    mount.innerHTML = `
+      <p class="hint" style="margin:0 0 8px;">Starting point: <b style="color:var(--ink);">${mpManualStartMode === 'stages' ? 'Loop stages' : 'Channels'}</b>, ${mpManualQueue.length} to review. <a onclick="mpManualChangeStart()" style="cursor:pointer;">Change starting point →</a></p>
+      <p class="hint">Continue in Step 3 below — adjust each one, then move to the next.</p>`;
+    return;
+  }
+  mount.innerHTML = `
+    <p class="hint" style="margin:0 0 10px;">Build this budget one item at a time, guided by industry recommendations for ${escapeHtml(state.industry || 'your industry')}. Start with whichever view fits how you think about the plan.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <button type="button" class="stage-tile" style="text-align:left;padding:14px;height:auto;white-space:normal;" onclick="mpManualChooseStart('channels')">
+        <div style="font-weight:700;margin-bottom:4px;">Start with Channels</div>
+        <div style="font-size:0.75rem;font-weight:400;color:var(--muted);">Review recommended spend channel by channel (Search, Paid Social, Direct Mail…).</div>
+      </button>
+      <button type="button" class="stage-tile" style="text-align:left;padding:14px;height:auto;white-space:normal;" onclick="mpManualChooseStart('stages')">
+        <div style="font-weight:700;margin-bottom:4px;">Start with Loop Stages</div>
+        <div style="font-size:0.75rem;font-weight:400;color:var(--muted);">Review recommended spend stage by stage (Awareness, Consideration, Purchase…).</div>
+      </button>
+    </div>`;
+}
+function mpRenderManualWalkthrough(){
+  const mount = document.getElementById('mpManualWalkthrough');
+  const intro = document.getElementById('mpChannelStepIntro');
+  if (!mount) return;
+  const exists = (typeof mbuBudgetExists === 'function') ? mbuBudgetExists() : false;
+  if (exists || !mpManualStartMode || mpManualQueueIndex >= mpManualQueue.length){
+    mount.innerHTML = '';
+    if (intro) intro.style.display = (mpManualStartMode && !exists) ? 'none' : '';
+    return;
+  }
+  if (intro) intro.style.display = 'none';
+  const item = mpManualQueue[mpManualQueueIndex];
+  const total = mpManualTotalBudget();
+  const pct = total > 0 ? Math.round((item.recommendedAmount / total) * 100) : 0;
+  const committedSoFar = mpManualCommittedSoFar();
+  mount.innerHTML = `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;background:var(--paper-dim);">
+      <p class="hint" style="margin:0 0 8px;">${item.mode === 'stages' ? 'Loop stage' : 'Channel'} ${mpManualQueueIndex + 1} of ${mpManualQueue.length}</p>
+      <h4 style="margin:0 0 6px;font-size:1.0625rem;">${escapeHtml(item.label)}</h4>
+      <p class="hint" style="margin:0 0 12px;">${escapeHtml(item.guidance)}</p>
+      <div class="field" style="max-width:260px;margin-bottom:12px;">
+        <label>Annual $${pct ? ` <span style="font-weight:400;text-transform:none;color:var(--muted);">— recommended ${pct}% of budget</span>` : ''}</label>
+        <input type="number" min="0" step="1000" value="${Math.round(item.value)}" oninput="mpManualUpdateCurrentValue(this.value)">
+      </div>
+      <div class="btn-row" style="align-items:center;">
+        <button type="button" class="btn-primary" onclick="mpManualConfirmCurrentAndNext()">Confirm &amp; next →</button>
+        <button type="button" class="btn-ghost" onclick="mpManualSkipCurrent()">Skip →</button>
+        <button type="button" class="btn-ghost" onclick="mpManualGoBack()">← Back</button>
+        <span class="hint" style="margin-left:auto;"><span id="mpManualRunningTotal">${fmtMoney(committedSoFar + item.value)}</span> committed so far</span>
+      </div>
+    </div>`;
 }
 
 // Round 8b (2026-09-05), per direct instruction: "Validate that we don't
