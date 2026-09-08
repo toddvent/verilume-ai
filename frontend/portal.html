@@ -392,6 +392,11 @@
   .crumb{display:none;}
   .crumb a{color:var(--cx);text-decoration:none;cursor:pointer;}
   .crumb a:hover{text-decoration:underline;}
+  /* 2026-09-08 (Brand Groundwork reorg, round 22), per direct instruction:
+     "Breadcrumbs should be at the top of page left." Scoped to Company
+     Overview only (#cpCrumb) — see that page's own markup comment for why
+     this doesn't reverse the 2026-08-26 portal-wide hide. */
+  #cpCrumb{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;letter-spacing:0.04em;text-align:left;margin-bottom:10px;}
 
   /* Dashboard */
   .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:32px;}
@@ -3938,7 +3943,7 @@
     <div id="styleAssetsSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Account Setup</a>
+      <a class="btn-ghost" onclick="goToStep('companyProfile')">← Back: Company Overview</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('brandWritingSamples')">Next: Sample Writings &amp; Presentations →</a>
     </div>
@@ -4112,25 +4117,35 @@
   </div>
 
   <!-- ================= COMPANY PROFILE (Brand Foundations) ================= -->
+  <!-- 2026-09-08 (Brand Groundwork reorg, round 22), per direct instruction:
+       "Account Setup should be Company Overview." Renamed throughout the
+       user-facing copy on this page (step id, function names, and the
+       backend endpoint keep their original names — nothing else in the app
+       references this page by its display text). -->
   <div class="step" id="step-companyProfile">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Account Setup</div>
-    <div class="eyebrow">Brand Groundwork · Account Setup</div>
-    <h1>Account Setup</h1>
+    <!-- Breadcrumbs are hidden portal-wide (see .crumb{display:none} and its
+         own comment, 2026-08-26: "We really don't need breadcrumbs in the
+         Portal... Linking from the navigation works fine"). Round 22 direct
+         instruction reverses that specifically for this page only
+         ("Breadcrumbs should be at the top of page left") — #cpCrumb below
+         is shown via a page-scoped CSS override rather than un-hiding
+         .crumb everywhere, so every other page keeps the 2026-08-26
+         behavior unchanged. -->
+    <div class="crumb" id="cpCrumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Company Overview</div>
+    <div class="eyebrow">Brand Groundwork · Company Overview</div>
+    <h1>Company Overview</h1>
     <!-- 2026-08-19 (login redesign, round 2), per direct instruction: "I
          believe that we did remove the company profile and product theme
          page actually. It duplicated the final assessment functions so it
          wasn't needed. We should just eliminate that page and focus on the
          assessment after registration." Industry, footprint, target
-         audience, wealth tier, products/services, and brand description are
-         now ONLY captured in the free assessment (assessment.html's Step 4
-         "Company profile — confirm the details") — editing them here would
-         just be a second, easy-to-drift-out-of-sync copy of that same data.
-         This step now only holds the three fields that have no home
-         anywhere else in the app: Partner Code (Campaign ID generation has
-         no other source for it), Active Channels, and the Partners list
-         (Creative Asset Selection's dropdown) — none of these are assessment
-         questions, so they still need a place to be set. -->
-    <p class="lede">Industry, footprint, audience, wealth tier, products &amp; services, and brand description now live only in the free assessment — edit those there, not here, so there's one source of truth. This page is just for account-level settings the assessment doesn't ask about.</p>
+         audience, wealth tier, and products/services are still ONLY
+         captured in the free assessment (assessment.html's Step 4 "Company
+         profile — confirm the details") — editing them here would just be a
+         second, easy-to-drift-out-of-sync copy of that same data. Brand
+         description is the one exception as of round 22 — see the Brand
+         Description card below. -->
+    <p class="lede">Industry, footprint, audience, wealth tier, and products &amp; services live only in the free assessment — edit those there, not here, so there's one source of truth. This page is your brand description and the account-level settings the assessment doesn't ask about.</p>
 
     <!-- 2026-08-20 fix, per direct QA feedback: "Your Company Profile and
          Product themes are not part of the final assessment." The round
@@ -4139,18 +4154,52 @@
          also removed the only place that *displayed* them, and nothing
          replaced it: companyProfileSummary() (the one-line summary used in
          the Brand Groundwork checklist) only ever showed
-         industry/footprint/audience/wealth, never brand description or
-         product themes. Net effect: a visitor could fill those two fields
-         out in the assessment and then never see them again anywhere in
-         the real account. Read-only by design (per the lede above — edit
-         in the assessment, not here), sourced from the same state fields
-         the backend already returns (state.industry/footprint/audience/
-         wealth/assessmentDescription/productsServices — see the account
-         load a few hundred lines up), populated by
-         renderCompanyProfileStep() below. -->
+         industry/footprint/audience/wealth, never product themes. Net
+         effect: a visitor could fill that field out in the assessment and
+         then never see them again anywhere in the real account. Read-only
+         by design (per the lede above — edit in the assessment, not here),
+         sourced from the same state fields the backend already returns
+         (state.industry/footprint/audience/wealth/productsServices — see
+         the account load a few hundred lines up), populated by
+         renderCompanyProfileStep() below. Brand description moved out of
+         this card in round 22 (see cpBrandDescriptionCard) since it now has
+         its own edit/approve/feedback workflow, not just a read-only line. -->
     <div class="field" id="cpAssessmentSummaryCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:22px;">
       <label style="margin-bottom:8px;">From your free assessment <span style="font-weight:400;text-transform:none;color:var(--muted);">— read-only here, edit in a new assessment pass</span></label>
       <div id="cpAssessmentSummaryBody" style="font-size:0.875rem;color:var(--ink);line-height:1.6;"></div>
+    </div>
+
+    <!-- Brand Description — round 22 (2026-09-08), per direct instruction:
+         "The brand description should be the generative version and we
+         should give users option to edit, approve and provide a feedback
+         loop assessment." The text itself is still state.assessmentDescription
+         (the free assessment's generated write-up, from HANDOFF.description)
+         — this card is what turns it from a read-only line into something
+         the account can edit, approve, and leave dated feedback notes
+         against, same "approved" + timestamped-history conventions Brand
+         Voice and Continuous Monitoring already use elsewhere, applied here
+         via saveBrandDescriptionEdit()/approveBrandDescription()/
+         addBrandDescriptionFeedback() and the account's own
+         brandDescriptionApproved/brandDescriptionFeedbackJson columns. -->
+    <div class="field" id="cpBrandDescriptionCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:22px;">
+      <label style="margin-bottom:4px;">Brand description <span style="font-weight:400;text-transform:none;color:var(--muted);">— generated from your free assessment</span> <span id="cpBrandDescApprovedBadge"></span></label>
+      <div class="hint" style="margin-bottom:10px;">Edit this until it reads the way you'd say it yourself, then approve it — every place in the app that references your brand description uses this version.</div>
+      <textarea id="cpBrandDescriptionText" rows="4" style="width:100%;" placeholder="Nothing on file yet — this fills in once the free assessment generates it."></textarea>
+      <div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="btn-ghost" onclick="saveBrandDescriptionEdit()">Save edit</button>
+        <button type="button" class="btn-primary" onclick="approveBrandDescription()">Approve this description →</button>
+      </div>
+      <div id="cpBrandDescSaveFlag" class="hint" style="margin-top:8px;"></div>
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <label style="margin-bottom:6px;">Feedback loop</label>
+        <div class="hint" style="margin-bottom:8px;">Leave a dated note on this description — what's off, what to try next time it's regenerated — without having to rewrite the text yourself.</div>
+        <div id="cpBrandDescFeedbackList" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;">
+          <input type="text" id="cpBrandDescFeedbackInput" placeholder="e.g. Too formal — we're a lot more casual than this reads" style="flex:1;">
+          <button type="button" class="btn-ghost" onclick="addBrandDescriptionFeedback()">+ Add feedback</button>
+        </div>
+      </div>
     </div>
 
     <!-- 2026-08-26 account-management reorg, per direct instruction: "The
@@ -4169,53 +4218,44 @@
          to Marketing Budget Upload (step-marketingBudgetUpload) — see
          mbuActiveChannelsRow there. -->
 
-    <!-- Round 132zz (2026-08-11), per direct instruction: "Partners will be
-         a drop-down based on account setup values." No account-level
-         partner list existed before this — same simple add/remove list
-         convention as Competitive Positioning's competitor rows, kept
-         intentionally lightweight (a name is all the Creative Asset
-         Selection dropdown needs). -->
-    <div class="field">
-      <label>Partners <span style="font-weight:400;text-transform:none;color:var(--muted);">— offered as the Partner dropdown on Performance Marketing's Creative Asset Selection</span></label>
-      <div id="cpPartnersList" style="margin-bottom:8px;"></div>
-      <div style="display:flex;gap:10px;">
-        <input type="text" id="cpNewPartnerName" placeholder="e.g. Meta, Google Ads, AAA Travel" style="flex:1;">
-        <button type="button" class="btn-ghost" onclick="addPartner()">+ Add partner</button>
-      </div>
-    </div>
+    <!-- Partners list (Round 132zz, 2026-08-11) removed here in round 22
+         (2026-09-08), per direct instruction: "Partners should be removed.
+         We have an integration workstream." Specialty Partners
+         (renderSpecialtyPartners() — Advertising & Media Partners,
+         Analytics & Optimization Partners, Reputation & Listening Partners)
+         is that integration workstream and is where partner relationships
+         are managed going forward; this page no longer duplicates it with
+         its own lightweight name-only list. state.partners,
+         addPartner()/removePartner() and the Partner dropdown on
+         Performance Marketing's Creative Asset Selection are left in place
+         (still functional, just no longer editable from this page) rather
+         than torn out — reversible-swap posture, same as the rest of this
+         codebase; worth a follow-up decision on where Creative Asset
+         Selection's partner list should be populated from now, since this
+         was its only editor. -->
 
     <div class="btn-row">
       <button class="btn-primary" onclick="saveCompanyProfile()">Save →</button>
     </div>
     <div id="companyProfileSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
 
-    <!-- Verilume Media CX Index — per-stage "gap-closing" fields. The free
-         assessment's Index is an ESTIMATE from self-ratings; filling any
-         field for a stage here flips that stage to MEASURED. Each stage
-         offers a quantitative field and a qualitative field — either one is
-         enough, per direct instruction that these are quantitative OR
-         qualitative, never both required. Saved independently of the rest
-         of Company Profile via saveMediaCxIndexGaps(), its own endpoint. -->
-    <div class="field" id="mcxIndexCard" style="background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-top:22px;margin-bottom:22px;">
-      <label style="margin-bottom:4px;">Refine your Verilume Media CX Index</label>
-      <div class="hint" style="margin-bottom:12px;">The free assessment estimates each stage from self-ratings. Add real numbers or a confident self-rating below — quantitative or qualitative, not both required — and that stage's contribution to the Index becomes measured instead of estimated.</div>
-      <div style="text-align:center;margin-bottom:14px;">
-        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Verilume Media CX Index</div>
-        <div id="mcxIndexVal" style="font-size:2.375rem;font-weight:700;color:var(--ink);">—</div>
-        <div id="mcxIndexNote" class="hint" style="margin-top:2px;"></div>
-      </div>
-      <div id="mcxStageRows"></div>
-      <div class="btn-row" style="margin-top:10px;">
-        <button class="btn-primary" onclick="saveMediaCxIndexGaps()">Save refinements →</button>
-      </div>
-      <div id="mcxSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-    </div>
+    <!-- Verilume Media CX Index refinement panel (mcxIndexCard) moved to
+         Continuous Monitoring / Assessment Rankings (step-monitor) in round
+         22 (2026-09-08), per direct instruction: "Refine your Media CX
+         should be moved to the Assessment Rankings workstream including the
+         magic quadrant view to the right of survey and link to review all
+         marketing functions." See that step's markup for the relocated
+         card — same ids (mcxIndexCard/mcxIndexVal/mcxStageRows/mcxSaveFlag),
+         same renderMediaCxIndexPanel()/saveMediaCxIndexGaps(), nothing
+         about the underlying data or endpoint changed, only where it's
+         shown. -->
 
-    <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('dashboard')">← Back to Dashboard</a>
-      <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('voice')">Next: Brand Voice →</a>
-    </div>
+    <!-- "Next: Brand Voice →" removed here in round 22 (2026-09-08), per
+         direct instruction: "We can remove Next : Brand Voice." The
+         breadcrumb above already links back to Configuration/Dashboard;
+         Brand Groundwork's own checklist (Brand Foundations module) is the
+         wayfinding into Brand Voice and the other sub-pages now, so this
+         page no longer prescribes a single "next" step. -->
   </div>
 
   <!-- Round 132c[6] (2026-08-16) — Business & Revenue Profile, buildout
@@ -5778,6 +5818,59 @@
     <h1>Re-check the truth — re-rate the areas the intake assessment flagged weak.</h1>
     <p class="lede">See <code>cxmedia-client-portal-structure.md</code> Section 6 — this is the mechanism that closes the loop: the same Behind / On par / Ahead scale from the free assessment's Step 4, run again here, timestamped, and compared back against the original intake score. This demonstrates the <strong>self-reported</strong> re-rating path only — whether re-rating should instead be grounded in connected data once available, and what cadence this should run on, are still open questions per Section 6, not resolved by this build.</p>
     <div id="monitorCards"></div>
+
+    <!-- Verilume Media CX Index refinement panel — moved here from Company
+         Overview (step-companyProfile) in round 22 (2026-09-08), per direct
+         instruction: "Refine your Media CX should be moved to the
+         Assessment Rankings workstream including the magic quadrant view to
+         the right of survey and link to review all marketing functions."
+         Same ids/functions as before the move (mcxIndexCard/mcxIndexVal/
+         mcxStageRows/mcxSaveFlag, renderMediaCxIndexPanel()/
+         saveMediaCxIndexGaps()) — only the location changed. The quadrant
+         snapshot to its right is new: a compact, read-only view of this
+         account's Media/CX Strength placement, reusing the same
+         computeQuadrantScores()/quadrantFor() the Advanced Analytics page's
+         full quadrant already uses (see renderQuadrant() there) rather than
+         a second invented scoring pass — just rendered into its own ids
+         (monQuad*) so it doesn't collide with that page's copy, since both
+         are in the DOM at once. renderMonitorQuadrantSnapshot() below
+         populates it; called from renderMonitorCards(). -->
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:22px;">
+      <div class="field" id="mcxIndexCard" style="flex:1 1 360px;background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;">
+        <label style="margin-bottom:4px;">Refine your Verilume Media CX Index</label>
+        <div class="hint" style="margin-bottom:12px;">The free assessment estimates each stage from self-ratings. Add real numbers or a confident self-rating below — quantitative or qualitative, not both required — and that stage's contribution to the Index becomes measured instead of estimated.</div>
+        <div style="text-align:center;margin-bottom:14px;">
+          <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Verilume Media CX Index</div>
+          <div id="mcxIndexVal" style="font-size:2.375rem;font-weight:700;color:var(--ink);">—</div>
+          <div id="mcxIndexNote" class="hint" style="margin-top:2px;"></div>
+        </div>
+        <div id="mcxStageRows"></div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn-primary" onclick="saveMediaCxIndexGaps()">Save refinements →</button>
+        </div>
+        <div id="mcxSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
+      </div>
+
+      <div class="field" id="monQuadCard" style="flex:1 1 300px;background:var(--panel, #f7f7f8);border:1px solid var(--line);border-radius:8px;padding:14px 16px;">
+        <label style="margin-bottom:4px;">Where this sits on the Media/CX Quadrant</label>
+        <div class="hint" style="margin-bottom:12px;">A snapshot of the same placement the Dashboard tracks, using this account's currently assessed data.</div>
+        <div class="quad-visual" id="monQuadVisual" style="max-width:260px;margin:0 auto;">
+          <div class="qcell q2">Hidden Gem</div>
+          <div class="qcell q1">The Complete Brand</div>
+          <div class="qcell q3">Invisible &amp; Inconsistent</div>
+          <div class="qcell q4">All Promise, No Delivery</div>
+          <div class="quad-marker" id="monQuadMarker" title="Overall"></div>
+        </div>
+        <div class="quad-name" id="monQuadName" style="margin-top:10px;text-align:center;"></div>
+        <div class="score-pair stacked" style="margin-top:8px;">
+          <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="monMediaScoreVal"></div></div>
+          <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="monCxScoreVal"></div></div>
+        </div>
+        <div class="btn-row" style="margin-top:14px;">
+          <a class="btn-ghost" onclick="goToStep('analyticsSetup')">Review all marketing functions →</a>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ================= CAMPAIGNS (list) ================= -->
@@ -8645,7 +8738,16 @@ const state = {
   // { Awareness: {...}, Consideration: {...}, Purchase: {...}, Loyalty: {...}, Advocacy: {...} }
   // Persisted via POST /api/accounts/:id/media-cx-index, read back in
   // loadAccountData() from mediaCxIndexGapDataJson.
-  mediaCxIndexGapData: {}
+  mediaCxIndexGapData: {},
+  // Brand Description edit/approve/feedback loop — round 22 (2026-09-08).
+  // Text itself stays in state.assessmentDescription (unchanged); these two
+  // track the review state layered on top of it. brandDescriptionFeedback
+  // is an array of { date, note }, oldest first, same shape the backend
+  // stores it in. Persisted via POST /api/accounts/:id/brand-description,
+  // read back in loadAccountData() from brandDescriptionApproved /
+  // brandDescriptionFeedbackJson.
+  brandDescriptionApproved: false,
+  brandDescriptionFeedback: []
 };
 let currentCampaignId = null;
 let currentProjectId = null;
@@ -13809,6 +13911,18 @@ async function loadAccountData(){
       } else {
         state.mediaCxIndexGapData = state.mediaCxIndexGapData || {};
       }
+      // Brand Description edit/approve/feedback loop — round 22
+      // (2026-09-08). Read back the same way as above; missing/unparsable
+      // leaves the feedback log as [], i.e. "no feedback left yet."
+      state.brandDescriptionApproved = !!record.account.brandDescriptionApproved;
+      if (record.account.brandDescriptionFeedbackJson){
+        try {
+          const parsedFeedback = JSON.parse(record.account.brandDescriptionFeedbackJson);
+          state.brandDescriptionFeedback = Array.isArray(parsedFeedback) ? parsedFeedback : [];
+        } catch (e){ console.warn('loadAccountData: could not parse brandDescriptionFeedbackJson', e); state.brandDescriptionFeedback = []; }
+      } else {
+        state.brandDescriptionFeedback = state.brandDescriptionFeedback || [];
+      }
       RUBRIC_CELLS.forEach(c => {
         const key = cellKey(c.stage, c.layer);
         const match = record.cells.find(x => x.stage === c.stage && x.layer === c.layer);
@@ -14018,6 +14132,30 @@ function renderQuadrant(){
     </div>`;
   });
   legendEl.innerHTML = legendHtml;
+}
+
+// Compact, read-only quadrant snapshot for Continuous Monitoring /
+// Assessment Rankings (round 22, 2026-09-08) — see step-monitor's own
+// markup comment. Deliberately reuses computeQuadrantScores()/quadrantFor(),
+// the same functions renderQuadrant() above uses for the full Advanced
+// Analytics view, rather than a second scoring pass; only the overall
+// marker/name/score-pair render here (no per-stage dots/legend — the full
+// breakdown is what "Review all marketing functions" links out to). No-ops
+// if the monQuad* markup isn't on the current page.
+function renderMonitorQuadrantSnapshot(){
+  const marker = document.getElementById('monQuadMarker');
+  if (!marker) return;
+  const { mediaPct, cxPct } = computeQuadrantScores();
+  const q = quadrantFor(mediaPct, cxPct);
+  marker.style.left = mediaPct + '%';
+  marker.style.bottom = cxPct + '%';
+  marker.title = `Overall — ${mediaPct}% Media Strength / ${cxPct}% CX Strength — ${q.name}`;
+  const mediaEl = document.getElementById('monMediaScoreVal');
+  const cxEl = document.getElementById('monCxScoreVal');
+  if (mediaEl){ mediaEl.textContent = mediaPct + '%'; mediaEl.className = 'val ' + pctBand(mediaPct); }
+  if (cxEl){ cxEl.textContent = cxPct + '%'; cxEl.className = 'val ' + pctBand(cxPct); }
+  const nameEl = document.getElementById('monQuadName');
+  if (nameEl) nameEl.textContent = q.name;
 }
 
 // Dashboard modules (points 3/4) — click a module header to expand/collapse
@@ -14409,7 +14547,7 @@ function renderBrandFoundationsModule(){
       <div class="bf-row done">
         <div class="bf-dot">✓</div>
         <div class="bf-name">Company Profile<div style="font-weight:400;color:var(--muted);font-size:0.8125rem;margin-top:2px;">${companyProfileSummary() || 'Industry, footprint, target audience, and wealth tier from the assessment.'} <span style="font-style:italic;">— set in the free assessment, not editable here.</span></div></div>
-        <a class="flink" onclick="goToStep('companyProfile')">Account Setup →</a>
+        <a class="flink" onclick="goToStep('companyProfile')">Company Overview →</a>
       </div>
       ${rows.map(r => `
         <div class="bf-row${r.done ? ' done' : ''}">
@@ -19725,6 +19863,14 @@ function renderGroup(groupKey){
    cell's scoreHistory array and immediately re-renders the task list and
    trend view so the dashboard reflects it without needing a refresh. */
 function renderMonitorCards(){
+  // Round 22 (2026-09-08) — Media CX Index refinement panel and quadrant
+  // snapshot moved onto this page (see step-monitor's own markup comment).
+  // Called unconditionally, before the "nothing to re-rate" early return
+  // below, since both render regardless of whether any cell was flagged
+  // weak at intake.
+  renderMediaCxIndexPanel();
+  renderMonitorQuadrantSnapshot();
+
   const el = document.getElementById('monitorCards');
   if (!trackedCellKeys.length){
     el.innerHTML = `<p class="lede">No cells read weak at intake for this account — there's nothing to re-rate yet.</p>`;
@@ -47129,16 +47275,23 @@ async function saveVisionLongformEdits(){
 // Audience, Wealth Tier, Products & Services, the "from your assessment"
 // context tile) — those fields still live in state (read elsewhere, e.g.
 // companyProfileSummary()) but are no longer editable here, only in
-// assessment.html. This function now only renders the three fields that
-// have no other home in the app: Partner Code, Active Channels, Partners.
+// assessment.html. Round 22 (2026-09-08): Partners list removed (see the
+// HTML's own comment — "integration workstream" now covers this) and Brand
+// Description split out into its own edit/approve/feedback card
+// (renderBrandDescriptionCard() below), so this function now renders only
+// the read-only assessment summary (industry/footprint/audience/wealth/
+// product themes — brand description no longer among them, it has its own
+// card) plus the Media CX Index panel used to live below it — that moved to
+// Continuous Monitoring, see step-monitor's markup, so it's no longer
+// rendered from here either.
 function renderCompanyProfileStep(){
   // 2026-08-20 fix — see cpAssessmentSummaryCard's own comment in the HTML
-  // above: brand description and product themes were being collected in
-  // the free assessment and saved to the account, but never shown anywhere
-  // in the real Portal. This renders them read-only, alongside the same
-  // industry/footprint/audience/wealth fields companyProfileSummary()
-  // already surfaces in the Brand Groundwork checklist, so nothing the
-  // visitor typed in the assessment disappears once they're a real account.
+  // above: product themes were being collected in the free assessment and
+  // saved to the account, but never shown anywhere in the real Portal. This
+  // renders it read-only, alongside the same industry/footprint/audience/
+  // wealth fields companyProfileSummary() already surfaces in the Brand
+  // Groundwork checklist, so nothing the visitor typed in the assessment
+  // disappears once they're a real account.
   const summaryBodyEl = document.getElementById('cpAssessmentSummaryBody');
   if (summaryBodyEl){
     const audienceLabels = GENERATIONS.filter(g => state.audience.has(g.key)).map(g => g.label);
@@ -47148,29 +47301,120 @@ function renderCompanyProfileStep(){
       ['Footprint', state.footprint],
       ['Target audience', audienceLabels.length ? audienceLabels.join(', ') : ''],
       ['Wealth tier', wealthLabels.length ? wealthLabels.join(', ') : ''],
-      ['Product themes', state.productsServices],
-      ['Brand description', state.assessmentDescription]
+      ['Product themes', state.productsServices]
     ].filter(([, val]) => val);
     summaryBodyEl.innerHTML = rows.length
       ? rows.map(([label, val]) => `<div style="margin-bottom:6px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>`).join('')
       : '<p class="hint" style="margin:0;">Nothing on file yet — this fills in once the free assessment collects it.</p>';
   }
 
-  // Round 132zz (2026-08-11) — Partners list (see the field's own comment).
-  const partnersListEl = document.getElementById('cpPartnersList');
-  if (partnersListEl){
-    partnersListEl.innerHTML = state.partners.length
-      ? state.partners.map((p, i) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);">
-          <span style="font-size:0.9062rem;color:var(--ink);">${escapeHtml(p)}</span>
-          <button type="button" class="btn-ghost" style="padding:5px 10px;font-size:0.75rem;" onclick="removePartner(${i})">Remove</button>
-        </div>`).join('')
-      : '<p class="hint">No partners added yet.</p>';
-  }
-
   document.getElementById('companyProfileSaveFlag').textContent = '';
 
-  renderMediaCxIndexPanel();
+  renderBrandDescriptionCard();
+}
+
+// Brand Description — edit/approve/feedback loop (round 22, 2026-09-08).
+// See cpBrandDescriptionCard's own comment in the HTML for the instruction
+// this implements. Text is state.assessmentDescription; approval and
+// feedback history are their own fields (see the account-load comment).
+function renderBrandDescriptionCard(){
+  const textEl = document.getElementById('cpBrandDescriptionText');
+  if (!textEl) return; // this card only exists on step-companyProfile
+  if (document.activeElement !== textEl) textEl.value = state.assessmentDescription || '';
+
+  const badgeEl = document.getElementById('cpBrandDescApprovedBadge');
+  if (badgeEl){
+    badgeEl.innerHTML = state.brandDescriptionApproved
+      ? `<span style="font-size:0.6875rem;font-weight:600;color:var(--cx);border:1px solid var(--cx);border-radius:4px;padding:1px 6px;">Approved</span>`
+      : `<span style="font-size:0.6875rem;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 6px;">Not yet approved</span>`;
+  }
+
+  const listEl = document.getElementById('cpBrandDescFeedbackList');
+  if (listEl){
+    const feedback = state.brandDescriptionFeedback || [];
+    listEl.innerHTML = feedback.length
+      ? [...feedback].reverse().map(f => `
+        <div style="padding:6px 0;border-bottom:1px solid var(--line);">
+          <div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(new Date(f.date).toLocaleString())}</div>
+          <div style="font-size:0.875rem;color:var(--ink);">${escapeHtml(f.note)}</div>
+        </div>`).join('')
+      : '<p class="hint" style="margin:0;">No feedback left yet.</p>';
+  }
+}
+
+async function saveBrandDescriptionEdit(){
+  const textEl = document.getElementById('cpBrandDescriptionText');
+  const flag = document.getElementById('cpBrandDescSaveFlag');
+  state.assessmentDescription = textEl ? textEl.value : state.assessmentDescription;
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-description`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: state.assessmentDescription })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('saveBrandDescriptionEdit: backend write failed, saved locally only.', e); }
+  }
+  if (flag){
+    flag.textContent = persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+  }
+}
+
+async function approveBrandDescription(){
+  const textEl = document.getElementById('cpBrandDescriptionText');
+  const flag = document.getElementById('cpBrandDescSaveFlag');
+  state.assessmentDescription = textEl ? textEl.value : state.assessmentDescription;
+  state.brandDescriptionApproved = true;
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-description`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: state.assessmentDescription, approved: true })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('approveBrandDescription: backend write failed, saved locally only.', e); }
+  }
+  if (flag){
+    flag.textContent = persisted
+      ? `Approved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Approved ${new Date().toLocaleTimeString()} — local only, this session.`;
+  }
+  renderBrandDescriptionCard();
+}
+
+async function addBrandDescriptionFeedback(){
+  const input = document.getElementById('cpBrandDescFeedbackInput');
+  const note = input ? input.value.trim() : '';
+  if (!note) return;
+  const flag = document.getElementById('cpBrandDescSaveFlag');
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-description`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: note })
+      });
+      if (resp.ok){
+        const data = await resp.json();
+        if (Array.isArray(data.feedback)) state.brandDescriptionFeedback = data.feedback;
+        persisted = true;
+      }
+    } catch (e){ console.warn('addBrandDescriptionFeedback: backend write failed, saved locally only.', e); }
+  }
+  if (!persisted){
+    state.brandDescriptionFeedback = [...(state.brandDescriptionFeedback || []), { date: new Date().toISOString(), note }];
+  }
+  if (input) input.value = '';
+  if (flag){
+    flag.textContent = persisted
+      ? `Feedback saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `Feedback saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+  }
+  renderBrandDescriptionCard();
 }
 
 // Verilume Media CX Index — portal panel. The headline value reuses
