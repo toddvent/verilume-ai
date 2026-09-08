@@ -2602,78 +2602,95 @@ ensureColumn('accounts', 'brandDescriptionFeedbackJson', 'TEXT');
 ensureColumn('accounts', 'accountIntelligenceJson', 'TEXT');
 ensureColumn('accounts', 'accountIntelligenceGeneratedAt', 'TEXT');
 
+// Round 22g (2026-09-08) — a persisted, geocoded account address. Nothing
+// on the accounts table held lat/lng/address before this (grep-verified);
+// the free assessment's Census Geocoder calls (geocodeAddress()/
+// geocodeAddressStructured() in assessment.html) never persisted their
+// result to the account record. Backs the new View My Customers page's
+// Local branch (radius/distance against zip_centroid_master, below).
+// accountAddressLabel is the human-readable geocoded label (what the
+// Census Geocoder or an account's own entry resolved to), kept separately
+// from lat/lng so the UI can show what address the radius is actually
+// centered on.
+ensureColumn('accounts', 'accountAddressLabel', 'TEXT');
+ensureColumn('accounts', 'accountLat', 'REAL');
+ensureColumn('accounts', 'accountLng', 'REAL');
+ensureColumn('accounts', 'accountAddressGeocodedAt', 'TEXT');
+
+// Round 22g (2026-09-08) — full restructure of the old "Business & Revenue
+// Profile" workstream, per direct instruction: "restructure the section to
+// only ask for information that supports the Agentic Support features...
+// I would rethink the entire workstream and only have questions where they
+// contextually align." The old standalone survey page (step-onboardingSurvey)
+// is retired; every surviving question now renders on the page that actually
+// consumes it, and this array is kept only as (a) the field-key/type/options
+// reference and (b) the POST endpoint's validKeys allowlist below — nothing
+// loops over it generically anymore.
+//
+// Cut entirely (grep-verified, zero downstream consumers): brandAwareness,
+// revenueGeoConcentration, and every field from the old
+// ONBOARDING_INDUSTRY_MODULES below except the four relocated ones named in
+// the comment above that array.
+//
+// Relocated to the Media Plan page (next to Stage Weighting / min-viable-
+// spend calibration — see suggestStageBudgetWeights()/
+// suggestMinViableSpendMultiplier() just below, both real, live consumers):
+// averageOrderValue, avgTimeToTransaction, repeatVsOneTime,
+// avgRepeatIntervalMonths, repeatIntervalShrinksWithTenure,
+// loyalTransactionCount, seasonality.
+//
+// Relocated to Company Overview's new "How you sell" section (always shown):
+// primaryTransactionPath, thirdPartyCloses.
+//
+// Relocated to Company Overview's industry-conditional block, gated on the
+// account's real Industry classification (state.industry / INDUSTRY_LABELS
+// — NOT the old onboardingIndustryCode module system, which was a second,
+// parallel, otherwise-unused industry taxonomy and is retired below):
+// complianceConstraints (Healthcare — Outpatient/Clinics, Healthcare —
+// Hospitals & Systems, Financial Services / Banking), accountListSize
+// (Professional Services (B2B)), coOpFundingShare + dealerNetworkSize
+// (Automotive Sales & Service).
+//
+// Relocated to the new View My Customers page's Local branch, gated on
+// state.industry === 'Real Estate': listingVsBuyerSide.
 const ONBOARDING_CORE_QUESTIONS = [
   { key: 'primaryTransactionPath', label: 'Primary path to transaction', type: 'select',
     options: ['Call center', 'E-commerce / website', 'Retail / storefront', 'Field sales', 'Third-party channel partner'] },
-  { key: 'averageOrderValue', label: 'Average order value ($)', type: 'number' },
-  { key: 'avgTimeToTransaction', label: 'Average time from first exposure to transaction (days)', type: 'number' },
-  { key: 'revenueGeoConcentration', label: 'Is revenue concentrated in specific geographies/DMAs?', type: 'select',
-    options: ['Highly concentrated (a handful of markets)', 'Moderately concentrated', 'Broadly distributed / national', 'Not sure yet'] },
-  { key: 'repeatVsOneTime', label: 'Is this primarily a one-time purchase or a repeat/renewal relationship?', type: 'select',
-    options: ['One-time purchase', 'Occasional repeat', 'Regular repeat / subscription / renewal'] },
-  { key: 'brandAwareness', label: 'Approximate current brand awareness in your core market', type: 'select',
-    options: ['Low / largely unknown', 'Moderate / known within category', 'High / well-established'] },
-  { key: 'seasonality', label: 'Does demand have strong seasonality?', type: 'select',
-    options: ['Yes, strongly seasonal', 'Some seasonality', 'Little to no seasonality'] },
   { key: 'thirdPartyCloses', label: 'Does a third party (agent, dealer, advisor) close the transaction?', type: 'select',
     options: ['Yes, and we can trace it back to our marketing', 'Yes, but we cannot trace it back', 'No — we close direct'] },
-  // Round 132c[9] (2026-08-17), per direct instruction — repeat-purchase
-  // *interval* is a distinct concept from repeatVsOneTime above (which only
-  // captures whether a repeat relationship exists at all, not how often it
-  // recurs or whether that cadence changes with tenure). Gated behind
-  // repeatVsOneTime !== 'One-time purchase' via showIf — nothing to time a
-  // return around for a genuinely one-time-transaction account, so these
-  // don't render (or count toward the "answered" denominator) until that's
-  // established. showIf is a plain { key, notEquals } — the frontend/backend
-  // both read it the same way (obsQuestionVisible() in portal.html mirrors
-  // this).
+  { key: 'averageOrderValue', label: 'Average order value ($)', type: 'number' },
+  { key: 'avgTimeToTransaction', label: 'Average time from first exposure to transaction (days)', type: 'number' },
+  { key: 'seasonality', label: 'Does demand have strong seasonality?', type: 'select',
+    options: ['Yes, strongly seasonal', 'Some seasonality', 'Little to no seasonality'] },
+  { key: 'repeatVsOneTime', label: 'Is this primarily a one-time purchase or a repeat/renewal relationship?', type: 'select',
+    options: ['One-time purchase', 'Occasional repeat', 'Regular repeat / subscription / renewal'] },
+  // Gated behind repeatVsOneTime !== 'One-time purchase' — nothing to time a
+  // return around for a genuinely one-time-transaction account. Rendered by
+  // renderMediaPlanSurveyCard() in portal.html, which mirrors this showIf
+  // the same way the retired obsQuestionVisible() used to.
   { key: 'avgRepeatIntervalMonths', label: 'Average time between repeat transactions (months)', type: 'number',
     showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } },
   { key: 'repeatIntervalShrinksWithTenure', label: "Does the interval between repeat transactions shorten as a guest's tenure grows?", type: 'select',
     options: ['Yes', 'No', 'Not sure'],
     showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } },
   { key: 'loyalTransactionCount', label: 'Number of transactions at which a guest/customer is considered loyal', type: 'number',
-    showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } }
+    showIf: { key: 'repeatVsOneTime', notEquals: 'One-time purchase' } },
+  { key: 'complianceConstraints', label: 'Are there regulatory/compliance constraints on marketing or tracking (HIPAA, FINRA, state, etc.)?', type: 'select',
+    options: ['Yes', 'No', 'Not sure'] },
+  { key: 'accountListSize', label: 'Target account list size (# of named accounts, if ABM)', type: 'number' },
+  { key: 'coOpFundingShare', label: 'Share of media funded via manufacturer co-op (%)', type: 'number' },
+  { key: 'dealerNetworkSize', label: 'Number of dealer locations in this market', type: 'number' },
+  { key: 'listingVsBuyerSide', label: 'Primary focus', type: 'select', options: ['Listing/seller side', 'Buyer side', 'Both'] }
 ];
 
-// Illustrative NAICS/SIC codes per the recommendation-architecture memo —
-// explicitly flagged there as needing a real validation pass before
-// they're treated as authoritative industry definitions. Kept here as-is
-// rather than silently presented as settled.
-const ONBOARDING_INDUSTRY_MODULES = [
-  { code: 'travel-cruise', label: 'Travel / Cruise', naicsSic: 'NAICS 4872 / SIC 561510 (illustrative — needs validation)', questions: [
-    { key: 'bookingWindowDays', label: 'Typical booking window (days from first inquiry to deposit)', type: 'number' },
-    { key: 'travelAdvisorShare', label: 'Share of bookings closed through a travel advisor/agent (%)', type: 'number' },
-    { key: 'destinationSeasonality', label: 'Is booking demand tied to specific sailing seasons/destinations?', type: 'select', options: ['Yes', 'No'] },
-    { key: 'loyaltyProgramShare', label: 'Share of bookings from repeat/loyalty guests (%)', type: 'number' }
-  ]},
-  { code: 'real-estate', label: 'Real Estate', naicsSic: 'NAICS 531 (illustrative — needs validation)', questions: [
-    { key: 'agentAssistedShare', label: 'Share of transactions that are agent-assisted (%)', type: 'number' },
-    { key: 'avgDaysOnMarket', label: 'Average days on market', type: 'number' },
-    { key: 'listingVsBuyerSide', label: 'Primary focus', type: 'select', options: ['Listing/seller side', 'Buyer side', 'Both'] }
-  ]},
-  { code: 'auto-dealer', label: 'Auto Dealers', naicsSic: 'NAICS 441 (illustrative — needs validation)', questions: [
-    { key: 'coOpFundingShare', label: 'Share of media funded via manufacturer co-op (%)', type: 'number' },
-    { key: 'dealerNetworkSize', label: 'Number of dealer locations in this market', type: 'number' }
-  ]},
-  { code: 'b2b-professional', label: 'B2B / Professional Services', naicsSic: 'NAICS 54 (illustrative — needs validation)', questions: [
-    { key: 'salesCycleDays', label: 'Typical sales cycle length (days)', type: 'number' },
-    { key: 'accountListSize', label: 'Target account list size (# of named accounts, if ABM)', type: 'number' },
-    { key: 'dealSizeTier', label: 'Typical deal size tier', type: 'select', options: ['Under $10K', '$10K–$100K', 'Over $100K'] }
-  ]},
-  { code: 'healthcare-elective', label: 'Elective Healthcare', naicsSic: 'NAICS 621 / 622 (illustrative — needs validation)', questions: [
-    { key: 'referralShare', label: 'Share of patients from referral (%)', type: 'number' },
-    { key: 'complianceConstraints', label: 'Are there HIPAA/compliance constraints on tracking?', type: 'select', options: ['Yes', 'No', 'Not sure'] }
-  ]},
-  { code: 'financial-services', label: 'Financial Services', naicsSic: 'NAICS 52 (illustrative — needs validation)', questions: [
-    { key: 'referralShare', label: 'Share of new business from referral (%)', type: 'number' },
-    { key: 'complianceConstraints', label: 'Are there regulatory (FINRA/state) constraints on marketing claims?', type: 'select', options: ['Yes', 'No', 'Not sure'] }
-  ]},
-  { code: 'home-services', label: 'Home Services', naicsSic: 'NAICS 23 / 811 (illustrative — needs validation)', questions: [
-    { key: 'seasonalDemandSpike', label: 'Does demand spike seasonally (e.g. HVAC in summer)?', type: 'select', options: ['Yes', 'No'] },
-    { key: 'serviceAreaRadius', label: 'Typical service area radius (miles)', type: 'number' }
-  ]}
-];
+// Retired as of Round 22g — see the block comment above ONBOARDING_CORE_
+// QUESTIONS. onboardingIndustryCode/onboardingIndustryAnswersJson stay as
+// dormant DB columns (existing rows keep whatever they had; nothing new
+// writes to them) rather than being dropped, since this is a demo/dev SQLite
+// file with no migration tooling. Kept as an empty array (not deleted) so
+// GET /api/onboarding-survey-modules and the industryCode validation branch
+// in the POST handler below keep working without a code change there too.
+const ONBOARDING_INDUSTRY_MODULES = [];
 function getOnboardingSurvey(accountId){
   const account = db.prepare('SELECT onboardingSurveyJson, onboardingIndustryCode, onboardingIndustryAnswersJson FROM accounts WHERE accountId = ?').get(accountId);
   let core = {};
@@ -4118,6 +4135,14 @@ ensureColumn('market_customer_rows', 'revenue', 'REAL');
 // preview.
 ensureColumn('market_customer_uploads', 'weightMode', "TEXT DEFAULT 'count'");
 ensureColumn('market_customer_uploads', 'auditJson', 'TEXT');
+// Round 22g (2026-09-08) — the new View My Customers page's National/Global
+// branch surfaces this as its upload entry point, per direct instruction:
+// "Match Market testing asks would be added to the analytics dashboards...
+// No Comparison is needed. It would just be a query run by a team member in
+// the future." periodLabel is free text (e.g. "Q3 2026", "Sep 2026") so a
+// team member running that later query can tell uploads apart by the period
+// they cover — no comparison logic is built against it.
+ensureColumn('market_customer_uploads', 'periodLabel', 'TEXT');
 
 // Real per-zip penetration index: customerCount / population, indexed to
 // this upload's own average penetration rate = 100. A zip at 150 has 1.5x
@@ -6537,7 +6562,12 @@ const LEGACY_CASING_COLUMNS = [
   ['press_releases', 'ctaMode'],
   ['press_releases', 'linkedinCopy'],
   ['accounts', 'accountIntelligenceGeneratedAt'],
-  ['accounts', 'accountIntelligenceJson']
+  ['accounts', 'accountIntelligenceJson'],
+  ['accounts', 'accountAddressLabel'],
+  ['accounts', 'accountLat'],
+  ['accounts', 'accountLng'],
+  ['accounts', 'accountAddressGeocodedAt'],
+  ['market_customer_uploads', 'periodLabel']
 ];
 // 2026-08-21, later same day — this used to run automatically at module
 // load (`fixLegacyColumnCasing();` right here, on every cold start), doing
@@ -15967,6 +15997,83 @@ Submit your findings via the submit_brand_categories tool.`;
       const c = db.prepare('SELECT zip, lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?').get(g.key);
       return sendJson(res, 200, { key: g.key, country: g.country, found: !!c, lat: c ? c.lat : null, lng: c ? c.lng : null, sourceLabel: c ? c.sourceLabel : null });
     }
+    // ============ View My Customers — Local branch (2026-09-08) ============
+    // Round 22g, per direct instruction: "LOCAL: Add the information from
+    // the assessment with the radius mapping to address service radius."
+    // No account record held a persisted geocoded address before this round
+    // (grep-verified) — the free assessment's Census Geocoder calls never
+    // wrote back to the account. This is that missing persistence, plus a
+    // real haversine radius read against the account's own uploaded
+    // customer zips (market_customer_rows via the latest market_customer_
+    // uploads row) and the real lat/lng in zip_centroid_master. Honestly
+    // reports when there's no address on file yet or no customer upload to
+    // measure against, rather than guessing.
+    //
+    // POST /api/accounts/:id/address — save the geocoded center point.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'address'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const lat = Number(body.lat), lng = Number(body.lng);
+      if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180){
+        return sendJson(res, 400, { error: 'lat/lng must be valid coordinates' });
+      }
+      const label = String(body.label || '').slice(0, 300);
+      const geocodedAt = new Date().toISOString();
+      db.prepare('UPDATE accounts SET accountAddressLabel = ?, accountLat = ?, accountLng = ?, accountAddressGeocodedAt = ? WHERE accountId = ?')
+        .run(label, lat, lng, geocodedAt, accountId);
+      return sendJson(res, 200, { label, lat, lng, geocodedAt });
+    }
+    // GET /api/accounts/:id/customers-near?radiusMiles=25 — radius read
+    // against this account's own uploaded customer zips (from its most
+    // recent market_customer_uploads row), not a generic "all US zips within
+    // radius" listing — the point is showing THIS account's actual customer
+    // footprint relative to its service radius, not a directory of nearby
+    // zip codes.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'customers-near'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountLat, accountLng, accountAddressLabel FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const radiusMiles = Math.max(1, Math.min(500, Number(url.searchParams.get('radiusMiles')) || 25));
+      if (account.accountLat == null || account.accountLng == null){
+        return sendJson(res, 200, { hasAddress: false, hasUpload: false, radiusMiles });
+      }
+      const upload = db.prepare('SELECT id, label, createdAt FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId);
+      if (!upload){
+        return sendJson(res, 200, { hasAddress: true, center: { lat: account.accountLat, lng: account.accountLng, label: account.accountAddressLabel }, hasUpload: false, radiusMiles });
+      }
+      const rows = db.prepare('SELECT r.zip AS zip, r.customerCount AS customerCount, c.lat AS lat, c.lng AS lng FROM market_customer_rows r LEFT JOIN zip_centroid_master c ON c.zip = r.zip WHERE r.marketUploadId = ?').all(upload.id);
+      const toRad = (d) => d * Math.PI / 180;
+      const haversineMiles = (lat1, lng1, lat2, lng2) => {
+        const R = 3958.8;
+        const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+      let inRadiusZips = 0, inRadiusCustomers = 0, outsideRadiusZips = 0, outsideRadiusCustomers = 0, noCentroidZips = 0, noCentroidCustomers = 0;
+      const zips = rows.map(r => {
+        if (r.lat == null || r.lng == null){
+          noCentroidZips++; noCentroidCustomers += r.customerCount || 0;
+          return { zip: r.zip, customerCount: r.customerCount, distanceMiles: null, inRadius: null };
+        }
+        const distanceMiles = Math.round(haversineMiles(account.accountLat, account.accountLng, r.lat, r.lng) * 10) / 10;
+        const inRadius = distanceMiles <= radiusMiles;
+        if (inRadius){ inRadiusZips++; inRadiusCustomers += r.customerCount || 0; }
+        else { outsideRadiusZips++; outsideRadiusCustomers += r.customerCount || 0; }
+        return { zip: r.zip, customerCount: r.customerCount, distanceMiles, inRadius };
+      }).sort((a, b) => (a.distanceMiles == null ? 1 : a.distanceMiles) - (b.distanceMiles == null ? 1 : b.distanceMiles));
+      return sendJson(res, 200, {
+        hasAddress: true, center: { lat: account.accountLat, lng: account.accountLng, label: account.accountAddressLabel },
+        hasUpload: true, uploadId: upload.id, uploadLabel: upload.label, uploadedAt: upload.createdAt, radiusMiles,
+        inRadius: { zipCount: inRadiusZips, customerCount: inRadiusCustomers },
+        outsideRadius: { zipCount: outsideRadiusZips, customerCount: outsideRadiusCustomers },
+        noCentroidData: { zipCount: noCentroidZips, customerCount: noCentroidCustomers },
+        zips
+      });
+    }
     // GET /api/accounts/:id/stores — the account's store list
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
@@ -16120,11 +16227,28 @@ Submit your findings via the submit_brand_categories tool.`;
       const now = new Date().toISOString();
       const id = generateId('MKTUP');
       const auditJson = body.audit ? JSON.stringify(body.audit) : null;
-      db.prepare('INSERT INTO market_customer_uploads (id, accountId, uploadedFileId, label, createdAt, weightMode, auditJson, geoLevel) VALUES (?,?,?,?,?,?,?,?)')
-        .run(id, accountId, body.uploadedFileId, body.label || null, now, weightMode, auditJson, geoLevel);
+      // periodLabel (Round 22g, 2026-09-08) — free text naming the period
+      // this upload covers (e.g. "Q3 2026"), per direct instruction: "This
+      // is a natural location for uploads by time frame... No Comparison is
+      // needed. It would just be a query run by a team member in the
+      // future." No comparison logic reads this; it's just how a later
+      // manual query tells uploads apart.
+      const periodLabel = body.periodLabel ? String(body.periodLabel).slice(0, 100) : null;
+      db.prepare('INSERT INTO market_customer_uploads (id, accountId, uploadedFileId, label, createdAt, weightMode, auditJson, geoLevel, periodLabel) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, accountId, body.uploadedFileId, body.label || null, now, weightMode, auditJson, geoLevel, periodLabel);
       const insertRow = db.prepare('INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES (?,?,?,?,?)');
       body.rows.forEach(r => insertRow.run(generateId('MKTROW'), id, String(r.zip), Number(r.customerCount), r.revenue != null ? Number(r.revenue) : null));
-      return sendJson(res, 201, { id, rowCount: body.rows.length, weightMode, geoLevel });
+      return sendJson(res, 201, { id, rowCount: body.rows.length, weightMode, geoLevel, periodLabel });
+    }
+    // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
+    // analysis computation) of this account's committed customer uploads,
+    // for the View My Customers page's National/Global branch to show what's
+    // on file without pulling in the full match-market analysis.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const uploads = db.prepare('SELECT id, label, periodLabel, createdAt, weightMode, geoLevel FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      return sendJson(res, 200, { uploads });
     }
 
     // GET /api/accounts/:id/market-customer-uploads/:uploadId/analysis —
@@ -18277,5 +18401,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
 
