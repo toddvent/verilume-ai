@@ -787,7 +787,20 @@
      across every card type on the dashboard (tile/stat/commentary/news/
      role/ai-partner), same treatment throughout for one consistent
      "premium SaaS" feel rather than a flat outline everywhere. */
-  .tile-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px 18px;cursor:pointer;box-shadow:var(--shadow-sm);transition:border-color 0.15s ease,box-shadow 0.15s ease,transform 0.15s ease;}
+  /* 2026-09-09, per direct report ("Can we align the View Sample bottom
+     left across all cards?") — the 4 Geographic Agentic Optimization
+     use-case cards (step-marketOptimization) have different-length
+     descriptions, so their "View sample →" line landed at a different
+     height in each card even though the cards themselves were already
+     equal height (grid items stretch by default). display:flex +
+     flex-direction:column here, paired with margin-top:auto on the
+     "View sample" line itself (see those 4 divs), pins it to the bottom
+     of every card regardless of description length. Every other
+     .tile-card on the site (the nav-tile shells rendered by the shared
+     renderer, ~line 16042) only ever has a label + optional one-line
+     desc with no such trailing element, so this is a no-op for them —
+     flex-column stacks label/desc exactly like block layout already did. */
+  .tile-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px 18px;cursor:pointer;box-shadow:var(--shadow-sm);transition:border-color 0.15s ease,box-shadow 0.15s ease,transform 0.15s ease;display:flex;flex-direction:column;height:100%;}
   .tile-card:hover{border-color:var(--hdr-navy);box-shadow:var(--shadow-md);transform:translateY(-1px);}
   .tile-card .tc-label{font-weight:700;font-size:0.875rem;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .tile-card .tc-desc{font-size:0.75rem;color:var(--muted);margin-top:4px;line-height:1.45;}
@@ -5784,7 +5797,11 @@
          Top Customer Markets' and Agentic Media Planning's are Strategy and
          Media Science respectively — see this file's history above this
          block for why those are the right destinations). -->
-    <p class="lede" style="margin-bottom:10px;">One shared customer-location dataset powers four things:</p>
+    <!-- 2026-09-09, per direct instruction ("Remove one shared
+         customer-location four things") — removed the lede line that used
+         to sit here ("One shared customer-location dataset powers four
+         things:"). The 4-card grid immediately below still makes the same
+         point on its own. -->
     <!-- 2026-09-09, per direct instruction ("Add a speech bubble within
          each [card] that opens AI Thoughts explaining the output") — one
          💭 icon per card, reusing the exact aiThoughtIconHtml()/AI Agent
@@ -5804,25 +5821,31 @@
       <div class="tile-card" onclick="openSampleModal('matchMarket');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('matchMarket');">
         <div class="tc-label">Match Market Testing <span class="ai-thought-mount" data-topic="AA"></span></div>
         <div class="tc-desc">Identify similar markets to measure customer or revenue changes when you adjust a media mix element in one market but not the other.</div>
-        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
+        <div class="tc-desc" style="margin-top:auto;padding-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
       <div class="tile-card" onclick="openSampleModal('visualize');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('visualize');">
         <div class="tc-label">Visualize Your Top Customer Markets <span class="ai-thought-mount" data-topic="AB"></span></div>
         <div class="tc-desc">See your Must Win, Growth and Opportunistic markets — for a single storefront, a national brand, or a franchise network.</div>
-        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
+        <div class="tc-desc" style="margin-top:auto;padding-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
       <div class="tile-card" onclick="openSampleModal('marketingLoop');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('marketingLoop');">
         <div class="tc-label">Agentic Media Planning <span class="ai-thought-mount" data-topic="AC"></span></div>
         <div class="tc-desc">Market-focused, national, or scaling with local activations — your agentic media partner factors customer locations into the most efficient channel and budget paths.</div>
-        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
+        <div class="tc-desc" style="margin-top:auto;padding-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
       <div class="tile-card" onclick="openSampleModal('storefronts');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('storefronts');">
         <div class="tc-label">Align Sales Territories &amp; Storefronts <span class="ai-thought-mount" data-topic="AD"></span></div>
         <div class="tc-desc">Match reseller or storefront locations to your top customer markets and spot coverage gaps, using the radius trade areas below.</div>
-        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
+        <div class="tc-desc" style="margin-top:auto;padding-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
     </div>
-    <p class="hint" style="margin:0 0 18px;">Upload raw transactions — one row per booking/order, each with a zip/postal code — and this builds a penetration index, composite score and opportunity tier per zip, plus matched Test/Control/Holdout groups. Already have a finished match-market design instead of raw transactions? Import it directly. Every file is screened for customer PII and scanned for threats before anything is stored, and every upload attempt stays in this account's history.</p>
+    <!-- 2026-09-09, per direct instruction ("Remove the upload raw
+         transactions paragraph") — removed the "Upload raw transactions...
+         Every file is screened for customer PII..." paragraph that used to
+         sit here. Its PII-screening/audit-trail substance isn't duplicated
+         elsewhere on this page; the upload card's own hint (mouUploadCard,
+         below) now carries the composite-score/tier/test-control-holdout
+         explanation instead — see that paragraph's own history. -->
 
     <!-- 2026-09-09 — sample-output modal, shared by all 4 cards above.
          Images are the actual rendered outputs (the real
@@ -5866,8 +5889,16 @@
              not position, so this layout isn't a hard requirement — it's
              the easiest correct format to hand a client, and the mapping
              step right below still shows what got matched and lets them
-             fix it if their file's laid out differently. -->
-        <p class="hint" style="margin-top:0;">The customer files that you upload are compared to the population in the market to help us create a penetration index that helps us create statistically relevant markets that can be used for media testing, forecasting future storefront locations, or aligning external sales teams. Files should include: <b>Column A: Country</b>, <b>Column B: Zip/Postal Code</b>, <b>Column C: Customer Count</b>, <b>Column D (optional): Revenue</b>.</p>
+             fix it if their file's laid out differently.
+             2026-09-09, follow-up, per direct instruction — updated again:
+             this now also names the composite score/opportunity
+             tier/Test-Control-Holdout outputs directly (previously only in
+             the removed "Upload raw transactions..." paragraph above the
+             cards, and in the removed "How to use this" bubble) and adds
+             the incrementality-measurement framing, replacing the earlier
+             "statistically relevant markets" phrasing. Fixed the one typo
+             ("User this" → "Use this"); the 4-column template is unchanged. -->
+        <p class="hint" style="margin-top:0;">The customer files that you upload are compared to the population in the market to help us create a penetration index, composite score and opportunity tier per zip, plus Test/Control/Holdout groups. Use this to help you measure incrementality. <b>Column A: Country</b>, <b>Column B: Zip/Postal Code</b>, <b>Column C: Customer Count</b>, <b>Column D (optional): Revenue</b>.</p>
         <!-- Round 22g (2026-09-08), per direct instruction: "This is a
              natural location for uploads by time frame." No comparison
              logic reads this — it's just how a later manual query (per
