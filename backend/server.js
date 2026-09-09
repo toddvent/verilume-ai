@@ -102,6 +102,16 @@ console.log('[server.js] BUILD MARKER: crash-fix-2026-08-23-v1 (INIT_PHASE guard
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
+// 2026-09-09, per direct instruction: real .xlsx generation for the
+// match-market analysis export (see computeMarketUploadAnalysis()/
+// buildMarketUploadXlsx() and the export.xlsx / export-defined-
+// countries.xlsx endpoints below). This app's older Excel-export path
+// (xlsx_gen.py) shells out to a Python subprocess, which is flagged on
+// the hosting punch list as unable to run on Vercel's Node serverless
+// runtime — exceljs is a genuine Node library with no native/Python
+// dependency, so it sidesteps that limitation entirely rather than
+// falling back to a CSV-with-an-.xlsx-name workaround.
+const ExcelJS = require('exceljs');
 // 2026-08-22 — real text extraction for brand writing samples (see
 // extractSampleText()/brandWritingSampleContext() below), closing the gap
 // flagged in the 2026-08-21 copywriting findings: brand_writing_samples
@@ -4201,9 +4211,18 @@ const GEO_COUNTRY_PACKS = {
   DE: { name: 'Germany', unit: 'Postleitzahl', marketType: 'Nielsengebiet', marketNote: 'German markets are the publicly known Nielsen regions (Nielsengebiete) by state, not a licensed crosswalk.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
   FR: { name: 'France', unit: 'code postal', marketType: 'NUTS-3 region', marketNote: 'French markets are Eurostat NUTS-3 regions (départements) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
   ES: { name: 'Spain', unit: 'código postal', marketType: 'NUTS-3 region', marketNote: 'Spanish markets are Eurostat NUTS-3 regions (provinces) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
-  IT: { name: 'Italy', unit: 'CAP', marketType: 'NUTS-3 region', marketNote: 'Italian markets are Eurostat NUTS-3 regions (provinces) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) }
+  IT: { name: 'Italy', unit: 'CAP', marketType: 'NUTS-3 region', marketNote: 'Italian markets are Eurostat NUTS-3 regions (provinces) via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  // 2026-09-09, per direct instruction — Portugal added to the "defined
+  // countries" set (US/CA/IT/ES/DE/PT/UK/AU) for the match-market Excel
+  // export; it was missing from this pack entirely until now, so uploads
+  // from Portugal couldn't be geo-classified at all. Same Eurostat NUTS-3
+  // treatment as ES/IT/FR (Portugal is covered by the same Eurostat
+  // postal-code correspondence table). Portuguese postal codes are
+  // "NNNN-NNN" (4+3 digits); a bare 4-digit code is also accepted since
+  // that's the coarser, more commonly typed form.
+  PT: { name: 'Portugal', unit: 'código postal', marketType: 'NUTS-3 region', marketNote: 'Portuguese markets are Eurostat NUTS-3 regions via the Eurostat postal-code correspondence table — a statistical geography, not a media-buying one.', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^(\d{4})-?(\d{3})?$/); if (!m) return null; return m[2] ? `${m[1]}-${m[2]}` : m[1]; } }
 };
-const GEO_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT' };
+const GEO_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT', 'PORTUGAL': 'PT', 'PRT': 'PT' };
 function normalizeCountry(raw){
   const s = String(raw == null ? '' : raw).trim().toUpperCase();
   if (!s) return null;
@@ -4326,6 +4345,97 @@ function computeDmaRollup(rows, weightMode){
   const notes = countries.map(c => GEO_COUNTRY_PACKS[c] ? GEO_COUNTRY_PACKS[c].marketNote : '').filter(Boolean).join(' ');
   return { available: true, weightMode: mode, dmas, dmaCount: dmas.length, unmappedZips, unmappedVolume: Math.round(unmappedVolume * 100) / 100, populationCoverage: popTotal > 0, disclosure: status.disclosure + (notes ? ' ' + notes : ''), licensed: status.licensed, countries: [...new Set(dmas.map(d => d.country))] };
 }
+
+// DMA-level composite score / opportunity tier / Test-Control-Holdout /
+// matched pairs — 2026-09-09, per direct instruction, after Todd shared
+// the actual Atlas reference file this whole design doc's Test/Control/
+// Holdout section was modeled on (see computeHoldoutSplit's own comment:
+// "matches the Atlas file's own 15/15/6 shape in spirit"). That file is
+// DMA-level, and until now this app only computed Test/Control/Holdout at
+// the zip level — a DMA-level upload got an explicit "not built yet" for
+// all three. This mirrors computeCompositeScore/computeHoldoutSplit/
+// computeMatchedMarketPairs' zip-level logic at the DMA level instead:
+// composite score blends log-volume with the DMA's populationIndex (the
+// zip-level equivalent of penetrationIndex — DMAs don't have a per-zip
+// penetration rate of their own, populationIndex already IS that "volume
+// share vs. population share" comparison at the market level), same
+// quartile tiers, same deterministic spread-by-rank Holdout carve-out, and
+// the same greedy nearest-neighbor pairing (1-D similarity on
+// populationIndex, since no second DMA-level index — e.g. demographic — is
+// computed yet; a real second dimension is future work, not a blocker
+// here). Confirmed with Todd this should use whatever DMA crosswalk data
+// is already loaded (free-sourced today, not a paid Nielsen license) —
+// computeDmaRollup's own `licensed` flag already discloses that source
+// distinction; this function makes no compute-path distinction based on
+// it, so it works the same whichever source is on file.
+function computeDmaCompositeAndMatching(dmaRollup, holdoutFraction){
+  if (!dmaRollup || !dmaRollup.available || !dmaRollup.dmas.length){
+    return { dmasScored: [], holdout: { dmaCodes: [], fraction: 0, note: 'no DMA rollup available' }, matching: { pairs: [], unpaired: [], note: 'no DMA rollup available' } };
+  }
+  const dmas = dmaRollup.dmas;
+  const logVolumes = dmas.map(d => Math.log(1 + (Number(d.volume) || 0)));
+  const maxLogVol = Math.max(0, ...logVolumes);
+  const validIdx = dmas.filter(d => d.populationIndex != null).map(d => d.populationIndex);
+  const maxIdx = validIdx.length ? Math.max(...validIdx) : null;
+  const dmasScored = dmas.map((d, i) => {
+    const volNorm = maxLogVol > 0 ? (logVolumes[i] / maxLogVol) * 100 : 0;
+    const idxNorm = (d.populationIndex != null && maxIdx) ? (d.populationIndex / maxIdx) * 100 : null;
+    const compositeScore = idxNorm != null ? Math.round((2 / 3) * volNorm + (1 / 3) * idxNorm) : Math.round(volNorm);
+    return { ...d, compositeScore, compositeScoreBasis: idxNorm != null ? 'volume+populationIndex' : 'volume-only (no population index for this market)' };
+  });
+  const sortedScores = dmasScored.map(d => d.compositeScore).filter(s => s != null).sort((a, b) => a - b);
+  const pct = p => sortedScores.length ? sortedScores[Math.min(sortedScores.length - 1, Math.floor(sortedScores.length * p))] : 0;
+  const p25 = pct(0.25), p50 = pct(0.5), p75 = pct(0.75);
+  dmasScored.forEach(d => {
+    if (d.compositeScore >= p75) d.opportunityTier = 'Must Win';
+    else if (d.compositeScore >= p50) d.opportunityTier = 'Growth';
+    else if (d.compositeScore >= p25) d.opportunityTier = 'Opportunistic';
+    else d.opportunityTier = 'Monitor';
+  });
+
+  const frac = holdoutFraction != null ? holdoutFraction : (1 / 6);
+  const eligible = dmasScored.filter(d => d.compositeScore != null).slice().sort((a, b) => b.compositeScore - a.compositeScore);
+  const holdoutCount = Math.round(eligible.length * frac);
+  let holdoutDmaCodes = [], holdoutNote = null;
+  if (holdoutCount < 1 || eligible.length < 4){
+    holdoutNote = eligible.length < 4 ? 'Too few scoreable markets to reserve a separate Holdout group yet.' : null;
+  } else {
+    const step = eligible.length / holdoutCount;
+    for (let i = 0; i < holdoutCount; i++){
+      const idx = Math.min(eligible.length - 1, Math.floor(i * step));
+      holdoutDmaCodes.push(eligible[idx].dmaCode);
+    }
+  }
+  const holdoutSet = new Set(holdoutDmaCodes);
+
+  const vectors = {};
+  dmasScored.forEach(d => { if (d.populationIndex != null && !holdoutSet.has(d.dmaCode)) vectors[d.dmaCode] = { populationIndex: d.populationIndex }; });
+  const codes = Object.keys(vectors);
+  let pairs = [], unpaired = [], matchingNote;
+  if (codes.length < 2){
+    matchingNote = `Only ${codes.length} non-Holdout market(s) have a computable index — at least 2 are needed to form a test/control pair.`;
+  } else {
+    const used = new Set();
+    codes.forEach(codeA => {
+      if (used.has(codeA)) return;
+      let best = null, bestDist = null;
+      codes.forEach(codeB => {
+        if (codeA === codeB || used.has(codeB)) return;
+        const dist = euclideanDistance(vectors[codeA], vectors[codeB]);
+        if (dist != null && (bestDist == null || dist < bestDist)){ best = codeB; bestDist = dist; }
+      });
+      if (best != null){ used.add(codeA); used.add(best); pairs.push({ testDma: codeA, controlDma: best, similarityDistance: bestDist }); }
+    });
+    unpaired = codes.filter(c => !used.has(c));
+    matchingNote = 'Similarity is computed from Population Index only — this account has no market-level performance history or second index (e.g. demographic) on file yet, so this is a "who lives here" match, not a performance-validated one. Confirm each pair with your own judgment before committing test budget.';
+  }
+  return {
+    dmasScored,
+    holdout: { dmaCodes: holdoutDmaCodes, fraction: frac, note: holdoutNote },
+    matching: { pairs, unpaired, note: matchingNote }
+  };
+}
+
 // ============ Store trade areas + DMA-level uploads (2026-09-06) ============
 // Per direct decision: local retail is planned on a radius trade area
 // around each store, not a DMA; zip stays the primary upload, a Nielsen-
@@ -4396,18 +4506,37 @@ function computeStoreTradeAreas(rows, stores, radii, weightMode){
   const mode = weightMode === 'revenue' ? 'revenue' : 'count';
   const rad = (Array.isArray(radii) && radii.length ? radii : [3, 5, 10]).map(Number).filter(r => r > 0).sort((a, b) => a - b);
   const maxR = rad[rad.length - 1];
-  const cStmt = db.prepare('SELECT lat, lng FROM zip_centroid_master WHERE zip = ?');
-  const pStmt = db.prepare('SELECT population FROM zip_population_master WHERE zip = ?');
+  // 2026-09-09 fix, found while scoping the "Align Storefronts and
+  // Territories" national map build (this is the function that would
+  // power it) — same N+1-round-trip bug as computePenetrationIndex() and
+  // computeDmaRollup() (see their comments, same day, for the full report
+  // chain): this used to run one zip_centroid_master lookup AND one
+  // zip_population_master lookup PER UPLOADED CUSTOMER ROW inside
+  // rows.forEach(). It hadn't bitten yet only because it short-circuits
+  // above when an account has zero stores on file; the first account to
+  // have both stores AND a large customer upload would have hit the exact
+  // same "Backend unreachable" failure just fixed twice already today.
+  // Batched into chunked (200 zips/chunk) lookups up front, same pattern
+  // and chunk size as the other two fixes.
+  const CS_LOOKUP_CHUNK_SIZE = 200;
+  const uniqueRowZips = [...new Set((rows || []).map(r => String(r.zip || '').padStart(5, '0')).filter(z => !/^DMA:/.test(z)))];
+  const centroidByZip = new Map(), popByZip = new Map();
+  for (let i = 0; i < uniqueRowZips.length; i += CS_LOOKUP_CHUNK_SIZE){
+    const chunk = uniqueRowZips.slice(i, i + CS_LOOKUP_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    db.prepare(`SELECT zip, lat, lng FROM zip_centroid_master WHERE zip IN (${placeholders})`).all(...chunk).forEach(c => centroidByZip.set(c.zip, c));
+    db.prepare(`SELECT zip, population FROM zip_population_master WHERE zip IN (${placeholders})`).all(...chunk).forEach(p => popByZip.set(p.zip, p.population));
+  }
   const zips = {}; let unmappedZips = 0, unmappedVolume = 0, totalVolume = 0;
   (rows || []).forEach(r => {
     const zip = String(r.zip || '').padStart(5, '0');
     const vol = mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0);
     totalVolume += vol;
     if (/^DMA:/.test(zip)){ unmappedZips++; unmappedVolume += vol; return; }
-    const c = cStmt.get(zip);
+    const c = centroidByZip.get(zip);
     if (!c){ unmappedZips++; unmappedVolume += vol; return; }
-    const p = pStmt.get(zip);
-    zips[zip] = { zip, lat: c.lat, lng: c.lng, volume: (zips[zip] ? zips[zip].volume : 0) + vol, population: p ? Number(p.population) : null };
+    const population = popByZip.has(zip) ? popByZip.get(zip) : null;
+    zips[zip] = { zip, lat: c.lat, lng: c.lng, volume: (zips[zip] ? zips[zip].volume : 0) + vol, population: population != null ? Number(population) : null };
   });
   const zipList = Object.values(zips);
   // ring population needs every zip in the ring, not just the client's — pull all centroids once (≈33k rows) only when a population master exists
@@ -4659,6 +4788,147 @@ function computeMatchedMarketPairs(penetrationRows, demographicResult, holdoutZi
     note: 'Similarity is computed from the population and demographic indices only — this account has no zip-level performance history on file yet, so this is a "who lives here" match, not a performance-validated one. Confirm each pair with your own judgment before committing test budget.',
     adjacencyScreeningDisclosure: 'Media-market spillover / geographic adjacency is NOT screened out of these pairs yet — this build matches on index similarity only, at zip level. Two zips that end up on opposite sides of a pair could still share local media (regional cable, radio, print circulation), which would understate a real test’s measured lift. Check adjacency yourself before committing budget to any pair; a real adjacency exclusion pass is flagged as future work, not implemented here.'
   };
+}
+
+// 2026-09-09: the match-market analysis computation, extracted out of the
+// GET .../analysis route handler into its own function so the JSON
+// endpoint and the two new Excel-export endpoints (export.xlsx /
+// export-defined-countries.xlsx, added the same round — see their own
+// comment) compute the exact same numbers instead of two versions that
+// could quietly drift apart. Same shape this endpoint has always
+// returned; behavior is unchanged, just relocated.
+function computeMarketUploadAnalysis(accountId, upload, options){
+  const opts = options || {};
+  const volumeWeight = opts.volumeWeight != null ? opts.volumeWeight : (2 / 3);
+  const indexWeight = opts.indexWeight != null ? opts.indexWeight : (1 / 3);
+  const holdoutFraction = opts.holdoutFraction != null ? opts.holdoutFraction : (1 / 6);
+  const radii = (Array.isArray(opts.radii) && opts.radii.length) ? opts.radii : [3, 5, 10];
+  const rows = db.prepare('SELECT zip, customerCount, revenue FROM market_customer_rows WHERE marketUploadId = ?').all(upload.id);
+  if ((upload.geoLevel || 'zip') === 'dma'){
+    let dmaOnly = null;
+    try { dmaOnly = computeDmaRollup(rows, upload.weightMode); } catch (e){ dmaOnly = { available: false, note: String(e && e.message || e).slice(0, 120), dmas: [] }; }
+    // DMA-level Test/Control/Holdout + matched pairs, per direct
+    // instruction after Todd shared the Atlas reference file this whole
+    // design was modeled on (DMA-level, with exactly these columns) — see
+    // computeDmaCompositeAndMatching()'s own comment. This replaces what
+    // used to be a flat "not built yet" for a DMA-level upload.
+    const dmaMatch = computeDmaCompositeAndMatching(dmaOnly, holdoutFraction);
+    if (dmaMatch.dmasScored.length) dmaOnly.dmas = dmaMatch.dmasScored;
+    return { uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
+      confidence: 'lower — DMA-level upload: no zip-level penetration, no store trade areas. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
+      penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
+      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, stores: { available: false, note: 'store trade areas need zip-level data', stores: [] } };
+  }
+  const penetration = computePenetrationIndex(rows, upload.weightMode);
+  const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
+  const holdout = computeHoldoutSplit(composite.rows, holdoutFraction);
+  const demographic = computeDemographicIndex(rows.map(r => r.zip));
+  const matching = computeMatchedMarketPairs(composite.rows, demographic, holdout.holdoutZips);
+  const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
+  let dma = null;
+  try { dma = computeDmaRollup(rows, upload.weightMode); } catch (e){ dma = { available: false, note: `DMA roll-up not readable (${String(e && e.message || e).slice(0, 120)})`, dmas: [] }; }
+  let stores = null;
+  try {
+    const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
+    stores = computeStoreTradeAreas(rows, storeRows, radii, upload.weightMode);
+  } catch (e){ stores = { available: false, note: `store trade areas not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] }; }
+  return {
+    uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
+    penetration: composite.rows, compositeWeights: composite.weights,
+    holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
+    demographic, matching, audit, dma, stores, geoLevel: 'zip'
+  };
+}
+
+// 2026-09-09, per direct instruction ("We should just show a downloadable
+// Excel or Google Sheets output file to keep the analysis simple instead
+// of scrolling. It should look like the attached") — Todd's attached file
+// (an Atlas match-market reference export, DMA-level) is the actual shape
+// this app's whole Test/Control/Holdout design was modeled on to begin
+// with (see computeHoldoutSplit's own comment). Builds a single flat
+// sheet: title row, blank row, a bold header row, then one row per
+// market/zip — Market, Records, Index, Opportunity_Tier, Composite_Score,
+// Test_Control_Assignment, Match_Pair. Deliberately does NOT reproduce the
+// sample file's exact "TierAbbrev-N" / "TierAbbrev-HO" Match_Pair labeling
+// scheme, since that scheme is internally ambiguous in the sample itself
+// (several different Holdout markets all share the identical label
+// "Hig-HO" as a top Test/Control pair) — instead assigns each real pair a
+// clean, unambiguous id ("<Tier initials><n>") and labels every Holdout
+// row plainly as "Holdout", so the label always means one specific thing.
+// Opportunity_Tier values are this app's own current tier names (Must
+// Win/Growth/Opportunistic/Monitor, per Todd's 2026-09-09 rename), not the
+// sample file's older labels — the sample predates that rename and was
+// shared for its column layout/simplicity, not to revert the naming.
+function buildMarketUploadXlsxRows(analysis){
+  const isDma = analysis.geoLevel === 'dma';
+  const sourceRows = isDma ? ((analysis.dma && analysis.dma.dmas) || []) : (analysis.penetration || []);
+  const pairs = (analysis.matching && analysis.matching.pairs) || [];
+  const holdoutKeys = new Set(isDma ? ((analysis.holdout && analysis.holdout.dmaCodes) || []) : ((analysis.holdout && analysis.holdout.zips) || []));
+  const pairLabelByKey = {};
+  const tierInitials = t => (t || '').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'MKT';
+  pairs.forEach((p, i) => {
+    const keyA = isDma ? p.testDma : p.testZip, keyB = isDma ? p.controlDma : p.controlZip;
+    const rowA = sourceRows.find(r => (isDma ? r.dmaCode : r.zip) === keyA);
+    const label = `${tierInitials(rowA && rowA.opportunityTier)}${i + 1}`;
+    pairLabelByKey[keyA] = label; pairLabelByKey[keyB] = label;
+  });
+  return sourceRows.map(r => {
+    const key = isDma ? r.dmaCode : r.zip;
+    const marketLabel = isDma ? (r.dmaName ? `${r.dmaCode} - ${r.dmaName}` : r.dmaCode) : geoKeyLabel(r.zip);
+    const records = analysis.weightMode === 'revenue' ? (isDma ? r.volume : r.revenue) : (isDma ? r.volume : r.customerCount);
+    const index = isDma ? r.populationIndex : r.penetrationIndex;
+    const assignment = holdoutKeys.has(key) ? 'Holdout' : (pairLabelByKey[key] ? 'Test/Control' : 'Not in test');
+    return {
+      market: marketLabel,
+      country: isDma ? (r.country || 'US') : geoKeyCountry(r.zip),
+      records: records != null ? Number(records) : null,
+      index: index != null ? Number(index) : null,
+      opportunityTier: r.opportunityTier || null,
+      compositeScore: r.compositeScore != null ? Number(r.compositeScore) : null,
+      testControlAssignment: assignment,
+      matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null)
+    };
+  }).sort((a, b) => (b.records || 0) - (a.records || 0));
+}
+const MARKET_XLSX_DEFINED_COUNTRIES = ['US', 'CA', 'IT', 'ES', 'DE', 'PT', 'GB', 'AU'];
+async function buildMarketUploadXlsx(analysis, upload, opts){
+  let rows = buildMarketUploadXlsxRows(analysis);
+  if (opts && opts.definedCountriesOnly){
+    rows = rows.filter(r => MARKET_XLSX_DEFINED_COUNTRIES.includes(r.country));
+  }
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Verilume';
+  wb.created = new Date();
+  const sheet = wb.addWorksheet('Match Market Testing', { views: [{ state: 'frozen', ySplit: 3 }] });
+  const columns = [
+    { header: analysis.geoLevel === 'dma' ? 'DMA' : 'Zip', width: 38 },
+    { header: 'RECORDS', width: 12 },
+    { header: 'INDEX', width: 10 },
+    { header: 'Opportunity_Tier', width: 18 },
+    { header: 'Composite_Score', width: 16 },
+    { header: 'Test_Control_Assignment', width: 22 },
+    { header: 'Match_Pair', width: 14 }
+  ];
+  sheet.columns = columns.map(c => ({ width: c.width }));
+  const titleText = `${(upload.label || 'MATCH MARKET TESTING').toUpperCase()}${opts && opts.definedCountriesOnly ? ' — DEFINED COUNTRIES' : ''}`;
+  sheet.mergeCells(1, 1, 1, columns.length);
+  const titleCell = sheet.getCell(1, 1);
+  titleCell.value = titleText;
+  titleCell.font = { bold: true, size: 14 };
+  const headerRow = sheet.getRow(3);
+  columns.forEach((c, i) => { const cell = headerRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+  rows.forEach((r, i) => {
+    const row = sheet.getRow(4 + i);
+    row.getCell(1).value = r.market;
+    row.getCell(2).value = r.records;
+    row.getCell(3).value = r.index;
+    row.getCell(4).value = r.opportunityTier;
+    row.getCell(5).value = r.compositeScore;
+    row.getCell(6).value = r.testControlAssignment;
+    row.getCell(7).value = r.matchPair;
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
 }
 
 // ---------- Marketing Budget Upload (format-flexibility ingestion test) ----------
@@ -16420,6 +16690,11 @@ Submit your findings via the submit_brand_categories tool.`;
     // composite-score weighting and Holdout size — both explicitly flagged
     // as open assumptions in the design doc, not settled facts — can be
     // adjusted per account without a code change; defaults to 2/3, 1/3, 1/6.
+    //
+    // 2026-09-09: the actual computation moved into computeMarketUploadAnalysis()
+    // below so the two Excel-export endpoints (export.xlsx / export-defined-
+    // countries.xlsx, added the same round) can reuse the exact same numbers
+    // this JSON endpoint returns rather than recomputing them a second way.
     if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[5] === 'analysis'){
       const accountId = decodeURIComponent(parts[2]);
       const uploadId = parts[4];
@@ -16427,39 +16702,64 @@ Submit your findings via the submit_brand_categories tool.`;
       const upload = db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
       if (!upload) return sendJson(res, 404, { error: 'no such market customer upload on this account' });
       const url = new URL(req.url, 'http://localhost');
-      const volumeWeight = url.searchParams.has('volumeWeight') ? Number(url.searchParams.get('volumeWeight')) : (2 / 3);
-      const indexWeight = url.searchParams.has('indexWeight') ? Number(url.searchParams.get('indexWeight')) : (1 / 3);
-      const holdoutFraction = url.searchParams.has('holdoutFraction') ? Number(url.searchParams.get('holdoutFraction')) : (1 / 6);
-      const rows = db.prepare('SELECT zip, customerCount, revenue FROM market_customer_rows WHERE marketUploadId = ?').all(uploadId);
-      if ((upload.geoLevel || 'zip') === 'dma'){
-        let dmaOnly = null;
-        try { dmaOnly = computeDmaRollup(rows, upload.weightMode); } catch (e){ dmaOnly = { available: false, note: String(e && e.message || e).slice(0, 120), dmas: [] }; }
-        return sendJson(res, 200, { uploadId, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
-          confidence: 'lower — DMA-level upload: no zip-level penetration, no zip test/control pairs, no store trade areas. Upload zip-level data for the full analysis.',
-          penetration: [], compositeWeights: null, holdout: { zips: [], fraction: 0, note: 'not available at DMA level' }, demographic: { flag: 'no_demographic_data' }, matching: { pairs: [], unpaired: [], note: 'Test/control pairing at DMA level is not built yet — upload zip-level data for pairs.' },
-          audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, stores: { available: false, note: 'store trade areas need zip-level data', stores: [] } });
-      }
-      const penetration = computePenetrationIndex(rows, upload.weightMode);
-      const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
-      const holdout = computeHoldoutSplit(composite.rows, holdoutFraction);
-      const demographic = computeDemographicIndex(rows.map(r => r.zip));
-      const matching = computeMatchedMarketPairs(composite.rows, demographic, holdout.holdoutZips);
-      const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
-      let dma = null;
-      try { dma = computeDmaRollup(rows, upload.weightMode); } catch (e){ dma = { available: false, note: `DMA roll-up not readable (${String(e && e.message || e).slice(0, 120)})`, dmas: [] }; }
-      let stores = null;
-      try {
-        const radiiRaw = url.searchParams.get('radii');
-        const radii = radiiRaw ? radiiRaw.split(',').map(Number).filter(n => n > 0) : [3, 5, 10];
-        const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
-        stores = computeStoreTradeAreas(rows, storeRows, radii, upload.weightMode);
-      } catch (e){ stores = { available: false, note: `store trade areas not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] }; }
-      return sendJson(res, 200, {
-        uploadId, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
-        penetration: composite.rows, compositeWeights: composite.weights,
-        holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
-        demographic, matching, audit, dma, stores, geoLevel: 'zip'
+      const analysis = computeMarketUploadAnalysis(accountId, upload, {
+        volumeWeight: url.searchParams.has('volumeWeight') ? Number(url.searchParams.get('volumeWeight')) : undefined,
+        indexWeight: url.searchParams.has('indexWeight') ? Number(url.searchParams.get('indexWeight')) : undefined,
+        holdoutFraction: url.searchParams.has('holdoutFraction') ? Number(url.searchParams.get('holdoutFraction')) : undefined,
+        radii: url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined
       });
+      return sendJson(res, 200, analysis);
+    }
+
+    // GET /api/accounts/:id/market-customer-uploads/:uploadId/export.xlsx
+    // and .../export-defined-countries.xlsx — 2026-09-09, per direct
+    // instruction: the on-page analysis table got long enough ("very long
+    // ... multiple sections including all countries") that scrolling
+    // through it stopped being the right way to consume it. Todd shared
+    // the actual reference file this whole Test/Control/Holdout design was
+    // modeled on (see computeHoldoutSplit's and
+    // computeDmaCompositeAndMatching's own comments) as the target shape:
+    // one flat table — market/zip, records, index, opportunity tier,
+    // composite score, test/control/holdout, match pair — not a multi-
+    // section scrolling page. These two endpoints ARE that download now;
+    // see mouExportXlsx()/mouExportDefinedCountriesXlsx() in portal.html
+    // for how the results card was rewritten to lead with these buttons
+    // instead of the old long table.
+    //
+    // Built with exceljs (added to package.json this round) rather than
+    // this app's older xlsx_gen.py Python-subprocess pattern, which is
+    // flagged on the hosting punch list as unable to run on Vercel's Node
+    // serverless runtime — a genuine Node library sidesteps that
+    // limitation entirely rather than falling back to CSV.
+    //
+    // "export-defined-countries" filters to just this account's core
+    // supported footprint (US, CA, IT, ES, DE, PT, UK/GB, AU — the same
+    // eight named directly) — a client operating across many more
+    // countries than that still gets a smaller, more usable file scoped
+    // to the markets Verilume actually has reference data and named market
+    // definitions for, per Todd's own framing ("to make it user friendly").
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && (parts[5] === 'export.xlsx' || parts[5] === 'export-defined-countries.xlsx')){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such market customer upload on this account' });
+      const definedCountriesOnly = parts[5] === 'export-defined-countries.xlsx';
+      try {
+        const analysis = computeMarketUploadAnalysis(accountId, upload, {});
+        const buffer = await buildMarketUploadXlsx(analysis, upload, { definedCountriesOnly });
+        const safeLabel = String(upload.label || 'match-market-analysis').replace(/[^A-Za-z0-9 _.-]/g, '').trim().slice(0, 60) || 'match-market-analysis';
+        const filename = `${safeLabel}${definedCountriesOnly ? ' - defined countries' : ''}.xlsx`;
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${filename.replace(/"/g, "'")}"`,
+          'Content-Length': buffer.length
+        });
+        res.end(buffer);
+      } catch (e){
+        return sendJson(res, 500, { error: 'Excel export failed: ' + (e && e.message || e) });
+      }
+      return;
     }
 
     // GET /api/marketing-budget-upload-template.csv — round 2026-09-05,
