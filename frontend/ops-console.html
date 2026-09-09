@@ -376,9 +376,11 @@
         <div style="display:flex;align-items:flex-end;gap:10px;">
           <button class="btn" onclick="refDataLoadStatus()">Check status</button>
           <button class="btn primary" id="refDataLoadPublicBtn" onclick="refDataLoadPublic()">Load public reference data →</button>
+          <button class="btn primary" id="refDataLoadDemographicsBtn" onclick="refDataLoadDemographics()">Load demographics (age + income by zip) →</button>
         </div>
       </div>
       <p class="proto-note">2020 Census ZCTA population + public zip→DMA crosswalk, fetched server-side through this console's own session and saved to the backend in batches. Needs a Census API key configured as the CENSUS_API_KEY environment variable on the backend — if that's missing, this will say so directly.</p>
+      <p class="proto-note">Demographics: 2022 ACS 5-Year age (5 generations: Gen Z, Millennials, Gen X, Boomers, Silent Gen — the same ones Company Profile's generation picker can actually back with real Census data) and a derived average-household-income estimate, by zip — feeds the Match Market Builder's per-store trade-area Audience/Wealth Fit scoring. Same Census API key requirement as above.</p>
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
         <div class="field-row three">
           <div>
@@ -967,6 +969,53 @@ const REF_DATA_SOURCES = {
     url: 'https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip',
     sourceLabel: 'U.S. Census Bureau, 2023 ZCTA Gazetteer (internal point lat/long)',
     note: 'The gazetteer is a zip archive; download it, unzip the .txt, and upload that file below (GEOID, INTPTLAT, INTPTLONG columns are read automatically).'
+  },
+  // 2026-09-09, per direct instruction ("Build the API connection now") —
+  // the data-source piece of the store-trade-area profile-matching build
+  // (cxmedia-store-trade-area-audience-match-scoping-2026-09-09.md). Same
+  // Census tables (B01001 age, B19001 income) and bin definitions
+  // assessment.html's own fetchAcsPopulation() already uses, just at ZCTA
+  // geography instead of county/national — see the backend's
+  // /api/market-reference-data/proxy/demographics comment for the full
+  // rationale. `parse()` takes the raw Census response PLUS the
+  // ageBins/binSuffix/incomeBracketMidpoints that same proxy call returns
+  // (read from the backend, not duplicated here) so this can never drift
+  // out of sync with what was actually requested.
+  demographics: {
+    sourceLabel: 'U.S. Census Bureau, 2022 ACS 5-Year Estimates, tables B01001 (age) and B19001 (household income) by ZCTA — api.census.gov',
+    parse: (data, meta) => {
+      const header = Array.isArray(data) && data.length ? data[0] : [];
+      const col = (row, name) => { const i = header.indexOf(name); return i >= 0 ? (Number(row[i]) || 0) : 0; };
+      const zipCol = header.indexOf('zip code tabulation area');
+      const out = [];
+      (Array.isArray(data) ? data.slice(1) : []).forEach(row => {
+        const zip = zipCol >= 0 ? String(row[zipCol] || '').padStart(5, '0') : '';
+        if (!/^\d{5}$/.test(zip)) return;
+        // 5 real ACS-backed generations (genz/millennial/genx/boomer/
+        // silent) — same as assessment.html discloses, Gen Alpha/Gen
+        // Beta/The Greatest Generation have no clean bin at this table's
+        // granularity and are never faked here.
+        Object.entries(meta.ageBins || {}).forEach(([gen, offsets]) => {
+          const total = offsets.reduce((sum, offset) => {
+            const suffix = (meta.binSuffix || [])[offset];
+            if (!suffix) return sum;
+            const femaleSuffix = String(Number(suffix) + 24).padStart(3, '0');
+            return sum + col(row, `B01001_${suffix}E`) + col(row, `B01001_${femaleSuffix}E`);
+          }, 0);
+          out.push({ zip, attribute: `population_${gen}`, value: total });
+        });
+        // One derived weighted-average household income estimate from the
+        // real B19001 bracket distribution — a disclosed approximation
+        // (bracket midpoints), not all 16 raw brackets per zip; see the
+        // backend's ACS_INCOME_BRACKET_MIDPOINTS comment for why.
+        const totalHouseholds = col(row, 'B19001_001E');
+        if (totalHouseholds > 0){
+          const weightedSum = (meta.incomeBracketMidpoints || []).reduce((sum, pair) => sum + col(row, `B19001_${pair[0]}E`) * pair[1], 0);
+          out.push({ zip, attribute: 'income_avg_estimate', value: Math.round(weightedSum / totalHouseholds) });
+        }
+      });
+      return out;
+    }
   }
 };
 async function refDataPostChunks(path, rows, extra, onProgress){
@@ -984,19 +1033,53 @@ async function refDataLoadStatus(){
   const el = document.getElementById('refDataStatus');
   if (!el) return;
   el.textContent = 'Checking…';
-  let pop = null, dma = null, cen = null;
+  let pop = null, dma = null, cen = null, demo = null;
   try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-population-master/status`); if (r.ok) pop = await r.json(); } catch (e){}
   try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-dma-master/status`); if (r.ok) dma = await r.json(); } catch (e){}
   try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-zip-centroids/status`); if (r.ok) cen = await r.json(); } catch (e){}
+  try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-demographic-master/status`); if (r.ok) demo = await r.json(); } catch (e){}
   const cc = (o) => o && o.byCountry && Object.keys(o.byCountry).length ? ` (${Object.entries(o.byCountry).map(([c, n]) => `${c} ${Number(n).toLocaleString()}`).join(' · ')})` : '';
   const popLine = pop ? (pop.zipsLoaded ? `${Number(pop.zipsLoaded).toLocaleString()} zips/FSAs with population${cc(pop)} — ${(pop.sources || []).join('; ')}` : 'No population data loaded yet.') : 'Population status unavailable.';
   const dmaLine = dma ? (dma.zipsLoaded ? `${Number(dma.zipsLoaded).toLocaleString()} zips/FSAs → ${Number(dma.dmaCount).toLocaleString()} markets${cc(dma)} — ${(dma.sources || []).map(x => `${x.sourceLabel}${x.method ? ` (${x.method})` : ''}`).join('; ')}${dma.licensed ? ' · licensed' : ' · approximation, not Nielsen-licensed'}` : 'No zip→DMA crosswalk loaded yet.') : 'DMA status unavailable.';
   const cenLine = cen ? (cen.zipsLoaded ? `${Number(cen.zipsLoaded).toLocaleString()} zips/FSAs with centroids${cc(cen)} — ${(cen.sources || []).join('; ')}` : 'No zip centroids loaded yet.') : 'Centroid status unavailable.';
+  // 2026-09-09 — demographics (age/income by zip), feeding the store
+  // trade-area Audience/Wealth Fit build (see cxmedia-store-trade-area-
+  // audience-match-scoping-2026-09-09.md). Shown per-attribute since each
+  // one (5 generation populations + the derived income estimate) can be
+  // loaded/refreshed independently.
+  const demoLine = demo ? ((demo.attributes || []).length ? (demo.attributes || []).map(a => `${escapeHtml(a.attribute)} (${Number(a.zips).toLocaleString()} zips)`).join(' · ') : 'No demographic data loaded yet.') : 'Demographic status unavailable.';
   el.innerHTML = `<table><tbody>
     <tr><td style="font-weight:600;white-space:nowrap;">Population by zip</td><td>${escapeHtml(popLine)}</td></tr>
     <tr><td style="font-weight:600;white-space:nowrap;">Zip → DMA</td><td>${escapeHtml(dmaLine)}</td></tr>
     <tr><td style="font-weight:600;white-space:nowrap;">Zip centroids</td><td>${escapeHtml(cenLine)}</td></tr>
+    <tr><td style="font-weight:600;white-space:nowrap;">Demographics by zip</td><td>${demoLine}</td></tr>
   </tbody></table>`;
+}
+// 2026-09-09, per direct instruction ("Build the API connection now") —
+// same fetch-parse-post shape as refDataLoadPublic() just below, for the
+// new demographics proxy/bulk-load endpoints. Kept as its own button
+// rather than folded into "Load public reference data" since this is a
+// materially larger pull (60 Census variables per zip vs. 1) and a
+// separate, newer reference dataset — staff should be able to (re)load it
+// independently of population/DMA.
+async function refDataLoadDemographics(){
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  const btn = document.getElementById('refDataLoadDemographicsBtn'); if (btn) btn.disabled = true;
+  try {
+    say('Fetching ACS age + income data by zip from api.census.gov (every U.S. ZCTA in one pull — can take a minute)…');
+    const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/demographics`, { timeoutMs: 60000 });
+    if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status} ${t.slice(0, 200)}`); }
+    const prJson = await pr.json();
+    const demoRows = REF_DATA_SOURCES.demographics.parse(prJson.data, { ageBins: prJson.ageBins, binSuffix: prJson.binSuffix, incomeBracketMidpoints: prJson.incomeBracketMidpoints });
+    if (!demoRows.length) throw new Error('Census API returned no ZCTA rows');
+    say(`Loading ${demoRows.length.toLocaleString()} demographic attribute rows…`);
+    const d = await refDataPostChunks('/api/market-demographic-master', demoRows, { sourceLabel: REF_DATA_SOURCES.demographics.sourceLabel }, (done, n) => say(`Loading demographics ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} demographic attribute rows loaded.${d.errors.length ? ` Some rows were skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
+    refDataLoadStatus();
+  } catch (e){
+    say(`Couldn't load demographics: ${e && e.message ? e.message : e}`);
+  } finally { if (btn) btn.disabled = false; }
 }
 async function refDataLoadPublic(){
   const status = document.getElementById('refDataLoadStatus');
