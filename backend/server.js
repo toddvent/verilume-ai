@@ -16123,9 +16123,30 @@ Submit your findings via the submit_brand_categories tool.`;
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'population'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
-        const upstream = await fetch('https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*');
-        if (!upstream.ok) return sendJson(res, 502, { error: `Census API HTTP ${upstream.status}` });
-        const json = await upstream.json();
+        // 2026-09-09 follow-up — Todd re-tested after the CORS fix and got a
+        // NEW, different failure: a real HTTP status came back this time
+        // (proof the CORS block is gone — the browser is only ever talking
+        // to our own backend now), but the body wasn't JSON — "Unexpected
+        // token '<' ... is not valid JSON", i.e. Census sent back HTML with
+        // a 200 status instead of the expected data. Node's built-in fetch
+        // sends no User-Agent by default, and it's a well-known behavior of
+        // api.census.gov's front door (and API gateways generally) to
+        // silently serve an HTML error/challenge page instead of JSON to
+        // requests that look like a bot rather than a browser. Fixed by
+        // sending a real User-Agent + Accept header. Also: fail fast with a
+        // 20s timeout instead of hanging on a slow/stuck upstream, and if
+        // the body still isn't valid JSON, surface a real snippet of what
+        // Census actually sent back instead of just the JSON.parse error —
+        // so if this happens again the message says what's actually wrong.
+        const upstream = await fetch('https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(20000)
+        });
+        const bodyText = await upstream.text();
+        if (!upstream.ok) return sendJson(res, 502, { error: `Census API HTTP ${upstream.status} — ${bodyText.slice(0, 300)}` });
+        let json;
+        try { json = JSON.parse(bodyText); }
+        catch (parseErr){ return sendJson(res, 502, { error: `Census API returned a non-JSON response (HTTP ${upstream.status}) — ${bodyText.slice(0, 300)}` }); }
         return sendJson(res, 200, { data: json });
       } catch (e){
         return sendJson(res, 502, { error: `Census API fetch failed: ${e && e.message ? e.message : e}` });
@@ -16134,9 +16155,12 @@ Submit your findings via the submit_brand_categories tool.`;
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'dma'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
-        const upstream = await fetch('https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw');
-        if (!upstream.ok) return sendJson(res, 502, { error: `crosswalk HTTP ${upstream.status}` });
+        const upstream = await fetch('https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'text/plain,*/*' },
+          signal: AbortSignal.timeout(20000)
+        });
         const text = await upstream.text();
+        if (!upstream.ok) return sendJson(res, 502, { error: `crosswalk HTTP ${upstream.status} — ${text.slice(0, 300)}` });
         return sendJson(res, 200, { text });
       } catch (e){
         return sendJson(res, 502, { error: `crosswalk fetch failed: ${e && e.message ? e.message : e}` });
