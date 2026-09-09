@@ -13013,12 +13013,26 @@ function fmtMoney(n){ return (typeof n === 'number' && n !== null && !isNaN(n)) 
 // travel from that page's actual selections (see buildScorecardPayload()'s
 // new audience/wealth fields) and need to render back into the same
 // labels here.
+// 2026-09-09, per direct report ("we... expanded the generations... we
+// should try to be consistent") — this list had drifted out of sync with
+// assessment.html's own GENERATIONS[] (Appendix A), which added
+// Generation Beta, Gen Alpha and The Greatest Generation. Until this fix,
+// a client who selected one of those three in the assessment would have
+// it silently vanish from the Company Profile display here (GENERATIONS
+// .filter(...).has(g.key) never matches an unlisted key), and editing
+// Company Profile in the portal could never re-select them at all. Now
+// the same 9 keys/labels as assessment.html, in the same oldest-to-newest
+// order; blurb text isn't needed here (portal.html never displays it),
+// so only key/label are carried over.
 const GENERATIONS = [
+  { key: 'genbeta', label: 'Generation Beta' },
+  { key: 'genalpha', label: 'Gen Alpha' },
   { key: 'genz', label: 'Gen Z' },
   { key: 'millennial', label: 'Millennials' },
   { key: 'genx', label: 'Gen X' },
   { key: 'boomer', label: 'Baby Boomers' },
   { key: 'silent', label: 'Seniors / Silent Gen' },
+  { key: 'greatest', label: 'The Greatest Generation' },
   { key: 'general', label: 'General / all ages' }
 ];
 const WEALTH_TIERS = [
@@ -26582,11 +26596,25 @@ function mrfDmaSectionHtml(dma){
 // Reference Data module (2026-09-09) for that one-time load, not here.
 // ---- Stores ----
 let mstStores = [];
+// 2026-09-09, per direct instruction ("What is the next step that
+// identifies potential customers based on the AOV business profile for
+// this storefront?") — mstProspectFit holds the result of the new
+// GET .../stores/prospect-fit endpoint (computeStoreProspectFit() in
+// backend/server.js): Audience Fit / Wealth Fit at 5/10/15mi prospecting
+// rings around each geocoded store, scored against this account's own
+// Company Profile (audience generations + wealth tier) using the same
+// real Census ACS age/income data and Verilume Wealth Index formula as
+// assessment.html — no customer upload required, unlike the
+// upload-driven "By store trade area" section in the Match Market
+// Builder results (mstTradeAreaSectionHtml above, computeStoreTradeAreas
+// server-side), which this is deliberately independent of.
+let mstProspectFit = null;
 async function mstLoad(){
   const body = document.getElementById('mstBody');
   if (!body) return;
   if (dataSourceLabel !== 'backend' || !state.companyId){ body.innerHTML = '<p class="hint" style="margin:0;">Stores are kept on the backend.</p>'; return; }
   try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`); mstStores = r.ok ? ((await r.json()).stores || []) : []; } catch (e){ mstStores = []; }
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/prospect-fit`); mstProspectFit = r.ok ? await r.json() : null; } catch (e){ mstProspectFit = null; }
   mstRender();
 }
 function mstRender(){
@@ -26634,7 +26662,50 @@ function mstRender(){
       <input type="file" id="mstFileInput" accept=".csv,.tsv,.txt,.xlsx" onchange="document.getElementById('mstFileChosenName').textContent = (this.files[0] || {}).name || ''; mstHandleFile(event)" style="display:none;">
       <button type="button" class="btn-ghost" onclick="mstGeocodeMissing()" ${mstStores.some(s => s.lat == null && s.address) ? '' : 'disabled'}>Geocode addresses without coordinates →</button>
       <span class="hint" id="mstStatus"></span>
-    </div>`;
+    </div>
+    ${mstProspectFitSectionHtml(mstProspectFit)}`;
+}
+// 2026-09-09, per direct instruction ("What is the next step that
+// identifies potential customers based on the AOV business profile for
+// this storefront?") — renders computeStoreProspectFit()'s output right
+// on this card, per store per prospecting ring (5/10/15mi default):
+// Audience Fit (that ring's share of this account's target generation(s),
+// indexed to the national average = 100) and Wealth Fit (that ring's real
+// ACS-derived average household income, run through the same Verilume
+// Wealth Index / hnw-wealthy-middle tier bands as assessment.html, and
+// compared to the account's own stored wealth tier). Every unavailable
+// case is disclosed plainly rather than hidden — no stores, no geocoded
+// stores, no centroid/population/demographic reference data loaded yet —
+// consistent with the honest-disclosure pattern used elsewhere on this
+// page (e.g. the "no_demographic_data" flag in mouRenderResults above).
+function mstFitBadge(tier){
+  const c = { hnw: 'var(--cx)', wealthy: 'var(--brand, #b8860b)', middle: 'var(--muted)' }[tier] || 'var(--muted)';
+  const label = { hnw: 'HNW', wealthy: 'Wealthy', middle: 'Middle income' }[tier] || tier;
+  return `<span style="color:${c};font-weight:600;">${escapeHtml(label)}</span>`;
+}
+function mstProspectFitSectionHtml(pf){
+  if (!pf) return '';
+  if (!pf.available){
+    return `<h4 style="margin:18px 0 6px;">Nearby prospects (Audience &amp; Wealth Fit)</h4><p class="hint" style="margin:0;">${escapeHtml(pf.note || 'unavailable')}</p>`;
+  }
+  const rad = pf.radiiMiles;
+  const rows = pf.stores.map(s => `<tr>
+      <td>${escapeHtml(s.name)}${s.address ? `<div class="hint">${escapeHtml(s.address)}</div>` : ''}</td>
+      ${s.rings.map(r => `<td style="text-align:right;">
+          ${r.audienceFit != null ? `Audience ${r.audienceFit}` : '<span class="hint">Audience —</span>'}<br>
+          ${r.wealthFit ? `Wealth ${r.wealthFit.index} — ${mstFitBadge(r.wealthFit.tier)}${r.wealthFit.matchesAccountTier === true ? ' <span class="hint">matches profile</span>' : (r.wealthFit.matchesAccountTier === false ? ' <span class="hint">off profile</span>' : '')}` : '<span class="hint">Wealth —</span>'}
+          <div class="hint">${r.population != null ? Number(r.population).toLocaleString() + ' pop' : '—'}${r.avgIncomeEstimate != null ? ` · avg $${Number(r.avgIncomeEstimate).toLocaleString()}` : ''}</div>
+        </td>`).join('')}
+    </tr>`).join('');
+  return `
+    <h4 style="margin:18px 0 6px;">Nearby prospects (Audience &amp; Wealth Fit) <span class="hint" style="font-weight:400;">${pf.storesGeocoded} of ${pf.storesTotal} stores geocoded · rings ${rad.join(' / ')} mi</span></h4>
+    <p class="hint" style="margin:0 0 8px;">${escapeHtml(pf.disclosure || '')}</p>
+    ${pf.audienceFitNote ? `<p class="hint" style="margin:0 0 8px;color:#b8860b;">${escapeHtml(pf.audienceFitNote)}</p>` : ''}
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
+      <thead><tr><th>Store</th>${rad.map(r => `<th style="text-align:right;">${r} mi ring</th>`).join('')}</tr></thead>
+      <tbody>${rows || '<tr><td colspan="' + (rad.length + 1) + '">No geocoded stores yet.</td></tr>'}</tbody>
+    </table></div>
+    <p class="hint" style="margin:6px 0 0;">Audience Fit = that ring's share of this account's target generation(s) (${(pf.audienceFitBackedGenerations || []).length ? pf.audienceFitBackedGenerations.join(', ') : 'none set'}), indexed to the national average = 100. Wealth Fit = that ring's real average household income, run through the Verilume Wealth Index (same formula as the assessment) and compared against this account's own wealth tier${(pf.wealthTiers || []).length ? ` (${pf.wealthTiers.join(', ')})` : ' (not set in Company Profile)'}.</p>`;
 }
 async function mstSave(stores, replace){
   const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stores, replace: !!replace }), timeoutMs: 60000 });
@@ -26835,6 +26906,18 @@ function mouRenderResults(data){
     </div>
     <p class="hint" id="mouExportNote" style="margin:0;"></p>
     <p class="hint" style="margin-top:12px;">Composite score defaults to two-thirds volume weight / one-third index weight — an open assumption per the design doc, not a settled fact. "Defined countries" covers US, Canada, Italy, Spain, Germany, Portugal, UK and Australia — the account's core supported footprint.</p>
+    <!-- 2026-09-09, per direct instruction ("Restore the trade-area
+         display") — this section (per-store population/volume by mile
+         ring, matched store pairs) was computed by the backend all along
+         (computeStoreTradeAreas, part of computeMarketUploadAnalysis) but
+         dropped from the screen when the long scrolling view above was
+         replaced with the compact summary + Excel downloads. It's back
+         here as its own section rather than folded into the download,
+         since it's about stores (from the "Stores and trade areas" card),
+         not about the zip/DMA rows the export covers. mstTradeAreaSectionHtml()
+         itself is unchanged — it already handled the "not available yet"
+         state cleanly. -->
+    ${!isDma ? mstTradeAreaSectionHtml(data.stores) : ''}
   `;
 }
 async function mouExportXlsxFile(definedCountriesOnly){
