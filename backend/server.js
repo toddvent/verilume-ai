@@ -16317,8 +16317,27 @@ Submit your findings via the submit_brand_categories tool.`;
       const periodLabel = body.periodLabel ? String(body.periodLabel).slice(0, 100) : null;
       db.prepare('INSERT INTO market_customer_uploads (id, accountId, uploadedFileId, label, createdAt, weightMode, auditJson, geoLevel, periodLabel) VALUES (?,?,?,?,?,?,?,?,?)')
         .run(id, accountId, body.uploadedFileId, body.label || null, now, weightMode, auditJson, geoLevel, periodLabel);
-      const insertRow = db.prepare('INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES (?,?,?,?,?)');
-      body.rows.forEach(r => insertRow.run(generateId('MKTROW'), id, String(r.zip), Number(r.customerCount), r.revenue != null ? Number(r.revenue) : null));
+      // 2026-09-09 fix, per direct bug report (Todd: "Backend unreachable —
+      // could not complete the scan/import" on a 7,709-zip file) — same
+      // root cause and same fix as the carry-forward endpoint's 2026-09-08
+      // "Backend unreachable — could not leverage that year" bug (see that
+      // endpoint's own comment above): on the production Supabase/Postgres
+      // path, every db.prepare(...).run() call is a real network round
+      // trip, so the original one-INSERT-per-row loop meant thousands of
+      // sequential round trips for a large customer file — easily past
+      // authedFetch's 12s client-side abort timeout even though the import
+      // was often still quietly succeeding server-side. Batched into
+      // chunked multi-row INSERTs (100 rows/chunk, same chunk size as the
+      // carry-forward fix) to cut this to a small constant number of round
+      // trips regardless of file size.
+      const MKTROW_CHUNK_SIZE = 100;
+      for (let i = 0; i < body.rows.length; i += MKTROW_CHUNK_SIZE){
+        const chunk = body.rows.slice(i, i + MKTROW_CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?,?)').join(',');
+        const params = [];
+        chunk.forEach(r => { params.push(generateId('MKTROW'), id, String(r.zip), Number(r.customerCount), r.revenue != null ? Number(r.revenue) : null); });
+        db.prepare(`INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES ${placeholders}`).run(...params);
+      }
       return sendJson(res, 201, { id, rowCount: body.rows.length, weightMode, geoLevel, periodLabel });
     }
     // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
@@ -16328,7 +16347,23 @@ Submit your findings via the submit_brand_categories tool.`;
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const uploads = db.prepare('SELECT id, label, periodLabel, createdAt, weightMode, geoLevel FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      // 2026-09-09: rowCount added (via subquery) so a picker UI can show
+      // "how big" each committed upload was without a second round trip
+      // per row — see mouLoadUploadPicker()/mouSelectUpload() in portal.html, built so a
+      // client can tell multiple committed uploads apart and pick which
+      // one's analysis to view, after a direct report asking exactly that
+      // ("How do we know when to ignore a previous file or select a
+      // specific file for the analysis work?"). Nothing is ever deleted
+      // or marked inactive here — every confirmed import stays a
+      // permanent, addressable record, consistent with this feature's
+      // existing "every upload attempt stays in this account's history"
+      // audit-trail design; the picker is what makes those records
+      // reachable again after the session that created them ends.
+      const uploads = db.prepare(`
+        SELECT u.id, u.label, u.periodLabel, u.createdAt, u.weightMode, u.geoLevel,
+          (SELECT COUNT(*) FROM market_customer_rows r WHERE r.marketUploadId = u.id) AS rowCount
+        FROM market_customer_uploads u WHERE u.accountId = ? ORDER BY u.createdAt DESC
+      `).all(accountId);
       return sendJson(res, 200, { uploads });
     }
 
