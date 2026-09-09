@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=22.5.0"
   },
+  "scripts": {
+    "check-style": "node tools/check-style.js"
+  },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "ffprobe-static": "^3.1.0",
