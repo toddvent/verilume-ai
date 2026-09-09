@@ -5950,6 +5950,7 @@
             <option value="FR">France (5-digit code postal)</option>
             <option value="ES">Spain (5-digit código postal)</option>
             <option value="IT">Italy (5-digit CAP)</option>
+            <option value="PT">Portugal (NNNN-NNN)</option>
           </select>
           <span class="hint">A Country column in the file overrides this per row. Canadian and UK codes are recognised by their letters either way.</span>
         </div>
@@ -26257,9 +26258,14 @@ const MOU_COUNTRY_PACKS = {
   DE: { name: 'Germany', unit: 'Postleitzahl (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
   FR: { name: 'France', unit: 'code postal (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
   ES: { name: 'Spain', unit: 'código postal (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
-  IT: { name: 'Italy', unit: 'CAP (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) }
+  IT: { name: 'Italy', unit: 'CAP (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  // 2026-09-09, per direct instruction — mirrors the backend's own
+  // GEO_COUNTRY_PACKS addition (see its comment there for the full
+  // rationale): Portugal added to the "defined countries" set for the
+  // match-market Excel export.
+  PT: { name: 'Portugal', unit: 'código postal (NNNN-NNN)', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^(\d{4})-?(\d{3})?$/); if (!m) return null; return m[2] ? `${m[1]}-${m[2]}` : m[1]; } }
 };
-const MOU_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT' };
+const MOU_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT', 'PORTUGAL': 'PT', 'PRT': 'PT' };
 // 2026-09-09: '' (Select…) matches the dropdown's new unselected default
 // (see mouDefaultCountry <select>, ~line 5897) — mouNormalizeZip's own
 // "mouDefaultCountry || 'US'" fallback below still treats this as US until
@@ -26769,62 +26775,40 @@ function mstTradeAreaSectionHtml(st){
     ${pairs ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Test store</th><th>Control store</th><th style="text-align:right;">Similarity distance</th></tr></thead><tbody>${pairs}</tbody></table></div>` : ''}
     ${(st.unpaired || []).length ? `<p class="hint" style="margin:6px 0 0;">Unpaired: ${st.unpaired.map(escapeHtml).join(', ')}</p>` : ''}`;
 }
+// 2026-09-09, per direct instruction: "The analysis is very long and
+// includes multiple sections including all countries. We should just show
+// a downloadable Excel ... output file to keep the analysis simple instead
+// of scrolling." This replaces the old multi-section scrolling view
+// (per-zip/DMA table, DMA rollup, store trade areas, demographic index,
+// full Test/Control pair table) with a compact summary plus two real
+// .xlsx downloads (mouExportXlsx()/mouExportDefinedCountriesXlsx() below,
+// backed by the new export.xlsx / export-defined-countries.xlsx endpoints
+// — see their comment in backend/server.js for why these are genuine
+// server-generated .xlsx files now, not a CSV workaround). Todd's own
+// attached reference file (an Atlas match-market export) is exactly what
+// these downloads are built to match: one flat table, not a scrolling
+// page. mouLastAnalysis is kept so the export buttons know which upload
+// to ask for without a second round trip.
+let mouLastAnalysis = null;
 function mouRenderResults(data){
   const card = document.getElementById('mouResultsCard');
   const body = document.getElementById('mouResultsBody');
   if (!card || !body) return;
   card.style.display = '';
+  mouLastAnalysis = data;
 
-  // 2026-09-09, per direct instruction ("Visual markets based on Must Win,
-  // Growth and Opportunistic designations") — renamed from the original
-  // High potential/Emerging strong/Solid baseline/Watch-or-low-priority
-  // labels; see the matching comment on computeCompositeScore() in
-  // backend/server.js for the full rationale, including the 4th label
-  // ("Monitor") Claude picked to complete Todd's three named tiers.
+  const isDma = data.geoLevel === 'dma';
+  const sourceRows = isDma ? ((data.dma && data.dma.dmas) || []) : (data.penetration || []);
+  const tierCounts = {};
+  sourceRows.forEach(r => { if (r.opportunityTier) tierCounts[r.opportunityTier] = (tierCounts[r.opportunityTier] || 0) + 1; });
+  const tierOrder = ['Must Win', 'Growth', 'Opportunistic', 'Monitor'];
   const tierColor = t => ({ 'Must Win': 'var(--cx)', 'Growth': 'var(--brand, #b8860b)', 'Opportunistic': 'var(--muted)', 'Monitor': 'var(--advocacy)' }[t] || 'var(--muted)');
-  const holdoutSet = new Set((data.holdout && data.holdout.zips) || []);
-  const volLabel = data.weightMode === 'revenue' ? 'Revenue' : 'Count';
-  const penRows = (data.penetration || []).map(p => {
-    const holdoutTag = holdoutSet.has(p.zip) ? ' <span style="font-size:0.6875rem;font-weight:700;color:var(--advocacy);">HOLDOUT</span>' : '';
-    const volVal = data.weightMode === 'revenue' ? (p.revenue != null ? '$' + Number(p.revenue).toLocaleString() : '—') : Number(p.customerCount).toLocaleString();
-    if (p.flag === 'no_population_data' || p.flag === 'no_revenue_data'){
-      const msg = p.flag === 'no_revenue_data' ? 'No revenue on file.' : 'No population data on file yet.';
-      return `<tr>
-        <td>${escapeHtml(mouGeoLabel(p.zip))}${holdoutTag}</td>
-        <td>${volVal}</td>
-        <td colspan="2" style="color:var(--muted);">${msg}</td>
-        <td>—</td>
-        <td style="color:${tierColor(p.opportunityTier)};font-weight:600;">${p.compositeScore != null ? `${p.compositeScore} — ${escapeHtml(p.opportunityTier)}` : '—'}</td>
-      </tr>`;
-    }
-    return `<tr>
-      <td>${escapeHtml(mouGeoLabel(p.zip))}${holdoutTag}</td>
-      <td>${volVal}</td>
-      <td>${p.population.toLocaleString()}</td>
-      <td>${(p.penetrationRate * 100).toFixed(3)}%</td>
-      <td style="font-weight:600;">${p.penetrationIndex}</td>
-      <td style="color:${tierColor(p.opportunityTier)};font-weight:600;">${p.compositeScore != null ? `${p.compositeScore} — ${escapeHtml(p.opportunityTier)}` : '—'}</td>
-    </tr>`;
-  }).join('');
+  const tierChips = tierOrder.filter(t => tierCounts[t]).map(t => `<span style="display:inline-block;margin:0 8px 4px 0;padding:2px 10px;border-radius:999px;background:color-mix(in srgb, ${tierColor(t)} 14%, transparent);color:${tierColor(t)};font-weight:600;font-size:0.75rem;">${tierCounts[t]} ${escapeHtml(t)}</span>`).join('');
 
-  const demo = data.demographic || { flag: 'no_demographic_data' };
-  const demoHtml = demo.flag === 'no_demographic_data'
-    ? `<p class="hint">No demographic reference data loaded yet — this index will populate once it is.</p>`
-    : `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-        <thead><tr><th>Zip</th>${demo.attributes.map(a => `<th>${escapeHtml(a)}</th>`).join('')}</tr></thead>
-        <tbody>${Object.keys(demo.byZip).map(z => `<tr><td>${escapeHtml(z)}</td>${demo.attributes.map(a => `<td>${demo.byZip[z][a] && demo.byZip[z][a].index != null ? demo.byZip[z][a].index : '—'}</td>`).join('')}</tr>`).join('')}</tbody>
-      </table></div>`;
-
-  const matching = data.matching || { pairs: [], flag: 'insufficient_markets' };
-  const pairRows = (matching.pairs || []).map(p => `
-    <tr>
-      <td>${escapeHtml(p.testZip)}</td>
-      <td>${escapeHtml(p.controlZip)}</td>
-      <td>${p.similarityDistance.toFixed(1)}</td>
-      <td>${p.indexFields.join(', ')}</td>
-    </tr>`).join('');
-  const unpairedHtml = (matching.unpaired || []).length
-    ? `<p class="hint">Not paired (no equally-similar match available): ${matching.unpaired.join(', ')}</p>` : '';
+  const holdoutCount = isDma ? (data.holdout.dmaCodes || []).length : (data.holdout.zips || []).length;
+  const pairCount = (data.matching && data.matching.pairs || []).length;
+  const testControlCount = pairCount * 2;
+  const notInTestCount = Math.max(0, sourceRows.length - holdoutCount - testControlCount);
 
   const audit = data.audit;
   const auditHtml = audit ? `
@@ -26839,34 +26823,44 @@ function mouRenderResults(data){
       </tbody>
     </table></div>` : '';
 
-  const holdoutHtml = (data.holdout && data.holdout.zips && data.holdout.zips.length)
-    ? `<p class="hint" style="margin:0 0 12px;"><strong>${data.holdout.zips.length} zip(s) reserved as Holdout</strong> (marked above), held back from every pair to validate the overall test design — never used as either side of a Test/Control comparison: ${data.holdout.zips.join(', ')}.</p>`
-    : (data.holdout && data.holdout.note ? `<p class="hint" style="margin:0 0 12px;">${escapeHtml(data.holdout.note)}</p>` : '');
-
   body.innerHTML = `
     ${auditHtml}
-    ${data.geoLevel === 'dma' ? `<p class="hint" style="margin:0 0 10px;color:#b8860b;font-weight:600;">DMA-level upload — ${escapeHtml(data.confidence || 'lower confidence')}</p>` : ''}
-    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Penetration index, composite score &amp; opportunity tier (weighted by ${escapeHtml(volLabel.toLowerCase())}, indexed to this file's own average = 100)</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:6px;">
-      <thead><tr><th>Zip</th><th>${escapeHtml(volLabel)}</th><th>Population</th><th>Rate</th><th>Index</th><th>Composite score / tier</th></tr></thead>
-      <tbody>${penRows || '<tr><td colspan="6">No rows.</td></tr>'}</tbody>
-    </table></div>
-    <p class="hint" style="margin-bottom:16px;">Composite score defaults to two-thirds volume weight / one-third index weight — an open assumption per the design doc, not a settled fact; adjustable via this upload's analysis endpoint if a different weighting fits the account better.</p>
-    ${mrfDmaSectionHtml(data.dma)}
-    ${mstTradeAreaSectionHtml(data.stores)}
-    <p style="font-size:0.8125rem;font-weight:600;margin:18px 0 6px;">Demographic index</p>
-    <div style="margin-bottom:16px;">${demoHtml}</div>
-    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Test / Control / Holdout</p>
-    ${holdoutHtml}
-    <p class="hint" style="margin-top:0;">${escapeHtml(matching.note || '')}</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
-      <thead><tr><th>Test zip</th><th>Control zip</th><th>Similarity distance (lower = closer match)</th><th>Based on</th></tr></thead>
-      <tbody>${pairRows || '<tr><td colspan="4">Not enough scoreable zips to pair yet.</td></tr>'}</tbody>
-    </table></div>
-    ${unpairedHtml}
-    <p class="hint" style="margin-top:10px;color:var(--advocacy);">${escapeHtml(matching.adjacencyScreeningDisclosure || '')}</p>
+    ${isDma ? `<p class="hint" style="margin:0 0 10px;color:#b8860b;font-weight:600;">DMA-level upload — ${escapeHtml(data.confidence || 'lower confidence')}</p>` : ''}
+    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 8px;">${sourceRows.length.toLocaleString()} ${isDma ? 'market' : 'zip'}${sourceRows.length === 1 ? '' : 's'} analyzed</p>
+    <div style="margin-bottom:12px;">${tierChips || '<span class="hint">No tiers computed yet.</span>'}</div>
+    <p class="hint" style="margin:0 0 16px;">${testControlCount} in Test/Control (${pairCount} matched pair${pairCount === 1 ? '' : 's'}), ${holdoutCount} in Holdout, ${notInTestCount} not in test.</p>
+    <div class="btn-row" style="margin-bottom:8px;">
+      <button type="button" class="btn-primary" onclick="mouExportXlsx()">Download full analysis (.xlsx) →</button>
+      <button type="button" class="btn-ghost" onclick="mouExportDefinedCountriesXlsx()">Download defined countries only (.xlsx) →</button>
+    </div>
+    <p class="hint" id="mouExportNote" style="margin:0;"></p>
+    <p class="hint" style="margin-top:12px;">Composite score defaults to two-thirds volume weight / one-third index weight — an open assumption per the design doc, not a settled fact. "Defined countries" covers US, Canada, Italy, Spain, Germany, Portugal, UK and Australia — the account's core supported footprint.</p>
   `;
 }
+async function mouExportXlsxFile(definedCountriesOnly){
+  const note = document.getElementById('mouExportNote');
+  if (!mouLastAnalysis || !mouLastAnalysis.uploadId || !state.companyId) return;
+  if (note) note.textContent = 'Building your Excel file…';
+  try {
+    const path = definedCountriesOnly ? 'export-defined-countries.xlsx' : 'export.xlsx';
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(mouLastAnalysis.uploadId)}/${path}`, { timeoutMs: 60000 });
+    if (!resp.ok){ if (note) note.textContent = 'Could not build the export right now.'; return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(mouLastAnalysis.label || 'match-market-analysis').replace(/[^A-Za-z0-9 _.-]/g, '')}${definedCountriesOnly ? ' - defined countries' : ''}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (note) note.textContent = 'Excel file downloaded — check your downloads.';
+  } catch (e){
+    if (note) note.textContent = 'Backend unreachable — could not export.';
+  }
+}
+function mouExportXlsx(){ mouExportXlsxFile(false); }
+function mouExportDefinedCountriesXlsx(){ mouExportXlsxFile(true); }
 
 async function mouLoadHistory(){
   const body = document.getElementById('mouHistoryBody');
