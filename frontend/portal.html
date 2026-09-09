@@ -5656,7 +5656,71 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Match Market Builder</div>
     <div class="eyebrow">Analysis</div>
     <h1>Match Market Builder</h1>
-    <p class="lede lede-full">Upload raw client transactions — one row per booking/order, each with a US zip code — and this builds the same shape of output a finished match-market design (like Atlas's own DMA/zip report) already has: a penetration index, a composite score and opportunity tier per zip, and matched Test/Control/Holdout groups. Already have a finished design instead of raw transactions? Import it directly — this doesn't replace that path, it just makes the far more common "raw transactions in" path the default rather than an edge case. Every file is screened for customer PII and scanned for threats before anything is stored, and every upload attempt (accepted or rejected) stays in this account's history.</p>
+    <!-- 2026-09-09, per direct instruction ("The top paragraph should be
+         replaced with three cards that explain the use cases briefly with a
+         link to a sample output file. The outputs are broader than match
+         market tests. Actual features can live on various relevant
+         dashboards outside of account setup.") — the old lede paragraph
+         only described the upload mechanics of ONE of the four things this
+         same customer-location dataset feeds. Replaced with a 4-card teaser
+         grid (reusing the site's existing .tile-grid/.tile-card pattern
+         from the Strategy/Brand/etc. tile shells, for visual consistency)
+         naming all four, each linking to where that use case actually
+         lives:
+           (a) Match Market Testing — the real, built feature on this page
+               itself; links down to the upload step below. Todd's original
+               wording ("View Match Market Example") implies a sample
+               output file/screenshot — not yet supplied, so that specific
+               link is held back rather than invented; swap the "Start
+               below" CTA for a real example link once one exists.
+           (b) Visualize Your Top Customer Markets — per direct clarification
+               ("the actual link will live on the strategy and performance
+               marketing dashboards"), links to the Strategy tab, where a
+               "View My Customers" tile already exists (Research group,
+               STRATEGY_SHELL_GROUPS above) routing to this same page today.
+               The reverse direction (an actual map/visualization built out
+               under Strategy) doesn't exist yet — this card is a teaser for
+               a destination, not a finished map.
+           (c) Agentic Media Planning — per direct clarification ("50% of
+               our overall product under the media science umbrella"),
+               links to the existing Media Science workstream
+               (step-mediaScience). "See a sample output" from Todd's
+               original wording is likewise held back pending a supplied
+               file.
+           (d) Align Sales Territories & Storefronts — per direct
+               clarification ("the current local radius function that
+               would expand if a group of storefronts are added"), this is
+               NOT a separate destination — it's the "Stores and trade
+               areas" card already further down this same page. Links
+               there via anchor scroll rather than inventing a new page.
+         See cxmedia-master-math-workbook-2026-09-01.md / this round's
+         project doc update for the composite-score/tier context these
+         cards reference (Must Win/Growth/Opportunistic, renamed this same
+         round — see computeCompositeScore() in backend/server.js). -->
+    <p class="lede" style="margin-bottom:10px;">One shared customer-location dataset powers four things:</p>
+    <div class="tile-grid" style="margin-bottom:18px;">
+      <div class="tile-card" onclick="document.getElementById('mouUploadCard').scrollIntoView({behavior:'smooth'});" role="button" tabindex="0" onkeydown="if(event.key==='Enter')document.getElementById('mouUploadCard').scrollIntoView({behavior:'smooth'});">
+        <div class="tc-label">Match Market Testing</div>
+        <div class="tc-desc">Identify similar markets to measure customer or revenue changes when you adjust a media mix element in one market but not the other.</div>
+        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">Start below ↓</div>
+      </div>
+      <div class="tile-card" onclick="switchPrimaryTab('strategy');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')switchPrimaryTab('strategy');">
+        <div class="tc-label">Visualize Your Top Customer Markets</div>
+        <div class="tc-desc">See your Must Win, Growth and Opportunistic markets — for a single storefront, a national brand, or a franchise network.</div>
+        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">Open in Strategy →</div>
+      </div>
+      <div class="tile-card" onclick="goToStep('mediaScience');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')goToStep('mediaScience');">
+        <div class="tc-label">Agentic Media Planning</div>
+        <div class="tc-desc">Market-focused, national, or scaling with local activations — your agentic media partner factors customer locations into the most efficient channel and budget paths.</div>
+        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">Open in Media Science →</div>
+      </div>
+      <div class="tile-card" onclick="document.getElementById('mstCard').scrollIntoView({behavior:'smooth'});" role="button" tabindex="0" onkeydown="if(event.key==='Enter')document.getElementById('mstCard').scrollIntoView({behavior:'smooth'});">
+        <div class="tc-label">Align Sales Territories &amp; Storefronts</div>
+        <div class="tc-desc">Match reseller or storefront locations to your top customer markets and spot coverage gaps, using the radius trade areas below.</div>
+        <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View stores &amp; trade areas ↓</div>
+      </div>
+    </div>
+    <p class="hint" style="margin:0 0 18px;">Upload raw transactions — one row per booking/order, each with a zip/postal code — and this builds a penetration index, composite score and opportunity tier per zip, plus matched Test/Control/Holdout groups. Already have a finished match-market design instead of raw transactions? Import it directly. Every file is screened for customer PII and scanned for threats before anything is stored, and every upload attempt stays in this account's history.</p>
 
     <div class="cfd cfd-ws" style="margin-bottom:18px;">
       <div class="cfd-standup" style="margin-bottom:0;">
@@ -5687,7 +5751,18 @@
         <div class="hicon">📤</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Accepts .csv or .xlsx. Needs at minimum a zip code column — one row per transaction is the normal case (each row counts as one), or map a Customer Count column if the file already arrives pre-aggregated by zip. A revenue/order-value column is optional and unlocks revenue-weighting once every zip has one. Any extra columns are fine, just leave them mapped to "Ignore" below.</p>
+        <!-- 2026-09-09, per direct report ("I'm not sure what Customer File
+             and Choose file does... We should just tell users to Add
+             Country in Column A, Postal/equivalent in Column B, Customers
+             Column C, Revenue Column D (Optional)") — replaced the generic
+             "Accepts .csv or .xlsx..." hint with a concrete 4-column
+             template. The underlying column-matching (mouAutoMapColumns /
+             MOU_HEADER_PATTERNS, ~line 25857) matches by HEADER NAME, not
+             position, so this simple layout isn't a hard requirement — it's
+             the easiest correct format to hand a client, and the mapping
+             step right below still shows what got matched and lets them
+             fix it if their file's laid out differently. -->
+        <p class="hint" style="margin-top:0;">Simplest format — one column per field, in this order: <b>Column A: Country</b> (optional if every customer is in the same country — pick it above instead), <b>Column B: Zip/postal code</b>, <b>Column C: Customer count</b> (one row per transaction also works — each row just counts as one), <b>Column D: Revenue</b> (optional; add it once every zip has a value to unlock revenue-weighting). Column order isn't strictly required — headers are matched by name below — but this layout always works. Any extra columns are fine, just leave them mapped to "Ignore" below.</p>
         <!-- Round 22g (2026-09-08), per direct instruction: "This is a
              natural location for uploads by time frame." No comparison
              logic reads this — it's just how a later manual query (per
@@ -5738,9 +5813,15 @@
                mbuFileInput, and others) is to hide the real input and show
                a real styled trigger in its place: a <label> styled as
                .btn-ghost, pointed at the hidden input via "for", plus a
-               small span reporting the chosen filename. Same pattern here. -->
+               small span reporting the chosen filename. Same pattern here.
+               2026-09-09, follow-up, per direct report ("I'm not sure what
+               Customer File and Choose file does... I think we just need
+               the button label to be Upload Customer File") — a generic
+               "Choose File" trigger under a generic "Customer file" label
+               reads as unclear about what it does; relabelled the trigger
+               itself to name the action. -->
           <div class="btn-row">
-            <label class="btn-ghost" for="mouFileInput" style="cursor:pointer;">Choose File</label>
+            <label class="btn-ghost" for="mouFileInput" style="cursor:pointer;">Upload Customer File</label>
             <span id="mouFileChosenName" class="hint"></span>
           </div>
           <input type="file" id="mouFileInput" accept=".csv,.xlsx" onchange="document.getElementById('mouFileChosenName').textContent = (this.files[0] || {}).name || ''; mouHandleFile(event)" style="display:none;">
@@ -26253,7 +26334,20 @@ function mstRender(){
       <div class="field" style="margin:0;flex:1 1 160px;"><label>Name</label><input type="text" id="mstNewName" placeholder="Palm Beach"></div>
       <div class="field" style="margin:0;flex:2 1 260px;"><label>Address</label><input type="text" id="mstNewAddress" placeholder="150 Worth Ave, Palm Beach, FL 33480"></div>
       <div class="field" style="margin:0;flex:0 0 120px;"><label>Country</label><select id="mstNewCountry">${Object.keys(MOU_COUNTRY_PACKS).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
-      <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
+      <!-- 2026-09-09, per direct report ("Choose File in the store area
+           needs to be aligned with Add Store") — this row uses
+           align-items:flex-end, which lines items up by the bottom of their
+           tallest sibling. "+ Add store" was a bare <button> with no label
+           above it while "Or upload a store list" is a .field with a real
+           label above its button, so the two buttons didn't sit at a
+           matching height. Wrapping "+ Add store" in the same .field/label
+           shape (with a real, useful label instead of a blank spacer) gives
+           it the same box shape as "Or upload a store list", so both
+           buttons now align. -->
+      <div class="field" style="margin:0;">
+        <label>Add manually</label>
+        <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
+      </div>
       <div class="field" style="margin:0;">
         <label for="mstFileInput">Or upload a store list</label>
         <div class="btn-row">
@@ -26368,7 +26462,13 @@ function mouRenderResults(data){
   if (!card || !body) return;
   card.style.display = '';
 
-  const tierColor = t => ({ 'High potential': 'var(--cx)', 'Emerging strong': 'var(--brand, #b8860b)', 'Solid baseline': 'var(--muted)', 'Watch / low priority': 'var(--advocacy)' }[t] || 'var(--muted)');
+  // 2026-09-09, per direct instruction ("Visual markets based on Must Win,
+  // Growth and Opportunistic designations") — renamed from the original
+  // High potential/Emerging strong/Solid baseline/Watch-or-low-priority
+  // labels; see the matching comment on computeCompositeScore() in
+  // backend/server.js for the full rationale, including the 4th label
+  // ("Monitor") Claude picked to complete Todd's three named tiers.
+  const tierColor = t => ({ 'Must Win': 'var(--cx)', 'Growth': 'var(--brand, #b8860b)', 'Opportunistic': 'var(--muted)', 'Monitor': 'var(--advocacy)' }[t] || 'var(--muted)');
   const holdoutSet = new Set((data.holdout && data.holdout.zips) || []);
   const volLabel = data.weightMode === 'revenue' ? 'Revenue' : 'Count';
   const penRows = (data.penetration || []).map(p => {
