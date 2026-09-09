@@ -5718,9 +5718,20 @@
        pass the secure upload pipeline (PII + virus scan, round 132bl)
        BEFORE any row is committed — never just the parsed rows. -->
   <div class="step" id="step-marketOptimization">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Match Market Builder</div>
+    <!-- 2026-09-09, per direct instruction: "Title from Match Market
+         Builder to Geographic Agentic Optimization" plus new copy below
+         the title. Left the internal step id (step-marketOptimization),
+         function-name prefixes (mst*/mou*), route key
+         (marketOptimization), and every other on-page reference to "Match
+         Market Builder" (breadcrumb trail label, nav tile descriptions,
+         etc.) alone — Todd's instruction named the page's own title,
+         not a full sitewide rename, and renaming the step id would risk
+         breaking every goToStep('marketOptimization') call across the
+         file for no requested benefit. -->
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Geographic Agentic Optimization</div>
     <div class="eyebrow">Analysis</div>
-    <h1>Match Market Builder</h1>
+    <h1>Geographic Agentic Optimization</h1>
+    <p class="lede" style="margin-bottom:6px;">Your customers are your most valuable asset. Upload your customer postal codes — no PII please — individual store location or multiple storefronts to help your Agentic partners optimize your media plans.</p>
     <!-- 2026-09-09, per direct instruction ("The top paragraph should be
          replaced with three cards that explain the use cases briefly with a
          link to a sample output file. The outputs are broader than match
@@ -5774,24 +5785,39 @@
          Media Science respectively — see this file's history above this
          block for why those are the right destinations). -->
     <p class="lede" style="margin-bottom:10px;">One shared customer-location dataset powers four things:</p>
+    <!-- 2026-09-09, per direct instruction ("Add a speech bubble within
+         each [card] that opens AI Thoughts explaining the output") — one
+         💭 icon per card, reusing the exact aiThoughtIconHtml()/AI Agent
+         Thoughts system already wired up sitewide (see the same mount
+         pattern next to "Primary KPI"/"Channel(s)"/etc.), not a one-off
+         tooltip. Every single letter A-Z was already assigned to an
+         existing topic (see BP_FAQ_TOPICS above), so these 4 are the
+         system's first two-letter topics: AA-AD. New entries added to
+         BP_FAQ_TOPICS, BP_FAQ_TOPIC_TAB (grouped under "marketer", same
+         tab as the other media-optimization topics B/G/L/N/M),
+         AI_THOUGHT_PREVIEWS (hover teaser), and renderFaqAA()-renderFaqAD()
+         + their .faq-item drawer markup + renderBestPracticeFaq() call —
+         see each for the explanatory copy. stopPropagation() (built into
+         aiThoughtIconHtml()) keeps a click on the icon from also firing
+         the card's own openSampleModal() onclick. -->
     <div class="tile-grid" style="margin-bottom:18px;">
       <div class="tile-card" onclick="openSampleModal('matchMarket');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('matchMarket');">
-        <div class="tc-label">Match Market Testing</div>
+        <div class="tc-label">Match Market Testing <span class="ai-thought-mount" data-topic="AA"></span></div>
         <div class="tc-desc">Identify similar markets to measure customer or revenue changes when you adjust a media mix element in one market but not the other.</div>
         <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
       <div class="tile-card" onclick="openSampleModal('visualize');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('visualize');">
-        <div class="tc-label">Visualize Your Top Customer Markets</div>
+        <div class="tc-label">Visualize Your Top Customer Markets <span class="ai-thought-mount" data-topic="AB"></span></div>
         <div class="tc-desc">See your Must Win, Growth and Opportunistic markets — for a single storefront, a national brand, or a franchise network.</div>
         <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
       <div class="tile-card" onclick="openSampleModal('marketingLoop');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('marketingLoop');">
-        <div class="tc-label">Agentic Media Planning</div>
+        <div class="tc-label">Agentic Media Planning <span class="ai-thought-mount" data-topic="AC"></span></div>
         <div class="tc-desc">Market-focused, national, or scaling with local activations — your agentic media partner factors customer locations into the most efficient channel and budget paths.</div>
         <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
       <div class="tile-card" onclick="openSampleModal('storefronts');" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openSampleModal('storefronts');">
-        <div class="tc-label">Align Sales Territories &amp; Storefronts</div>
+        <div class="tc-label">Align Sales Territories &amp; Storefronts <span class="ai-thought-mount" data-topic="AD"></span></div>
         <div class="tc-desc">Match reseller or storefront locations to your top customer markets and spot coverage gaps, using the radius trade areas below.</div>
         <div class="tc-desc" style="margin-top:8px;font-weight:600;color:var(--cx);">View sample →</div>
       </div>
@@ -5816,28 +5842,13 @@
       </div>
     </div>
 
-    <div class="cfd cfd-ws" style="margin-bottom:18px;">
-      <div class="cfd-standup" style="margin-bottom:0;">
-        <div class="cfd-avatar">✦</div>
-        <div class="cfd-bubble">
-          <!-- 2026-09-09, per direct report ("How do we tell clients what
-               to do in a few words and then add a speech bubble opening AI
-               Thoughts") — this bubble already IS the site's "AI Thoughts"
-               pattern (✦ avatar + cfd-bubble, same component used for the
-               dashboard standup and inline explainer bubbles elsewhere,
-               e.g. the adstock/lag bubble in Media Mix Modeling), just
-               without a short instruction leading it. Added a bolded
-               "How to use this:" lead sentence, matching that same
-               established convention, so the actionable few-words answer
-               comes first and the detailed reasoning follows for whoever
-               wants it. Also: the old "DMA rollup needs a licensed Nielsen
-               crosswalk... neither loaded in this build yet" line was
-               stale — both are loaded as of 2026-09-09 (see Ops Console's
-               Reference Data module) — removed rather than left inaccurate. -->
-          <strong>How to use this:</strong> one file covers every market — pick your country above, or add a Country column to your file if it mixes countries, then upload. Each row is keyed at the unit its country publishes population for (US zip, Canadian forward sortation area, Australian postcode, UK postcode district, five-digit codes in Germany, France, Spain and Italy). Anything that doesn't match is rejected rather than silently coerced into a code that doesn't fit the address, and every rejection stays on this upload's audit trail. Count-weighted by default; upload a revenue/order-value column and every zip has to have one before this will offer revenue-weighting instead — a partial revenue file stays count-weighted rather than quietly averaging over the gaps. The composite score/opportunity tier blend (two-thirds volume, one-third index by default) and the Holdout group size (about a sixth of scoreable zips by default) are both open, adjustable assumptions, not settled facts — flagged as such in the results below. Match-market pairing is based on who lives in a zip today, not real campaign performance history or geographic media-market adjacency — treat it as a starting shortlist for your own judgment, not a finished test plan.
-        </div>
-      </div>
-    </div>
+    <!-- 2026-09-09, per direct instruction ("Remove How to use this") —
+         removed the standup-style explainer bubble that used to sit here.
+         Its substance (country-column keying, PII rejection, count- vs
+         revenue-weighting, the composite-score/holdout assumptions, and
+         the match-pairing caveat) isn't duplicated anywhere else on this
+         page; if any of it needs to resurface later, AI Agent Thoughts
+         topic AA (Match Market Testing output) is the natural home. -->
 
     <div class="sk-card" id="mouUploadCard">
       <div class="sk-card-head cx">
@@ -5845,18 +5856,18 @@
         <div class="hicon">📤</div>
       </div>
       <div class="sk-card-body">
-        <!-- 2026-09-09, per direct report ("I'm not sure what Customer File
-             and Choose file does... We should just tell users to Add
-             Country in Column A, Postal/equivalent in Column B, Customers
-             Column C, Revenue Column D (Optional)") — replaced the generic
-             "Accepts .csv or .xlsx..." hint with a concrete 4-column
-             template. The underlying column-matching (mouAutoMapColumns /
-             MOU_HEADER_PATTERNS, ~line 25857) matches by HEADER NAME, not
-             position, so this simple layout isn't a hard requirement — it's
+        <!-- 2026-09-09, per direct instruction — replaced the "Simplest
+             format" hint with Todd's own explanation of what this upload is
+             FOR (feeds a penetration index used for media testing,
+             forecasting storefront locations, and aligning external sales
+             teams) plus the same 4-column template, in his own words. The
+             underlying column-matching (mouAutoMapColumns /
+             MOU_HEADER_PATTERNS, ~line 25857) still matches by HEADER NAME,
+             not position, so this layout isn't a hard requirement — it's
              the easiest correct format to hand a client, and the mapping
              step right below still shows what got matched and lets them
              fix it if their file's laid out differently. -->
-        <p class="hint" style="margin-top:0;">Simplest format — one column per field, in this order: <b>Column A: Country</b> (optional if every customer is in the same country — pick it above instead), <b>Column B: Zip/postal code</b>, <b>Column C: Customer count</b> (one row per transaction also works — each row just counts as one), <b>Column D: Revenue</b> (optional; add it once every zip has a value to unlock revenue-weighting). Column order isn't strictly required — headers are matched by name below — but this layout always works. Any extra columns are fine, just leave them mapped to "Ignore" below.</p>
+        <p class="hint" style="margin-top:0;">The customer files that you upload are compared to the population in the market to help us create a penetration index that helps us create statistically relevant markets that can be used for media testing, forecasting future storefront locations, or aligning external sales teams. Files should include: <b>Column A: Country</b>, <b>Column B: Zip/Postal Code</b>, <b>Column C: Customer Count</b>, <b>Column D (optional): Revenue</b>.</p>
         <!-- Round 22g (2026-09-08), per direct instruction: "This is a
              natural location for uploads by time frame." No comparison
              logic reads this — it's just how a later manual query (per
@@ -5884,7 +5895,22 @@
         </div>
         <div class="field" style="margin:0 0 10px;max-width:420px;">
           <label>Default country for numeric postal codes</label>
+          <!-- 2026-09-09, per direct instruction ("Change the default
+               country for postal codes to SELECT vs. United States") — this
+               dropdown used to default (via plain HTML select behavior — no
+               country carried a selected attribute, so the browser landed
+               on the first option) to "United States", which read as
+               already-chosen even for clients uploading only non-US data.
+               Added a real placeholder option and pointed the JS default
+               (mouDefaultCountry, ~line 26214) at the empty string to
+               match — nothing downstream breaks: mouNormalizeZip's own
+               fallback ("mouDefaultCountry || 'US'", ~line 26221) already
+               treats an unset default as US, so a client uploading US zips
+               without ever touching this field still parses correctly; the
+               only change is that the dropdown itself no longer implies a
+               choice was already made for them. -->
           <select id="mouDefaultCountry" onchange="mouDefaultCountry = this.value; if (mouParsedHeaders.length) mouRenderMappingPanel();">
+            <option value="" selected disabled>Select…</option>
             <option value="US">United States (5-digit zip)</option>
             <option value="CA">Canada (postal code / FSA)</option>
             <option value="AU">Australia (4-digit postcode)</option>
@@ -5897,7 +5923,6 @@
           <span class="hint">A Country column in the file overrides this per row. Canadian and UK codes are recognised by their letters either way.</span>
         </div>
         <div class="field" style="margin:0;max-width:420px;">
-          <label for="mouFileInput">Customer file</label>
           <!-- 2026-09-09, per direct report ("The client Choose file buttons
                should be formatted to match our style") — a bare
                <input type="file"> renders the browser's own unstyled
@@ -5913,7 +5938,14 @@
                the button label to be Upload Customer File") — a generic
                "Choose File" trigger under a generic "Customer file" label
                reads as unclear about what it does; relabelled the trigger
-               itself to name the action. -->
+               itself to name the action.
+               2026-09-09, follow-up-2, per direct instruction ("We can
+               remove 'customer file' above upload customer file") — the
+               field label above the trigger was now fully redundant with
+               the trigger's own "Upload Customer File" text; removed it
+               rather than leaving two lines that say the same thing. The
+               .field wrapper still supplies the layout/spacing this row
+               needs even with no <label> child. -->
           <div class="btn-row">
             <label class="btn-ghost" for="mouFileInput" style="cursor:pointer;">Upload Customer File</label>
             <span id="mouFileChosenName" class="hint"></span>
@@ -7966,6 +7998,45 @@
         </div>
         <div class="faq-body" id="bpFaqBodyZ">
           <p id="bpFaqTextZ"></p>
+        </div>
+      </div>
+      <!-- 2026-09-09 — AA-AD, one per use-case card on Geographic Agentic
+           Optimization (see the .ai-thought-mount spans on that page and
+           BP_FAQ_TOPICS above). Static copy, same convention as Q-Z. -->
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAA" onclick="toggleFaqItem('AA')">
+          <span class="faq-label">Match Market Testing output</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAA">
+          <p id="bpFaqTextAA"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAB" onclick="toggleFaqItem('AB')">
+          <span class="faq-label">Visualize Your Top Customer Markets output</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAB">
+          <p id="bpFaqTextAB"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAC" onclick="toggleFaqItem('AC')">
+          <span class="faq-label">Agentic Media Planning output</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAC">
+          <p id="bpFaqTextAC"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAD" onclick="toggleFaqItem('AD')">
+          <span class="faq-label">Align Sales Territories &amp; Storefronts output</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAD">
+          <p id="bpFaqTextAD"></p>
         </div>
       </div>
     </div>
@@ -26146,7 +26217,11 @@ const MOU_COUNTRY_PACKS = {
   IT: { name: 'Italy', unit: 'CAP (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) }
 };
 const MOU_COUNTRY_ALIASES = { 'USA': 'US', 'UNITED STATES': 'US', 'U.S.': 'US', 'U.S.A.': 'US', 'CANADA': 'CA', 'CAN': 'CA', 'AUSTRALIA': 'AU', 'AUS': 'AU', 'UK': 'GB', 'U.K.': 'GB', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'GBR': 'GB', 'ENGLAND': 'GB', 'SCOTLAND': 'GB', 'WALES': 'GB', 'GERMANY': 'DE', 'DEU': 'DE', 'DEUTSCHLAND': 'DE', 'FRANCE': 'FR', 'FRA': 'FR', 'SPAIN': 'ES', 'ESP': 'ES', 'ESPAÑA': 'ES', 'ITALY': 'IT', 'ITA': 'IT', 'ITALIA': 'IT' };
-let mouDefaultCountry = 'US';
+// 2026-09-09: '' (Select…) matches the dropdown's new unselected default
+// (see mouDefaultCountry <select>, ~line 5897) — mouNormalizeZip's own
+// "mouDefaultCountry || 'US'" fallback below still treats this as US until
+// the client actually picks something else.
+let mouDefaultCountry = '';
 function mouNormalizeCountry(raw){ const s = String(raw == null ? '' : raw).trim().toUpperCase(); if (!s) return null; if (MOU_COUNTRY_PACKS[s]) return s; return MOU_COUNTRY_ALIASES[s] || null; }
 function mouNormalizeZip(raw, countryHint){
   const s = String(raw || '').trim().toUpperCase();
@@ -26465,8 +26540,15 @@ function mstRender(){
   // will be the zip code or international version") — added a Zip/Postal
   // Code column, both in the table below and the manual add-store row.
   const rows = mstStores.map(s => `<tr><td>${escapeHtml(s.storeId || '')}</td><td>${escapeHtml(s.name || '')}</td><td>${escapeHtml(s.postalCode || '')}</td><td>${escapeHtml(s.address || '')}${s.country && s.country !== 'US' ? ` <span class="hint">${escapeHtml(s.country)}</span>` : ''}</td><td>${s.lat != null ? `${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)} <span class="hint">${escapeHtml(s.geocodeSource || '')}</span>` : '<span style="color:#b8860b;">not geocoded</span>'}</td></tr>`).join('');
+  // 2026-09-09, per direct instruction ("Stores and Trade Areas: copy =
+  // Add your store address below to view population metrics by specific
+  // radius that aligns with your product demographics or upload multiple
+  // stores or resellers at one time") — replaced the old mechanics-focused
+  // hint ("Upload a CSV with a Zip/Postal Code column...") with Todd's own
+  // copy. Kept the live store-count status ahead of it (real, useful
+  // information the old copy also carried) rather than dropping it.
   body.innerHTML = `
-    <p class="hint" style="margin:0 0 8px;">${mstStores.length ? `<b>${mstStores.length} store${mstStores.length === 1 ? '' : 's'}</b>, ${geocoded} geocoded.` : 'No stores on file yet.'} Upload a CSV with a Zip/Postal Code column (the primary key — plots instantly from the same reference data customer markets use, no geocoding needed) plus Store ID, Name, Address (optional, display only) and Lat/Lng (optional, only to override the postal-code centroid), or add one below.</p>
+    <p class="hint" style="margin:0 0 8px;">${mstStores.length ? `<b>${mstStores.length} store${mstStores.length === 1 ? '' : 's'}</b>, ${geocoded} geocoded. ` : ''}Add your store address below to view population metrics by specific radius that aligns with your product demographics or upload multiple stores or resellers at one time.</p>
     ${mstStores.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Store ID</th><th>Name</th><th>Zip/Postal</th><th>Address</th><th>Coordinates</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px;">
       <div class="field" style="margin:0;flex:0 0 110px;"><label>Store ID</label><input type="text" id="mstNewId" placeholder="S-101"></div>
@@ -26474,30 +26556,25 @@ function mstRender(){
       <div class="field" style="margin:0;flex:0 0 130px;"><label>Zip/Postal Code</label><input type="text" id="mstNewPostalCode" placeholder="33480"></div>
       <div class="field" style="margin:0;flex:2 1 260px;"><label>Address <span style="font-weight:400;text-transform:none;color:var(--muted);">(optional)</span></label><input type="text" id="mstNewAddress" placeholder="150 Worth Ave, Palm Beach, FL 33480"></div>
       <div class="field" style="margin:0;flex:0 0 120px;"><label>Country</label><select id="mstNewCountry">${Object.keys(MOU_COUNTRY_PACKS).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
-      <!-- 2026-09-09, per direct report ("Choose File in the store area
-           needs to be aligned with Add Store") — this row uses
-           align-items:flex-end, which lines items up by the bottom of their
-           tallest sibling. "+ Add store" was a bare <button> with no label
-           above it while "Or upload a store list" is a .field with a real
-           label above its button, so the two buttons didn't sit at a
-           matching height. Wrapping "+ Add store" in the same .field/label
-           shape (with a real, useful label instead of a blank spacer) gives
-           it the same box shape as "Or upload a store list", so both
-           buttons now align. -->
       <div class="field" style="margin:0;">
         <label>Add manually</label>
         <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
       </div>
-      <div class="field" style="margin:0;">
-        <label for="mstFileInput">Or upload a store list</label>
-        <div class="btn-row">
-          <label class="btn-ghost" for="mstFileInput" style="cursor:pointer;">Choose File</label>
-          <span id="mstFileChosenName" class="hint"></span>
-        </div>
-        <input type="file" id="mstFileInput" accept=".csv,.tsv,.txt,.xlsx" onchange="document.getElementById('mstFileChosenName').textContent = (this.files[0] || {}).name || ''; mstHandleFile(event)" style="display:none;">
-      </div>
     </div>
+    <!-- 2026-09-09, per direct report ("Upload a Store list Choose File
+         button is not aligned with + add store button. Should we move to
+         the left of Geocode addresses without coordinates") — moved out of
+         the manual-entry row entirely (the previous align-items:flex-end
+         fix kept it level with "+ Add store" only as long as both sat in
+         that same 5-input row, which still read as visually adrift from
+         its own inputs) and into the button row below, immediately to the
+         left of "Geocode addresses..." — grouping it with the other
+         file-level action instead of the per-row manual-entry fields. -->
     <div class="btn-row" style="margin-top:10px;">
+      <label for="mstFileInput" class="hint" style="font-weight:600;text-transform:uppercase;font-size:0.6875rem;letter-spacing:0.03em;">Or upload a store list:</label>
+      <label class="btn-ghost" for="mstFileInput" style="cursor:pointer;">Choose File</label>
+      <span id="mstFileChosenName" class="hint"></span>
+      <input type="file" id="mstFileInput" accept=".csv,.tsv,.txt,.xlsx" onchange="document.getElementById('mstFileChosenName').textContent = (this.files[0] || {}).name || ''; mstHandleFile(event)" style="display:none;">
       <button type="button" class="btn-ghost" onclick="mstGeocodeMissing()" ${mstStores.some(s => s.lat == null && s.address) ? '' : 'disabled'}>Geocode addresses without coordinates →</button>
       <span class="hint" id="mstStatus"></span>
     </div>`;
@@ -32940,7 +33017,17 @@ const BP_FAQ_TOPICS = [
   { letter: 'W', label: 'Connecting Snowflake', keywords: ['snowflake','warehouse','fivetran','secure data share','read-only'] },
   { letter: 'X', label: 'Connecting Google Analytics 4', keywords: ['ga4','google analytics','website traffic','service account','data api'] },
   { letter: 'Y', label: 'Google Ads — analysis & optimization', keywords: ['google ads','analysis','optimization','human approved','developer token','bid','budget'] },
-  { letter: 'Z', label: 'Meta — analysis & optimization', keywords: ['meta','facebook','instagram','ads_read','ads_management','business verification','app review','optimization'] }
+  { letter: 'Z', label: 'Meta — analysis & optimization', keywords: ['meta','facebook','instagram','ads_read','ads_management','business verification','app review','optimization'] },
+  // 2026-09-09, per direct instruction — one speech bubble per use-case
+  // card on the Geographic Agentic Optimization page (formerly Match
+  // Market Builder), explaining what that card's sample output actually
+  // is. Every single letter A-Z was already spoken for by an earlier
+  // topic (see above), so these are this system's first two-letter
+  // topic keys — AA-AD, in the same left-to-right order as their cards.
+  { letter: 'AA', label: 'Match Market Testing output', keywords: ['match market','test','control','holdout','composite score','opportunity tier','penetration index'] },
+  { letter: 'AB', label: 'Visualize Your Top Customer Markets output', keywords: ['visualize','map','dma','must win','growth','opportunistic','monitor','customer markets'] },
+  { letter: 'AC', label: 'Agentic Media Planning output', keywords: ['agentic media planning','marketing loop','media loop','channel mix','budget path','media science'] },
+  { letter: 'AD', label: 'Align Sales Territories & Storefronts output', keywords: ['storefront','trade area','radius','sales territory','zip','postal code','store location'] }
 ];
 
 // Round 132ll (2026-08-10), per direct instruction: "we should tag the
@@ -33025,7 +33112,12 @@ const BP_FAQ_TOPIC_TAB = {
   D: 'dataScientist', E: 'dataScientist',
   H: 'accountManagement', Q: 'accountManagement', R: 'accountManagement', S: 'accountManagement',
   T: 'accountManagement', U: 'accountManagement', V: 'accountManagement',
-  W: 'accountManagement', X: 'accountManagement', Y: 'accountManagement', Z: 'accountManagement'
+  W: 'accountManagement', X: 'accountManagement', Y: 'accountManagement', Z: 'accountManagement',
+  // 2026-09-09 — Geographic Agentic Optimization's 4 card topics; grouped
+  // under "marketer" alongside the other media-optimization topics
+  // (B/G/L/N/M) rather than "strategy", since these explain a media-plan
+  // output, not an account-setup judgment call.
+  AA: 'marketer', AB: 'marketer', AC: 'marketer', AD: 'marketer'
 };
 
 function renderFaqTopicChips(){
@@ -33217,7 +33309,11 @@ const AI_THOUGHT_PREVIEWS = {
   W: 'How the Snowflake warehouse connector actually works — and how close it is to real.',
   X: 'The one partner here with a real, working connector already built — what\'s left before it goes live.',
   Y: 'Google Ads: what\'s built for analysis today, and what\'s scoped for human-approved optimization.',
-  Z: 'Meta: what\'s built for analysis today, and what\'s scoped for human-approved optimization.'
+  Z: 'Meta: what\'s built for analysis today, and what\'s scoped for human-approved optimization.',
+  AA: 'How the sample rows are scored into a tier, carved into a holdout, and matched into Test/Control pairs.',
+  AB: 'How your Must Win, Growth, Opportunistic and Monitor markets get plotted — and why only the U.S. map is real today.',
+  AC: 'How your customer locations feed the 5-stage Marketing Loop your agentic media partner plans against.',
+  AD: 'How your storefronts get plotted against your top customer markets, and the upload format that drives it.'
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -33448,6 +33544,11 @@ function renderBestPracticeFaq(){
   renderFaqX();
   renderFaqY();
   renderFaqZ();
+  // 2026-09-09 — AA-AD (Geographic Agentic Optimization's 4 use-case cards), static like Q-Z.
+  renderFaqAA();
+  renderFaqAB();
+  renderFaqAC();
+  renderFaqAD();
 }
 
 // (f) Round 29 — "Learned from your past campaigns" (see
@@ -33904,6 +34005,32 @@ function renderFaqZ(){
   const el = document.getElementById('bpFaqTextZ');
   if (!el) return;
   el.textContent = 'Two separate capabilities, both scoped, neither built yet. Analysis: the Meta Marketing API pulls campaign/ad set/ad-level spend, impressions, and Meta\'s own attributed conversions — free to call, needs the client granting Verilume\'s app \'ads_read\' on their Business Manager. Human-approved optimization: same proposal → shared review queue → gated execution model as Google Ads, but Meta\'s write access (\'ads_management\') requires Business Verification plus App Review — realistically 1-2 weeks, the slower of the two platforms to get approved. File both platforms\' access requests in parallel; neither blocks the other.';
+}
+// 2026-09-09 — AA-AD, one per use-case card on Geographic Agentic
+// Optimization (formerly Match Market Builder). Fixed copy, grounded in
+// the same real backend logic and honest scope caveats already used in
+// each card's sample-output image/modal (see openSampleModal() and this
+// round's project doc) — not a separate, second explanation of the same
+// thing that could drift from what the sample actually shows.
+function renderFaqAA(){
+  const el = document.getElementById('bpFaqTextAA');
+  if (!el) return;
+  el.textContent = 'Every scoreable market (zip, DMA, or its international equivalent) gets a composite score blending its customer penetration index against your account\'s national average with its record volume, banded into quartiles: Must Win, Growth, Opportunistic, Monitor. Before any pairing, a holdout group — roughly one-sixth of the pool — is set aside first, spread across every tier so it reflects the full mix. Every remaining market is then paired to its nearest statistical match on population and demographic indices (not sales results), so a paired Control market looks like its Test market\'s twin on everything except the marketing being tested there. The sample table shows the exact columns your real upload produces.';
+}
+function renderFaqAB(){
+  const el = document.getElementById('bpFaqTextAB');
+  if (!el) return;
+  el.textContent = 'A real U.S. states map with your markets plotted as bubbles — sized by customer volume, colored by the same Must Win/Growth/Opportunistic/Monitor tier used in Match Market Testing — built from actual state boundary and DMA centroid data, not an illustration. One honest limit: this view is U.S.-only today because that\'s the only country with population/DMA reference data loaded in this account so far; the same view becomes available for any other country on the platform once its reference data is loaded in the Ops Console.';
+}
+function renderFaqAC(){
+  const el = document.getElementById('bpFaqTextAC');
+  if (!el) return;
+  el.textContent = 'Your uploaded customer locations feed directly into the same 5-stage Marketing Loop (Awareness → Consideration → Purchase → Loyalty → Advocacy) your agentic media partner already plans against — where your Must Win and Growth markets concentrate shifts which channels and how much budget each stage recommends, rather than planning against a flat, undifferentiated national footprint. The sample shows the real Marketing Loop chart component itself, with real per-stage spend figures, not a mockup.';
+}
+function renderFaqAD(){
+  const el = document.getElementById('bpFaqTextAD');
+  if (!el) return;
+  el.textContent = 'The same top-customer-market map from Visualize Your Top Customer Markets, with your store or storefront locations overlaid as pins plus a trade-area radius circle around each — so you can see at a glance which top markets already have a nearby storefront and which don\'t. Zip/postal code is the primary key for storefronts, same as for customer markets: add it and a store plots and gets its trade area instantly, no separate geocoding step, no address required (Store ID, Name, Address, Trade Area Radius, and Lat/Lng are all optional refinements). The sample shows the exact upload format below.';
 }
 
 // Round 132bx (2026-08-15), per direct instruction: the campaign header's
