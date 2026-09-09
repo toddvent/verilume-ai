@@ -6331,8 +6331,8 @@
       </div>
       <div class="cch-confirm" id="cchCancelConfirm">
         <div>Cancel this campaign? Its budget will come out of the Media Plan's committed total and Budget Mix — no cancellation fee is applied. This can't be undone from here.</div>
-        <button type="button" class="btn-secondary" onclick="cmpConfirmCancelCampaign()">Yes, cancel campaign</button>
-        <button type="button" class="btn-secondary" onclick="cmpToggleCancelConfirm()">Never mind</button>
+        <button type="button" class="btn-primary" onclick="cmpConfirmCancelCampaign()">Yes, cancel campaign</button>
+        <button type="button" class="btn-ghost" onclick="cmpToggleCancelConfirm()">Never mind</button>
       </div>
     </div>
     <div class="cmp-layout" id="cmpLayout">
@@ -30929,10 +30929,20 @@ function mbuToggleDeleteConfirm(uploadId){
     const warnText = isConfirmed
       ? 'Deleting a confirmed budget is a last resort — manually adjusting its category totals above is usually the better option. Are you sure you want to delete this budget?'
       : 'This draft is still mid-review and hasn\'t been saved as final. Are you sure you want to delete it and start over?';
+    // 2026-09-09 fix, per direct report ("the confirm button that opens
+    // needs to match the style across the site") — these two buttons (and
+    // the "Yes, delete anyway" / "Never mind" pair a few dozen lines down)
+    // used the class name btn-secondary, which has never been a real CSS
+    // rule in this file (only .btn-primary and .btn-ghost exist), so both buttons
+    // silently fell back to unstyled browser defaults. Swapped to the real
+    // site classes: .btn-primary for the affirmative/destructive action,
+    // .btn-ghost for the dismiss. tools/check-style.js now catches exactly
+    // this class of bug (a class used in markup with no matching CSS rule)
+    // before it ships again.
     mount.innerHTML = `
       <p style="margin:0 0 8px;">${warnText}</p>
-      <button type="button" class="btn-secondary" onclick="mbuConfirmDeleteUpload('${uploadId}', false)">Yes, delete this budget</button>
-      <button type="button" class="btn-secondary" onclick="mbuToggleDeleteConfirm('${uploadId}')">Never mind</button>
+      <button type="button" class="btn-primary" onclick="mbuConfirmDeleteUpload('${uploadId}', false)">Yes, delete this budget</button>
+      <button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${uploadId}')">Never mind</button>
     `;
     // mount carries the shared .cch-confirm class, which is display:none by
     // default (see its CSS rule) and only becomes visible with an .open
@@ -30966,8 +30976,8 @@ async function mbuConfirmDeleteUpload(uploadId, confirmDelete){
         mount.innerHTML = `
           <p style="margin:0 0 8px;color:var(--advocacy);font-weight:600;">${escapeHtml(data.message || 'Campaigns are funded from this budget.')}</p>
           ${list ? `<ul style="margin:0 0 8px 18px;">${list}</ul>` : ''}
-          <button type="button" class="btn-secondary" onclick="mbuConfirmDeleteUpload('${uploadId}', true)">Yes, delete anyway</button>
-          <button type="button" class="btn-secondary" onclick="mbuToggleDeleteConfirm('${uploadId}')">Never mind</button>
+          <button type="button" class="btn-primary" onclick="mbuConfirmDeleteUpload('${uploadId}', true)">Yes, delete anyway</button>
+          <button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${uploadId}')">Never mind</button>
         `;
       }
       return;
