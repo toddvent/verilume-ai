@@ -661,6 +661,13 @@
   .kpi-card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
   .kpi-card-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--muted);margin-bottom:6px;}
   .kpi-card-val{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.25rem;color:var(--ink);margin-bottom:4px;}
+  /* 2026-09-09 style-check fix — .kpi-delta (the small YoY figure next to
+     a single-point KPI's value) had no rule, so it inherited the KPI
+     value's own 1.25rem size and ink color and just ran together with the
+     number instead of reading as a separate, secondary figure. Matches
+     the equivalent .eff-meter-head .delta convention elsewhere on this
+     same dashboard. */
+  .kpi-delta{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin-left:6px;}
   .trendline-controls select{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--white);color:var(--ink);}
   .task-list{list-style:none;margin:10px 0 0;padding:0;}
   .task-list li{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:0.875rem;}
@@ -1439,16 +1446,29 @@
      wider than a 375px viewport (6-8 columns) — wrap instances in this so
      they scroll horizontally instead of squeezing unreadable text. */
   .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .active-camp-table{width:100%;border-collapse:collapse;margin-top:8px;}
-  .active-camp-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line);}
-  .active-camp-table td{padding:10px 10px 10px 0;border-bottom:1px solid var(--line);font-size:0.8438rem;vertical-align:top;}
-  .active-camp-table tr:last-child td{border-bottom:none;}
-  .active-camp-table td.name{font-weight:600;}
-  .active-camp-table td.num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7812rem;white-space:nowrap;}
+  /* 2026-09-09 style-check fix — .data-table was used on 36 tables across
+     the site (store lists, reference-data grids, campaign line items,
+     etc.) and never had a single rule of its own — every one of those 36
+     tables was rendering with bare, unstyled browser-default table
+     markup: no borders, no header treatment, no consistent spacing.
+     .active-camp-table already has exactly this look, proven across the
+     Campaign Management / Media Plan tables — shared the desktop rules
+     onto .data-table too rather than inventing a second system. NOT
+     added to .active-camp-table's mobile card-collapse rules below
+     (@media max-width:680px): that collapse depends on td[data-label]
+     attributes for its per-row labels, which .data-table's 36 call sites
+     don't set — .data-table keeps the plain .table-scroll horizontal-
+     scroll behavior on narrow screens instead of an unlabeled stack. */
+  .active-camp-table, .data-table{width:100%;border-collapse:collapse;margin-top:8px;}
+  .active-camp-table th, .data-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line);}
+  .active-camp-table td, .data-table td{padding:10px 10px 10px 0;border-bottom:1px solid var(--line);font-size:0.8438rem;vertical-align:top;}
+  .active-camp-table tr:last-child td, .data-table tr:last-child td{border-bottom:none;}
+  .active-camp-table td.name, .data-table td.name{font-weight:600;}
+  .active-camp-table td.num, .data-table td.num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7812rem;white-space:nowrap;}
   /* 2026-08-24 (round 17, direct feedback) — Top 5 Most Urgent's empty
      state now lives inside the table body so the column headers always
      render, even with zero campaigns. */
-  .active-camp-table tr.empty-state-row td{padding:20px 10px;text-align:center;color:var(--muted);font-size:0.8438rem;font-style:italic;}
+  .active-camp-table tr.empty-state-row td, .data-table tr.empty-state-row td{padding:20px 10px;text-align:center;color:var(--muted);font-size:0.8438rem;font-style:italic;}
   /* Round 132bx (2026-08-15) — mobile card-collapse for the Campaign
      Management table, per direct review comment (Aug 15 tracker row 26):
      "mobile views not responsive... users can't... view campaign
@@ -1546,6 +1566,13 @@
      selectable items (dropdowns, tile rows); sized up and given more
      breathing room before whatever sits below the label. */
   .field label{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.8438rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:12px;}
+  /* 2026-09-09 style-check fix — .toggle-row (a checkbox + its label text,
+     used for the Admin-role and AI-training-opt-out toggles) never had a
+     real rule; both call sites relied entirely on style="...align-items:
+     center..." to line up the checkbox and text, but align-items only
+     does anything on a flex/grid container, which nothing ever declared —
+     so the two were never actually vertically centered. Real base rule. */
+  .toggle-row{display:flex;align-items:center;gap:10px;}
   /* Form-field polish (portal audit): matched to the public site's rounded-
      card language (was a barely-rounded 3px) and given a real focus ring —
      previously inputs/textareas had zero :focus styling, so keyboard/tab
@@ -1583,6 +1610,20 @@
   .tbl-input:focus,.tbl-select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .tbl-select{padding-right:32px;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235B5647' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;background-size:10px 6px;}
   .tbl-select:hover{border-color:var(--cx);}
+  /* 2026-09-09 style-check fix — .library-row (the "reuse a saved
+     testimonial/asset" picker row) was pasted inline, identically, at
+     both its call sites instead of given a real rule. Consolidated. */
+  .library-row{margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  /* 2026-09-09 style-check fix — same story for .cmgmt-search-input (the
+     Campaign Management search box): its base look was fully inline and
+     matched the site's pill-input convention, but with no class-based
+     rule it never picked up the standard var(--cx) focus ring every
+     other input on the site gets (see .tbl-input:focus above,
+     .mktcal-filter-field input:focus below) — it just fell back to the
+     browser's default focus outline. Base look stays inline (it's a
+     one-off pill shape, not shared with another component); adding the
+     real focus rule is what actually needed a class to exist. */
+  .cmgmt-search-input:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .tbl-select::-ms-expand{display:none;}
 
   /* Portal audit — dedicated classes replacing inline
@@ -1593,6 +1634,12 @@
      mobile responsive. Each of these gets a matching mobile override
      below. */
   .mmm-inputs-row{display:grid;grid-template-columns:1fr 1.4fr 1fr 1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;}
+  /* 2026-09-09 style-check fix — .field-row was used 4 times, each with
+     the identical style="display:flex;gap:12px;flex-wrap:wrap;" pasted
+     inline instead of given a real rule, right next to its siblings
+     .field-row-2/.field-row-3 which already had one. Consolidated into a
+     real rule so all 4 sites share one definition going forward. */
+  .field-row{display:flex;gap:12px;flex-wrap:wrap;}
   .field-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:560px;}
   .field-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
   .split-row-2{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
@@ -1763,6 +1810,7 @@
      stage) rather than #cmpStage-messaging alone, so #cmpStage-copyVersions
      (round 132k, below) can reuse the same look without duplicating rules. */
   .cmp-stage .msg-card{border:1px solid var(--line);border-radius:var(--radius-sm);padding:16px 18px;background:var(--white);box-shadow:var(--shadow-sm);}
+  .creative-asset-channel-group{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;}
   .cmp-stage .msg-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
   .cmp-stage .msg-card-title{font-size:0.8125rem;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:var(--ink);}
   .cmp-stage .msg-card-sub{font-size:0.75rem;color:var(--muted);}
@@ -2704,7 +2752,12 @@
            after <body>), not duplicated here. This icon is back to being the
            account-summary's only control. Colors flipped to the navy-header
            palette round 17 (was light-card colors). -->
-      <a href="account.html" class="icon-link" title="Account" aria-label="Account" id="dashAccountLink" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);color:var(--hdr-ink-on-navy);font-size:14px;text-decoration:none;flex-shrink:0;">⚙</a>
+      <!-- 2026-09-09 style-check fix — this used the class name icon-link
+           (never a real CSS rule) with the exact declarations duplicated inline,
+           when .app-header-gear already exists in this file's own <style>
+           block with those same declarations plus a :hover state this
+           element was missing. Swapped to the real class. -->
+      <a href="account.html" class="app-header-gear" title="Account" aria-label="Account" id="dashAccountLink">⚙</a>
     </div>
   </div>
 
@@ -4456,7 +4509,7 @@
           <label>Title</label>
           <input type="text" id="bwsFileTitle" placeholder="e.g. Q3 Sales One-Pager — Warm Water">
         </div>
-        <div class="field-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="field-row">
           <div class="field" style="flex:1;min-width:220px;">
             <label>Purpose</label>
             <select id="bwsFileCategory"></select>
@@ -4505,7 +4558,7 @@
           <label>Title</label>
           <input type="text" id="bwsLinkTitle" placeholder="e.g. FY26 Brand Deck">
         </div>
-        <div class="field-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="field-row">
           <div class="field" style="flex:1;min-width:220px;">
             <label>Purpose</label>
             <select id="bwsLinkCategory"></select>
@@ -4563,7 +4616,7 @@
             <label>Title</label>
             <input type="text" id="bwsVideoTitle" placeholder="e.g. Spring Campaign Teaser">
           </div>
-          <div class="field-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div class="field-row">
             <div class="field" style="flex:1;min-width:220px;">
               <label>Purpose</label>
               <select id="bwsVideoCategory"></select>
@@ -4636,7 +4689,7 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <div class="field-row" style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="field-row">
           <div class="field" style="flex:1;min-width:160px;">
             <label>Mode</label>
             <select id="wsMode">
@@ -35236,13 +35289,19 @@ function renderCampaignMmmLineItemsRows(c){
     return;
   }
   const byCategory = Object.fromEntries((c.mmmLineItems || []).map(li => [li.category, li]));
+  // 2026-09-09 style-check fix — .cmp-mmm-li-input (kept, it's the real
+  // querySelectorAll hook these rows are read back through below) had no
+  // CSS rule and sat in a bare <td> with no styled ancestor, so all three
+  // number inputs per row rendered as unstyled browser defaults. Added
+  // the real .tbl-input class already used for every other in-table input
+  // on this site, rather than inventing a rule that duplicates it.
   tbody.innerHTML = channels.map(cat => {
     const li = byCategory[cat] || {};
     return `<tr>
       <td>${escapeHtml(cat)}</td>
-      <td><input type="number" min="0" step="100" class="cmp-mmm-li-input" data-category="${escapeHtml(cat)}" data-field="spend" value="${li.spend != null ? li.spend : ''}"></td>
-      <td><input type="number" min="0" step="1000" class="cmp-mmm-li-input" data-category="${escapeHtml(cat)}" data-field="reach" value="${li.reach != null ? li.reach : ''}"></td>
-      <td><input type="number" min="0" step="1000" class="cmp-mmm-li-input" data-category="${escapeHtml(cat)}" data-field="impressions" value="${li.impressions != null ? li.impressions : ''}"></td>
+      <td><input type="number" min="0" step="100" class="cmp-mmm-li-input tbl-input" data-category="${escapeHtml(cat)}" data-field="spend" value="${li.spend != null ? li.spend : ''}"></td>
+      <td><input type="number" min="0" step="1000" class="cmp-mmm-li-input tbl-input" data-category="${escapeHtml(cat)}" data-field="reach" value="${li.reach != null ? li.reach : ''}"></td>
+      <td><input type="number" min="0" step="1000" class="cmp-mmm-li-input tbl-input" data-category="${escapeHtml(cat)}" data-field="impressions" value="${li.impressions != null ? li.impressions : ''}"></td>
     </tr>`;
   }).join('');
 }
@@ -39415,7 +39474,7 @@ function renderLibraryPicker(f){
       return `<option value="${t.id}">${preview}${t.attribution ? ' — ' + t.attribution : ''}</option>`;
     }).join('');
     return `
-      <div class="library-row" style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <div class="library-row">
         <select id="lib-pick-testimonial" style="flex:1;min-width:160px;">
           <option value="">— Reuse a saved testimonial —</option>
           ${options}
@@ -39431,7 +39490,7 @@ function renderLibraryPicker(f){
     return `<option value="${item.id}">${preview}</option>`;
   }).join('');
   return `
-    <div class="library-row" style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+    <div class="library-row">
       <select id="lib-pick-${f.key}" style="flex:1;min-width:160px;">
         <option value="">— Reuse saved ${f.label.toLowerCase().replace(' (optional)', '')} —</option>
         ${options}
@@ -46472,7 +46531,10 @@ function cmpRenderCreativeAssetMatrix(){
     return;
   }
   cmpBuildCreativeAssetGridRows();
-  el.innerHTML = channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group" style="border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
+  // 2026-09-09 style-check fix — .creative-asset-channel-group's look was
+  // fully inline at its only call site; given a real rule (below, near
+  // the other .cmp-* card patterns) instead.
+  el.innerHTML = channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
   channels.forEach(channel => cmpPopulateCreativeAssetSizeSelectsForChannel(channel));
   cmpSyncCreativeAssetRequestsFromGrid();
 }
