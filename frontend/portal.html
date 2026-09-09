@@ -5993,7 +5993,19 @@
         <div class="htext"><div class="kicker">Step 2</div><h3>Match-market analysis</h3></div>
         <div class="hicon">📊</div>
       </div>
-      <div class="sk-card-body" id="mouResultsBody"></div>
+      <div class="sk-card-body">
+        <!-- 2026-09-09, per direct question ("How do we know when to ignore
+             a previous file or select a specific file for the analysis
+             work?") — every confirmed import stays a permanent record
+             (nothing is ever deleted), but until now there was no way to
+             come back and pick among them; this select is that picker. See
+             mouLoadUploadPicker()/mouSelectUpload() in the JS below. -->
+        <div id="mouUploadPickerRow" class="btn-row" style="display:none;margin-bottom:10px;align-items:center;gap:8px;">
+          <label for="mouUploadPicker" class="hint" style="margin:0;">Showing results for:</label>
+          <select id="mouUploadPicker" onchange="mouSelectUpload(this.value)" style="max-width:420px;"></select>
+        </div>
+        <div id="mouResultsBody"></div>
+      </div>
     </div>
 
     <!-- Reference data (2026-09-06, item 4a): shared across accounts --
@@ -26451,8 +26463,15 @@ async function mouConfirmImport(){
     }
 
     if (resultEl) resultEl.textContent = `Passed screening (${uploadData.virusScan ? uploadData.virusScan.status : 'scanned'}) — importing ${aggregated.length} zip(s) from ${mapped.length} row(s)…`;
+    // 2026-09-09 fix: this can be thousands of rows (Todd hit "Backend
+    // unreachable" on a 7,709-zip file) — the backend now batches the
+    // insert (see server.js), but authedFetch's 12s default abort timeout
+    // was still too tight for the full round trip on a large file even
+    // once batched, so raise it here too (defense-in-depth, matching the
+    // carry-forward fix's own 30000ms raise).
     const commitResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
+      timeoutMs: 60000,
       body: JSON.stringify({
         uploadedFileId: uploadData.id,
         label: mouFileName,
@@ -26472,12 +26491,13 @@ async function mouConfirmImport(){
     }
 
     if (resultEl) resultEl.textContent = `Imported ${commitData.rowCount} row(s) — analysis below.`;
-    const analysisResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(commitData.id)}/analysis`);
+    const analysisResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(commitData.id)}/analysis`, { timeoutMs: 60000 });
     if (analysisResp.ok){
       const analysisData = await analysisResp.json();
       mouRenderResults(analysisData);
     }
     mouLoadHistory();
+    if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker(commitData.id);
   } catch (e){
     if (resultEl) resultEl.textContent = 'Backend unreachable — could not complete the scan/import.';
   }
@@ -26879,6 +26899,59 @@ function mouRenderHistory(uploads){
     <thead><tr><th>File</th><th>Size</th><th>Result</th><th>Uploaded by</th><th>When</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+
+// ---------- Committed-upload picker (2026-09-09) ----------
+// Per direct question: "What happens if a user makes a mistake uploading
+// and wants to resubmit a file? How do we know when to ignore a previous
+// file or select a specific file for the analysis work?" Nothing here is
+// ever deleted — every confirmed "Scan & import" commits a new, permanent
+// market_customer_uploads record (see backend/server.js) — so a mistaken
+// upload just sits alongside the good ones forever. Until this round there
+// was no way back to any of them once mouRenderResults() had moved on:
+// the analysis table only ever showed whichever upload was most recently
+// imported in the current browser session. This picker lists every
+// committed upload for the account (newest first, via the same endpoint
+// mouLoadHubStatus already calls, now carrying rowCount) and lets Todd
+// re-view or switch between them — deliberately a *selection* mechanism,
+// not a delete one, consistent with this feature's audit-trail design.
+let mouUploadPickerCache = [];
+async function mouLoadUploadPicker(selectId){
+  const row = document.getElementById('mouUploadPickerRow');
+  const sel = document.getElementById('mouUploadPicker');
+  if (!row || !sel || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    mouUploadPickerCache = data.uploads || [];
+    if (!mouUploadPickerCache.length){ row.style.display = 'none'; return; }
+    row.style.display = '';
+    sel.innerHTML = mouUploadPickerCache.map(u => {
+      const when = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
+      const rows = (u.rowCount != null ? u.rowCount.toLocaleString() : '?') + ' zip(s)';
+      const label = escapeHtml(u.label || 'Untitled upload');
+      const period = u.periodLabel ? ` — ${escapeHtml(u.periodLabel)}` : '';
+      return `<option value="${u.id}">${label}${period} (${rows}, ${when})</option>`;
+    }).join('');
+    const toSelect = selectId && mouUploadPickerCache.some(u => u.id === selectId) ? selectId : mouUploadPickerCache[0].id;
+    sel.value = toSelect;
+    await mouSelectUpload(toSelect, { skipReload: true });
+  } catch (e){ /* leave the picker as whatever it last showed */ }
+}
+async function mouSelectUpload(uploadId, opts){
+  if (!uploadId || !state.companyId) return;
+  const sel = document.getElementById('mouUploadPicker');
+  if (sel && sel.value !== uploadId) sel.value = uploadId;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(uploadId)}/analysis`, { timeoutMs: 60000 });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    mouRenderResults(data);
+  } catch (e){
+    const body = document.getElementById('mouResultsBody');
+    if (body && !(opts && opts.skipReload)) body.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load that upload\'s analysis.</p>';
+  }
 }
 
 function mouResetImport(){
@@ -42326,6 +42399,7 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'marketOptimization'){
     mouResetImport();
     mouLoadHistory();
+    if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker();
     if (typeof mstLoad === 'function') mstLoad();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
