@@ -5758,10 +5758,21 @@
           <div class="field" style="margin:0;flex:1 1 200px;"><label>Method / note</label><input type="text" id="mrfDmaMethod" placeholder="e.g. official Nielsen boundaries"></div>
           <div class="field" style="margin:0;"><label>CSV or TSV: zip, DMA code, DMA name</label><input type="file" id="mrfDmaFile" accept=".csv,.tsv,.txt" onchange="mrfHandleDmaFile(event)"></div>
         </div>
-        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-          <div class="field" style="margin:0;flex:1 1 320px;"><label>Zip centroids for store trade areas — Census ZCTA Gazetteer (.txt from the zip archive)</label><input type="file" accept=".txt,.csv,.tsv" onchange="mrfHandleCentroidFile(event)"></div>
-          <a class="btn-ghost" href="https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip" target="_blank" rel="noopener" style="display:inline-block;">⬇ Download the gazetteer</a>
-        </div>
+        <!-- 2026-09-09, per direct instruction ("Centroids uploaded
+             correctly so we can remove the Download option assuming that
+             is now saved for all clients") — the Census ZCTA Gazetteer
+             centroid load is a one-time backfill into the same shared,
+             non-account-scoped zip_centroid_master table as the population
+             and DMA masters above (confirmed: 33,791 zips/FSAs on file as
+             of this change), so every client benefits from that one load
+             the same way they already do for population and DMA. The
+             manual upload row is removed from this client-facing screen;
+             mrfHandleCentroidFile()/mrfParseCentroidText() stay in the code
+             (harmless, unreachable from here) in case CX Ops ever needs to
+             refresh the master from a newer Gazetteer release — that would
+             be re-added to an ops-only surface, not this one. mrfStatus's
+             "Zip centroids" status line above still reports the current
+             count/coverage either way. -->
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
           <p class="hint" style="margin:0 0 8px;"><b>Other countries.</b> Pick the country, then upload its population, centroids and market crosswalk from the national statistics office (Statistics Canada by FSA; ABS by postcode; ONS postcode lookup for the UK; Destatis, INSEE, INE and ISTAT by postal code, with Eurostat's postal-code-to-NUTS table as the market layer). Columns are found by name and by value pattern; every market label says which definition it uses.</p>
           <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
