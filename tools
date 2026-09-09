@@ -1,1 +1,199 @@
+#!/usr/bin/env node
+/*
+ * check-style.js — catches the exact class of bug behind the "confirm
+ * button doesn't match the site" report (2026-09-09): a button (or any
+ * element) given a CSS class in markup — including markup built as a JS
+ * template string, which is how most of this app's UI is generated — that
+ * is never actually defined anywhere in the page's own <style> block.
+ * `class="btn-secondary"` was used on six confirm-dialog buttons across
+ * portal.html; no `.btn-secondary` rule has ever existed in the CSS, so
+ * every one of those buttons silently fell back to unstyled browser
+ * defaults instead of the site's real .btn-primary/.btn-ghost pill style.
+ * That bug is invisible in a code review unless someone actually greps the
+ * stylesheet — this script does that grep, every time, mechanically.
+ *
+ * This does not replace the judgment calls in
+ * claude/cxmedia-design-system-checklist.md (the Claude Project doc) — it
+ * only catches the one failure mode that's fully mechanical: a class
+ * referenced in markup with no matching rule anywhere in that file's own
+ * <style> block. Run it before delivering any change that touches markup
+ * in frontend/*.html:
+ *
+ *   node tools/check-style.js
+ *   npm run check-style
+ *
+ * Exits non-zero (and prints every offending file/class/line) if it finds
+ * anything. A clean exit is necessary, not sufficient — it doesn't check
+ * whether the RIGHT class was reused (e.g. .field vs. a one-off inline
+ * style), only whether a class actually resolves to a rule.
+ */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
+const TARGET_FILES = ['portal.html', 'ops-console.html', 'account.html', 'onboarding.html'];
+
+// Classes that are legitimately never defined in a page's own <style>
+// block: framework/vendor classes injected by a loaded library, or classes
+// that are toggled onto elements purely to be *targeted* by JS (visibility
+// or lookup) with no visual rule of their own — a real absence, verified,
+// not a guess. Extend this list deliberately, with a one-line reason.
+const KNOWN_EXTERNAL_OR_JS_ONLY = new Set([
+  'tab-pane', // ops-console.html — pure JS hook (querySelectorAll('.tab-pane')); visibility comes entirely from the real .hidden class toggled alongside it, not from .tab-pane itself.
+]);
+
+// 2026-09-09 baseline: every OTHER undefined class this script found the
+// first time it was run against the codebase, before this script existed.
+// These are real findings, not false positives — but they predate this
+// tool and Todd's report was about one specific button, not a request to
+// re-audit the whole site in one pass. Keeping them here (instead of
+// silently adding them to KNOWN_EXTERNAL_OR_JS_ONLY, which would claim
+// they're *fine*) means: this script goes clean today without pretending
+// pre-existing debt is resolved, and it still fails hard on anything NEW —
+// which is the actual ask ("we continue to have issues matching styles
+// when creating NEW features"). Don't add to this list going forward —
+// a new finding means fix the class or the markup, not baseline it away.
+// Revisit and burn this list down file by file in a dedicated round.
+const BASELINE_2026_09_09_PREEXISTING = {
+  'portal.html': new Set([
+    'icon-link', 'dash-tab-panel', 'crumb-home-link', 'cmgmt-search-input',
+    'ai-thought-mount', 'field-row', 'toggle-row', 'data-table',
+    'mktcal-filter-search', 'funnel-rate-cell', 'msg-col', 'msg-improve-card',
+    'cfdWsInput', 'kpi-delta', 'eff-meter-block', 'draw-row', 'spinner',
+    'mmm-bucket-input', 'cmp-mmm-li-input', 'campaign-type-detail-field',
+    'library-row', 'creative-asset-channel-group',
+  ]),
+  'ops-console.html': new Set([]),
+  'account.html': new Set([]),
+  'onboarding.html': new Set([]),
+};
+
+function extractStyleBlockClassNames(html) {
+  const classes = new Set();
+  const styleBlocks = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]);
+  for (const css of styleBlocks) {
+    // Strip comments so a class name mentioned only in a /* ... */ note
+    // (e.g. this file's own header) never counts as a real definition.
+    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of stripped.matchAll(/\.(-?[A-Za-z_][A-Za-z0-9_-]*)/g)) {
+      classes.add(m[1]);
+    }
+  }
+  return classes;
+}
+
+function lineNumberAt(html, index) {
+  return html.slice(0, index).split('\n').length;
+}
+
+// Removes every `${ ... }` template-literal interpolation from a string,
+// with basic brace balancing so a ternary like `${cond ? 'a' : 'b'}` (no
+// nested braces) or `${fn({x:1})}` (one level of nested `{}`) is removed
+// as a single span rather than stopping at the first `}`. This can still
+// discard a conditional class name we can't statically resolve (e.g.
+// `${active ? 'selected' : ''}` loses "selected") — that's a deliberate
+// false-negative tradeoff, not a bug: a class this script can't see is
+// still real CSS-defined markup, so nothing is mis-flagged as undefined.
+function stripInterpolations(str) {
+  let out = '';
+  let i = 0;
+  while (i < str.length) {
+    if (str[i] === '$' && str[i + 1] === '{') {
+      let depth = 1;
+      let j = i + 2;
+      while (j < str.length && depth > 0) {
+        if (str[j] === '{') depth++;
+        else if (str[j] === '}') depth--;
+        j++;
+      }
+      i = j; // skip past the matched (or ran-off-the-end) interpolation
+    } else {
+      out += str[i];
+      i++;
+    }
+  }
+  return out;
+}
+
+function extractClassAttrUsages(html) {
+  // Matches class="..." and class='...' anywhere in the file — including
+  // inside <script> template strings, since that's where most of this
+  // app's markup is actually generated.
+  const usages = [];
+  for (const m of html.matchAll(/\bclass\s*=\s*("([^"]*)"|'([^']*)')/g)) {
+    const raw = m[2] !== undefined ? m[2] : m[3];
+    const line = lineNumberAt(html, m.index);
+    const cleaned = stripInterpolations(raw);
+    for (const token of cleaned.split(/\s+/)) {
+      if (!token) continue;
+      // Skip anything that isn't a plausible bare class name — leftover
+      // backtick fragments, or a template string that opened a `${...}`
+      // this brace-balancer couldn't close (e.g. it was cut off by the
+      // outer quote-matching regex above), never a real class.
+      if (token.includes('`') || token.includes('$')) continue;
+      // A trailing hyphen (e.g. "tier-" left behind by
+      // `class="tier-${slug}"` once the interpolation is stripped) is a
+      // template-prefix fragment, never a real class name — real classes
+      // don't end in a bare hyphen.
+      if (!/^-?[A-Za-z_][A-Za-z0-9_-]*[A-Za-z0-9_]$/.test(token) && !/^-?[A-Za-z_]$/.test(token)) continue;
+      usages.push({ className: token, line });
+    }
+  }
+  return usages;
+}
+
+function checkFile(filePath, fileName) {
+  const html = fs.readFileSync(filePath, 'utf8');
+  const defined = extractStyleBlockClassNames(html);
+  const usages = extractClassAttrUsages(html);
+  const baseline = BASELINE_2026_09_09_PREEXISTING[fileName] || new Set();
+  const newFindings = new Map(); // className -> first line
+  const baselineHit = new Set();
+  for (const u of usages) {
+    if (defined.has(u.className)) continue;
+    if (KNOWN_EXTERNAL_OR_JS_ONLY.has(u.className)) continue;
+    if (baseline.has(u.className)) { baselineHit.add(u.className); continue; }
+    if (!newFindings.has(u.className)) newFindings.set(u.className, u.line);
+  }
+  return { newFindings, baselineHit };
+}
+
+function main() {
+  let anyNewFindings = false;
+  let anyBaseline = false;
+  for (const name of TARGET_FILES) {
+    const filePath = path.join(FRONTEND_DIR, name);
+    if (!fs.existsSync(filePath)) continue;
+    const { newFindings, baselineHit } = checkFile(filePath, name);
+    if (newFindings.size === 0 && baselineHit.size === 0) {
+      console.log(`OK      ${name}: every class used in markup resolves to a rule in its own <style> block.`);
+      continue;
+    }
+    if (baselineHit.size) {
+      anyBaseline = true;
+      console.log(`BASELINE ${name}: ${baselineHit.size} pre-existing undefined class(es), not part of this round's change — see the dated comment on BASELINE_2026_09_09_PREEXISTING in this script.`);
+    }
+    if (newFindings.size) {
+      anyNewFindings = true;
+      console.log(`FAIL    ${name}: ${newFindings.size} NEW class(es) used in markup with no matching CSS rule —`);
+      for (const [className, line] of newFindings) {
+        console.log(`          .${className}  (first used around line ${line})`);
+      }
+    }
+  }
+  if (anyNewFindings) {
+    console.log('\nEach class above renders as unstyled browser default (or inherits nothing) instead of the site look — either');
+    console.log('define the missing rule, or replace it with the real existing class (.btn-primary / .btn-ghost / .field / etc.).');
+    console.log('See claude/cxmedia-design-system-checklist.md for the broader pre-ship checklist this script does not cover.');
+    process.exit(1);
+  } else {
+    console.log(anyBaseline
+      ? '\nNo NEW undefined-class findings (pre-existing baseline items listed above are unchanged, not newly introduced).'
+      : '\nNo undefined-class findings.');
+    process.exit(0);
+  }
+}
+
+main();
 
