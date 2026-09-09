@@ -26252,17 +26252,26 @@ async function mrfLoadPublic(){
   const say = (t) => { if (status) status.textContent = t; };
   const btn = document.getElementById('mrfLoadPublicBtn'); if (btn) btn.disabled = true;
   try {
+    // 2026-09-08 fix, per direct report ("Couldn't load: Failed to fetch") —
+    // these used to fetch() api.census.gov and the crosswalk gist directly
+    // from the browser, cross-origin; a browser CORS block surfaces as a
+    // bare "Failed to fetch" with no HTTP status, which is exactly what was
+    // reported. Both sources are now fetched server-side through backend
+    // proxy endpoints and returned same-origin, so the browser never talks
+    // to those hosts directly.
     say('Fetching 2020 Census ZCTA population from api.census.gov…');
-    const pr = await fetch(MRF_PUBLIC_SOURCES.population.url);
-    if (!pr.ok) throw new Error(`Census API HTTP ${pr.status}`);
-    const popRows = MRF_PUBLIC_SOURCES.population.parse(await pr.json());
+    const pr = await authedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/population`);
+    if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status} ${t.slice(0, 120)}`); }
+    const prJson = await pr.json();
+    const popRows = MRF_PUBLIC_SOURCES.population.parse(prJson.data);
     if (!popRows.length) throw new Error('Census API returned no ZCTA rows');
     say(`Loading ${popRows.length.toLocaleString()} population rows…`);
     const p = await mrfPostChunks('/api/market-population-master', popRows, { sourceLabel: MRF_PUBLIC_SOURCES.population.sourceLabel }, (d, n) => say(`Loading population ${d.toLocaleString()} / ${n.toLocaleString()}…`));
     say('Fetching the public zip→DMA crosswalk…');
-    const dr = await fetch(MRF_PUBLIC_SOURCES.dma.url);
-    if (!dr.ok) throw new Error(`crosswalk HTTP ${dr.status}`);
-    const dmaRows = MRF_PUBLIC_SOURCES.dma.parse(await dr.text());
+    const dr = await authedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/dma`);
+    if (!dr.ok){ const t = await dr.text().catch(() => ''); throw new Error(`crosswalk HTTP ${dr.status} ${t.slice(0, 120)}`); }
+    const drJson = await dr.json();
+    const dmaRows = MRF_PUBLIC_SOURCES.dma.parse(drJson.text);
     if (!dmaRows.length) throw new Error('crosswalk returned no rows');
     const d = await mrfPostChunks('/api/market-dma-master', dmaRows, { sourceLabel: MRF_PUBLIC_SOURCES.dma.sourceLabel, method: MRF_PUBLIC_SOURCES.dma.method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
     say(`Done — ${p.inserted.toLocaleString()} population rows and ${d.inserted.toLocaleString()} zip→DMA rows loaded.${(p.errors.length || d.errors.length) ? ` Some rows were skipped: ${[...p.errors, ...d.errors].slice(0, 3).join(' · ')}` : ''}`);
