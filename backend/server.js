@@ -16687,6 +16687,27 @@ Submit your findings via the submit_brand_categories tool.`;
       return sendJson(res, 200, { saved, errors, total: stores.length, geocoded: stores.filter(s => s.lat != null).length, notGeocoded: stores.filter(s => s.lat == null).map(s => s.name || s.storeId || s.address) });
     }
 
+    // DELETE /api/accounts/:id/stores/:storeRowId — 2026-09-09, per direct
+    // instruction ("Storefronts is one area where we should be able to
+    // delete duplicates or stores no longer part of a brand or franchise")
+    // — this list previously only supported bulk replace (re-uploading a
+    // file with replace:true wipes and reloads every store at once) or
+    // additive add/upload; there was no way to remove a single bad row —
+    // a duplicate from a re-upload, or a location the account no longer
+    // has — without nuking and re-entering the whole list. Simple hard
+    // delete, no dependent-record warning needed (unlike, say, a marketing
+    // budget with campaigns funded from it): nothing else in this schema
+    // references account_stores.id, a store row is just itself.
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const storeRowId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT id FROM account_stores WHERE id = ? AND accountId = ?').get(storeRowId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'store not found' });
+      db.prepare('DELETE FROM account_stores WHERE id = ?').run(storeRowId);
+      return sendJson(res, 200, { deleted: true });
+    }
+
     // GET /api/accounts/:id/stores/prospect-fit — 2026-09-09, per direct
     // instruction ("move to the next step") — answers Todd's original
     // question directly on the Stores and trade areas card itself, with NO
@@ -19309,7 +19330,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
 
 
