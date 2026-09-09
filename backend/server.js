@@ -4709,6 +4709,39 @@ function computeHoldoutSplit(scoredRows, holdoutFraction){
   return { holdoutZips, note: null };
 }
 
+// ---- ACS demographic reference (2026-09-09) ----
+// Per direct instruction ("We should try to be consistent and then back
+// into the data sources that are available") — these mirror
+// frontend/assessment.html's own ACS_AGE_BINS/ACS_BIN_SUFFIX exactly (same
+// Census table B01001, same bin offsets, same 5 generations it can map to
+// real data: genz/millennial/genx/boomer/silent — Gen Alpha, Gen Beta and
+// The Greatest Generation stay disclosed as unavailable at this
+// granularity, same as there). This is NOT a second, independently
+// invented age model — it's ported here only because this backend is what
+// actually runs the bulk ZCTA-level fetch (see the proxy/demographics
+// route below); assessment.html's own copy stays the source of truth for
+// its live county/national pull.
+const ACS_YEAR = '2022';
+const ACS_AGE_BINS = {
+  genz:       [2, 3, 4, 5, 6, 7, 8],
+  millennial: [9, 10, 11],
+  genx:       [12, 13, 14, 15],
+  boomer:     [16, 17, 18, 19, 20, 21],
+  silent:     [22]
+};
+const ACS_BIN_SUFFIX = ['003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025'];
+// Table B19001 (household income) bracket codes with a bracket-midpoint —
+// used only to derive ONE weighted-average income estimate per zip (see
+// the demographics proxy's parse comment), not to reproduce the full
+// 16-bracket table load-side (that would make the bulk load ~8x larger for
+// detail this feature doesn't need at zip granularity) — a disclosed
+// approximation, same posture as the rest of this app's demographic work.
+const ACS_INCOME_BRACKET_MIDPOINTS = [
+  ['002', 10000], ['003', 12500], ['004', 17500], ['005', 22500], ['006', 27500], ['007', 32500],
+  ['008', 37500], ['009', 42500], ['010', 47500], ['011', 55000], ['012', 67500], ['013', 87500],
+  ['014', 112500], ['015', 137500], ['016', 175000], ['017', 225000]
+];
+
 // Real per-zip demographic index: this upload's own zips' average of each
 // tracked attribute vs. each individual zip's value, indexed to 100 the
 // same way as the penetration index above. Multiple attributes each get
@@ -4814,10 +4847,16 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     // used to be a flat "not built yet" for a DMA-level upload.
     const dmaMatch = computeDmaCompositeAndMatching(dmaOnly, holdoutFraction);
     if (dmaMatch.dmasScored.length) dmaOnly.dmas = dmaMatch.dmasScored;
+    // dmaExport: see the zip-level branch's own comment below — this is the
+    // uniform shape buildMarketUploadXlsxRows() reads for BOTH branches. For
+    // a genuine DMA-level upload this is just the same holdout/matching
+    // already computed above, aliased into that shared shape rather than
+    // duplicated logic.
+    const dmaExport = { available: dmaMatch.dmasScored.length > 0, dmas: dmaOnly.dmas, holdout: { dmaCodes: dmaMatch.holdout.dmaCodes }, matching: dmaMatch.matching };
     return { uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
       confidence: 'lower — DMA-level upload: no zip-level penetration, no store trade areas. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
       penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
-      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, stores: { available: false, note: 'store trade areas need zip-level data', stores: [] } };
+      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport, stores: { available: false, note: 'store trade areas need zip-level data', stores: [] } };
   }
   const penetration = computePenetrationIndex(rows, upload.weightMode);
   const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
@@ -4827,6 +4866,31 @@ function computeMarketUploadAnalysis(accountId, upload, options){
   const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
   let dma = null;
   try { dma = computeDmaRollup(rows, upload.weightMode); } catch (e){ dma = { available: false, note: `DMA roll-up not readable (${String(e && e.message || e).slice(0, 120)})`, dmas: [] }; }
+  // dmaExport: 2026-09-09, per direct instruction ("It would be ideal if we
+  // could group by the FCC/DMA Name instead of showing each zip code
+  // individually in the Excel doc") — the on-screen summary and the
+  // zip-level `penetration`/`holdout`/`matching` fields above are left
+  // untouched (that's a separate, already-reviewed view), but the Excel
+  // export now groups by DMA even for a zip-level upload. This reuses
+  // computeDmaCompositeAndMatching() — the exact same function the
+  // DMA-level branch above already uses — applied to this upload's own zip
+  // rollup, so the export gets real Composite_Score/Opportunity_Tier/
+  // Test_Control_Assignment/Match_Pair values at the DMA level without a
+  // second scoring method. Kept in its own field (not merged into the
+  // top-level `dma`/`holdout`/`matching`) specifically so it can't leak
+  // into the on-screen zip-level view, which stays as Todd already
+  // approved it. Falls back to unavailable (buildMarketUploadXlsxRows then
+  // exports zip rows, same as before this round) when no DMA crosswalk is
+  // loaded for these zips at all.
+  let dmaExport = { available: false, dmas: [], holdout: { dmaCodes: [] }, matching: { pairs: [] } };
+  try {
+    if (dma && dma.available && dma.dmas.length){
+      const dmaMatchForExport = computeDmaCompositeAndMatching(dma, holdoutFraction);
+      if (dmaMatchForExport.dmasScored.length){
+        dmaExport = { available: true, dmas: dmaMatchForExport.dmasScored, holdout: { dmaCodes: dmaMatchForExport.holdout.dmaCodes }, matching: dmaMatchForExport.matching };
+      }
+    }
+  } catch (e){ /* leave dmaExport unavailable — export falls back to zip rows */ }
   let stores = null;
   try {
     const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
@@ -4836,7 +4900,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
     holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
-    demographic, matching, audit, dma, stores, geoLevel: 'zip'
+    demographic, matching, audit, dma, dmaExport, stores, geoLevel: 'zip'
   };
 }
 
@@ -4860,10 +4924,20 @@ function computeMarketUploadAnalysis(accountId, upload, options){
 // sample file's older labels — the sample predates that rename and was
 // shared for its column layout/simplicity, not to revert the naming.
 function buildMarketUploadXlsxRows(analysis){
-  const isDma = analysis.geoLevel === 'dma';
-  const sourceRows = isDma ? ((analysis.dma && analysis.dma.dmas) || []) : (analysis.penetration || []);
-  const pairs = (analysis.matching && analysis.matching.pairs) || [];
-  const holdoutKeys = new Set(isDma ? ((analysis.holdout && analysis.holdout.dmaCodes) || []) : ((analysis.holdout && analysis.holdout.zips) || []));
+  // 2026-09-09, per direct instruction ("group by the FCC/DMA Name instead
+  // of showing each zip code individually in the Excel doc") — the export
+  // now groups by DMA whenever DMA-level scoring is available for this
+  // upload, regardless of whether the upload itself was zip-level or
+  // DMA-level (see computeMarketUploadAnalysis()'s `dmaExport` field, which
+  // is populated the same way — via computeDmaCompositeAndMatching() — for
+  // both cases). Only falls back to one row per zip when no DMA crosswalk
+  // is loaded for these zips at all (dmaExport.available === false), so a
+  // client without DMA reference data loaded yet still gets a usable
+  // export rather than an empty one.
+  const isDma = !!(analysis.dmaExport && analysis.dmaExport.available && (analysis.dmaExport.dmas || []).length);
+  const sourceRows = isDma ? analysis.dmaExport.dmas : (analysis.penetration || []);
+  const pairs = isDma ? ((analysis.dmaExport.matching && analysis.dmaExport.matching.pairs) || []) : ((analysis.matching && analysis.matching.pairs) || []);
+  const holdoutKeys = new Set(isDma ? ((analysis.dmaExport.holdout && analysis.dmaExport.holdout.dmaCodes) || []) : ((analysis.holdout && analysis.holdout.zips) || []));
   const pairLabelByKey = {};
   const tierInitials = t => (t || '').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'MKT';
   pairs.forEach((p, i) => {
@@ -4896,12 +4970,16 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
   if (opts && opts.definedCountriesOnly){
     rows = rows.filter(r => MARKET_XLSX_DEFINED_COUNTRIES.includes(r.country));
   }
+  // Same grouping test buildMarketUploadXlsxRows() itself uses — kept in
+  // sync here only for the column header label ("DMA" once grouped, "Zip"
+  // for the rare crosswalk-not-loaded fallback), not for row selection.
+  const groupedByDma = !!(analysis.dmaExport && analysis.dmaExport.available && (analysis.dmaExport.dmas || []).length);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Verilume';
   wb.created = new Date();
   const sheet = wb.addWorksheet('Match Market Testing', { views: [{ state: 'frozen', ySplit: 3 }] });
   const columns = [
-    { header: analysis.geoLevel === 'dma' ? 'DMA' : 'Zip', width: 38 },
+    { header: groupedByDma ? 'DMA' : 'Zip', width: 38 },
     { header: 'RECORDS', width: 12 },
     { header: 'INDEX', width: 10 },
     { header: 'Opportunity_Tier', width: 18 },
@@ -16519,6 +16597,118 @@ Submit your findings via the submit_brand_categories tool.`;
       }
     }
 
+    // GET /api/market-reference-data/proxy/demographics — 2026-09-09, per
+    // direct instruction ("Build the API connection now"), the data-source
+    // piece of the store-trade-area profile-matching build (see this
+    // project's cxmedia-store-trade-area-audience-match-scoping-2026-09-09
+    // doc). Same server-side-fetch proxy pattern as .../proxy/population
+    // and .../proxy/dma just above — the browser never hits census.gov
+    // directly, never needs its own CORS handling or the API key — and the
+    // SAME Census tables + bin definitions assessment.html's own
+    // fetchAcsPopulation() already uses for its live county/national pull
+    // (B01001 age, B19001 income; see ACS_AGE_BINS/ACS_BIN_SUFFIX above),
+    // just requested at ZCTA (zip code tabulation area) geography instead
+    // of county/national — a store's trade-area ring can span hundreds of
+    // zips, so this is a one-time bulk pull for the Ops Console's
+    // demographics loader to parse and POST to
+    // /api/market-demographic-master below, not a live per-ring call.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'demographics'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      try {
+        // Same Census API key requirement discovered for the population
+        // proxy above (decennial DHC dataset demanded one; ACS5 detailed
+        // tables are subject to the same unauthenticated rate ceiling and
+        // a bulk all-ZCTA pull like this one is exactly the case that
+        // ceiling exists for) — fail with the same clear, actionable
+        // message rather than a request that's likely to come back as an
+        // opaque "Missing Key" page.
+        if (!process.env.CENSUS_API_KEY){
+          return sendJson(res, 502, { error: 'Census API key not configured. Get a free key at https://api.census.gov/data/key_signup.html and set it as the CENSUS_API_KEY environment variable on the backend, then try again.' });
+        }
+        const ageVars = [];
+        Object.values(ACS_AGE_BINS).flat().forEach(offset => {
+          const suffix = ACS_BIN_SUFFIX[offset];
+          ageVars.push(`B01001_${suffix}E`, `B01001_${String(Number(suffix) + 24).padStart(3, '0')}E`);
+        });
+        const incomeVars = ACS_INCOME_BRACKET_MIDPOINTS.map(([code]) => `B19001_${code}E`);
+        const getVars = ['B01001_001E', ...ageVars, 'B19001_001E', ...incomeVars].join(',');
+        const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${getVars}&for=zip%20code%20tabulation%20area:*&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(45000)
+        });
+        const bodyText = await upstream.text();
+        if (/<title>\s*Missing Key\s*<\/title>/i.test(bodyText) || /<title>\s*Invalid Key\s*<\/title>/i.test(bodyText)){
+          return sendJson(res, 502, { error: 'Census rejected the configured API key (missing or invalid). Check the CENSUS_API_KEY environment variable on the backend against a key from https://api.census.gov/data/key_signup.html.' });
+        }
+        if (!upstream.ok) return sendJson(res, 502, { error: `Census API HTTP ${upstream.status} — ${bodyText.slice(0, 300)}` });
+        let json;
+        try { json = JSON.parse(bodyText); }
+        catch (parseErr){ return sendJson(res, 502, { error: `Census API returned a non-JSON response (HTTP ${upstream.status}) — ${bodyText.slice(0, 300)}` }); }
+        return sendJson(res, 200, { data: json, ageBins: ACS_AGE_BINS, binSuffix: ACS_BIN_SUFFIX, incomeBracketMidpoints: ACS_INCOME_BRACKET_MIDPOINTS });
+      } catch (e){
+        return sendJson(res, 502, { error: `Census API fetch failed: ${e && e.message ? e.message : e}` });
+      }
+    }
+
+    // POST /api/market-demographic-master — CX Ops bulk-loads real zip-
+    // level demographic attributes — { rows: [{zip, attribute, value}],
+    // sourceLabel }. Generic attribute/value shape, matching
+    // zip_demographic_master's own schema (same posture as when that table
+    // was first created: hold whatever's decided, no schema change later).
+    // The Ops Console's demographics loader (REF_DATA_SOURCES.demographics
+    // in ops-console.html) posts 5 ACS-sourced generation-population
+    // attributes per zip (population_genz/millennial/genx/boomer/silent —
+    // the same 5 generations assessment.html's ACS_AGE_BINS maps to real
+    // Census data) plus one derived income_avg_estimate attribute (a
+    // bracket-midpoint-weighted average from the real B19001 distribution
+    // — see ACS_INCOME_BRACKET_MIDPOINTS above for why this is one derived
+    // number rather than all 16 raw brackets per zip). Upserts — re-
+    // loading a zip+attribute replaces its prior value, so this can be
+    // safely re-run as fresher ACS data becomes available, same as the
+    // population/DMA masters.
+    if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-demographic-master'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      const body = await readBody(req);
+      if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, attribute, value}) is required' });
+      if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this demographic data come from?' });
+      const now = new Date().toISOString();
+      const sourceLabel = String(body.sourceLabel).trim();
+      // Same chunked-multi-row-INSERT fix as market-population-master/
+      // market-dma-master above (see their comments for the full
+      // root-cause explanation — a per-row round trip through the
+      // Postgres sync bridge would make a load this size impractical).
+      // Deduplicated by (zip, attribute) within each chunk first, since
+      // that's this table's real primary key.
+      const byKey = new Map(); const errors = [];
+      body.rows.forEach((r, i) => {
+        const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
+        if (!g || /^DMA:/.test(g.key)){ if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
+        const attribute = String(r.attribute || '').trim();
+        if (!attribute){ if (errors.length < 50) errors.push(`row ${i}: attribute is required`); return; }
+        if (r.value == null || isNaN(Number(r.value))){ if (errors.length < 50) errors.push(`row ${i}: value must be a number, got "${r.value}"`); return; }
+        byKey.set(`${g.key} ${attribute}`, [g.key, attribute, Number(r.value), sourceLabel, now]);
+      });
+      const validRows = Array.from(byKey.values());
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE){
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?,?)').join(',');
+        const params = []; chunk.forEach(row => params.push(...row));
+        db.prepare(`INSERT INTO zip_demographic_master (zip, attribute, value, sourceLabel, updatedAt) VALUES ${placeholders}
+          ON CONFLICT(zip, attribute) DO UPDATE SET value = excluded.value, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`).run(...params);
+      }
+      return sendJson(res, 200, { inserted: validRows.length, errors, totalRowsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_demographic_master').get().n });
+    }
+    // GET /api/market-demographic-master/status — honest state (which
+    // attributes are loaded, for how many zips, from what source), same
+    // posture as market-population-master/status.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-demographic-master' && parts[2] === 'status'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      const attrs = db.prepare('SELECT attribute, COUNT(DISTINCT zip) AS zips, MAX(updatedAt) AS updatedAt FROM zip_demographic_master GROUP BY attribute ORDER BY attribute').all();
+      const sources = db.prepare('SELECT DISTINCT sourceLabel FROM zip_demographic_master').all().map(r => r.sourceLabel);
+      return sendJson(res, 200, { attributes: attrs, sources, totalRows: db.prepare('SELECT COUNT(*) AS n FROM zip_demographic_master').get().n });
+    }
+
     // POST /api/market-population-master — CX Ops bulk-loads real
     // population figures (e.g. from a Census Bureau ZCTA export or an
     // account-supplied file) — { rows: [{zip, population}], sourceLabel }.
@@ -18889,6 +19079,7 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
 
 
