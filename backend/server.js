@@ -4265,7 +4265,25 @@ function computeDmaRollup(rows, weightMode){
   if (!status.zipsLoaded) return { available: false, note: status.disclosure, disclosure: status.disclosure, dmas: [], unmappedZips: 0, unmappedVolume: 0 };
   const mode = weightMode === 'revenue' ? 'revenue' : 'count';
   const byDma = {}; let unmappedZips = 0, unmappedVolume = 0, totalVolume = 0;
-  const lookup = db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE zip = ?');
+  // 2026-09-09 fix, same round/same root cause as computePenetrationIndex's
+  // own fix just above (see its comment for the full report) — this used
+  // to run a `db.prepare(...).get(key)` zip→DMA lookup PER ROW inside
+  // rows.forEach(), another one-round-trip-per-row pattern on a function
+  // that runs on every match-market analysis regardless of geoLevel. Split
+  // into: one chunked (200 zips/chunk) batch lookup for the ordinary
+  // zip-keyed rows (the common case, arbitrarily large), plus per-key
+  // lookups only for the rare "DMA:" -prefixed rows (already DMA-coded
+  // uploads, always a small handful of distinct DMA codes/names, not one
+  // per uploaded row).
+  const DMA_LOOKUP_CHUNK_SIZE = 200;
+  const zipKeys = [...new Set((rows || []).filter(r => !/^DMA:/.test(String(r.zip || ''))).map(r => String(r.zip || '').padStart(5, '0')))];
+  const dmaByZip = new Map();
+  for (let i = 0; i < zipKeys.length; i += DMA_LOOKUP_CHUNK_SIZE){
+    const chunk = zipKeys.slice(i, i + DMA_LOOKUP_CHUNK_SIZE);
+    const found = db.prepare(`SELECT zip, dmaCode, dmaName FROM zip_dma_master WHERE zip IN (${chunk.map(() => '?').join(',')})`).all(...chunk);
+    found.forEach(f => dmaByZip.set(f.zip, { dmaCode: f.dmaCode, dmaName: f.dmaName }));
+  }
+  const dmaCodeLookupCache = new Map();
   (rows || []).forEach(r => {
     const vol = mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0);
     totalVolume += vol;
@@ -4273,8 +4291,11 @@ function computeDmaRollup(rows, weightMode){
     let m = null;
     if (/^DMA:/.test(key)){
       const k = key.slice(4).trim();
-      m = db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE dmaCode = ? LIMIT 1').get(k) || db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE UPPER(dmaName) = UPPER(?) LIMIT 1').get(k) || null;
-    } else m = lookup.get(key.padStart(5, '0'));
+      if (!dmaCodeLookupCache.has(k)){
+        dmaCodeLookupCache.set(k, db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE dmaCode = ? LIMIT 1').get(k) || db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE UPPER(dmaName) = UPPER(?) LIMIT 1').get(k) || null);
+      }
+      m = dmaCodeLookupCache.get(k);
+    } else m = dmaByZip.get(key.padStart(5, '0')) || null;
     if (!m){ unmappedZips++; unmappedVolume += vol; return; }
     if (!byDma[m.dmaCode]) byDma[m.dmaCode] = { dmaCode: m.dmaCode, dmaName: m.dmaName || m.dmaCode, volume: 0, zips: 0, country: geoKeyCountry(key) };
     byDma[m.dmaCode].volume += vol; byDma[m.dmaCode].zips++;
@@ -4442,15 +4463,36 @@ function computeStoreTradeAreas(rows, stores, radii, weightMode){
 }
 function computePenetrationIndex(rows, weightMode){
   const mode = weightMode === 'revenue' ? 'revenue' : 'count';
+  // 2026-09-09 fix, per direct bug report (Todd: commit succeeded on an
+  // 8,934-zip file — the earlier batch-insert fix on the commit endpoint —
+  // but the very next step, this analysis read, then came back "Backend
+  // unreachable"). Root cause: this used to run one
+  // `db.prepare(...).get(r.zip)` population lookup PER ROW inside
+  // rows.map() — the exact same N+1-round-trip pattern already fixed once
+  // on the commit endpoint's insert, just on the read side this time. For
+  // a large file that's thousands of sequential Supabase round trips,
+  // easily exceeding even the 60s client timeout raised alongside that
+  // earlier fix. Batched into chunked (200 zips/chunk, matching this
+  // codebase's established IN-clause chunk size — see e.g. the marketing
+  // budget upload's own CHUNK_SIZE = 200 lookups) population lookups
+  // instead, built into a Map once, then read from that Map per row.
+  const POP_LOOKUP_CHUNK_SIZE = 200;
+  const popByZip = new Map();
+  const uniqueZips = [...new Set(rows.map(r => r.zip))];
+  for (let i = 0; i < uniqueZips.length; i += POP_LOOKUP_CHUNK_SIZE){
+    const chunk = uniqueZips.slice(i, i + POP_LOOKUP_CHUNK_SIZE);
+    const found = db.prepare(`SELECT zip, population FROM zip_population_master WHERE zip IN (${chunk.map(() => '?').join(',')})`).all(...chunk);
+    found.forEach(f => popByZip.set(f.zip, f.population));
+  }
   const withPop = rows.map(r => {
     const volume = mode === 'revenue' ? r.revenue : r.customerCount;
-    const pop = db.prepare('SELECT population FROM zip_population_master WHERE zip = ?').get(r.zip);
+    const population = popByZip.has(r.zip) ? popByZip.get(r.zip) : null;
     if (mode === 'revenue' && (r.revenue == null)){
-      return { zip: r.zip, customerCount: r.customerCount, revenue: r.revenue, population: pop ? pop.population : null, penetrationRate: null, flag: 'no_revenue_data' };
+      return { zip: r.zip, customerCount: r.customerCount, revenue: r.revenue, population, penetrationRate: null, flag: 'no_revenue_data' };
     }
-    if (!pop) return { zip: r.zip, customerCount: r.customerCount, revenue: r.revenue, population: null, penetrationRate: null, flag: 'no_population_data' };
-    const rate = pop.population > 0 ? volume / pop.population : null;
-    return { zip: r.zip, customerCount: r.customerCount, revenue: r.revenue, population: pop.population, penetrationRate: rate, flag: rate == null ? 'zero_population' : 'ok' };
+    if (population == null) return { zip: r.zip, customerCount: r.customerCount, revenue: r.revenue, population: null, penetrationRate: null, flag: 'no_population_data' };
+    const rate = population > 0 ? volume / population : null;
+    return { zip: r.zip, customerCount: r.customerCount, revenue: r.revenue, population, penetrationRate: rate, flag: rate == null ? 'zero_population' : 'ok' };
   });
   const validRates = withPop.filter(r => r.penetrationRate != null).map(r => r.penetrationRate);
   const avgRate = validRates.length ? validRates.reduce((s, v) => s + v, 0) / validRates.length : null;
@@ -18547,6 +18589,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
 
