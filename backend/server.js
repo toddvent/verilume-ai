@@ -15965,18 +15965,28 @@ Submit your findings via the submit_brand_categories tool.`;
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, lat, lng}) is required' });
       if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did these centroids come from?' });
       const now = new Date().toISOString();
-      let inserted = 0; const errors = [];
-      const stmt = db.prepare(`INSERT INTO zip_centroid_master (zip, lat, lng, sourceLabel, updatedAt) VALUES (?,?,?,?,?)
-        ON CONFLICT(zip) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`);
+      const sourceLabel = String(body.sourceLabel).trim();
+      // 2026-09-08 fix — same batching fix as market-population-master
+      // above (see its comment for the full root-cause explanation).
+      const byZip = new Map(); const errors = [];
       body.rows.forEach((r, i) => {
         const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
         const zip = g && !/^DMA:/.test(g.key) ? g.key : null;
         const lat = Number(r.lat), lng = Number(r.lng);
         if (!zip){ if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
         if (!(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)){ if (errors.length < 50) errors.push(`row ${i}: lat/lng out of range`); return; }
-        stmt.run(zip, lat, lng, String(body.sourceLabel).trim(), now); inserted++;
+        byZip.set(zip, [zip, lat, lng, sourceLabel, now]);
       });
-      return sendJson(res, 200, { inserted, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_centroid_master').get().n });
+      const validRows = Array.from(byZip.values());
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE){
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?,?)').join(',');
+        const params = []; chunk.forEach(row => params.push(...row));
+        db.prepare(`INSERT INTO zip_centroid_master (zip, lat, lng, sourceLabel, updatedAt) VALUES ${placeholders}
+          ON CONFLICT(zip) DO UPDATE SET lat = excluded.lat, lng = excluded.lng, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`).run(...params);
+      }
+      return sendJson(res, 200, { inserted: validRows.length, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_centroid_master').get().n });
     }
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-zip-centroids' && parts[2] === 'status'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
@@ -16064,24 +16074,73 @@ Submit your findings via the submit_brand_categories tool.`;
       if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this crosswalk come from?' });
       const method = String(body.method || '').trim() || 'unspecified';
       const now = new Date().toISOString();
-      let inserted = 0; const errors = [];
-      const stmt = db.prepare(`INSERT INTO zip_dma_master (zip, dmaCode, dmaName, sourceLabel, method, updatedAt) VALUES (?,?,?,?,?,?)
-        ON CONFLICT(zip) DO UPDATE SET dmaCode = excluded.dmaCode, dmaName = excluded.dmaName, sourceLabel = excluded.sourceLabel, method = excluded.method, updatedAt = excluded.updatedAt`);
+      const sourceLabel = String(body.sourceLabel).trim();
+      // 2026-09-08 fix — same batching fix as market-population-master
+      // just above (see its comment for the full root-cause explanation):
+      // was a per-row round trip through the Postgres sync bridge, now
+      // chunked multi-row INSERTs, deduplicated by zip per chunk first.
+      const byZip = new Map(); const errors = [];
       body.rows.forEach((r, i) => {
         const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
         const zip = g && !/^DMA:/.test(g.key) ? g.key : null;
         if (!zip){ if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
         const code = String(r.dmaCode == null ? '' : r.dmaCode).trim();
         if (!code){ if (errors.length < 50) errors.push(`row ${i}: dmaCode is required`); return; }
-        stmt.run(zip, code, String(r.dmaName || '').trim() || null, String(body.sourceLabel).trim(), method, now);
-        inserted++;
+        byZip.set(zip, [zip, code, String(r.dmaName || '').trim() || null, sourceLabel, method, now]);
       });
-      return sendJson(res, 200, { inserted, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_dma_master').get().n });
+      const validRows = Array.from(byZip.values());
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE){
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?,?,?)').join(',');
+        const params = []; chunk.forEach(row => params.push(...row));
+        db.prepare(`INSERT INTO zip_dma_master (zip, dmaCode, dmaName, sourceLabel, method, updatedAt) VALUES ${placeholders}
+          ON CONFLICT(zip) DO UPDATE SET dmaCode = excluded.dmaCode, dmaName = excluded.dmaName, sourceLabel = excluded.sourceLabel, method = excluded.method, updatedAt = excluded.updatedAt`).run(...params);
+      }
+      return sendJson(res, 200, { inserted: validRows.length, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_dma_master').get().n });
     }
     // GET /api/market-dma-master/status
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-dma-master' && parts[2] === 'status'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       return sendJson(res, 200, dmaMasterStatus());
+    }
+
+    // GET /api/market-reference-data/proxy/population and .../dma — 2026-09-08,
+    // per direct report ("Couldn't load: Failed to fetch" clicking "Load
+    // public reference data"). Root cause: mrfLoadPublic() (portal.html) used
+    // to fetch api.census.gov and the public zip→DMA crosswalk gist directly
+    // from the browser — cross-origin, unauthenticated. A bare "Failed to
+    // fetch" (not this code's own distinct "Census API HTTP <status>" error)
+    // is the signature of a network-level failure before any response
+    // reached JS, consistent with the browser's own CORS enforcement
+    // blocking the request outright — something no server-side or fully
+    // mocked test in this repo could ever catch. Node's built-in fetch has
+    // no CORS restriction, so these two endpoints do the fetch server-side
+    // and hand the same payload back same-origin; mrfLoadPublic() now calls
+    // these instead of the external hosts directly. Session-gated like every
+    // other endpoint here, not because the data is sensitive (it's public),
+    // but so this can't be used as an open relay.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'population'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      try {
+        const upstream = await fetch('https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*');
+        if (!upstream.ok) return sendJson(res, 502, { error: `Census API HTTP ${upstream.status}` });
+        const json = await upstream.json();
+        return sendJson(res, 200, { data: json });
+      } catch (e){
+        return sendJson(res, 502, { error: `Census API fetch failed: ${e && e.message ? e.message : e}` });
+      }
+    }
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'dma'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      try {
+        const upstream = await fetch('https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw');
+        if (!upstream.ok) return sendJson(res, 502, { error: `crosswalk HTTP ${upstream.status}` });
+        const text = await upstream.text();
+        return sendJson(res, 200, { text });
+      } catch (e){
+        return sendJson(res, 502, { error: `crosswalk fetch failed: ${e && e.message ? e.message : e}` });
+      }
     }
 
     // POST /api/market-population-master — CX Ops bulk-loads real
@@ -16097,17 +16156,38 @@ Submit your findings via the submit_brand_categories tool.`;
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, population}) is required' });
       if (!body.sourceLabel || !body.sourceLabel.trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this population data come from?' });
       const now = new Date().toISOString();
-      let inserted = 0, errors = [];
+      const sourceLabel = body.sourceLabel.trim();
+      // 2026-09-08 fix, per direct report ("Couldn't load: Failed to
+      // fetch") — the population-load flow calls this endpoint with up to
+      // 2,000 rows per chunk (see mrfPostChunks, portal.html), and this
+      // handler used to insert them one row at a time. On the production
+      // Supabase/Postgres path every db.prepare(...).run() call is a real
+      // network round trip (see pg-sync-bridge.js) — 2,000 of those per
+      // chunk, ~17 chunks for all ~33,000 US ZCTAs, would have made even a
+      // successful load take many minutes and very likely blow past both
+      // the client's per-chunk timeout and Vercel's own serverless
+      // execution limit long before finishing. Same fix as the Media
+      // Plan "leverage previous year" carry-forward endpoint: batch into
+      // chunked multi-row INSERTs. Deduplicated by zip within each chunk
+      // first (last one wins) — Postgres's ON CONFLICT DO UPDATE errors
+      // outright if the same conflict target appears twice in one INSERT.
+      const byZip = new Map(); const errors = [];
       body.rows.forEach((r, i) => {
         const g = normalizeGeoKey(r.zip != null && r.zip !== '' ? r.zip : (r.fsa != null ? r.fsa : r.code), r.country || body.country);
         if (!g || /^DMA:/.test(g.key)) { if (errors.length < 50) errors.push(`row ${i}: not a recognised postal code for ${normalizeCountry(r.country || body.country) || 'US'}, got "${r.zip != null ? r.zip : (r.fsa != null ? r.fsa : r.code)}"`); return; }
         if (r.population == null || isNaN(Number(r.population)) || Number(r.population) < 0) { if (errors.length < 50) errors.push(`row ${i}: population must be a non-negative number, got "${r.population}"`); return; }
-        db.prepare(`INSERT INTO zip_population_master (zip, population, sourceLabel, updatedAt) VALUES (?,?,?,?)
-          ON CONFLICT(zip) DO UPDATE SET population = excluded.population, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`)
-          .run(g.key, Number(r.population), body.sourceLabel.trim(), now);
-        inserted++;
+        byZip.set(g.key, [g.key, Number(r.population), sourceLabel, now]);
       });
-      return sendJson(res, 200, { inserted, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n });
+      const validRows = Array.from(byZip.values());
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE){
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?,?,?,?)').join(',');
+        const params = []; chunk.forEach(row => params.push(...row));
+        db.prepare(`INSERT INTO zip_population_master (zip, population, sourceLabel, updatedAt) VALUES ${placeholders}
+          ON CONFLICT(zip) DO UPDATE SET population = excluded.population, sourceLabel = excluded.sourceLabel, updatedAt = excluded.updatedAt`).run(...params);
+      }
+      return sendJson(res, 200, { inserted: validRows.length, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n });
     }
 
     // GET /api/market-population-master/status — honest state of the
@@ -18368,4 +18448,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
