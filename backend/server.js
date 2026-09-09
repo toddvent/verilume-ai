@@ -4590,6 +4590,127 @@ function computeStoreTradeAreas(rows, stores, radii, weightMode){
   } else out.forEach(s => unpaired.push(s.name));
   return { available: true, weightMode: mode, radiiMiles: rad, stores: out.sort((a, b) => b.assignedVolume - a.assignedVolume), storesGeocoded: geocoded.length, storesTotal: (stores || []).length, unmappedZips, unmappedVolume: Math.round(unmappedVolume * 100) / 100, beyondRingsZips: beyondZips, beyondRingsVolume: Math.round(beyondVolume * 100) / 100, populationCoverage: !!allCentroids, pairs, unpaired, disclosure, pairNote: feats.length >= 2 ? `Pairs match stores on ${maxR}-mile-ring penetration rate, assigned volume and covered population — a "who lives and buys here" match, not a performance-validated one.` : 'Pairing needs at least two geocoded stores with population coverage.' };
 }
+
+// 2026-09-09, per direct instruction ("Build the API connection now" +
+// "move to the next step") — answers Todd's original question ("what is
+// the next step that identifies potential customers based on the AOV
+// business profile for this storefront") directly: unlike
+// computeStoreTradeAreas() above, this needs NO customer upload — just a
+// geocoded store, the population/demographic reference data (now loaded),
+// and the account's own Company Profile (target audience + wealth tier,
+// same fields assessment.html's Verilume Wealth Index reads). Per Todd's
+// decision, these are WIDER, SEPARATE radii from the existing customer-
+// density rings (computeStoreTradeAreas' 3/5/10 mi) — finding new
+// customers further out is a different question than mapping where
+// current ones live.
+//
+// Audience Fit: this ring's share of population in the account's selected,
+// Census-backed generation(s) (genz/millennial/genx/boomer/silent only —
+// Gen Alpha/Gen Beta/The Greatest Generation have no clean ACS bin and are
+// disclosed as unavailable here, same as assessment.html), indexed to 100
+// against the NATIONAL average share for that same generation set (100 =
+// this ring looks just like the country on this account's target
+// generations; 150 = 50% more concentrated than the national average).
+//
+// Wealth Fit: reuses assessment.html's OWN verilumeWealthIndex() formula
+// shape exactly — this ring's real ACS-derived average household income
+// relative to the national average, times GENERATION_WEALTH_INDEX for the
+// account's selected generation(s) — then runs that through the same
+// >=200/>=130/else hnw/wealthy/middle bands deriveWealthTiersFromIndex()
+// uses, so a ring gets scored on the identical scale a visitor's own
+// Wealth Index does. Compared against the account's own derived wealth
+// tier (accounts.wealth) per Todd's decision to anchor on the tier, not a
+// raw dollar figure.
+//
+// Never throws; returns available:false with a reason when there's
+// nothing to compute against (no geocoded stores, no population/
+// demographic reference data loaded, or no target audience/wealth set on
+// the account yet).
+function computeStoreProspectFit(stores, radii, account){
+  const disclosure = 'Straight-line rings, not drive-time. Audience/Wealth Fit compare each ring\'s real Census ACS 5-Year age and income data (2022 vintage) against the national average and this account\'s Company Profile selections — an index, not a guarantee of who actually lives there today.';
+  const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null && s.lat !== '' && s.lng !== '' && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng)));
+  if (!(stores || []).length) return { available: false, note: 'no stores on file — add store addresses to see nearby prospects', disclosure, stores: [] };
+  if (!geocoded.length) return { available: false, note: 'stores on file but none geocoded yet', disclosure, stores: [] };
+  const cs = centroidStatus();
+  if (!cs.zipsLoaded) return { available: false, note: 'no zip centroids loaded — load the Census ZCTA gazetteer under Reference Data', disclosure, stores: [] };
+  if (db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n === 0){
+    return { available: false, note: 'no population data loaded — load public reference data under Reference Data', disclosure, stores: [] };
+  }
+  if (db.prepare('SELECT COUNT(*) AS n FROM zip_demographic_master').get().n === 0){
+    return { available: false, note: 'no demographic (age/income) data loaded yet — load demographics under Ops Console’s Reference Data', disclosure, stores: [] };
+  }
+  const rad = (Array.isArray(radii) && radii.length ? radii : [5, 10, 15]).map(Number).filter(r => r > 0).sort((a, b) => a - b);
+  const targetGensRaw = account && account.audience ? String(account.audience).split(',').map(s => s.trim()).filter(Boolean) : [];
+  const targetGens = targetGensRaw.filter(g => ACS_AGE_BINS[g]); // only the 5 real ACS-backed generations
+  const wealthMultGens = targetGensRaw.filter(g => g !== 'general');
+  const genMultiplier = wealthMultGens.length ? wealthMultGens.reduce((s, g) => s + (GENERATION_WEALTH_INDEX[g] != null ? GENERATION_WEALTH_INDEX[g] : 1.0), 0) / wealthMultGens.length : 1.0;
+  const accountWealthTiers = account && account.wealth ? String(account.wealth).split(',').map(s => s.trim()).filter(Boolean) : [];
+  const audienceFitNote = targetGens.length ? null : (targetGensRaw.length ? 'Audience Fit needs at least one of the 5 Census-backed generations (Gen Z, Millennials, Gen X, Boomers, Silent Gen) selected in Company Profile — Gen Alpha, Gen Beta and The Greatest Generation aren’t splittable at this Census table’s granularity.' : 'Set a target audience in Company Profile to see Audience Fit.');
+
+  // Pull population + demographic reference data once for this whole call
+  // (same "bulk load once, filter per ring in memory" pattern
+  // computeStoreTradeAreas already uses above), not once per store/ring.
+  const allCentroids = db.prepare('SELECT c.zip AS zip, c.lat AS lat, c.lng AS lng, p.population AS population FROM zip_centroid_master c JOIN zip_population_master p ON p.zip = c.zip').all();
+  const demoByZip = new Map();
+  db.prepare('SELECT zip, attribute, value FROM zip_demographic_master').all().forEach(r => {
+    if (!demoByZip.has(r.zip)) demoByZip.set(r.zip, {});
+    demoByZip.get(r.zip)[r.attribute] = r.value;
+  });
+  const GEN_ATTRS = Object.keys(ACS_AGE_BINS).map(g => `population_${g}`);
+
+  // National baselines — one pass over every zip with BOTH population and
+  // demographic coverage, computed once and reused for every store/ring.
+  let totalPop = 0; const genTotals = {}; GEN_ATTRS.forEach(a => { genTotals[a] = 0; });
+  let incomeWeightedSum = 0, incomeWeightPop = 0;
+  allCentroids.forEach(z => {
+    const pop = Number(z.population) || 0;
+    totalPop += pop;
+    const d = demoByZip.get(z.zip);
+    if (!d) return;
+    GEN_ATTRS.forEach(a => { genTotals[a] += Number(d[a]) || 0; });
+    if (d.income_avg_estimate != null){ incomeWeightedSum += Number(d.income_avg_estimate) * pop; incomeWeightPop += pop; }
+  });
+  const nationalGenShare = {}; GEN_ATTRS.forEach(a => { nationalGenShare[a] = totalPop > 0 ? genTotals[a] / totalPop : null; });
+  const nationalAvgIncome = incomeWeightPop > 0 ? (incomeWeightedSum / incomeWeightPop) : null;
+
+  const out = geocoded.map(s => {
+    const lat = Number(s.lat), lng = Number(s.lng);
+    const rings = rad.map(r => {
+      let population = 0; const genSums = {}; GEN_ATTRS.forEach(a => { genSums[a] = 0; });
+      let ringIncomeWeightedSum = 0, ringIncomeWeightPop = 0, zipsInRing = 0;
+      allCentroids.forEach(z => {
+        if (haversineMiles(lat, lng, z.lat, z.lng) > r) return;
+        const pop = Number(z.population) || 0;
+        population += pop; zipsInRing++;
+        const d = demoByZip.get(z.zip);
+        if (!d) return;
+        GEN_ATTRS.forEach(a => { genSums[a] += Number(d[a]) || 0; });
+        if (d.income_avg_estimate != null){ ringIncomeWeightedSum += Number(d.income_avg_estimate) * pop; ringIncomeWeightPop += pop; }
+      });
+      const ringAvgIncome = ringIncomeWeightPop > 0 ? (ringIncomeWeightedSum / ringIncomeWeightPop) : null;
+      let audienceFit = null;
+      if (targetGens.length && population > 0){
+        const ringTargetPop = targetGens.reduce((sum, g) => sum + (genSums[`population_${g}`] || 0), 0);
+        const ringTargetShare = ringTargetPop / population;
+        const nationalTargetShare = targetGens.reduce((sum, g) => sum + (nationalGenShare[`population_${g}`] || 0), 0);
+        audienceFit = nationalTargetShare > 0 ? Math.round((ringTargetShare / nationalTargetShare) * 100) : null;
+      }
+      let wealthFit = null;
+      if (nationalAvgIncome > 0 && ringAvgIncome != null){
+        const index = Math.round((ringAvgIncome / nationalAvgIncome) * genMultiplier * 100);
+        const tier = index >= 200 ? 'hnw' : (index >= 130 ? 'wealthy' : 'middle');
+        wealthFit = { index, tier, matchesAccountTier: accountWealthTiers.length ? accountWealthTiers.includes(tier) : null };
+      }
+      return { radiusMiles: r, zips: zipsInRing, population, avgIncomeEstimate: ringAvgIncome != null ? Math.round(ringAvgIncome) : null, audienceFit, wealthFit };
+    });
+    return { id: s.id, storeId: s.storeId || null, name: s.name || s.storeId || s.address || s.id, address: s.address || null, rings };
+  });
+  return {
+    available: true, radiiMiles: rad, stores: out, storesGeocoded: geocoded.length, storesTotal: (stores || []).length,
+    targetGenerations: targetGensRaw, audienceFitBackedGenerations: targetGens, wealthTiers: accountWealthTiers,
+    audienceFitNote, disclosure
+  };
+}
 function computePenetrationIndex(rows, weightMode){
   const mode = weightMode === 'revenue' ? 'revenue' : 'count';
   // 2026-09-09 fix, per direct bug report (Todd: commit succeeded on an
@@ -4741,6 +4862,18 @@ const ACS_INCOME_BRACKET_MIDPOINTS = [
   ['008', 37500], ['009', 42500], ['010', 47500], ['011', 55000], ['012', 67500], ['013', 87500],
   ['014', 112500], ['015', 137500], ['016', 175000], ['017', 225000]
 ];
+// Same Fed Survey of Consumer Finances (2022, released Oct. 2023) mean-
+// net-worth-by-age multiplier assessment.html's GENERATION_WEALTH_INDEX
+// already uses for the Verilume Wealth Index — ported verbatim, not a
+// second set of numbers, so a ring's Wealth Fit (below) lands on the exact
+// same scale a visitor's own Wealth Index does. See assessment.html's own
+// comment on GENERATION_WEALTH_INDEX for the full sourcing/derivation
+// notes (mean net worth by age of household head, duration-weighted per
+// generation, indexed to 1.0 for a general/unweighted audience).
+const GENERATION_WEALTH_INDEX = {
+  genz: 0.20, millennial: 0.47, genx: 1.32, boomer: 1.82, silent: 1.74, general: 1.0,
+  genalpha: 0.05, genbeta: 0.0, greatest: 1.74
+};
 
 // Real per-zip demographic index: this upload's own zips' average of each
 // tracked attribute vs. each individual zip's value, indexed to 100 the
@@ -16480,6 +16613,29 @@ Submit your findings via the submit_brand_categories tool.`;
       return sendJson(res, 200, { saved, errors, total: stores.length, geocoded: stores.filter(s => s.lat != null).length, notGeocoded: stores.filter(s => s.lat == null).map(s => s.name || s.storeId || s.address) });
     }
 
+    // GET /api/accounts/:id/stores/prospect-fit — 2026-09-09, per direct
+    // instruction ("move to the next step") — answers Todd's original
+    // question directly on the Stores and trade areas card itself, with NO
+    // customer upload required (unlike computeStoreTradeAreas, which only
+    // runs inside a Match Market Builder analysis): for every geocoded
+    // store, real Census population + age/income data within wider
+    // prospecting rings (5/10/15 mi by default — separate from the
+    // existing 3/5/10 mi customer-density rings, per Todd's decision),
+    // scored against this account's own Company Profile target audience/
+    // wealth tier. See computeStoreProspectFit()'s own comment for the
+    // full Audience Fit / Wealth Fit methodology.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores' && parts[4] === 'prospect-fit'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT audience, wealth FROM accounts WHERE accountId = ?').get(accountId);
+      const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
+      const radiiParam = (url.searchParams.get('radii') || '').split(',').map(Number).filter(n => n > 0);
+      let result;
+      try { result = computeStoreProspectFit(storeRows, radiiParam.length ? radiiParam : [5, 10, 15], account); }
+      catch (e){ result = { available: false, note: `prospect fit not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] }; }
+      return sendJson(res, 200, result);
+    }
+
     // ============ Zip → DMA reference (2026-09-06, buildout item 4a) ============
     // Per direct instruction ("scope it and build it out"), closing the
     // reference-data gap named in the 2026-08-16 match-market memo: a
@@ -19079,7 +19235,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
 
 
