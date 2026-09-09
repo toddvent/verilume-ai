@@ -26343,6 +26343,18 @@ async function mrfHandleCentroidFile(event){
   const status = document.getElementById('mrfLoadStatus');
   const say = (t) => { if (status) status.textContent = t; };
   if (!file) return;
+  // 2026-09-09, per direct report — Todd selected the gazetteer .zip archive
+  // itself (the download link points straight at the .zip), not the .txt
+  // inside it, and got the generic "no rows recognised" message, which
+  // doesn't say what's actually wrong: a .zip is binary and can never parse
+  // as tab/comma-delimited text. Catch that specific case up front with a
+  // clear, actionable message instead of letting it fall through to the
+  // generic parse error.
+  if (/\.zip$/i.test(file.name)){
+    say(`"${file.name}" is the zip archive itself — unzip it first (most computers: double-click it, or right-click → Extract), then upload the .txt file that comes out (it will be named something like 2023_Gaz_zcta_national.txt).`);
+    event.target.value = '';
+    return;
+  }
   try {
     const rows = mrfParseCentroidText(await file.text());
     if (!rows.length) throw new Error('no rows recognised — expected GEOID / INTPTLAT / INTPTLONG (or zip, lat, lng)');
