@@ -5662,7 +5662,21 @@
       <div class="cfd-standup" style="margin-bottom:0;">
         <div class="cfd-avatar">✦</div>
         <div class="cfd-bubble">
-          One file for every market: US, Canada, Australia, the UK, Germany, France, Spain and Italy. Each row is keyed at the unit its country publishes population for (US zip, Canadian forward sortation area, Australian postcode, UK postcode district, five-digit codes in Germany, France, Spain and Italy). Five-digit codes look alike across countries, so a Country column in the file, or the default country above, tells them apart. Anything else is rejected rather than silently coerced into a real code that doesn't match the address, and every rejection stays on this upload's audit trail. Count-weighted by default; upload a revenue/order-value column and every zip has to have one before this will offer revenue-weighting instead — a partial revenue file stays count-weighted rather than quietly averaging over the gaps. The composite score/opportunity tier blend (two-thirds volume, one-third index by default) and the Holdout group size (about a sixth of scoreable zips by default) are both open, adjustable assumptions, not settled facts — flagged as such in the results below. This is zip-level only for now (DMA rollup needs a licensed Nielsen crosswalk or the FCC's public approximation, neither loaded in this build yet), and match-market pairing is based on who lives in a zip today, not real campaign performance history or geographic media-market adjacency — treat it as a starting shortlist for your own judgment, not a finished test plan.
+          <!-- 2026-09-09, per direct report ("How do we tell clients what
+               to do in a few words and then add a speech bubble opening AI
+               Thoughts") — this bubble already IS the site's "AI Thoughts"
+               pattern (✦ avatar + cfd-bubble, same component used for the
+               dashboard standup and inline explainer bubbles elsewhere,
+               e.g. the adstock/lag bubble in Media Mix Modeling), just
+               without a short instruction leading it. Added a bolded
+               "How to use this:" lead sentence, matching that same
+               established convention, so the actionable few-words answer
+               comes first and the detailed reasoning follows for whoever
+               wants it. Also: the old "DMA rollup needs a licensed Nielsen
+               crosswalk... neither loaded in this build yet" line was
+               stale — both are loaded as of 2026-09-09 (see Ops Console's
+               Reference Data module) — removed rather than left inaccurate. -->
+          <strong>How to use this:</strong> one file covers every market — pick your country above, or add a Country column to your file if it mixes countries, then upload. Each row is keyed at the unit its country publishes population for (US zip, Canadian forward sortation area, Australian postcode, UK postcode district, five-digit codes in Germany, France, Spain and Italy). Anything that doesn't match is rejected rather than silently coerced into a code that doesn't fit the address, and every rejection stays on this upload's audit trail. Count-weighted by default; upload a revenue/order-value column and every zip has to have one before this will offer revenue-weighting instead — a partial revenue file stays count-weighted rather than quietly averaging over the gaps. The composite score/opportunity tier blend (two-thirds volume, one-third index by default) and the Holdout group size (about a sixth of scoreable zips by default) are both open, adjustable assumptions, not settled facts — flagged as such in the results below. Match-market pairing is based on who lives in a zip today, not real campaign performance history or geographic media-market adjacency — treat it as a starting shortlist for your own judgment, not a finished test plan.
         </div>
       </div>
     </div>
@@ -5715,7 +5729,21 @@
         </div>
         <div class="field" style="margin:0;max-width:420px;">
           <label for="mouFileInput">Customer file</label>
-          <input type="file" id="mouFileInput" accept=".csv,.xlsx" onchange="mouHandleFile(event)">
+          <!-- 2026-09-09, per direct report ("The client Choose file buttons
+               should be formatted to match our style") — a bare
+               <input type="file"> renders the browser's own unstyled
+               "Choose File" button, which no CSS in .field select/input can
+               touch. The established fix elsewhere on this site (Brand
+               Writing Samples' bwsFileInput, Marketing Budget Upload's
+               mbuFileInput, and others) is to hide the real input and show
+               a real styled trigger in its place: a <label> styled as
+               .btn-ghost, pointed at the hidden input via "for", plus a
+               small span reporting the chosen filename. Same pattern here. -->
+          <div class="btn-row">
+            <label class="btn-ghost" for="mouFileInput" style="cursor:pointer;">Choose File</label>
+            <span id="mouFileChosenName" class="hint"></span>
+          </div>
+          <input type="file" id="mouFileInput" accept=".csv,.xlsx" onchange="document.getElementById('mouFileChosenName').textContent = (this.files[0] || {}).name || ''; mouHandleFile(event)" style="display:none;">
         </div>
         <p class="hint" id="mouStatus" style="margin-top:8px;"></p>
         <div id="mouMappingPanel"></div>
@@ -5741,50 +5769,22 @@
       </div>
       <div class="sk-card-body" id="mstBody"><p class="hint">Loading…</p></div>
     </div>
-    <div class="sk-card" id="mrfCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Shared across accounts</div><h3>Reference data — population and DMA</h3></div>
-        <div class="hicon">🗺</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">The Population Index and the DMA roll-up need two reference files that no client supplies: population by zip (U.S. Census, free) and a zip→DMA crosswalk. DMA boundaries are Nielsen's; the free crosswalk is a public approximation and is labelled that way wherever a DMA appears. A licensed Nielsen file can be loaded below and replaces it.</p>
-        <div id="mrfStatus"><p class="hint">Checking…</p></div>
-        <div class="btn-row" style="margin-top:10px;">
-          <button type="button" class="btn-primary" id="mrfLoadPublicBtn" onclick="mrfLoadPublic()">Load public reference data →</button>
-          <span class="hint">2020 Census ZCTA population (api.census.gov) + public zip→DMA crosswalk, fetched by your browser and saved to the backend in batches.</span>
-        </div>
-        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-          <div class="field" style="margin:0;flex:1 1 260px;"><label>Upload a crosswalk file — source (required)</label><input type="text" id="mrfDmaSource" placeholder='e.g. "Nielsen ZIP Code by DMA 2026, licensed"'></div>
-          <div class="field" style="margin:0;flex:1 1 200px;"><label>Method / note</label><input type="text" id="mrfDmaMethod" placeholder="e.g. official Nielsen boundaries"></div>
-          <div class="field" style="margin:0;"><label>CSV or TSV: zip, DMA code, DMA name</label><input type="file" id="mrfDmaFile" accept=".csv,.tsv,.txt" onchange="mrfHandleDmaFile(event)"></div>
-        </div>
-        <!-- 2026-09-09, per direct instruction ("Centroids uploaded
-             correctly so we can remove the Download option assuming that
-             is now saved for all clients") — the Census ZCTA Gazetteer
-             centroid load is a one-time backfill into the same shared,
-             non-account-scoped zip_centroid_master table as the population
-             and DMA masters above (confirmed: 33,791 zips/FSAs on file as
-             of this change), so every client benefits from that one load
-             the same way they already do for population and DMA. The
-             manual upload row is removed from this client-facing screen;
-             mrfHandleCentroidFile()/mrfParseCentroidText() stay in the code
-             (harmless, unreachable from here) in case CX Ops ever needs to
-             refresh the master from a newer Gazetteer release — that would
-             be re-added to an ops-only surface, not this one. mrfStatus's
-             "Zip centroids" status line above still reports the current
-             count/coverage either way. -->
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-          <p class="hint" style="margin:0 0 8px;"><b>Other countries.</b> Pick the country, then upload its population, centroids and market crosswalk from the national statistics office (Statistics Canada by FSA; ABS by postcode; ONS postcode lookup for the UK; Destatis, INSEE, INE and ISTAT by postal code, with Eurostat's postal-code-to-NUTS table as the market layer). Columns are found by name and by value pattern; every market label says which definition it uses.</p>
-          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
-            <div class="field" style="margin:0;flex:0 0 200px;"><label>Country</label><select id="mrfCountry"><option value="CA">Canada</option><option value="AU">Australia</option><option value="GB">United Kingdom</option><option value="DE">Germany</option><option value="FR">France</option><option value="ES">Spain</option><option value="IT">Italy</option></select></div>
-            <div class="field" style="margin:0;flex:1 1 200px;"><label>Population by postal unit</label><input type="file" accept=".csv,.tsv,.txt" onchange="mrfHandleCountryFile(event, 'population')"></div>
-            <div class="field" style="margin:0;flex:1 1 200px;"><label>Centroids (lat / long)</label><input type="file" accept=".csv,.tsv,.txt" onchange="mrfHandleCountryFile(event, 'centroids')"></div>
-            <div class="field" style="margin:0;flex:1 1 200px;"><label>Postal unit → market crosswalk</label><input type="file" accept=".csv,.tsv,.txt" onchange="mrfHandleCountryFile(event, 'markets')"></div>
-          </div>
-        </div>
-        <p class="hint" id="mrfLoadStatus" style="margin:8px 0 0;"></p>
-      </div>
-    </div>
+    <!-- 2026-09-09, per direct instruction ("Does a client need to see the
+         Reference Data or should that be part of our administrative
+         site?") — this card (population/DMA/centroid masters, the "Other
+         countries" per-country reference loaders) is genuinely CX-Ops-only:
+         it's not account-scoped (the same load serves every client), a
+         client never has a reason to touch it, and it was only ever here
+         because Ops Console didn't have this capability yet. Moved to
+         Ops Console's Accounts Directory as a new "Reference Data" module
+         (frontend/ops-console.html) — same backend endpoints
+         (/api/market-population-master, /api/market-dma-master,
+         /api/market-zip-centroids, /api/market-reference-data/proxy/*),
+         same MRF_PUBLIC_SOURCES parsing logic, just moved wholesale rather
+         than duplicated. mrfDmaSectionHtml() stays here — it's a results
+         RENDERER (the "By market" table inside a client's own Match Market
+         results), not a loader, and has nothing to do with where the data
+         gets loaded from. -->
     <div class="sk-card" id="mouHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -26203,116 +26203,13 @@ async function mouConfirmImport(){
 }
 
 // ============ Match Market reference data — zip→DMA + population (2026-09-06, item 4a) ============
-// Per direct instruction ("scope it and build it out"): the reference-data
-// foundation the 2026-08-16 memo called 4a. Two shared masters -- Census
-// ZCTA population and a zip→DMA crosswalk -- loaded once for every account.
-// "Load public reference data" fetches both from their public sources IN
-// THE BROWSER (Census API + a public crosswalk, both CORS-open) and posts
-// them to the backend in chunks, so nothing here depends on a long-running
-// serverless request. A licensed Nielsen file loads through the same CSV
-// path with its own source label, and the disclosure text everywhere
-// follows the label. Nothing in this block invents a number.
-const MRF_PUBLIC_SOURCES = {
-  population: {
-    url: 'https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*',
-    sourceLabel: 'U.S. Census Bureau, 2020 Decennial Census (DHC), table P1 total population by ZCTA — api.census.gov',
-    parse: (json) => { const out = []; (Array.isArray(json) ? json.slice(1) : []).forEach(r => { const zip = String(r[1] || '').padStart(5, '0'); const pop = Number(r[0]); if (/^\d{5}$/.test(zip) && Number.isFinite(pop) && pop >= 0) out.push({ zip, population: pop }); }); return out; }
-  },
-  dma: {
-    url: 'https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw',
-    sourceLabel: 'Public zip→DMA crosswalk (GitHub gist "clarkenheim", TSV)',
-    method: 'zip centroid placed inside DMA polygon — public approximation, not Nielsen-licensed',
-    parse: (text) => { const out = []; String(text).split(/\r?\n/).forEach((line, i) => { if (!line.trim()) return; const c = line.split(/\t|,/); if (i === 0 && !/^\d/.test(c[0].trim())) return; const zip = String(c[0] || '').trim().padStart(5, '0'); const code = String(c[1] || '').trim(); const name = (c.slice(2).join(' ') || '').trim(); if (/^\d{5}$/.test(zip) && code) out.push({ zip, dmaCode: code, dmaName: name }); }); return out; }
-  }
-};
-async function mrfPostChunks(path, rows, extra, onProgress){
-  const size = 2000; let inserted = 0; const errors = [];
-  for (let i = 0; i < rows.length; i += size){
-    const resp = await authedFetch(`${BACKEND_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ rows: rows.slice(i, i + size) }, extra)), timeoutMs: 60000 });
-    if (!resp.ok){ const t = await resp.text().catch(() => ''); throw new Error(`HTTP ${resp.status} ${t.slice(0, 120)}`); }
-    const j = await resp.json();
-    inserted += j.inserted || 0; (j.errors || []).slice(0, 5).forEach(e => { if (errors.length < 10) errors.push(e); });
-    if (onProgress) onProgress(Math.min(rows.length, i + size), rows.length);
-  }
-  return { inserted, errors };
-}
-async function mrfLoadStatus(){
-  const el = document.getElementById('mrfStatus');
-  if (!el) return;
-  if (dataSourceLabel !== 'backend'){ el.innerHTML = '<p class="hint" style="margin:0;">Reference data lives on the backend.</p>'; return; }
-  let pop = null, dma = null;
-  try { const r = await authedFetch(`${BACKEND_URL}/api/market-population-master/status`); if (r.ok) pop = await r.json(); } catch (e){}
-  try { const r = await authedFetch(`${BACKEND_URL}/api/market-dma-master/status`); if (r.ok) dma = await r.json(); } catch (e){}
-  let cen = null;
-  try { const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/status`); if (r.ok) cen = await r.json(); } catch (e){}
-  const cenLine = cen ? (cen.zipsLoaded ? `<b>${Number(cen.zipsLoaded).toLocaleString()} zips/FSAs</b> with centroids${cc(cen)} — ${(cen.sources || []).map(escapeHtml).join('; ')}` : 'No zip centroids loaded yet — store trade areas stay off until they are (download the gazetteer below and upload the .txt).') : 'Centroid status unavailable.';
-  const cc = (o) => o && o.byCountry && Object.keys(o.byCountry).length ? ` <span class="hint">(${Object.entries(o.byCountry).map(([c, n]) => `${c} ${Number(n).toLocaleString()}`).join(' · ')})</span>` : '';
-  const popLine = pop ? (pop.zipsLoaded ? `<b>${Number(pop.zipsLoaded).toLocaleString()} zips/FSAs</b> with population${cc(pop)} — ${(pop.sources || []).map(escapeHtml).join('; ')}` : 'No population data loaded yet.') : 'Population status unavailable.';
-  const dmaLine = dma ? (dma.zipsLoaded ? `<b>${Number(dma.zipsLoaded).toLocaleString()} zips/FSAs → ${Number(dma.dmaCount).toLocaleString()} markets</b>${cc(dma)} — ${(dma.sources || []).map(x => `${escapeHtml(x.sourceLabel)}${x.method ? ` (${escapeHtml(x.method)})` : ''}`).join('; ')}${dma.licensed ? ' · <span style="color:var(--cx);font-weight:600;">licensed</span>' : ' · <span style="color:#b8860b;font-weight:600;">approximation, not Nielsen-licensed</span>'}` : 'No zip→DMA crosswalk loaded yet — DMA views stay off until one is.') : 'DMA status unavailable.';
-  el.innerHTML = `
-    <table class="data-table" style="font-size:0.8125rem;">
-      <tbody>
-        <tr><td style="white-space:nowrap;font-weight:600;">Population by zip</td><td>${popLine}</td></tr>
-        <tr><td style="white-space:nowrap;font-weight:600;">Zip → DMA</td><td>${dmaLine}</td></tr>
-        <tr><td style="white-space:nowrap;font-weight:600;">Zip centroids</td><td>${cenLine}</td></tr>
-      </tbody>
-    </table>`;
-}
-async function mrfLoadPublic(){
-  const status = document.getElementById('mrfLoadStatus');
-  const say = (t) => { if (status) status.textContent = t; };
-  const btn = document.getElementById('mrfLoadPublicBtn'); if (btn) btn.disabled = true;
-  try {
-    // 2026-09-08 fix, per direct report ("Couldn't load: Failed to fetch") —
-    // these used to fetch() api.census.gov and the crosswalk gist directly
-    // from the browser, cross-origin; a browser CORS block surfaces as a
-    // bare "Failed to fetch" with no HTTP status, which is exactly what was
-    // reported. Both sources are now fetched server-side through backend
-    // proxy endpoints and returned same-origin, so the browser never talks
-    // to those hosts directly.
-    say('Fetching 2020 Census ZCTA population from api.census.gov…');
-    const pr = await authedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/population`);
-    if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status} ${t.slice(0, 120)}`); }
-    const prJson = await pr.json();
-    const popRows = MRF_PUBLIC_SOURCES.population.parse(prJson.data);
-    if (!popRows.length) throw new Error('Census API returned no ZCTA rows');
-    say(`Loading ${popRows.length.toLocaleString()} population rows…`);
-    const p = await mrfPostChunks('/api/market-population-master', popRows, { sourceLabel: MRF_PUBLIC_SOURCES.population.sourceLabel }, (d, n) => say(`Loading population ${d.toLocaleString()} / ${n.toLocaleString()}…`));
-    say('Fetching the public zip→DMA crosswalk…');
-    const dr = await authedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/dma`);
-    if (!dr.ok){ const t = await dr.text().catch(() => ''); throw new Error(`crosswalk HTTP ${dr.status} ${t.slice(0, 120)}`); }
-    const drJson = await dr.json();
-    const dmaRows = MRF_PUBLIC_SOURCES.dma.parse(drJson.text);
-    if (!dmaRows.length) throw new Error('crosswalk returned no rows');
-    const d = await mrfPostChunks('/api/market-dma-master', dmaRows, { sourceLabel: MRF_PUBLIC_SOURCES.dma.sourceLabel, method: MRF_PUBLIC_SOURCES.dma.method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
-    say(`Done — ${p.inserted.toLocaleString()} population rows and ${d.inserted.toLocaleString()} zip→DMA rows loaded.${(p.errors.length || d.errors.length) ? ` Some rows were skipped: ${[...p.errors, ...d.errors].slice(0, 3).join(' · ')}` : ''}`);
-    mrfLoadStatus();
-  } catch (e){
-    say(`Couldn't load: ${e && e.message ? e.message : e}. If a public source blocks the browser, download the file and use "Upload a crosswalk file" instead.`);
-  } finally { if (btn) btn.disabled = false; }
-}
-// Manual path: a CSV/TSV with zip, DMA code, DMA name (a licensed Nielsen
-// export, or any crosswalk you trust). Source label is required and
-// becomes the disclosure text.
-async function mrfHandleDmaFile(event){
-  const file = event.target.files && event.target.files[0];
-  const status = document.getElementById('mrfLoadStatus');
-  const say = (t) => { if (status) status.textContent = t; };
-  if (!file) return;
-  const sourceLabel = ((document.getElementById('mrfDmaSource') || {}).value || '').trim();
-  if (!sourceLabel){ say('Enter the source of this crosswalk first (e.g. "Nielsen ZIP Code by DMA 2026, licensed").'); event.target.value = ''; return; }
-  const method = ((document.getElementById('mrfDmaMethod') || {}).value || '').trim() || 'as supplied';
-  try {
-    const text = await file.text();
-    const rows = MRF_PUBLIC_SOURCES.dma.parse(text);
-    if (!rows.length) throw new Error('no rows recognised — expected columns: zip, DMA code, DMA name');
-    say(`Loading ${rows.length.toLocaleString()} rows…`);
-    const d = await mrfPostChunks('/api/market-dma-master', rows, { sourceLabel, method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
-    say(`Done — ${d.inserted.toLocaleString()} zip→DMA rows loaded from "${file.name}".`);
-    mrfLoadStatus();
-  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
-  event.target.value = '';
-}
+// 2026-09-09 — the LOADING side of this (MRF_PUBLIC_SOURCES, mrfPostChunks,
+// mrfLoadStatus, mrfLoadPublic, mrfHandleDmaFile, mrfParseCentroidText,
+// mrfHandleCentroidFile, mrfParseCountryFile, mrfHandleCountryFile) moved to
+// Ops Console (frontend/ops-console.html) — per direct instruction, none of
+// it is account-scoped or something a client ever needs to touch. Only the
+// RESULTS RENDERER stays here, since a client's own Match Market results
+// still need to show the DMA roll-up their upload produced.
 function mrfDmaSectionHtml(dma){
   if (!dma) return '';
   if (!dma.available) return `<h4 style="margin:18px 0 6px;">By DMA</h4><p class="hint" style="margin:0;">${escapeHtml(dma.note || dma.disclosure || 'DMA roll-up unavailable.')}</p>`;
@@ -26332,96 +26229,8 @@ function mrfDmaSectionHtml(dma){
 // lat/lng); addresses without coordinates are geocoded in the browser
 // through the Census Geocoder (free, US) and saved with the source. Zip
 // centroids come from the Census ZCTA Gazetteer (free), loaded once for
-// every account like the other reference masters.
-MRF_PUBLIC_SOURCES.centroids = {
-  url: 'https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip',
-  sourceLabel: 'U.S. Census Bureau, 2023 ZCTA Gazetteer (internal point lat/long)',
-  note: 'The gazetteer is a zip archive; download it, unzip the .txt, and upload that file below (GEOID, INTPTLAT, INTPTLONG columns are read automatically).'
-};
-function mrfParseCentroidText(text){
-  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return [];
-  const head = lines[0].split(/\t|,/).map(h => h.trim().toLowerCase());
-  let zi = head.findIndex(h => /^(geoid|zcta5|zcta|zip)/.test(h)), la = head.findIndex(h => /lat/.test(h)), lo = head.findIndex(h => /lon|lng/.test(h));
-  const hasHeader = zi >= 0 && la >= 0 && lo >= 0;
-  if (!hasHeader){ zi = 0; la = 1; lo = 2; }
-  const out = [];
-  lines.slice(hasHeader ? 1 : 0).forEach(l => { const c = l.split(/\t|,/); const zip = String(c[zi] || '').trim().padStart(5, '0'); const lat = Number(c[la]), lng = Number(c[lo]); if (/^\d{5}$/.test(zip) && Number.isFinite(lat) && Number.isFinite(lng)) out.push({ zip, lat, lng }); });
-  return out;
-}
-async function mrfHandleCentroidFile(event){
-  const file = event.target.files && event.target.files[0];
-  const status = document.getElementById('mrfLoadStatus');
-  const say = (t) => { if (status) status.textContent = t; };
-  if (!file) return;
-  // 2026-09-09, per direct report — Todd selected the gazetteer .zip archive
-  // itself (the download link points straight at the .zip), not the .txt
-  // inside it, and got the generic "no rows recognised" message, which
-  // doesn't say what's actually wrong: a .zip is binary and can never parse
-  // as tab/comma-delimited text. Catch that specific case up front with a
-  // clear, actionable message instead of letting it fall through to the
-  // generic parse error.
-  if (/\.zip$/i.test(file.name)){
-    say(`"${file.name}" is the zip archive itself — unzip it first (most computers: double-click it, or right-click → Extract), then upload the .txt file that comes out (it will be named something like 2023_Gaz_zcta_national.txt).`);
-    event.target.value = '';
-    return;
-  }
-  try {
-    const rows = mrfParseCentroidText(await file.text());
-    if (!rows.length) throw new Error('no rows recognised — expected GEOID / INTPTLAT / INTPTLONG (or zip, lat, lng)');
-    const d = await mrfPostChunks('/api/market-zip-centroids', rows, { sourceLabel: `${MRF_PUBLIC_SOURCES.centroids.sourceLabel} — file "${file.name}"` }, (done, n) => say(`Loading centroids ${done.toLocaleString()} / ${n.toLocaleString()}…`));
-    say(`Done — ${d.inserted.toLocaleString()} zip centroids loaded from "${file.name}".`);
-    mrfLoadStatus();
-  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
-  event.target.value = '';
-}
-// Country reference files (2026-09-06): generic column finder so a
-// national-statistics export works without hand-mapping -- the postal-unit
-// column is found by header name, else by which column's values parse for
-// the chosen country; the others by header name.
-function mrfParseCountryFile(text, kind, country){
-  const pack = MOU_COUNTRY_PACKS[country]; if (!pack) return [];
-  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const splitCsv = (l) => { const out = []; let cur = '', q = false; for (const ch of l){ if (ch === '"'){ q = !q; continue; } if ((ch === ',' || ch === ';') && !q){ out.push(cur); cur = ''; continue; } cur += ch; } out.push(cur); return out; };
-  const split = (l) => (l.includes('\t') ? l.split('\t') : splitCsv(l));
-  const head = split(lines[0]).map(h => String(h || '').trim().toLowerCase().replace(/^"|"$/g, ''));
-  const sample = split(lines[1]).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
-  let fi = head.findIndex(h => /forward sortation|\bfsa\b|postcode|postal|\bpoa\b|\bplz\b|\bcap\b|code.?postal|codigo.?postal|c[oó]digo|\bzip\b|pcd|outward/.test(h));
-  if (fi < 0) fi = sample.findIndex(v => !!pack.parse(String(v).toUpperCase()));
-  const find = (re) => head.findIndex(h => re.test(h));
-  const pi = find(/population|tot_p|\bpop\b|einwohner|habitant|poblaci|popolaz|persons|usual resident/), la = find(/lat/), lo = find(/lon|lng|long/), ci = find(/nuts|cma.?(code|uid|id)|cmauid|market.?(code|id)|region.?(code|id)|itv|dma|\bcode\b|\bid\b/), cn = find(/market.?name|region.?name|cma.?name|census metropolitan|\bname\b|label|region|market/);
-  if (fi < 0) return [];
-  const out = [];
-  lines.slice(1).forEach(l => {
-    const c = split(l).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
-    const unit = pack.parse(String(c[fi] || '').toUpperCase());
-    if (!unit) return;
-    const key = `${country}:${unit}`;
-    if (kind === 'population'){ const p = Number(String(c[pi] || '').replace(/[^\d.]/g, '')); if (pi >= 0 && Number.isFinite(p)) out.push({ zip: key, population: p }); }
-    else if (kind === 'centroids'){ const lat = Number(c[la]), lng = Number(c[lo]); if (la >= 0 && lo >= 0 && Number.isFinite(lat) && Number.isFinite(lng)) out.push({ zip: key, lat, lng }); }
-    else if (kind === 'markets'){ const code = ci >= 0 && ci !== fi ? c[ci] : ''; if (code) out.push({ zip: key, dmaCode: `${country}-${code}`, dmaName: (cn >= 0 && cn !== fi && cn !== ci) ? c[cn] : code }); }
-  });
-  return out;
-}
-async function mrfHandleCountryFile(event, kind){
-  const file = event.target.files && event.target.files[0];
-  const status = document.getElementById('mrfLoadStatus');
-  const say = (t) => { if (status) status.textContent = t; };
-  if (!file) return;
-  const country = ((document.getElementById('mrfCountry') || {}).value || 'CA');
-  const pack = MOU_COUNTRY_PACKS[country] || MOU_COUNTRY_PACKS.CA;
-  try {
-    const rows = mrfParseCountryFile(await file.text(), kind, country);
-    if (!rows.length) throw new Error(`no rows recognised for ${pack.name} ${kind} — check the column names and that codes match the ${pack.unit} format`);
-    const path = kind === 'population' ? '/api/market-population-master' : (kind === 'centroids' ? '/api/market-zip-centroids' : '/api/market-dma-master');
-    const extra = kind === 'markets' ? { country, sourceLabel: `${pack.name} market crosswalk — file "${file.name}"`, method: `${pack.name} statistical/market regions as published — not a licensed audience-measurement definition` } : { country, sourceLabel: `${pack.name} national statistics — file "${file.name}"` };
-    const d = await mrfPostChunks(path, rows, extra, (done, n) => say(`Loading ${pack.name} ${kind} ${done.toLocaleString()} / ${n.toLocaleString()}…`));
-    say(`Done — ${d.inserted.toLocaleString()} ${pack.name} ${kind} rows loaded from "${file.name}".${d.errors.length ? ` Skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
-    mrfLoadStatus();
-  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
-  event.target.value = '';
-}
+// every account like the other reference masters — see Ops Console's
+// Reference Data module (2026-09-09) for that one-time load, not here.
 // ---- Stores ----
 let mstStores = [];
 async function mstLoad(){
@@ -26445,7 +26254,14 @@ function mstRender(){
       <div class="field" style="margin:0;flex:2 1 260px;"><label>Address</label><input type="text" id="mstNewAddress" placeholder="150 Worth Ave, Palm Beach, FL 33480"></div>
       <div class="field" style="margin:0;flex:0 0 120px;"><label>Country</label><select id="mstNewCountry">${Object.keys(MOU_COUNTRY_PACKS).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
       <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
-      <div class="field" style="margin:0;"><label>Or upload a store list</label><input type="file" accept=".csv,.tsv,.txt,.xlsx" onchange="mstHandleFile(event)"></div>
+      <div class="field" style="margin:0;">
+        <label for="mstFileInput">Or upload a store list</label>
+        <div class="btn-row">
+          <label class="btn-ghost" for="mstFileInput" style="cursor:pointer;">Choose File</label>
+          <span id="mstFileChosenName" class="hint"></span>
+        </div>
+        <input type="file" id="mstFileInput" accept=".csv,.tsv,.txt,.xlsx" onchange="document.getElementById('mstFileChosenName').textContent = (this.files[0] || {}).name || ''; mstHandleFile(event)" style="display:none;">
+      </div>
     </div>
     <div class="btn-row" style="margin-top:10px;">
       <button type="button" class="btn-ghost" onclick="mstGeocodeMissing()" ${mstStores.some(s => s.lat == null && s.address) ? '' : 'disabled'}>Geocode addresses without coordinates →</button>
@@ -26514,7 +26330,7 @@ async function mstGeocodeMissing(){
       let unit = null;
       for (let i = tokens.length - 1; i >= 0 && !unit; i--){ unit = MOU_COUNTRY_PACKS[country] ? (MOU_COUNTRY_PACKS[country].parse(tokens[i]) || (i > 0 ? MOU_COUNTRY_PACKS[country].parse(tokens[i - 1] + tokens[i]) : null)) : null; }
       if (!unit){ missed.push(`${s.name || s.address} (no ${country} postal code found in the address — add Lat/Lng to the file)`); done++; continue; }
-      try { const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/lookup?key=${encodeURIComponent(country + ':' + unit)}&country=${country}`); const c = r.ok ? await r.json() : null; if (c && c.found) updates.push({ storeId: s.storeId, name: s.name, address: s.address, country, lat: c.lat, lng: c.lng, geocodeSource: `${country} ${unit} centroid (approximate)` }); else missed.push(`${s.name || s.address} (no centroid for ${country} ${unit} — load ${country} centroids under Reference data, or add Lat/Lng to the file)`); }
+      try { const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/lookup?key=${encodeURIComponent(country + ':' + unit)}&country=${country}`); const c = r.ok ? await r.json() : null; if (c && c.found) updates.push({ storeId: s.storeId, name: s.name, address: s.address, country, lat: c.lat, lng: c.lng, geocodeSource: `${country} ${unit} centroid (approximate)` }); else missed.push(`${s.name || s.address} (no centroid for ${country} ${unit} on file yet — ask CX Ops to load ${country} centroids in the Ops Console, or add Lat/Lng to the file)`); }
       catch (e){ missed.push(`${s.name || s.address} (${e.message})`); }
       done++; continue;
     }
@@ -42051,7 +41867,6 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'marketOptimization'){
     mouResetImport();
     mouLoadHistory();
-    if (typeof mrfLoadStatus === 'function') mrfLoadStatus();
     if (typeof mstLoad === 'function') mstLoad();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){

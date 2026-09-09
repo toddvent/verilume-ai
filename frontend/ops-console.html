@@ -354,6 +354,98 @@
       <div id="voiceContestReviewResult"></div>
     </div>
 
+    <!-- 2026-09-09, per direct question ("Does a client need to see the
+         Reference Data or should that be part of our administrative
+         site?") — moved wholesale from portal.html's Match Market Builder
+         page. This is platform-wide reference data (Census ZCTA
+         population, a zip→DMA crosswalk, zip centroids for store trade
+         areas), not scoped to any one account, and no client ever has a
+         reason to load or reload it — so it belongs here, alongside
+         Platform Integration Status, not on a client's own account page.
+         Auth is simpler than the ADMIN_API_TOKEN modules above: the
+         backend endpoints this calls (/api/market-population-master,
+         /api/market-dma-master, /api/market-zip-centroids, and their
+         /status and /api/market-reference-data/proxy/* siblings) only
+         require the same signed-in-staff session this console already
+         holds (OPS_TOKEN_STORAGE_KEY) — no separate token to paste. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Reference Data <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">The Population Index and DMA roll-up every account's Match Market Builder results depend on need two shared reference files no client supplies: population by zip (U.S. Census, free) and a zip→DMA crosswalk (DMA boundaries are Nielsen's; the free crosswalk is a public approximation, labelled that way wherever a DMA appears — a licensed Nielsen file can be loaded below and replaces it). Zip centroids (for store trade areas) are the same kind of one-time, shared load. None of this is account-scoped — one load here serves every account.</p>
+      <div id="refDataStatus" class="empty-note">Click "Check status" to load current counts.</div>
+      <div class="field-row" style="margin-top:14px;">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn" onclick="refDataLoadStatus()">Check status</button>
+          <button class="btn primary" id="refDataLoadPublicBtn" onclick="refDataLoadPublic()">Load public reference data →</button>
+        </div>
+      </div>
+      <p class="proto-note">2020 Census ZCTA population + public zip→DMA crosswalk, fetched server-side through this console's own session and saved to the backend in batches. Needs a Census API key configured as the CENSUS_API_KEY environment variable on the backend — if that's missing, this will say so directly.</p>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <div class="field-row three">
+          <div>
+            <label>Upload a crosswalk file — source (required)</label>
+            <input type="text" id="refDataDmaSource" placeholder='e.g. "Nielsen ZIP Code by DMA 2026, licensed"'>
+          </div>
+          <div>
+            <label>Method / note</label>
+            <input type="text" id="refDataDmaMethod" placeholder="e.g. official Nielsen boundaries">
+          </div>
+          <div>
+            <label>CSV or TSV: zip, DMA code, DMA name</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataDmaFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataDmaFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataDmaFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataDmaFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleDmaFile(event)">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <label>Zip centroids for store trade areas — Census ZCTA Gazetteer (.txt from the zip archive)</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label class="btn" for="refDataCentroidFile" style="cursor:pointer;margin:0;">Choose File</label>
+          <span id="refDataCentroidFileName" class="empty-note" style="padding:0;"></span>
+          <a class="btn" href="https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip" target="_blank" rel="noopener">⬇ Download the gazetteer</a>
+        </div>
+        <input type="file" id="refDataCentroidFile" accept=".txt,.csv,.tsv" style="display:none;" onchange="document.getElementById('refDataCentroidFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCentroidFile(event)">
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <p class="desc" style="margin-bottom:10px;"><b>Other countries.</b> Pick the country, then upload its population, centroids and market crosswalk from the national statistics office (Statistics Canada by FSA; ABS by postcode; ONS postcode lookup for the UK; Destatis, INSEE, INE and ISTAT by postal code, with Eurostat's postal-code-to-NUTS table as the market layer). Columns are found by name and by value pattern; every market label says which definition it uses.</p>
+        <div class="field-row three">
+          <div>
+            <label>Country</label>
+            <select id="refDataCountry"><option value="CA">Canada</option><option value="AU">Australia</option><option value="GB">United Kingdom</option><option value="DE">Germany</option><option value="FR">France</option><option value="ES">Spain</option><option value="IT">Italy</option></select>
+          </div>
+          <div>
+            <label>Population by postal unit</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCountryPopFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCountryPopFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCountryPopFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCountryPopFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCountryFile(event, 'population')">
+          </div>
+          <div>
+            <label>Centroids (lat / long)</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCountryCentroidFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCountryCentroidFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCountryCentroidFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCountryCentroidFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCountryFile(event, 'centroids')">
+          </div>
+        </div>
+        <div class="field-row" style="margin-top:0;">
+          <div>
+            <label>Postal unit → market crosswalk</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCountryMarketFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCountryMarketFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCountryMarketFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCountryMarketFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCountryFile(event, 'markets')">
+          </div>
+        </div>
+      </div>
+      <p class="empty-note" id="refDataLoadStatus" style="padding:10px 0 0;"></p>
+    </div>
+
     <div class="safeguard">
       <b>Naming safeguard —</b> the offline demo package also has a fully-seeded account under the name "Atlas Ocean Voyages" (account ID <code>CXM-NAT-2026-700</code>), built from public facts but with entirely fictional campaigns, invoices, and org chart. The real Atlas Ocean Voyages account below is a separate, brand-new account — never seeded from, or sharing data with, the demo account. See <code>cxmedia-first-client-beta-launch-plan-2026-08-08.md</code> Section 1.2.
     </div>
@@ -822,6 +914,207 @@ function integStatusBadge(configured){
   return configured
     ? '<span class="badge status-configured">Configured</span>'
     : '<span class="badge status-not-configured">Not configured</span>';
+}
+
+// ============ Reference Data (2026-09-09) ============
+// Ported wholesale from portal.html's Match Market Builder page — see that
+// file's own comment at the old site for the full history (CORS fix,
+// batching fix, User-Agent/Missing-Key investigation). Logic is unchanged;
+// only the DOM ids (mrf* -> refData*) and the auth helper (authedFetch ->
+// opsAuthedFetch, using this console's own session token rather than a
+// pasted admin token) are different.
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function opsAuthedFetch(url, options = {}){
+  let token = '';
+  try { token = sessionStorage.getItem(OPS_TOKEN_STORAGE_KEY) || ''; } catch (e) {}
+  const headers = Object.assign({}, options.headers || {});
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const timeoutMs = options.timeoutMs || 12000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const opts = Object.assign({}, options, { headers, signal: options.signal || controller.signal });
+  delete opts.timeoutMs;
+  return fetch(url, opts).finally(() => clearTimeout(timer));
+}
+// Minimal country-code packs for the "Other countries" loaders below — same
+// parse rules as portal.html's MOU_COUNTRY_PACKS, trimmed to just what
+// these loaders need (no alias table, this console never takes free-text
+// country names).
+const REF_DATA_COUNTRY_PACKS = {
+  CA: { name: 'Canada', unit: 'forward sortation area (A1A)', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^([A-Z]\d[A-Z])(\d[A-Z]\d)?$/); return m ? m[1] : null; } },
+  AU: { name: 'Australia', unit: 'postcode (4 digits)', parse: (s) => (/^\d{4}$/.test(s) ? s : (/^\d{3}$/.test(s) ? s.padStart(4, '0') : null)) },
+  GB: { name: 'United Kingdom', unit: 'postcode district (e.g. SW1A)', parse: (s) => { const m = s.replace(/\s+/g, '').match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})?$/); return m ? m[1] : null; } },
+  DE: { name: 'Germany', unit: 'Postleitzahl (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  FR: { name: 'France', unit: 'code postal (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  ES: { name: 'Spain', unit: 'código postal (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) },
+  IT: { name: 'Italy', unit: 'CAP (5 digits)', parse: (s) => (/^\d{5}$/.test(s) ? s : (/^\d{4}$/.test(s) ? s.padStart(5, '0') : null)) }
+};
+const REF_DATA_SOURCES = {
+  population: {
+    url: 'https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*',
+    sourceLabel: 'U.S. Census Bureau, 2020 Decennial Census (DHC), table P1 total population by ZCTA — api.census.gov',
+    parse: (json) => { const out = []; (Array.isArray(json) ? json.slice(1) : []).forEach(r => { const zip = String(r[1] || '').padStart(5, '0'); const pop = Number(r[0]); if (/^\d{5}$/.test(zip) && Number.isFinite(pop) && pop >= 0) out.push({ zip, population: pop }); }); return out; }
+  },
+  dma: {
+    url: 'https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw',
+    sourceLabel: 'Public zip→DMA crosswalk (GitHub gist "clarkenheim", TSV)',
+    method: 'zip centroid placed inside DMA polygon — public approximation, not Nielsen-licensed',
+    parse: (text) => { const out = []; String(text).split(/\r?\n/).forEach((line, i) => { if (!line.trim()) return; const c = line.split(/\t|,/); if (i === 0 && !/^\d/.test(c[0].trim())) return; const zip = String(c[0] || '').trim().padStart(5, '0'); const code = String(c[1] || '').trim(); const name = (c.slice(2).join(' ') || '').trim(); if (/^\d{5}$/.test(zip) && code) out.push({ zip, dmaCode: code, dmaName: name }); }); return out; }
+  },
+  centroids: {
+    url: 'https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip',
+    sourceLabel: 'U.S. Census Bureau, 2023 ZCTA Gazetteer (internal point lat/long)',
+    note: 'The gazetteer is a zip archive; download it, unzip the .txt, and upload that file below (GEOID, INTPTLAT, INTPTLONG columns are read automatically).'
+  }
+};
+async function refDataPostChunks(path, rows, extra, onProgress){
+  const size = 2000; let inserted = 0; const errors = [];
+  for (let i = 0; i < rows.length; i += size){
+    const resp = await opsAuthedFetch(`${BACKEND_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ rows: rows.slice(i, i + size) }, extra)), timeoutMs: 60000 });
+    if (!resp.ok){ const t = await resp.text().catch(() => ''); throw new Error(`HTTP ${resp.status} ${t.slice(0, 120)}`); }
+    const j = await resp.json();
+    inserted += j.inserted || 0; (j.errors || []).slice(0, 5).forEach(e => { if (errors.length < 10) errors.push(e); });
+    if (onProgress) onProgress(Math.min(rows.length, i + size), rows.length);
+  }
+  return { inserted, errors };
+}
+async function refDataLoadStatus(){
+  const el = document.getElementById('refDataStatus');
+  if (!el) return;
+  el.textContent = 'Checking…';
+  let pop = null, dma = null, cen = null;
+  try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-population-master/status`); if (r.ok) pop = await r.json(); } catch (e){}
+  try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-dma-master/status`); if (r.ok) dma = await r.json(); } catch (e){}
+  try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/market-zip-centroids/status`); if (r.ok) cen = await r.json(); } catch (e){}
+  const cc = (o) => o && o.byCountry && Object.keys(o.byCountry).length ? ` (${Object.entries(o.byCountry).map(([c, n]) => `${c} ${Number(n).toLocaleString()}`).join(' · ')})` : '';
+  const popLine = pop ? (pop.zipsLoaded ? `${Number(pop.zipsLoaded).toLocaleString()} zips/FSAs with population${cc(pop)} — ${(pop.sources || []).join('; ')}` : 'No population data loaded yet.') : 'Population status unavailable.';
+  const dmaLine = dma ? (dma.zipsLoaded ? `${Number(dma.zipsLoaded).toLocaleString()} zips/FSAs → ${Number(dma.dmaCount).toLocaleString()} markets${cc(dma)} — ${(dma.sources || []).map(x => `${x.sourceLabel}${x.method ? ` (${x.method})` : ''}`).join('; ')}${dma.licensed ? ' · licensed' : ' · approximation, not Nielsen-licensed'}` : 'No zip→DMA crosswalk loaded yet.') : 'DMA status unavailable.';
+  const cenLine = cen ? (cen.zipsLoaded ? `${Number(cen.zipsLoaded).toLocaleString()} zips/FSAs with centroids${cc(cen)} — ${(cen.sources || []).join('; ')}` : 'No zip centroids loaded yet.') : 'Centroid status unavailable.';
+  el.innerHTML = `<table><tbody>
+    <tr><td style="font-weight:600;white-space:nowrap;">Population by zip</td><td>${escapeHtml(popLine)}</td></tr>
+    <tr><td style="font-weight:600;white-space:nowrap;">Zip → DMA</td><td>${escapeHtml(dmaLine)}</td></tr>
+    <tr><td style="font-weight:600;white-space:nowrap;">Zip centroids</td><td>${escapeHtml(cenLine)}</td></tr>
+  </tbody></table>`;
+}
+async function refDataLoadPublic(){
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  const btn = document.getElementById('refDataLoadPublicBtn'); if (btn) btn.disabled = true;
+  try {
+    say('Fetching 2020 Census ZCTA population from api.census.gov…');
+    const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/population`);
+    if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status} ${t.slice(0, 120)}`); }
+    const prJson = await pr.json();
+    const popRows = REF_DATA_SOURCES.population.parse(prJson.data);
+    if (!popRows.length) throw new Error('Census API returned no ZCTA rows');
+    say(`Loading ${popRows.length.toLocaleString()} population rows…`);
+    const p = await refDataPostChunks('/api/market-population-master', popRows, { sourceLabel: REF_DATA_SOURCES.population.sourceLabel }, (d, n) => say(`Loading population ${d.toLocaleString()} / ${n.toLocaleString()}…`));
+    say('Fetching the public zip→DMA crosswalk…');
+    const dr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/dma`);
+    if (!dr.ok){ const t = await dr.text().catch(() => ''); throw new Error(`crosswalk HTTP ${dr.status} ${t.slice(0, 120)}`); }
+    const drJson = await dr.json();
+    const dmaRows = REF_DATA_SOURCES.dma.parse(drJson.text);
+    if (!dmaRows.length) throw new Error('crosswalk returned no rows');
+    const d = await refDataPostChunks('/api/market-dma-master', dmaRows, { sourceLabel: REF_DATA_SOURCES.dma.sourceLabel, method: REF_DATA_SOURCES.dma.method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${p.inserted.toLocaleString()} population rows and ${d.inserted.toLocaleString()} zip→DMA rows loaded.${(p.errors.length || d.errors.length) ? ` Some rows were skipped: ${[...p.errors, ...d.errors].slice(0, 3).join(' · ')}` : ''}`);
+    refDataLoadStatus();
+  } catch (e){
+    say(`Couldn't load: ${e && e.message ? e.message : e}. If a public source blocks this request, download the file and use "Upload a crosswalk file" instead.`);
+  } finally { if (btn) btn.disabled = false; }
+}
+async function refDataHandleDmaFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  const sourceLabel = ((document.getElementById('refDataDmaSource') || {}).value || '').trim();
+  if (!sourceLabel){ say('Enter the source of this crosswalk first (e.g. "Nielsen ZIP Code by DMA 2026, licensed").'); event.target.value = ''; return; }
+  const method = ((document.getElementById('refDataDmaMethod') || {}).value || '').trim() || 'as supplied';
+  try {
+    const text = await file.text();
+    const rows = REF_DATA_SOURCES.dma.parse(text);
+    if (!rows.length) throw new Error('no rows recognised — expected columns: zip, DMA code, DMA name');
+    say(`Loading ${rows.length.toLocaleString()} rows…`);
+    const d = await refDataPostChunks('/api/market-dma-master', rows, { sourceLabel, method }, (done, n) => say(`Loading zip→DMA ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} zip→DMA rows loaded from "${file.name}".`);
+    refDataLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
+}
+function refDataParseCentroidText(text){
+  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
+  const head = lines[0].split(/\t|,/).map(h => h.trim().toLowerCase());
+  let zi = head.findIndex(h => /^(geoid|zcta5|zcta|zip)/.test(h)), la = head.findIndex(h => /lat/.test(h)), lo = head.findIndex(h => /lon|lng/.test(h));
+  const hasHeader = zi >= 0 && la >= 0 && lo >= 0;
+  if (!hasHeader){ zi = 0; la = 1; lo = 2; }
+  const out = [];
+  lines.slice(hasHeader ? 1 : 0).forEach(l => { const c = l.split(/\t|,/); const zip = String(c[zi] || '').trim().padStart(5, '0'); const lat = Number(c[la]), lng = Number(c[lo]); if (/^\d{5}$/.test(zip) && Number.isFinite(lat) && Number.isFinite(lng)) out.push({ zip, lat, lng }); });
+  return out;
+}
+async function refDataHandleCentroidFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  if (/\.zip$/i.test(file.name)){
+    say(`"${file.name}" is the zip archive itself — unzip it first (most computers: double-click it, or right-click → Extract), then upload the .txt file that comes out (it will be named something like 2023_Gaz_zcta_national.txt).`);
+    event.target.value = '';
+    return;
+  }
+  try {
+    const rows = refDataParseCentroidText(await file.text());
+    if (!rows.length) throw new Error('no rows recognised — expected GEOID / INTPTLAT / INTPTLONG (or zip, lat, lng)');
+    const d = await refDataPostChunks('/api/market-zip-centroids', rows, { sourceLabel: `${REF_DATA_SOURCES.centroids.sourceLabel} — file "${file.name}"` }, (done, n) => say(`Loading centroids ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} zip centroids loaded from "${file.name}".`);
+    refDataLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
+}
+function refDataParseCountryFile(text, kind, country){
+  const pack = REF_DATA_COUNTRY_PACKS[country]; if (!pack) return [];
+  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const splitCsv = (l) => { const out = []; let cur = '', q = false; for (const ch of l){ if (ch === '"'){ q = !q; continue; } if ((ch === ',' || ch === ';') && !q){ out.push(cur); cur = ''; continue; } cur += ch; } out.push(cur); return out; };
+  const split = (l) => (l.includes('\t') ? l.split('\t') : splitCsv(l));
+  const head = split(lines[0]).map(h => String(h || '').trim().toLowerCase().replace(/^"|"$/g, ''));
+  const sample = split(lines[1]).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
+  let fi = head.findIndex(h => /forward sortation|\bfsa\b|postcode|postal|\bpoa\b|\bplz\b|\bcap\b|code.?postal|codigo.?postal|c[oó]digo|\bzip\b|pcd|outward/.test(h));
+  if (fi < 0) fi = sample.findIndex(v => !!pack.parse(String(v).toUpperCase()));
+  const find = (re) => head.findIndex(h => re.test(h));
+  const pi = find(/population|tot_p|\bpop\b|einwohner|habitant|poblaci|popolaz|persons|usual resident/), la = find(/lat/), lo = find(/lon|lng|long/), ci = find(/nuts|cma.?(code|uid|id)|cmauid|market.?(code|id)|region.?(code|id)|itv|dma|\bcode\b|\bid\b/), cn = find(/market.?name|region.?name|cma.?name|census metropolitan|\bname\b|label|region|market/);
+  if (fi < 0) return [];
+  const out = [];
+  lines.slice(1).forEach(l => {
+    const c = split(l).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
+    const unit = pack.parse(String(c[fi] || '').toUpperCase());
+    if (!unit) return;
+    const key = `${country}:${unit}`;
+    if (kind === 'population'){ const p = Number(String(c[pi] || '').replace(/[^\d.]/g, '')); if (pi >= 0 && Number.isFinite(p)) out.push({ zip: key, population: p }); }
+    else if (kind === 'centroids'){ const lat = Number(c[la]), lng = Number(c[lo]); if (la >= 0 && lo >= 0 && Number.isFinite(lat) && Number.isFinite(lng)) out.push({ zip: key, lat, lng }); }
+    else if (kind === 'markets'){ const code = ci >= 0 && ci !== fi ? c[ci] : ''; if (code) out.push({ zip: key, dmaCode: `${country}-${code}`, dmaName: (cn >= 0 && cn !== fi && cn !== ci) ? c[cn] : code }); }
+  });
+  return out;
+}
+async function refDataHandleCountryFile(event, kind){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  const country = ((document.getElementById('refDataCountry') || {}).value || 'CA');
+  const pack = REF_DATA_COUNTRY_PACKS[country] || REF_DATA_COUNTRY_PACKS.CA;
+  try {
+    const rows = refDataParseCountryFile(await file.text(), kind, country);
+    if (!rows.length) throw new Error(`no rows recognised for ${pack.name} ${kind} — check the column names and that codes match the ${pack.unit} format`);
+    const path = kind === 'population' ? '/api/market-population-master' : (kind === 'centroids' ? '/api/market-zip-centroids' : '/api/market-dma-master');
+    const extra = kind === 'markets' ? { country, sourceLabel: `${pack.name} market crosswalk — file "${file.name}"`, method: `${pack.name} statistical/market regions as published — not a licensed audience-measurement definition` } : { country, sourceLabel: `${pack.name} national statistics — file "${file.name}"` };
+    const d = await refDataPostChunks(path, rows, extra, (done, n) => say(`Loading ${pack.name} ${kind} ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} ${pack.name} ${kind} rows loaded from "${file.name}".${d.errors.length ? ` Skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
+    refDataLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
 }
 
 async function checkIntegrationStatus(){
