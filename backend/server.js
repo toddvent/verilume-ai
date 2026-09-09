@@ -4335,6 +4335,15 @@ createTableIfNeeded(`
 `);
 ensureColumn('market_customer_uploads', 'geoLevel', "TEXT DEFAULT 'zip'");
 ensureColumn('account_stores', 'country', "TEXT DEFAULT 'US'");
+// 2026-09-09, per direct instruction ("Primary key used to produce output
+// will be the zip code or international version. We should create the
+// ideal multiple storefront upload format.") — a store's zip/postal code
+// is now its own explicit field, not something guessed out of the address
+// string. This lets a store plot instantly off the same zip_centroid_master
+// reference data used for customer markets (see the lookup endpoint at
+// GET /api/market-zip-centroids/lookup) — no geocoder call needed, and no
+// country-specific regex-token-scan of a free-text address needed either.
+ensureColumn('account_stores', 'postalCode', 'TEXT');
 function haversineMiles(lat1, lng1, lat2, lng2){
   const R = 3958.7613, toRad = (d) => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
@@ -16032,13 +16041,20 @@ Submit your findings via the submit_brand_categories tool.`;
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const stores = db.prepare("SELECT id, storeId, name, address, COALESCE(country, 'US') AS country, lat, lng, geocodeSource, updatedAt FROM account_stores WHERE accountId = ? ORDER BY name, storeId").all(accountId);
+      const stores = db.prepare("SELECT id, storeId, name, address, postalCode, COALESCE(country, 'US') AS country, lat, lng, geocodeSource, updatedAt FROM account_stores WHERE accountId = ? ORDER BY name, storeId").all(accountId);
       return sendJson(res, 200, { stores, geocoded: stores.filter(s => s.lat != null && s.lng != null).length });
     }
-    // POST /api/accounts/:id/stores — { stores: [{storeId?, name?, address?, lat?, lng?, geocodeSource?}], replace?: true }
-    // Geocoding happens client-side (Census Geocoder, free) or the file
-    // brings lat/lng; the backend stores what it is given and says which
-    // stores still lack coordinates.
+    // POST /api/accounts/:id/stores — { stores: [{storeId?, name?, address?, postalCode?, country?, lat?, lng?, geocodeSource?}], replace?: true }
+    // 2026-09-09, per direct instruction ("Primary key used to produce
+    // output will be the zip code or international version") — postalCode
+    // is now the primary way a store gets placed: when one is supplied and
+    // no lat/lng came with it, this looks it up directly against
+    // zip_centroid_master (the same reference data customer markets use —
+    // see GET /api/market-zip-centroids/lookup) and fills in lat/lng right
+    // here, no geocoder call needed. Falls back to whatever lat/lng the
+    // file/caller supplied when there's no postalCode, or leaves a store
+    // ungeocoded (never a guessed point) when neither is available and no
+    // centroid is on file yet for that postal code.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -16046,19 +16062,31 @@ Submit your findings via the submit_brand_categories tool.`;
       if (!Array.isArray(body.stores)) return sendJson(res, 400, { error: 'stores (array) is required' });
       const now = new Date().toISOString();
       if (body.replace) db.prepare('DELETE FROM account_stores WHERE accountId = ?').run(accountId);
+      const centroidStmt = db.prepare('SELECT lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?');
       let saved = 0; const errors = [];
       body.stores.forEach((s, i) => {
         const name = String(s.name || '').trim() || null, address = String(s.address || '').trim() || null, storeId = String(s.storeId || '').trim() || null;
-        if (!name && !address && !storeId){ if (errors.length < 50) errors.push(`row ${i}: needs a store id, name or address`); return; }
-        const lat = s.lat != null && s.lat !== '' ? Number(s.lat) : null, lng = s.lng != null && s.lng !== '' ? Number(s.lng) : null;
-        const ok = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+        const postalCodeRaw = String(s.postalCode || '').trim() || null;
+        if (!name && !address && !storeId && !postalCodeRaw){ if (errors.length < 50) errors.push(`row ${i}: needs a store id, name, address, or zip/postal code`); return; }
         const country = normalizeCountry(s.country) || 'US';
+        let lat = s.lat != null && s.lat !== '' ? Number(s.lat) : null, lng = s.lng != null && s.lng !== '' ? Number(s.lng) : null;
+        let ok = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+        let geocodeSource = ok ? (s.geocodeSource || 'supplied') : null;
+        let postalCode = postalCodeRaw;
+        if (!ok && postalCodeRaw){
+          const g = normalizeGeoKey(postalCodeRaw, country);
+          if (g && !/^DMA:/.test(g.key)){
+            postalCode = g.key;
+            const c = centroidStmt.get(g.key);
+            if (c){ lat = c.lat; lng = c.lng; ok = true; geocodeSource = `postal code centroid (${c.sourceLabel})`; }
+          }
+        }
         const existing = storeId ? db.prepare('SELECT id FROM account_stores WHERE accountId = ? AND storeId = ?').get(accountId, storeId) : null;
-        if (existing) db.prepare('UPDATE account_stores SET name = ?, address = ?, country = ?, lat = ?, lng = ?, geocodeSource = ?, updatedAt = ? WHERE id = ?').run(name, address, country, ok ? lat : null, ok ? lng : null, ok ? (s.geocodeSource || 'supplied') : null, now, existing.id);
-        else db.prepare('INSERT INTO account_stores (id, accountId, storeId, name, address, country, lat, lng, geocodeSource, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)').run(generateId('STORE'), accountId, storeId, name, address, country, ok ? lat : null, ok ? lng : null, ok ? (s.geocodeSource || 'supplied') : null, now);
+        if (existing) db.prepare('UPDATE account_stores SET name = ?, address = ?, postalCode = ?, country = ?, lat = ?, lng = ?, geocodeSource = ?, updatedAt = ? WHERE id = ?').run(name, address, postalCode, country, ok ? lat : null, ok ? lng : null, geocodeSource, now, existing.id);
+        else db.prepare('INSERT INTO account_stores (id, accountId, storeId, name, address, postalCode, country, lat, lng, geocodeSource, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(generateId('STORE'), accountId, storeId, name, address, postalCode, country, ok ? lat : null, ok ? lng : null, geocodeSource, now);
         saved++;
       });
-      const stores = db.prepare('SELECT id, storeId, name, address, country, lat, lng, geocodeSource FROM account_stores WHERE accountId = ?').all(accountId);
+      const stores = db.prepare('SELECT id, storeId, name, address, postalCode, country, lat, lng, geocodeSource FROM account_stores WHERE accountId = ?').all(accountId);
       return sendJson(res, 200, { saved, errors, total: stores.length, geocoded: stores.filter(s => s.lat != null).length, notGeocoded: stores.filter(s => s.lat == null).map(s => s.name || s.storeId || s.address) });
     }
 
@@ -18484,5 +18512,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
 
