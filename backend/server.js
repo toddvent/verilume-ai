@@ -4460,9 +4460,16 @@ function computePenetrationIndex(rows, weightMode){
 // roughly two-thirds volume / one-third index per the addendum decision —
 // explicitly flagged there as an open assumption, not a fact, so it's kept
 // as a parameter here rather than a hardcoded constant. Tiers are quartile
-// bands on the resulting score, matching the Atlas file's own four-tier
-// structure (High potential / Emerging strong / Solid baseline / Watch or
-// low priority).
+// bands on the resulting score.
+// 2026-09-09, per direct instruction ("Visual markets based on Must Win,
+// Growth and Opportunistic designations") — renamed from the original
+// four-tier labels (High potential / Emerging strong / Solid baseline /
+// Watch or low priority) to Must Win / Growth / Opportunistic / Monitor.
+// Todd named the top three explicitly; "Monitor" for the bottom quartile
+// is Claude's own pick to complete the set (short, same register as the
+// other three, and distinct from "Opportunistic" so it doesn't read as a
+// weaker version of the tier above it) — flag if a different label is
+// wanted, it's a one-line change here.
 function computeCompositeScore(penetrationRows, weights){
   const w = (weights && weights.volumeWeight != null && weights.indexWeight != null)
     ? weights : { volumeWeight: 2 / 3, indexWeight: 1 / 3 };
@@ -4487,10 +4494,10 @@ function computeCompositeScore(penetrationRows, weights){
   const pct = p => sortedScores.length ? sortedScores[Math.min(sortedScores.length - 1, Math.floor(sortedScores.length * p))] : 0;
   const p25 = pct(0.25), p50 = pct(0.5), p75 = pct(0.75);
   scored.forEach(r => {
-    if (r.compositeScore >= p75) r.opportunityTier = 'High potential';
-    else if (r.compositeScore >= p50) r.opportunityTier = 'Emerging strong';
-    else if (r.compositeScore >= p25) r.opportunityTier = 'Solid baseline';
-    else r.opportunityTier = 'Watch / low priority';
+    if (r.compositeScore >= p75) r.opportunityTier = 'Must Win';
+    else if (r.compositeScore >= p50) r.opportunityTier = 'Growth';
+    else if (r.compositeScore >= p25) r.opportunityTier = 'Opportunistic';
+    else r.opportunityTier = 'Monitor';
   });
   return { rows: scored, weights: w, weightMode: mode };
 }
@@ -18477,4 +18484,5 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
