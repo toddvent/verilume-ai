@@ -4981,7 +4981,8 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     const dmaMatch = computeDmaCompositeAndMatching(dmaOnly, holdoutFraction);
     if (dmaMatch.dmasScored.length) dmaOnly.dmas = dmaMatch.dmasScored;
     // dmaExport: see the zip-level branch's own comment below — this is the
-    // uniform shape buildMarketUploadXlsxRows() reads for BOTH branches. For
+    // uniform shape buildMarketUploadXlsxMarketRows() reads for BOTH
+    // branches. For
     // a genuine DMA-level upload this is just the same holdout/matching
     // already computed above, aliased into that shared shape rather than
     // duplicated logic.
@@ -5053,80 +5054,70 @@ function computeMarketUploadAnalysis(accountId, upload, options){
 // names (Must Win/Growth/Opportunistic/Monitor, per Todd's 2026-09-09
 // rename), not the sample file's older labels.
 //
-// 2026-09-09, SAME-DAY REVISION, per direct bug report: the prior round's
-// "group by DMA" version of this export (see the git history on this
-// function for that version) was shipping a single collapsed row with a
-// blank market label and no revenue column — every zip's volume rolled
-// into one DMA bucket whose dmaCode/dmaName came back NULL from the
-// zip_dma_master crosswalk for at least one of the joined zips (a data-
-// quality gap in the loaded DMA crosswalk, not a logic bug in the rollup
-// itself: computeDmaRollup() takes whatever dmaCode a zip resolves to,
-// including a blank one, as a valid grouping key). Whatever the crosswalk
-// data quality is on a given day, that failure mode is a direct
-// consequence of using a DMA/market as the export's PRIMARY grouping key
-// for a zip-level upload at all — a zip whose crosswalk lookup is
-// incomplete has nowhere else to land. Direct instruction from Todd
-// afterward: "What we need is a file that includes the count of
-// customers/transactions and sum of revenue by geographic location +
-// postal code as our minimum output. Population and other metrics are
-// nice to have." So for a zip-level upload (the overwhelming majority of
-// uploads) this now goes back to one row per POSTAL CODE — the primary
-// key Todd named — with the zip's DMA/"geographic location" carried as a
-// DESCRIPTIVE column (blank + a plain note when no crosswalk match exists
-// for that one zip, never dropping or collapsing the row), and both
-// Customer_Count and Revenue always shown as their own columns rather than
-// one column that silently means different things depending on
-// weightMode. A genuine DMA-level upload (no zip granularity in the
-// source data at all — see computeMarketUploadAnalysis()'s geoLevel:'dma'
-// branch) has no postal code to report and keeps the DMA-grouped shape,
-// via the same dmaExport field that branch already populates.
-function buildMarketUploadXlsxRows(analysis){
-  const isDma = analysis.geoLevel === 'dma';
-  if (isDma){
-    const dmaExport = analysis.dmaExport || { available: false, dmas: [], holdout: { dmaCodes: [] }, matching: { pairs: [] } };
-    const sourceRows = dmaExport.dmas || [];
-    const pairs = (dmaExport.matching && dmaExport.matching.pairs) || [];
-    const holdoutKeys = new Set((dmaExport.holdout && dmaExport.holdout.dmaCodes) || []);
-    const pairLabelByKey = {};
-    const tierInitials = t => (t || '').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'MKT';
-    pairs.forEach((p, i) => {
-      const keyA = p.testDma, keyB = p.controlDma;
-      const rowA = sourceRows.find(r => r.dmaCode === keyA);
-      const label = `${tierInitials(rowA && rowA.opportunityTier)}${i + 1}`;
-      pairLabelByKey[keyA] = label; pairLabelByKey[keyB] = label;
-    });
-    return sourceRows.map(r => {
-      const key = r.dmaCode;
-      const assignment = holdoutKeys.has(key) ? 'Holdout' : (pairLabelByKey[key] ? 'Test/Control' : 'Not in test');
-      return {
-        postalCode: null,
-        geographicLocation: r.dmaName ? `${r.dmaCode} - ${r.dmaName}` : (r.dmaCode || null),
-        country: r.country || 'US',
-        customerCount: analysis.weightMode !== 'revenue' ? (r.volume != null ? Number(r.volume) : null) : null,
-        revenue: analysis.weightMode === 'revenue' ? (r.volume != null ? Number(r.volume) : null) : null,
-        population: r.population != null ? Number(r.population) : null,
-        index: r.populationIndex != null ? Number(r.populationIndex) : null,
-        opportunityTier: r.opportunityTier || null,
-        compositeScore: r.compositeScore != null ? Number(r.compositeScore) : null,
-        testControlAssignment: assignment,
-        matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null)
-      };
-    }).sort((a, b) => ((b.customerCount || b.revenue || 0) - (a.customerCount || a.revenue || 0)));
-  }
-
-  // Zip-level upload — the common case, and the one this round's fix is
-  // for. One row per postal code, never collapsed into a DMA bucket.
-  const sourceRows = analysis.penetration || [];
-  const holdoutKeys = new Set((analysis.holdout && analysis.holdout.zips) || []);
-  const pairs = (analysis.matching && analysis.matching.pairs) || [];
+// 2026-09-09, SECOND SAME-DAY REVISION, per direct feedback on the postal-
+// code-only version this replaces (see the comment further down, kept for
+// history, on why that version replaced an earlier DMA-grouped one):
+// "Brands don't typically test at a zip level. Counts are too small to be
+// meaningful" and "We need to know the real market name." Both are right,
+// and they point the same direction: the Test/Control/Holdout/Match_Pair
+// TEST DESIGN belongs on a market (DMA) rollup, where volumes are large
+// enough to be statistically usable — not on individual zips, some of
+// which had barely 50 customers in the file Todd showed. So the export is
+// now TWO sheets, not one:
+//   - "By Market (DMA)" — the real test design: one row per market, real
+//     Composite_Score/Opportunity_Tier/Test_Control_Assignment/Match_Pair,
+//     computed by rolling this upload's zips up through the DMA crosswalk
+//     (computeDmaRollup + computeDmaCompositeAndMatching — same functions
+//     already used for a genuinely DMA-level upload, so there is still
+//     only one scoring method, not two). This is the sheet Excel opens to
+//     first (frozen/first tab).
+//   - "By Postal Code" — kept as reference detail only (Customer_Count,
+//     Revenue, Population, Geographic_Location per zip), per the earlier
+//     direct instruction that zip-level counts/revenue still needed to be
+//     visible somewhere — but with the test-design columns REMOVED from
+//     it, since those never belonged at zip granularity to begin with.
+// Every zip the crosswalk can't place lands in neither sheet's numbers
+// silently — computeDmaRollup() already tracks unmappedZips/
+// unmappedVolume, surfaced here as a plain note on the Market sheet (and a
+// per-row note on the Postal Code sheet) rather than a blank cell with no
+// explanation, directly answering "we need to know the real market name"
+// for the zips that genuinely don't have one on file yet.
+function buildMarketUploadXlsxMarketRows(analysis){
+  const dmaExport = analysis.dmaExport || { available: false, dmas: [], holdout: { dmaCodes: [] }, matching: { pairs: [] } };
+  const sourceRows = dmaExport.dmas || [];
+  const pairs = (dmaExport.matching && dmaExport.matching.pairs) || [];
+  const holdoutKeys = new Set((dmaExport.holdout && dmaExport.holdout.dmaCodes) || []);
   const pairLabelByKey = {};
   const tierInitials = t => (t || '').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'MKT';
   pairs.forEach((p, i) => {
-    const keyA = p.testZip, keyB = p.controlZip;
-    const rowA = sourceRows.find(r => r.zip === keyA);
+    const keyA = p.testDma, keyB = p.controlDma;
+    const rowA = sourceRows.find(r => r.dmaCode === keyA);
     const label = `${tierInitials(rowA && rowA.opportunityTier)}${i + 1}`;
     pairLabelByKey[keyA] = label; pairLabelByKey[keyB] = label;
   });
+  return sourceRows.map(r => {
+    const key = r.dmaCode;
+    const assignment = holdoutKeys.has(key) ? 'Holdout' : (pairLabelByKey[key] ? 'Test/Control' : 'Not in test');
+    return {
+      geographicLocation: r.dmaName ? `${r.dmaCode} - ${r.dmaName}` : (r.dmaCode ? `DMA ${r.dmaCode} (name not on file — see the zip→DMA reference load)` : null),
+      country: r.country || 'US',
+      customerCount: analysis.weightMode !== 'revenue' ? (r.volume != null ? Number(r.volume) : null) : null,
+      revenue: analysis.weightMode === 'revenue' ? (r.volume != null ? Number(r.volume) : null) : null,
+      population: r.population != null ? Number(r.population) : null,
+      index: r.populationIndex != null ? Number(r.populationIndex) : null,
+      opportunityTier: r.opportunityTier || null,
+      compositeScore: r.compositeScore != null ? Number(r.compositeScore) : null,
+      testControlAssignment: assignment,
+      matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null)
+    };
+  }).sort((a, b) => ((b.customerCount || b.revenue || 0) - (a.customerCount || a.revenue || 0)));
+}
+// Reference-detail rows: one per postal code, Customer_Count/Revenue/
+// Population/Geographic_Location only — no test-design columns (those live
+// on the Market sheet above; see this function's own history further up
+// for why zip-level Test_Control_Assignment/Match_Pair was removed).
+function buildMarketUploadXlsxPostalRows(analysis){
+  const sourceRows = analysis.penetration || [];
   // Descriptive-only DMA/"geographic location" lookup — never used to group
   // or drop rows, only to label them, same chunked-lookup pattern as
   // computeDmaRollup() above.
@@ -5139,46 +5130,45 @@ function buildMarketUploadXlsxRows(analysis){
     found.forEach(f => dmaByZip.set(f.zip, f));
   }
   return sourceRows.map(r => {
-    const key = r.zip;
     const dma = dmaByZip.get(String(r.zip || '').padStart(5, '0'));
-    const assignment = holdoutKeys.has(key) ? 'Holdout' : (pairLabelByKey[key] ? 'Test/Control' : 'Not in test');
+    // 2026-09-09 fix, per direct report ("We need to know the real market
+    // name") — a blank Geographic_Location cell with no explanation reads
+    // as broken; now it always says WHY when it's not a real market name:
+    // no crosswalk row at all for this zip vs. a matched row with no name
+    // on file are two different, disclosed situations.
+    const geographicLocation = dma
+      ? (dma.dmaName || `DMA ${dma.dmaCode} (name not on file)`)
+      : 'Not matched — not in the loaded zip→DMA reference data';
     return {
       postalCode: geoKeyLabel(r.zip),
-      geographicLocation: dma ? (dma.dmaName || dma.dmaCode || null) : null,
+      geographicLocation,
       country: geoKeyCountry(r.zip),
       customerCount: r.customerCount != null ? Number(r.customerCount) : null,
       revenue: r.revenue != null ? Number(r.revenue) : null,
-      population: r.population != null ? Number(r.population) : null,
-      index: r.penetrationIndex != null ? Number(r.penetrationIndex) : null,
-      opportunityTier: r.opportunityTier || null,
-      compositeScore: r.compositeScore != null ? Number(r.compositeScore) : null,
-      testControlAssignment: assignment,
-      matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null)
+      population: r.population != null ? Number(r.population) : null
     };
   }).sort((a, b) => ((b.customerCount || 0) - (a.customerCount || 0)) || ((b.revenue || 0) - (a.revenue || 0)));
 }
 const MARKET_XLSX_DEFINED_COUNTRIES = ['US', 'CA', 'IT', 'ES', 'DE', 'PT', 'GB', 'AU'];
 async function buildMarketUploadXlsx(analysis, upload, opts){
-  let rows = buildMarketUploadXlsxRows(analysis);
-  if (opts && opts.definedCountriesOnly){
-    rows = rows.filter(r => MARKET_XLSX_DEFINED_COUNTRIES.includes(r.country));
-  }
+  const definedOnly = !!(opts && opts.definedCountriesOnly);
+  let marketRows = buildMarketUploadXlsxMarketRows(analysis);
+  if (definedOnly) marketRows = marketRows.filter(r => MARKET_XLSX_DEFINED_COUNTRIES.includes(r.country));
   const isDma = analysis.geoLevel === 'dma';
+  // computeDmaRollup()'s own unmapped-zip count — the honest reason some
+  // volume never reaches the Market sheet at all (see this function's own
+  // comment above).
+  const unmapped = analysis.dma && analysis.dma.available ? { zips: analysis.dma.unmappedZips || 0, volume: analysis.dma.unmappedVolume || 0 } : null;
+
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Verilume';
   wb.created = new Date();
-  const sheet = wb.addWorksheet('Match Market Testing', { views: [{ state: 'frozen', ySplit: 3 }] });
-  // 2026-09-09, per direct instruction ("a file that includes the count of
-  // customers/transactions and sum of revenue by geographic location +
-  // postal code as our minimum output. Population and other metrics are
-  // nice to have") — Postal_Code and Geographic_Location are now always
-  // both present as their own columns (Postal_Code blank only for a
-  // genuine DMA-level upload, which has none), and Customer_Count/Revenue
-  // are two separate always-shown columns rather than one column whose
-  // meaning silently depended on weightMode.
-  const columns = [
-    { header: 'Postal_Code', width: 16 },
-    { header: 'Geographic_Location', width: 36 },
+  const titleSuffix = definedOnly ? ' — DEFINED COUNTRIES' : '';
+
+  // ---- Sheet 1: By Market (DMA) — the real test design ----
+  const marketSheet = wb.addWorksheet('By Market (DMA)', { views: [{ state: 'frozen', ySplit: 3 }] });
+  const marketColumns = [
+    { header: 'Geographic_Location', width: 40 },
     { header: 'Customer_Count', width: 16 },
     { header: 'Revenue', width: 16 },
     { header: 'Population', width: 14 },
@@ -5188,30 +5178,65 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
     { header: 'Test_Control_Assignment', width: 22 },
     { header: 'Match_Pair', width: 14 }
   ];
-  sheet.columns = columns.map(c => ({ width: c.width }));
-  const titleText = `${(upload.label || 'MATCH MARKET TESTING').toUpperCase()}${opts && opts.definedCountriesOnly ? ' — DEFINED COUNTRIES' : ''}`;
-  sheet.mergeCells(1, 1, 1, columns.length);
-  const titleCell = sheet.getCell(1, 1);
-  titleCell.value = titleText;
-  titleCell.font = { bold: true, size: 14 };
-  const noteCell = sheet.getCell(2, 1);
-  noteCell.value = isDma ? 'DMA-level upload — no postal code granularity in the source file.' : '';
-  noteCell.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
-  const headerRow = sheet.getRow(3);
-  columns.forEach((c, i) => { const cell = headerRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
-  rows.forEach((r, i) => {
-    const row = sheet.getRow(4 + i);
-    row.getCell(1).value = r.postalCode;
-    row.getCell(2).value = r.geographicLocation;
-    row.getCell(3).value = r.customerCount;
-    row.getCell(4).value = r.revenue;
-    row.getCell(5).value = r.population;
-    row.getCell(6).value = r.index;
-    row.getCell(7).value = r.opportunityTier;
-    row.getCell(8).value = r.compositeScore;
-    row.getCell(9).value = r.testControlAssignment;
-    row.getCell(10).value = r.matchPair;
+  marketSheet.columns = marketColumns.map(c => ({ width: c.width }));
+  marketSheet.mergeCells(1, 1, 1, marketColumns.length);
+  const marketTitleCell = marketSheet.getCell(1, 1);
+  marketTitleCell.value = `${(upload.label || 'MATCH MARKET TESTING').toUpperCase()}${titleSuffix} — BY MARKET (DMA)`;
+  marketTitleCell.font = { bold: true, size: 14 };
+  const marketNoteParts = [];
+  if (!marketRows.length) marketNoteParts.push(isDma ? 'No markets scored yet.' : 'No zip→DMA crosswalk is loaded, or none of this file\'s zips matched it — load zip→DMA reference data in the Ops Console, then re-export.');
+  if (unmapped && unmapped.zips > 0) marketNoteParts.push(`${unmapped.zips.toLocaleString()} postal code(s) (${Math.round(unmapped.volume).toLocaleString()} ${analysis.weightMode === 'revenue' ? 'in revenue' : 'customers'}) did not match any market in the loaded crosswalk and are not reflected here — see the "By Postal Code" tab.`);
+  const marketNoteCell = marketSheet.getCell(2, 1);
+  marketNoteCell.value = marketNoteParts.join(' ');
+  marketNoteCell.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+  const marketHeaderRow = marketSheet.getRow(3);
+  marketColumns.forEach((c, i) => { const cell = marketHeaderRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+  marketRows.forEach((r, i) => {
+    const row = marketSheet.getRow(4 + i);
+    row.getCell(1).value = r.geographicLocation;
+    row.getCell(2).value = r.customerCount;
+    row.getCell(3).value = r.revenue;
+    row.getCell(4).value = r.population;
+    row.getCell(5).value = r.index;
+    row.getCell(6).value = r.opportunityTier;
+    row.getCell(7).value = r.compositeScore;
+    row.getCell(8).value = r.testControlAssignment;
+    row.getCell(9).value = r.matchPair;
   });
+
+  // ---- Sheet 2: By Postal Code — reference detail only, not a second test
+  // design (see this function's own comment above for why) ----
+  if (!isDma){
+    let postalRows = buildMarketUploadXlsxPostalRows(analysis);
+    if (definedOnly) postalRows = postalRows.filter(r => MARKET_XLSX_DEFINED_COUNTRIES.includes(r.country));
+    const postalSheet = wb.addWorksheet('By Postal Code', { views: [{ state: 'frozen', ySplit: 3 }] });
+    const postalColumns = [
+      { header: 'Postal_Code', width: 16 },
+      { header: 'Geographic_Location', width: 40 },
+      { header: 'Customer_Count', width: 16 },
+      { header: 'Revenue', width: 16 },
+      { header: 'Population', width: 14 }
+    ];
+    postalSheet.columns = postalColumns.map(c => ({ width: c.width }));
+    postalSheet.mergeCells(1, 1, 1, postalColumns.length);
+    const postalTitleCell = postalSheet.getCell(1, 1);
+    postalTitleCell.value = `${(upload.label || 'MATCH MARKET TESTING').toUpperCase()}${titleSuffix} — BY POSTAL CODE (REFERENCE DETAIL)`;
+    postalTitleCell.font = { bold: true, size: 14 };
+    const postalNoteCell = postalSheet.getCell(2, 1);
+    postalNoteCell.value = 'Reference detail only — the Test/Control test design is on the "By Market (DMA)" tab, where volumes are large enough to be meaningful. Counts this small per postal code are not a sound basis for a market test on their own.';
+    postalNoteCell.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+    const postalHeaderRow = postalSheet.getRow(3);
+    postalColumns.forEach((c, i) => { const cell = postalHeaderRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+    postalRows.forEach((r, i) => {
+      const row = postalSheet.getRow(4 + i);
+      row.getCell(1).value = r.postalCode;
+      row.getCell(2).value = r.geographicLocation;
+      row.getCell(3).value = r.customerCount;
+      row.getCell(4).value = r.revenue;
+      row.getCell(5).value = r.population;
+    });
+  }
+
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
@@ -19330,6 +19355,4 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
-
 
