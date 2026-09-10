@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-10-default-store-set-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-10-store-sets-retired-flat-list-restored (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -4527,15 +4527,24 @@ ensureColumn('account_stores', 'country', "TEXT DEFAULT 'US'");
 // GET /api/market-zip-centroids/lookup) — no geocoder call needed, and no
 // country-specific regex-token-scan of a free-text address needed either.
 ensureColumn('account_stores', 'postalCode', 'TEXT');
-// 2026-09-10 — "Stores and trade areas" rebuild, per direct instruction:
-// account_stores used to be one continuously-edited list per account. Todd
-// now wants multiple named, permanently-kept store-location sets per
-// account (e.g. "Current locations" vs. "Proposed expansion"), mirroring
-// how customer uploads already work (every commit kept forever, with a
-// "Showing results for:" picker). setId is nullable for backward
-// compatibility with any pre-existing rows from before this table existed
-// — see ensureStoreSetMigration() below, which lazily backfills those into
-// a real set the first time GET .../store-sets runs for the account.
+// 2026-09-10 — "Stores and trade areas" was briefly rebuilt around named,
+// multiple store-location sets per account (a "Current locations" vs.
+// "Proposed expansion" picker, mirroring how customer uploads work). Per
+// direct instruction the same day ("This the store card that should be
+// active not new thing", referencing the original single flat-list design
+// — see frontend/portal.html's mst* section for the restored version),
+// that sets concept is RETIRED — accounts go back to one continuously-
+// edited store list, the way this always worked before. account_stores.setId
+// stays in the schema unused (harmless, and dropping a live column on
+// Vercel/Supabase is a real migration risk this doesn't need to take on);
+// nothing reads or writes it anymore. The account_store_sets table this
+// feature added is left in place for the same reason — empty of anything
+// meaningful once no code path creates rows in it — rather than risking a
+// DROP TABLE against production. ensureStoreSetMigration() (the function
+// that used to lazily backfill a default set) is removed along with the
+// four store-sets HTTP routes (GET/POST/PATCH/DELETE .../store-sets) that
+// used it; see GET/POST /api/accounts/:id/stores below for the restored
+// flat contract.
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_store_sets (
     id TEXT PRIMARY KEY,
@@ -4547,43 +4556,6 @@ createTableIfNeeded(`
   );
 `);
 ensureColumn('account_stores', 'setId', 'TEXT');
-// Lazy migration: the first time the store-sets list loads for an account,
-// auto-create one set named "My Stores" whenever the account has zero sets
-// — whether or not it already has orphaned (setId IS NULL) legacy rows to
-// fold into it. This covers two cases with one function: (1) an account
-// with pre-existing stores from before this feature existed — those rows
-// get reassigned into the new set, same as always; (2) a brand-new account
-// with zero stores and zero sets, which used to fall through this function
-// doing nothing, landing the UI on an empty "create a store set" screen
-// before a client could add even their first store. Fixed 2026-09-10 per
-// direct report ("the entire Stores and Trade UI that was present before
-// is gone... started with the individual store address") — the pre-named-
-// sets design let a client type a store straight in with no setup step;
-// gating that behind a mandatory "name your set first" screen was a real
-// regression, not the intended tradeoff of adding named sets. A client who
-// wants multiple named groups (e.g. "Current locations" vs. "Proposed
-// expansion") still can via "+ New set" — this only removes the forced
-// first step for the common single-list case, restoring it to feeling the
-// way it did before.
-// Idempotent — cheap to call on every GET .../store-sets request: real work
-// (the INSERT, and the UPDATE when there are orphaned rows) happens only
-// the one time an account has zero sets; every call after that is a single
-// no-op COUNT. setId is referenced bare/unquoted everywhere (never wrapped
-// in explicit AS "setId" outside a SELECT result list) so it folds to the
-// same physical column name on both write and read paths on Postgres — see
-// the SELECT endpoints below for where the explicit alias IS needed (a
-// bare SELECT result key must match this file's camelCase JS field access,
-// which a lowercase-folded, unaliased Postgres result column name would
-// not).
-function ensureStoreSetMigration(accountId){
-  const setCount = db.prepare('SELECT COUNT(*) AS n FROM account_store_sets WHERE accountId = ?').get(accountId).n;
-  if (setCount) return; // real sets already exist — nothing to backfill or default
-  const now = new Date().toISOString();
-  const id = generateId('SSET');
-  db.prepare('INSERT INTO account_store_sets (id, accountId, name, createdAt, updatedAt) VALUES (?,?,?,?,?)')
-    .run(id, accountId, 'My Stores', now, now);
-  db.prepare('UPDATE account_stores SET setId = ? WHERE accountId = ? AND setId IS NULL').run(id, accountId);
-}
 function haversineMiles(lat1, lng1, lat2, lng2){
   const R = 3958.7613, toRad = (d) => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
@@ -5167,7 +5139,8 @@ function computeMarketUploadAnalysis(accountId, upload, options){
       confidence: 'lower — DMA-level upload: no zip-level penetration. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
       penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
       audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport,
-      storeTradeArea: opts.storeSetId ? { available: false, note: 'This upload is DMA-level — store trade areas need zip-level customer data.', stores: [] } : null };
+      storeTradeArea: db.prepare('SELECT COUNT(*) AS n FROM account_stores WHERE accountId = ?').get(accountId).n
+        ? { available: false, note: 'This upload is DMA-level — store trade areas need zip-level customer data.', stores: [] } : null };
   }
   const penetration = computePenetrationIndex(rows, upload.weightMode);
   const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
@@ -5202,20 +5175,15 @@ function computeMarketUploadAnalysis(accountId, upload, options){
       }
     }
   } catch (e){ /* leave dmaExport unavailable — export falls back to zip rows */ }
-  // "By store trade area" — 2026-09-10 rebuild of the removed "Stores and
-  // trade areas" feature, now scoped to a specific named store set rather
-  // than one account-wide store list. Only computed when the caller
-  // passes a storeSetId (the frontend always will once an account has a
-  // selected set; an account with zero stores/sets yet just omits this
-  // section entirely rather than defaulting to some guessed set).
+  // "By store trade area" — computed against this account's flat store
+  // list (see GET/POST /api/accounts/:id/stores) whenever it has any
+  // stores at all; omitted entirely for an account with none yet.
   let storeTradeArea = null;
-  if (opts.storeSetId){
-    try {
-      const setStores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ? AND setId = ?').all(accountId, opts.storeSetId);
-      storeTradeArea = computeStoreTradeAreas(rows, setStores, radii, upload.weightMode);
-    } catch (e){
-      storeTradeArea = { available: false, note: `Store trade area not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] };
-    }
+  try {
+    const acctStores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
+    if (acctStores.length) storeTradeArea = computeStoreTradeAreas(rows, acctStores, radii, upload.weightMode);
+  } catch (e){
+    storeTradeArea = { available: false, note: `Store trade area not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] };
   }
   return {
     uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
@@ -10984,7 +10952,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-10-default-store-set-fix',
+        buildStamp: '2026-09-10-store-sets-retired-flat-list-restored',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -16984,109 +16952,40 @@ Submit your findings via the submit_brand_categories tool.`;
     // accountAddressGeocodedAt stay in the schema (harmless if unused —
     // removing columns is a real migration risk this fix doesn't need to
     // take on) but nothing writes or reads them anymore.
-    // ============ Stores and trade areas (2026-09-10 rebuild) ============
-    // Rebuilt after the 2026-09-10 removal (the Census coverage gap — see
-    // computeStoreProspectFit's own comment), now with a second capability
-    // layered in from the start: multiple named, permanently-kept
-    // store-location sets per account, mirroring how customer uploads
-    // already work. Every store-mutating call is scoped to a setId.
+    // ============ Stores and trade areas ============
+    // 2026-09-10: briefly rebuilt around named store-location sets, then
+    // retired the same day per direct instruction ("This the store card
+    // that should be active not new thing") — see the account_store_sets
+    // comment above createTableIfNeeded for the full history. Back to one
+    // flat, continuously-edited store list per account — no setId in any
+    // request.
 
-    // GET /api/accounts/:id/store-sets — lists every named store set for
-    // this account (storeCount per set), newest-updated first. Runs the
-    // lazy legacy-row migration first (see ensureStoreSetMigration above),
-    // so an account with old, pre-set-concept stores gets a real "My
-    // Stores" set the first time this loads, with those rows folded into
-    // it. storeCount comes from an explicit AS "storeCount" alias — not a
-    // real physical column, so it's not something schema-identifiers.json
-    // could fix even if it were added there; the alias is what makes the
-    // Postgres result key match this file's camelCase JS field access
-    // regardless of how the query text itself gets identifier-quoted.
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      ensureStoreSetMigration(accountId);
-      const sets = db.prepare(`
-        SELECT s.id, s.name, s.createdAt, s.updatedAt,
-          (SELECT COUNT(*) FROM account_stores st WHERE st.setId = s.id) AS "storeCount"
-        FROM account_store_sets s WHERE s.accountId = ? ORDER BY s.updatedAt DESC
-      `).all(accountId);
-      return sendJson(res, 200, { sets });
-    }
-    // POST /api/accounts/:id/store-sets — { name }
-    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const body = await readBody(req);
-      const name = String(body.name || '').trim();
-      if (!name) return sendJson(res, 400, { error: 'name is required — what should this store set be called?' });
-      const now = new Date().toISOString();
-      const id = generateId('SSET');
-      db.prepare('INSERT INTO account_store_sets (id, accountId, name, createdAt, updatedAt) VALUES (?,?,?,?,?)').run(id, accountId, name, now, now);
-      return sendJson(res, 201, { id, name, storeCount: 0, createdAt: now, updatedAt: now });
-    }
-    // PATCH /api/accounts/:id/store-sets/:setId — { name } (rename)
-    if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
-      const accountId = decodeURIComponent(parts[2]);
-      const setId = decodeURIComponent(parts[4]);
-      if (!requireAccount(req, res, accountId)) return;
-      const existing = db.prepare('SELECT id FROM account_store_sets WHERE id = ? AND accountId = ?').get(setId, accountId);
-      if (!existing) return sendJson(res, 404, { error: 'no such store set on this account' });
-      const body = await readBody(req);
-      const name = String(body.name || '').trim();
-      if (!name) return sendJson(res, 400, { error: 'name is required' });
-      const now = new Date().toISOString();
-      db.prepare('UPDATE account_store_sets SET name = ?, updatedAt = ? WHERE id = ? AND accountId = ?').run(name, now, setId, accountId);
-      return sendJson(res, 200, { id: setId, name, updatedAt: now });
-    }
-    // DELETE /api/accounts/:id/store-sets/:setId — deletes the set's
-    // stores first, then the set itself. No special-casing on "last
-    // remaining set" — deleting it just leaves zero sets on the account,
-    // which the frontend picker handles by prompting to create one.
-    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
-      const accountId = decodeURIComponent(parts[2]);
-      const setId = decodeURIComponent(parts[4]);
-      if (!requireAccount(req, res, accountId)) return;
-      const existing = db.prepare('SELECT id FROM account_store_sets WHERE id = ? AND accountId = ?').get(setId, accountId);
-      if (!existing) return sendJson(res, 404, { error: 'no such store set on this account' });
-      db.prepare('DELETE FROM account_stores WHERE accountId = ? AND setId = ?').run(accountId, setId);
-      db.prepare('DELETE FROM account_store_sets WHERE id = ? AND accountId = ?').run(setId, accountId);
-      return sendJson(res, 200, { deleted: true });
-    }
-
-    // GET /api/accounts/:id/stores?setId=... — the stores in one set.
+    // GET /api/accounts/:id/stores — every store on this account.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const url = new URL(req.url, 'http://localhost');
-      const setId = url.searchParams.get('setId');
-      if (!setId) return sendJson(res, 400, { error: 'setId is required — which store set do you want?' });
       const stores = db.prepare(`
         SELECT id, storeId AS "storeId", name, address, lat, lng, geocodeSource AS "geocodeSource",
-          postalCode AS "postalCode", country, setId AS "setId", updatedAt
-        FROM account_stores WHERE accountId = ? AND setId = ? ORDER BY name
-      `).all(accountId, setId);
+          postalCode AS "postalCode", country, updatedAt
+        FROM account_stores WHERE accountId = ? ORDER BY name
+      `).all(accountId);
       return sendJson(res, 200, { stores });
     }
-    // POST /api/accounts/:id/stores — body: { setId, rows: [...] } (bulk)
-    // or { setId, storeId, name, address, postalCode, country, lat, lng }
-    // (single manual add), plus optional replace:true to wipe this SET's
-    // existing stores first (never other sets on the same account). Upserts
-    // by (setId, storeId) when storeId is given. Auto-resolves lat/lng from
-    // zip_centroid_master via normalizeGeoKey() when a postalCode is given
-    // and no lat/lng was supplied — no geocoder round trip needed for a
-    // store whose postal code is already on file.
+    // POST /api/accounts/:id/stores — body: { rows: [...] } (bulk) or
+    // { storeId, name, address, postalCode, country, lat, lng } (single
+    // manual add), plus optional replace:true to wipe this account's
+    // existing store list first. Upserts by storeId when given. Auto-
+    // resolves lat/lng from zip_centroid_master via normalizeGeoKey() when
+    // a postalCode is given and no lat/lng was supplied — no geocoder round
+    // trip needed for a store whose postal code is already on file.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
-      const setId = body.setId;
-      if (!setId) return sendJson(res, 400, { error: 'setId is required — which store set are these stores for?' });
-      const setRow = db.prepare('SELECT id FROM account_store_sets WHERE id = ? AND accountId = ?').get(setId, accountId);
-      if (!setRow) return sendJson(res, 404, { error: 'no such store set on this account' });
       const incoming = Array.isArray(body.rows) ? body.rows : [body];
       if (!incoming.length) return sendJson(res, 400, { error: 'at least one store is required' });
       const now = new Date().toISOString();
-      if (body.replace) db.prepare('DELETE FROM account_stores WHERE accountId = ? AND setId = ?').run(accountId, setId);
+      if (body.replace) db.prepare('DELETE FROM account_stores WHERE accountId = ?').run(accountId);
       const inserted = [];
       const errors = [];
       incoming.forEach((r, i) => {
@@ -17110,24 +17009,21 @@ Submit your findings via the submit_brand_categories tool.`;
           }
         }
         if (!name && !storeId){ if (errors.length < 50) errors.push(`row ${i}: name or storeId is required`); return; }
-        const existingRow = storeId ? db.prepare('SELECT id FROM account_stores WHERE accountId = ? AND setId = ? AND storeId = ?').get(accountId, setId, storeId) : null;
+        const existingRow = storeId ? db.prepare('SELECT id FROM account_stores WHERE accountId = ? AND storeId = ?').get(accountId, storeId) : null;
         if (existingRow){
           db.prepare('UPDATE account_stores SET name = ?, address = ?, lat = ?, lng = ?, geocodeSource = ?, postalCode = ?, country = ?, updatedAt = ? WHERE id = ?')
             .run(name || null, address, lat, lng, geocodeSource, postalCode, country, now, existingRow.id);
           inserted.push(existingRow.id);
         } else {
           const id = generateId('STORE');
-          db.prepare('INSERT INTO account_stores (id, accountId, setId, storeId, name, address, lat, lng, geocodeSource, postalCode, country, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-            .run(id, accountId, setId, storeId, name || null, address, lat, lng, geocodeSource, postalCode, country, now);
+          db.prepare('INSERT INTO account_stores (id, accountId, storeId, name, address, lat, lng, geocodeSource, postalCode, country, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+            .run(id, accountId, storeId, name || null, address, lat, lng, geocodeSource, postalCode, country, now);
           inserted.push(id);
         }
       });
-      db.prepare('UPDATE account_store_sets SET updatedAt = ? WHERE id = ?').run(now, setId);
       return sendJson(res, 200, { inserted: inserted.length, errors });
     }
-    // DELETE /api/accounts/:id/stores/:storeRowId — scoped to account; the
-    // row id is already globally unique so setId isn't needed as a param,
-    // but the row must actually belong to this account.
+    // DELETE /api/accounts/:id/stores/:storeRowId — scoped to account.
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
       const accountId = decodeURIComponent(parts[2]);
       const storeRowId = decodeURIComponent(parts[4]);
@@ -17137,18 +17033,16 @@ Submit your findings via the submit_brand_categories tool.`;
       db.prepare('DELETE FROM account_stores WHERE id = ? AND accountId = ?').run(storeRowId, accountId);
       return sendJson(res, 200, { deleted: true });
     }
-    // GET /api/accounts/:id/stores/prospect-fit?setId=...&radii=5,10,15 —
-    // "Nearby prospects — Audience & Wealth Fit", no customer upload
-    // involved. See computeStoreProspectFit's own comment for the coverage
-    // caveats this feature was removed and rebuilt around.
+    // GET /api/accounts/:id/stores/prospect-fit?radii=5,10,15 — "Nearby
+    // prospects — Audience & Wealth Fit", no customer upload involved. See
+    // computeStoreProspectFit's own comment for the coverage caveats this
+    // feature was removed and rebuilt around.
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores' && parts[4] === 'prospect-fit'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const url = new URL(req.url, 'http://localhost');
-      const setId = url.searchParams.get('setId');
-      if (!setId) return sendJson(res, 400, { error: 'setId is required — which store set do you want?' });
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
-      const stores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ? AND setId = ?').all(accountId, setId);
+      const stores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
       const radii = url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined;
       const result = computeStoreProspectFit(stores, radii, account);
       return sendJson(res, 200, result);
@@ -17706,8 +17600,7 @@ Submit your findings via the submit_brand_categories tool.`;
         volumeWeight: url.searchParams.has('volumeWeight') ? Number(url.searchParams.get('volumeWeight')) : undefined,
         indexWeight: url.searchParams.has('indexWeight') ? Number(url.searchParams.get('indexWeight')) : undefined,
         holdoutFraction: url.searchParams.has('holdoutFraction') ? Number(url.searchParams.get('holdoutFraction')) : undefined,
-        radii: url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined,
-        storeSetId: url.searchParams.get('storeSetId') || undefined
+        radii: url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined
       });
       return sendJson(res, 200, analysis);
     }
@@ -19897,9 +19790,10 @@ INIT_PHASE = false;
 // properties to it doesn't change the module's existing export contract
 // (`require('./server.js')` is still directly callable exactly as before).
 handleRequest.testExports = {
-  db, generateId, ensureStoreSetMigration, computeStoreTradeAreas, computeStoreProspectFit,
+  db, generateId, computeStoreTradeAreas, computeStoreProspectFit,
   loadGeoReferenceBatch, GENERATION_WEALTH_INDEX
 };
 
 module.exports = handleRequest;
+
 
