@@ -9016,7 +9016,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-10-store-card-visual-restore';
+const CXMEDIA_BUILD_STAMP = '2026-09-10-prospect-fit-target-audience-count';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27071,6 +27071,7 @@ function mstProspectFitSectionHtml(data){
       ${i === 0 ? `<td rowspan="${s.rings.length}">${escapeHtml(s.name || s.storeId || '—')}</td>` : ''}
       <td>${r.radiusMiles} mi</td>
       <td>${r.population.toLocaleString()}</td>
+      <td><b>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.targetPopulation != null ? r.targetPopulation.toLocaleString() : '—')}</b></td>
       <td>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.audienceFit != null ? r.audienceFit : '—')}</td>
       <td>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.wealthFit != null ? `${r.wealthFit}${r.wealthBand ? ` (${escapeHtml(r.wealthBand)})` : ''}` : '—')}</td>
       <td>${r.matchesAccountWealthTier == null ? '—' : (r.matchesAccountWealthTier ? '✓ match' : '✗ off-target')}</td>
@@ -27078,9 +27079,9 @@ function mstProspectFitSectionHtml(data){
   return `
     <div style="margin-top:8px;">
       <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p>
-      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Audience Fit = target-generation population share nearby, indexed to the national average (100 = average). Wealth Fit = the same Verilume Wealth Index your Free Assessment uses, for the population nearby.</p>
+      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Target Audience = the estimated number of people nearby in your target generation(s) — your new-to-brand prospect pool. Audience Fit = that same share indexed to the national average (100 = average), for context. Wealth Fit = the same Verilume Wealth Index your Free Assessment uses, for the population nearby.</p>
       <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
-        <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Audience Fit</th><th>Wealth Fit</th><th>Matches your target?</th></tr></thead>
+        <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Target Audience</th><th>Audience Fit</th><th>Wealth Fit</th><th>Matches your target?</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <p class="hint" style="margin:0;">${escapeHtml(data.demographicCoverageNote || '')} ${escapeHtml(data.unavailableGenerationsNote || '')}</p>
