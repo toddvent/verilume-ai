@@ -376,11 +376,29 @@
         <div style="display:flex;align-items:flex-end;gap:10px;">
           <button class="btn" onclick="refDataLoadStatus()">Check status</button>
           <button class="btn primary" id="refDataLoadPublicBtn" onclick="refDataLoadPublic()">Load public reference data →</button>
-          <button class="btn primary" id="refDataLoadDemographicsBtn" onclick="refDataLoadDemographics()">Load demographics (age + income by zip) →</button>
+          <button class="btn primary" id="refDataLoadDemographicsBtn" onclick="refDataLoadDemographics()">Load demographics — full national (age + income by zip) →</button>
+        </div>
+      </div>
+      <!-- 2026-09-10 — per-state test control, added specifically so a
+           handful of sample states can be pulled and checked before
+           trusting the full 52-state national reload (see
+           refDataLoadDemographics()'s own comment and the backend
+           endpoint's 2026-09-10 "per-state looping" note for why this
+           exists: the prior flat national Census query only ever
+           returned 902 of 33,774 ZCTAs, and this is how that's now
+           verified live). Reuses the exact same endpoint/loader, just
+           scoped with ?states=. -->
+      <div class="field-row" style="margin-top:10px;">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <div style="flex:0 0 220px;">
+            <label>Test a few states first (2-letter, comma-separated)</label>
+            <input type="text" id="refDataDemoTestStates" placeholder="e.g. CA,NY,WY,VT">
+          </div>
+          <button class="btn" id="refDataLoadDemoTestBtn" onclick="refDataLoadDemographics(document.getElementById('refDataDemoTestStates').value)">Test these states →</button>
         </div>
       </div>
       <p class="proto-note">2020 Census ZCTA population + public zip→DMA crosswalk, fetched server-side through this console's own session and saved to the backend in batches. Needs a Census API key configured as the CENSUS_API_KEY environment variable on the backend — if that's missing, this will say so directly.</p>
-      <p class="proto-note">Demographics: 2022 ACS 5-Year age (5 generations: Gen Z, Millennials, Gen X, Boomers, Silent Gen — the same ones Company Profile's generation picker can actually back with real Census data) and a derived average-household-income estimate, by zip — feeds the Match Market Builder's per-store trade-area Audience/Wealth Fit scoring. Same Census API key requirement as above.</p>
+      <p class="proto-note">Demographics: 2022 ACS 5-Year age (5 generations: Gen Z, Millennials, Gen X, Boomers, Silent Gen — the same ones Company Profile's generation picker can actually back with real Census data) and a derived average-household-income estimate, by zip — feeds the Match Market Builder's per-store trade-area Audience/Wealth Fit scoring and the Test/Control demographic matching dimension. Same Census API key requirement as above. Pulled per state (50 states + DC + Puerto Rico) and merged — a prior version pulled the whole country in one flat query, which Census's ZCTA geography doesn't support reliably and silently returned only 2.7% of zips nationally. Use "Test these states" with a couple of sample states first to confirm real per-zip coverage before running the full national reload, which takes noticeably longer (dozens of Census API calls).</p>
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
         <div class="field-row three">
           <div>
@@ -1062,24 +1080,40 @@ async function refDataLoadStatus(){
 // materially larger pull (60 Census variables per zip vs. 1) and a
 // separate, newer reference dataset — staff should be able to (re)load it
 // independently of population/DMA.
-async function refDataLoadDemographics(){
+// 2026-09-10 — now takes an optional `statesCsv` ("CA,NY,WY,VT") so the
+// same loader backs both the "Test these states" button (a few sample
+// states, fast, for checking real coverage before committing to a full
+// reload) and the full national "Load demographics" button (all 52 ACS5
+// areas — omit statesCsv). Timeout raised from 60s to 110s (vercel.json's
+// maxDuration is 120s) since the backend now makes up to 104 Census API
+// calls for a full national pull instead of 2 — see the backend
+// endpoint's "per-state looping" comment for why this replaced the old
+// flat national query (which only ever returned 902 of 33,774 zips).
+async function refDataLoadDemographics(statesCsv){
   const status = document.getElementById('refDataLoadStatus');
   const say = (t) => { if (status) status.textContent = t; };
-  const btn = document.getElementById('refDataLoadDemographicsBtn'); if (btn) btn.disabled = true;
+  const testBtn = document.getElementById('refDataLoadDemoTestBtn');
+  const fullBtn = document.getElementById('refDataLoadDemographicsBtn');
+  if (testBtn) testBtn.disabled = true;
+  if (fullBtn) fullBtn.disabled = true;
+  const states = (statesCsv || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const qs = states.length ? `?states=${encodeURIComponent(states.join(','))}` : '';
   try {
-    say('Fetching ACS age + income data by zip from api.census.gov (every U.S. ZCTA in one pull — can take a minute)…');
-    const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/demographics`, { timeoutMs: 60000 });
+    say(states.length ? `Fetching ACS age + income data by zip for ${states.join(', ')} from api.census.gov…` : 'Fetching ACS age + income data by zip from api.census.gov, one state at a time (52 areas — can take a minute or two)…');
+    const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/demographics${qs}`, { timeoutMs: 110000 });
     if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status} ${t.slice(0, 200)}`); }
     const prJson = await pr.json();
     const demoRows = REF_DATA_SOURCES.demographics.parse(prJson.data, { ageBins: prJson.ageBins, binSuffix: prJson.binSuffix, incomeBracketMidpoints: prJson.incomeBracketMidpoints });
     if (!demoRows.length) throw new Error('Census API returned no ZCTA rows');
-    say(`Loading ${demoRows.length.toLocaleString()} demographic attribute rows…`);
+    const coverageNote = `${(prJson.zctaCount || 0).toLocaleString()} zip${prJson.zctaCount === 1 ? '' : 's'} covered from ${(prJson.statesQueried || []).length} state${(prJson.statesQueried || []).length === 1 ? '' : 's'} queried`;
+    const failNote = (prJson.statesFailed || []).length ? ` — ${prJson.statesFailed.length} state${prJson.statesFailed.length === 1 ? '' : 's'} failed: ${prJson.statesFailed.map(f => f.state).join(', ')}` : '';
+    say(`${coverageNote}${failNote}. Loading ${demoRows.length.toLocaleString()} demographic attribute rows…`);
     const d = await refDataPostChunks('/api/market-demographic-master', demoRows, { sourceLabel: REF_DATA_SOURCES.demographics.sourceLabel }, (done, n) => say(`Loading demographics ${done.toLocaleString()} / ${n.toLocaleString()}…`));
-    say(`Done — ${d.inserted.toLocaleString()} demographic attribute rows loaded.${d.errors.length ? ` Some rows were skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
+    say(`Done — ${coverageNote}${failNote}. ${d.inserted.toLocaleString()} demographic attribute rows loaded.${d.errors.length ? ` Some rows were skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
     refDataLoadStatus();
   } catch (e){
     say(`Couldn't load demographics: ${e && e.message ? e.message : e}`);
-  } finally { if (btn) btn.disabled = false; }
+  } finally { if (testBtn) testBtn.disabled = false; if (fullBtn) fullBtn.disabled = false; }
 }
 async function refDataLoadPublic(){
   const status = document.getElementById('refDataLoadStatus');
