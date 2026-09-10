@@ -6003,7 +6003,7 @@
              mouLoadUploadPicker()/mouSelectUpload() in the JS below. -->
         <div id="mouUploadPickerRow" class="btn-row" style="display:none;margin-bottom:10px;align-items:center;gap:8px;">
           <label for="mouUploadPicker" class="hint" style="margin:0;">Showing results for:</label>
-          <select id="mouUploadPicker" onchange="mouSelectUpload(this.value)" style="max-width:420px;"></select>
+          <select id="mouUploadPicker" class="tbl-select" onchange="mouSelectUpload(this.value)" style="max-width:420px;"></select>
         </div>
         <div id="mouResultsBody"></div>
       </div>
@@ -26728,11 +26728,18 @@ function mstProspectFitSectionHtml(pf){
     return `<h4 style="margin:18px 0 6px;">Nearby prospects (Audience &amp; Wealth Fit)</h4><p class="hint" style="margin:0;">${escapeHtml(pf.note || 'unavailable')}</p>`;
   }
   const rad = pf.radiiMiles;
+  // 2026-09-10, per direct question ("Does audience and wealth populate?")
+  // — a plain "—" with no explanation was indistinguishable from "still
+  // loading" or "correctly not near anything." A null Fit now always says
+  // why: no national baseline at all (the whole card's demographicCoverageNote,
+  // shown once below), or — new — this specific ring has zero demographic
+  // coverage even though other zips nationally do (noRingDemographicCoverage,
+  // shown inline per cell so it's obvious it's a local gap, not a bug).
   const rows = pf.stores.map(s => `<tr>
       <td>${escapeHtml(s.name)}${s.address ? `<div class="hint">${escapeHtml(s.address)}</div>` : ''}</td>
       ${s.rings.map(r => `<td style="text-align:right;">
-          ${r.audienceFit != null ? `Audience ${r.audienceFit}` : '<span class="hint">Audience —</span>'}<br>
-          ${r.wealthFit ? `Wealth ${r.wealthFit.index} — ${mstFitBadge(r.wealthFit.tier)}${r.wealthFit.matchesAccountTier === true ? ' <span class="hint">matches profile</span>' : (r.wealthFit.matchesAccountTier === false ? ' <span class="hint">off profile</span>' : '')}` : '<span class="hint">Wealth —</span>'}
+          ${r.audienceFit != null ? `Audience ${r.audienceFit}` : `<span class="hint">Audience — ${r.noRingDemographicCoverage ? '(no demographic data for this ring)' : ''}</span>`}<br>
+          ${r.wealthFit ? `Wealth ${r.wealthFit.index} — ${mstFitBadge(r.wealthFit.tier)}${r.wealthFit.matchesAccountTier === true ? ' <span class="hint">matches profile</span>' : (r.wealthFit.matchesAccountTier === false ? ' <span class="hint">off profile</span>' : '')}` : `<span class="hint">Wealth — ${r.noRingDemographicCoverage ? '(no demographic data for this ring)' : ''}</span>`}
           <div class="hint">${r.population != null ? Number(r.population).toLocaleString() + ' pop' : '—'}${r.avgIncomeEstimate != null ? ` · avg $${Number(r.avgIncomeEstimate).toLocaleString()}` : ''}</div>
         </td>`).join('')}
     </tr>`).join('');
@@ -26740,6 +26747,7 @@ function mstProspectFitSectionHtml(pf){
     <h4 style="margin:18px 0 6px;">Nearby prospects (Audience &amp; Wealth Fit) <span class="hint" style="font-weight:400;">${pf.storesGeocoded} of ${pf.storesTotal} stores geocoded · rings ${rad.join(' / ')} mi</span></h4>
     <p class="hint" style="margin:0 0 8px;">${escapeHtml(pf.disclosure || '')}</p>
     ${pf.audienceFitNote ? `<p class="hint" style="margin:0 0 8px;color:#b8860b;">${escapeHtml(pf.audienceFitNote)}</p>` : ''}
+    ${pf.demographicCoverageNote ? `<p class="hint" style="margin:0 0 8px;color:#b8860b;font-weight:600;">${escapeHtml(pf.demographicCoverageNote)}</p>` : ''}
     <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
       <thead><tr><th>Store</th>${rad.map(r => `<th style="text-align:right;">${r} mi ring</th>`).join('')}</tr></thead>
       <tbody>${rows || '<tr><td colspan="' + (rad.length + 1) + '">No geocoded stores yet.</td></tr>'}</tbody>
