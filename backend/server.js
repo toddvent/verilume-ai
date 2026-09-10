@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: crash-fix-2026-08-23-v1 (INIT_PHASE guard present)');
+console.log('[server.js] BUILD MARKER: 2026-09-10-store-sets-and-canada-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -128,7 +128,11 @@ const pdfParse = require('pdf-parse');
 // Vercel). Both expose the same synchronous db.exec/db.prepare(...).get|all|run
 // interface, so every query call site below works unmodified either way.
 // See pg-sync-bridge.js for how the Postgres path stays synchronous.
-const DB_PATH = path.join(__dirname, 'cxmedia.db');
+// CXMEDIA_TEST_DB_PATH lets an isolated test require this file against a
+// throwaway node:sqlite database (e.g. ':memory:') instead of the real
+// local dev file — never read in production (DATABASE_URL branch below
+// ignores this entirely).
+const DB_PATH = process.env.CXMEDIA_TEST_DB_PATH || path.join(__dirname, 'cxmedia.db');
 
 // 2026-08-23 fix — see the long comment below INIT_PHASE for why this
 // wrapper exists. In short: the ~230 `db.exec(...)` / `ensureColumn(...)`
@@ -4497,6 +4501,50 @@ ensureColumn('account_stores', 'country', "TEXT DEFAULT 'US'");
 // GET /api/market-zip-centroids/lookup) — no geocoder call needed, and no
 // country-specific regex-token-scan of a free-text address needed either.
 ensureColumn('account_stores', 'postalCode', 'TEXT');
+// 2026-09-10 — "Stores and trade areas" rebuild, per direct instruction:
+// account_stores used to be one continuously-edited list per account. Todd
+// now wants multiple named, permanently-kept store-location sets per
+// account (e.g. "Current locations" vs. "Proposed expansion"), mirroring
+// how customer uploads already work (every commit kept forever, with a
+// "Showing results for:" picker). setId is nullable for backward
+// compatibility with any pre-existing rows from before this table existed
+// — see ensureStoreSetMigration() below, which lazily backfills those into
+// a real set the first time GET .../store-sets runs for the account.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_store_sets (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    name TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+ensureColumn('account_stores', 'setId', 'TEXT');
+// Lazy migration: the first time the store-sets list loads for an account
+// that has orphaned (setId IS NULL) account_stores rows and zero sets yet,
+// auto-create one set named "My Stores" and fold those rows into it.
+// Idempotent — cheap to call on every GET .../store-sets request, since it
+// only ever does real work (two extra queries) the one time an account
+// actually has orphaned rows and no sets; every call after that is a single
+// no-op COUNT each. setId is referenced bare/unquoted everywhere (never
+// wrapped in explicit AS "setId" outside a SELECT result list) so it folds
+// to the same physical column name on both write and read paths on
+// Postgres — see the SELECT endpoints below for where the explicit alias
+// IS needed (a bare SELECT result key must match this file's camelCase
+// JS field access, which a lowercase-folded, unaliased Postgres result
+// column name would not).
+function ensureStoreSetMigration(accountId){
+  const orphaned = db.prepare('SELECT COUNT(*) AS n FROM account_stores WHERE accountId = ? AND setId IS NULL').get(accountId).n;
+  if (!orphaned) return;
+  const setCount = db.prepare('SELECT COUNT(*) AS n FROM account_store_sets WHERE accountId = ?').get(accountId).n;
+  if (setCount) return; // real sets already exist — leave orphaned rows alone rather than guess which set they belong to
+  const now = new Date().toISOString();
+  const id = generateId('SSET');
+  db.prepare('INSERT INTO account_store_sets (id, accountId, name, createdAt, updatedAt) VALUES (?,?,?,?,?)')
+    .run(id, accountId, 'My Stores', now, now);
+  db.prepare('UPDATE account_stores SET setId = ? WHERE accountId = ? AND setId IS NULL').run(id, accountId);
+}
 function haversineMiles(lat1, lng1, lat2, lng2){
   const R = 3958.7613, toRad = (d) => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
@@ -4681,6 +4729,289 @@ const GENERATION_WEALTH_INDEX = {
   genalpha: 0.05, genbeta: 0.0, greatest: 1.74
 };
 
+// ---- Store trade areas / Nearby prospects (2026-09-10 rebuild) ----
+// Reconstructing the "Stores and trade areas" feature removed the same day
+// over the Census coverage gap (see the long removal comment near the old
+// route location) — Todd wants it back, plus the new named-store-sets
+// capability above. Same posture on the coverage gap as before: real
+// numbers where real data exists, an honest null (never a fabricated 0)
+// and a plain-language note where it doesn't.
+
+// The five generations this backend can map to real Census data — same
+// list ACS_AGE_BINS/GENERATION_WEALTH_INDEX track. Gen Alpha, Gen Beta and
+// The Greatest Generation are NOT available at this ZCTA granularity; never
+// fabricate a number for them.
+const TRACKED_GENERATIONS = ['genz', 'millennial', 'genx', 'boomer', 'silent'];
+function parseAccountGenerations(account){
+  const raw = String((account && account.audience) || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const gens = raw.filter(g => TRACKED_GENERATIONS.includes(g));
+  return gens.length ? gens : TRACKED_GENERATIONS.slice(); // no selection on file — treat as a general audience
+}
+function parseAccountWealthTiers(account){
+  const raw = String((account && account.wealth) || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return raw.filter(w => ['hnw', 'wealthy', 'middle'].includes(w));
+}
+const WEALTH_TIER_ORDER_BACKEND = ['hnw', 'wealthy', 'middle'];
+function accountWealthTierLabel(account){
+  const tiers = new Set(parseAccountWealthTiers(account));
+  const key = WEALTH_TIER_ORDER_BACKEND.find(k => tiers.has(k));
+  return key ? { key, label: { hnw: 'High Net-Worth', wealthy: 'Wealthy', middle: 'Mainstream / Value-Conscious' }[key] } : null;
+}
+// Mirrors assessment.html's generationWealthMultiplier(): the average
+// GENERATION_WEALTH_INDEX across whichever generation(s) are actually
+// selected — ported here, not reinvented, so a ring's Wealth Fit lands on
+// the exact same scale a visitor's own Verilume Wealth Index does.
+function generationWealthMultiplierBackend(gens){
+  const list = (gens && gens.length) ? gens : ['general'];
+  const sum = list.reduce((s, g) => s + (GENERATION_WEALTH_INDEX[g] != null ? GENERATION_WEALTH_INDEX[g] : 1.0), 0);
+  return sum / list.length;
+}
+// Same band cutoffs as assessment.html's wealthIndexLabel()/
+// deriveWealthTiersFromIndex() — 100 = the average U.S. household.
+function wealthIndexBandBackend(index){
+  if (index == null) return null;
+  if (index >= 200) return { key: 'hnw', label: 'High Net-Worth / Luxury' };
+  if (index >= 130) return { key: 'wealthy', label: 'Wealthy' };
+  if (index >= 70) return { key: 'middle', label: 'Mainstream Affluent' };
+  return { key: 'middle', label: 'Value-Conscious' };
+}
+
+// One batched pass over the full reference tables this ring math needs —
+// called ONCE per computeStoreTradeAreas()/computeStoreProspectFit() call,
+// never per store or per zip. This is the exact pattern computePenetrationIndex/
+// computeDmaRollup already establish (see their comments for the real,
+// previously-fixed N+1 bug this avoids): every zip this function might ever
+// touch is small enough (national ZCTA count, not per-account) to hold in
+// memory as plain Maps/arrays, built with a fixed, small number of
+// db.prepare() calls regardless of how many stores or customer rows are
+// being analyzed.
+function loadGeoReferenceBatch(attributes){
+  const centroids = db.prepare('SELECT zip, lat, lng FROM zip_centroid_master').all();
+  const population = new Map(db.prepare('SELECT zip, population FROM zip_population_master').all().map(r => [r.zip, r.population]));
+  const demoByZip = new Map(); // zip -> { attribute: value }
+  if (attributes && attributes.length){
+    const placeholders = attributes.map(() => '?').join(',');
+    const rows = db.prepare(`SELECT zip, attribute, value FROM zip_demographic_master WHERE attribute IN (${placeholders})`).all(...attributes);
+    rows.forEach(r => {
+      if (!demoByZip.has(r.zip)) demoByZip.set(r.zip, {});
+      demoByZip.get(r.zip)[r.attribute] = r.value;
+    });
+  }
+  return { centroids, population, demoByZip };
+}
+
+// zips within `radiusMiles` of (lat, lng), from an already-loaded centroid
+// array (no DB call here — see loadGeoReferenceBatch above).
+function zipsWithinRadius(centroids, lat, lng, radiusMiles){
+  return centroids.filter(c => haversineMiles(lat, lng, c.lat, c.lng) <= radiusMiles).map(c => c.zip);
+}
+
+function zScore(values){
+  const valid = values.filter(v => v != null);
+  if (valid.length < 2) return values.map(() => null);
+  const mean = valid.reduce((s, v) => s + v, 0) / valid.length;
+  const variance = valid.reduce((s, v) => s + (v - mean) ** 2, 0) / valid.length;
+  const sd = Math.sqrt(variance);
+  return values.map(v => (v == null || !sd) ? null : (v - mean) / sd);
+}
+
+// computeStoreTradeAreas(rows, stores, radii, weightMode) — ring-based
+// (haversine, NOT drive-time) penetration analysis for one committed
+// customer upload against one store-location set. Default radii 3/5/10
+// miles (overridable, matching the same default this file's other ring
+// analyses use). For each store, for each ring: the zips within that ring,
+// the customer volume + population inside it, a penetration rate
+// (volume/population) and an index of that rate vs. the account's average
+// store on the same ring. Every uploaded customer zip is assigned to its
+// single nearest store, but ONLY if it falls within that store's largest
+// ring — otherwise it's counted in beyondRings, never force-assigned to a
+// store it's nowhere near. Zips with no centroid or no population on file
+// count toward unmapped, never silently dropped.
+function computeStoreTradeAreas(rows, stores, radii, weightMode){
+  const mode = weightMode === 'revenue' ? 'revenue' : 'count';
+  const ringRadii = (Array.isArray(radii) && radii.length) ? radii.slice().sort((a, b) => a - b) : [3, 5, 10];
+  const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null);
+  const disclosure = 'Trade areas are straight-line (as-the-crow-flies) distance rings around each store\'s geocoded location, not drive-time — a customer 3 miles away by road can fall outside a 3-mile straight-line ring, or vice versa. Treat these as an approximate, directional read, not a precise service-area boundary.';
+  if (!geocoded.length){
+    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see trade areas.', disclosure, stores: [], beyondRings: 0, unmapped: 0, matching: { pairs: [], flag: 'insufficient_stores' } };
+  }
+  const largestRing = ringRadii[ringRadii.length - 1];
+  const { centroids, population } = loadGeoReferenceBatch([]);
+  const volByZip = new Map();
+  const rowByZip = new Map((rows || []).map(r => [r.zip, r]));
+  (rows || []).forEach(r => volByZip.set(r.zip, mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0)));
+
+  // Per-store, per-ring aggregation.
+  const storeResults = geocoded.map(store => {
+    const rings = ringRadii.map(radius => {
+      const zipsInRing = zipsWithinRadius(centroids, store.lat, store.lng, radius);
+      let volume = 0, pop = 0, popKnown = 0;
+      zipsInRing.forEach(z => {
+        if (volByZip.has(z)) volume += volByZip.get(z);
+        const p = population.get(z);
+        if (p != null){ pop += p; popKnown++; }
+      });
+      const rate = pop > 0 ? volume / pop : null;
+      return { radiusMiles: radius, zipCount: zipsInRing.length, zipsWithPopulation: popKnown, volume, population: pop, penetrationRate: rate };
+    });
+    return { id: store.id, storeId: store.storeId, name: store.name, address: store.address, lat: store.lat, lng: store.lng, rings };
+  });
+
+  // Index each ring's rate vs. the average of that same ring across stores.
+  ringRadii.forEach((radius, i) => {
+    const rates = storeResults.map(s => s.rings[i].penetrationRate).filter(r => r != null);
+    const avg = rates.length ? rates.reduce((s, v) => s + v, 0) / rates.length : null;
+    storeResults.forEach(s => {
+      const ring = s.rings[i];
+      ring.penetrationIndex = (ring.penetrationRate != null && avg) ? Math.round((ring.penetrationRate / avg) * 100) : null;
+    });
+  });
+
+  // Nearest-store assignment, largest ring only.
+  let beyondRings = 0, unmapped = 0;
+  const assignedVolumeByStore = new Map(storeResults.map(s => [s.id, 0]));
+  (rows || []).forEach(r => {
+    const c = centroids.find(c => c.zip === r.zip); // small: only runs against the already-loaded in-memory array, not a DB call
+    if (!c || !population.has(r.zip)){ unmapped++; return; }
+    let nearest = null, nearestDist = null;
+    geocoded.forEach(store => {
+      const d = haversineMiles(store.lat, store.lng, c.lat, c.lng);
+      if (nearestDist == null || d < nearestDist){ nearest = store; nearestDist = d; }
+    });
+    if (!nearest || nearestDist > largestRing){ beyondRings++; return; }
+    const vol = mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0);
+    assignedVolumeByStore.set(nearest.id, (assignedVolumeByStore.get(nearest.id) || 0) + vol);
+  });
+  storeResults.forEach(s => { s.assignedVolume = assignedVolumeByStore.get(s.id) || 0; });
+
+  // Matched store pairs — z-scored log(largest-ring volume), largest-ring
+  // penetration rate, log(largest-ring population); same nearest-neighbor
+  // Euclidean-distance approach computeMatchedMarketPairs uses for zips,
+  // applied here to stores instead.
+  const lastIdx = ringRadii.length - 1;
+  const logVols = storeResults.map(s => Math.log(1 + (s.rings[lastIdx].volume || 0)));
+  const rates = storeResults.map(s => s.rings[lastIdx].penetrationRate);
+  const logPops = storeResults.map(s => Math.log(1 + (s.rings[lastIdx].population || 0)));
+  const zVol = zScore(logVols), zRate = zScore(rates), zPop = zScore(logPops);
+  const vectors = storeResults.map((s, i) => {
+    const v = {};
+    if (zVol[i] != null) v.volume = zVol[i];
+    if (zRate[i] != null) v.penetrationRate = zRate[i];
+    if (zPop[i] != null) v.population = zPop[i];
+    return v;
+  });
+  const used = new Set();
+  const pairs = [];
+  storeResults.forEach((sA, i) => {
+    if (used.has(i)) return;
+    let best = null, bestDist = null;
+    storeResults.forEach((sB, j) => {
+      if (i === j || used.has(j)) return;
+      const dist = euclideanDistance(vectors[i], vectors[j]);
+      if (dist != null && (bestDist == null || dist < bestDist)){ best = j; bestDist = dist; }
+    });
+    if (best != null){ used.add(i); used.add(best); pairs.push({ testStoreId: sA.id, controlStoreId: storeResults[best].id, similarityDistance: bestDist }); }
+  });
+
+  return {
+    available: true,
+    disclosure,
+    radii: ringRadii,
+    stores: storeResults,
+    beyondRings, unmapped,
+    matching: { pairs, flag: pairs.length ? 'ok' : 'insufficient_stores', note: 'Similarity is computed from volume, penetration rate and population at each store\'s largest ring — a "who\'s nearby and how it performs" match, not a performance-validated one.' }
+  };
+}
+
+// computeStoreProspectFit(stores, radii, account) — "Nearby prospects:
+// Audience & Wealth Fit". Deliberately WIDER default rings (5/10/15 mi)
+// than the trade-area rings above, since this measures the surrounding
+// population's fit for the account's target audience, not customer-matched
+// penetration. Audience Fit = the ring's target-generation population
+// share, indexed to the national average share. Wealth Fit = the ring's
+// population-weighted average income run through the same Verilume Wealth
+// Index math as assessment.html, compared against the account's own
+// wealth tier. A ring with zero demographic coverage reports null (never
+// 0) for both, plus noRingDemographicCoverage:true so the UI can explain a
+// bare "—" instead of showing it unexplained.
+function computeStoreProspectFit(stores, radii, account){
+  const ringRadii = (Array.isArray(radii) && radii.length) ? radii.slice().sort((a, b) => a - b) : [5, 10, 15];
+  const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null);
+  const targetGens = parseAccountGenerations(account);
+  const genMult = generationWealthMultiplierBackend(targetGens);
+  const attrs = TRACKED_GENERATIONS.map(g => `population_${g}`).concat(['income_avg_estimate']);
+  const { centroids, population, demoByZip } = loadGeoReferenceBatch(attrs);
+
+  const zipsWithAnyDemographicData = demoByZip.size;
+  // National baseline, from every zip that has BOTH population and at
+  // least one demographic attribute on file — one pass over the already-
+  // loaded in-memory maps, no per-ring/per-store DB call.
+  let natPop = 0, natGenPop = 0, natIncomeWeighted = 0, natIncomeWeight = 0;
+  demoByZip.forEach((attrs2, zip) => {
+    const pop = population.get(zip);
+    if (pop == null) return;
+    natPop += pop;
+    targetGens.forEach(g => { const v = attrs2[`population_${g}`]; if (v != null) natGenPop += v; });
+    if (attrs2.income_avg_estimate != null){ natIncomeWeighted += attrs2.income_avg_estimate * pop; natIncomeWeight += pop; }
+  });
+  const nationalGenShare = natPop > 0 ? natGenPop / natPop : null;
+  const nationalAvgIncome = natIncomeWeight > 0 ? natIncomeWeighted / natIncomeWeight : null;
+  const demographicCoverageNote = zipsWithAnyDemographicData
+    ? `Real Census-sourced demographic coverage is limited to ${zipsWithAnyDemographicData.toLocaleString()} ZCTA(s) nationally — a ring with no coverage shows "—" below, which means no data, not zero.`
+    : 'No Census-sourced demographic data is loaded yet — Audience Fit and Wealth Fit can\'t be computed until it is. Population-only figures below are still real.';
+
+  const acctTier = accountWealthTierLabel(account);
+
+  if (!geocoded.length){
+    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens };
+  }
+
+  const storeResults = geocoded.map(store => {
+    const rings = ringRadii.map(radius => {
+      const zipsInRing = zipsWithinRadius(centroids, store.lat, store.lng, radius);
+      let pop = 0, genPop = 0, incomeWeighted = 0, incomeWeight = 0, zipsWithDemo = 0;
+      zipsInRing.forEach(z => {
+        const p = population.get(z);
+        if (p != null) pop += p;
+        const attrs2 = demoByZip.get(z);
+        if (attrs2){
+          zipsWithDemo++;
+          targetGens.forEach(g => { const v = attrs2[`population_${g}`]; if (v != null) genPop += v; });
+          if (attrs2.income_avg_estimate != null && p != null){ incomeWeighted += attrs2.income_avg_estimate * p; incomeWeight += p; }
+        }
+      });
+      const noRingDemographicCoverage = zipsWithDemo === 0;
+      const genShare = (!noRingDemographicCoverage && pop > 0) ? genPop / pop : null;
+      const audienceFit = (genShare != null && nationalGenShare) ? Math.round((genShare / nationalGenShare) * 100) : null;
+      const avgIncome = incomeWeight > 0 ? incomeWeighted / incomeWeight : null;
+      const wealthIndex = (avgIncome != null && nationalAvgIncome) ? Math.round((avgIncome / nationalAvgIncome) * genMult * 100) : null;
+      const wealthBand = wealthIndexBandBackend(wealthIndex);
+      return {
+        radiusMiles: radius, zipCount: zipsInRing.length, population: pop,
+        noRingDemographicCoverage,
+        audienceFit, wealthFit: wealthIndex,
+        wealthBand: wealthBand ? wealthBand.label : null,
+        matchesAccountWealthTier: (wealthBand && acctTier) ? wealthBand.key === acctTier.key : null
+      };
+    });
+    return { id: store.id, storeId: store.storeId, name: store.name, address: store.address, lat: store.lat, lng: store.lng, rings };
+  });
+
+  return {
+    available: true,
+    radii: ringRadii,
+    targetGenerations: targetGens,
+    accountWealthTier: acctTier,
+    stores: storeResults,
+    demographicCoverageNote,
+    zipsWithAnyDemographicData,
+    nationalGenerationShare: nationalGenShare,
+    nationalAverageIncome: nationalAvgIncome,
+    unavailableGenerations: { genalpha: 'Gen Alpha', genbeta: 'Gen Beta', greatest: 'The Greatest Generation' },
+    unavailableGenerationsNote: 'Gen Alpha, Gen Beta and The Greatest Generation are not tracked at this Census ZCTA granularity — never shown as a number, disclosed as unavailable wherever referenced.'
+  };
+}
+
 // Real per-zip demographic index: this upload's own zips' average of each
 // tracked attribute vs. each individual zip's value, indexed to 100 the
 // same way as the penetration index above. Multiple attributes each get
@@ -4796,7 +5127,8 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     return { uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
       confidence: 'lower — DMA-level upload: no zip-level penetration. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
       penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
-      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport };
+      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport,
+      storeTradeArea: opts.storeSetId ? { available: false, note: 'This upload is DMA-level — store trade areas need zip-level customer data.', stores: [] } : null };
   }
   const penetration = computePenetrationIndex(rows, upload.weightMode);
   const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
@@ -4831,14 +5163,26 @@ function computeMarketUploadAnalysis(accountId, upload, options){
       }
     }
   } catch (e){ /* leave dmaExport unavailable — export falls back to zip rows */ }
-  // Store trade areas (computeStoreTradeAreas) removed 2026-09-10 along
-  // with the rest of the "Stores and trade areas" feature — see the
-  // removal note above the (now-deleted) .../stores endpoints.
+  // "By store trade area" — 2026-09-10 rebuild of the removed "Stores and
+  // trade areas" feature, now scoped to a specific named store set rather
+  // than one account-wide store list. Only computed when the caller
+  // passes a storeSetId (the frontend always will once an account has a
+  // selected set; an account with zero stores/sets yet just omits this
+  // section entirely rather than defaulting to some guessed set).
+  let storeTradeArea = null;
+  if (opts.storeSetId){
+    try {
+      const setStores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ? AND setId = ?').all(accountId, opts.storeSetId);
+      storeTradeArea = computeStoreTradeAreas(rows, setStores, radii, upload.weightMode);
+    } catch (e){
+      storeTradeArea = { available: false, note: `Store trade area not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] };
+    }
+  }
   return {
     uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
     holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
-    demographic, matching, audit, dma, dmaExport, geoLevel: 'zip'
+    demographic, matching, audit, dma, dmaExport, geoLevel: 'zip', storeTradeArea
   };
 }
 
@@ -10590,7 +10934,7 @@ async function handleRequest(req, res) {
     // possible to confirm which copy of the code is actually running on
     // both sides of a deploy rather than inferring it from behavior.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'health'){
-      return sendJson(res, 200, { ok: true, db: DB_PATH, buildStamp: '132c17-2026-08-17-campaign-job-id-mailclass' });
+      return sendJson(res, 200, { ok: true, db: DB_PATH, buildStamp: '2026-09-10-store-sets-and-canada-fix' });
     }
 
     // GET /api/ops/integration-status — 2026-08-20, per direct instruction
@@ -16573,22 +16917,175 @@ Submit your findings via the submit_brand_categories tool.`;
     // accountAddressGeocodedAt stay in the schema (harmless if unused —
     // removing columns is a real migration risk this fix doesn't need to
     // take on) but nothing writes or reads them anymore.
-    // GET/POST/DELETE /api/accounts/:id/stores and
-    // GET /api/accounts/:id/stores/prospect-fit — removed 2026-09-10, per
-    // direct instruction ("Go ahead and eliminate the store and trade
-    // areas unless we can find full national coverage"). Root cause: once
-    // the Census 50-variable-per-query cap bug was fixed and real
-    // demographic data started loading, coverage turned out to be only
-    // 902 of 33,774 ZCTAs nationally (2.7%) — not enough for a trustworthy
-    // national feature. Todd chose to remove the whole "Stores and trade
-    // areas" card (frontend/portal.html) rather than keep just the
-    // Census-dependent Audience/Wealth Fit piece, which also took the
-    // upload-driven "By store trade area" section (computeStoreTradeAreas,
-    // below) and store address management with it. account_stores stays
-    // in the schema (no destructive migration from here) but nothing
-    // reads or writes it anymore. See this project's
-    // cxmedia-store-trade-area-audience-match-scoping-2026-09-09.md for
-    // the full diagnosis and this removal.
+    // ============ Stores and trade areas (2026-09-10 rebuild) ============
+    // Rebuilt after the 2026-09-10 removal (the Census coverage gap — see
+    // computeStoreProspectFit's own comment), now with a second capability
+    // layered in from the start: multiple named, permanently-kept
+    // store-location sets per account, mirroring how customer uploads
+    // already work. Every store-mutating call is scoped to a setId.
+
+    // GET /api/accounts/:id/store-sets — lists every named store set for
+    // this account (storeCount per set), newest-updated first. Runs the
+    // lazy legacy-row migration first (see ensureStoreSetMigration above),
+    // so an account with old, pre-set-concept stores gets a real "My
+    // Stores" set the first time this loads, with those rows folded into
+    // it. storeCount comes from an explicit AS "storeCount" alias — not a
+    // real physical column, so it's not something schema-identifiers.json
+    // could fix even if it were added there; the alias is what makes the
+    // Postgres result key match this file's camelCase JS field access
+    // regardless of how the query text itself gets identifier-quoted.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      ensureStoreSetMigration(accountId);
+      const sets = db.prepare(`
+        SELECT s.id, s.name, s.createdAt, s.updatedAt,
+          (SELECT COUNT(*) FROM account_stores st WHERE st.setId = s.id) AS "storeCount"
+        FROM account_store_sets s WHERE s.accountId = ? ORDER BY s.updatedAt DESC
+      `).all(accountId);
+      return sendJson(res, 200, { sets });
+    }
+    // POST /api/accounts/:id/store-sets — { name }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const name = String(body.name || '').trim();
+      if (!name) return sendJson(res, 400, { error: 'name is required — what should this store set be called?' });
+      const now = new Date().toISOString();
+      const id = generateId('SSET');
+      db.prepare('INSERT INTO account_store_sets (id, accountId, name, createdAt, updatedAt) VALUES (?,?,?,?,?)').run(id, accountId, name, now, now);
+      return sendJson(res, 201, { id, name, storeCount: 0, createdAt: now, updatedAt: now });
+    }
+    // PATCH /api/accounts/:id/store-sets/:setId — { name } (rename)
+    if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
+      const accountId = decodeURIComponent(parts[2]);
+      const setId = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      const existing = db.prepare('SELECT id FROM account_store_sets WHERE id = ? AND accountId = ?').get(setId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'no such store set on this account' });
+      const body = await readBody(req);
+      const name = String(body.name || '').trim();
+      if (!name) return sendJson(res, 400, { error: 'name is required' });
+      const now = new Date().toISOString();
+      db.prepare('UPDATE account_store_sets SET name = ?, updatedAt = ? WHERE id = ? AND accountId = ?').run(name, now, setId, accountId);
+      return sendJson(res, 200, { id: setId, name, updatedAt: now });
+    }
+    // DELETE /api/accounts/:id/store-sets/:setId — deletes the set's
+    // stores first, then the set itself. No special-casing on "last
+    // remaining set" — deleting it just leaves zero sets on the account,
+    // which the frontend picker handles by prompting to create one.
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'store-sets'){
+      const accountId = decodeURIComponent(parts[2]);
+      const setId = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      const existing = db.prepare('SELECT id FROM account_store_sets WHERE id = ? AND accountId = ?').get(setId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'no such store set on this account' });
+      db.prepare('DELETE FROM account_stores WHERE accountId = ? AND setId = ?').run(accountId, setId);
+      db.prepare('DELETE FROM account_store_sets WHERE id = ? AND accountId = ?').run(setId, accountId);
+      return sendJson(res, 200, { deleted: true });
+    }
+
+    // GET /api/accounts/:id/stores?setId=... — the stores in one set.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const url = new URL(req.url, 'http://localhost');
+      const setId = url.searchParams.get('setId');
+      if (!setId) return sendJson(res, 400, { error: 'setId is required — which store set do you want?' });
+      const stores = db.prepare(`
+        SELECT id, storeId AS "storeId", name, address, lat, lng, geocodeSource AS "geocodeSource",
+          postalCode AS "postalCode", country, setId AS "setId", updatedAt
+        FROM account_stores WHERE accountId = ? AND setId = ? ORDER BY name
+      `).all(accountId, setId);
+      return sendJson(res, 200, { stores });
+    }
+    // POST /api/accounts/:id/stores — body: { setId, rows: [...] } (bulk)
+    // or { setId, storeId, name, address, postalCode, country, lat, lng }
+    // (single manual add), plus optional replace:true to wipe this SET's
+    // existing stores first (never other sets on the same account). Upserts
+    // by (setId, storeId) when storeId is given. Auto-resolves lat/lng from
+    // zip_centroid_master via normalizeGeoKey() when a postalCode is given
+    // and no lat/lng was supplied — no geocoder round trip needed for a
+    // store whose postal code is already on file.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const setId = body.setId;
+      if (!setId) return sendJson(res, 400, { error: 'setId is required — which store set are these stores for?' });
+      const setRow = db.prepare('SELECT id FROM account_store_sets WHERE id = ? AND accountId = ?').get(setId, accountId);
+      if (!setRow) return sendJson(res, 404, { error: 'no such store set on this account' });
+      const incoming = Array.isArray(body.rows) ? body.rows : [body];
+      if (!incoming.length) return sendJson(res, 400, { error: 'at least one store is required' });
+      const now = new Date().toISOString();
+      if (body.replace) db.prepare('DELETE FROM account_stores WHERE accountId = ? AND setId = ?').run(accountId, setId);
+      const inserted = [];
+      const errors = [];
+      incoming.forEach((r, i) => {
+        const name = String(r.name || '').trim();
+        const address = String(r.address || '').trim() || null;
+        const storeId = r.storeId != null ? String(r.storeId).trim() || null : null;
+        const country = normalizeCountry(r.country) || 'US';
+        let postalCode = null, lat = r.lat != null ? Number(r.lat) : null, lng = r.lng != null ? Number(r.lng) : null;
+        const rawPostal = r.postalCode != null ? r.postalCode : (r.zip != null ? r.zip : null);
+        let geocodeSource = null;
+        if (rawPostal != null && String(rawPostal).trim()){
+          const g = normalizeGeoKey(rawPostal, country);
+          if (g){
+            postalCode = g.key;
+            if (lat == null || lng == null){
+              const c = db.prepare('SELECT lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?').get(g.key);
+              if (c){ lat = c.lat; lng = c.lng; geocodeSource = `zip centroid (${c.sourceLabel})`; }
+            }
+          } else {
+            if (errors.length < 50) errors.push(`row ${i}: "${rawPostal}" isn't a recognised postal code for ${country}`);
+          }
+        }
+        if (!name && !storeId){ if (errors.length < 50) errors.push(`row ${i}: name or storeId is required`); return; }
+        const existingRow = storeId ? db.prepare('SELECT id FROM account_stores WHERE accountId = ? AND setId = ? AND storeId = ?').get(accountId, setId, storeId) : null;
+        if (existingRow){
+          db.prepare('UPDATE account_stores SET name = ?, address = ?, lat = ?, lng = ?, geocodeSource = ?, postalCode = ?, country = ?, updatedAt = ? WHERE id = ?')
+            .run(name || null, address, lat, lng, geocodeSource, postalCode, country, now, existingRow.id);
+          inserted.push(existingRow.id);
+        } else {
+          const id = generateId('STORE');
+          db.prepare('INSERT INTO account_stores (id, accountId, setId, storeId, name, address, lat, lng, geocodeSource, postalCode, country, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(id, accountId, setId, storeId, name || null, address, lat, lng, geocodeSource, postalCode, country, now);
+          inserted.push(id);
+        }
+      });
+      db.prepare('UPDATE account_store_sets SET updatedAt = ? WHERE id = ?').run(now, setId);
+      return sendJson(res, 200, { inserted: inserted.length, errors });
+    }
+    // DELETE /api/accounts/:id/stores/:storeRowId — scoped to account; the
+    // row id is already globally unique so setId isn't needed as a param,
+    // but the row must actually belong to this account.
+    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
+      const accountId = decodeURIComponent(parts[2]);
+      const storeRowId = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      const existing = db.prepare('SELECT id FROM account_stores WHERE id = ? AND accountId = ?').get(storeRowId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'no such store on this account' });
+      db.prepare('DELETE FROM account_stores WHERE id = ? AND accountId = ?').run(storeRowId, accountId);
+      return sendJson(res, 200, { deleted: true });
+    }
+    // GET /api/accounts/:id/stores/prospect-fit?setId=...&radii=5,10,15 —
+    // "Nearby prospects — Audience & Wealth Fit", no customer upload
+    // involved. See computeStoreProspectFit's own comment for the coverage
+    // caveats this feature was removed and rebuilt around.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores' && parts[4] === 'prospect-fit'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const url = new URL(req.url, 'http://localhost');
+      const setId = url.searchParams.get('setId');
+      if (!setId) return sendJson(res, 400, { error: 'setId is required — which store set do you want?' });
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      const stores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ? AND setId = ?').all(accountId, setId);
+      const radii = url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined;
+      const result = computeStoreProspectFit(stores, radii, account);
+      return sendJson(res, 200, result);
+    }
 
     // ============ Zip → DMA reference (2026-09-06, buildout item 4a) ============
     // Per direct instruction ("scope it and build it out"), closing the
@@ -17142,7 +17639,8 @@ Submit your findings via the submit_brand_categories tool.`;
         volumeWeight: url.searchParams.has('volumeWeight') ? Number(url.searchParams.get('volumeWeight')) : undefined,
         indexWeight: url.searchParams.has('indexWeight') ? Number(url.searchParams.get('indexWeight')) : undefined,
         holdoutFraction: url.searchParams.has('holdoutFraction') ? Number(url.searchParams.get('holdoutFraction')) : undefined,
-        radii: url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined
+        radii: url.searchParams.has('radii') ? url.searchParams.get('radii').split(',').map(Number).filter(n => n > 0) : undefined,
+        storeSetId: url.searchParams.get('storeSetId') || undefined
       });
       return sendJson(res, 200, analysis);
     }
@@ -19324,7 +19822,17 @@ if (require.main === module) {
 // failures still surface exactly as before.
 INIT_PHASE = false;
 
+// Test-only hook (used only when a test explicitly reaches for it — never
+// referenced by any real request path): exposes the pieces an isolated
+// node:sqlite test needs to exercise store-set CRUD, the legacy-row
+// migration, and the ring-math functions directly, without duplicating
+// their logic in a second copy. handleRequest is a function, so attaching
+// properties to it doesn't change the module's existing export contract
+// (`require('./server.js')` is still directly callable exactly as before).
+handleRequest.testExports = {
+  db, generateId, ensureStoreSetMigration, computeStoreTradeAreas, computeStoreProspectFit,
+  loadGeoReferenceBatch, GENERATION_WEALTH_INDEX
+};
+
 module.exports = handleRequest;
-
-
 
