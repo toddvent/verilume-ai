@@ -463,6 +463,32 @@
           </div>
         </div>
       </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <p class="desc" style="margin-bottom:10px;"><b>Canada demographics (age + income by FSA).</b> Not active for any client yet — built ahead of need, same posture as the rest of this section, so it's ready the day a Canadian account needs Audience/Wealth Fit scoring on its stores. Source: the Canada Revenue Agency's free "Individual Tax Statistics by Forward Sortation Area" (open.canada.ca, no API key) — Table 2 (by age) and Table 3 (by total income class) are two separate downloads, uploaded separately below. Same 5 generations and <code>income_avg_estimate</code> attribute as the U.S. build, so nothing else in the product needs to change once this is loaded — see <code>cxmedia-canada-demographics-additional-countries-approach-2026-09-10.md</code> for the full approach and how to extend it to other countries.</p>
+        <div class="field-row three">
+          <div>
+            <label>CRA tax year this file covers</label>
+            <input type="text" id="refDataCraTaxYear" placeholder="e.g. 2022" style="max-width:120px;">
+          </div>
+          <div>
+            <label>Table 2 — by age</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCraAgeFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCraAgeFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCraAgeFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCraAgeFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCraFile(event, 'age')">
+          </div>
+          <div>
+            <label>Table 3 — by total income class</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCraIncomeFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCraIncomeFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCraIncomeFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCraIncomeFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCraFile(event, 'income')">
+          </div>
+        </div>
+        <p class="proto-note">Columns are found by name/pattern (an FSA column, plus any "25 to 34" / "Under 20" / "70 and over" style range headers) rather than a fixed column list, since CRA's exact bracket boundaries weren't something this environment could verify against a live download — validate the loaded counts against a known FSA before relying on it, same as any newly-connected source.</p>
+      </div>
       <p class="empty-note" id="refDataLoadStatus" style="padding:10px 0 0;"></p>
     </div>
 
@@ -1229,6 +1255,162 @@ async function refDataHandleCountryFile(event, kind){
     const extra = kind === 'markets' ? { country, sourceLabel: `${pack.name} market crosswalk — file "${file.name}"`, method: `${pack.name} statistical/market regions as published — not a licensed audience-measurement definition` } : { country, sourceLabel: `${pack.name} national statistics — file "${file.name}"` };
     const d = await refDataPostChunks(path, rows, extra, (done, n) => say(`Loading ${pack.name} ${kind} ${done.toLocaleString()} / ${n.toLocaleString()}…`));
     say(`Done — ${d.inserted.toLocaleString()} ${pack.name} ${kind} rows loaded from "${file.name}".${d.errors.length ? ` Skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
+    refDataLoadStatus();
+  } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
+  event.target.value = '';
+}
+
+// ---- Canada demographics (CRA "Individual Tax Statistics by Forward
+// Sortation Area") — 2026-09-10, per direct instruction ("Let's start with
+// Canada and document the approach for additional countries... activate
+// when we have a client that needs it"). Not wired to any client-facing
+// feature yet — this only loads data into zip_demographic_master, which
+// computeStoreTradeAreas()'s Audience/Wealth Fit scoring and
+// computeDemographicIndex() already read generically by (zip, attribute).
+// CRA publishes age and total-income-class as two SEPARATE open tables (not
+// cross-tabbed together in one file the way this build's own generation +
+// income pair is derived from a single ACS pull) — Table 2 and Table 3,
+// both free from open.canada.ca, no API key. Same 5 generations and
+// income_avg_estimate attribute as the U.S. build so nothing downstream
+// needs to change once this is loaded.
+//
+// This environment could not verify CRA's exact published bracket
+// boundaries against a live download (open.canada.ca isn't fetchable from
+// here), so — same posture as every other loader on this page — columns
+// are found by NAME/PATTERN, never a hardcoded bracket list: any
+// "<low> to <high>", "Under <n>" or "<n> and (over|older)" header is read
+// as an age or income range and its count allocated proportionally into
+// this app's 5 generations (age) or averaged by bracket midpoint (income),
+// so it's safe to validate against a real downloaded file rather than
+// trusting a guessed schema. See this project's
+// cxmedia-canada-demographics-additional-countries-approach-2026-09-10.md
+// for the full write-up and how to extend this to other countries.
+function craParseAgeRangeHeader(h){
+  const s = String(h || '').trim().toLowerCase();
+  let m = s.match(/(\d+)\s*(?:to|-|–)\s*(\d+)/);
+  if (m) return [Number(m[1]), Number(m[2])];
+  m = s.match(/under\s*(\d+)/);
+  if (m) return [0, Number(m[1]) - 1];
+  m = s.match(/(\d+)\s*(?:and\s*(?:over|older|up)|\+)/);
+  if (m) return [Number(m[1]), Infinity];
+  return null;
+}
+function craParseIncomeRangeHeader(h){
+  const s = String(h || '').trim().toLowerCase().replace(/[$,]/g, '');
+  let m = s.match(/(\d+)\s*(?:to|-|–)\s*(\d+)/);
+  if (m) return [Number(m[1]), Number(m[2])];
+  m = s.match(/under\s*(\d+)/);
+  if (m) return [0, Number(m[1]) - 1];
+  // Open top bracket ("$250,000 and over") has no CRA-published upper
+  // bound — approximated as twice the floor, disclosed in the sourceLabel
+  // rather than silently assumed; same "estimate, not exact" posture as
+  // the U.S. ACS_INCOME_BRACKET_MIDPOINTS approximation.
+  m = s.match(/(\d+)\s*(?:and\s*(?:over|older|up|more)|\+)/);
+  if (m) return [Number(m[1]), Number(m[1]) * 2];
+  return null;
+}
+function craSplitCsvLine(l){
+  const out = []; let cur = '', q = false;
+  for (const ch of l){ if (ch === '"'){ q = !q; continue; } if ((ch === ',' || ch === ';') && !q){ out.push(cur); cur = ''; continue; } cur += ch; }
+  out.push(cur);
+  return out;
+}
+function craSplit(l){ return l.includes('\t') ? l.split('\t') : craSplitCsvLine(l); }
+// Same generation age spans this app's own ACS bins imply for ACS_YEAR
+// 2022 (backend ACS_AGE_BINS/ACS_BIN_SUFFIX: genz 10–29, millennial 30–44,
+// genx 45–61, boomer 62–84, silent 85+), shifted by however many years the
+// CRA tax year is from 2022 — so a 2019 or 2024 file still lines up with
+// the same birth-year cohorts instead of silently drifting.
+function craGenerationAgeRanges(taxYear){
+  const shift = (Number(taxYear) || 2022) - 2022;
+  const shiftRange = ([lo, hi]) => [lo + shift, hi === Infinity ? Infinity : hi + shift];
+  return {
+    genz: shiftRange([10, 29]),
+    millennial: shiftRange([30, 44]),
+    genx: shiftRange([45, 61]),
+    boomer: shiftRange([62, 84]),
+    silent: shiftRange([85, Infinity])
+  };
+}
+function refDataParseCraAgeFile(text, taxYear){
+  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const head = craSplit(lines[0]).map(h => String(h || '').trim());
+  const fi = head.findIndex(h => /fsa|forward sortation/i.test(h));
+  if (fi < 0) return [];
+  const ageCols = head.map((h, i) => ({ i, range: craParseAgeRangeHeader(h) })).filter(c => c.range && c.i !== fi);
+  if (!ageCols.length) return [];
+  const genRanges = craGenerationAgeRanges(taxYear);
+  const out = [];
+  lines.slice(1).forEach(l => {
+    const c = craSplit(l).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
+    const fsa = c[fi] ? c[fi].toUpperCase().replace(/\s+/g, '') : '';
+    if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return;
+    const key = `CA:${fsa}`;
+    const genTotals = { genz: 0, millennial: 0, genx: 0, boomer: 0, silent: 0 };
+    ageCols.forEach(({ i, range }) => {
+      const count = Number(String(c[i] || '').replace(/[^\d.]/g, ''));
+      if (!Number.isFinite(count) || count <= 0) return;
+      const [bLo, bHiRaw] = range;
+      const bHi = bHiRaw === Infinity ? bLo + 20 : bHiRaw; // open bracket assumed 20 years wide — disclosed above
+      const bracketWidth = bHi - bLo + 1;
+      Object.entries(genRanges).forEach(([gen, [gLo, gHiRaw]]) => {
+        const gHi = gHiRaw === Infinity ? bHi : gHiRaw;
+        const lo = Math.max(bLo, gLo), hi = Math.min(bHi, gHi);
+        if (hi < lo) return;
+        const overlap = hi - lo + 1;
+        genTotals[gen] += count * (overlap / bracketWidth);
+      });
+    });
+    Object.entries(genTotals).forEach(([gen, total]) => { if (total > 0) out.push({ zip: key, attribute: `population_${gen}`, value: Math.round(total) }); });
+  });
+  return out;
+}
+function refDataParseCraIncomeFile(text){
+  const lines = String(text).split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const head = craSplit(lines[0]).map(h => String(h || '').trim());
+  const fi = head.findIndex(h => /fsa|forward sortation/i.test(h));
+  if (fi < 0) return [];
+  const incCols = head.map((h, i) => ({ i, range: craParseIncomeRangeHeader(h) })).filter(c => c.range && c.i !== fi);
+  if (!incCols.length) return [];
+  const out = [];
+  lines.slice(1).forEach(l => {
+    const c = craSplit(l).map(v => String(v || '').trim().replace(/^"|"$/g, ''));
+    const fsa = c[fi] ? c[fi].toUpperCase().replace(/\s+/g, '') : '';
+    if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return;
+    const key = `CA:${fsa}`;
+    let weightedSum = 0, totalCount = 0;
+    incCols.forEach(({ i, range }) => {
+      const count = Number(String(c[i] || '').replace(/[^\d.]/g, ''));
+      if (!Number.isFinite(count) || count <= 0) return;
+      const midpoint = (range[0] + range[1]) / 2;
+      weightedSum += count * midpoint;
+      totalCount += count;
+    });
+    if (totalCount > 0) out.push({ zip: key, attribute: 'income_avg_estimate', value: Math.round(weightedSum / totalCount) });
+  });
+  return out;
+}
+async function refDataHandleCraFile(event, kind){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  if (!file) return;
+  const taxYear = ((document.getElementById('refDataCraTaxYear') || {}).value || '').trim();
+  if (!taxYear || !/^\d{4}$/.test(taxYear)){
+    say('Enter the CRA tax year this file covers (e.g. 2022) before uploading — it determines which birth-year generation each age bracket counts toward.');
+    event.target.value = '';
+    return;
+  }
+  try {
+    const text = await file.text();
+    const rows = kind === 'age' ? refDataParseCraAgeFile(text, taxYear) : refDataParseCraIncomeFile(text);
+    if (!rows.length) throw new Error(`no rows recognised — expected an FSA column plus ${kind === 'age' ? 'age-range (e.g. "25 to 34")' : 'income-range (e.g. "$25,000 to $34,999")'} columns`);
+    const sourceLabel = `Canada Revenue Agency, Individual Tax Statistics by Forward Sortation Area, ${taxYear} tax year, ${kind === 'age' ? 'Table 2 (by age)' : 'Table 3 (by total income class)'} — file "${file.name}"`;
+    say(`Loading ${rows.length.toLocaleString()} rows from "${file.name}"…`);
+    const d = await refDataPostChunks('/api/market-demographic-master', rows, { country: 'CA', sourceLabel }, (done, n) => say(`Loading Canada demographics ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${d.inserted.toLocaleString()} Canada demographic rows loaded from "${file.name}".${d.errors.length ? ` Skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
     refDataLoadStatus();
   } catch (e){ say(`Couldn't load "${file.name}": ${e && e.message ? e.message : e}`); }
   event.target.value = '';
