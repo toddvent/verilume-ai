@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-10-store-card-visual-restore (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-10-prospect-fit-target-audience-count (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -4994,12 +4994,20 @@ function computeStoreProspectFit(stores, radii, account){
       const noRingDemographicCoverage = zipsWithDemo === 0;
       const genShare = (!noRingDemographicCoverage && pop > 0) ? genPop / pop : null;
       const audienceFit = (genShare != null && nationalGenShare) ? Math.round((genShare / nationalGenShare) * 100) : null;
+      // targetPopulation: the actual estimated head count of the account's
+      // target generation(s) nearby (round 2026-09-10, direct instruction —
+      // Todd wants the count of new-to-brand-eligible households/population
+      // leading, with the Audience Fit index as secondary context). null
+      // (not 0) when the ring has no demographic coverage, same convention
+      // as audienceFit/wealthFit above.
+      const targetPopulation = noRingDemographicCoverage ? null : Math.round(genPop);
       const avgIncome = incomeWeight > 0 ? incomeWeighted / incomeWeight : null;
       const wealthIndex = (avgIncome != null && nationalAvgIncome) ? Math.round((avgIncome / nationalAvgIncome) * genMult * 100) : null;
       const wealthBand = wealthIndexBandBackend(wealthIndex);
       return {
         radiusMiles: radius, zipCount: zipsInRing.length, population: pop,
         noRingDemographicCoverage,
+        targetPopulation,
         audienceFit, wealthFit: wealthIndex,
         wealthBand: wealthBand ? wealthBand.label : null,
         matchesAccountWealthTier: (wealthBand && acctTier) ? wealthBand.key === acctTier.key : null
@@ -10952,7 +10960,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-10-store-card-visual-restore',
+        buildStamp: '2026-09-10-prospect-fit-target-audience-count',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -19795,4 +19803,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
