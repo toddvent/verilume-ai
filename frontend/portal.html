@@ -6009,17 +6009,49 @@
       </div>
     </div>
 
-    <!-- Reference data (2026-09-06, item 4a): shared across accounts --
-         Census ZCTA population + a zip→DMA crosswalk. See mrf* functions. -->
-    <!-- Stores (2026-09-06): local retail plans on a radius trade area around
-         each store. See mst* functions. -->
+    <!-- "Stores and trade areas" — 2026-09-10 rebuild (reconstructed after
+         the same-day removal over the Census coverage gap; see
+         computeStoreProspectFit's comment in server.js for the full
+         history). Rebuilt with a second capability layered in from the
+         start: multiple named, permanently-kept store-location sets per
+         account (mstLoadSetPicker/mstSelectSet/mstCreateSet/mstRenameSet/
+         mstDeleteSet), mirroring how customer uploads already work — every
+         store-mutating call below carries mstCurrentSetId. Store table +
+         manual/bulk add (mstRender/mstAddOne/mstHandleFile/mstScanUpload/
+         mstGeocodeMissing/mstToggleDeleteConfirm/mstConfirmDeleteStore),
+         "Nearby prospects — Audience & Wealth Fit" (mstProspectFitSectionHtml,
+         no customer upload involved), and the upload-driven "By store trade
+         area" section (mstTradeAreaSectionHtml, rendered inside
+         mouRenderResults() above using computeStoreTradeAreas() output). -->
     <div class="sk-card" id="mstCard" style="margin-top:18px;">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Local retail</div><h3>Stores and trade areas</h3></div>
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Optional</div><h3>Stores and trade areas</h3></div>
         <div class="hicon">📍</div>
       </div>
-      <div class="sk-card-body" id="mstBody"><p class="hint">Loading…</p></div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Add your store locations to see who's nearby (Audience &amp; Wealth Fit) and, once a customer file is imported above, how each store's trade area is actually performing.</p>
+
+        <div id="mstSetPickerRow" class="btn-row" style="margin-bottom:14px;align-items:center;gap:8px;">
+          <label for="mstSetPicker" class="hint" style="margin:0;">Store locations:</label>
+          <select id="mstSetPicker" class="tbl-select" onchange="mstSelectSet(this.value)" style="max-width:320px;"></select>
+          <button type="button" class="btn-ghost" onclick="mstShowNewSetForm()">+ New set</button>
+          <button type="button" class="btn-ghost" id="mstRenameSetBtn" onclick="mstRenameSet()">Rename</button>
+          <button type="button" class="btn-ghost" id="mstDeleteSetBtn" onclick="mstToggleDeleteSetConfirm()">Delete set</button>
+        </div>
+        <div id="mstNewSetForm" class="btn-row" style="display:none;margin-bottom:14px;align-items:center;gap:8px;">
+          <input type="text" id="mstNewSetName" placeholder="e.g. Proposed expansion" style="flex:1;min-width:200px;max-width:320px;">
+          <button type="button" class="btn-primary" onclick="mstCreateSet()">Create</button>
+          <button type="button" class="btn-ghost" onclick="mstHideNewSetForm()">Cancel</button>
+        </div>
+        <div id="mstDeleteSetConfirmRow" style="display:none;margin-bottom:14px;"><div class="cch-confirm" id="mstDeleteSetConfirm"></div></div>
+        <p class="hint" id="mstSetStatus" style="margin:0 0 14px;"></p>
+
+        <div id="mstBody"></div>
+      </div>
     </div>
+
+    <!-- Reference data (2026-09-06, item 4a): shared across accounts --
+         Census ZCTA population + a zip→DMA crosswalk. See mrf* functions. -->
     <!-- 2026-09-09, per direct instruction ("Does a client need to see the
          Reference Data or should that be part of our administrative
          site?") — this card (population/DMA/centroid masters, the "Other
@@ -8996,7 +9028,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-08-25-pending-feature-breadcrumb-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-10-store-sets-and-canada-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26586,349 +26618,7 @@ function mrfDmaSectionHtml(dma){
     </table></div>
     <p class="hint" style="margin:6px 0 0;">Population Index = the DMA's share of your volume ÷ its share of covered population × 100. 100 converts in proportion to size; above 100 over-indexes.</p>`;
 }
-// ============ Stores, zip centroids, DMA-level uploads (2026-09-06) ============
-// Local retail plans on a radius trade area around each store, not a DMA.
-// Store list: CSV/XLSX or typed rows (store id, name, address, optional
-// lat/lng); addresses without coordinates are geocoded in the browser
-// through the Census Geocoder (free, US) and saved with the source. Zip
-// centroids come from the Census ZCTA Gazetteer (free), loaded once for
-// every account like the other reference masters — see Ops Console's
-// Reference Data module (2026-09-09) for that one-time load, not here.
-// ---- Stores ----
-let mstStores = [];
-// 2026-09-09, per direct instruction ("What is the next step that
-// identifies potential customers based on the AOV business profile for
-// this storefront?") — mstProspectFit holds the result of the new
-// GET .../stores/prospect-fit endpoint (computeStoreProspectFit() in
-// backend/server.js): Audience Fit / Wealth Fit at 5/10/15mi prospecting
-// rings around each geocoded store, scored against this account's own
-// Company Profile (audience generations + wealth tier) using the same
-// real Census ACS age/income data and Verilume Wealth Index formula as
-// assessment.html — no customer upload required, unlike the
-// upload-driven "By store trade area" section in the Match Market
-// Builder results (mstTradeAreaSectionHtml above, computeStoreTradeAreas
-// server-side), which this is deliberately independent of.
-let mstProspectFit = null;
-async function mstLoad(){
-  const body = document.getElementById('mstBody');
-  if (!body) return;
-  if (dataSourceLabel !== 'backend' || !state.companyId){ body.innerHTML = '<p class="hint" style="margin:0;">Stores are kept on the backend.</p>'; return; }
-  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`); mstStores = r.ok ? ((await r.json()).stores || []) : []; } catch (e){ mstStores = []; }
-  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/prospect-fit`); mstProspectFit = r.ok ? await r.json() : null; } catch (e){ mstProspectFit = null; }
-  mstRender();
-}
-function mstRender(){
-  const body = document.getElementById('mstBody');
-  if (!body) return;
-  const geocoded = mstStores.filter(s => s.lat != null && s.lng != null).length;
-  // 2026-09-09, per direct instruction ("Storefronts is one area where we
-  // should be able to delete duplicates or stores no longer part of a
-  // brand or franchise") — flags likely duplicates so they're easy to spot
-  // before deleting: two stores sharing the same Zip/Postal Code AND the
-  // same name (trimmed, case-insensitive), or — when neither store has a
-  // name on file — the same Zip/Postal Code and Address. A shared
-  // storeId can't happen here (POST .../stores already upserts on it), so
-  // this only catches the real duplicate shape: the same physical location
-  // entered twice, usually from a re-upload or a second manual add. Flags,
-  // never auto-removes — Todd decides which copy (if either) to keep.
-  const mstDupeKey = s => {
-    const zip = String(s.postalCode || '').trim().toUpperCase();
-    if (!zip) return null;
-    const name = String(s.name || '').trim().toUpperCase();
-    const addr = String(s.address || '').trim().toUpperCase();
-    if (!name && !addr) return null;
-    return `${zip}|${name || addr}`;
-  };
-  const mstDupeCounts = {};
-  mstStores.forEach(s => { const k = mstDupeKey(s); if (k) mstDupeCounts[k] = (mstDupeCounts[k] || 0) + 1; });
-  // 2026-09-09, per direct instruction ("Storefronts is one area where we
-  // should be able to delete duplicates or stores no longer part of a
-  // brand or franchise") — added a Delete column, same
-  // toggle-a-.cch-confirm-row pattern used everywhere else on this page a
-  // delete needs a confirm step (see mbuToggleDeleteConfirm's own comment
-  // for the shared convention). A store row previously could only be
-  // removed by replacing the ENTIRE list via re-upload — there was no way
-  // to drop just the one bad row (a duplicate, or a closed location).
-  const rows = mstStores.map(s => {
-    const isDupe = mstDupeCounts[mstDupeKey(s)] > 1;
-    return `<tr>
-      <td>${escapeHtml(s.storeId || '')}</td>
-      <td>${escapeHtml(s.name || '')}${isDupe ? ' <span class="hint" style="color:#b8860b;font-weight:600;">possible duplicate</span>' : ''}</td>
-      <td>${escapeHtml(s.postalCode || '')}</td>
-      <td>${escapeHtml(s.address || '')}${s.country && s.country !== 'US' ? ` <span class="hint">${escapeHtml(s.country)}</span>` : ''}</td>
-      <td>${s.lat != null ? `${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)} <span class="hint">${escapeHtml(s.geocodeSource || '')}</span>` : '<span style="color:#b8860b;">not geocoded</span>'}</td>
-      <td style="white-space:nowrap;"><button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${s.id}')" style="color:var(--advocacy);">Delete</button></td>
-    </tr>
-    <tr id="mstDeleteConfirmRow-${s.id}" style="display:none;">
-      <td colspan="6"><div class="cch-confirm" id="mstDeleteConfirm-${s.id}"></div></td>
-    </tr>`;
-  }).join('');
-  // 2026-09-09, per direct instruction ("Stores and Trade Areas: copy =
-  // Add your store address below to view population metrics by specific
-  // radius that aligns with your product demographics or upload multiple
-  // stores or resellers at one time") — replaced the old mechanics-focused
-  // hint ("Upload a CSV with a Zip/Postal Code column...") with Todd's own
-  // copy. Kept the live store-count status ahead of it (real, useful
-  // information the old copy also carried) rather than dropping it.
-  const dupeCount = Object.values(mstDupeCounts).filter(n => n > 1).reduce((sum, n) => sum + n, 0);
-  body.innerHTML = `
-    <p class="hint" style="margin:0 0 8px;">${mstStores.length ? `<b>${mstStores.length} store${mstStores.length === 1 ? '' : 's'}</b>, ${geocoded} geocoded${dupeCount ? `, <span style="color:#b8860b;font-weight:600;">${dupeCount} possible duplicate${dupeCount === 1 ? '' : 's'}</span> flagged below` : ''}. ` : ''}Add your store address below to view population metrics by specific radius that aligns with your product demographics or upload multiple stores or resellers at one time.</p>
-    ${mstStores.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Store ID</th><th>Name</th><th>Zip/Postal</th><th>Address</th><th>Coordinates</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
-    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px;">
-      <div class="field" style="margin:0;flex:0 0 110px;"><label>Store ID</label><input type="text" id="mstNewId" placeholder="S-101"></div>
-      <div class="field" style="margin:0;flex:1 1 160px;"><label>Name</label><input type="text" id="mstNewName" placeholder="Palm Beach"></div>
-      <div class="field" style="margin:0;flex:0 0 130px;"><label>Zip/Postal Code</label><input type="text" id="mstNewPostalCode" placeholder="33480"></div>
-      <div class="field" style="margin:0;flex:2 1 260px;"><label>Address <span style="font-weight:400;text-transform:none;color:var(--muted);">(optional)</span></label><input type="text" id="mstNewAddress" placeholder="150 Worth Ave, Palm Beach, FL 33480"></div>
-      <div class="field" style="margin:0;flex:0 0 120px;"><label>Country</label><select id="mstNewCountry">${Object.keys(MOU_COUNTRY_PACKS).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
-      <div class="field" style="margin:0;">
-        <label>Add manually</label>
-        <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
-      </div>
-    </div>
-    <!-- 2026-09-09, per direct report ("Upload a Store list Choose File
-         button is not aligned with + add store button. Should we move to
-         the left of Geocode addresses without coordinates") — moved out of
-         the manual-entry row entirely (the previous align-items:flex-end
-         fix kept it level with "+ Add store" only as long as both sat in
-         that same 5-input row, which still read as visually adrift from
-         its own inputs) and into the button row below, immediately to the
-         left of "Geocode addresses..." — grouping it with the other
-         file-level action instead of the per-row manual-entry fields. -->
-    <div class="btn-row" style="margin-top:10px;">
-      <label for="mstFileInput" class="hint" style="font-weight:600;text-transform:uppercase;font-size:0.6875rem;letter-spacing:0.03em;">Or upload a store list:</label>
-      <label class="btn-ghost" for="mstFileInput" style="cursor:pointer;">Choose File</label>
-      <span id="mstFileChosenName" class="hint"></span>
-      <input type="file" id="mstFileInput" accept=".csv,.tsv,.txt,.xlsx" onchange="document.getElementById('mstFileChosenName').textContent = (this.files[0] || {}).name || ''; mstHandleFile(event)" style="display:none;">
-      <button type="button" class="btn-ghost" onclick="mstGeocodeMissing()" ${mstStores.some(s => s.lat == null && s.address) ? '' : 'disabled'}>Geocode addresses without coordinates →</button>
-      <span class="hint" id="mstStatus"></span>
-    </div>
-    ${mstProspectFitSectionHtml(mstProspectFit)}`;
-}
-// 2026-09-09, per direct instruction ("What is the next step that
-// identifies potential customers based on the AOV business profile for
-// this storefront?") — renders computeStoreProspectFit()'s output right
-// on this card, per store per prospecting ring (5/10/15mi default):
-// Audience Fit (that ring's share of this account's target generation(s),
-// indexed to the national average = 100) and Wealth Fit (that ring's real
-// ACS-derived average household income, run through the same Verilume
-// Wealth Index / hnw-wealthy-middle tier bands as assessment.html, and
-// compared to the account's own stored wealth tier). Every unavailable
-// case is disclosed plainly rather than hidden — no stores, no geocoded
-// stores, no centroid/population/demographic reference data loaded yet —
-// consistent with the honest-disclosure pattern used elsewhere on this
-// page (e.g. the "no_demographic_data" flag in mouRenderResults above).
-function mstFitBadge(tier){
-  const c = { hnw: 'var(--cx)', wealthy: 'var(--brand, #b8860b)', middle: 'var(--muted)' }[tier] || 'var(--muted)';
-  const label = { hnw: 'HNW', wealthy: 'Wealthy', middle: 'Middle income' }[tier] || tier;
-  return `<span style="color:${c};font-weight:600;">${escapeHtml(label)}</span>`;
-}
-function mstProspectFitSectionHtml(pf){
-  if (!pf) return '';
-  if (!pf.available){
-    return `<h4 style="margin:18px 0 6px;">Nearby prospects (Audience &amp; Wealth Fit)</h4><p class="hint" style="margin:0;">${escapeHtml(pf.note || 'unavailable')}</p>`;
-  }
-  const rad = pf.radiiMiles;
-  // 2026-09-10, per direct question ("Does audience and wealth populate?")
-  // — a plain "—" with no explanation was indistinguishable from "still
-  // loading" or "correctly not near anything." A null Fit now always says
-  // why: no national baseline at all (the whole card's demographicCoverageNote,
-  // shown once below), or — new — this specific ring has zero demographic
-  // coverage even though other zips nationally do (noRingDemographicCoverage,
-  // shown inline per cell so it's obvious it's a local gap, not a bug).
-  const rows = pf.stores.map(s => `<tr>
-      <td>${escapeHtml(s.name)}${s.address ? `<div class="hint">${escapeHtml(s.address)}</div>` : ''}</td>
-      ${s.rings.map(r => `<td style="text-align:right;">
-          ${r.audienceFit != null ? `Audience ${r.audienceFit}` : `<span class="hint">Audience — ${r.noRingDemographicCoverage ? '(no demographic data for this ring)' : ''}</span>`}<br>
-          ${r.wealthFit ? `Wealth ${r.wealthFit.index} — ${mstFitBadge(r.wealthFit.tier)}${r.wealthFit.matchesAccountTier === true ? ' <span class="hint">matches profile</span>' : (r.wealthFit.matchesAccountTier === false ? ' <span class="hint">off profile</span>' : '')}` : `<span class="hint">Wealth — ${r.noRingDemographicCoverage ? '(no demographic data for this ring)' : ''}</span>`}
-          <div class="hint">${r.population != null ? Number(r.population).toLocaleString() + ' pop' : '—'}${r.avgIncomeEstimate != null ? ` · avg $${Number(r.avgIncomeEstimate).toLocaleString()}` : ''}</div>
-        </td>`).join('')}
-    </tr>`).join('');
-  return `
-    <h4 style="margin:18px 0 6px;">Nearby prospects (Audience &amp; Wealth Fit) <span class="hint" style="font-weight:400;">${pf.storesGeocoded} of ${pf.storesTotal} stores geocoded · rings ${rad.join(' / ')} mi</span></h4>
-    <p class="hint" style="margin:0 0 8px;">${escapeHtml(pf.disclosure || '')}</p>
-    ${pf.audienceFitNote ? `<p class="hint" style="margin:0 0 8px;color:#b8860b;">${escapeHtml(pf.audienceFitNote)}</p>` : ''}
-    ${pf.demographicCoverageNote ? `<p class="hint" style="margin:0 0 8px;color:#b8860b;font-weight:600;">${escapeHtml(pf.demographicCoverageNote)}</p>` : ''}
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-      <thead><tr><th>Store</th>${rad.map(r => `<th style="text-align:right;">${r} mi ring</th>`).join('')}</tr></thead>
-      <tbody>${rows || '<tr><td colspan="' + (rad.length + 1) + '">No geocoded stores yet.</td></tr>'}</tbody>
-    </table></div>
-    <p class="hint" style="margin:6px 0 0;">Audience Fit = that ring's share of this account's target generation(s) (${(pf.audienceFitBackedGenerations || []).length ? pf.audienceFitBackedGenerations.join(', ') : 'none set'}), indexed to the national average = 100. Wealth Fit = that ring's real average household income, run through the Verilume Wealth Index (same formula as the assessment) and compared against this account's own wealth tier${(pf.wealthTiers || []).length ? ` (${pf.wealthTiers.join(', ')})` : ' (not set in Company Profile)'}.</p>`;
-}
-async function mstSave(stores, replace){
-  const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stores, replace: !!replace }), timeoutMs: 60000 });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-async function mstAddOne(){
-  const storeId = ((document.getElementById('mstNewId') || {}).value || '').trim(), name = ((document.getElementById('mstNewName') || {}).value || '').trim(), address = ((document.getElementById('mstNewAddress') || {}).value || '').trim();
-  const postalCode = ((document.getElementById('mstNewPostalCode') || {}).value || '').trim();
-  const status = document.getElementById('mstStatus');
-  if (!storeId && !name && !address && !postalCode){ if (status) status.textContent = 'Enter at least a store id, name, zip/postal code, or address.'; return; }
-  const country = ((document.getElementById('mstNewCountry') || {}).value || 'US');
-  try { await mstSave([{ storeId, name, address, postalCode, country }], false); await mstLoad(); } catch (e){ if (status) status.textContent = 'Could not save the store.'; }
-}
-// 2026-09-09, per direct instruction ("Storefronts is one area where we
-// should be able to delete duplicates or stores no longer part of a brand
-// or franchise") — same toggle-a-.cch-confirm-row pattern already used
-// elsewhere on this page for a delete that needs a confirm step (see
-// mbuToggleDeleteConfirm's own comment for the shared convention this
-// mirrors). One store row at a time; no dependent-record warning needed
-// (nothing else in the schema references a store row by id).
-function mstToggleDeleteConfirm(storeRowId){
-  const row = document.getElementById(`mstDeleteConfirmRow-${storeRowId}`);
-  const mount = document.getElementById(`mstDeleteConfirm-${storeRowId}`);
-  if (!row || !mount) return;
-  const opening = row.style.display === 'none';
-  if (opening){
-    const s = mstStores.find(x => x.id === storeRowId);
-    const label = (s && (s.name || s.storeId || s.address)) || 'this store';
-    mount.innerHTML = `
-      <p style="margin:0 0 8px;">Delete <b>${escapeHtml(label)}</b>? This removes it from the store list and every trade-area/prospect-fit view that reads it — it can't be undone (you'd need to re-add it).</p>
-      <button type="button" class="btn-primary" onclick="mstConfirmDeleteStore('${storeRowId}')">Yes, delete this store</button>
-      <button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${storeRowId}')">Never mind</button>
-    `;
-    mount.classList.add('open');
-    row.style.display = '';
-  } else {
-    row.style.display = 'none';
-    mount.classList.remove('open');
-    mount.innerHTML = '';
-  }
-}
-async function mstConfirmDeleteStore(storeRowId){
-  const mount = document.getElementById(`mstDeleteConfirm-${storeRowId}`);
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/${encodeURIComponent(storeRowId)}`, { method: 'DELETE' });
-    if (!r.ok){ if (mount) mount.innerHTML = `<p style="margin:0;color:var(--advocacy);">Couldn't delete this store right now.</p>`; return; }
-    await mstLoad();
-  } catch (e){ if (mount) mount.innerHTML = `<p style="margin:0;color:var(--advocacy);">Couldn't delete this store right now.</p>`; }
-}
-// 2026-09-09, per direct instruction ("Please make sure that all uploads
-// reject PII automatically beyond zip code variations") — this file used to
-// go straight from file-select to client-side parsing, bypassing the same
-// PII/virus-scan pipeline every other upload on this site goes through
-// (POST /api/accounts/:id/uploads — see mouHandleFile's own upload flow a
-// few hundred lines up, and bwsUploadFile's, for the same pattern). A store
-// list is lower personal-data risk than a raw customer file (it's business
-// locations, not individual customer records), but "all uploads" means
-// all uploads — so the raw file now passes through that same scan first,
-// and is only parsed client-side once it comes back accepted.
-async function mstScanUpload(file){
-  const dataUrl = await mouFileToDataUrl(file);
-  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/uploads`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ purpose: 'store_list', filename: file.name, dataUrl, uploadedBy: state.userName || '' })
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok){
-    if (data.status === 'rejected_pii') throw new Error(`this file appears to contain PII and was never stored: ${(data.piiFindings || []).slice(0, 3).join('; ')}`);
-    if (data.status === 'rejected_virus') throw new Error(`failed the virus scan (${(data.virusScan || {}).detail || 'threat detected'}) and was never stored`);
-    if (data.status === 'rejected_scan_unavailable') throw new Error('no virus-scanning provider is configured right now, so uploads are held back rather than accepted unscanned');
-    throw new Error(data.error || 'upload was rejected');
-  }
-}
-async function mstHandleFile(event){
-  const file = event.target.files && event.target.files[0];
-  const status = document.getElementById('mstStatus');
-  if (!file) return;
-  try {
-    if (status) status.textContent = 'Screening file for PII and scanning for threats…';
-    await mstScanUpload(file);
-    let grid;
-    if (/\.xlsx$/i.test(file.name)){ await cfiLoadSheetJs(); const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' }); grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' }); }
-    else grid = cfiParseCsvText(await file.text());
-    if (!grid || grid.length < 2) throw new Error('no rows found');
-    const head = grid[0].map(h => String(h || '').trim().toLowerCase());
-    const col = (re) => head.findIndex(h => re.test(h));
-    const ci = { storeId: col(/store.?(id|#|no|number)|^id$/), name: col(/name|store$/), postalCode: col(/zip|postal|^post.?code$/), address: col(/address|street|location/), lat: col(/^lat/), lng: col(/^(lng|lon|long)/), country: col(/country|nation|iso/) };
-    if (ci.postalCode < 0 && ci.address < 0 && ci.name < 0 && ci.storeId < 0) throw new Error('no Zip/Postal Code, Store ID, Name or Address column recognised');
-    const stores = grid.slice(1).filter(r => r.some(c => String(c || '').trim())).map(r => ({ storeId: ci.storeId >= 0 ? r[ci.storeId] : '', name: ci.name >= 0 ? r[ci.name] : '', postalCode: ci.postalCode >= 0 ? r[ci.postalCode] : '', address: ci.address >= 0 ? r[ci.address] : '', lat: ci.lat >= 0 ? r[ci.lat] : null, lng: ci.lng >= 0 ? r[ci.lng] : null, country: ci.country >= 0 ? (mouNormalizeCountry(r[ci.country]) || 'US') : 'US', geocodeSource: (ci.lat >= 0 && ci.lng >= 0) ? 'supplied in file' : null }));
-    const replace = window.confirm(`Replace the current store list with the ${stores.length} store(s) in "${file.name}"? Cancel adds them alongside the existing list.`);
-    const out = await mstSave(stores, replace);
-    if (status) status.textContent = `Saved ${out.saved} store(s); ${out.geocoded} geocoded${out.notGeocoded && out.notGeocoded.length ? ` — ${out.notGeocoded.length} still need coordinates` : ''}.`;
-    await mstLoad();
-  } catch (e){ if (status) status.textContent = `Couldn't load "${file.name}": ${e && e.message ? e.message : e}`; }
-  event.target.value = '';
-}
-// U.S. Census Geocoder — public, no key, US addresses only. One address
-// per call; a miss leaves the store un-geocoded (never a guessed point).
-async function mstGeocodeAddress(address){
-  const u = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&format=json`;
-  const r = await fetch(u);
-  if (!r.ok) throw new Error(`geocoder HTTP ${r.status}`);
-  const j = await r.json();
-  const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
-  if (!m || !m.coordinates) return null;
-  return { lat: Number(m.coordinates.y), lng: Number(m.coordinates.x), matched: m.matchedAddress || null };
-}
-// 2026-09-09 — a store with a postalCode is normally already geocoded the
-// moment it's saved (POST /api/accounts/:id/stores now resolves it against
-// zip_centroid_master server-side, same reference data customer markets
-// use). This button is now mainly a RETRY for the cases that can't resolve
-// at save time: a postal code with no centroid loaded yet (retry once Ops
-// Console loads it), or a store that only has a free-text address and no
-// postal code at all (US: Census Geocoder; non-US: best-effort scan of the
-// address text for a postal code, same fallback as before this round, kept
-// for stores uploaded before the postalCode field existed).
-async function mstGeocodeMissing(){
-  const status = document.getElementById('mstStatus');
-  const say = (t) => { if (status) status.textContent = t; };
-  const todo = mstStores.filter(s => s.lat == null && (s.postalCode || s.address));
-  if (!todo.length){ say('Every store with a zip/postal code or address already has coordinates.'); return; }
-  let done = 0, missed = [];
-  const updates = [];
-  for (const s of todo){
-    say(`Geocoding ${done + 1} of ${todo.length}: ${s.name || s.postalCode || s.address}…`);
-    const country = s.country && s.country !== 'US' ? s.country : (s.country || 'US');
-    if (s.postalCode){
-      try {
-        const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/lookup?key=${encodeURIComponent(s.postalCode)}&country=${encodeURIComponent(country)}`);
-        const c = r.ok ? await r.json() : null;
-        if (c && c.found) updates.push({ storeId: s.storeId, name: s.name, address: s.address, postalCode: s.postalCode, country, lat: c.lat, lng: c.lng, geocodeSource: `postal code centroid (${c.sourceLabel || 'reference data'})` });
-        else missed.push(`${s.name || s.postalCode} (no centroid for ${s.postalCode} on file yet${country !== 'US' ? ' — ask CX Ops to load it in the Ops Console' : ''}, or add Lat/Lng to the file)`);
-      } catch (e){ missed.push(`${s.name || s.postalCode} (${e.message})`); }
-      done++; continue;
-    }
-    // No postalCode on file — fall back to what this did before that field
-    // existed: US Census Geocoder on the full address, or a best-effort
-    // scan of the address text for a non-US postal code.
-    if (country === 'US'){
-      try { const g = await mstGeocodeAddress(s.address); if (g){ updates.push({ storeId: s.storeId, name: s.name, address: s.address, country: 'US', lat: g.lat, lng: g.lng, geocodeSource: 'U.S. Census Geocoder' }); } else missed.push(s.name || s.address); }
-      catch (e){ missed.push(`${s.name || s.address} (${e.message})`); }
-      done++; continue;
-    }
-    const tokens = String(s.address || '').toUpperCase().split(/[,\s]+/).filter(Boolean);
-    let unit = null;
-    for (let i = tokens.length - 1; i >= 0 && !unit; i--){ unit = MOU_COUNTRY_PACKS[country] ? (MOU_COUNTRY_PACKS[country].parse(tokens[i]) || (i > 0 ? MOU_COUNTRY_PACKS[country].parse(tokens[i - 1] + tokens[i]) : null)) : null; }
-    if (!unit){ missed.push(`${s.name || s.address} (no ${country} postal code found in the address — add a Zip/Postal Code or Lat/Lng to the file)`); done++; continue; }
-    try { const r = await authedFetch(`${BACKEND_URL}/api/market-zip-centroids/lookup?key=${encodeURIComponent(country + ':' + unit)}&country=${country}`); const c = r.ok ? await r.json() : null; if (c && c.found) updates.push({ storeId: s.storeId, name: s.name, address: s.address, postalCode: unit, country, lat: c.lat, lng: c.lng, geocodeSource: `${country} ${unit} centroid (approximate)` }); else missed.push(`${s.name || s.address} (no centroid for ${country} ${unit} on file yet — ask CX Ops to load ${country} centroids in the Ops Console, or add Lat/Lng to the file)`); }
-    catch (e){ missed.push(`${s.name || s.address} (${e.message})`); }
-    done++;
-  }
-  const canUpdate = updates.filter(u => u.storeId);
-  if (canUpdate.length){ try { await mstSave(canUpdate, false); } catch (e){ say('Geocoded, but saving failed.'); return; } }
-  say(`${canUpdate.length} store(s) geocoded${updates.length > canUpdate.length ? ` (${updates.length - canUpdate.length} without a Store ID couldn't be updated in place — add ids and retry)` : ''}${missed.length ? `; no match for: ${missed.slice(0, 5).join(', ')}` : ''}.`);
-  await mstLoad();
-}
-function mstTradeAreaSectionHtml(st){
-  if (!st) return '';
-  if (!st.available) return `<h4 style="margin:18px 0 6px;">By store trade area</h4><p class="hint" style="margin:0;">${escapeHtml(st.note || 'unavailable')}</p>`;
-  const rad = st.radiiMiles;
-  const rows = st.stores.map(s => `<tr><td>${escapeHtml(s.name)}${s.address ? `<div class="hint">${escapeHtml(s.address)}</div>` : ''}</td>${s.rings.map(r => `<td style="text-align:right;">${Number(r.volume).toLocaleString()}<div class="hint">${r.population != null ? Number(r.population).toLocaleString() + ' pop' : '—'}${r.index != null ? ` · idx ${r.index}` : ''}</div></td>`).join('')}<td style="text-align:right;font-weight:600;">${Number(s.assignedVolume).toLocaleString()}<div class="hint">${s.assignedZips} zip${s.assignedZips === 1 ? '' : 's'}</div></td></tr>`).join('');
-  const pairs = (st.pairs || []).map(p => `<tr><td>${escapeHtml(p.test)}</td><td>${escapeHtml(p.control)}</td><td style="text-align:right;">${p.distance}</td></tr>`).join('');
-  return `
-    <h4 style="margin:18px 0 6px;">By store trade area <span class="hint" style="font-weight:400;">${st.storesGeocoded} of ${st.storesTotal} stores geocoded · rings ${rad.join(' / ')} mi${st.beyondRingsZips ? ` · ${st.beyondRingsZips} zip${st.beyondRingsZips === 1 ? '' : 's'} (${Number(st.beyondRingsVolume).toLocaleString()}) beyond every ring` : ''}${st.unmappedZips ? ` · ${st.unmappedZips} without a centroid` : ''}</span></h4>
-    <p class="hint" style="margin:0 0 8px;">${escapeHtml(st.disclosure)}${st.populationCoverage ? '' : ' Ring population needs the population master loaded.'}</p>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-      <thead><tr><th>Store</th>${rad.map(r => `<th style="text-align:right;">${r} mi ring</th>`).join('')}<th style="text-align:right;">Assigned (nearest store)</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>
-    <p class="hint" style="margin:6px 0 10px;">Ring index = that store's penetration rate (volume ÷ ring population) against the average store at the same ring; 100 = average.</p>
-    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Matched store pairs</p>
-    <p class="hint" style="margin:0 0 6px;">${escapeHtml(st.pairNote || '')}</p>
-    ${pairs ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Test store</th><th>Control store</th><th style="text-align:right;">Similarity distance</th></tr></thead><tbody>${pairs}</tbody></table></div>` : ''}
-    ${(st.unpaired || []).length ? `<p class="hint" style="margin:6px 0 0;">Unpaired: ${st.unpaired.map(escapeHtml).join(', ')}</p>` : ''}`;
-}
+// Stores and trade areas removed 2026-09-10 — see comment above mouHistoryCard in this file, and the store-prospect-fit doc, for why.
 // 2026-09-09, per direct instruction: "The analysis is very long and
 // includes multiple sections including all countries. We should just show
 // a downloadable Excel ... output file to keep the analysis simple instead
@@ -26989,18 +26679,7 @@ function mouRenderResults(data){
     </div>
     <p class="hint" id="mouExportNote" style="margin:0;"></p>
     <p class="hint" style="margin-top:12px;">Composite score defaults to two-thirds volume weight / one-third index weight — an open assumption per the design doc, not a settled fact. "Defined countries" covers US, Canada, Italy, Spain, Germany, Portugal, UK and Australia — the account's core supported footprint.</p>
-    <!-- 2026-09-09, per direct instruction ("Restore the trade-area
-         display") — this section (per-store population/volume by mile
-         ring, matched store pairs) was computed by the backend all along
-         (computeStoreTradeAreas, part of computeMarketUploadAnalysis) but
-         dropped from the screen when the long scrolling view above was
-         replaced with the compact summary + Excel downloads. It's back
-         here as its own section rather than folded into the download,
-         since it's about stores (from the "Stores and trade areas" card),
-         not about the zip/DMA rows the export covers. mstTradeAreaSectionHtml()
-         itself is unchanged — it already handled the "not available yet"
-         state cleanly. -->
-    ${!isDma ? mstTradeAreaSectionHtml(data.stores) : ''}
+    ${(typeof mstTradeAreaSectionHtml === 'function') ? mstTradeAreaSectionHtml(data.storeTradeArea) : ''}
   `;
 }
 async function mouExportXlsxFile(definedCountriesOnly){
@@ -27104,7 +26783,12 @@ async function mouSelectUpload(uploadId, opts){
   const sel = document.getElementById('mouUploadPicker');
   if (sel && sel.value !== uploadId) sel.value = uploadId;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(uploadId)}/analysis`, { timeoutMs: 60000 });
+    // mstCurrentSetId (see the Stores and trade areas section below): when
+    // a store set is selected, the analysis response's storeTradeArea
+    // section gets computed against it — omitted entirely otherwise, so an
+    // account with no stores/sets yet degrades gracefully.
+    const setParam = (typeof mstCurrentSetId !== 'undefined' && mstCurrentSetId) ? `?storeSetId=${encodeURIComponent(mstCurrentSetId)}` : '';
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(uploadId)}/analysis${setParam}`, { timeoutMs: 60000 });
     if (!resp.ok) return;
     const data = await resp.json();
     mouRenderResults(data);
@@ -27125,6 +26809,426 @@ function mouResetImport(){
   if (fileInput) fileInput.value = '';
   const resultsCard = document.getElementById('mouResultsCard');
   if (resultsCard) resultsCard.style.display = 'none';
+}
+
+// ---------- Stores and trade areas (2026-09-10 rebuild) ----------
+// Rebuilt after the same-day removal over the Census coverage gap (see
+// computeStoreProspectFit's own comment in server.js), with named,
+// permanently-kept store-location sets layered in from the start —
+// mirroring the committed-upload picker just above (mouLoadUploadPicker/
+// mouSelectUpload) as closely as the two features' shapes allow: a
+// labeled <select> populated from a list endpoint, defaulting to the most
+// relevant entry, with a re-fetch-and-rerender on change.
+let mstSetsCache = [];
+let mstCurrentSetId = null;
+let mstStoresCache = [];
+let mstProspectFitCache = null;
+let mstParsedHeaders = [];
+let mstParsedRows = [];
+let mstFileDataUrl = null;
+let mstFileName = null;
+
+async function mstLoadSetPicker(){
+  const row = document.getElementById('mstSetPickerRow');
+  const sel = document.getElementById('mstSetPicker');
+  if (!row || !sel || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    mstSetsCache = data.sets || [];
+    if (!mstSetsCache.length){
+      sel.innerHTML = '';
+      mstCurrentSetId = null;
+      document.getElementById('mstRenameSetBtn').style.display = 'none';
+      document.getElementById('mstDeleteSetBtn').style.display = 'none';
+      mstShowNewSetForm();
+      mstRender();
+      return;
+    }
+    document.getElementById('mstRenameSetBtn').style.display = '';
+    document.getElementById('mstDeleteSetBtn').style.display = '';
+    sel.innerHTML = mstSetsCache.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${s.storeCount} store${s.storeCount === 1 ? '' : 's'})</option>`).join('');
+    const toSelect = (mstCurrentSetId && mstSetsCache.some(s => s.id === mstCurrentSetId)) ? mstCurrentSetId : mstSetsCache[0].id;
+    sel.value = toSelect;
+    await mstSelectSet(toSelect);
+  } catch (e){ /* leave the picker as whatever it last showed */ }
+}
+async function mstSelectSet(setId){
+  if (!setId) return;
+  mstCurrentSetId = setId;
+  const sel = document.getElementById('mstSetPicker');
+  if (sel && sel.value !== setId) sel.value = setId;
+  await mstLoadStores();
+  await mstLoadProspectFit();
+  mstRender();
+  // Re-fetch whichever customer upload's analysis is currently shown so
+  // its "By store trade area" section updates to the newly selected set.
+  if (typeof mouLastAnalysis !== 'undefined' && mouLastAnalysis && mouLastAnalysis.uploadId){
+    mouSelectUpload(mouLastAnalysis.uploadId, { skipReload: true });
+  }
+}
+function mstShowNewSetForm(){
+  const form = document.getElementById('mstNewSetForm');
+  if (form) form.style.display = '';
+  const input = document.getElementById('mstNewSetName');
+  if (input) input.focus();
+}
+function mstHideNewSetForm(){
+  const form = document.getElementById('mstNewSetForm');
+  if (form) form.style.display = 'none';
+  const input = document.getElementById('mstNewSetName');
+  if (input) input.value = '';
+}
+async function mstCreateSet(){
+  const input = document.getElementById('mstNewSetName');
+  const name = (input ? input.value : '').trim();
+  const statusEl = document.getElementById('mstSetStatus');
+  if (!name){ if (statusEl) statusEl.textContent = 'Name is required.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    });
+    if (!resp.ok){ if (statusEl) statusEl.textContent = 'Could not create that store set.'; return; }
+    const data = await resp.json();
+    mstHideNewSetForm();
+    mstCurrentSetId = data.id;
+    if (statusEl) statusEl.textContent = '';
+    await mstLoadSetPicker();
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not create that store set.'; }
+}
+async function mstRenameSet(){
+  if (!mstCurrentSetId) return;
+  const current = mstSetsCache.find(s => s.id === mstCurrentSetId);
+  const name = (window.prompt('Rename store set', current ? current.name : '') || '').trim();
+  if (!name) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets/${encodeURIComponent(mstCurrentSetId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    });
+    if (resp.ok) await mstLoadSetPicker();
+  } catch (e){ /* leave as-is */ }
+}
+function mstDeleteSet(){ mstToggleDeleteSetConfirm(); } // the "Delete set" button's own handler name, per this feature's naming convention
+function mstToggleDeleteSetConfirm(){
+  const row = document.getElementById('mstDeleteSetConfirmRow');
+  const mount = document.getElementById('mstDeleteSetConfirm');
+  if (!row || !mount || !mstCurrentSetId) return;
+  if (mount.classList.contains('open')){
+    row.style.display = 'none'; mount.classList.remove('open'); mount.innerHTML = '';
+    return;
+  }
+  const current = mstSetsCache.find(s => s.id === mstCurrentSetId);
+  mount.innerHTML = `
+    <p style="margin:0 0 8px;">Delete "${escapeHtml(current ? current.name : 'this store set')}" and its ${current ? current.storeCount : 0} store(s)? This can't be undone.</p>
+    <button type="button" class="btn-primary" onclick="mstConfirmDeleteSet()">Yes, delete this store set</button>
+    <button type="button" class="btn-ghost" onclick="mstToggleDeleteSetConfirm()">Never mind</button>
+  `;
+  mount.classList.add('open');
+  row.style.display = '';
+}
+async function mstConfirmDeleteSet(){
+  if (!mstCurrentSetId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets/${encodeURIComponent(mstCurrentSetId)}`, { method: 'DELETE' });
+    if (resp.ok){
+      mstToggleDeleteSetConfirm();
+      mstCurrentSetId = null;
+      await mstLoadSetPicker(); // falls back to another set, or prompts to create one if none remain
+    }
+  } catch (e){ /* leave as-is */ }
+}
+
+async function mstLoadStores(){
+  mstStoresCache = [];
+  if (!mstCurrentSetId || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores?setId=${encodeURIComponent(mstCurrentSetId)}`);
+    if (resp.ok){ const data = await resp.json(); mstStoresCache = data.stores || []; }
+  } catch (e){ /* leave empty */ }
+}
+async function mstLoadProspectFit(){
+  mstProspectFitCache = null;
+  if (!mstCurrentSetId || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/prospect-fit?setId=${encodeURIComponent(mstCurrentSetId)}`, { timeoutMs: 60000 });
+    if (resp.ok) mstProspectFitCache = await resp.json();
+  } catch (e){ /* leave null */ }
+}
+
+// Duplicate flagging: same zip + (name OR address) already on file for
+// this set — a real duplicate rule, not just an exact-row match, since the
+// same store can be re-entered with slightly different casing/spacing.
+function mstDuplicateIds(){
+  const seen = new Map(); // "zip|name-or-address" -> first store id
+  const dupes = new Set();
+  mstStoresCache.forEach(s => {
+    const zipKey = (s.postalCode || '').toUpperCase();
+    const nameKey = (s.name || s.address || '').trim().toUpperCase();
+    if (!zipKey || !nameKey) return;
+    const key = `${zipKey}|${nameKey}`;
+    if (seen.has(key)){ dupes.add(s.id); dupes.add(seen.get(key)); }
+    else seen.set(key, s.id);
+  });
+  return dupes;
+}
+
+function mstRender(){
+  const mount = document.getElementById('mstBody');
+  if (!mount) return;
+  if (!mstCurrentSetId){
+    mount.innerHTML = '<p class="hint">Create a store set above to start adding locations.</p>';
+    return;
+  }
+  const dupes = mstDuplicateIds();
+  const geocodedCount = mstStoresCache.filter(s => s.lat != null && s.lng != null).length;
+  const missingCount = mstStoresCache.length - geocodedCount;
+  const rows = mstStoresCache.map(s => `
+    <tr${dupes.has(s.id) ? ' style="background:#FFF4DE;"' : ''}>
+      <td>${escapeHtml(s.storeId || '—')}</td>
+      <td>${escapeHtml(s.name || '—')}${dupes.has(s.id) ? ' <span class="hint" style="color:var(--advocacy);">possible duplicate</span>' : ''}</td>
+      <td>${escapeHtml(s.postalCode || '—')}</td>
+      <td>${escapeHtml(s.address || '—')}</td>
+      <td>${escapeHtml(s.country || 'US')}</td>
+      <td>${s.lat != null ? '✓ geocoded' : '<span class="hint">not geocoded</span>'}</td>
+      <td>
+        <button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${s.id}')">Delete</button>
+        <div id="mstDeleteConfirmRow-${s.id}" style="display:none;"><div class="cch-confirm" id="mstDeleteConfirm-${s.id}"></div></div>
+      </td>
+    </tr>`).join('');
+
+  mount.innerHTML = `
+    <div class="field-row" style="align-items:flex-end;margin-bottom:14px;">
+      <input type="text" id="mstNewStoreId" placeholder="Store ID (optional)" style="flex:1;min-width:120px;">
+      <input type="text" id="mstNewStoreName" placeholder="Store name" style="flex:1;min-width:160px;">
+      <input type="text" id="mstNewStoreZip" placeholder="Zip / postal code" style="flex:1;min-width:130px;">
+      <input type="text" id="mstNewStoreAddress" placeholder="Address (optional)" style="flex:2;min-width:200px;">
+      <input type="text" id="mstNewStoreCountry" placeholder="Country (default US)" style="flex:1;min-width:120px;">
+      <button type="button" class="btn-primary" onclick="mstAddOne()">Add store</button>
+    </div>
+    <div class="btn-row" style="margin-bottom:14px;">
+      <label class="btn-ghost" style="cursor:pointer;">Upload store list (.csv/.xlsx)<input type="file" id="mstFileInput" accept=".csv,.xlsx" style="display:none;" onchange="mstHandleFile(event)"></label>
+      ${missingCount ? `<button type="button" class="btn-ghost" onclick="mstGeocodeMissing()">Geocode ${missingCount} address${missingCount === 1 ? '' : 'es'} without coordinates</button>` : ''}
+    </div>
+    <p class="hint" id="mstImportStatus" style="margin:0 0 10px;"></p>
+    ${mstStoresCache.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:20px;">
+      <thead><tr><th>Store ID</th><th>Name</th><th>Zip</th><th>Address</th><th>Country</th><th>Geocoded</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>` : '<p class="hint" style="margin-bottom:20px;">No stores in this set yet — add one above or upload a store list.</p>'}
+    ${mstProspectFitSectionHtml(mstProspectFitCache)}
+  `;
+}
+
+function mstToggleDeleteConfirm(storeRowId){
+  const row = document.getElementById(`mstDeleteConfirmRow-${storeRowId}`);
+  const mount = document.getElementById(`mstDeleteConfirm-${storeRowId}`);
+  if (!row || !mount) return;
+  if (mount.classList.contains('open')){
+    row.style.display = 'none'; mount.classList.remove('open'); mount.innerHTML = '';
+    return;
+  }
+  mount.innerHTML = `
+    <p style="margin:0 0 8px;">Delete this store?</p>
+    <button type="button" class="btn-primary" onclick="mstConfirmDeleteStore('${storeRowId}')">Yes, delete</button>
+    <button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${storeRowId}')">Never mind</button>
+  `;
+  mount.classList.add('open');
+  row.style.display = '';
+}
+async function mstConfirmDeleteStore(storeRowId){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/${encodeURIComponent(storeRowId)}`, { method: 'DELETE' });
+    if (resp.ok){ await mstLoadStores(); await mstLoadSetPicker(); }
+  } catch (e){ /* leave as-is */ }
+}
+
+async function mstAddOne(){
+  const statusEl = document.getElementById('mstImportStatus');
+  const storeId = (document.getElementById('mstNewStoreId') || {}).value || '';
+  const name = (document.getElementById('mstNewStoreName') || {}).value || '';
+  const postalCode = (document.getElementById('mstNewStoreZip') || {}).value || '';
+  const address = (document.getElementById('mstNewStoreAddress') || {}).value || '';
+  const country = (document.getElementById('mstNewStoreCountry') || {}).value || 'US';
+  if (!name.trim() && !storeId.trim()){ if (statusEl) statusEl.textContent = 'Enter at least a store name or store ID.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setId: mstCurrentSetId, storeId: storeId.trim() || undefined, name: name.trim(), postalCode: postalCode.trim(), address: address.trim(), country: country.trim() || 'US' })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Could not add that store.'; return; }
+    ['mstNewStoreId', 'mstNewStoreName', 'mstNewStoreZip', 'mstNewStoreAddress', 'mstNewStoreCountry'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    if (statusEl) statusEl.textContent = '';
+    await mstLoadStores(); await mstLoadProspectFit(); await mstLoadSetPicker();
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not add that store.'; }
+}
+
+// Bulk file upload: same read → PII/virus-scan → parse pipeline mouHandleFile
+// uses, purpose 'store_list'. Auto-detects Store ID / Name / Zip / Address /
+// Country columns by header text.
+const MST_HEADER_PATTERNS = [
+  { key: 'storeId', re: /store.?id|location.?id|^id$/i },
+  { key: 'name', re: /store.?name|location.?name|^name$/i },
+  { key: 'postalCode', re: /zip|postal/i },
+  { key: 'address', re: /address|street/i },
+  { key: 'country', re: /country/i }
+];
+function mstAutoMapColumns(headers){
+  const map = {}; const used = new Set();
+  headers.forEach((h, idx) => {
+    const match = MST_HEADER_PATTERNS.find(p => p.re.test(h) && !used.has(p.key));
+    map[idx] = match ? match.key : 'ignore';
+    if (match) used.add(match.key);
+  });
+  return map;
+}
+async function mstHandleFile(event){
+  const file = event.target.files && event.target.files[0];
+  const statusEl = document.getElementById('mstImportStatus');
+  mstParsedHeaders = []; mstParsedRows = []; mstFileDataUrl = null; mstFileName = null;
+  if (!file) return;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (statusEl) statusEl.textContent = `Reading ${file.name}…`;
+  try {
+    mstFileDataUrl = await mouFileToDataUrl(file);
+    mstFileName = file.name;
+    let headers = [], rows = [];
+    if (ext === 'csv'){
+      const text = await file.text();
+      ({ headers, rows } = cfiParseCsvText(text));
+    } else if (ext === 'xlsx'){
+      const XLSX = await cfiLoadSheetJs();
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      headers = (grid[0] || []).map(h => String(h).trim());
+      rows = grid.slice(1).map(r => headers.map((_, i) => r[i] != null ? String(r[i]) : ''));
+    } else {
+      if (statusEl) statusEl.textContent = `"${file.name}" isn't a .csv or .xlsx file — export to one of those and try again.`;
+      return;
+    }
+    const cleanRows = rows.filter(r => r.some(c => (c || '').toString().trim() !== ''));
+    if (!headers.length || !cleanRows.length){ if (statusEl) statusEl.textContent = 'No usable rows found — check the file has a header row plus at least one data row.'; return; }
+    mstParsedHeaders = headers; mstParsedRows = cleanRows;
+    if (statusEl) statusEl.textContent = `${cleanRows.length} row(s) found — scanning and importing…`;
+    await mstScanUpload();
+  } catch (e){ if (statusEl) statusEl.textContent = e.message || `Couldn't read ${file.name}.`; }
+}
+async function mstScanUpload(){
+  const statusEl = document.getElementById('mstImportStatus');
+  if (!mstParsedRows.length || !mstFileDataUrl) return;
+  try {
+    const uploadResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/uploads`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purpose: 'store_list', filename: mstFileName, dataUrl: mstFileDataUrl })
+    });
+    const uploadData = await uploadResp.json().catch(() => ({}));
+    if (!uploadResp.ok){
+      if (uploadData.status === 'rejected_pii') { if (statusEl) statusEl.textContent = 'Rejected — this file appears to contain PII and was never stored.'; }
+      else if (uploadData.status === 'rejected_virus') { if (statusEl) statusEl.textContent = 'Rejected — this file failed the virus scan and was never stored.'; }
+      else { if (statusEl) statusEl.textContent = 'Rejected — no virus scanner is configured right now.'; }
+      return;
+    }
+    const map = mstAutoMapColumns(mstParsedHeaders);
+    const idxByField = {};
+    Object.keys(map).forEach(idx => { if (map[idx] !== 'ignore') idxByField[map[idx]] = Number(idx); });
+    const rowsOut = mstParsedRows.map(r => ({
+      storeId: idxByField.storeId != null ? r[idxByField.storeId] : null,
+      name: idxByField.name != null ? r[idxByField.name] : null,
+      postalCode: idxByField.postalCode != null ? r[idxByField.postalCode] : null,
+      address: idxByField.address != null ? r[idxByField.address] : null,
+      country: idxByField.country != null ? r[idxByField.country] : null
+    })).filter(r => r.name || r.storeId);
+    const importResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setId: mstCurrentSetId, rows: rowsOut })
+    });
+    const importData = await importResp.json().catch(() => ({}));
+    if (!importResp.ok){ if (statusEl) statusEl.textContent = importData.error || 'Could not import that file.'; return; }
+    if (statusEl) statusEl.textContent = `Imported ${importData.inserted} store(s)${importData.errors && importData.errors.length ? ` — ${importData.errors.length} row(s) skipped` : ''}.`;
+    const fileInput = document.getElementById('mstFileInput');
+    if (fileInput) fileInput.value = '';
+    await mstLoadStores(); await mstLoadProspectFit(); await mstLoadSetPicker();
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not import that file.'; }
+}
+
+async function mstGeocodeMissing(){
+  const statusEl = document.getElementById('mstImportStatus');
+  const missing = mstStoresCache.filter(s => (s.lat == null || s.lng == null) && s.postalCode);
+  if (!missing.length){ if (statusEl) statusEl.textContent = 'Every store already has coordinates, or has no zip/postal code to resolve from.'; return; }
+  if (statusEl) statusEl.textContent = `Re-saving ${missing.length} store(s) to resolve coordinates from their zip/postal code…`;
+  try {
+    const rowsOut = missing.map(s => ({ storeId: s.storeId, name: s.name, postalCode: s.postalCode, address: s.address, country: s.country }));
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ setId: mstCurrentSetId, rows: rowsOut })
+    });
+    if (resp.ok){ await mstLoadStores(); await mstLoadProspectFit(); mstRender(); if (statusEl) statusEl.textContent = 'Coordinates resolved where a matching zip/postal code was on file.'; }
+    else if (statusEl) statusEl.textContent = 'Could not geocode those stores right now.';
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not geocode.'; }
+}
+
+// "Nearby prospects — Audience & Wealth Fit" — no customer upload
+// involved, purely who lives around each geocoded store.
+function mstProspectFitSectionHtml(data){
+  if (!data) return '';
+  if (!data.available){
+    return `<div style="margin-top:8px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p><p class="hint">${escapeHtml(data.note || 'No geocoded stores in this set yet.')}</p></div>`;
+  }
+  const gens = (data.targetGenerations || []).join(', ');
+  const rows = (data.stores || []).map(s => s.rings.map((r, i) => `
+    <tr${i === 0 ? '' : ' style="border-top:none;"'}>
+      ${i === 0 ? `<td rowspan="${s.rings.length}">${escapeHtml(s.name || s.storeId || '—')}</td>` : ''}
+      <td>${r.radiusMiles} mi</td>
+      <td>${r.population.toLocaleString()}</td>
+      <td>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.audienceFit != null ? r.audienceFit : '—')}</td>
+      <td>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.wealthFit != null ? `${r.wealthFit}${r.wealthBand ? ` (${escapeHtml(r.wealthBand)})` : ''}` : '—')}</td>
+      <td>${r.matchesAccountWealthTier == null ? '—' : (r.matchesAccountWealthTier ? '✓ match' : '✗ off-target')}</td>
+    </tr>`).join('')).join('');
+  return `
+    <div style="margin-top:8px;">
+      <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p>
+      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Audience Fit = target-generation population share nearby, indexed to the national average (100 = average). Wealth Fit = the same Verilume Wealth Index your Free Assessment uses, for the population nearby.</p>
+      <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
+        <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Audience Fit</th><th>Wealth Fit</th><th>Matches your target?</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <p class="hint" style="margin:0;">${escapeHtml(data.demographicCoverageNote || '')} ${escapeHtml(data.unavailableGenerationsNote || '')}</p>
+    </div>`;
+}
+
+// "By store trade area" — rendered inside mouRenderResults() above, using
+// computeStoreTradeAreas() output from the analysis endpoint (only present
+// when a store set was selected when that analysis was fetched).
+function mstTradeAreaSectionHtml(data){
+  if (!data) return '';
+  if (!data.available){
+    return `<div style="margin-top:16px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">By store trade area</p><p class="hint">${escapeHtml(data.note || 'Select a store set above to see this upload broken out by store trade area.')}</p></div>`;
+  }
+  const rows = (data.stores || []).map(s => s.rings.map((r, i) => `
+    <tr${i === 0 ? '' : ' style="border-top:none;"'}>
+      ${i === 0 ? `<td rowspan="${s.rings.length}">${escapeHtml(s.name || s.storeId || '—')}</td>` : ''}
+      <td>${r.radiusMiles} mi</td>
+      <td>${r.volume.toLocaleString()}</td>
+      <td>${r.population.toLocaleString()}</td>
+      <td>${r.penetrationRate != null ? (r.penetrationRate * 100).toFixed(2) + '%' : '—'}</td>
+      <td>${r.penetrationIndex != null ? r.penetrationIndex : '—'}</td>
+    </tr>`).join('')).join('');
+  const pairRows = (data.matching.pairs || []).map(p => {
+    const a = data.stores.find(s => s.id === p.testStoreId), b = data.stores.find(s => s.id === p.controlStoreId);
+    return `<tr><td>${escapeHtml(a ? (a.name || a.storeId) : '—')}</td><td>${escapeHtml(b ? (b.name || b.storeId) : '—')}</td></tr>`;
+  }).join('');
+  return `
+    <div style="margin-top:16px;">
+      <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">By store trade area</p>
+      <p class="hint" style="margin:0 0 10px;">${escapeHtml(data.disclosure || '')}</p>
+      <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;">
+        <thead><tr><th>Store</th><th>Ring</th><th>Customers</th><th>Population</th><th>Penetration rate</th><th>Index</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${pairRows ? `<p class="hint" style="margin:0 0 4px;font-weight:600;">Matched store pairs (test/control)</p><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:10px;"><thead><tr><th>Store</th><th>Matched with</th></tr></thead><tbody>${pairRows}</tbody></table></div>` : ''}
+      <p class="hint" style="margin:0;">${data.beyondRings.toLocaleString()} customer zip(s) fell outside every store's largest ring; ${data.unmapped.toLocaleString()} had no zip centroid or population on file. ${escapeHtml(data.matching.note || '')}</p>
+    </div>`;
 }
 
 // ---------- Sample Writings & Presentations (Brand, round 132bp) ----------
@@ -42560,7 +42664,7 @@ function goToStep(step, arg, arg2, arg3){
     mouResetImport();
     mouLoadHistory();
     if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker();
-    if (typeof mstLoad === 'function') mstLoad();
+    if (typeof mstLoadSetPicker === 'function') mstLoadSetPicker();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
     // 2026-08-23 — Product & Campaign Groups, moved here from Marketing

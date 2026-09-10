@@ -674,6 +674,16 @@
 </div><!-- /#opsAppRoot -->
 
 <script>
+// 2026-09-10 — deploy-verification marker, same pattern as portal.html's
+// CXMEDIA_BUILD_STAMP and matching GET /api/health -> buildStamp in
+// server.js. This constant changes with every delivered round so it's
+// trivial to check "am I actually running what I think I'm running" from
+// the browser console (logged below), rather than guessing from behavior
+// or trusting a GitHub upload / deploy dashboard alone. See
+// cxmedia-delivery-file-format-convention.md for why this exists.
+const CXMEDIA_BUILD_STAMP = '2026-09-10-store-sets-and-canada-fix';
+console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
+
 // 2026-08-20 — this file's first real backend call (Platform Integration
 // Status below). Same BACKEND_URL convention as every other frontend page
 // in this build — same-origin in production, localhost:8787 when opened
