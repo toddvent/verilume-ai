@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-10-fail-loud-db-check (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-10-db-health-field-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -10959,11 +10959,19 @@ async function handleRequest(req, res) {
     // (2026-08-15), matching CXMEDIA_BUILD_STAMP in portal.html, so it's
     // possible to confirm which copy of the code is actually running on
     // both sides of a deploy rather than inferring it from behavior.
+    // 2026-09-10 fix — `db` used to unconditionally report DB_PATH (the
+    // local SQLite file constant) regardless of which branch the db-init
+    // code above actually took, so it looked identical whether the real
+    // connection was Postgres or the local demo file. That false signal
+    // sent an entire troubleshooting session chasing a "DATABASE_URL not
+    // picked up" theory that turned out to be wrong — DATABASE_URL was
+    // fine; this field just never reflected it. Now reports which one is
+    // genuinely in use.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'health'){
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
-        db: DB_PATH,
-        buildStamp: '2026-09-10-fail-loud-db-check',
+        db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
+        buildStamp: '2026-09-10-db-health-field-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -19881,7 +19889,6 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
-
 
 
 
