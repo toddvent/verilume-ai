@@ -6010,25 +6010,30 @@
     </div>
 
     <!-- "Stores and trade areas" — one flat, continuously-edited store list
-         per account (restored 2026-09-10 per direct instruction, "This the
-         store card that should be active not new thing", after a same-day
-         detour into named multiple store-location sets that was never
-         asked for — see the account_store_sets comment in server.js for
-         the full history). Store table + manual/bulk add
-         (mstRender/mstAddOne/mstHandleFile/mstScanUpload/mstGeocodeMissing/
-         mstToggleDeleteConfirm/mstConfirmDeleteStore), "Nearby prospects —
-         Audience & Wealth Fit" (mstProspectFitSectionHtml, no customer
-         upload involved), and the upload-driven "By store trade area"
-         section (mstTradeAreaSectionHtml, rendered inside mouRenderResults()
-         above using computeStoreTradeAreas() output). -->
+         per account, pixel-matched back to the exact approved pre-2026-09-10
+         design (teal "cx" header, kicker "Local retail", labeled field row,
+         "Or upload a store list:" caption) per direct instruction ("This the
+         store card that should be active not new thing", then again "Why
+         are w not using the already approved and best design") after a
+         same-day detour into named multiple store-location sets, and then a
+         first restoration attempt that kept this section's newer "ink"
+         header/copy instead of reverting the header too — see the
+         account_store_sets comment in server.js for the full history. Store
+         table + manual/bulk add (mstRender/mstAddOne/mstHandleFile/
+         mstScanUpload/mstGeocodeMissing/mstToggleDeleteConfirm/
+         mstConfirmDeleteStore), "Nearby prospects — Audience & Wealth Fit"
+         (mstProspectFitSectionHtml, no customer upload involved), and the
+         upload-driven "By store trade area" section (mstTradeAreaSectionHtml,
+         rendered inside mouRenderResults() above using
+         computeStoreTradeAreas() output). The store-count + intro copy line
+         is generated inside mstRender() itself (matching the approved
+         design's exact wording), not as a separate static paragraph here. -->
     <div class="sk-card" id="mstCard" style="margin-top:18px;">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Optional</div><h3>Stores and trade areas</h3></div>
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Local retail</div><h3>Stores and trade areas</h3></div>
         <div class="hicon">📍</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Add your store locations to see who's nearby (Audience &amp; Wealth Fit) and, once a customer file is imported above, how each store's trade area is actually performing.</p>
-
         <div id="mstBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
@@ -9011,7 +9016,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-10-store-sets-retired-flat-list-restored';
+const CXMEDIA_BUILD_STAMP = '2026-09-10-store-card-visual-restore';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26860,38 +26865,46 @@ function mstRender(){
   const dupes = mstDuplicateIds();
   const geocodedCount = mstStoresCache.filter(s => s.lat != null && s.lng != null).length;
   const missingCount = mstStoresCache.length - geocodedCount;
-  const rows = mstStoresCache.map(s => `
-    <tr${dupes.has(s.id) ? ' style="background:#FFF4DE;"' : ''}>
-      <td>${escapeHtml(s.storeId || '—')}</td>
-      <td>${escapeHtml(s.name || '—')}${dupes.has(s.id) ? ' <span class="hint" style="color:var(--advocacy);">possible duplicate</span>' : ''}</td>
-      <td>${escapeHtml(s.postalCode || '—')}</td>
-      <td>${escapeHtml(s.address || '—')}</td>
-      <td>${escapeHtml(s.country || 'US')}</td>
-      <td>${s.lat != null ? '✓ geocoded' : '<span class="hint">not geocoded</span>'}</td>
-      <td>
-        <button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${s.id}')">Delete</button>
-        <div id="mstDeleteConfirmRow-${s.id}" style="display:none;"><div class="cch-confirm" id="mstDeleteConfirm-${s.id}"></div></div>
-      </td>
+  const dupeCount = dupes.size;
+  const rows = mstStoresCache.map(s => `<tr>
+      <td>${escapeHtml(s.storeId || '')}</td>
+      <td>${escapeHtml(s.name || '')}${dupes.has(s.id) ? ' <span class="hint" style="color:#b8860b;font-weight:600;">possible duplicate</span>' : ''}</td>
+      <td>${escapeHtml(s.postalCode || '')}</td>
+      <td>${escapeHtml(s.address || '')}${s.country && s.country !== 'US' ? ` <span class="hint">${escapeHtml(s.country)}</span>` : ''}</td>
+      <td>${s.lat != null ? `${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)} <span class="hint">${escapeHtml(s.geocodeSource || '')}</span>` : '<span style="color:#b8860b;">not geocoded</span>'}</td>
+      <td style="white-space:nowrap;"><button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${s.id}')" style="color:var(--advocacy);">Delete</button></td>
+    </tr>
+    <tr id="mstDeleteConfirmRow-${s.id}" style="display:none;">
+      <td colspan="6"><div class="cch-confirm" id="mstDeleteConfirm-${s.id}"></div></td>
     </tr>`).join('');
 
+  // Copy per direct instruction ("Stores and Trade Areas: copy = Add your
+  // store address below to view population metrics by specific radius
+  // that aligns with your product demographics or upload multiple stores
+  // or resellers at one time") — kept the live store-count status ahead
+  // of it, same as the approved design.
   mount.innerHTML = `
-    <div class="field-row" style="align-items:flex-end;margin-bottom:14px;">
-      <input type="text" id="mstNewStoreId" placeholder="Store ID (optional)" style="flex:1;min-width:120px;">
-      <input type="text" id="mstNewStoreName" placeholder="Store name" style="flex:1;min-width:160px;">
-      <input type="text" id="mstNewStoreZip" placeholder="Zip / postal code" style="flex:1;min-width:130px;">
-      <input type="text" id="mstNewStoreAddress" placeholder="Address (optional)" style="flex:2;min-width:200px;">
-      <input type="text" id="mstNewStoreCountry" placeholder="Country (default US)" style="flex:1;min-width:120px;">
-      <button type="button" class="btn-primary" onclick="mstAddOne()">Add store</button>
+    <p class="hint" style="margin:0 0 8px;">${mstStoresCache.length ? `<b>${mstStoresCache.length} store${mstStoresCache.length === 1 ? '' : 's'}</b>, ${geocodedCount} geocoded${dupeCount ? `, <span style="color:#b8860b;font-weight:600;">${dupeCount} possible duplicate${dupeCount === 1 ? '' : 's'}</span> flagged below` : ''}. ` : ''}Add your store address below to view population metrics by specific radius that aligns with your product demographics or upload multiple stores or resellers at one time.</p>
+    ${mstStoresCache.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Store ID</th><th>Name</th><th>Zip/Postal</th><th>Address</th><th>Coordinates</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px;">
+      <div class="field" style="margin:0;flex:0 0 110px;"><label>Store ID</label><input type="text" id="mstNewStoreId" placeholder="S-101"></div>
+      <div class="field" style="margin:0;flex:1 1 160px;"><label>Name</label><input type="text" id="mstNewStoreName" placeholder="Palm Beach"></div>
+      <div class="field" style="margin:0;flex:0 0 130px;"><label>Zip/Postal Code</label><input type="text" id="mstNewStoreZip" placeholder="33480"></div>
+      <div class="field" style="margin:0;flex:2 1 260px;"><label>Address <span style="font-weight:400;text-transform:none;color:var(--muted);">(optional)</span></label><input type="text" id="mstNewStoreAddress" placeholder="150 Worth Ave, Palm Beach, FL 33480"></div>
+      <div class="field" style="margin:0;flex:0 0 120px;"><label>Country</label><input type="text" id="mstNewStoreCountry" placeholder="US"></div>
+      <div class="field" style="margin:0;">
+        <label>Add manually</label>
+        <button type="button" class="btn-ghost" onclick="mstAddOne()">+ Add store</button>
+      </div>
     </div>
-    <div class="btn-row" style="margin-bottom:14px;">
-      <label class="btn-ghost" style="cursor:pointer;">Upload store list (.csv/.xlsx)<input type="file" id="mstFileInput" accept=".csv,.xlsx" style="display:none;" onchange="mstHandleFile(event)"></label>
-      ${missingCount ? `<button type="button" class="btn-ghost" onclick="mstGeocodeMissing()">Geocode ${missingCount} address${missingCount === 1 ? '' : 'es'} without coordinates</button>` : ''}
+    <div class="btn-row" style="margin-top:10px;">
+      <label for="mstFileInput" class="hint" style="font-weight:600;text-transform:uppercase;font-size:0.6875rem;letter-spacing:0.03em;">Or upload a store list:</label>
+      <label class="btn-ghost" for="mstFileInput" style="cursor:pointer;">Choose File</label>
+      <span id="mstFileChosenName" class="hint"></span>
+      <input type="file" id="mstFileInput" accept=".csv,.xlsx" onchange="document.getElementById('mstFileChosenName').textContent = (this.files[0] || {}).name || ''; mstHandleFile(event)" style="display:none;">
+      <button type="button" class="btn-ghost" onclick="mstGeocodeMissing()" ${missingCount ? '' : 'disabled'}>Geocode addresses without coordinates →</button>
+      <span class="hint" id="mstImportStatus"></span>
     </div>
-    <p class="hint" id="mstImportStatus" style="margin:0 0 10px;"></p>
-    ${mstStoresCache.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:20px;">
-      <thead><tr><th>Store ID</th><th>Name</th><th>Zip</th><th>Address</th><th>Country</th><th>Geocoded</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>` : '<p class="hint" style="margin-bottom:20px;">No stores on file yet — add one above or upload a store list.</p>'}
     ${mstProspectFitSectionHtml(mstProspectFitCache)}
   `;
 }
@@ -26933,7 +26946,7 @@ async function mstAddOne(){
       body: JSON.stringify({ storeId: storeId.trim() || undefined, name: name.trim(), postalCode: postalCode.trim(), address: address.trim(), country: country.trim() || 'US' })
     });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Could not add that store.'; return; }
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Could not save the store.'; return; }
     ['mstNewStoreId', 'mstNewStoreName', 'mstNewStoreZip', 'mstNewStoreAddress', 'mstNewStoreCountry'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     if (statusEl) statusEl.textContent = '';
     await mstLoad();
