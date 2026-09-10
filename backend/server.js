@@ -4299,7 +4299,26 @@ function computeDmaRollup(rows, weightMode){
   const dmaByZip = new Map();
   for (let i = 0; i < zipKeys.length; i += DMA_LOOKUP_CHUNK_SIZE){
     const chunk = zipKeys.slice(i, i + DMA_LOOKUP_CHUNK_SIZE);
-    const found = db.prepare(`SELECT zip, dmaCode, dmaName FROM zip_dma_master WHERE zip IN (${chunk.map(() => '?').join(',')})`).all(...chunk);
+    // 2026-09-10 fix, per Todd's report ("The excel match market files are
+    // not showing what we need" — every zip showing "DMA undefined (name
+    // not on file)" and the Market sheet collapsing to one blank row).
+    // Root cause: schema-identifiers.json (the list sql-translate.js
+    // quotes on Postgres so camelCase columns keep their case) is missing
+    // 'dmaCode'/'dmaName' — so on production Postgres this query's bare
+    // dmaCode/dmaName references fold to lowercase and the row Postgres
+    // sends back is keyed 'dmacode'/'dmaname', not 'dmaCode'/'dmaName'.
+    // f.dmaCode was reading as undefined for every single row, so every
+    // zip fell into ONE shared bucket keyed by the literal string
+    // "undefined" (JS coerces an undefined object key to that), and
+    // dma.dmaCode printed as the literal text "undefined" in the export.
+    // This never showed up in this file's own isolated tests because
+    // those run against node:sqlite, which never folds column casing —
+    // only real Postgres does. Explicit quoted aliases make the RESULT
+    // column name 'dmaCode'/'dmaName' regardless of how the source
+    // reference itself got folded, so this is correct on both engines
+    // without touching schema-identifiers.json or the live table's
+    // physical column casing.
+    const found = db.prepare(`SELECT zip, dmaCode AS "dmaCode", dmaName AS "dmaName" FROM zip_dma_master WHERE zip IN (${chunk.map(() => '?').join(',')})`).all(...chunk);
     found.forEach(f => dmaByZip.set(f.zip, { dmaCode: f.dmaCode, dmaName: f.dmaName }));
   }
   const dmaCodeLookupCache = new Map();
@@ -4311,7 +4330,10 @@ function computeDmaRollup(rows, weightMode){
     if (/^DMA:/.test(key)){
       const k = key.slice(4).trim();
       if (!dmaCodeLookupCache.has(k)){
-        dmaCodeLookupCache.set(k, db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE dmaCode = ? LIMIT 1').get(k) || db.prepare('SELECT dmaCode, dmaName FROM zip_dma_master WHERE UPPER(dmaName) = UPPER(?) LIMIT 1').get(k) || null);
+        // Same 2026-09-10 fix as above — this path only feeds genuinely
+        // DMA-level uploads ("DMA:"-prefixed rows), but it's the same
+        // camelCase-folding bug.
+        dmaCodeLookupCache.set(k, db.prepare('SELECT dmaCode AS "dmaCode", dmaName AS "dmaName" FROM zip_dma_master WHERE dmaCode = ? LIMIT 1').get(k) || db.prepare('SELECT dmaCode AS "dmaCode", dmaName AS "dmaName" FROM zip_dma_master WHERE UPPER(dmaName) = UPPER(?) LIMIT 1').get(k) || null);
       }
       m = dmaCodeLookupCache.get(k);
     } else m = dmaByZip.get(key.padStart(5, '0')) || null;
@@ -4672,24 +4694,57 @@ function computeStoreProspectFit(stores, radii, account){
   });
   const nationalGenShare = {}; GEN_ATTRS.forEach(a => { nationalGenShare[a] = totalPop > 0 ? genTotals[a] / totalPop : null; });
   const nationalAvgIncome = incomeWeightPop > 0 ? (incomeWeightedSum / incomeWeightPop) : null;
+  // 2026-09-10, per direct question ("Does audience and wealth populate?")
+  // after Todd saw every ring on a real store show "Audience —" / "Wealth
+  // —" with no explanation. Both fields silently stayed null whenever the
+  // NATIONAL baseline they're indexed against has no coverage — no zip in
+  // zip_demographic_master overlapping population_<targetGen> for Audience
+  // Fit, or no income_avg_estimate coverage at all for Wealth Fit — with
+  // no way to tell that apart from "still loading" or "just not near
+  // anything." Surfaced here so the card (and this API's callers) can say
+  // WHY instead of a bare dash, same disclosure posture as the
+  // Geographic_Location fix on the match-market Excel export.
+  const zipsWithAnyDemographicData = allCentroids.reduce((n, z) => n + (demoByZip.has(z.zip) ? 1 : 0), 0);
+  const hasNationalAudienceBaseline = targetGens.some(g => (nationalGenShare[`population_${g}`] || 0) > 0);
+  const hasNationalWealthBaseline = nationalAvgIncome != null && nationalAvgIncome > 0;
+  let demographicCoverageNote = null;
+  if (zipsWithAnyDemographicData === 0){
+    demographicCoverageNote = 'No zip has BOTH population and demographic (age/income) data loaded at once, so Audience Fit and Wealth Fit can\'t be computed for any ring yet — load demographics under Ops Console → Reference Data, then check its "Demographics by zip" coverage line.';
+  } else if (targetGens.length && !hasNationalAudienceBaseline){
+    demographicCoverageNote = `Audience Fit can't be computed: the loaded demographic data doesn't cover this account's target generation(s) (${targetGens.join(', ')}) for any zip nationally — check the "Demographics by zip" coverage line under Ops Console → Reference Data.`;
+  } else if (!hasNationalWealthBaseline){
+    demographicCoverageNote = 'Wealth Fit can\'t be computed: no zip has income data loaded — check the "Demographics by zip" coverage line under Ops Console → Reference Data.';
+  }
 
   const out = geocoded.map(s => {
     const lat = Number(s.lat), lng = Number(s.lng);
     const rings = rad.map(r => {
       let population = 0; const genSums = {}; GEN_ATTRS.forEach(a => { genSums[a] = 0; });
-      let ringIncomeWeightedSum = 0, ringIncomeWeightPop = 0, zipsInRing = 0;
+      let ringIncomeWeightedSum = 0, ringIncomeWeightPop = 0, zipsInRing = 0, zipsWithDemoInRing = 0;
       allCentroids.forEach(z => {
         if (haversineMiles(lat, lng, z.lat, z.lng) > r) return;
         const pop = Number(z.population) || 0;
         population += pop; zipsInRing++;
         const d = demoByZip.get(z.zip);
         if (!d) return;
+        zipsWithDemoInRing++;
         GEN_ATTRS.forEach(a => { genSums[a] += Number(d[a]) || 0; });
         if (d.income_avg_estimate != null){ ringIncomeWeightedSum += Number(d.income_avg_estimate) * pop; ringIncomeWeightPop += pop; }
       });
       const ringAvgIncome = ringIncomeWeightPop > 0 ? (ringIncomeWeightedSum / ringIncomeWeightPop) : null;
+      // 2026-09-10 — distinguishes, for a ring whose Fit came back null,
+      // "no demographic data anywhere for this specific ring" (a real
+      // local coverage gap even though the national baseline exists) from
+      // every other null cause already covered by demographicCoverageNote
+      // above (no national baseline at all, or no target audience set).
+      // Computed before Audience Fit below because a ring with zero
+      // demographic coverage would otherwise math out to a real-looking
+      // "0" (every target-generation zip sums to 0 population, divided by
+      // a real ring population > 0) instead of the null/"no data" this
+      // actually is — misleading, not merely absent.
+      const noRingDemographicCoverage = zipsInRing > 0 && zipsWithDemoInRing === 0;
       let audienceFit = null;
-      if (targetGens.length && population > 0){
+      if (targetGens.length && population > 0 && !noRingDemographicCoverage){
         const ringTargetPop = targetGens.reduce((sum, g) => sum + (genSums[`population_${g}`] || 0), 0);
         const ringTargetShare = ringTargetPop / population;
         const nationalTargetShare = targetGens.reduce((sum, g) => sum + (nationalGenShare[`population_${g}`] || 0), 0);
@@ -4701,14 +4756,14 @@ function computeStoreProspectFit(stores, radii, account){
         const tier = index >= 200 ? 'hnw' : (index >= 130 ? 'wealthy' : 'middle');
         wealthFit = { index, tier, matchesAccountTier: accountWealthTiers.length ? accountWealthTiers.includes(tier) : null };
       }
-      return { radiusMiles: r, zips: zipsInRing, population, avgIncomeEstimate: ringAvgIncome != null ? Math.round(ringAvgIncome) : null, audienceFit, wealthFit };
+      return { radiusMiles: r, zips: zipsInRing, population, avgIncomeEstimate: ringAvgIncome != null ? Math.round(ringAvgIncome) : null, audienceFit, wealthFit, noRingDemographicCoverage };
     });
     return { id: s.id, storeId: s.storeId || null, name: s.name || s.storeId || s.address || s.id, address: s.address || null, rings };
   });
   return {
     available: true, radiiMiles: rad, stores: out, storesGeocoded: geocoded.length, storesTotal: (stores || []).length,
     targetGenerations: targetGensRaw, audienceFitBackedGenerations: targetGens, wealthTiers: accountWealthTiers,
-    audienceFitNote, disclosure
+    audienceFitNote, disclosure, demographicCoverageNote, zipsWithAnyDemographicData
   };
 }
 function computePenetrationIndex(rows, weightMode){
@@ -5126,7 +5181,14 @@ function buildMarketUploadXlsxPostalRows(analysis){
   const dmaByZip = new Map();
   for (let i = 0; i < zipKeys.length; i += DMA_LOOKUP_CHUNK_SIZE){
     const chunk = zipKeys.slice(i, i + DMA_LOOKUP_CHUNK_SIZE);
-    const found = db.prepare(`SELECT zip, dmaCode, dmaName FROM zip_dma_master WHERE zip IN (${chunk.map(() => '?').join(',')})`).all(...chunk);
+    // 2026-09-10 fix — same root cause as computeDmaRollup's own lookup
+    // above (see its comment): on production Postgres, bare dmaCode/
+    // dmaName references fold to lowercase and come back keyed
+    // 'dmacode'/'dmaname', so dma.dmaCode/dma.dmaName below read as
+    // undefined and this sheet literally printed "DMA undefined (name not
+    // on file)" for every zip. Quoted aliases fix the result column name
+    // on both Postgres and node:sqlite.
+    const found = db.prepare(`SELECT zip, dmaCode AS "dmaCode", dmaName AS "dmaName" FROM zip_dma_master WHERE zip IN (${chunk.map(() => '?').join(',')})`).all(...chunk);
     found.forEach(f => dmaByZip.set(f.zip, f));
   }
   return sourceRows.map(r => {
@@ -17137,9 +17199,20 @@ Submit your findings via the submit_brand_categories tool.`;
       // existing "every upload attempt stays in this account's history"
       // audit-trail design; the picker is what makes those records
       // reachable again after the session that created them ends.
+      // 2026-09-10 fix, per Todd's screenshot ("NEed to update the style for
+      // the list picklist" — the picker showed "TEST 8 (? zip(s), ...)",
+      // a literal "?" where the zip count belongs). Same root cause as the
+      // Match Market Excel export bug fixed the same round: 'rowCount' and
+      // 'geoLevel' aren't in schema-identifiers.json, so on production
+      // Postgres these bare references fold to lowercase and come back as
+      // 'rowcount'/'geolevel' — u.rowCount read as undefined in
+      // mouLoadUploadPicker() (portal.html), which is exactly the '?'
+      // fallback in `u.rowCount != null ? ... : '?'`. Explicit quoted
+      // aliases fix the result column names on both Postgres and
+      // node:sqlite without touching schema-identifiers.json.
       const uploads = db.prepare(`
-        SELECT u.id, u.label, u.periodLabel, u.createdAt, u.weightMode, u.geoLevel,
-          (SELECT COUNT(*) FROM market_customer_rows r WHERE r.marketUploadId = u.id) AS rowCount
+        SELECT u.id, u.label, u.periodLabel, u.createdAt, u.weightMode, u.geoLevel AS "geoLevel",
+          (SELECT COUNT(*) FROM market_customer_rows r WHERE r.marketUploadId = u.id) AS "rowCount"
         FROM market_customer_uploads u WHERE u.accountId = ? ORDER BY u.createdAt DESC
       `).all(accountId);
       return sendJson(res, 200, { uploads });
