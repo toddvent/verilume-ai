@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-10-store-sets-and-canada-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-10-fail-loud-db-check (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -169,6 +169,32 @@ function wrapDbForInit(rawDb) {
     close() { return rawDb.close(); },
   };
 }
+// 2026-09-10 — fail LOUD instead of silently degrading. Vercel sets its own
+// `VERCEL` env var on every deployment it runs (this is not something we
+// set ourselves), so "RUNNING_ON_VERCEL true, DATABASE_URL missing" is an
+// unambiguous real misconfiguration, never a legitimate state — a genuine
+// local dev/demo run never has `VERCEL` set. Before this fix, that exact
+// combination silently fell into the `else` branch below and served every
+// request off a disposable local SQLite file baked into the deployment
+// bundle — writes look like they succeed in the moment (nothing throws)
+// but vanish on the next cold start, and reads can return old bundled demo
+// data that LOOKS like real production data. This is precisely the failure
+// mode that cost real time to diagnose on 2026-09-10 (DATABASE_URL was
+// correctly set in Vercel's dashboard, but the running function wasn't
+// picking it up — root cause never fully confirmed, but matches a known
+// Vercel rough edge with "Sensitive" env vars and cached deployments; see
+// cxmedia-verilume-deploy-runbook-2026-08-21.md for the first occurrence,
+// 2026-08-23). Rather than rely on catching this by manually checking
+// /api/health every time, the backend itself now refuses to quietly run in
+// this state — see PRODUCTION_DB_MISCONFIGURED below and its use in
+// handleRequest, which turns this into an impossible-to-miss error on
+// every API call instead of a "nothing seems to save" mystery.
+const RUNNING_ON_VERCEL = !!process.env.VERCEL;
+const PRODUCTION_DB_MISCONFIGURED = RUNNING_ON_VERCEL && !process.env.DATABASE_URL;
+if (PRODUCTION_DB_MISCONFIGURED) {
+  console.error('[server.js] FATAL MISCONFIGURATION: running on Vercel (VERCEL env var present) but DATABASE_URL is NOT set. Falling back to a local demo SQLite file that will NOT persist real data and may contain stale bundled demo data. Every API request except GET /api/health will now return a clear 503 until this is fixed — see DATABASE_URL in Vercel project settings.');
+}
+
 let db;
 if (process.env.DATABASE_URL) {
   const { createSyncDb } = require('./pg-sync-bridge');
@@ -10934,7 +10960,27 @@ async function handleRequest(req, res) {
     // possible to confirm which copy of the code is actually running on
     // both sides of a deploy rather than inferring it from behavior.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'health'){
-      return sendJson(res, 200, { ok: true, db: DB_PATH, buildStamp: '2026-09-10-store-sets-and-canada-fix' });
+      return sendJson(res, 200, {
+        ok: !PRODUCTION_DB_MISCONFIGURED,
+        db: DB_PATH,
+        buildStamp: '2026-09-10-fail-loud-db-check',
+        ...(PRODUCTION_DB_MISCONFIGURED ? {
+          dbMisconfigured: true,
+          warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
+        } : {})
+      });
+    }
+
+    // 2026-09-10 — fail LOUD instead of silently degrading (see
+    // PRODUCTION_DB_MISCONFIGURED's own comment near the db init above for
+    // the full story). GET /api/health always answers normally, above —
+    // everything else refuses outright with a 503 that says exactly what's
+    // wrong, rather than quietly serving demo data or accepting writes that
+    // silently vanish on the next cold start.
+    if (PRODUCTION_DB_MISCONFIGURED){
+      return sendJson(res, 503, {
+        error: 'DATABASE_URL is not configured on this deployment — this backend refuses to serve real requests against the local demo database. See GET /api/health for detail; set DATABASE_URL in Vercel project settings and redeploy.'
+      });
     }
 
     // GET /api/ops/integration-status — 2026-08-20, per direct instruction
@@ -19835,4 +19881,7 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
+
+
 
