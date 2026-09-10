@@ -26621,10 +26621,48 @@ function mstRender(){
   const body = document.getElementById('mstBody');
   if (!body) return;
   const geocoded = mstStores.filter(s => s.lat != null && s.lng != null).length;
-  // 2026-09-09, per direct instruction ("Primary key used to produce output
-  // will be the zip code or international version") — added a Zip/Postal
-  // Code column, both in the table below and the manual add-store row.
-  const rows = mstStores.map(s => `<tr><td>${escapeHtml(s.storeId || '')}</td><td>${escapeHtml(s.name || '')}</td><td>${escapeHtml(s.postalCode || '')}</td><td>${escapeHtml(s.address || '')}${s.country && s.country !== 'US' ? ` <span class="hint">${escapeHtml(s.country)}</span>` : ''}</td><td>${s.lat != null ? `${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)} <span class="hint">${escapeHtml(s.geocodeSource || '')}</span>` : '<span style="color:#b8860b;">not geocoded</span>'}</td></tr>`).join('');
+  // 2026-09-09, per direct instruction ("Storefronts is one area where we
+  // should be able to delete duplicates or stores no longer part of a
+  // brand or franchise") — flags likely duplicates so they're easy to spot
+  // before deleting: two stores sharing the same Zip/Postal Code AND the
+  // same name (trimmed, case-insensitive), or — when neither store has a
+  // name on file — the same Zip/Postal Code and Address. A shared
+  // storeId can't happen here (POST .../stores already upserts on it), so
+  // this only catches the real duplicate shape: the same physical location
+  // entered twice, usually from a re-upload or a second manual add. Flags,
+  // never auto-removes — Todd decides which copy (if either) to keep.
+  const mstDupeKey = s => {
+    const zip = String(s.postalCode || '').trim().toUpperCase();
+    if (!zip) return null;
+    const name = String(s.name || '').trim().toUpperCase();
+    const addr = String(s.address || '').trim().toUpperCase();
+    if (!name && !addr) return null;
+    return `${zip}|${name || addr}`;
+  };
+  const mstDupeCounts = {};
+  mstStores.forEach(s => { const k = mstDupeKey(s); if (k) mstDupeCounts[k] = (mstDupeCounts[k] || 0) + 1; });
+  // 2026-09-09, per direct instruction ("Storefronts is one area where we
+  // should be able to delete duplicates or stores no longer part of a
+  // brand or franchise") — added a Delete column, same
+  // toggle-a-.cch-confirm-row pattern used everywhere else on this page a
+  // delete needs a confirm step (see mbuToggleDeleteConfirm's own comment
+  // for the shared convention). A store row previously could only be
+  // removed by replacing the ENTIRE list via re-upload — there was no way
+  // to drop just the one bad row (a duplicate, or a closed location).
+  const rows = mstStores.map(s => {
+    const isDupe = mstDupeCounts[mstDupeKey(s)] > 1;
+    return `<tr>
+      <td>${escapeHtml(s.storeId || '')}</td>
+      <td>${escapeHtml(s.name || '')}${isDupe ? ' <span class="hint" style="color:#b8860b;font-weight:600;">possible duplicate</span>' : ''}</td>
+      <td>${escapeHtml(s.postalCode || '')}</td>
+      <td>${escapeHtml(s.address || '')}${s.country && s.country !== 'US' ? ` <span class="hint">${escapeHtml(s.country)}</span>` : ''}</td>
+      <td>${s.lat != null ? `${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)} <span class="hint">${escapeHtml(s.geocodeSource || '')}</span>` : '<span style="color:#b8860b;">not geocoded</span>'}</td>
+      <td style="white-space:nowrap;"><button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${s.id}')" style="color:var(--advocacy);">Delete</button></td>
+    </tr>
+    <tr id="mstDeleteConfirmRow-${s.id}" style="display:none;">
+      <td colspan="6"><div class="cch-confirm" id="mstDeleteConfirm-${s.id}"></div></td>
+    </tr>`;
+  }).join('');
   // 2026-09-09, per direct instruction ("Stores and Trade Areas: copy =
   // Add your store address below to view population metrics by specific
   // radius that aligns with your product demographics or upload multiple
@@ -26632,9 +26670,10 @@ function mstRender(){
   // hint ("Upload a CSV with a Zip/Postal Code column...") with Todd's own
   // copy. Kept the live store-count status ahead of it (real, useful
   // information the old copy also carried) rather than dropping it.
+  const dupeCount = Object.values(mstDupeCounts).filter(n => n > 1).reduce((sum, n) => sum + n, 0);
   body.innerHTML = `
-    <p class="hint" style="margin:0 0 8px;">${mstStores.length ? `<b>${mstStores.length} store${mstStores.length === 1 ? '' : 's'}</b>, ${geocoded} geocoded. ` : ''}Add your store address below to view population metrics by specific radius that aligns with your product demographics or upload multiple stores or resellers at one time.</p>
-    ${mstStores.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Store ID</th><th>Name</th><th>Zip/Postal</th><th>Address</th><th>Coordinates</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    <p class="hint" style="margin:0 0 8px;">${mstStores.length ? `<b>${mstStores.length} store${mstStores.length === 1 ? '' : 's'}</b>, ${geocoded} geocoded${dupeCount ? `, <span style="color:#b8860b;font-weight:600;">${dupeCount} possible duplicate${dupeCount === 1 ? '' : 's'}</span> flagged below` : ''}. ` : ''}Add your store address below to view population metrics by specific radius that aligns with your product demographics or upload multiple stores or resellers at one time.</p>
+    ${mstStores.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Store ID</th><th>Name</th><th>Zip/Postal</th><th>Address</th><th>Coordinates</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px;">
       <div class="field" style="margin:0;flex:0 0 110px;"><label>Store ID</label><input type="text" id="mstNewId" placeholder="S-101"></div>
       <div class="field" style="margin:0;flex:1 1 160px;"><label>Name</label><input type="text" id="mstNewName" placeholder="Palm Beach"></div>
@@ -26719,6 +26758,42 @@ async function mstAddOne(){
   if (!storeId && !name && !address && !postalCode){ if (status) status.textContent = 'Enter at least a store id, name, zip/postal code, or address.'; return; }
   const country = ((document.getElementById('mstNewCountry') || {}).value || 'US');
   try { await mstSave([{ storeId, name, address, postalCode, country }], false); await mstLoad(); } catch (e){ if (status) status.textContent = 'Could not save the store.'; }
+}
+// 2026-09-09, per direct instruction ("Storefronts is one area where we
+// should be able to delete duplicates or stores no longer part of a brand
+// or franchise") — same toggle-a-.cch-confirm-row pattern already used
+// elsewhere on this page for a delete that needs a confirm step (see
+// mbuToggleDeleteConfirm's own comment for the shared convention this
+// mirrors). One store row at a time; no dependent-record warning needed
+// (nothing else in the schema references a store row by id).
+function mstToggleDeleteConfirm(storeRowId){
+  const row = document.getElementById(`mstDeleteConfirmRow-${storeRowId}`);
+  const mount = document.getElementById(`mstDeleteConfirm-${storeRowId}`);
+  if (!row || !mount) return;
+  const opening = row.style.display === 'none';
+  if (opening){
+    const s = mstStores.find(x => x.id === storeRowId);
+    const label = (s && (s.name || s.storeId || s.address)) || 'this store';
+    mount.innerHTML = `
+      <p style="margin:0 0 8px;">Delete <b>${escapeHtml(label)}</b>? This removes it from the store list and every trade-area/prospect-fit view that reads it — it can't be undone (you'd need to re-add it).</p>
+      <button type="button" class="btn-primary" onclick="mstConfirmDeleteStore('${storeRowId}')">Yes, delete this store</button>
+      <button type="button" class="btn-ghost" onclick="mstToggleDeleteConfirm('${storeRowId}')">Never mind</button>
+    `;
+    mount.classList.add('open');
+    row.style.display = '';
+  } else {
+    row.style.display = 'none';
+    mount.classList.remove('open');
+    mount.innerHTML = '';
+  }
+}
+async function mstConfirmDeleteStore(storeRowId){
+  const mount = document.getElementById(`mstDeleteConfirm-${storeRowId}`);
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/${encodeURIComponent(storeRowId)}`, { method: 'DELETE' });
+    if (!r.ok){ if (mount) mount.innerHTML = `<p style="margin:0;color:var(--advocacy);">Couldn't delete this store right now.</p>`; return; }
+    await mstLoad();
+  } catch (e){ if (mount) mount.innerHTML = `<p style="margin:0;color:var(--advocacy);">Couldn't delete this store right now.</p>`; }
 }
 // 2026-09-09, per direct instruction ("Please make sure that all uploads
 // reject PII automatically beyond zip code variations") — this file used to
