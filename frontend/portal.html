@@ -6009,20 +6009,18 @@
       </div>
     </div>
 
-    <!-- "Stores and trade areas" — 2026-09-10 rebuild (reconstructed after
-         the same-day removal over the Census coverage gap; see
-         computeStoreProspectFit's comment in server.js for the full
-         history). Rebuilt with a second capability layered in from the
-         start: multiple named, permanently-kept store-location sets per
-         account (mstLoadSetPicker/mstSelectSet/mstCreateSet/mstRenameSet/
-         mstDeleteSet), mirroring how customer uploads already work — every
-         store-mutating call below carries mstCurrentSetId. Store table +
-         manual/bulk add (mstRender/mstAddOne/mstHandleFile/mstScanUpload/
-         mstGeocodeMissing/mstToggleDeleteConfirm/mstConfirmDeleteStore),
-         "Nearby prospects — Audience & Wealth Fit" (mstProspectFitSectionHtml,
-         no customer upload involved), and the upload-driven "By store trade
-         area" section (mstTradeAreaSectionHtml, rendered inside
-         mouRenderResults() above using computeStoreTradeAreas() output). -->
+    <!-- "Stores and trade areas" — one flat, continuously-edited store list
+         per account (restored 2026-09-10 per direct instruction, "This the
+         store card that should be active not new thing", after a same-day
+         detour into named multiple store-location sets that was never
+         asked for — see the account_store_sets comment in server.js for
+         the full history). Store table + manual/bulk add
+         (mstRender/mstAddOne/mstHandleFile/mstScanUpload/mstGeocodeMissing/
+         mstToggleDeleteConfirm/mstConfirmDeleteStore), "Nearby prospects —
+         Audience & Wealth Fit" (mstProspectFitSectionHtml, no customer
+         upload involved), and the upload-driven "By store trade area"
+         section (mstTradeAreaSectionHtml, rendered inside mouRenderResults()
+         above using computeStoreTradeAreas() output). -->
     <div class="sk-card" id="mstCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Optional</div><h3>Stores and trade areas</h3></div>
@@ -6031,22 +6029,7 @@
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Add your store locations to see who's nearby (Audience &amp; Wealth Fit) and, once a customer file is imported above, how each store's trade area is actually performing.</p>
 
-        <div id="mstSetPickerRow" class="btn-row" style="margin-bottom:14px;align-items:center;gap:8px;">
-          <label for="mstSetPicker" class="hint" style="margin:0;">Store locations:</label>
-          <select id="mstSetPicker" class="tbl-select" onchange="mstSelectSet(this.value)" style="max-width:320px;"></select>
-          <button type="button" class="btn-ghost" onclick="mstShowNewSetForm()">+ New set</button>
-          <button type="button" class="btn-ghost" id="mstRenameSetBtn" onclick="mstRenameSet()">Rename</button>
-          <button type="button" class="btn-ghost" id="mstDeleteSetBtn" onclick="mstToggleDeleteSetConfirm()">Delete set</button>
-        </div>
-        <div id="mstNewSetForm" class="btn-row" style="display:none;margin-bottom:14px;align-items:center;gap:8px;">
-          <input type="text" id="mstNewSetName" placeholder="e.g. Proposed expansion" style="flex:1;min-width:200px;max-width:320px;">
-          <button type="button" class="btn-primary" onclick="mstCreateSet()">Create</button>
-          <button type="button" class="btn-ghost" onclick="mstHideNewSetForm()">Cancel</button>
-        </div>
-        <div id="mstDeleteSetConfirmRow" style="display:none;margin-bottom:14px;"><div class="cch-confirm" id="mstDeleteSetConfirm"></div></div>
-        <p class="hint" id="mstSetStatus" style="margin:0 0 14px;"></p>
-
-        <div id="mstBody"></div>
+        <div id="mstBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
 
@@ -9028,7 +9011,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-10-default-store-set-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-10-store-sets-retired-flat-list-restored';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26783,12 +26766,11 @@ async function mouSelectUpload(uploadId, opts){
   const sel = document.getElementById('mouUploadPicker');
   if (sel && sel.value !== uploadId) sel.value = uploadId;
   try {
-    // mstCurrentSetId (see the Stores and trade areas section below): when
-    // a store set is selected, the analysis response's storeTradeArea
-    // section gets computed against it — omitted entirely otherwise, so an
-    // account with no stores/sets yet degrades gracefully.
-    const setParam = (typeof mstCurrentSetId !== 'undefined' && mstCurrentSetId) ? `?storeSetId=${encodeURIComponent(mstCurrentSetId)}` : '';
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(uploadId)}/analysis${setParam}`, { timeoutMs: 60000 });
+    // storeTradeArea (see the Stores and trade areas section below): the
+    // backend computes it automatically against this account's flat store
+    // list whenever it has any stores — omitted entirely otherwise, so an
+    // account with no stores yet degrades gracefully.
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/${encodeURIComponent(uploadId)}/analysis`, { timeoutMs: 60000 });
     if (!resp.ok) return;
     const data = await resp.json();
     mouRenderResults(data);
@@ -26811,16 +26793,13 @@ function mouResetImport(){
   if (resultsCard) resultsCard.style.display = 'none';
 }
 
-// ---------- Stores and trade areas (2026-09-10 rebuild) ----------
-// Rebuilt after the same-day removal over the Census coverage gap (see
-// computeStoreProspectFit's own comment in server.js), with named,
-// permanently-kept store-location sets layered in from the start —
-// mirroring the committed-upload picker just above (mouLoadUploadPicker/
-// mouSelectUpload) as closely as the two features' shapes allow: a
-// labeled <select> populated from a list endpoint, defaulting to the most
-// relevant entry, with a re-fetch-and-rerender on change.
-let mstSetsCache = [];
-let mstCurrentSetId = null;
+// ---------- Stores and trade areas ----------
+// One flat, continuously-edited store list per account. (Briefly rebuilt
+// 2026-09-10 around named, multiple store-location sets — mirroring the
+// committed-upload picker just above — then retired the same day per
+// direct instruction, "This the store card that should be active not new
+// thing", pointing back at this original design. See the
+// account_store_sets comment in server.js for the full history.)
 let mstStoresCache = [];
 let mstProspectFitCache = null;
 let mstParsedHeaders = [];
@@ -26828,130 +26807,32 @@ let mstParsedRows = [];
 let mstFileDataUrl = null;
 let mstFileName = null;
 
-async function mstLoadSetPicker(){
-  const row = document.getElementById('mstSetPickerRow');
-  const sel = document.getElementById('mstSetPicker');
-  if (!row || !sel || !state.companyId) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets`);
-    if (!resp.ok) return;
-    const data = await resp.json();
-    mstSetsCache = data.sets || [];
-    if (!mstSetsCache.length){
-      sel.innerHTML = '';
-      mstCurrentSetId = null;
-      document.getElementById('mstRenameSetBtn').style.display = 'none';
-      document.getElementById('mstDeleteSetBtn').style.display = 'none';
-      mstShowNewSetForm();
-      mstRender();
-      return;
-    }
-    document.getElementById('mstRenameSetBtn').style.display = '';
-    document.getElementById('mstDeleteSetBtn').style.display = '';
-    sel.innerHTML = mstSetsCache.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${s.storeCount} store${s.storeCount === 1 ? '' : 's'})</option>`).join('');
-    const toSelect = (mstCurrentSetId && mstSetsCache.some(s => s.id === mstCurrentSetId)) ? mstCurrentSetId : mstSetsCache[0].id;
-    sel.value = toSelect;
-    await mstSelectSet(toSelect);
-  } catch (e){ /* leave the picker as whatever it last showed */ }
-}
-async function mstSelectSet(setId){
-  if (!setId) return;
-  mstCurrentSetId = setId;
-  const sel = document.getElementById('mstSetPicker');
-  if (sel && sel.value !== setId) sel.value = setId;
+// Loads this account's stores + prospect-fit and (re)renders the card.
+// Called on page load and after every add/delete/import/geocode.
+async function mstLoad(){
   await mstLoadStores();
   await mstLoadProspectFit();
   mstRender();
   // Re-fetch whichever customer upload's analysis is currently shown so
-  // its "By store trade area" section updates to the newly selected set.
+  // its "By store trade area" section reflects the current store list.
   if (typeof mouLastAnalysis !== 'undefined' && mouLastAnalysis && mouLastAnalysis.uploadId){
     mouSelectUpload(mouLastAnalysis.uploadId, { skipReload: true });
   }
 }
-function mstShowNewSetForm(){
-  const form = document.getElementById('mstNewSetForm');
-  if (form) form.style.display = '';
-  const input = document.getElementById('mstNewSetName');
-  if (input) input.focus();
-}
-function mstHideNewSetForm(){
-  const form = document.getElementById('mstNewSetForm');
-  if (form) form.style.display = 'none';
-  const input = document.getElementById('mstNewSetName');
-  if (input) input.value = '';
-}
-async function mstCreateSet(){
-  const input = document.getElementById('mstNewSetName');
-  const name = (input ? input.value : '').trim();
-  const statusEl = document.getElementById('mstSetStatus');
-  if (!name){ if (statusEl) statusEl.textContent = 'Name is required.'; return; }
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
-    });
-    if (!resp.ok){ if (statusEl) statusEl.textContent = 'Could not create that store set.'; return; }
-    const data = await resp.json();
-    mstHideNewSetForm();
-    mstCurrentSetId = data.id;
-    if (statusEl) statusEl.textContent = '';
-    await mstLoadSetPicker();
-  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not create that store set.'; }
-}
-async function mstRenameSet(){
-  if (!mstCurrentSetId) return;
-  const current = mstSetsCache.find(s => s.id === mstCurrentSetId);
-  const name = (window.prompt('Rename store set', current ? current.name : '') || '').trim();
-  if (!name) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets/${encodeURIComponent(mstCurrentSetId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
-    });
-    if (resp.ok) await mstLoadSetPicker();
-  } catch (e){ /* leave as-is */ }
-}
-function mstDeleteSet(){ mstToggleDeleteSetConfirm(); } // the "Delete set" button's own handler name, per this feature's naming convention
-function mstToggleDeleteSetConfirm(){
-  const row = document.getElementById('mstDeleteSetConfirmRow');
-  const mount = document.getElementById('mstDeleteSetConfirm');
-  if (!row || !mount || !mstCurrentSetId) return;
-  if (mount.classList.contains('open')){
-    row.style.display = 'none'; mount.classList.remove('open'); mount.innerHTML = '';
-    return;
-  }
-  const current = mstSetsCache.find(s => s.id === mstCurrentSetId);
-  mount.innerHTML = `
-    <p style="margin:0 0 8px;">Delete "${escapeHtml(current ? current.name : 'this store set')}" and its ${current ? current.storeCount : 0} store(s)? This can't be undone.</p>
-    <button type="button" class="btn-primary" onclick="mstConfirmDeleteSet()">Yes, delete this store set</button>
-    <button type="button" class="btn-ghost" onclick="mstToggleDeleteSetConfirm()">Never mind</button>
-  `;
-  mount.classList.add('open');
-  row.style.display = '';
-}
-async function mstConfirmDeleteSet(){
-  if (!mstCurrentSetId) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/store-sets/${encodeURIComponent(mstCurrentSetId)}`, { method: 'DELETE' });
-    if (resp.ok){
-      mstToggleDeleteSetConfirm();
-      mstCurrentSetId = null;
-      await mstLoadSetPicker(); // falls back to another set, or prompts to create one if none remain
-    }
-  } catch (e){ /* leave as-is */ }
-}
 
 async function mstLoadStores(){
   mstStoresCache = [];
-  if (!mstCurrentSetId || !state.companyId) return;
+  if (!state.companyId) return;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores?setId=${encodeURIComponent(mstCurrentSetId)}`);
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`);
     if (resp.ok){ const data = await resp.json(); mstStoresCache = data.stores || []; }
   } catch (e){ /* leave empty */ }
 }
 async function mstLoadProspectFit(){
   mstProspectFitCache = null;
-  if (!mstCurrentSetId || !state.companyId) return;
+  if (!state.companyId) return;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/prospect-fit?setId=${encodeURIComponent(mstCurrentSetId)}`, { timeoutMs: 60000 });
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/prospect-fit`, { timeoutMs: 60000 });
     if (resp.ok) mstProspectFitCache = await resp.json();
   } catch (e){ /* leave null */ }
 }
@@ -26976,10 +26857,6 @@ function mstDuplicateIds(){
 function mstRender(){
   const mount = document.getElementById('mstBody');
   if (!mount) return;
-  if (!mstCurrentSetId){
-    mount.innerHTML = '<p class="hint">Create a store set above to start adding locations.</p>';
-    return;
-  }
   const dupes = mstDuplicateIds();
   const geocodedCount = mstStoresCache.filter(s => s.lat != null && s.lng != null).length;
   const missingCount = mstStoresCache.length - geocodedCount;
@@ -27014,7 +26891,7 @@ function mstRender(){
     ${mstStoresCache.length ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:20px;">
       <thead><tr><th>Store ID</th><th>Name</th><th>Zip</th><th>Address</th><th>Country</th><th>Geocoded</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>` : '<p class="hint" style="margin-bottom:20px;">No stores in this set yet — add one above or upload a store list.</p>'}
+    </table></div>` : '<p class="hint" style="margin-bottom:20px;">No stores on file yet — add one above or upload a store list.</p>'}
     ${mstProspectFitSectionHtml(mstProspectFitCache)}
   `;
 }
@@ -27038,7 +26915,7 @@ function mstToggleDeleteConfirm(storeRowId){
 async function mstConfirmDeleteStore(storeRowId){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores/${encodeURIComponent(storeRowId)}`, { method: 'DELETE' });
-    if (resp.ok){ await mstLoadStores(); await mstLoadSetPicker(); }
+    if (resp.ok){ await mstLoad(); }
   } catch (e){ /* leave as-is */ }
 }
 
@@ -27053,13 +26930,13 @@ async function mstAddOne(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ setId: mstCurrentSetId, storeId: storeId.trim() || undefined, name: name.trim(), postalCode: postalCode.trim(), address: address.trim(), country: country.trim() || 'US' })
+      body: JSON.stringify({ storeId: storeId.trim() || undefined, name: name.trim(), postalCode: postalCode.trim(), address: address.trim(), country: country.trim() || 'US' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Could not add that store.'; return; }
     ['mstNewStoreId', 'mstNewStoreName', 'mstNewStoreZip', 'mstNewStoreAddress', 'mstNewStoreCountry'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     if (statusEl) statusEl.textContent = '';
-    await mstLoadStores(); await mstLoadProspectFit(); await mstLoadSetPicker();
+    await mstLoad();
   } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not add that store.'; }
 }
 
@@ -27142,14 +27019,14 @@ async function mstScanUpload(){
     })).filter(r => r.name || r.storeId);
     const importResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ setId: mstCurrentSetId, rows: rowsOut })
+      body: JSON.stringify({ rows: rowsOut })
     });
     const importData = await importResp.json().catch(() => ({}));
     if (!importResp.ok){ if (statusEl) statusEl.textContent = importData.error || 'Could not import that file.'; return; }
     if (statusEl) statusEl.textContent = `Imported ${importData.inserted} store(s)${importData.errors && importData.errors.length ? ` — ${importData.errors.length} row(s) skipped` : ''}.`;
     const fileInput = document.getElementById('mstFileInput');
     if (fileInput) fileInput.value = '';
-    await mstLoadStores(); await mstLoadProspectFit(); await mstLoadSetPicker();
+    await mstLoad();
   } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not import that file.'; }
 }
 
@@ -27161,9 +27038,9 @@ async function mstGeocodeMissing(){
   try {
     const rowsOut = missing.map(s => ({ storeId: s.storeId, name: s.name, postalCode: s.postalCode, address: s.address, country: s.country }));
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/stores`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ setId: mstCurrentSetId, rows: rowsOut })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: rowsOut })
     });
-    if (resp.ok){ await mstLoadStores(); await mstLoadProspectFit(); mstRender(); if (statusEl) statusEl.textContent = 'Coordinates resolved where a matching zip/postal code was on file.'; }
+    if (resp.ok){ await mstLoad(); if (statusEl) statusEl.textContent = 'Coordinates resolved where a matching zip/postal code was on file.'; }
     else if (statusEl) statusEl.textContent = 'Could not geocode those stores right now.';
   } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not geocode.'; }
 }
@@ -27173,7 +27050,7 @@ async function mstGeocodeMissing(){
 function mstProspectFitSectionHtml(data){
   if (!data) return '';
   if (!data.available){
-    return `<div style="margin-top:8px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p><p class="hint">${escapeHtml(data.note || 'No geocoded stores in this set yet.')}</p></div>`;
+    return `<div style="margin-top:8px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p><p class="hint">${escapeHtml(data.note || 'No geocoded stores on file yet.')}</p></div>`;
   }
   const gens = (data.targetGenerations || []).join(', ');
   const rows = (data.stores || []).map(s => s.rings.map((r, i) => `
@@ -27203,7 +27080,7 @@ function mstProspectFitSectionHtml(data){
 function mstTradeAreaSectionHtml(data){
   if (!data) return '';
   if (!data.available){
-    return `<div style="margin-top:16px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">By store trade area</p><p class="hint">${escapeHtml(data.note || 'Select a store set above to see this upload broken out by store trade area.')}</p></div>`;
+    return `<div style="margin-top:16px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">By store trade area</p><p class="hint">${escapeHtml(data.note || 'Add a store location above to see this upload broken out by store trade area.')}</p></div>`;
   }
   const rows = (data.stores || []).map(s => s.rings.map((r, i) => `
     <tr${i === 0 ? '' : ' style="border-top:none;"'}>
@@ -42664,7 +42541,7 @@ function goToStep(step, arg, arg2, arg3){
     mouResetImport();
     mouLoadHistory();
     if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker();
-    if (typeof mstLoadSetPicker === 'function') mstLoadSetPicker();
+    if (typeof mstLoad === 'function') mstLoad();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
     // 2026-08-23 — Product & Campaign Groups, moved here from Marketing
