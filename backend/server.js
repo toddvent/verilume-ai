@@ -4709,7 +4709,23 @@ function computeStoreProspectFit(stores, radii, account){
   const hasNationalWealthBaseline = nationalAvgIncome != null && nationalAvgIncome > 0;
   let demographicCoverageNote = null;
   if (zipsWithAnyDemographicData === 0){
-    demographicCoverageNote = 'No zip has BOTH population and demographic (age/income) data loaded at once, so Audience Fit and Wealth Fit can\'t be computed for any ring yet — load demographics under Ops Console → Reference Data, then check its "Demographics by zip" coverage line.';
+    // 2026-09-10, per direct follow-up ("I uploaded the server file
+    // (19,535 rows). This is what I now see") — Todd DID load demographic
+    // data (19,535 rows on file per Ops Console), yet this still reads as
+    // zero overlap with the population master, which is a much stranger
+    // result than "no data loaded" (this codebase's population, centroid,
+    // and demographic loaders all key rows through the exact same
+    // normalizeGeoKey() function server-side, so a plain code-level format
+    // mismatch was checked and ruled out). Since this sandbox has no
+    // access to Todd's live database to inspect further, the note now
+    // prints a real sample of zip keys from BOTH tables directly — so
+    // whatever the actual mismatch is (a geography-level difference in
+    // what the demographics Census pull returned vs. the population
+    // master's source, for instance) is visible to Todd immediately
+    // without needing to go digging anywhere else.
+    const sampleAllCentroidZips = allCentroids.slice(0, 5).map(z => z.zip);
+    const sampleDemoZips = [...demoByZip.keys()].slice(0, 5);
+    demographicCoverageNote = `No zip has BOTH population and demographic (age/income) data loaded at once, so Audience Fit and Wealth Fit can't be computed for any ring yet, even though ${zipsWithAnyDemographicData === 0 && demoByZip.size ? `${demoByZip.size.toLocaleString()} zips of demographic data are on file` : 'demographic data is on file'} — check the "Demographics by zip" coverage line under Ops Console → Reference Data. Sample zip keys, for comparison: population/centroid master has ${sampleAllCentroidZips.length ? sampleAllCentroidZips.map(z => `"${z}"`).join(', ') : '(none)'}; demographic master has ${sampleDemoZips.length ? sampleDemoZips.map(z => `"${z}"`).join(', ') : '(none)'}.`;
   } else if (targetGens.length && !hasNationalAudienceBaseline){
     demographicCoverageNote = `Audience Fit can't be computed: the loaded demographic data doesn't cover this account's target generation(s) (${targetGens.join(', ')}) for any zip nationally — check the "Demographics by zip" coverage line under Ops Console → Reference Data.`;
   } else if (!hasNationalWealthBaseline){
@@ -19533,6 +19549,7 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
 
 
