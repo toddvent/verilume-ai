@@ -4508,280 +4508,15 @@ function centroidStatus(){
   const sources = db.prepare('SELECT DISTINCT sourceLabel FROM zip_centroid_master').all().map(r => r.sourceLabel);
   return { zipsLoaded: count, sources, byCountry: countByCountry('zip_centroid_master') };
 }
-// Straight-line rings around each geocoded store; a zip belongs to a ring
-// when its centroid is within the radius. Per store and ring: zips,
-// volume, population (population master), penetration rate, and an index
-// against the average rate of all stores at that same ring (100 = the
-// average store). "Assigned" volume puts each zip on its nearest store
-// within the largest ring so overlapping rings are not double-counted in
-// the store totals; the ring figures themselves are allowed to overlap and
-// say so. Matched store pairs use the largest ring's rate, assigned volume
-// and covered population. Never throws; returns available:false with the
-// reason when stores or centroids are missing.
-function computeStoreTradeAreas(rows, stores, radii, weightMode){
-  const disclosure = 'Trade areas are straight-line rings around each store address; each zip is placed by its centroid. Drive-time areas are not modelled, and a zip inside two stores\' rings counts in both rings (store totals assign it to the nearest store).';
-  const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null && s.lat !== '' && s.lng !== '' && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng)));
-  if (!(stores || []).length) return { available: false, note: 'no stores on file — add store addresses to see trade areas', disclosure, stores: [] };
-  if (!geocoded.length) return { available: false, note: 'stores on file but none geocoded yet', disclosure, stores: [] };
-  const cs = centroidStatus();
-  if (!cs.zipsLoaded) return { available: false, note: 'no zip centroids loaded — load the Census ZCTA gazetteer under Reference data', disclosure, stores: [] };
-  const mode = weightMode === 'revenue' ? 'revenue' : 'count';
-  const rad = (Array.isArray(radii) && radii.length ? radii : [3, 5, 10]).map(Number).filter(r => r > 0).sort((a, b) => a - b);
-  const maxR = rad[rad.length - 1];
-  // 2026-09-09 fix, found while scoping the "Align Storefronts and
-  // Territories" national map build (this is the function that would
-  // power it) — same N+1-round-trip bug as computePenetrationIndex() and
-  // computeDmaRollup() (see their comments, same day, for the full report
-  // chain): this used to run one zip_centroid_master lookup AND one
-  // zip_population_master lookup PER UPLOADED CUSTOMER ROW inside
-  // rows.forEach(). It hadn't bitten yet only because it short-circuits
-  // above when an account has zero stores on file; the first account to
-  // have both stores AND a large customer upload would have hit the exact
-  // same "Backend unreachable" failure just fixed twice already today.
-  // Batched into chunked (200 zips/chunk) lookups up front, same pattern
-  // and chunk size as the other two fixes.
-  const CS_LOOKUP_CHUNK_SIZE = 200;
-  const uniqueRowZips = [...new Set((rows || []).map(r => String(r.zip || '').padStart(5, '0')).filter(z => !/^DMA:/.test(z)))];
-  const centroidByZip = new Map(), popByZip = new Map();
-  for (let i = 0; i < uniqueRowZips.length; i += CS_LOOKUP_CHUNK_SIZE){
-    const chunk = uniqueRowZips.slice(i, i + CS_LOOKUP_CHUNK_SIZE);
-    const placeholders = chunk.map(() => '?').join(',');
-    db.prepare(`SELECT zip, lat, lng FROM zip_centroid_master WHERE zip IN (${placeholders})`).all(...chunk).forEach(c => centroidByZip.set(c.zip, c));
-    db.prepare(`SELECT zip, population FROM zip_population_master WHERE zip IN (${placeholders})`).all(...chunk).forEach(p => popByZip.set(p.zip, p.population));
-  }
-  const zips = {}; let unmappedZips = 0, unmappedVolume = 0, totalVolume = 0;
-  (rows || []).forEach(r => {
-    const zip = String(r.zip || '').padStart(5, '0');
-    const vol = mode === 'revenue' ? (Number(r.revenue) || 0) : (Number(r.customerCount) || 0);
-    totalVolume += vol;
-    if (/^DMA:/.test(zip)){ unmappedZips++; unmappedVolume += vol; return; }
-    const c = centroidByZip.get(zip);
-    if (!c){ unmappedZips++; unmappedVolume += vol; return; }
-    const population = popByZip.has(zip) ? popByZip.get(zip) : null;
-    zips[zip] = { zip, lat: c.lat, lng: c.lng, volume: (zips[zip] ? zips[zip].volume : 0) + vol, population: population != null ? Number(population) : null };
-  });
-  const zipList = Object.values(zips);
-  // ring population needs every zip in the ring, not just the client's — pull all centroids once (≈33k rows) only when a population master exists
-  let allCentroids = null;
-  if (db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n > 0){
-    allCentroids = db.prepare('SELECT c.zip AS zip, c.lat AS lat, c.lng AS lng, p.population AS population FROM zip_centroid_master c JOIN zip_population_master p ON p.zip = c.zip').all();
-  }
-  const out = geocoded.map(s => {
-    const lat = Number(s.lat), lng = Number(s.lng);
-    const rings = rad.map(r => {
-      const inRing = zipList.filter(z => haversineMiles(lat, lng, z.lat, z.lng) <= r);
-      const volume = inRing.reduce((a, z) => a + z.volume, 0);
-      let population = null;
-      if (allCentroids){ population = allCentroids.reduce((a, z) => a + (haversineMiles(lat, lng, z.lat, z.lng) <= r ? (Number(z.population) || 0) : 0), 0); }
-      const rate = (population > 0) ? volume / population : null;
-      return { radiusMiles: r, zips: inRing.length, volume: Math.round(volume * 100) / 100, population, penetrationRate: rate, index: null };
-    });
-    return { id: s.id, storeId: s.storeId || null, name: s.name || s.storeId || s.address || s.id, address: s.address || null, lat, lng, rings, assignedVolume: 0, assignedZips: 0 };
-  });
-  // index per ring vs. the average rate of stores with a rate at that ring
-  rad.forEach((r, ri) => {
-    const rates = out.map(s => s.rings[ri].penetrationRate).filter(v => v != null);
-    const avg = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
-    out.forEach(s => { const v = s.rings[ri].penetrationRate; s.rings[ri].index = (v != null && avg > 0) ? Math.round((v / avg) * 100) : null; });
-  });
-  // nearest-store assignment within the largest ring
-  let beyondVolume = 0, beyondZips = 0;
-  zipList.forEach(z => {
-    let best = null, bestD = Infinity;
-    out.forEach(s => { const d = haversineMiles(s.lat, s.lng, z.lat, z.lng); if (d < bestD){ bestD = d; best = s; } });
-    if (best && bestD <= maxR){ best.assignedVolume += z.volume; best.assignedZips++; }
-    else { beyondVolume += z.volume; beyondZips++; }
-  });
-  out.forEach(s => { s.assignedVolume = Math.round(s.assignedVolume * 100) / 100; });
-  // matched store pairs on the largest ring: z-scored [log volume, rate, log population]
-  const feats = out.map(s => { const last = s.rings[rad.length - 1]; return { s, f: [Math.log1p(s.assignedVolume), last.penetrationRate != null ? last.penetrationRate : null, last.population != null ? Math.log1p(last.population) : null] }; }).filter(x => x.f.every(v => v != null));
-  const pairs = []; const unpaired = [];
-  if (feats.length >= 2){
-    const dims = 3, mean = [0, 0, 0], sd = [0, 0, 0];
-    for (let d = 0; d < dims; d++){ mean[d] = feats.reduce((a, x) => a + x.f[d], 0) / feats.length; sd[d] = Math.sqrt(feats.reduce((a, x) => a + (x.f[d] - mean[d]) ** 2, 0) / feats.length) || 1; }
-    const z = feats.map(x => x.f.map((v, d) => (v - mean[d]) / sd[d]));
-    const used = new Set();
-    const order = feats.map((x, i) => i).sort((a, b) => feats[b].s.assignedVolume - feats[a].s.assignedVolume);
-    order.forEach(i => {
-      if (used.has(i)) return;
-      let bj = -1, bd = Infinity;
-      order.forEach(j => { if (j === i || used.has(j)) return; const d = Math.sqrt(z[i].reduce((a, v, k) => a + (v - z[j][k]) ** 2, 0)); if (d < bd){ bd = d; bj = j; } });
-      if (bj >= 0){ used.add(i); used.add(bj); pairs.push({ test: feats[i].s.name, control: feats[bj].s.name, distance: Math.round(bd * 1000) / 1000 }); }
-      else unpaired.push(feats[i].s.name);
-    });
-  } else out.forEach(s => unpaired.push(s.name));
-  return { available: true, weightMode: mode, radiiMiles: rad, stores: out.sort((a, b) => b.assignedVolume - a.assignedVolume), storesGeocoded: geocoded.length, storesTotal: (stores || []).length, unmappedZips, unmappedVolume: Math.round(unmappedVolume * 100) / 100, beyondRingsZips: beyondZips, beyondRingsVolume: Math.round(beyondVolume * 100) / 100, populationCoverage: !!allCentroids, pairs, unpaired, disclosure, pairNote: feats.length >= 2 ? `Pairs match stores on ${maxR}-mile-ring penetration rate, assigned volume and covered population — a "who lives and buys here" match, not a performance-validated one.` : 'Pairing needs at least two geocoded stores with population coverage.' };
-}
-
-// 2026-09-09, per direct instruction ("Build the API connection now" +
-// "move to the next step") — answers Todd's original question ("what is
-// the next step that identifies potential customers based on the AOV
-// business profile for this storefront") directly: unlike
-// computeStoreTradeAreas() above, this needs NO customer upload — just a
-// geocoded store, the population/demographic reference data (now loaded),
-// and the account's own Company Profile (target audience + wealth tier,
-// same fields assessment.html's Verilume Wealth Index reads). Per Todd's
-// decision, these are WIDER, SEPARATE radii from the existing customer-
-// density rings (computeStoreTradeAreas' 3/5/10 mi) — finding new
-// customers further out is a different question than mapping where
-// current ones live.
-//
-// Audience Fit: this ring's share of population in the account's selected,
-// Census-backed generation(s) (genz/millennial/genx/boomer/silent only —
-// Gen Alpha/Gen Beta/The Greatest Generation have no clean ACS bin and are
-// disclosed as unavailable here, same as assessment.html), indexed to 100
-// against the NATIONAL average share for that same generation set (100 =
-// this ring looks just like the country on this account's target
-// generations; 150 = 50% more concentrated than the national average).
-//
-// Wealth Fit: reuses assessment.html's OWN verilumeWealthIndex() formula
-// shape exactly — this ring's real ACS-derived average household income
-// relative to the national average, times GENERATION_WEALTH_INDEX for the
-// account's selected generation(s) — then runs that through the same
-// >=200/>=130/else hnw/wealthy/middle bands deriveWealthTiersFromIndex()
-// uses, so a ring gets scored on the identical scale a visitor's own
-// Wealth Index does. Compared against the account's own derived wealth
-// tier (accounts.wealth) per Todd's decision to anchor on the tier, not a
-// raw dollar figure.
-//
-// Never throws; returns available:false with a reason when there's
-// nothing to compute against (no geocoded stores, no population/
-// demographic reference data loaded, or no target audience/wealth set on
-// the account yet).
-function computeStoreProspectFit(stores, radii, account){
-  const disclosure = 'Straight-line rings, not drive-time. Audience/Wealth Fit compare each ring\'s real Census ACS 5-Year age and income data (2022 vintage) against the national average and this account\'s Company Profile selections — an index, not a guarantee of who actually lives there today.';
-  const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null && s.lat !== '' && s.lng !== '' && Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lng)));
-  if (!(stores || []).length) return { available: false, note: 'no stores on file — add store addresses to see nearby prospects', disclosure, stores: [] };
-  if (!geocoded.length) return { available: false, note: 'stores on file but none geocoded yet', disclosure, stores: [] };
-  const cs = centroidStatus();
-  if (!cs.zipsLoaded) return { available: false, note: 'no zip centroids loaded — load the Census ZCTA gazetteer under Reference Data', disclosure, stores: [] };
-  if (db.prepare('SELECT COUNT(*) AS n FROM zip_population_master').get().n === 0){
-    return { available: false, note: 'no population data loaded — load public reference data under Reference Data', disclosure, stores: [] };
-  }
-  if (db.prepare('SELECT COUNT(*) AS n FROM zip_demographic_master').get().n === 0){
-    return { available: false, note: 'no demographic (age/income) data loaded yet — load demographics under Ops Console’s Reference Data', disclosure, stores: [] };
-  }
-  const rad = (Array.isArray(radii) && radii.length ? radii : [5, 10, 15]).map(Number).filter(r => r > 0).sort((a, b) => a - b);
-  const targetGensRaw = account && account.audience ? String(account.audience).split(',').map(s => s.trim()).filter(Boolean) : [];
-  const targetGens = targetGensRaw.filter(g => ACS_AGE_BINS[g]); // only the 5 real ACS-backed generations
-  const wealthMultGens = targetGensRaw.filter(g => g !== 'general');
-  const genMultiplier = wealthMultGens.length ? wealthMultGens.reduce((s, g) => s + (GENERATION_WEALTH_INDEX[g] != null ? GENERATION_WEALTH_INDEX[g] : 1.0), 0) / wealthMultGens.length : 1.0;
-  const accountWealthTiers = account && account.wealth ? String(account.wealth).split(',').map(s => s.trim()).filter(Boolean) : [];
-  const audienceFitNote = targetGens.length ? null : (targetGensRaw.length ? 'Audience Fit needs at least one of the 5 Census-backed generations (Gen Z, Millennials, Gen X, Boomers, Silent Gen) selected in Company Profile — Gen Alpha, Gen Beta and The Greatest Generation aren’t splittable at this Census table’s granularity.' : 'Set a target audience in Company Profile to see Audience Fit.');
-
-  // Pull population + demographic reference data once for this whole call
-  // (same "bulk load once, filter per ring in memory" pattern
-  // computeStoreTradeAreas already uses above), not once per store/ring.
-  const allCentroids = db.prepare('SELECT c.zip AS zip, c.lat AS lat, c.lng AS lng, p.population AS population FROM zip_centroid_master c JOIN zip_population_master p ON p.zip = c.zip').all();
-  const demoByZip = new Map();
-  db.prepare('SELECT zip, attribute, value FROM zip_demographic_master').all().forEach(r => {
-    if (!demoByZip.has(r.zip)) demoByZip.set(r.zip, {});
-    demoByZip.get(r.zip)[r.attribute] = r.value;
-  });
-  const GEN_ATTRS = Object.keys(ACS_AGE_BINS).map(g => `population_${g}`);
-
-  // National baselines — one pass over every zip with BOTH population and
-  // demographic coverage, computed once and reused for every store/ring.
-  let totalPop = 0; const genTotals = {}; GEN_ATTRS.forEach(a => { genTotals[a] = 0; });
-  let incomeWeightedSum = 0, incomeWeightPop = 0;
-  allCentroids.forEach(z => {
-    const pop = Number(z.population) || 0;
-    totalPop += pop;
-    const d = demoByZip.get(z.zip);
-    if (!d) return;
-    GEN_ATTRS.forEach(a => { genTotals[a] += Number(d[a]) || 0; });
-    if (d.income_avg_estimate != null){ incomeWeightedSum += Number(d.income_avg_estimate) * pop; incomeWeightPop += pop; }
-  });
-  const nationalGenShare = {}; GEN_ATTRS.forEach(a => { nationalGenShare[a] = totalPop > 0 ? genTotals[a] / totalPop : null; });
-  const nationalAvgIncome = incomeWeightPop > 0 ? (incomeWeightedSum / incomeWeightPop) : null;
-  // 2026-09-10, per direct question ("Does audience and wealth populate?")
-  // after Todd saw every ring on a real store show "Audience —" / "Wealth
-  // —" with no explanation. Both fields silently stayed null whenever the
-  // NATIONAL baseline they're indexed against has no coverage — no zip in
-  // zip_demographic_master overlapping population_<targetGen> for Audience
-  // Fit, or no income_avg_estimate coverage at all for Wealth Fit — with
-  // no way to tell that apart from "still loading" or "just not near
-  // anything." Surfaced here so the card (and this API's callers) can say
-  // WHY instead of a bare dash, same disclosure posture as the
-  // Geographic_Location fix on the match-market Excel export.
-  const zipsWithAnyDemographicData = allCentroids.reduce((n, z) => n + (demoByZip.has(z.zip) ? 1 : 0), 0);
-  const hasNationalAudienceBaseline = targetGens.some(g => (nationalGenShare[`population_${g}`] || 0) > 0);
-  const hasNationalWealthBaseline = nationalAvgIncome != null && nationalAvgIncome > 0;
-  let demographicCoverageNote = null;
-  if (zipsWithAnyDemographicData === 0){
-    // 2026-09-10, per direct follow-up ("I uploaded the server file
-    // (19,535 rows). This is what I now see") — Todd DID load demographic
-    // data (19,535 rows on file per Ops Console), yet this still reads as
-    // zero overlap with the population master, which is a much stranger
-    // result than "no data loaded" (this codebase's population, centroid,
-    // and demographic loaders all key rows through the exact same
-    // normalizeGeoKey() function server-side, so a plain code-level format
-    // mismatch was checked and ruled out). Since this sandbox has no
-    // access to Todd's live database to inspect further, the note now
-    // prints a real sample of zip keys from BOTH tables directly — so
-    // whatever the actual mismatch is (a geography-level difference in
-    // what the demographics Census pull returned vs. the population
-    // master's source, for instance) is visible to Todd immediately
-    // without needing to go digging anywhere else.
-    const sampleAllCentroidZips = allCentroids.slice(0, 5).map(z => z.zip);
-    const sampleDemoZips = [...demoByZip.keys()].slice(0, 5);
-    demographicCoverageNote = `No zip has BOTH population and demographic (age/income) data loaded at once, so Audience Fit and Wealth Fit can't be computed for any ring yet, even though ${zipsWithAnyDemographicData === 0 && demoByZip.size ? `${demoByZip.size.toLocaleString()} zips of demographic data are on file` : 'demographic data is on file'} — check the "Demographics by zip" coverage line under Ops Console → Reference Data. Sample zip keys, for comparison: population/centroid master has ${sampleAllCentroidZips.length ? sampleAllCentroidZips.map(z => `"${z}"`).join(', ') : '(none)'}; demographic master has ${sampleDemoZips.length ? sampleDemoZips.map(z => `"${z}"`).join(', ') : '(none)'}.`;
-  } else if (targetGens.length && !hasNationalAudienceBaseline){
-    demographicCoverageNote = `Audience Fit can't be computed: the loaded demographic data doesn't cover this account's target generation(s) (${targetGens.join(', ')}) for any zip nationally — check the "Demographics by zip" coverage line under Ops Console → Reference Data.`;
-  } else if (!hasNationalWealthBaseline){
-    demographicCoverageNote = 'Wealth Fit can\'t be computed: no zip has income data loaded — check the "Demographics by zip" coverage line under Ops Console → Reference Data.';
-  }
-
-  const out = geocoded.map(s => {
-    const lat = Number(s.lat), lng = Number(s.lng);
-    const rings = rad.map(r => {
-      let population = 0; const genSums = {}; GEN_ATTRS.forEach(a => { genSums[a] = 0; });
-      let ringIncomeWeightedSum = 0, ringIncomeWeightPop = 0, zipsInRing = 0, zipsWithDemoInRing = 0;
-      allCentroids.forEach(z => {
-        if (haversineMiles(lat, lng, z.lat, z.lng) > r) return;
-        const pop = Number(z.population) || 0;
-        population += pop; zipsInRing++;
-        const d = demoByZip.get(z.zip);
-        if (!d) return;
-        zipsWithDemoInRing++;
-        GEN_ATTRS.forEach(a => { genSums[a] += Number(d[a]) || 0; });
-        if (d.income_avg_estimate != null){ ringIncomeWeightedSum += Number(d.income_avg_estimate) * pop; ringIncomeWeightPop += pop; }
-      });
-      const ringAvgIncome = ringIncomeWeightPop > 0 ? (ringIncomeWeightedSum / ringIncomeWeightPop) : null;
-      // 2026-09-10 — distinguishes, for a ring whose Fit came back null,
-      // "no demographic data anywhere for this specific ring" (a real
-      // local coverage gap even though the national baseline exists) from
-      // every other null cause already covered by demographicCoverageNote
-      // above (no national baseline at all, or no target audience set).
-      // Computed before Audience Fit below because a ring with zero
-      // demographic coverage would otherwise math out to a real-looking
-      // "0" (every target-generation zip sums to 0 population, divided by
-      // a real ring population > 0) instead of the null/"no data" this
-      // actually is — misleading, not merely absent.
-      const noRingDemographicCoverage = zipsInRing > 0 && zipsWithDemoInRing === 0;
-      let audienceFit = null;
-      if (targetGens.length && population > 0 && !noRingDemographicCoverage){
-        const ringTargetPop = targetGens.reduce((sum, g) => sum + (genSums[`population_${g}`] || 0), 0);
-        const ringTargetShare = ringTargetPop / population;
-        const nationalTargetShare = targetGens.reduce((sum, g) => sum + (nationalGenShare[`population_${g}`] || 0), 0);
-        audienceFit = nationalTargetShare > 0 ? Math.round((ringTargetShare / nationalTargetShare) * 100) : null;
-      }
-      let wealthFit = null;
-      if (nationalAvgIncome > 0 && ringAvgIncome != null){
-        const index = Math.round((ringAvgIncome / nationalAvgIncome) * genMultiplier * 100);
-        const tier = index >= 200 ? 'hnw' : (index >= 130 ? 'wealthy' : 'middle');
-        wealthFit = { index, tier, matchesAccountTier: accountWealthTiers.length ? accountWealthTiers.includes(tier) : null };
-      }
-      return { radiusMiles: r, zips: zipsInRing, population, avgIncomeEstimate: ringAvgIncome != null ? Math.round(ringAvgIncome) : null, audienceFit, wealthFit, noRingDemographicCoverage };
-    });
-    return { id: s.id, storeId: s.storeId || null, name: s.name || s.storeId || s.address || s.id, address: s.address || null, rings };
-  });
-  return {
-    available: true, radiiMiles: rad, stores: out, storesGeocoded: geocoded.length, storesTotal: (stores || []).length,
-    targetGenerations: targetGensRaw, audienceFitBackedGenerations: targetGens, wealthTiers: accountWealthTiers,
-    audienceFitNote, disclosure, demographicCoverageNote, zipsWithAnyDemographicData
-  };
-}
+// computeStoreTradeAreas() and computeStoreProspectFit() removed 2026-09-10
+// — the "Stores and trade areas" feature they powered was eliminated per
+// direct instruction ("Go ahead and eliminate the store and trade areas
+// unless we can find full national coverage") after real Census ACS
+// demographic (age/income) coverage turned out to be only 902 of 33,774
+// ZCTAs nationally (2.7%). See the removal note above the (now-deleted)
+// GET/POST/DELETE .../stores and .../stores/prospect-fit endpoints, and
+// this project's cxmedia-store-trade-area-audience-match-scoping-
+// 2026-09-09.md, for the full diagnosis.
 function computePenetrationIndex(rows, weightMode){
   const mode = weightMode === 'revenue' ? 'revenue' : 'count';
   // 2026-09-09 fix, per direct bug report (Todd: commit succeeded on an
@@ -5059,9 +4794,9 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     // duplicated logic.
     const dmaExport = { available: dmaMatch.dmasScored.length > 0, dmas: dmaOnly.dmas, holdout: { dmaCodes: dmaMatch.holdout.dmaCodes }, matching: dmaMatch.matching };
     return { uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
-      confidence: 'lower — DMA-level upload: no zip-level penetration, no store trade areas. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
+      confidence: 'lower — DMA-level upload: no zip-level penetration. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
       penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
-      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport, stores: { available: false, note: 'store trade areas need zip-level data', stores: [] } };
+      audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport };
   }
   const penetration = computePenetrationIndex(rows, upload.weightMode);
   const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
@@ -5096,16 +4831,14 @@ function computeMarketUploadAnalysis(accountId, upload, options){
       }
     }
   } catch (e){ /* leave dmaExport unavailable — export falls back to zip rows */ }
-  let stores = null;
-  try {
-    const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
-    stores = computeStoreTradeAreas(rows, storeRows, radii, upload.weightMode);
-  } catch (e){ stores = { available: false, note: `store trade areas not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] }; }
+  // Store trade areas (computeStoreTradeAreas) removed 2026-09-10 along
+  // with the rest of the "Stores and trade areas" feature — see the
+  // removal note above the (now-deleted) .../stores endpoints.
   return {
     uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
     holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
-    demographic, matching, audit, dma, dmaExport, stores, geoLevel: 'zip'
+    demographic, matching, audit, dma, dmaExport, geoLevel: 'zip'
   };
 }
 
@@ -16833,111 +16566,29 @@ Submit your findings via the submit_brand_categories tool.`;
     // GET .../customers-near) are retired, per direct instruction that the
     // page that called them shouldn't have existed as its own destination.
     // Everything they did — geocode an address, read uploaded customer
-    // zips against a radius — is superseded by the "Stores and trade
-    // areas" feature below (GET/POST .../stores, plus computeStoreTradeAreas
-    // used from the Match Market Builder analysis endpoint), which already
-    // did this for potentially many store locations with ring-banded
-    // distance buckets and population indexing, not just one address and
-    // one flat radius. accounts.accountLat/accountLng/accountAddressLabel/
+    // zips against a radius — was superseded by the "Stores and trade
+    // areas" feature (GET/POST .../stores, prospect-fit, computeStoreTradeAreas),
+    // itself removed 2026-09-10 — see the note just below.
+    // accounts.accountLat/accountLng/accountAddressLabel/
     // accountAddressGeocodedAt stay in the schema (harmless if unused —
     // removing columns is a real migration risk this fix doesn't need to
     // take on) but nothing writes or reads them anymore.
-    // GET /api/accounts/:id/stores — the account's store list
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const stores = db.prepare("SELECT id, storeId, name, address, postalCode, COALESCE(country, 'US') AS country, lat, lng, geocodeSource, updatedAt FROM account_stores WHERE accountId = ? ORDER BY name, storeId").all(accountId);
-      return sendJson(res, 200, { stores, geocoded: stores.filter(s => s.lat != null && s.lng != null).length });
-    }
-    // POST /api/accounts/:id/stores — { stores: [{storeId?, name?, address?, postalCode?, country?, lat?, lng?, geocodeSource?}], replace?: true }
-    // 2026-09-09, per direct instruction ("Primary key used to produce
-    // output will be the zip code or international version") — postalCode
-    // is now the primary way a store gets placed: when one is supplied and
-    // no lat/lng came with it, this looks it up directly against
-    // zip_centroid_master (the same reference data customer markets use —
-    // see GET /api/market-zip-centroids/lookup) and fills in lat/lng right
-    // here, no geocoder call needed. Falls back to whatever lat/lng the
-    // file/caller supplied when there's no postalCode, or leaves a store
-    // ungeocoded (never a guessed point) when neither is available and no
-    // centroid is on file yet for that postal code.
-    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const body = await readBody(req);
-      if (!Array.isArray(body.stores)) return sendJson(res, 400, { error: 'stores (array) is required' });
-      const now = new Date().toISOString();
-      if (body.replace) db.prepare('DELETE FROM account_stores WHERE accountId = ?').run(accountId);
-      const centroidStmt = db.prepare('SELECT lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?');
-      let saved = 0; const errors = [];
-      body.stores.forEach((s, i) => {
-        const name = String(s.name || '').trim() || null, address = String(s.address || '').trim() || null, storeId = String(s.storeId || '').trim() || null;
-        const postalCodeRaw = String(s.postalCode || '').trim() || null;
-        if (!name && !address && !storeId && !postalCodeRaw){ if (errors.length < 50) errors.push(`row ${i}: needs a store id, name, address, or zip/postal code`); return; }
-        const country = normalizeCountry(s.country) || 'US';
-        let lat = s.lat != null && s.lat !== '' ? Number(s.lat) : null, lng = s.lng != null && s.lng !== '' ? Number(s.lng) : null;
-        let ok = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-        let geocodeSource = ok ? (s.geocodeSource || 'supplied') : null;
-        let postalCode = postalCodeRaw;
-        if (!ok && postalCodeRaw){
-          const g = normalizeGeoKey(postalCodeRaw, country);
-          if (g && !/^DMA:/.test(g.key)){
-            postalCode = g.key;
-            const c = centroidStmt.get(g.key);
-            if (c){ lat = c.lat; lng = c.lng; ok = true; geocodeSource = `postal code centroid (${c.sourceLabel})`; }
-          }
-        }
-        const existing = storeId ? db.prepare('SELECT id FROM account_stores WHERE accountId = ? AND storeId = ?').get(accountId, storeId) : null;
-        if (existing) db.prepare('UPDATE account_stores SET name = ?, address = ?, postalCode = ?, country = ?, lat = ?, lng = ?, geocodeSource = ?, updatedAt = ? WHERE id = ?').run(name, address, postalCode, country, ok ? lat : null, ok ? lng : null, geocodeSource, now, existing.id);
-        else db.prepare('INSERT INTO account_stores (id, accountId, storeId, name, address, postalCode, country, lat, lng, geocodeSource, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(generateId('STORE'), accountId, storeId, name, address, postalCode, country, ok ? lat : null, ok ? lng : null, geocodeSource, now);
-        saved++;
-      });
-      const stores = db.prepare('SELECT id, storeId, name, address, postalCode, country, lat, lng, geocodeSource FROM account_stores WHERE accountId = ?').all(accountId);
-      return sendJson(res, 200, { saved, errors, total: stores.length, geocoded: stores.filter(s => s.lat != null).length, notGeocoded: stores.filter(s => s.lat == null).map(s => s.name || s.storeId || s.address) });
-    }
-
-    // DELETE /api/accounts/:id/stores/:storeRowId — 2026-09-09, per direct
-    // instruction ("Storefronts is one area where we should be able to
-    // delete duplicates or stores no longer part of a brand or franchise")
-    // — this list previously only supported bulk replace (re-uploading a
-    // file with replace:true wipes and reloads every store at once) or
-    // additive add/upload; there was no way to remove a single bad row —
-    // a duplicate from a re-upload, or a location the account no longer
-    // has — without nuking and re-entering the whole list. Simple hard
-    // delete, no dependent-record warning needed (unlike, say, a marketing
-    // budget with campaigns funded from it): nothing else in this schema
-    // references account_stores.id, a store row is just itself.
-    if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const storeRowId = decodeURIComponent(parts[4]);
-      const existing = db.prepare('SELECT id FROM account_stores WHERE id = ? AND accountId = ?').get(storeRowId, accountId);
-      if (!existing) return sendJson(res, 404, { error: 'store not found' });
-      db.prepare('DELETE FROM account_stores WHERE id = ?').run(storeRowId);
-      return sendJson(res, 200, { deleted: true });
-    }
-
-    // GET /api/accounts/:id/stores/prospect-fit — 2026-09-09, per direct
-    // instruction ("move to the next step") — answers Todd's original
-    // question directly on the Stores and trade areas card itself, with NO
-    // customer upload required (unlike computeStoreTradeAreas, which only
-    // runs inside a Match Market Builder analysis): for every geocoded
-    // store, real Census population + age/income data within wider
-    // prospecting rings (5/10/15 mi by default — separate from the
-    // existing 3/5/10 mi customer-density rings, per Todd's decision),
-    // scored against this account's own Company Profile target audience/
-    // wealth tier. See computeStoreProspectFit()'s own comment for the
-    // full Audience Fit / Wealth Fit methodology.
-    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'stores' && parts[4] === 'prospect-fit'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT audience, wealth FROM accounts WHERE accountId = ?').get(accountId);
-      const storeRows = db.prepare('SELECT id, storeId, name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
-      const radiiParam = (url.searchParams.get('radii') || '').split(',').map(Number).filter(n => n > 0);
-      let result;
-      try { result = computeStoreProspectFit(storeRows, radiiParam.length ? radiiParam : [5, 10, 15], account); }
-      catch (e){ result = { available: false, note: `prospect fit not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] }; }
-      return sendJson(res, 200, result);
-    }
+    // GET/POST/DELETE /api/accounts/:id/stores and
+    // GET /api/accounts/:id/stores/prospect-fit — removed 2026-09-10, per
+    // direct instruction ("Go ahead and eliminate the store and trade
+    // areas unless we can find full national coverage"). Root cause: once
+    // the Census 50-variable-per-query cap bug was fixed and real
+    // demographic data started loading, coverage turned out to be only
+    // 902 of 33,774 ZCTAs nationally (2.7%) — not enough for a trustworthy
+    // national feature. Todd chose to remove the whole "Stores and trade
+    // areas" card (frontend/portal.html) rather than keep just the
+    // Census-dependent Audience/Wealth Fit piece, which also took the
+    // upload-driven "By store trade area" section (computeStoreTradeAreas,
+    // below) and store address management with it. account_stores stays
+    // in the schema (no destructive migration from here) but nothing
+    // reads or writes it anymore. See this project's
+    // cxmedia-store-trade-area-audience-match-scoping-2026-09-09.md for
+    // the full diagnosis and this removal.
 
     // ============ Zip → DMA reference (2026-09-06, buildout item 4a) ============
     // Per direct instruction ("scope it and build it out"), closing the
@@ -17071,6 +16722,48 @@ Submit your findings via the submit_brand_categories tool.`;
     // zips, so this is a one-time bulk pull for the Ops Console's
     // demographics loader to parse and POST to
     // /api/market-demographic-master below, not a live per-ring call.
+    //
+    // 2026-09-10, SECOND fix — per-state looping, root-causing the real
+    // national coverage problem. After the 50-variable-cap fix below got
+    // this endpoint returning data at all, Todd reported the real number:
+    // only 902 of the 33,774 ZCTAs the population master covers (2.7%)
+    // came back. That's a much bigger gap than ACS's real small-ZCTA
+    // privacy suppression would produce on its own for basic tables like
+    // B01001/B19001. Researched the Census API's own ZCTA-geography
+    // behavior: the Census Bureau's API User Guide (Ucgid_Predicate page)
+    // and the widely-used `tidycensus` R package both treat ZCTA as a
+    // geography that must be queried scoped to a state (`&in=state:XX`),
+    // not with a single flat national wildcard — a boundary/hierarchy
+    // quirk specific to ZCTAs (unlike county or tract, which nest cleanly
+    // under a national query). The flat `for=zip code tabulation area:*`
+    // query this endpoint used (matching Census's own simplistic
+    // examples.html demo, which is likely just illustrating query syntax,
+    // not demonstrating full national coverage) is the more likely
+    // explanation for 902 rows than genuine suppression — a national
+    // query like that can return a technically-valid but silently
+    // incomplete subset rather than an error. Not independently confirmed
+    // against a live call (this sandbox has no network path to
+    // census.gov to test directly), so this fix is shipped for Todd to
+    // verify live, same as every other Census fix in this project.
+    //
+    // Now loops the same split age/income pull once per state (all 50
+    // states + DC + Puerto Rico — ACS5's actual coverage universe, 52
+    // areas total; STATE_FIPS_FOR_DEMOGRAPHICS below), 8 states at a time
+    // to bound both wall-clock time (vercel.json's maxDuration: 120s) and
+    // load on the Census API, merging every state's rows into one ZCTA
+    // map (a ZCTA that spans a state line can be returned by more than
+    // one state's query — first one seen wins, since the data for that
+    // ZCTA should be identical either way). A single state's fetch
+    // failing no longer fails the whole pull (Promise.allSettled) — it's
+    // recorded in `statesFailed` in the response instead, so a handful of
+    // transient failures still yields a near-complete result rather than
+    // an all-or-nothing one.
+    //
+    // Optional `?states=CA,NY` (2-letter USPS abbreviations, comma-
+    // separated) scopes the pull to just those states — added specifically
+    // so this can be tested against a few sample states first, rather than
+    // waiting on all 52 areas, before trusting it for a full national
+    // reload. Omit it for the full national pull.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'demographics'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
@@ -17090,30 +16783,28 @@ Submit your findings via the submit_brand_categories tool.`;
           ageVars.push(`B01001_${suffix}E`, `B01001_${String(Number(suffix) + 24).padStart(3, '0')}E`);
         });
         const incomeVars = ACS_INCOME_BRACKET_MIDPOINTS.map(([code]) => `B19001_${code}E`);
-        // 2026-09-10 fix, per Todd's report — after loading population/DMA/
-        // centroid data successfully, "Demographics by zip" still showed
-        // "No demographic data loaded yet" even after clicking "Load
-        // demographics" multiple times, and computeStoreProspectFit()'s new
-        // sample-zip diagnostic confirmed zero rows ever landed in
-        // zip_demographic_master. Root cause: the Census ACS5 API hard-caps
-        // a single query at 50 variables (undocumented in this file before
-        // now, but a well-known real Census API limit), and this endpoint
-        // was requesting 1 + 42 (age) + 1 + 16 (income) = 60 in one
-        // `get=...` call — Census rejects that outright with an error
-        // response before any ZCTA data comes back, every single time,
-        // which is exactly the fully-reproducible "still zero after
-        // multiple tries" Todd reported (a flaky/rate-limited failure would
-        // have succeeded at least once). Fixed by splitting into two
-        // requests, each safely under the cap (44 and 18 columns including
-        // geography), then merging them by ZCTA into the exact same
-        // header+rows matrix shape a single successful call would have
-        // returned — REF_DATA_SOURCES.demographics.parse() in
-        // ops-console.html needs no changes at all, since from its
-        // perspective this still looks like one Census response.
-        const fetchCensusVars = async (vars) => {
-          const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${vars.join(',')}&for=zip%20code%20tabulation%20area:*&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
+        // 2026-09-10 fix #1, per Todd's report — after loading population/
+        // DMA/centroid data successfully, "Demographics by zip" still
+        // showed "No demographic data loaded yet" even after clicking
+        // "Load demographics" multiple times, and
+        // computeStoreProspectFit()'s (removed 2026-09-10) sample-zip
+        // diagnostic confirmed zero rows ever landed in
+        // zip_demographic_master. Root cause: the Census ACS5 API
+        // hard-caps a single query at 50 variables, and this endpoint was
+        // requesting 1 + 42 (age) + 1 + 16 (income) = 60 in one `get=...`
+        // call — Census rejects that outright, every single time. Fixed
+        // by splitting into two requests, each safely under the cap (44
+        // and 18 columns including geography), merged by ZCTA into the
+        // exact same header+rows matrix shape a single successful call
+        // would have returned — REF_DATA_SOURCES.demographics.parse() in
+        // ops-console.html needed no changes at all. That fix is still in
+        // use below, now run once per state instead of once nationally
+        // (see the per-state note above this endpoint for fix #2).
+        const fetchCensusVars = async (vars, stateFips) => {
+          const stateQuery = stateFips ? `&in=state:${stateFips}` : '';
+          const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${vars.join(',')}&for=zip%20code%20tabulation%20area:*${stateQuery}&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(45000)
+            signal: AbortSignal.timeout(30000)
           });
           const bodyText = await upstream.text();
           if (/<title>\s*Missing Key\s*<\/title>/i.test(bodyText) || /<title>\s*Invalid Key\s*<\/title>/i.test(bodyText)){
@@ -17125,27 +16816,70 @@ Submit your findings via the submit_brand_categories tool.`;
         };
         const ageVarsRequest = ['B01001_001E', ...ageVars]; // 43 vars + geography = 44 columns
         const incomeVarsRequest = ['B19001_001E', ...incomeVars]; // 17 vars + geography = 18 columns
-        let ageJson, incomeJson;
-        try {
-          [ageJson, incomeJson] = await Promise.all([fetchCensusVars(ageVarsRequest), fetchCensusVars(incomeVarsRequest)]);
-        } catch (splitErr){
-          return sendJson(res, splitErr.httpStatus || 502, { error: splitErr.message });
-        }
         const geoCol = (json) => { const h = Array.isArray(json) && json.length ? json[0] : []; return h.indexOf('zip code tabulation area'); };
-        const ageGeoIdx = geoCol(ageJson), incomeGeoIdx = geoCol(incomeJson);
-        if (ageGeoIdx < 0 || incomeGeoIdx < 0){
-          return sendJson(res, 502, { error: 'Census API response for demographics didn\'t include a "zip code tabulation area" column — the split age/income requests may have changed shape upstream.' });
+
+        // ACS5's real coverage universe: the 50 states + DC + Puerto Rico
+        // (52 FIPS codes) — the territories beyond PR (Guam, American
+        // Samoa, USVI, CNMI) aren't part of the standard ACS5 ZCTA
+        // publication and would just fail every request if included.
+        const STATE_FIPS_FOR_DEMOGRAPHICS = {
+          AL: '01', AK: '02', AZ: '04', AR: '05', CA: '06', CO: '08', CT: '09', DE: '10', DC: '11',
+          FL: '12', GA: '13', HI: '15', ID: '16', IL: '17', IN: '18', IA: '19', KS: '20', KY: '21',
+          LA: '22', ME: '23', MD: '24', MA: '25', MI: '26', MN: '27', MS: '28', MO: '29', MT: '30',
+          NE: '31', NV: '32', NH: '33', NJ: '34', NM: '35', NY: '36', NC: '37', ND: '38', OH: '39',
+          OK: '40', OR: '41', PA: '42', RI: '44', SC: '45', SD: '46', TN: '47', TX: '48', UT: '49',
+          VT: '50', VA: '51', WA: '53', WV: '54', WI: '55', WY: '56', PR: '72'
+        };
+        const statesParam = (url.searchParams.get('states') || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+        let statesToQuery;
+        if (statesParam.length){
+          const unknown = statesParam.filter(s => !STATE_FIPS_FOR_DEMOGRAPHICS[s]);
+          if (unknown.length) return sendJson(res, 400, { error: `Unrecognized state abbreviation(s): ${unknown.join(', ')}. Use 2-letter USPS abbreviations (e.g. CA,NY), or omit ?states= for the full national pull.` });
+          statesToQuery = statesParam.map(s => ({ abbr: s, fips: STATE_FIPS_FOR_DEMOGRAPHICS[s] }));
+        } else {
+          statesToQuery = Object.entries(STATE_FIPS_FOR_DEMOGRAPHICS).map(([abbr, fips]) => ({ abbr, fips }));
         }
-        const incomeByZip = new Map();
-        incomeJson.slice(1).forEach(row => { incomeByZip.set(row[incomeGeoIdx], row); });
+
+        const zctaRows = new Map(); // zip -> merged row (age+income+zip columns)
+        const statesFailed = [];
+        const STATE_CONCURRENCY = 8;
+        for (let i = 0; i < statesToQuery.length; i += STATE_CONCURRENCY){
+          const batch = statesToQuery.slice(i, i + STATE_CONCURRENCY);
+          const results = await Promise.allSettled(batch.map(async ({ fips }) => {
+            const [ageJson, incomeJson] = await Promise.all([
+              fetchCensusVars(ageVarsRequest, fips),
+              fetchCensusVars(incomeVarsRequest, fips)
+            ]);
+            return { ageJson, incomeJson };
+          }));
+          results.forEach((r, idx) => {
+            const { abbr } = batch[idx];
+            if (r.status !== 'fulfilled'){ statesFailed.push({ state: abbr, error: r.reason && r.reason.message ? r.reason.message : String(r.reason) }); return; }
+            const { ageJson, incomeJson } = r.value;
+            const ageGeoIdx = geoCol(ageJson), incomeGeoIdx = geoCol(incomeJson);
+            if (ageGeoIdx < 0 || incomeGeoIdx < 0){ statesFailed.push({ state: abbr, error: 'response missing the "zip code tabulation area" column' }); return; }
+            const incomeByZip = new Map();
+            incomeJson.slice(1).forEach(row => { incomeByZip.set(row[incomeGeoIdx], row); });
+            ageJson.slice(1).forEach(ageRow => {
+              const zip = ageRow[ageGeoIdx];
+              // A ZCTA spanning a state line can come back from more than
+              // one state's query — first one seen wins (same ZCTA, same
+              // data, no need to overwrite).
+              if (zctaRows.has(zip)) return;
+              const incomeRow = incomeByZip.get(zip) || [];
+              zctaRows.set(zip, [...ageRow.slice(0, ageVarsRequest.length), ...incomeVarsRequest.map((_, i) => (incomeRow[i] != null ? incomeRow[i] : '0')), zip]);
+            });
+          });
+        }
+        if (!zctaRows.size){
+          return sendJson(res, 502, { error: `Census API returned no ZCTA rows from any of the ${statesToQuery.length} state${statesToQuery.length === 1 ? '' : 's'} queried.${statesFailed.length ? ` Failures: ${statesFailed.slice(0, 5).map(f => `${f.state} (${f.error})`).join('; ')}` : ''}` });
+        }
         const mergedHeader = [...ageVarsRequest, ...incomeVarsRequest, 'zip code tabulation area'];
-        const mergedRows = ageJson.slice(1).map(ageRow => {
-          const zip = ageRow[ageGeoIdx];
-          const incomeRow = incomeByZip.get(zip) || [];
-          return [...ageRow.slice(0, ageVarsRequest.length), ...incomeVarsRequest.map((_, i) => (incomeRow[i] != null ? incomeRow[i] : '0')), zip];
+        const json = [mergedHeader, ...zctaRows.values()];
+        return sendJson(res, 200, {
+          data: json, ageBins: ACS_AGE_BINS, binSuffix: ACS_BIN_SUFFIX, incomeBracketMidpoints: ACS_INCOME_BRACKET_MIDPOINTS,
+          statesQueried: statesToQuery.map(s => s.abbr), statesFailed, zctaCount: zctaRows.size
         });
-        const json = [mergedHeader, ...mergedRows];
-        return sendJson(res, 200, { data: json, ageBins: ACS_AGE_BINS, binSuffix: ACS_BIN_SUFFIX, incomeBracketMidpoints: ACS_INCOME_BRACKET_MIDPOINTS });
       } catch (e){
         return sendJson(res, 502, { error: `Census API fetch failed: ${e && e.message ? e.message : e}` });
       }
