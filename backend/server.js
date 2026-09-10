@@ -5212,6 +5212,72 @@ function buildMarketUploadXlsxPostalRows(analysis){
   }).sort((a, b) => ((b.customerCount || 0) - (a.customerCount || 0)) || ((b.revenue || 0) - (a.revenue || 0)));
 }
 const MARKET_XLSX_DEFINED_COUNTRIES = ['US', 'CA', 'IT', 'ES', 'DE', 'PT', 'GB', 'AU'];
+// 2026-09-10, per direct report on the "defined countries" download: "The
+// defined countries is the same output file as DMA and ZIP. I don't have
+// the country files with basic information." The defined-countries export
+// has only ever been the same By Market/By Postal Code sheets, filtered
+// down to rows whose country is one of the 8 defined ones — which looks
+// identical to the full export whenever an upload is all-US (nothing gets
+// filtered out), and never actually showed the one thing this endpoint's
+// name implies: basic totals PER COUNTRY. Confirmed directly (asked
+// Todd to choose): he wants a country-level summary sheet, one row per
+// defined country, with basic totals — not a replacement for the DMA/Zip
+// detail sheets, which he already confirmed are working ("The DMA and Zip
+// files are great").
+//
+// Built from the RAW upload data (analysis.penetration for a zip-level
+// upload, analysis.dma.dmas for a genuinely DMA-level one) rather than
+// from the already-DMA-filtered marketRows/postalRows above — so a zip
+// that never matched anything in the loaded zip→DMA crosswalk still counts
+// toward its country's totals here, the same "don't let a downstream gap
+// silently drop real volume" posture as computeDmaRollup's own
+// unmappedZips/unmappedVolume disclosure elsewhere in this file.
+function buildMarketUploadXlsxCountryRows(analysis){
+  const isRevenue = analysis.weightMode === 'revenue';
+  const byCountry = {};
+  MARKET_XLSX_DEFINED_COUNTRIES.forEach(code => { byCountry[code] = { country: code, countryName: (GEO_COUNTRY_PACKS[code] || {}).name || code, customerCount: 0, revenue: 0, population: 0, hasPopulation: false, postalCodeCount: 0, marketCount: 0, sawAnyVolume: false }; });
+  if (analysis.geoLevel === 'dma'){
+    const dmas = (analysis.dma && analysis.dma.available && analysis.dma.dmas) || [];
+    dmas.forEach(d => {
+      const bucket = byCountry[d.country];
+      if (!bucket) return; // not one of the 8 defined countries — out of scope for this sheet by design
+      bucket.sawAnyVolume = true;
+      if (isRevenue) bucket.revenue += Number(d.volume) || 0; else bucket.customerCount += Number(d.volume) || 0;
+      if (d.population != null){ bucket.population += Number(d.population) || 0; bucket.hasPopulation = true; }
+      bucket.marketCount += 1;
+      bucket.postalCodeCount += Number(d.zips) || 0;
+    });
+  } else {
+    const rows = analysis.penetration || [];
+    rows.forEach(r => {
+      const code = geoKeyCountry(r.zip);
+      const bucket = byCountry[code];
+      if (!bucket) return;
+      bucket.sawAnyVolume = true;
+      if (isRevenue) bucket.revenue += Number(r.revenue) || 0; else bucket.customerCount += Number(r.customerCount) || 0;
+      if (r.population != null){ bucket.population += Number(r.population) || 0; bucket.hasPopulation = true; }
+      bucket.postalCodeCount += 1;
+    });
+    // Market (DMA) count per country, when a crosswalk is loaded — nice to
+    // have, per the original ask ("Population and other metrics are nice
+    // to have").
+    const dmas = (analysis.dma && analysis.dma.available && analysis.dma.dmas) || [];
+    dmas.forEach(d => { const bucket = byCountry[d.country]; if (bucket) bucket.marketCount += 1; });
+  }
+  return MARKET_XLSX_DEFINED_COUNTRIES.map(code => {
+    const b = byCountry[code];
+    return {
+      country: code,
+      countryName: b.countryName,
+      customerCount: !isRevenue ? Math.round(b.customerCount * 100) / 100 : null,
+      revenue: isRevenue ? Math.round(b.revenue * 100) / 100 : null,
+      population: b.hasPopulation ? Math.round(b.population) : null,
+      postalCodeCount: analysis.geoLevel === 'dma' ? null : b.postalCodeCount,
+      marketCount: b.marketCount || null,
+      hasData: b.sawAnyVolume
+    };
+  });
+}
 async function buildMarketUploadXlsx(analysis, upload, opts){
   const definedOnly = !!(opts && opts.definedCountriesOnly);
   let marketRows = buildMarketUploadXlsxMarketRows(analysis);
@@ -5226,6 +5292,45 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
   wb.creator = 'Verilume';
   wb.created = new Date();
   const titleSuffix = definedOnly ? ' — DEFINED COUNTRIES' : '';
+
+  // ---- Sheet 0 (defined-countries download only): By Country — basic
+  // totals per defined country, the actual point of this download (see
+  // buildMarketUploadXlsxCountryRows()'s own comment for why this was
+  // missing before). ----
+  if (definedOnly){
+    const countryRows = buildMarketUploadXlsxCountryRows(analysis);
+    const countrySheet = wb.addWorksheet('By Country', { views: [{ state: 'frozen', ySplit: 3 }] });
+    const countryColumns = [
+      { header: 'Country', width: 26 },
+      { header: 'Customer_Count', width: 16 },
+      { header: 'Revenue', width: 16 },
+      { header: 'Population', width: 16 },
+      { header: 'Postal_Codes_On_File', width: 20 },
+      { header: 'Markets_(DMAs)_On_File', width: 22 }
+    ];
+    countrySheet.columns = countryColumns.map(c => ({ width: c.width }));
+    countrySheet.mergeCells(1, 1, 1, countryColumns.length);
+    const countryTitleCell = countrySheet.getCell(1, 1);
+    countryTitleCell.value = `${(upload.label || 'MATCH MARKET TESTING').toUpperCase()} — BY COUNTRY (${MARKET_XLSX_DEFINED_COUNTRIES.join(', ')})`;
+    countryTitleCell.font = { bold: true, size: 14 };
+    const countryNoteCell = countrySheet.getCell(2, 1);
+    countryNoteCell.value = isDma
+      ? 'Basic totals for each defined country, rolled up from this upload\'s markets. Postal_Codes_On_File is blank for a DMA-level upload — there\'s no per-zip detail in the source file. A country with no rows below had no volume in this upload at all.'
+      : 'Basic totals for each defined country, rolled up directly from every uploaded postal code (including any that didn\'t match a market in the loaded zip→DMA crosswalk — see the other two tabs for that detail). Markets_(DMAs)_On_File is blank when no zip→DMA crosswalk is loaded for that country yet.';
+    countryNoteCell.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+    const countryHeaderRow = countrySheet.getRow(3);
+    countryColumns.forEach((c, i) => { const cell = countryHeaderRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+    countryRows.forEach((r, i) => {
+      const row = countrySheet.getRow(4 + i);
+      row.getCell(1).value = r.hasData ? `${r.country} — ${r.countryName}` : `${r.country} — ${r.countryName} (no data in this upload)`;
+      row.getCell(2).value = r.customerCount;
+      row.getCell(3).value = r.revenue;
+      row.getCell(4).value = r.population;
+      row.getCell(5).value = r.postalCodeCount;
+      row.getCell(6).value = r.marketCount;
+      if (!r.hasData) row.getCell(1).font = { italic: true, color: { argb: 'FF999999' } };
+    });
+  }
 
   // ---- Sheet 1: By Market (DMA) — the real test design ----
   const marketSheet = wb.addWorksheet('By Market (DMA)', { views: [{ state: 'frozen', ySplit: 3 }] });
@@ -19428,5 +19533,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
+
 
 
