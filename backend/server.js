@@ -17090,19 +17090,61 @@ Submit your findings via the submit_brand_categories tool.`;
           ageVars.push(`B01001_${suffix}E`, `B01001_${String(Number(suffix) + 24).padStart(3, '0')}E`);
         });
         const incomeVars = ACS_INCOME_BRACKET_MIDPOINTS.map(([code]) => `B19001_${code}E`);
-        const getVars = ['B01001_001E', ...ageVars, 'B19001_001E', ...incomeVars].join(',');
-        const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${getVars}&for=zip%20code%20tabulation%20area:*&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(45000)
-        });
-        const bodyText = await upstream.text();
-        if (/<title>\s*Missing Key\s*<\/title>/i.test(bodyText) || /<title>\s*Invalid Key\s*<\/title>/i.test(bodyText)){
-          return sendJson(res, 502, { error: 'Census rejected the configured API key (missing or invalid). Check the CENSUS_API_KEY environment variable on the backend against a key from https://api.census.gov/data/key_signup.html.' });
+        // 2026-09-10 fix, per Todd's report — after loading population/DMA/
+        // centroid data successfully, "Demographics by zip" still showed
+        // "No demographic data loaded yet" even after clicking "Load
+        // demographics" multiple times, and computeStoreProspectFit()'s new
+        // sample-zip diagnostic confirmed zero rows ever landed in
+        // zip_demographic_master. Root cause: the Census ACS5 API hard-caps
+        // a single query at 50 variables (undocumented in this file before
+        // now, but a well-known real Census API limit), and this endpoint
+        // was requesting 1 + 42 (age) + 1 + 16 (income) = 60 in one
+        // `get=...` call — Census rejects that outright with an error
+        // response before any ZCTA data comes back, every single time,
+        // which is exactly the fully-reproducible "still zero after
+        // multiple tries" Todd reported (a flaky/rate-limited failure would
+        // have succeeded at least once). Fixed by splitting into two
+        // requests, each safely under the cap (44 and 18 columns including
+        // geography), then merging them by ZCTA into the exact same
+        // header+rows matrix shape a single successful call would have
+        // returned — REF_DATA_SOURCES.demographics.parse() in
+        // ops-console.html needs no changes at all, since from its
+        // perspective this still looks like one Census response.
+        const fetchCensusVars = async (vars) => {
+          const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${vars.join(',')}&for=zip%20code%20tabulation%20area:*&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(45000)
+          });
+          const bodyText = await upstream.text();
+          if (/<title>\s*Missing Key\s*<\/title>/i.test(bodyText) || /<title>\s*Invalid Key\s*<\/title>/i.test(bodyText)){
+            throw Object.assign(new Error('Census rejected the configured API key (missing or invalid). Check the CENSUS_API_KEY environment variable on the backend against a key from https://api.census.gov/data/key_signup.html.'), { httpStatus: 502 });
+          }
+          if (!upstream.ok) throw Object.assign(new Error(`Census API HTTP ${upstream.status} — ${bodyText.slice(0, 300)}`), { httpStatus: 502 });
+          try { return JSON.parse(bodyText); }
+          catch (parseErr){ throw Object.assign(new Error(`Census API returned a non-JSON response (HTTP ${upstream.status}) — ${bodyText.slice(0, 300)}`), { httpStatus: 502 }); }
+        };
+        const ageVarsRequest = ['B01001_001E', ...ageVars]; // 43 vars + geography = 44 columns
+        const incomeVarsRequest = ['B19001_001E', ...incomeVars]; // 17 vars + geography = 18 columns
+        let ageJson, incomeJson;
+        try {
+          [ageJson, incomeJson] = await Promise.all([fetchCensusVars(ageVarsRequest), fetchCensusVars(incomeVarsRequest)]);
+        } catch (splitErr){
+          return sendJson(res, splitErr.httpStatus || 502, { error: splitErr.message });
         }
-        if (!upstream.ok) return sendJson(res, 502, { error: `Census API HTTP ${upstream.status} — ${bodyText.slice(0, 300)}` });
-        let json;
-        try { json = JSON.parse(bodyText); }
-        catch (parseErr){ return sendJson(res, 502, { error: `Census API returned a non-JSON response (HTTP ${upstream.status}) — ${bodyText.slice(0, 300)}` }); }
+        const geoCol = (json) => { const h = Array.isArray(json) && json.length ? json[0] : []; return h.indexOf('zip code tabulation area'); };
+        const ageGeoIdx = geoCol(ageJson), incomeGeoIdx = geoCol(incomeJson);
+        if (ageGeoIdx < 0 || incomeGeoIdx < 0){
+          return sendJson(res, 502, { error: 'Census API response for demographics didn\'t include a "zip code tabulation area" column — the split age/income requests may have changed shape upstream.' });
+        }
+        const incomeByZip = new Map();
+        incomeJson.slice(1).forEach(row => { incomeByZip.set(row[incomeGeoIdx], row); });
+        const mergedHeader = [...ageVarsRequest, ...incomeVarsRequest, 'zip code tabulation area'];
+        const mergedRows = ageJson.slice(1).map(ageRow => {
+          const zip = ageRow[ageGeoIdx];
+          const incomeRow = incomeByZip.get(zip) || [];
+          return [...ageRow.slice(0, ageVarsRequest.length), ...incomeVarsRequest.map((_, i) => (incomeRow[i] != null ? incomeRow[i] : '0')), zip];
+        });
+        const json = [mergedHeader, ...mergedRows];
         return sendJson(res, 200, { data: json, ageBins: ACS_AGE_BINS, binSuffix: ACS_BIN_SUFFIX, incomeBracketMidpoints: ACS_INCOME_BRACKET_MIDPOINTS });
       } catch (e){
         return sendJson(res, 502, { error: `Census API fetch failed: ${e && e.message ? e.message : e}` });
@@ -19549,7 +19591,6 @@ if (require.main === module) {
 INIT_PHASE = false;
 
 module.exports = handleRequest;
-
 
 
 
