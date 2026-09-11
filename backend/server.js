@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-bulk-create-campaigns (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-per-zip-qualified (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -4996,7 +4996,10 @@ function computeStoreTradeAreas(rows, stores, radii, weightMode){
 // Index math as assessment.html, compared against the account's own
 // wealth tier. A ring with zero demographic coverage reports null (never
 // 0) for both, plus noRingDemographicCoverage:true so the UI can explain a
-// bare "—" instead of showing it unexplained.
+// bare "—" instead of showing it unexplained. Qualified (below, in the
+// per-ring loop) is deliberately NOT derived from this same blended
+// average — see the 2026-09-11 comment there for why it's tested zip by
+// zip within the ring instead.
 // zipAvgIncomeBackend(attrs2) — the household-income-bracket-weighted
 // average for one zip, computed live from the real B19001 per-bracket
 // household counts (income_hh_total/income_hh_<code>) rather than a single
@@ -5090,15 +5093,41 @@ function computeStoreProspectFit(stores, radii, account){
     const rings = ringRadii.map(radius => {
       const zipsInRing = zipsWithinRadius(centroids, store.lat, store.lng, radius);
       let pop = 0, genPop = 0, incomeWeighted = 0, incomeWeight = 0, zipsWithDemo = 0;
+      // Per-ZIP qualification (2026-09-11, replacing the earlier ring-wide
+      // blended-average test) — Todd: "We need to look at each ring and
+      // each zip within the ring individually before coming back with
+      // counts per ring." The old version blended every zip in the ring
+      // into ONE average income and tested that single number against the
+      // tier, so a wide ring (10/15 mi) around a genuinely wealthy address
+      // could wash a real high-income enclave down to a merely-average
+      // blended figure and report 0 qualified for the whole ring — even
+      // though the enclave itself would clearly qualify on its own. Now
+      // each zip's OWN Wealth Index (identical formula, just scoped to one
+      // zip instead of averaged across the ring) is tested individually,
+      // and only zips that clear the tier on their own contribute their
+      // target-generation population to Qualified. zipsTestedForWealth/
+      // zipsQualified are returned so a ring's math is auditable rather
+      // than a black box.
+      let qualifiedGenPop = 0, zipsTestedForWealth = 0, zipsQualified = 0;
       zipsInRing.forEach(z => {
         const p = population.get(z);
         if (p != null) pop += p;
         const attrs2 = demoByZip.get(z);
         if (attrs2){
           zipsWithDemo++;
-          targetGens.forEach(g => { const v = attrs2[`population_${g}`]; if (v != null) genPop += v; });
+          let zGenPop = 0;
+          targetGens.forEach(g => { const v = attrs2[`population_${g}`]; if (v != null) zGenPop += v; });
+          genPop += zGenPop;
           const zipAvgIncome = zipAvgIncomeBackend(attrs2);
           if (zipAvgIncome != null && p != null){ incomeWeighted += zipAvgIncome * p; incomeWeight += p; }
+          if (zipAvgIncome != null && nationalAvgIncome){
+            zipsTestedForWealth++;
+            const zWealthIndex = Math.round((zipAvgIncome / nationalAvgIncome) * genMult * 100);
+            if (acctTier && zWealthIndex >= TIER_MIN_INDEX[acctTier.key]){
+              zipsQualified++;
+              qualifiedGenPop += zGenPop;
+            }
+          }
         }
       });
       const noRingDemographicCoverage = zipsWithDemo === 0;
@@ -5108,28 +5137,26 @@ function computeStoreProspectFit(stores, radii, account){
       // generation(s) nearby — an age-bracket filter only, no wealth
       // involved. null (not 0) when the ring has no demographic coverage.
       const targetPopulation = noRingDemographicCoverage ? null : Math.round(genPop);
+      // wealthFit/wealthBand below still describe the ring as a whole (its
+      // population-weighted blended average) — useful context for "how
+      // wealthy does this ring look overall", but Qualified no longer
+      // derives from it; Qualified is the per-zip sum above.
       const avgIncome = incomeWeight > 0 ? incomeWeighted / incomeWeight : null;
       const wealthIndex = (avgIncome != null && nationalAvgIncome) ? Math.round((avgIncome / nationalAvgIncome) * genMult * 100) : null;
       const wealthBand = wealthIndexBandBackend(wealthIndex);
-      // qualifiedPopulation — Todd, 2026-09-10: "I selected the option to
-      // use the Verilume Wealth Index that we calculate upfront in
-      // combination with the age brackets that we capture with the
-      // generation selections. You have all of the data that you need."
-      // No new Census pull, no household income-bracket data, no reload:
-      // this ring's target-generation population (targetPopulation, above)
-      // either fully counts as Qualified — if the ring's OWN Wealth Index
-      // clears the account's configured tier threshold — or none of it
-      // does. A ring that genuinely misses the threshold reports a real 0
-      // (not null); null is reserved for missing data (no wealth tier
-      // configured, or no demographic coverage in this ring).
-      const qualifiedPopulation = (targetPopulation != null && acctTier && wealthIndex != null)
-        ? (wealthIndex >= TIER_MIN_INDEX[acctTier.key] ? targetPopulation : 0)
+      // qualifiedPopulation: null only when there's no wealth data at all
+      // to test in this ring, or no tier configured. Once there's real
+      // data to test, this is always a real number (0 included) — never a
+      // ring-wide wash-out.
+      const qualifiedPopulation = (targetPopulation != null && acctTier && zipsTestedForWealth > 0)
+        ? Math.round(qualifiedGenPop)
         : null;
       return {
         radiusMiles: radius, zipCount: zipsInRing.length, population: pop,
         noRingDemographicCoverage,
         targetPopulation,
         qualifiedPopulation,
+        zipsTestedForWealth, zipsQualified,
         audienceFit, wealthFit: wealthIndex,
         wealthBand: wealthBand ? wealthBand.label : null,
         matchesAccountWealthTier: (wealthBand && acctTier) ? wealthBand.key === acctTier.key : null
@@ -11085,7 +11112,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-bulk-create-campaigns',
+        buildStamp: '2026-09-11-per-zip-qualified',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -20300,4 +20327,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
