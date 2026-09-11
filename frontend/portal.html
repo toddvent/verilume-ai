@@ -3649,7 +3649,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('manageAccount')">Manage Account</a> / Marketing Calendar Bulk Upload</div>
     <div class="eyebrow">Workstream · Manage Account · Bulk Upload</div>
     <h1>Marketing Calendar bulk upload</h1>
-    <p class="lede">One workstream, three steps. Set up Product Groups &amp; Creative Focus Group first (Step 1 below, by hand or from a file) — the two uploaders that follow (Steps 2–3) validate Product Group, Creative Market, Audience, Buy Type, Media Type, and Partner against it, so campaigns and rows created here use real, consistent values from day one.</p>
+    <p class="lede">One workstream, two steps. Set up Product Groups &amp; Creative Focus Group first (Step 1 below, by hand or from a file) — the uploader that follows (Step 2) validates Product Group, Creative Market, Audience, Buy Type, Media Type, and Partner against it, so campaigns created here use real, consistent values from day one. To add work to a campaign that's already running, use Add Job under that campaign's own Campaign Details — that's where ongoing, day-to-day changes belong, not here.</p>
 
     <!-- 2026-09-11, per direct instruction ("The product group and creative
          focus taxonomy and marketing calendar uploads should be in the same
@@ -3776,53 +3776,32 @@
         </div>
       </div>
 
-      <!-- ============ Module 3: add rows to an existing campaign (ongoing) ============ -->
-      <div class="module accent-media" id="bulkAddRowsModule">
-        <div class="module-head" onclick="toggleModule('bulkAddRowsModule')">
-          <span class="modnum">3</span>
-          <div class="titles"><span class="tag">Ongoing</span><h2>Add rows to an existing campaign</h2></div>
-          <span class="chevron">▸</span>
-        </div>
-        <div class="module-body">
-          <p class="hint" style="margin-top:0;">Upload Channel Planning Detail rows — the real data behind Marketing Calendar, the campaign-level Product Group/Creative Focus Group rollup, and Analysis — against any of this account's existing campaigns. Every row is added; nothing already on the campaign is replaced.</p>
-
-          <div class="field-divider">1. Get the template</div>
-          <div class="field">
-            <label>Download the CSV template</label>
-            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Every column after <code>campaignId</code> matches a Channel Planning Detail field exactly.</div>
-            <div class="btn-row" style="margin-top:0;">
-              <button type="button" class="btn-ghost" onclick="downloadBulkUploadTemplate()">Download CSV template →</button>
-              <button type="button" class="btn-ghost" onclick="downloadBulkUploadCampaignReference()">Download this account's Campaign IDs →</button>
-            </div>
-          </div>
-
-          <div class="field-divider">2. Upload your file</div>
-          <div class="field">
-            <label>Channel Planning Detail CSV</label>
-            <input type="file" id="bulkUploadFileInput" accept=".csv,text/csv" onchange="handleBulkUploadFileChange(event)">
-            <div class="hint" id="bulkUploadFileHint">Parsed entirely in your browser — nothing is sent until you click Upload below.</div>
-          </div>
-
-          <div class="field" id="bulkUploadActorWrap" style="display:none;">
-            <label>Uploading as</label>
-            <div class="stage-row" id="bulkUploadActorRoleRow"></div>
-            <input type="text" id="bulkUploadActorName" placeholder="Your name" style="margin-top:8px;max-width:320px;" oninput="renderBulkUploadPreview()">
-            <div class="hint">CX Experiences Media Ops can set vendor cost fields and mark rows Approved; an upload from your own team can leave both as drafts for review.</div>
-          </div>
-
-          <div class="field-divider" id="bulkUploadPreviewDivider" style="display:none;">3. Review &amp; upload</div>
-          <div class="field" id="bulkUploadPreviewWrap" style="display:none;">
-            <div class="hint" id="bulkUploadSummary" style="margin-bottom:10px;"></div>
-            <div class="table-scroll">
-              <table class="active-camp-table" id="bulkUploadPreviewTable"></table>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn-primary" id="bulkUploadSubmitBtn" onclick="submitBulkUpload()">Upload valid rows →</button>
-            </div>
-            <div class="hint" id="bulkUploadResult" style="margin-top:10px;"></div>
-          </div>
-        </div>
-      </div>
+      <!-- ============ Module 3 (removed 2026-09-11) — "Add rows to an
+           existing campaign" ============
+           Per direct instruction: "You can't technically add more rows to
+           a campaign ID unless we are adding JOB_IDs that fall under the
+           campaign ID. I wouldn't create an upload for that scenario. An
+           Add Job to Campaign ID within the campaign details is fine."
+           A bare campaignId isn't the right granularity for adding real
+           work to a live campaign — that belongs at the Job level, created
+           via Campaign Details' Creative Asset Requests flow (POST
+           /api/campaigns/:id/creative-jobs — see
+           cmpSubmitCreativeRequestToBrand()), which already exists and
+           already lives in the dashboards (campaign-level, day-to-day
+           work), not here in Account Management (account-level setup).
+           Also folds into the broader access-control decision, same
+           round: "The dashboards are the work areas that we want to keep
+           everyone in... Account Management to handle account
+           configuration and audits as needed" — a bulk uploader for
+           ongoing per-campaign changes doesn't belong in a setup/audit
+           area regardless of the Job-ID point above.
+           The supporting JS (submitBulkUpload(), handleBulkUploadFileChange(),
+           downloadBulkUploadTemplate(), downloadBulkUploadCampaignReference(),
+           resetBulkUploadState(), renderBulkUploadActorRoleRow(), and the
+           BULK_UPLOAD_* constants) and its backend endpoint (POST
+           /api/accounts/:accountId/channel-planning/bulk) are left in place,
+           unused, rather than deleted — same backward-compatible convention
+           already used for TAXONOMY_TEMPLATES. -->
     </div>
   </div>
 
@@ -9127,7 +9106,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-taxonomy-save-refresh-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-bulk-step3-removed';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -43083,8 +43062,13 @@ function goToStep(step, arg, arg2, arg3){
     // moved inline onto this page from the old step-taxonomyManager; render
     // it the same way that step always did.
     renderTaxonomyManagerStep();
-    resetBulkUploadState();
-    renderBulkUploadActorRoleRow();
+    // resetBulkUploadState()/renderBulkUploadActorRoleRow() — dropped along
+    // with the old Step 3 "Add rows to an existing campaign" module (see
+    // its removal comment below), per direct instruction: real Channel
+    // Planning Detail additions happen at the Job level, tied to a specific
+    // campaign, not as a bulk CSV keyed to a bare campaignId — that already
+    // has a proper home in Campaign Details (Creative Asset Requests ->
+    // creative-jobs), which lives in the dashboards, not here.
     resetBulkCreateCampaignsState();
     renderBulkUploadTaxonomyGate();
     loadBulkCreateCampaignsBatches();
