@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-bulk-step3-removed (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-voice-consolidation (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2173,6 +2173,20 @@ const COPY_SOURCES_SCHEMA = {
   },
   required: ['copy', 'sourcesUsed']
 };
+// 2026-09-11/12, POST /api/accounts/:id/voice-draft (see
+// generateVoiceGuideDraftViaAI() below) — the Human Agentic Model shape:
+// `draft` is the actual guide, `gaps` is what's missing that would make a
+// stronger one (kept OUT of the draft text itself), `whyDraft` is real
+// model-authored reasoning about this specific draft.
+const VOICE_DRAFT_SCHEMA = {
+  type: 'object',
+  properties: {
+    draft: { type: 'string', description: 'The full Brand Voice Guide draft text, sections in order: one-line description, point of view, tone rules, words/phrases to avoid (only if any were given), example sentences in this voice.' },
+    gaps: { type: 'array', items: { type: 'string' }, description: 'Short strings, each naming one real thing missing that would make this draft stronger (e.g. "no Sample Writings on file yet"). Empty array if nothing is genuinely missing.' },
+    whyDraft: { type: 'string', description: "Real reasoning about THIS draft specifically — what it was grounded in from the account's real inputs, and what it was not." }
+  },
+  required: ['draft', 'gaps', 'whyDraft']
+};
 // Company Profile website-extraction categories (the Silver Trident Winery
 // root-cause site) — each of the 7 categories is a {value, evidence} pair,
 // either of which may legitimately be null when the fetched material
@@ -2196,11 +2210,20 @@ const BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA = {
 // Products & Services (what to actually talk about) and the approved Brand &
 // Product Keyword chips (the emotional/voice signal already validated for
 // this account) are the two account-level fields already asking for exactly
-// this. Tone Anchors / Words-to-avoid / anti-example are tracked client-side
-// today (see generateVoiceDraft() in portal.html) rather than persisted per-
-// account — this endpoint accepts them as optional request-body context so
-// the contest still benefits from them when the client has them picked,
-// without inventing a new server-side field this round just to hold them.
+// this. Words-to-avoid/anti-example were tracked client-side (see
+// generateVoiceDraft() in portal.html) rather than persisted per-account —
+// this endpoint accepts them as optional request-body context so the
+// contest still benefits from them when the client has them picked, without
+// inventing a new server-side field this round just to hold them.
+// 2026-09-11/12, per cxmedia-brand-voice-consolidation-human-agentic-model-
+// scoping-2026-09-11.md: Tone Anchors (the fixed 6-checkbox picker this
+// function used to read as extra.toneAnchors) is removed — merged into
+// Brand Keywords above, which this function already reads directly off
+// account.brandKeywordsJson.brand, independent of `extra`. The
+// extra.toneAnchors handling a few lines below is left in place (harmless,
+// backward compatible — voice-contest's route still accepts a toneAnchors
+// body field if any old client code sends one) rather than deleted, but the
+// frontend no longer sends it.
 function brandVoiceCriticalMessagesContext(account, extra){
   const lines = [];
   if (account.productsServices) lines.push(`Products & Services: ${String(account.productsServices).slice(0, 800)}`);
@@ -2234,7 +2257,7 @@ function brandVoiceCriticalMessagesContext(account, extra){
   if (extra && Array.isArray(extra.toneAnchors) && extra.toneAnchors.length) lines.push(`Tone Anchors picked for this account: ${extra.toneAnchors.join(', ')}`);
   if (extra && extra.avoidWords) lines.push(`Words to avoid: ${extra.avoidWords}`);
   if (extra && extra.antiExample) lines.push(`What this voice is NOT: ${extra.antiExample}`);
-  return lines.length ? lines.join('\n') : '(No Products & Services, approved Brand/Product Keywords, scanned website, or Tone Anchors on file yet for this account — draft from the account\'s Industry alone.)';
+  return lines.length ? lines.join('\n') : '(No Products & Services, approved Brand/Product Keywords, or scanned website on file yet for this account — draft from the account\'s Industry alone.)';
 }
 async function generateBrandVoiceCandidate(angle, account, extra){
   try {
@@ -2271,6 +2294,85 @@ Propose your candidate via the submit_brand_voice_candidate tool.`;
     };
   } catch (e){
     return { visionStatement: null, longformExample: null, error: 'Generation failed: ' + e.message };
+  }
+}
+// 2026-09-11/12, per cxmedia-brand-voice-consolidation-human-agentic-model-
+// scoping-2026-09-11.md — replaces generateVoiceDraft()'s old client-side
+// templated JS (portal.html — string concatenation, no AI call at all, two
+// hardcoded example sentences identical for every account) with a real
+// Claude call. Reuses brandVoiceCriticalMessagesContext() (Products &
+// Services, approved Brand/Product Keywords, scanned website understanding
+// — the SAME grounding the Voice Contest above already uses) plus this
+// account's own Terms to Avoid (brandKeywordsJson.negative, read directly
+// off the account row here — it's already an account-level field, no need
+// to round-trip it from the client) plus real Sample Writings
+// (brandWritingSampleContext(), the same "upload sample copy to help our
+// models learn" fix generateMessagingCopyViaAI() already benefits from) —
+// at least as well-grounded as regular campaign copy generation, not a
+// lesser version of it.
+//
+// The prompt explicitly requires avoid-phrases to be written in the exact
+// `avoid "phrase"` shape extractVoiceGuideAvoidTerms() (below, in the
+// compliance-checker section of this file) regex-matches. This is the real
+// bug fix behind this round: the OLD templated draft wrote `Words to
+// avoid: X, Y, Z.` (a plain comma list, no quotes), which that checker's
+// /\b(?:avoid|never say|...)\s*[:\-]?\s*"([^"]{2,40})"/gi pattern has never
+// actually matched — so the compliance guardrail was silently a no-op
+// against this field for every account. A real generated draft now has to
+// pass this exact shape; verified by hand against a sample generated draft
+// during this round.
+//
+// gaps[] is the Human Agentic Model piece: what's missing that would make a
+// STRONGER draft (no Products & Services on file, no Sample Writings, no
+// competitors, etc.), returned as its own field — never folded into the
+// draft text itself — so the human sees "recommend with what you have, ask
+// for more when you know you need it" as a distinct, actionable list, not
+// buried in guide prose.
+async function generateVoiceGuideDraftViaAI(account){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return { draft: null, gaps: [], whyDraft: null, note: 'AI Voice Draft generation requires ANTHROPIC_API_KEY to be configured. Nothing was generated — edit the Voice Guide by hand below, or set the key to enable this.' };
+  }
+  try {
+    const context = brandVoiceCriticalMessagesContext(account, {});
+    let avoidWords = [];
+    try {
+      const parsedKeywords = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
+      if (parsedKeywords && Array.isArray(parsedKeywords.negative)) avoidWords = parsedKeywords.negative.filter(Boolean);
+    } catch (e){ /* malformed/legacy brandKeywordsJson — fall through without it */ }
+    const sampleContext = await brandWritingSampleContext(account.accountId);
+    const prompt = `You are a senior brand strategist writing a real, finished Brand Voice Guide for ${account.company || 'this company'} (Industry: ${account.industry || '(not set)'}) — the kind of document a copywriter could pick up cold and write correctly in this brand's voice on the first try. Not a summary of the inputs below, not meta-commentary about the brand — a real, usable guide.
+
+CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL ON FILE (use these specific facts — never invent products, offers, or claims not present here):
+${context}
+${sampleContext || '\n(No real Sample Writings on file for this account yet — write from the signal above alone, and flag the missing samples as a gap below.)\n'}
+TERMS TO AVOID for this account (literal exclusions and/or tone-to-avoid phrases, human-entered): ${avoidWords.length ? avoidWords.map(w => `"${w}"`).join(', ') : '(none on file yet)'}
+
+Write the guide with these sections, in this order:
+1. One-line description of how this brand sounds and who it's speaking to.
+2. Point of view (e.g. second person "you," first person plural "we") — state it explicitly and use it consistently in every example below.
+3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above.
+4. Words/phrases to avoid — ONLY if the Terms to Avoid list above is non-empty. Each one MUST be written on its own line in EXACTLY this format: avoid "the exact phrase" — copy each phrase from the Terms to Avoid list verbatim inside the quotes, one per line, using the word "avoid" specifically (not "never say"/"don't use"/other synonyms) so this section is mechanically checkable. Do not invent phrases that aren't on that list, and do not skip this section if the list above is non-empty.
+5. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above).
+
+Then, SEPARATELY from the draft text above (in the gaps field, not inside the draft), identify what's genuinely missing that would make this draft stronger — e.g. no Products & Services on file, no Sample Writings on file, no competitors entered, no scanned website on file, no Terms to Avoid entered yet. Only list gaps that are actually true of the context given above; an empty gaps array is correct if everything relevant is genuinely on file — never invent a gap that isn't real. Also give your real reasoning for this specific draft in the whyDraft field — what you grounded it in from the real inputs above, and what you didn't have.
+
+Submit your result via the submit_voice_draft tool.`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 1400,
+      content: prompt,
+      toolName: 'submit_voice_draft',
+      toolDescription: 'Submit the drafted Brand Voice Guide.',
+      schema: VOICE_DRAFT_SCHEMA
+    });
+    return {
+      draft: typeof parsed.draft === 'string' ? parsed.draft : null,
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps.filter(g => typeof g === 'string') : [],
+      whyDraft: typeof parsed.whyDraft === 'string' ? parsed.whyDraft : null,
+      note: null
+    };
+  } catch (e){
+    return { draft: null, gaps: [], whyDraft: null, note: 'AI Voice Draft generation failed: ' + e.message };
   }
 }
 // No relevance score here — unlike the copy interview panel, there's no
@@ -11106,7 +11208,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-bulk-step3-removed',
+        buildStamp: '2026-09-12-voice-consolidation',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -12626,9 +12728,15 @@ async function handleRequest(req, res) {
     // POST /api/accounts/:id/voice-contest — 2026-08-22, the multi-model
     // Brand Voice contest (see runBrandVoiceContest() above). Body (all
     // optional): { toneAnchors: string[], avoidWords: string, antiExample:
-    // string } — today's client-side-only Tone Anchor picks/Words-to-avoid,
-    // passed through as extra context since they aren't a persisted account
-    // field yet. Logs the full panel (including vendor/model) to
+    // string } — avoidWords is today's client-side Terms to Avoid list,
+    // passed through as extra context since it isn't a persisted account
+    // field yet (unlike Brand/Product Keywords, which
+    // brandVoiceCriticalMessagesContext() already reads directly off the
+    // account row). toneAnchors is accepted for backward compatibility only
+    // — 2026-09-11/12, per cxmedia-brand-voice-consolidation-human-agentic-
+    // model-scoping-2026-09-11.md, Tone Anchors was merged into Brand
+    // Keywords and the frontend no longer sends this field; harmless if a
+    // caller still does. Logs the full panel (including vendor/model) to
     // account_voice_interviews, returns a REDACTED copy for the client —
     // never mutates accounts.visionStatement/longformVoiceExample itself,
     // same "explicit click to apply" discipline as the copy interview panel
@@ -12659,6 +12767,36 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactBrandVoiceCandidatesForClient(result.candidates), createdAt: now
       });
+    }
+
+    // POST /api/accounts/:id/voice-draft — 2026-09-11/12, per
+    // cxmedia-brand-voice-consolidation-human-agentic-model-scoping-
+    // 2026-09-11.md. Replaces generateVoiceDraft()'s old 100%-client-side
+    // templated-JS draft (portal.html — string concatenation, no AI call at
+    // all, two hardcoded "example sentences in this voice" identical for
+    // every account) with a real Claude call, grounded in this account's
+    // real inputs, following the same proven callClaudeForJSON/tool-schema
+    // pattern generateMessagingCopyViaAI() and generateBrandVoiceCandidate()
+    // (Voice Contest, immediately above) already use.
+    //
+    // Rate limiting: deliberately NOT gated behind checkInterviewWeeklyCap()
+    // (the shared cap across the multi-model interview-style panels —
+    // Creative Job/Campaign Copy/PR Copy interviews and the Voice Contest,
+    // each of which fans out to several real model calls per run). This is
+    // a single Claude call, the same weight class as
+    // generateMessagingCopyViaAI() (also uncapped) — a human editing Brand
+    // Keywords/Terms to Avoid and re-generating a few times while dialing in
+    // their Voice Guide is the expected, lightweight usage pattern, not
+    // something that should burn down a 20-run/week panel budget shared with
+    // unrelated features. Judgment call, noted per the task's own request to
+    // flag it.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-draft'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const result = await generateVoiceGuideDraftViaAI(account);
+      return sendJson(res, 200, result);
     }
 
     // POST /api/accounts/:id/voice-contest/:interviewId/select — applies a
@@ -20321,4 +20459,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
