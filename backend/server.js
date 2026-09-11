@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-pr-ai-brain-parity (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-ledger-website (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2262,25 +2262,34 @@ function brandVoiceCriticalMessagesContext(account, extra){
   if (Array.isArray(brandKeywords) && brandKeywords.length) lines.push(`Approved Brand Keywords (emotional/voice signal): ${brandKeywords.join(', ')}`);
   if (Array.isArray(productKeywords) && productKeywords.length) lines.push(`Approved Product Keywords (what this brand sells): ${productKeywords.join(', ')}`);
   // 2026-08-27 fix, per direct report — the account's own scanned website
-  // (accounts.websiteContextJson, populated by POST /api/accounts/:id/
-  // website-scan, run from Company Profile) used to sit completely unused
-  // by this contest even when a scan existed on file. Included here for
-  // BRAND UNDERSTANDING ONLY — same "understand the brand, never copy
-  // verbatim" discipline as cmpBrandUnderstandingSummary() in portal.html
-  // (round 132bh direct correction: "We shouldn't be using anything from
-  // the website specifically beyond understanding the brand better.") —
-  // title/meta description/headings as reference facts, with the model
-  // explicitly told below not to quote them directly into the drafted copy.
-  // This is deliberately separate from the Website Examples feature
-  // (specific include/exclude page rules, brand-copy-website-examples
-  // table) — that's a deeper per-page layer, not wired into this contest.
+  // used to sit completely unused by this contest even when a scan existed
+  // on file. Included here for BRAND UNDERSTANDING ONLY — same "understand
+  // the brand, never copy verbatim" discipline as
+  // cmpBrandUnderstandingSummary() in portal.html (round 132bh direct
+  // correction: "We shouldn't be using anything from the website
+  // specifically beyond understanding the brand better.") — title/meta
+  // description/headings as reference facts, with the model explicitly
+  // told below not to quote them directly into the drafted copy. This is
+  // deliberately separate from the Website Examples feature (specific
+  // include/exclude page rules, brand-copy-website-examples table) —
+  // that's a deeper per-page layer, not wired into this contest.
+  //
+  // 2026-09-12 — AI Brain Contribution Ledger, "website context first":
+  // this used to read accounts.websiteContextJson directly, a single field
+  // silently overwritten on every rescan. It's this app's only real
+  // consumer of that column, so rather than keep it as a synced cache
+  // (two write paths to keep in lockstep for one reader), it's migrated
+  // straight to websiteContextRollup(accountId) — the computed fold over
+  // this account's currently-'applied' website_scan contributions (see
+  // that function, defined near the MMM adstock/lag decisions above, for
+  // the fallback behavior when nothing has been decided yet).
   try {
-    if (account.websiteContextJson){
-      const ctx = JSON.parse(account.websiteContextJson);
+    const ctx = account.accountId ? websiteContextRollup(account.accountId) : null;
+    if (ctx){
       const siteFacts = [ctx.title, ctx.metaDescription, ...(Array.isArray(ctx.headings) ? ctx.headings : [])].filter(Boolean).slice(0, 12).join(' | ').slice(0, 600);
       if (siteFacts) lines.push(`This brand's own website (${ctx.url || account.websiteUrl || 'on file'}) — for UNDERSTANDING the brand only, never to be quoted verbatim in the drafted copy: ${siteFacts}`);
     }
-  } catch (e){ /* malformed/legacy websiteContextJson — fall through without it */ }
+  } catch (e){ /* malformed ledger content — fall through without it */ }
   if (extra && Array.isArray(extra.toneAnchors) && extra.toneAnchors.length) lines.push(`Tone Anchors picked for this account: ${extra.toneAnchors.join(', ')}`);
   if (extra && extra.avoidWords) lines.push(`Words to avoid: ${extra.avoidWords}`);
   if (extra && extra.antiExample) lines.push(`What this voice is NOT: ${extra.antiExample}`);
@@ -3403,6 +3412,127 @@ const MMM_ADSTOCK_LAG_STATUSES = ['reference', 'applied', 'removed'];
 function getMmmAdstockLagDecisions(accountId){
   const rows = db.prepare('SELECT category, status, reason, decidedBy, decidedAt FROM mmm_adstock_lag_decisions WHERE accountId = ?').all(accountId);
   return Object.fromEntries(rows.map(r => [r.category, r]));
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, first build-order item
+// ("website context first") per cxmedia-ai-brain-contribution-ledger
+// scoping. Deliberately the exact same shape as mmm_adstock_lag_decisions/
+// mmm_adstock_lag_decision_log directly above — same append-only "never
+// silently overwritten" pattern, same status vocabulary
+// (reference|applied|removed, NOT an earlier draft/applied/removed), for
+// consistency across the product rather than inventing a second decision
+// vocabulary. Built in full now (sourceType/sourceRefId/scopeType/
+// scopeValue columns) even though this round's only sourceType is
+// 'website_scan' with sourceRefId/scopeType/scopeValue left null — a
+// brand-wide contribution needs no sub-scope yet — so a future round
+// (training-digest pooling, Voice/Style/Positioning ledger migration —
+// explicitly NOT this round) can plug in another sourceType without a
+// schema migration.
+//
+// This replaces the single accounts.websiteContextJson column being
+// silently UPDATE-overwritten on every rescan (a bad or stale rescan used
+// to permanently destroy whatever good context existed before, with zero
+// history and no way to recover it — the single most acute gap the
+// Contribution Ledger design doc identifies). Every real website scan is
+// now its own dated, attributed, append-only row here instead.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ai_brain_contributions (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    sourceType TEXT NOT NULL,
+    sourceRefId TEXT,
+    scopeType TEXT,
+    scopeValue TEXT,
+    contentJson TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'reference',
+    reason TEXT,
+    decidedBy TEXT,
+    createdAt TEXT NOT NULL,
+    decidedAt TEXT
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ai_brain_contribution_log (
+    id TEXT PRIMARY KEY,
+    contributionId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT,
+    decidedBy TEXT,
+    decidedAt TEXT NOT NULL
+  );
+`);
+// Same convention as the one other hand-written index in this file
+// (idx_contest_rankings_account_type, ~line 1935) — every ledger read is
+// filtered by accountId (and often sourceType/status), so those are the
+// columns worth indexing; there's no equivalent bulk column-list migration
+// convention for indexes elsewhere in this file to mirror beyond that.
+createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_ai_brain_contributions_account ON ai_brain_contributions(accountId, sourceType, status);`);
+createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_ai_brain_contribution_log_account ON ai_brain_contribution_log(accountId, contributionId);`);
+
+const AI_BRAIN_CONTRIBUTION_STATUSES = ['reference', 'applied', 'removed'];
+
+// Inserts one new, permanent website_scan contribution row. Always starts
+// 'reference' (captured but not yet applied), same starting state MMM's
+// adstock/lag estimates use — a human decides Apply/Remove afterward via
+// POST /api/accounts/:id/website-context-decisions. Returns the new row's id.
+function createWebsiteScanContribution(accountId, contentObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'website_scan', null, null, null, JSON.stringify(contentObj), 'reference', null, null, now, null);
+  return id;
+}
+
+function getWebsiteScanContributions(accountId){
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+    FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'website_scan' ORDER BY createdAt DESC`).all(accountId);
+}
+
+// The single computed rollup every real consumer of website context now
+// reads instead of accounts.websiteContextJson (see brandVoiceCriticalMessagesContext
+// below — the only such consumer as of this round). Website facts are an
+// ADDITIVE field per the Contribution Ledger design doc: every currently-
+// 'applied' website_scan contribution still informs understanding, not
+// just the newest one, so this folds all of them together (later-created
+// applied rows win on scalar fields; headings/structuredData accumulate,
+// de-duplicated).
+//
+// FALLBACK (transitional convenience only, not the intended long-term
+// behavior): when an account has zero 'applied' contributions yet — e.g.
+// it was just scanned for the first time and nobody has reviewed it —
+// this falls back to the single most-recently-created contribution's raw
+// content, so a freshly-scanned, not-yet-decided account doesn't regress
+// from "has context" to "has none" the moment this ships. Once an account
+// starts actually deciding (Reference/Apply/Remove), this fallback stops
+// applying to it the moment the first 'applied' row exists.
+function websiteContextRollup(accountId){
+  const applied = db.prepare(`SELECT contentJson, createdAt FROM ai_brain_contributions
+    WHERE accountId = ? AND sourceType = 'website_scan' AND status = 'applied' ORDER BY createdAt ASC`).all(accountId);
+  if (applied.length){
+    const merged = { url: null, title: null, metaDescription: null, headings: [], excerpt: null, structuredData: [], fetchedAt: null };
+    const seenHeadings = new Set();
+    applied.forEach(row => {
+      let ctx;
+      try { ctx = JSON.parse(row.contentJson); } catch (e){ return; } // malformed row — skip, don't break the rollup
+      if (ctx.url) merged.url = ctx.url;
+      if (ctx.title) merged.title = ctx.title;
+      if (ctx.metaDescription) merged.metaDescription = ctx.metaDescription;
+      if (ctx.excerpt) merged.excerpt = ctx.excerpt;
+      if (Array.isArray(ctx.structuredData) && ctx.structuredData.length) merged.structuredData = ctx.structuredData;
+      if (ctx.fetchedAt) merged.fetchedAt = ctx.fetchedAt;
+      (Array.isArray(ctx.headings) ? ctx.headings : []).forEach(h => {
+        if (h && !seenHeadings.has(h)){ seenHeadings.add(h); merged.headings.push(h); }
+      });
+    });
+    return merged;
+  }
+  const latest = db.prepare(`SELECT contentJson FROM ai_brain_contributions
+    WHERE accountId = ? AND sourceType = 'website_scan' ORDER BY createdAt DESC LIMIT 1`).get(accountId);
+  if (!latest) return null;
+  try { return JSON.parse(latest.contentJson); } catch (e){ return null; }
 }
 
 // The single source of truth every MMM read endpoint (completeness matrix,
@@ -11344,7 +11474,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-pr-ai-brain-parity',
+        buildStamp: '2026-09-12-ai-brain-ledger-website',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -11584,6 +11714,23 @@ async function handleRequest(req, res) {
           if (isDuplicateKeyError(e) && attempt < MAX_ACCOUNT_ID_ATTEMPTS) continue; // try a new id
           throw e; // not a collision, or out of attempts — let the outer catch handle it
         }
+      }
+      // 2026-09-12 — AI Brain Contribution Ledger, "website context first".
+      // accounts.websiteContextJson above is kept as an inert legacy
+      // column (nothing in this file reads it back anymore — see
+      // websiteContextRollup()/brandVoiceCriticalMessagesContext()) rather
+      // than removed outright, same reversible-swap posture the rest of
+      // this codebase uses. The real, permanent record of this
+      // assessment-time scan now also lands in the ledger as this
+      // account's first website_scan contribution, so websiteContextRollup's
+      // fallback (most-recently-created contribution, until a human
+      // Applies one) has something to find immediately — without this, a
+      // brand-new account arriving with a real assessment-time scan on
+      // file would show no website understanding at all until someone
+      // manually re-ran a scan from Company Profile.
+      if (websiteContextJson){
+        try { createWebsiteScanContribution(accountId, JSON.parse(websiteContextJson)); }
+        catch (e){ /* malformed websiteContext from the client — skip it, not fatal */ }
       }
       const insertCell = db.prepare(
         'INSERT INTO score_history (accountId, stage, layer, score, source, recordedAt) VALUES (?,?,?,?,?,?)'
@@ -12592,6 +12739,18 @@ async function handleRequest(req, res) {
         return sendJson(res, 502, { error: 'Could not load this account right now — try again in a moment.' });
       }
       if (!record) return sendJson(res, 404, { error: 'account not found' });
+      // 2026-09-12 — AI Brain Contribution Ledger, "website context first".
+      // Attached at the route level (not inside getAccountRecord() itself,
+      // which other call sites like login-user also use) so every normal
+      // page load of this account gets the current computed rollup without
+      // a second round trip — portal.html's loadAccountData() sets
+      // state.websiteContext from this instead of the old, no-longer-
+      // written accounts.websiteContextJson column. See
+      // websiteContextRollup() for the merge/fallback rules.
+      if (record.account && record.account.accountId){
+        try { record.account.websiteContextRollup = websiteContextRollup(record.account.accountId); }
+        catch (e){ record.account.websiteContextRollup = null; }
+      }
       return sendJson(res, 200, record);
     }
 
@@ -12626,25 +12785,33 @@ async function handleRequest(req, res) {
     // drafts... full brand context beyond the marketing product groups and
     // creative groups selected that are only for analytics at the end of
     // the day." The original build surfaced this as a human-facing
-    // copy-paste research panel — wrong shape. This is now a real, live
-    // fetch of this account's own websiteUrl (accounts.websiteUrl —
-    // captured for real at assessment time, never invented) whose result
-    // PERSISTS as durable brand context (accounts.websiteContextJson) for
-    // the copywriter functions to actually draw from — see
-    // cmpWebsiteContextSafePhrases()/cmpMessagingElements() in portal.html,
-    // which prefer a real, safety-filtered website phrase over a generic
-    // templated line when one exists. Not a one-off display; a standing
-    // input, refreshed on demand, same tier as the Voice Guide/Style Notes.
-    // Honest failure on every real way this can fail: no URL on file,
-    // network unreachable, timeout, or a non-2xx response — never a silent
-    // empty success, and a failed scan never overwrites a previously good
-    // context.
+    // copy-paste research panel — wrong shape. This is a real, live fetch
+    // of this account's own websiteUrl (accounts.websiteUrl — captured for
+    // real at assessment time, never invented) whose result feeds the
+    // copywriter functions. Honest failure on every real way this can
+    // fail: no URL on file, network unreachable, timeout, or a non-2xx
+    // response — never a silent empty success.
     //
     // 2026-08-25 — the actual fetch/extract logic below was factored out
     // into the shared fetchAndExtractPage() helper (defined above this
     // route table), so this endpoint and the free assessment's new
     // POST /api/assessment/website-scan (also below) share one real
     // scraper instead of maintaining two copies of the same regexes.
+    //
+    // 2026-09-12 — AI Brain Contribution Ledger, "website context first"
+    // (this round's only build-order item, per the scoping doc). This used
+    // to `UPDATE accounts SET websiteContextJson = ...` on every scan —
+    // a bad or stale rescan permanently destroyed whatever good context
+    // existed before, with zero history and no way to recover it. Now
+    // every successful scan INSERTs a new, permanent, dated
+    // ai_brain_contributions row instead (status defaults 'reference' —
+    // captured but not yet applied, same starting state MMM's adstock/lag
+    // estimates use) — nothing is ever silently lost, and a human decides
+    // Reference/Apply/Remove afterward via the website-context-decisions
+    // endpoints below. accounts.websiteContextJson/websiteContextFetchedAt
+    // are no longer written here; see websiteContextRollup() and
+    // brandVoiceCriticalMessagesContext() for the one real reader,
+    // migrated to the ledger rollup instead of that column.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-scan'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -12658,9 +12825,58 @@ async function handleRequest(req, res) {
       } catch (e){
         return sendJson(res, 502, { error: `${e.message} Try again, or check the URL on file under Company Profile.` });
       }
-      db.prepare('UPDATE accounts SET websiteContextJson = ?, websiteContextFetchedAt = ? WHERE accountId = ?')
-        .run(JSON.stringify(context), context.fetchedAt, accountId);
-      return sendJson(res, 200, context);
+      const contributionId = createWebsiteScanContribution(accountId, context);
+      return sendJson(res, 200, { ...context, contributionId, status: 'reference' });
+    }
+
+    // GET /api/accounts/:id/website-context-decisions — 2026-09-12, AI
+    // Brain Contribution Ledger, "website context first". Full history of
+    // this account's website_scan contributions, newest first, each with
+    // its current status/reason/decidedBy/decidedAt, so Company Profile
+    // can render the full scan trail (mirrors GET .../mmm-adstock-lag-
+    // decisions above, which returns current-state + log separately; this
+    // one folds current state onto each contribution row directly since
+    // there's one row per scan here rather than one row per category).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-context-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getWebsiteScanContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history });
+    }
+
+    // POST /api/accounts/:id/website-context-decisions — a human recording
+    // Reference/Apply/Remove for one website scan contribution. Exact same
+    // pattern as POST .../mmm-adstock-lag-decisions above: 'removed'
+    // requires a reason (the "why was this a false read" record) —
+    // everything else, reason is optional. Every call both updates the
+    // contribution's current state and appends to the append-only log, so
+    // a contribution that gets removed then later reinstated still shows
+    // the full history rather than silently forgetting the earlier removal.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-context-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'website_scan'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s website scans' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, contributionId);
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
     }
 
     // POST /api/assessment/website-scan — 2026-08-25, per direct follow-up
