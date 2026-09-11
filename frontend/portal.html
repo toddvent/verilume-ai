@@ -9138,7 +9138,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-bulk-create-campaigns';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-per-zip-qualified';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27497,13 +27497,13 @@ function mstProspectFitSectionHtml(data){
       ${i === 0 ? `<td rowspan="${s.rings.length}">${escapeHtml(s.name || s.storeId || '—')}</td>` : ''}
       <td>${r.radiusMiles} mi</td>
       <td>${r.population.toLocaleString()}</td>
-      <td><b>${r.qualifiedPopulation != null ? r.qualifiedPopulation.toLocaleString() : '<span class="hint">—</span>'}</b></td>
+      <td><b>${r.qualifiedPopulation != null ? r.qualifiedPopulation.toLocaleString() : '<span class="hint">—</span>'}</b>${(r.zipsTestedForWealth != null && r.zipsTestedForWealth > 0) ? `<div class="hint" style="font-weight:400;">${r.zipsQualified.toLocaleString()} of ${r.zipsTestedForWealth.toLocaleString()} zip(s) qualify</div>` : ''}</td>
     </tr>`).join('')).join('');
   return `
     <div style="margin-top:8px;">
       <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Population &amp; Qualified Households</p>
       <p class="hint" style="margin:0 0 6px;">${tierLine}</p>
-      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Population = everyone nearby, all ages. Qualified = the target-generation population nearby, counted where that ring's own Verilume Wealth Index (income + generation, the same score your Free Assessment shows) is at or above your target wealth tier — otherwise that ring counts as 0 qualified, not a partial estimate.</p>
+      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Population = everyone nearby, all ages. Qualified = the target-generation population of every individual ZIP in the ring whose OWN Verilume Wealth Index (income + generation, the same score your Free Assessment shows) is at or above your target wealth tier — each ZIP in the ring is tested on its own, not blended into one ring-wide average, so a wealthy enclave within a wider ring still counts even if the ring's population as a whole is more mixed.</p>
       <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
         <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Qualified (target age + wealth, est.)</th></tr></thead>
         <tbody>${rows}</tbody>
