@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-taxonomy-bulk-upload-irs-header-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-bulk-create-campaigns (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1482,6 +1482,37 @@ createTableIfNeeded(`
     FOREIGN KEY (allocationId) REFERENCES media_plan_allocations(id)
   );
 `);
+
+// channel_planning_upload_batches — 2026-09-11, the Marketing Calendar
+// "create campaigns from a file" bulk uploader (per direct instruction:
+// a client-onboarding tool, "get a client up and running faster," not an
+// everyday-use import). Each row here is one uploaded file: the date
+// range Todd asked the upload flow to start with, and which campaigns it
+// touched, so the whole batch can be deleted as a unit later (per direct
+// instruction: "delete at the file or campaign level is valid").
+// campaignIdsCreatedJson / campaignIdsMatchedJson keep the two cases
+// separate — deleting a batch removes campaigns IT created, but only
+// removes the ROWS (not the campaign itself) for a campaign it matched
+// and overrode, since that campaign may predate this file or also be
+// touched by others.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS channel_planning_upload_batches (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    fileName TEXT,
+    dateRangeStart TEXT,
+    dateRangeEnd TEXT,
+    uploadedByRole TEXT,
+    uploadedByName TEXT,
+    rowCount INTEGER DEFAULT 0,
+    campaignIdsCreatedJson TEXT,
+    campaignIdsMatchedJson TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+ensureColumn('channel_planning_details', 'uploadBatchId', 'TEXT');
+ensureColumn('campaigns', 'createdByUploadBatchId', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -11054,7 +11085,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-taxonomy-bulk-upload-irs-header-fix',
+        buildStamp: '2026-09-11-bulk-create-campaigns',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -14776,6 +14807,231 @@ Submit your findings via the submit_brand_categories tool.`;
         insertedCount, failedCount: results.length - insertedCount,
         results, campaignsSynced: [...touchedCampaignIds]
       });
+    }
+
+    // Tables that carry a campaignId foreign key besides channel_planning_
+    // details (which callers of this are expected to have already cleared).
+    // Used by the hard-delete path below to refuse deleting a campaign that
+    // still has real related data anywhere else in the app, rather than
+    // risking a foreign-key violation or silently orphaning rows.
+    const CAMPAIGN_FK_TABLES = ['projects', 'campaign_allocation_draws', 'campaign_mbu_draws', 'creative_jobs', 'campaign_copy_interviews', 'creative_collections', 'campaign_mmm_line_items'];
+    function campaignHasOtherDependentData(campaignId){
+      return CAMPAIGN_FK_TABLES.some(table => {
+        try { return !!db.prepare(`SELECT 1 FROM ${table} WHERE campaignId = ? LIMIT 1`).get(campaignId); }
+        catch (e){ return true; } // can't confirm it's safe — treat as "has data", don't delete
+      });
+    }
+    // Hard-deletes a campaign row itself (not just its planning rows) —
+    // this app otherwise only ever soft-cancels a campaign (campaigns.
+    // cancelled), so this is new and deliberately narrow: only ever called
+    // for a campaign this same bulk-upload batch created, and only once
+    // its channel_planning_details rows are already gone and it has no
+    // other real data anywhere else (see campaignHasOtherDependentData).
+    function tryHardDeleteEmptyCampaign(campaignId){
+      const remainingPlanningRows = db.prepare('SELECT 1 FROM channel_planning_details WHERE campaignId = ? LIMIT 1').get(campaignId);
+      if (remainingPlanningRows) return { deleted: false, reason: 'still has Channel Planning Detail rows from another upload' };
+      if (campaignHasOtherDependentData(campaignId)) return { deleted: false, reason: 'has related campaign data elsewhere in the app (creative, MMM, allocations, etc.) — left in place' };
+      db.prepare('DELETE FROM campaigns WHERE id = ?').run(campaignId);
+      return { deleted: true };
+    }
+
+    // POST /api/accounts/:accountId/channel-planning/bulk-create-campaigns —
+    // 2026-09-11, per direct instruction: a second, separate bulk uploader
+    // from the Product Group/Creative Focus taxonomy upload above — this
+    // one is the "get a client up and running faster" onboarding tool that
+    // creates the CAMPAIGNS themselves from a file, not just planning rows
+    // against campaigns that already exist (round 132x's /bulk endpoint,
+    // still here unchanged, stays the "add rows to existing campaigns"
+    // tool for ongoing use).
+    //
+    // Body: { actorRole, actorName, fileName, dateRangeStart, dateRangeEnd,
+    // rows: [{ campaignName, campaignClassification, campaignStartDate,
+    // campaignEndDate, channel, partner, audience, buyType, mediaType,
+    // impressions, dropDate, hitDate, endDate, productYear, productGroup,
+    // creativeMarket, budget }, ...] }. Rows are grouped by campaignName
+    // (trimmed, case-insensitive) — every row sharing a name is one
+    // campaign's line items, and campaign-level fields (classification,
+    // start/end date) are read from the first row in the group that has
+    // them.
+    //
+    // Per direct instruction ("override the existing matched campaign...
+    // you shouldn't have overlapping campaigns, the objective is to get a
+    // client up and running faster, it's not intended for every day use"):
+    // a campaignName that already exists in this account is matched and
+    // OVERRIDDEN — its existing Channel Planning Detail rows are replaced
+    // wholesale with this file's rows for that campaign, not merged
+    // alongside them. A campaignName not seen before creates a new
+    // campaign. This is a deliberately different semantic from the /bulk
+    // endpoint above (which only ever adds rows, never replaces).
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'bulk-create-campaigns'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId, partnerCode FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+      if (!rows.length) return sendJson(res, 400, { error: 'rows must be a non-empty array' });
+      if (rows.length > 2000) return sendJson(res, 400, { error: 'bulk upload is capped at 2000 rows per request — split into smaller batches' });
+      const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
+      const actorName = typeof body.actorName === 'string' ? body.actorName : '';
+
+      // Group rows by campaignName (trimmed, case-insensitive key).
+      const groups = new Map(); // lowerName -> { displayName, rowsWithIndex: [{row, index}] }
+      const ungroupedErrors = [];
+      rows.forEach((row, index) => {
+        const name = row && typeof row.campaignName === 'string' ? row.campaignName.trim() : '';
+        if (!name){ ungroupedErrors.push({ index, ok: false, error: 'campaignName is required' }); return; }
+        const key = name.toLowerCase();
+        if (!groups.has(key)) groups.set(key, { displayName: name, entries: [] });
+        groups.get(key).entries.push({ row, index });
+      });
+
+      const batchId = generateId('CPUB');
+      const now = new Date().toISOString();
+      const campaignIdsCreated = [];
+      const campaignIdsMatched = [];
+      const results = [...ungroupedErrors];
+      let insertedRowCount = 0;
+
+      groups.forEach(({ displayName, entries }) => {
+        const first = (field) => {
+          for (const { row } of entries){ if (row && row[field]){ return row[field]; } }
+          return '';
+        };
+        const campaignClassification = first('campaignClassification');
+        const campaignStartDate = first('campaignStartDate');
+        const campaignEndDate = first('campaignEndDate');
+        let campaignId;
+        const existing = db.prepare('SELECT id FROM campaigns WHERE accountId = ? AND LOWER(TRIM(name)) = LOWER(?)').get(accountId, displayName);
+        if (existing){
+          campaignId = existing.id;
+          db.prepare('DELETE FROM channel_planning_details WHERE campaignId = ?').run(campaignId);
+          db.prepare(
+            `UPDATE campaigns SET
+               campaignType = CASE WHEN ? <> '' THEN ? ELSE campaignType END,
+               startDate = CASE WHEN ? <> '' THEN ? ELSE startDate END,
+               endDate = CASE WHEN ? <> '' THEN ? ELSE endDate END
+             WHERE id = ?`
+          ).run(campaignClassification, campaignClassification, campaignStartDate, campaignStartDate, campaignEndDate, campaignEndDate, campaignId);
+          campaignIdsMatched.push(campaignId);
+        } else {
+          campaignId = generateId('CMP');
+          const campaignCode = generateCampaignCode(accountId, account.partnerCode, threeLetterCode(displayName), campaignStartDate || null);
+          db.prepare(
+            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, createdAt)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          ).run(campaignId, accountId, displayName, displayName, campaignStartDate || null, campaignEndDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, now);
+          campaignIdsCreated.push(campaignId);
+        }
+        entries.forEach(({ row, index }) => {
+          try {
+            if (!row.channel) throw { error: 'channel is required' };
+            const entryId = generateId('CPD');
+            db.prepare(`INSERT INTO channel_planning_details
+              (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
+               dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
+               status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, uploadBatchId, createdAt, updatedAt)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            ).run(
+              entryId, campaignId, null, row.channel,
+              row.partner || null, row.audience || null, row.buyType || null, row.mediaType || null,
+              typeof row.impressions === 'number' ? row.impressions : (Number(row.impressions) || null),
+              row.dropDate || null, row.hitDate || null, row.endDate || null,
+              row.productYear || null, row.productGroup || null, row.creativeMarket || null,
+              typeof row.budget === 'number' ? row.budget : (Number(row.budget) || null),
+              '{}', 'draft', actorRole, actorName, actorRole, actorName, batchId, now, now
+            );
+            insertedRowCount++;
+            results.push({ index, ok: true, entryId, campaignId });
+          } catch (e){
+            results.push({ index, ok: false, campaignId, error: (e && e.error) || 'unexpected error inserting this row' });
+          }
+        });
+        syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
+      });
+
+      db.prepare(
+        `INSERT INTO channel_planning_upload_batches (id, accountId, fileName, dateRangeStart, dateRangeEnd, uploadedByRole, uploadedByName, rowCount, campaignIdsCreatedJson, campaignIdsMatchedJson, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      ).run(batchId, accountId, body.fileName || '', body.dateRangeStart || null, body.dateRangeEnd || null, actorRole, actorName, insertedRowCount, JSON.stringify(campaignIdsCreated), JSON.stringify(campaignIdsMatched), now);
+
+      return sendJson(res, 200, {
+        batchId, rowsInserted: insertedRowCount, rowsFailed: results.length - results.filter(r => r.ok).length,
+        results, campaignsCreated: campaignIdsCreated, campaignsMatched: campaignIdsMatched
+      });
+    }
+
+    // GET /api/accounts/:accountId/channel-planning/bulk-batches — lists
+    // this account's uploaded files (from the endpoint above) so the Marketing
+    // Calendar Bulk Upload screen can show upload history and offer
+    // file-level delete.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'bulk-batches'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const batchRows = db.prepare('SELECT * FROM channel_planning_upload_batches WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      // Named campaign refs (id + name), not just counts, so the upload-
+      // history screen can offer per-campaign delete inline — a campaign
+      // this batch created may since have been renamed or (if it still has
+      // rows) can't be deleted, so id+current-name is looked up fresh
+      // rather than trusted from the batch record.
+      const nameFor = (id) => { const c = db.prepare('SELECT name, objective FROM campaigns WHERE id = ?').get(id); return c ? (c.name || c.objective || id) : null; };
+      const batches = batchRows.map(b => {
+        let created = [], matched = [];
+        try { created = JSON.parse(b.campaignIdsCreatedJson || '[]'); } catch (e){}
+        try { matched = JSON.parse(b.campaignIdsMatchedJson || '[]'); } catch (e){}
+        const createdRefs = created.map(id => ({ id, name: nameFor(id) })).filter(r => r.name !== null);
+        const matchedRefs = matched.map(id => ({ id, name: nameFor(id) })).filter(r => r.name !== null);
+        return {
+          id: b.id, fileName: b.fileName, dateRangeStart: b.dateRangeStart, dateRangeEnd: b.dateRangeEnd,
+          uploadedByRole: b.uploadedByRole, uploadedByName: b.uploadedByName, rowCount: b.rowCount,
+          campaignsCreated: createdRefs, campaignsMatched: matchedRefs, createdAt: b.createdAt
+        };
+      });
+      return sendJson(res, 200, { batches });
+    }
+
+    // DELETE /api/accounts/:accountId/channel-planning/bulk-batches/:batchId
+    // — per direct instruction ("delete at the file or campaign level is
+    // valid"): removes every Channel Planning Detail row this file added
+    // (regardless of whether that row's campaign was matched or newly
+    // created), then hard-deletes any campaign THIS batch created that is
+    // now empty and has no other real data anywhere else in the app (see
+    // tryHardDeleteEmptyCampaign). A campaign this batch only matched and
+    // overrode is never deleted here — it existed before this file and may
+    // still be touched by others — only its rows from this file are gone.
+    if (req.method === 'DELETE' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'bulk-batches'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const batchId = decodeURIComponent(parts[5]);
+      const batch = db.prepare('SELECT * FROM channel_planning_upload_batches WHERE id = ? AND accountId = ?').get(batchId, accountId);
+      if (!batch) return sendJson(res, 404, { error: 'upload batch not found for this account' });
+      db.prepare('DELETE FROM channel_planning_details WHERE uploadBatchId = ?').run(batchId);
+      let createdIds = [];
+      try { createdIds = JSON.parse(batch.campaignIdsCreatedJson || '[]'); } catch (e){}
+      const campaignResults = createdIds.map(campaignId => ({ campaignId, ...tryHardDeleteEmptyCampaign(campaignId) }));
+      db.prepare('DELETE FROM channel_planning_upload_batches WHERE id = ?').run(batchId);
+      return sendJson(res, 200, { deleted: true, campaignResults });
+    }
+
+    // DELETE /api/campaigns/:id — 2026-09-11, campaign-level delete, per
+    // direct instruction alongside the bulk-upload file-level delete above.
+    // This app otherwise only ever soft-cancels a campaign (campaigns.
+    // cancelled) — this hard-deletes the row itself, so it's deliberately
+    // guarded the same way tryHardDeleteEmptyCampaign is: refuses if the
+    // campaign still has Channel Planning Detail rows or any other related
+    // data (creative, MMM, allocations, etc.) rather than silently
+    // cascading or orphaning rows across the 8 other tables that key off
+    // campaignId.
+    if (req.method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'campaigns'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const planningRows = db.prepare('SELECT 1 FROM channel_planning_details WHERE campaignId = ? LIMIT 1').get(campaignId);
+      if (planningRows) return sendJson(res, 409, { error: 'This campaign still has Channel Planning Detail rows — delete those first (or delete the upload file/batch that added them) before deleting the campaign itself.' });
+      if (campaignHasOtherDependentData(campaignId)) return sendJson(res, 409, { error: 'This campaign has related data elsewhere in the app (creative, MMM, allocations, etc.) — it can only be cancelled, not deleted.' });
+      db.prepare('DELETE FROM campaigns WHERE id = ?').run(campaignId);
+      return sendJson(res, 200, { deleted: true, campaignId });
     }
 
     // GET /api/campaigns/:id/mmm-line-items — round 89: this campaign's real
@@ -20044,4 +20300,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
