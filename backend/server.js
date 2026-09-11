@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-voice-consolidation (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-pr-ai-brain-parity (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1636,6 +1636,33 @@ createTableIfNeeded(`
     decidedAt TEXT NOT NULL,
     createdAt TEXT NOT NULL,
     FOREIGN KEY (jobId) REFERENCES creative_jobs(id)
+  );
+`);
+
+// 2026-09-12, per direct instruction — "I think that PR as a starting
+// point can benefit from everything except campaigns." PR & Corp Comm's
+// own approve/reject-with-reason capture, sibling of creative_job_decisions
+// above but generalized across the three PR/Corp Comm doc types
+// (press_releases/editorial_pitches/corporate_comms are three separate
+// tables with no shared parent id, so docType+recordId stands in for the
+// single jobId FK creative_job_decisions has). Deliberately its own table,
+// never creative_job_decisions — see creativeJobDecisionContext()'s and
+// prCorpCommDecisionContext()'s comments below for why that isolation is
+// intentional in both directions. Append-only, same convention as
+// creative_job_decisions: decidedBy is a best-effort accountId/memberId
+// string, not a foreign key, so a decision survives even if the deciding
+// member is later removed.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS pr_corp_comm_decisions (
+    id TEXT PRIMARY KEY,
+    docType TEXT NOT NULL,
+    recordId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    approved INTEGER NOT NULL,
+    reason TEXT,
+    decidedBy TEXT,
+    decidedAt TEXT NOT NULL,
+    createdAt TEXT NOT NULL
   );
 `);
 
@@ -9670,6 +9697,11 @@ function sampleWeight(sample){
   const base = SAMPLE_CATEGORY_WEIGHT.hasOwnProperty(sample.category) ? SAMPLE_CATEGORY_WEIGHT[sample.category] : 1.0;
   return sample.sourceType === 'video_analysis' ? base * SAMPLE_VIDEO_WEIGHT_MULTIPLIER : base;
 }
+// Hoisted out of brandWritingSampleContext() (2026-09-12) so
+// prCorpCommSampleContext() below can share it verbatim instead of
+// duplicating the lookup — both functions render the same
+// "(category, date — outcome)" block format.
+const categoryLabel = (id) => (BRAND_WRITING_SAMPLE_CATEGORIES.find(c => c.id === id) || {}).label || id;
 async function brandWritingSampleContext(accountId){
   try {
     // (excluded IS NULL OR excluded = 0) is the enforcement point for the
@@ -9695,7 +9727,6 @@ async function brandWritingSampleContext(accountId){
     const ranked = samples
       .map(sample => ({ sample, weight: sampleWeight(sample) }))
       .sort((a, b) => b.weight - a.weight || new Date(b.sample.docDate) - new Date(a.sample.docDate));
-    const categoryLabel = (id) => (BRAND_WRITING_SAMPLE_CATEGORIES.find(c => c.id === id) || {}).label || id;
     const blocks = [];
     for (const { sample } of ranked){
       if (blocks.length >= 3) break;
@@ -9767,6 +9798,87 @@ async function creativeJobDecisionContext(accountId){
         : `- REJECTED${channel} — reason: "${d.reason}"`;
     });
     return `\nRECENT TEAM APPROVAL/REJECTION DECISIONS ON THIS ACCOUNT'S CREATIVE COPY (most recent first — a rejection's stated reason is a direct instruction for what to avoid this time; an approval confirms what already worked):\n${lines.join('\n')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
+
+// 2026-09-12, per direct instruction — "I think that PR as a starting
+// point can benefit from everything except campaigns." PR/Corp Comm's own
+// equivalent of brandWritingSampleContext() above, reading ONLY
+// category = 'pr' samples — brandWritingSampleContext() itself structurally
+// excludes 'pr' (and 'internal_comms') by design (see the comment on
+// SAMPLE_CATEGORY_WEIGHT), so it was never a source PR generation could
+// draw its own samples from. This is that source. Deliberately scoped to
+// 'pr' only — NOT 'internal_comms', which belongs to
+// generateInternalCommsMaster() (a separate function/boundary this task
+// does not touch). Same weighted-ranking/outcome-tagging/900-char-cap/
+// honest-empty-string shape as brandWritingSampleContext(), reusing
+// sampleWeight()/categoryLabel rather than re-deriving that logic.
+async function prCorpCommSampleContext(accountId){
+  try {
+    const samples = db.prepare(
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND (excluded IS NULL OR excluded = 0)
+       AND category = 'pr'
+       AND (uploadedFileId IS NOT NULL OR sourceType = 'video_analysis')
+       ORDER BY docDate DESC, createdAt DESC`
+    ).all(accountId);
+    if (!samples.length) return '';
+    const ranked = samples
+      .map(sample => ({ sample, weight: sampleWeight(sample) }))
+      .sort((a, b) => b.weight - a.weight || new Date(b.sample.docDate) - new Date(a.sample.docDate));
+    const blocks = [];
+    for (const { sample } of ranked){
+      if (blocks.length >= 3) break;
+      const outcomeTag = sample.outcome === 'rejected'
+        ? ' — CLIENT-REJECTED: an example of what NOT to do; do not emulate this'
+        : sample.outcome === 'approved'
+          ? ' — CLIENT-APPROVED real PR/Corp Comm copy'
+          : '';
+      if (sample.sourceType === 'video_analysis'){
+        const text = (sample.notes || '').trim();
+        if (text){
+          blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${outcomeTag} — AI analysis of an uploaded video's VISUALS and on-screen text only, not audio/spoken content; the video itself was not retained) ---\n${text.replace(/\s+/g, ' ').slice(0, 900)}`);
+        }
+        continue;
+      }
+      const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
+      const text = await extractSampleText(file);
+      if (text && text.trim()){
+        blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${outcomeTag}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+      }
+    }
+    if (!blocks.length) return '';
+    return `\nREAL PR WRITING SAMPLES ON FILE (this account's own actual past PR writing and approval/rejection history — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; a sample marked CLIENT-REJECTED shows what to avoid, not what to follow; never quote these directly, and never treat their specific facts as still current):\n${blocks.join('\n\n')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
+
+// 2026-09-12, per direct instruction — "I think that PR as a starting
+// point can benefit from everything except campaigns." PR/Corp Comm's own
+// equivalent of creativeJobDecisionContext() above, reading
+// pr_corp_comm_decisions instead of creative_job_decisions — same "a
+// rejection's stated reason is a direct instruction for what to avoid this
+// time; an approval confirms what already worked" framing. Deliberately
+// NOT reading creative_job_decisions here, same isolation
+// creativeJobDecisionContext() draws in the other direction (its own
+// comment says exactly this): campaign copy and PR/Corp Comm copy each
+// learn only from their own decision history, never blended.
+async function prCorpCommDecisionContext(accountId){
+  try {
+    const decisions = db.prepare(
+      `SELECT approved, reason, decidedAt, docType FROM pr_corp_comm_decisions
+       WHERE accountId = ? ORDER BY decidedAt DESC LIMIT 8`
+    ).all(accountId);
+    if (!decisions.length) return '';
+    const rejections = decisions.filter(d => !d.approved && d.reason);
+    const approvals = decisions.filter(d => !!d.approved);
+    const picked = [...rejections, ...approvals].slice(0, 5);
+    if (!picked.length) return '';
+    const lines = picked.map(d => {
+      const label = PR_DOC_TYPE_LABELS[d.docType] ? ` (${PR_DOC_TYPE_LABELS[d.docType]})` : '';
+      return d.approved
+        ? `- APPROVED${label}${d.reason ? ` — note: "${d.reason}"` : ''}`
+        : `- REJECTED${label} — reason: "${d.reason}"`;
+    });
+    return `\nRECENT TEAM APPROVAL/REJECTION DECISIONS ON THIS ACCOUNT'S PR/CORP COMM COPY (most recent first — a rejection's stated reason is a direct instruction for what to avoid this time; an approval confirms what already worked):\n${lines.join('\n')}\n`;
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
@@ -10167,14 +10279,35 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // 2026-08-25 — same website-examples addition as generateMessagingCopyViaAI
   // above, so both PR-copy generation paths (single-shot and the contest
   // panel, which both call this same builder) draw from it too.
-  // 2026-09-01 — deliberately NOT appending creativeJobDecisionContext()
-  // here: creative_job_decisions is campaign/creative-job copy approval
-  // history, not PR/Corp Comm's own — see that function's comment for the
-  // isolation this preserves (same boundary SAMPLE_CATEGORY_WEIGHT already
-  // draws for brand_writing_samples). PR/Corp Comm's own approval/rejection
-  // history feeding back into this prompt is still the "separate, not-yet-
-  // built follow-up" noted in SAMPLE_CATEGORY_WEIGHT's comment, not this.
-  const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
+  // 2026-09-12, per direct instruction — "I think that PR as a starting
+  // point can benefit from everything except campaigns": replaced the old
+  // brandWritingSampleContext() call (which structurally excludes 'pr'
+  // samples by design — see SAMPLE_CATEGORY_WEIGHT's comment — so it never
+  // actually contributed any PR-category samples here) with
+  // prCorpCommSampleContext(), PR's own real sample source, and appended
+  // prCorpCommDecisionContext() — PR's own approve/reject-with-reason
+  // history (pr_corp_comm_decisions), scoped to PR/Corp Comm exactly the
+  // way creativeJobDecisionContext()/creative_job_decisions is scoped to
+  // campaigns. Deliberately still NOT creativeJobDecisionContext() here —
+  // that stays campaign-scoped, per the isolation both functions' own
+  // comments describe; PR now has its own equivalent instead of none.
+  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId));
+  // 2026-09-12 — Competitive Positioning, mirroring the same block
+  // generateMessagingCopyViaAI() builds from account.competitorsJson
+  // (which buildPrCorpCommPrompt never read before today). Same "internal
+  // context only, never name a competitor" framing — if anything this
+  // discipline matters MORE for PR/Corp Comm than campaign copy, since a
+  // press release or corporate communication is far more likely to be
+  // quoted or scrutinized verbatim.
+  let competitorContext = '';
+  if (account.competitorsJson){
+    try {
+      const competitors = JSON.parse(account.competitorsJson);
+      if (Array.isArray(competitors) && competitors.length){
+        competitorContext = competitors.map(c => `- ${c.name}: ${c.note}`).join('\n');
+      }
+    } catch (e){ /* leave blank — same honest-skip convention as everywhere else this JSON is parsed */ }
+  }
   // 2026-08-27 — pull this account's saved legal boilerplate library
   // (contentLibraryJson.legalDisclaimer, round 55) so an Earnings
   // Announcement can require it verbatim rather than letting the model
@@ -10233,6 +10366,9 @@ async function buildPrCorpCommPrompt(account, docType, brief){
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
 ${voiceGuide || '(no approved Brand Voice on file for this account yet — write in a clear, direct, confident default tone)'}
 ${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to):\n${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (a real, approved piece written in this exact voice — match its register and point of view, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext}${legalBoilerplateBlock}
+COMPETITIVE POSITIONING (internal strategic context only — NEVER name a competitor or repeat this reasoning verbatim in the copy; use it only to inform what makes this brand's own claim genuinely distinctive):
+${competitorContext || '(none on file)'}
+
 BRIEF:
 ${docSpec.brief}
 
@@ -11208,7 +11344,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-voice-consolidation',
+        buildStamp: '2026-09-12-pr-ai-brain-parity',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17429,6 +17565,67 @@ Submit your findings via the submit_brand_categories tool.`;
           .run(result.body.copy, new Date().toISOString(), commId, accountId);
       }
       return sendJson(res, result.status, result.body);
+    }
+
+    // ---------- PR & Corp Comm copy decisions (2026-09-12) ----------
+    // POST /api/accounts/:id/pr-corp-comm/:docType/:recId/copy-decision +
+    // GET .../copy-decisions — per direct instruction, "I think that PR as
+    // a starting point can benefit from everything except campaigns":
+    // PR/Corp Comm's own structured approve/reject-with-reason capture,
+    // mirroring POST/GET /api/creative-jobs/:id/copy-decision(s) above
+    // exactly in behavior (reason required when approved is false, same
+    // 400 error message convention, appends a permanent row, never
+    // overwrites) but generalized across the three doc types via
+    // PR_DOC_TYPE_CONFIG (already defined above for the interview/select
+    // endpoints) since press_releases/editorial_pitches/corporate_comms are
+    // three separate tables with no shared parent id — docType+recordId
+    // stands in for creative_job_decisions' single jobId FK. Writes to
+    // pr_corp_comm_decisions, never creative_job_decisions — see that
+    // table's own comment for why this isolation matters in both
+    // directions. Unlike the creative-jobs version, this endpoint does not
+    // also flip a workflow-status column: press_releases/editorial_pitches/
+    // corporate_comms' own status columns (draft/distributed,
+    // pending/placed, draft/approved) are separate, pre-existing workflow
+    // state this task was not asked to touch — a copy decision here is a
+    // pure signal-capture event, read back into the next AI draft via
+    // prCorpCommDecisionContext(), not a status gate.
+    if (req.method === 'POST' && parts.length === 7 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'pr-corp-comm' && parts[6] === 'copy-decision'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const docType = decodeURIComponent(parts[4]);
+      const cfg = PR_DOC_TYPE_CONFIG[docType];
+      if (!cfg) return sendJson(res, 400, { error: `docType must be one of: ${Object.keys(PR_DOC_TYPE_CONFIG).join(', ')}` });
+      const recordId = decodeURIComponent(parts[5]);
+      const existing = db.prepare(`SELECT id FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(recordId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'record not found' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.approved !== 'boolean'){
+        return sendJson(res, 400, { error: 'approved (boolean) is required' });
+      }
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      if (!body.approved && !reason){
+        return sendJson(res, 400, { error: 'reason is required when rejecting copy — this is what the next draft learns from' });
+      }
+      const now = new Date().toISOString();
+      const decisionId = generateId('PCD');
+      const decidedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare(`INSERT INTO pr_corp_comm_decisions (id, docType, recordId, accountId, approved, reason, decidedBy, decidedAt, createdAt)
+        VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(decisionId, docType, recordId, accountId, body.approved ? 1 : 0, reason || null, decidedBy, now, now);
+      return sendJson(res, 200, { decisionId, docType, recordId, approved: !!body.approved, reason: reason || null, decidedAt: now });
+    }
+    if (req.method === 'GET' && parts.length === 7 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'pr-corp-comm' && parts[6] === 'copy-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const docType = decodeURIComponent(parts[4]);
+      const cfg = PR_DOC_TYPE_CONFIG[docType];
+      if (!cfg) return sendJson(res, 400, { error: `docType must be one of: ${Object.keys(PR_DOC_TYPE_CONFIG).join(', ')}` });
+      const recordId = decodeURIComponent(parts[5]);
+      const existing = db.prepare(`SELECT id FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(recordId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'record not found' });
+      const decisions = db.prepare('SELECT id, approved, reason, decidedBy, decidedAt FROM pr_corp_comm_decisions WHERE docType = ? AND recordId = ? ORDER BY decidedAt ASC').all(docType, recordId);
+      return sendJson(res, 200, { decisions: decisions.map(d => ({ ...d, approved: !!d.approved })) });
     }
 
     // ============ Zip centroids + stores (2026-09-06) ============
