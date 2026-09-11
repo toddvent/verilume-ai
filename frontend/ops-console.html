@@ -695,7 +695,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-real-top-bracket-income';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-demographics-chunked-load';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1177,6 +1177,28 @@ async function refDataLoadStatus(){
 // calls for a full national pull instead of 2 — see the backend
 // endpoint's "per-state looping" comment for why this replaced the old
 // flat national query (which only ever returned 902 of 33,774 zips).
+// 2026-09-11 — ROOT CAUSE of "the full-national button does nothing":
+// confirmed live via Todd's DevTools Console — calling this directly threw
+// `GET .../proxy/demographics 502 (Bad Gateway)`. The backend endpoint
+// loops all 52 states in up to 7 sequential internal batches of 8 (see its
+// own 2026-09-10 comment); real-world Census API latency across all 7
+// batches can exceed vercel.json's 120s function ceiling for this route,
+// and Vercel kills the function and returns a bare 502 gateway error with
+// no JSON body — so the `.catch` here never even saw a real error message,
+// it just silently never resolved and this code had nothing to show.
+// That's also why nothing ever appeared to change: the request was still
+// running (or already dead at the platform level) the whole time, and a
+// plain 502 carries no body for `pr.text()` to surface.
+//
+// Fixed by chunking the full-national pull into multiple smaller requests
+// FROM HERE instead of one giant one — one request per 8-state group
+// (matching the backend's own internal batch size, so each request only
+// ever does ONE fast internal batch, never seven sequential ones) — well
+// inside the 120s ceiling per request, with real incremental progress
+// between chunks. The explicit "Test these states" flow gets the same
+// chunking for free now (previously a single request regardless of size).
+const DEMOGRAPHICS_ALL_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','PR'];
+const DEMOGRAPHICS_CHUNK_SIZE = 8;
 async function refDataLoadDemographics(statesCsv){
   const status = document.getElementById('refDataLoadStatus');
   const say = (t) => { if (status) status.textContent = t; };
@@ -1184,19 +1206,34 @@ async function refDataLoadDemographics(statesCsv){
   const fullBtn = document.getElementById('refDataLoadDemographicsBtn');
   if (testBtn) testBtn.disabled = true;
   if (fullBtn) fullBtn.disabled = true;
-  const states = (statesCsv || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  const qs = states.length ? `?states=${encodeURIComponent(states.join(','))}` : '';
+  const explicitStates = (statesCsv || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const statesToUse = explicitStates.length ? explicitStates : DEMOGRAPHICS_ALL_STATES;
+  const chunks = [];
+  for (let i = 0; i < statesToUse.length; i += DEMOGRAPHICS_CHUNK_SIZE) chunks.push(statesToUse.slice(i, i + DEMOGRAPHICS_CHUNK_SIZE));
   try {
-    say(states.length ? `Fetching ACS age + income data by zip for ${states.join(', ')} from api.census.gov…` : 'Fetching ACS age + income data by zip from api.census.gov, one state at a time (52 areas — can take a minute or two)…');
-    const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/demographics${qs}`, { timeoutMs: 110000 });
-    if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status} ${t.slice(0, 200)}`); }
-    const prJson = await pr.json();
-    const demoRows = REF_DATA_SOURCES.demographics.parse(prJson.data, { ageBins: prJson.ageBins, binSuffix: prJson.binSuffix, incomeBracketMidpoints: prJson.incomeBracketMidpoints });
-    if (!demoRows.length) throw new Error('Census API returned no ZCTA rows');
-    const coverageNote = `${(prJson.zctaCount || 0).toLocaleString()} zip${prJson.zctaCount === 1 ? '' : 's'} covered from ${(prJson.statesQueried || []).length} state${(prJson.statesQueried || []).length === 1 ? '' : 's'} queried`;
-    const failNote = (prJson.statesFailed || []).length ? ` — ${prJson.statesFailed.length} state${prJson.statesFailed.length === 1 ? '' : 's'} failed: ${prJson.statesFailed.map(f => f.state).join(', ')}` : '';
-    say(`${coverageNote}${failNote}. Loading ${demoRows.length.toLocaleString()} demographic attribute rows…`);
-    const d = await refDataPostChunks('/api/market-demographic-master', demoRows, { sourceLabel: REF_DATA_SOURCES.demographics.sourceLabel }, (done, n) => say(`Loading demographics ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    const allRows = [];
+    const statesQueriedAll = [];
+    const statesFailedAll = [];
+    for (let c = 0; c < chunks.length; c++){
+      const states = chunks[c];
+      const chunkLabel = chunks.length > 1 ? ` — batch ${c + 1} of ${chunks.length} (${states.join(', ')})` : ` for ${states.join(', ')}`;
+      say(`Fetching ACS age + income data by zip from api.census.gov${chunkLabel}…`);
+      const qs = `?states=${encodeURIComponent(states.join(','))}`;
+      const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/demographics${qs}`, { timeoutMs: 110000 });
+      if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status}${chunkLabel} ${t.slice(0, 200) || '(no error detail returned — likely a gateway/timeout error, not an application error)'}`); }
+      const prJson = await pr.json();
+      const rows = REF_DATA_SOURCES.demographics.parse(prJson.data, { ageBins: prJson.ageBins, binSuffix: prJson.binSuffix, incomeBracketMidpoints: prJson.incomeBracketMidpoints });
+      allRows.push(...rows);
+      statesQueriedAll.push(...(prJson.statesQueried || states));
+      statesFailedAll.push(...(prJson.statesFailed || []));
+      say(`${chunkLabel.trim()} done — ${(prJson.zctaCount || 0).toLocaleString()} zip(s) in this batch. ${chunks.length > 1 ? `${c + 1} of ${chunks.length} batches complete.` : ''}`);
+    }
+    if (!allRows.length) throw new Error('Census API returned no ZCTA rows');
+    const totalZips = new Set(allRows.map(r => r.zip)).size;
+    const coverageNote = `${totalZips.toLocaleString()} zip${totalZips === 1 ? '' : 's'} covered from ${statesQueriedAll.length} state${statesQueriedAll.length === 1 ? '' : 's'} queried`;
+    const failNote = statesFailedAll.length ? ` — ${statesFailedAll.length} state${statesFailedAll.length === 1 ? '' : 's'} failed: ${statesFailedAll.map(f => f.state).join(', ')}` : '';
+    say(`${coverageNote}${failNote}. Loading ${allRows.length.toLocaleString()} demographic attribute rows…`);
+    const d = await refDataPostChunks('/api/market-demographic-master', allRows, { sourceLabel: REF_DATA_SOURCES.demographics.sourceLabel }, (done, n) => say(`Loading demographics ${done.toLocaleString()} / ${n.toLocaleString()}…`));
     say(`Done — ${coverageNote}${failNote}. ${d.inserted.toLocaleString()} demographic attribute rows loaded.${d.errors.length ? ` Some rows were skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
     refDataLoadStatus();
   } catch (e){
