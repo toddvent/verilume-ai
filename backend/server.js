@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-voice-positioning-ledger-migration (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-voice-avoid-terms-dialogue-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2360,16 +2360,36 @@ Propose your candidate via the submit_brand_voice_candidate tool.`;
 // at least as well-grounded as regular campaign copy generation, not a
 // lesser version of it.
 //
-// The prompt explicitly requires avoid-phrases to be written in the exact
-// `avoid "phrase"` shape extractVoiceGuideAvoidTerms() (below, in the
+// The prompt explicitly requires SHORT avoid-phrases to be written in the
+// exact `avoid "phrase"` shape extractVoiceGuideAvoidTerms() (below, in the
 // compliance-checker section of this file) regex-matches. This is the real
-// bug fix behind this round: the OLD templated draft wrote `Words to
-// avoid: X, Y, Z.` (a plain comma list, no quotes), which that checker's
+// bug fix behind the original version of this round: the OLD templated
+// draft wrote `Words to avoid: X, Y, Z.` (a plain comma list, no quotes),
+// which that checker's
 // /\b(?:avoid|never say|...)\s*[:\-]?\s*"([^"]{2,40})"/gi pattern has never
 // actually matched — so the compliance guardrail was silently a no-op
 // against this field for every account. A real generated draft now has to
 // pass this exact shape; verified by hand against a sample generated draft
 // during this round.
+//
+// 2026-09-12 follow-up, per direct feedback: Todd's Terms to Avoid list
+// isn't always short literal words — some entries are full paragraphs of
+// tone-direction ("Avoid marketing clichés, exaggerated excitement...").
+// Forcing EVERY entry into a quoted `avoid "..."` line made this the only
+// section of the guide written as a raw list instead of the dialogue-voice
+// prose every other section uses, which is exactly the inconsistency
+// flagged. It also bought nothing mechanically: the extractor regex above
+// caps its captured quote at 40 characters (`{2,40}`), so a paragraph-length
+// quoted entry was NEVER actually extracted for compliance checking in the
+// first place — it was pure list-formatting for a sentence too long to be a
+// literal banned phrase anyway. Fix: split avoidWords by that same 40-char
+// boundary before building the prompt. Short entries (<=40 chars) are true
+// literal phrases — those still get the mechanical `avoid "phrase"` line
+// treatment (needed for real compliance matching), introduced by one plain
+// sentence in the guide's own voice rather than dropped in with no lead-in.
+// Longer entries are tone-direction, not literal text — those get woven
+// into the Tone rules section as ordinary prose guidance, the same as every
+// other tone instruction in this document, never rendered as a quoted line.
 //
 // gaps[] is the Human Agentic Model piece: what's missing that would make a
 // STRONGER draft (no Products & Services on file, no Sample Writings, no
@@ -2388,20 +2408,27 @@ async function generateVoiceGuideDraftViaAI(account){
       const parsedKeywords = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
       if (parsedKeywords && Array.isArray(parsedKeywords.negative)) avoidWords = parsedKeywords.negative.filter(Boolean);
     } catch (e){ /* malformed/legacy brandKeywordsJson — fall through without it */ }
+    // Same 40-char boundary extractVoiceGuideAvoidTerms()'s own capture
+    // group uses (`{2,40}`) — anything longer was never going to be
+    // mechanically matched as a literal phrase anyway, so it's treated as
+    // tone-direction instead. See the comment block above this function.
+    const avoidPhrases = avoidWords.filter(w => w.length <= 40);
+    const avoidGuidance = avoidWords.filter(w => w.length > 40);
     const sampleContext = await brandWritingSampleContext(account.accountId);
     const prompt = `You are a senior brand strategist writing a real, finished Brand Voice Guide for ${account.company || 'this company'} (Industry: ${account.industry || '(not set)'}) — the kind of document a copywriter could pick up cold and write correctly in this brand's voice on the first try. Not a summary of the inputs below, not meta-commentary about the brand — a real, usable guide.
 
 CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL ON FILE (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
 ${sampleContext || '\n(No real Sample Writings on file for this account yet — write from the signal above alone, and flag the missing samples as a gap below.)\n'}
-TERMS TO AVOID for this account (literal exclusions and/or tone-to-avoid phrases, human-entered): ${avoidWords.length ? avoidWords.map(w => `"${w}"`).join(', ') : '(none on file yet)'}
+SHORT TERMS TO AVOID for this account — literal words/phrases that must never appear verbatim (human-entered): ${avoidPhrases.length ? avoidPhrases.map(w => `"${w}"`).join(', ') : '(none on file)'}
+LONGER TONE-DIRECTION TO AVOID for this account — not literal phrases, but real guidance on register/approach to steer away from (human-entered, use the substance of this in your own words, never quote it back verbatim): ${avoidGuidance.length ? avoidGuidance.map(w => `"${w}"`).join(' / ') : '(none on file)'}
 
 Write the guide with these sections, in this order:
 1. One-line description of how this brand sounds and who it's speaking to.
 2. Point of view (e.g. second person "you," first person plural "we") — state it explicitly and use it consistently in every example below.
-3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above. None of these rules may themselves use any phrase from the Terms to Avoid list above — that list is not just a section to write, it's a real constraint on every word you choose in this guide.
-4. Words/phrases to avoid — ONLY if the Terms to Avoid list above is non-empty. Each one MUST be written on its own line in EXACTLY this format: avoid "the exact phrase" — copy each phrase from the Terms to Avoid list verbatim inside the quotes, one per line, using the word "avoid" specifically (not "never say"/"don't use"/other synonyms) so this section is mechanically checkable. Do not invent phrases that aren't on that list, and do not skip this section if the list above is non-empty.
-5. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above). Neither example sentence may use any phrase from the Terms to Avoid list above.
+3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above. If any LONGER TONE-DIRECTION TO AVOID entries exist above, at least one tone rule must incorporate that direction in your own words, written in the same natural, dialogue-voice prose as every other rule in this section — never as a quoted callout, never copied verbatim. None of these rules may themselves use any phrase from either avoid list above — those lists are not just sections to write, they're a real constraint on every word you choose in this guide.
+4. Words/phrases to avoid — ONLY if the SHORT TERMS TO AVOID list above is non-empty (ignore this section entirely if that list is empty, even if tone-direction entries exist — those belong in Tone rules above instead). Open with one plain sentence in the guide's own voice (e.g. "There are a few specific words and phrases we steer away from entirely:") — then list each short term on its own line in EXACTLY this format: avoid "the exact phrase" — copied verbatim from the SHORT TERMS TO AVOID list inside the quotes, one per line, using the word "avoid" specifically (not "never say"/"don't use"/other synonyms) so this section is mechanically checkable. Do not invent phrases that aren't on that list.
+5. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above). Neither example sentence may use any phrase from either avoid list above.
 
 Then, SEPARATELY from the draft text above (in the gaps field, not inside the draft), identify what's genuinely missing that would make this draft stronger — e.g. no Products & Services on file, no Sample Writings on file, no competitors entered, no scanned website on file, no Terms to Avoid entered yet. Only list gaps that are actually true of the context given above; an empty gaps array is correct if everything relevant is genuinely on file — never invent a gap that isn't real. Also give your real reasoning for this specific draft in the whyDraft field — what you grounded it in from the real inputs above, and what you didn't have.
 
@@ -11794,7 +11821,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-voice-positioning-ledger-migration',
+        buildStamp: '2026-09-12-voice-avoid-terms-dialogue-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21437,5 +21464,4 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
-
 
