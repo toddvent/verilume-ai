@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-voice-guardrail-direct-wiring (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-voice-positioning-ledger-migration (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -3728,6 +3728,76 @@ function trainingDigestRollup(accountId){
     offerHeldSeparateRatio,
     avgMessagingQaScoreAtFlag: avg('messagingQaScoreAtFlag')
   };
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, Round 3 (Voice Guide +
+// Competitive Positioning version history), build-order item 3 and the
+// last of the three ledger rounds originally scoped (website_scan,
+// training_digest, and this one — see the comment on the
+// ai_brain_contributions table above, which already reserved the
+// sourceRefId column and sourceType openness for exactly this).
+//
+// DELIBERATE DIVERGENCE from every ledger sourceType so far: website_scan
+// and training_digest are ADDITIVE sources — a rollup function
+// (websiteContextRollup/trainingDigestRollup above) folds every currently
+// 'applied' row together into one merged read. Voice Guide and
+// Competitive Positioning are NOT additive; each is a single "live"
+// latest-wins field (accounts.voiceGuideText / accounts.industryTrendsText
+// + competitorsJson) that every existing consumer already reads directly
+// off the account row, and that stays true after this round — nothing
+// downstream changes what it reads. There is no rollup function here and
+// none is needed. What this round adds is purely a browsable, revertible
+// HISTORY behind that one live field, per the Contribution Ledger design
+// doc's own Section 7 recommendation: "latest-wins for the single current
+// Voice Guide/Positioning text... but prior applied versions stay
+// queryable and revertible instead of vanishing." Every time a human
+// clicks Save For AI Assistance on Voice or Positioning, the version being
+// replaced used to be gone for good the instant the UPDATE ran — these
+// functions snapshot it into the ledger first (see the POST
+// .../voice and .../positioning handlers below, which call these
+// immediately after their own approved-save UPDATE). "Apply" on a past
+// version here means something the other two sourceTypes' Apply never
+// does — restoring that snapshot as the new live value — see the
+// POST .../voice-decisions and .../positioning-decisions handlers below
+// for that Apply-means-restore behavior.
+//
+// Exact mirror of createWebsiteScanContribution/getWebsiteScanContributions
+// otherwise — same insert shape, same starting status ('reference'),
+// sourceRefId left null (there's no originating record to reference, the
+// same reasoning website_scan already uses).
+function createVoiceGuideContribution(accountId, contentObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'voice_guide', null, null, null, JSON.stringify(contentObj), 'reference', null, null, now, null);
+  return id;
+}
+
+function getVoiceGuideContributions(accountId){
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+    FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'voice_guide' ORDER BY createdAt DESC`).all(accountId);
+}
+
+// Sibling of createVoiceGuideContribution/getVoiceGuideContributions above,
+// sourceType 'competitive_positioning'. contentObj is
+// {industryTrendsText, competitors} — competitors stored as the actual
+// array (JSON.stringify handles it the same as any other contentObj field
+// here), not the already-JSON-stringified competitorsJson column value.
+function createPositioningContribution(accountId, contentObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'competitive_positioning', null, null, null, JSON.stringify(contentObj), 'reference', null, null, now, null);
+  return id;
+}
+
+function getPositioningContributions(accountId){
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+    FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'competitive_positioning' ORDER BY createdAt DESC`).all(accountId);
 }
 
 // The single source of truth every MMM read endpoint (completeness matrix,
@@ -11724,7 +11794,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-voice-guardrail-direct-wiring',
+        buildStamp: '2026-09-12-voice-positioning-ledger-migration',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -13187,6 +13257,138 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
     }
 
+    // GET /api/accounts/:id/voice-decisions — 2026-09-12, AI Brain
+    // Contribution Ledger, Round 3. Mirrors GET .../training-digest-
+    // decisions above exactly, filtered to sourceType='voice_guide'
+    // instead. Same note applies: `history` below is the same byte-for-
+    // byte accountId-only query the other two GET handlers use, so it
+    // already returns log rows for every sourceType mixed together — left
+    // as-is, matching existing behavior rather than narrowing it here.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getVoiceGuideContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history });
+    }
+
+    // POST /api/accounts/:id/voice-decisions — 2026-09-12, AI Brain
+    // Contribution Ledger, Round 3. Same validation as every other
+    // .../*-decisions POST handler in this file ('removed' requires a
+    // reason, everything else optional, always both an UPDATE and an
+    // append-only log INSERT) — see POST .../website-context-decisions
+    // above for the pattern this mirrors.
+    //
+    // DELIBERATE DIVERGENCE from every other ledger decision endpoint:
+    // here, and only here (and the positioning sibling below), 'applied'
+    // does more than change the contribution's own status — it restores
+    // that snapshot's text as the CURRENT LIVE accounts.voiceGuideText.
+    // Every other sourceType's Apply only changes ledger status; a
+    // downstream rollup function decides separately whether/how that
+    // status change affects anything (websiteContextRollup/
+    // trainingDigestRollup). There is no such rollup for voice_guide (see
+    // the comment on createVoiceGuideContribution above) — Voice Guide IS
+    // the live field, so "apply this historical version" can only
+    // sensibly mean "make it current again." voiceVersion is bumped
+    // forward (never reused from the snapshot) so the version number
+    // stays a strictly-increasing edit counter even across a restore,
+    // consistent with how every other voiceVersion bump in this file
+    // behaves. The restored text/version are echoed back in the response
+    // so the frontend can update its draft textarea without a second
+    // round-trip.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id, contentJson FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'voice_guide'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s voice guide history' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, contributionId);
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      let restored = null;
+      if (body.status === 'applied'){
+        try {
+          const snapshot = JSON.parse(contribution.contentJson);
+          const current = db.prepare('SELECT voiceVersion FROM accounts WHERE accountId = ?').get(accountId);
+          const nextVersion = ((current && current.voiceVersion) || 0) + 1;
+          db.prepare('UPDATE accounts SET voiceGuideText = ?, voiceApproved = 1, voiceVersion = ?, voiceApprovedAt = ? WHERE accountId = ?')
+            .run(snapshot.voiceGuideText, nextVersion, now, accountId);
+          restored = { voiceGuideText: snapshot.voiceGuideText, voiceVersion: nextVersion };
+        } catch (e){ /* malformed snapshot — the status change above still stands, just no live restore */ }
+      }
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored });
+    }
+
+    // GET /api/accounts/:id/positioning-decisions — 2026-09-12, AI Brain
+    // Contribution Ledger, Round 3. Sibling of GET .../voice-decisions
+    // above, filtered to sourceType='competitive_positioning'.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'positioning-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getPositioningContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history });
+    }
+
+    // POST /api/accounts/:id/positioning-decisions — 2026-09-12, AI Brain
+    // Contribution Ledger, Round 3. Sibling of POST .../voice-decisions
+    // above — same Apply-means-restore divergence, same reasoning (see
+    // that handler's comment), restoring onto
+    // industryTrendsText/competitorsJson/competitivePositioningApproved/
+    // competitivePositioningApprovedAt instead. competitors is restored as
+    // an array in the response (`restored.competitors`) but JSON-
+    // stringified back into competitorsJson on the accounts row, matching
+    // how POST .../positioning itself stores it.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'positioning-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id, contentJson FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'competitive_positioning'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s positioning history' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, contributionId);
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      let restored = null;
+      if (body.status === 'applied'){
+        try {
+          const snapshot = JSON.parse(contribution.contentJson);
+          const competitors = Array.isArray(snapshot.competitors) ? snapshot.competitors : [];
+          db.prepare(`UPDATE accounts SET industryTrendsText = ?, competitorsJson = ?, competitivePositioningApproved = 1, competitivePositioningApprovedAt = ? WHERE accountId = ?`)
+            .run(snapshot.industryTrendsText, JSON.stringify(competitors), now, accountId);
+          restored = { industryTrendsText: snapshot.industryTrendsText, competitors };
+        } catch (e){ /* malformed snapshot — the status change above still stands, just no live restore */ }
+      }
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored });
+    }
+
     // POST /api/assessment/website-scan — 2026-08-25, per direct follow-up
     // on cxmedia-assessment-inputs-status-audit-2026-08-25.md's finding
     // that the free assessment never actually reads a visitor's website
@@ -13382,6 +13584,19 @@ async function handleRequest(req, res) {
       ).run(...(approvedAt !== undefined
         ? [body.voiceGuideText, approved, nextVersion, approvedAt, accountId]
         : [body.voiceGuideText, approved, nextVersion, accountId]));
+      // 2026-09-12 — AI Brain Contribution Ledger, Round 3. Only an
+      // approved save (Save For AI Assistance) is worth snapshotting —
+      // a plain Save Draft is explicitly not-yet-ready-to-inform-copy per
+      // this handler's own approved-flag convention above, so snapshotting
+      // it here would clutter the history with drafts nobody ever approved.
+      // Wrapped in its own try/catch, same pattern as the
+      // autoRemoveTrainingDigestContributions call site (~line 15342
+      // area): a ledger-write failure must never block the actual voice
+      // save that already succeeded above, or the response it returns.
+      if (body.approved){
+        try { createVoiceGuideContribution(accountId, { voiceGuideText: body.voiceGuideText, voiceVersion: nextVersion }); }
+        catch (e){ /* never block the voice save over a ledger write */ }
+      }
       return sendJson(res, 200, { voiceVersion: nextVersion, approved: !!approved, approvedAt: approvedAt || null });
     }
 
@@ -14517,6 +14732,18 @@ Submit your findings via the submit_brand_categories tool.`;
         `UPDATE accounts SET industryTrendsText = ?, competitorsJson = ?, competitivePositioningApproved = ?,
          competitivePositioningApprovedAt = ? WHERE accountId = ?`
       ).run(industryTrendsText, competitorsJson, approved, approvedAt, accountId);
+      // 2026-09-12 — AI Brain Contribution Ledger, Round 3. Same
+      // approved-only snapshot rule and own-try/catch isolation as the
+      // /voice handler's wiring above — see that comment for the full
+      // reasoning. competitors here is the parsed array (Array.isArray
+      // check mirrors the one just above for competitorsJson itself),
+      // never the already-stringified competitorsJson column value.
+      if (body.approved){
+        try {
+          const snapshotCompetitors = Array.isArray(body.competitors) ? body.competitors.slice(0, 5) : JSON.parse(competitorsJson || '[]');
+          createPositioningContribution(accountId, { industryTrendsText, competitors: snapshotCompetitors });
+        } catch (e){ /* never block the positioning save over a ledger write */ }
+      }
       return sendJson(res, 200, { approved: !!approved, approvedAt });
     }
 
@@ -21210,3 +21437,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
+
