@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-ledger-website (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-ledger-training-digest (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -3533,6 +3533,129 @@ function websiteContextRollup(accountId){
     WHERE accountId = ? AND sourceType = 'website_scan' ORDER BY createdAt DESC LIMIT 1`).get(accountId);
   if (!latest) return null;
   try { return JSON.parse(latest.contentJson); } catch (e){ return null; }
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
+// pooling, build-order item 2 per the scoping doc). Exact mirror of
+// createWebsiteScanContribution above — same insert shape, same
+// starting status ('reference') — except sourceType is 'training_digest'
+// and, unlike website_scan, sourceRefId is actually populated: this is
+// the first sourceType to use that column for real, since a training
+// digest is inherently tied to the one campaign it was flagged from (the
+// column existed since round 1 specifically so a future sourceType like
+// this one could plug in without a schema migration — see the comment on
+// the ai_brain_contributions table above).
+function createTrainingDigestContribution(accountId, campaignId, digestObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'training_digest', campaignId, null, null, JSON.stringify(digestObj), 'reference', null, null, now, null);
+  return id;
+}
+
+// Mirror of getWebsiteScanContributions, but also selects sourceRefId
+// (the originating campaignId) and LEFT JOINs to campaigns for a
+// human-readable label. Deliberately selects only structural/identifying
+// campaign fields (productName, campaignCode, startDate) — never
+// keyMessage or longformCopy, which are literal campaign copy and this
+// whole feature's point is to never let literal copy into the ledger.
+// LEFT JOIN (not JOIN) so a since-deleted campaign doesn't break the
+// query or hide its digest row — the label just falls back to the raw
+// campaignId in that case.
+function getTrainingDigestContributions(accountId){
+  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt,
+      c.sourceRefId AS campaignId, camp.productName AS campaignProductName, camp.campaignCode AS campaignCode, camp.startDate AS campaignStartDate
+    FROM ai_brain_contributions c
+    LEFT JOIN campaigns camp ON camp.id = c.sourceRefId
+    WHERE c.accountId = ? AND c.sourceType = 'training_digest' ORDER BY c.createdAt DESC`).all(accountId);
+  return rows.map(row => {
+    const label = row.campaignProductName || row.campaignCode
+      ? [row.campaignProductName, row.campaignCode].filter(Boolean).join(' — ') + (row.campaignStartDate ? ` (${row.campaignStartDate})` : '')
+      : row.campaignId; // campaign since deleted (or never had a name/code) — fall back to the raw id rather than breaking
+    return { id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, campaignId: row.campaignId, campaignLabel: label };
+  });
+}
+
+// Finds every non-removed training_digest row for this account+campaign
+// and marks it removed with a system-generated reason, logging each
+// change the same two-write way (UPDATE + INSERT log row) the
+// POST .../training-digest-decisions handler below does for a
+// human-initiated decision. Called when a campaign's style flag is
+// cleared (e.g. cmpConfirmCancelCampaign() on cancellation) so a
+// since-invalidated digest doesn't silently keep informing the
+// account-wide rollup forever — the campaign it came from no longer
+// claims to represent good style, so its contribution shouldn't either.
+function autoRemoveTrainingDigestContributions(accountId, campaignId, reason){
+  const rows = db.prepare(`SELECT id FROM ai_brain_contributions
+    WHERE accountId = ? AND sourceType = 'training_digest' AND sourceRefId = ? AND status != 'removed'`).all(accountId, campaignId);
+  const now = new Date().toISOString();
+  rows.forEach(row => {
+    db.prepare(`UPDATE ai_brain_contributions SET status = 'removed', reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
+      .run(reason, 'system (auto)', now, row.id);
+    db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+      .run(generateId('ABCDEC'), row.id, accountId, 'removed', reason, 'system (auto)', now);
+  });
+}
+
+// Folds every currently-'applied' training_digest contribution's
+// contentJson (see cmpMessagingStyleDigest() in portal.html for the
+// exact shape — roleStyle, messageType, keyMessageWordCount,
+// longFormWordCount, longFormParagraphCount, avgWordsPerSentence,
+// offerHeldSeparate, stage, primaryKpi, messagingQaScoreAtFlag) into one
+// account-wide aggregate summary.
+//
+// DELIBERATE DIVERGENCE from websiteContextRollup() above: that function
+// falls back to the single latest row when nothing has been decided yet,
+// so a freshly-scanned account doesn't regress to "no context" the
+// moment the ledger shipped. This function has NO such fallback — it
+// returns null on zero applied contributions, full stop. Website context
+// is foundational brand understanding an account is expected to have
+// from day one; a training digest is a much lower-stakes, purely
+// additive style signal that only exists because a human deliberately
+// flagged one campaign's copy as good. Per this codebase's stated Human
+// Agentic Model principle (thin/undecided data should never be silently
+// used as if it were reviewed), an un-reviewed 'reference' digest must
+// never leak into a generation prompt just because nothing has been
+// decided yet — there is no equivalent risk of "regressing" from
+// something that never existed as applied in the first place.
+function trainingDigestRollup(accountId){
+  const applied = db.prepare(`SELECT contentJson FROM ai_brain_contributions
+    WHERE accountId = ? AND sourceType = 'training_digest' AND status = 'applied' ORDER BY createdAt ASC`).all(accountId);
+  if (!applied.length) return null;
+  const digests = [];
+  applied.forEach(row => {
+    try { const d = JSON.parse(row.contentJson); if (d && typeof d === 'object') digests.push(d); } catch (e){ /* malformed row — skip, don't break the rollup */ }
+  });
+  if (!digests.length) return null;
+  // Most-frequent non-null value for a categorical field (roleStyle/messageType).
+  const mode = (field) => {
+    const counts = new Map();
+    digests.forEach(d => { if (d[field]){ counts.set(d[field], (counts.get(d[field]) || 0) + 1); } });
+    let best = null, bestCount = 0;
+    counts.forEach((count, value) => { if (count > bestCount){ best = value; bestCount = count; } });
+    return best;
+  };
+  // Rounded average of a numeric field, over only the digests that have it.
+  const avg = (field) => {
+    const vals = digests.map(d => d[field]).filter(v => typeof v === 'number' && !Number.isNaN(v));
+    if (!vals.length) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  };
+  const offerFlags = digests.map(d => d.offerHeldSeparate).filter(v => typeof v === 'boolean');
+  const offerHeldSeparateRatio = offerFlags.length ? offerFlags.filter(Boolean).length / offerFlags.length : null;
+  return {
+    campaignCount: digests.length,
+    commonRoleStyle: mode('roleStyle'),
+    commonMessageType: mode('messageType'),
+    avgKeyMessageWordCount: avg('keyMessageWordCount'),
+    avgLongFormWordCount: avg('longFormWordCount'),
+    avgLongFormParagraphCount: avg('longFormParagraphCount'),
+    avgWordsPerSentence: avg('avgWordsPerSentence'),
+    offerHeldSeparateRatio,
+    avgMessagingQaScoreAtFlag: avg('messagingQaScoreAtFlag')
+  };
 }
 
 // The single source of truth every MMM read endpoint (completeness matrix,
@@ -9931,6 +10054,39 @@ async function creativeJobDecisionContext(accountId){
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
+// 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
+// pooling). Formats trainingDigestRollup()'s aggregate into a prompt
+// block for generateMessagingCopyViaAI, same honest-empty-string
+// convention as every other context function in this file: returns ''
+// when the rollup is null (zero applied digests) rather than printing a
+// hollow block, and never prints a field that's null rather than write
+// "null" into the prompt. Deliberately campaign-copy-only — NOT wired
+// into draftPrCorpCommCopyViaAI/buildPrCorpCommPrompt, because this
+// source type is campaign-specific by construction (sourceRefId is
+// always a campaignId) — same isolation between campaign-copy signal and
+// PR/Corp-Comm signal creativeJobDecisionContext() above already
+// maintains (that one is also never wired into PR generation).
+async function trainingDigestRollupContext(accountId){
+  try {
+    const rollup = trainingDigestRollup(accountId);
+    if (!rollup || !rollup.campaignCount) return '';
+    const lines = [];
+    if (rollup.commonRoleStyle) lines.push(`Role/Style approach most often used: ${rollup.commonRoleStyle}.`);
+    if (rollup.commonMessageType) lines.push(`Message type most often used: ${rollup.commonMessageType}.`);
+    if (rollup.avgKeyMessageWordCount != null) lines.push(`Key Message is typically ~${rollup.avgKeyMessageWordCount} words.`);
+    if (rollup.avgLongFormWordCount != null || rollup.avgLongFormParagraphCount != null){
+      const words = rollup.avgLongFormWordCount != null ? `~${rollup.avgLongFormWordCount} words` : null;
+      const paras = rollup.avgLongFormParagraphCount != null ? `${rollup.avgLongFormParagraphCount} paragraphs` : null;
+      lines.push(`Typical Long Form Copy length: ${[words, paras].filter(Boolean).join(' across ')}.`);
+    }
+    if (rollup.avgWordsPerSentence != null) lines.push(`Typical sentence length: ~${rollup.avgWordsPerSentence} words per sentence.`);
+    if (rollup.offerHeldSeparateRatio != null) lines.push(`The offer is usually given its own paragraph (in ${Math.round(rollup.offerHeldSeparateRatio * 100)}% of applied campaigns).`);
+    if (rollup.avgMessagingQaScoreAtFlag != null) lines.push(`These flagged campaigns had an average messaging QA score of ${rollup.avgMessagingQaScoreAtFlag}.`);
+    if (!lines.length) return '';
+    return `\nACCOUNT-WIDE STYLE PATTERNS FROM PAST FLAGGED CAMPAIGNS (${rollup.campaignCount} campaign(s) whose structural style — approach, message type, sentence rhythm, paragraph shape — is currently informing this account's copy; this is a statistical pattern only, never literal text from those campaigns): ${lines.join(' ')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
+
 // 2026-09-12, per direct instruction — "I think that PR as a starting
 // point can benefit from everything except campaigns." PR/Corp Comm's own
 // equivalent of brandWritingSampleContext() above, reading ONLY
@@ -10086,7 +10242,13 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // and the brand_copy_website_examples feature) — a second, independent
     // source of real brand-voice grounding, appended rather than replacing
     // the writing-samples context above.
-    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
+    // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
+    // pooling). Appended last in the chain, same honest-optional-context
+    // convention every other piece here uses (returns '' when there's
+    // nothing applied yet — see trainingDigestRollupContext()'s comment
+    // for why this one has no "latest row" fallback the way website
+    // context does).
+    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId));
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -11474,7 +11636,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-ai-brain-ledger-website',
+        buildStamp: '2026-09-12-ai-brain-ledger-training-digest',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -12750,6 +12912,13 @@ async function handleRequest(req, res) {
       if (record.account && record.account.accountId){
         try { record.account.websiteContextRollup = websiteContextRollup(record.account.accountId); }
         catch (e){ record.account.websiteContextRollup = null; }
+        // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
+        // digest pooling). Same attach-at-the-route-level convention as
+        // websiteContextRollup directly above, for the same reason (every
+        // normal page load gets the current computed rollup without a
+        // second round trip).
+        try { record.account.trainingDigestRollup = trainingDigestRollup(record.account.accountId); }
+        catch (e){ record.account.trainingDigestRollup = null; }
       }
       return sendJson(res, 200, record);
     }
@@ -12867,6 +13036,57 @@ async function handleRequest(req, res) {
         ? db.prepare(`SELECT id FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'website_scan'`).get(contributionId, accountId)
         : null;
       if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s website scans' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, contributionId);
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
+    }
+
+    // GET /api/accounts/:id/training-digest-decisions — 2026-09-12, AI
+    // Brain Contribution Ledger, Round 2 (training digest pooling).
+    // Mirrors GET .../website-context-decisions above exactly, filtered
+    // to sourceType='training_digest' instead. Note the `history` query
+    // below is byte-for-byte the same one the website endpoint uses —
+    // it's scoped by accountId only, not by sourceType, so it already
+    // returns log rows for every sourceType mixed together (website scans
+    // AND training digests). That's the website endpoint's existing
+    // behavior, left exactly as-is here rather than narrowed — fixing/
+    // scoping it further is out of scope for this round.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'training-digest-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getTrainingDigestContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, campaignId: row.campaignId, campaignLabel: row.campaignLabel, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history });
+    }
+
+    // POST /api/accounts/:id/training-digest-decisions — 2026-09-12, AI
+    // Brain Contribution Ledger, Round 2. A human recording
+    // Reference/Apply/Remove for one training_digest contribution — exact
+    // same pattern as POST .../website-context-decisions above (and, one
+    // level further back, .../mmm-adstock-lag-decisions): 'removed'
+    // requires a reason, everything else reason is optional, and every
+    // call both updates current state and appends to the append-only log.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'training-digest-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'training_digest'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s training digests' });
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
       const now = new Date().toISOString();
@@ -15005,6 +15225,36 @@ Submit your findings via the submit_brand_categories tool.`;
       db.prepare(
         'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ? WHERE id = ?'
       ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, campaignId);
+      // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
+      // digest pooling, build-order item 2). messagingStyleDigestJson has
+      // been stored on the campaign row since round 132be but read by
+      // nothing else in the app — this closes that gap by mirroring it
+      // into the general-purpose ledger (ai_brain_contributions,
+      // sourceType: 'training_digest', sourceRefId: this campaignId) the
+      // moment a campaign is newly flagged, same "every real event
+      // becomes its own dated, attributed row" pattern website context
+      // already uses (see createWebsiteScanContribution above). Only
+      // fires on a genuine false->true transition (a re-save of an
+      // already-flagged campaign, e.g. cmpPersistMessagingToCampaign()
+      // running again per its own comment, should not create a duplicate
+      // contribution every time); un-flagging (e.g.
+      // cmpConfirmCancelCampaign() clearing the flag on cancellation)
+      // auto-removes this campaign's own contribution(s) with a
+      // system-generated reason rather than leaving a since-invalidated
+      // digest silently still counted in the rollup.
+      if (body.messagingTrainingExample !== undefined){
+        const wasFlagged = !!existing.messagingTrainingExample;
+        const nowFlagged = !!merged.messagingTrainingExample;
+        if (nowFlagged && !wasFlagged && merged.messagingStyleDigestJson){
+          try {
+            const digestObj = JSON.parse(merged.messagingStyleDigestJson);
+            if (digestObj && typeof digestObj === 'object') createTrainingDigestContribution(existing.accountId, campaignId, digestObj);
+          } catch (e){ /* malformed digest JSON — never block the campaign save over a ledger write */ }
+        } else if (!nowFlagged && wasFlagged){
+          try { autoRemoveTrainingDigestContributions(existing.accountId, campaignId, 'Campaign style flag cleared (e.g. campaign cancelled).'); }
+          catch (e){ /* never block the campaign save over a ledger write */ }
+        }
+      }
       // Round 55 — same merge-update convention: only touch draws when the
       // caller actually sent an allocationDraws array, and replace them
       // wholesale (delete + reinsert) rather than trying to diff rows, same
