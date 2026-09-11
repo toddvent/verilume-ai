@@ -695,7 +695,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-zcta-ucgid-query-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-bulk-create-campaigns';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1223,9 +1223,16 @@ async function refDataLoadDemographics(statesCsv){
       if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`Census API HTTP ${pr.status}${chunkLabel} ${t.slice(0, 200) || '(no error detail returned — likely a gateway/timeout error, not an application error)'}`); }
       const prJson = await pr.json();
       const rows = REF_DATA_SOURCES.demographics.parse(prJson.data, { ageBins: prJson.ageBins, binSuffix: prJson.binSuffix, incomeBracketMidpoints: prJson.incomeBracketMidpoints });
-      allRows.push(...rows);
-      statesQueriedAll.push(...(prJson.statesQueried || states));
-      statesFailedAll.push(...(prJson.statesFailed || []));
+      // Plain loops, not push(...bigArray) — a full national pull produces
+      // tens of thousands of rows per chunk, and spreading that many
+      // arguments into push() overflows the call stack (this broke the
+      // 2026-09-11 full-national-load round: "Maximum call stack size
+      // exceeded").
+      for (let r = 0; r < rows.length; r++) allRows.push(rows[r]);
+      const statesQueried = prJson.statesQueried || states;
+      for (let s = 0; s < statesQueried.length; s++) statesQueriedAll.push(statesQueried[s]);
+      const statesFailed = prJson.statesFailed || [];
+      for (let s = 0; s < statesFailed.length; s++) statesFailedAll.push(statesFailed[s]);
       say(`${chunkLabel.trim()} done — ${(prJson.zctaCount || 0).toLocaleString()} zip(s) in this batch. ${chunks.length > 1 ? `${c + 1} of ${chunks.length} batches complete.` : ''}`);
     }
     if (!allRows.length) throw new Error('Census API returned no ZCTA rows');

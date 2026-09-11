@@ -3649,42 +3649,119 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('manageAccount')">Manage Account</a> / Marketing Calendar Bulk Upload</div>
     <div class="eyebrow">Workstream · Manage Account · Bulk Upload</div>
     <h1>Marketing Calendar bulk upload</h1>
-    <p class="lede">Upload Channel Planning Detail rows — the real data behind Marketing Calendar, the campaign-level Product Group/Creative Focus Group rollup, and Analysis — against any of this account's existing campaigns. Column headers use Verilume's own field names, not any one account's own source format, so this template works the same way for any account.</p>
+    <p class="lede">Two tools, both under Budget &amp; Taxonomy. Set up <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;">Product Group &amp; Creative Focus Taxonomy</a> first — both uploaders below validate Product Group, Creative Market, Audience, Buy Type, Media Type, and Partner against it, so campaigns and rows created here use real, consistent values from day one.</p>
 
-    <div class="field-divider">1. Get the template</div>
-    <div class="field">
-      <label>Download the CSV template</label>
-      <div class="hint" style="margin-bottom:8px;">One header row, one example row. Every column after <code>campaignId</code> matches a Channel Planning Detail field exactly.</div>
-      <div class="btn-row" style="margin-top:0;">
-        <button type="button" class="btn-ghost" onclick="downloadBulkUploadTemplate()">Download CSV template →</button>
-        <button type="button" class="btn-ghost" onclick="downloadBulkUploadCampaignReference()">Download this account's Campaign IDs →</button>
+    <!-- 2026-09-11, per direct instruction: Taxonomy and Marketing Calendar
+         upload gated together — this notice blocks both modules below
+         until the account has at least a Product Group and a Creative
+         Market list on file, same non-empty check cmpTaxonomyValues()
+         elsewhere already uses. -->
+    <div class="hint" id="bulkUploadTaxonomyGateNotice" style="display:none;background:#FBF6EA;border:1px solid var(--media);border-radius:8px;padding:14px 16px;margin-bottom:20px;"></div>
+
+    <div id="bulkUploadModulesWrap">
+      <!-- ============ Module 1: create campaigns from a file (onboarding) ============ -->
+      <div class="module open accent-cx" id="bulkCreateCampaignsModule">
+        <div class="module-head" onclick="toggleModule('bulkCreateCampaignsModule')">
+          <span class="modnum">1</span>
+          <div class="titles"><span class="tag">Onboarding</span><h2>Create campaigns from a file</h2></div>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="module-body">
+          <p class="hint" style="margin-top:0;">For getting a client up and running fast — not for everyday use. Every row names a campaign by name; rows sharing a campaign name become that campaign's Channel Planning Detail line items. A campaign name that already exists on this account is <strong>overridden</strong> — its existing rows are replaced by this file's rows, not added alongside them — so re-uploading a corrected file is always safe. A campaign name Verilume hasn't seen before is created fresh with its own campaign ID.</p>
+
+          <div class="field-divider">Date range for this file</div>
+          <div class="field-row" style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div class="field" style="flex:1;min-width:160px;"><label>From</label><input type="date" id="bccDateFrom"></div>
+            <div class="field" style="flex:1;min-width:160px;"><label>To</label><input type="date" id="bccDateTo"></div>
+          </div>
+          <div class="hint" style="margin:0 0 18px;">Describes what this file covers, for the upload history below — not a hard boundary on the dates inside individual rows.</div>
+
+          <div class="field-divider">Get the template</div>
+          <div class="field">
+            <label>Download the CSV template</label>
+            <div class="hint" style="margin-bottom:8px;">One header row, one example row. <code>campaignName</code> is the key that groups rows into a campaign and matches against any existing campaign of the same name.</div>
+            <button type="button" class="btn-ghost" onclick="downloadBulkCreateCampaignsTemplate()">Download CSV template →</button>
+          </div>
+
+          <div class="field-divider">Upload your file</div>
+          <div class="field">
+            <label>Channel Planning Detail + Campaign CSV</label>
+            <input type="file" id="bccFileInput" accept=".csv,text/csv" onchange="handleBulkCreateCampaignsFile(event)">
+            <div class="hint" id="bccFileHint">Parsed entirely in your browser — nothing is sent until you click Upload below.</div>
+          </div>
+
+          <div class="field" id="bccActorWrap" style="display:none;">
+            <label>Uploading as</label>
+            <div class="stage-row" id="bccActorRoleRow"></div>
+            <input type="text" id="bccActorName" placeholder="Your name" style="margin-top:8px;max-width:320px;" oninput="renderBulkCreateCampaignsPreview()">
+            <div class="hint">CX Experiences Media Ops can set vendor cost fields and mark rows Approved; an upload from your own team can leave both as drafts for review.</div>
+          </div>
+
+          <div class="field-divider" id="bccPreviewDivider" style="display:none;">Review &amp; upload</div>
+          <div class="field" id="bccPreviewWrap" style="display:none;">
+            <div class="hint" id="bccSummary" style="margin-bottom:10px;"></div>
+            <div class="table-scroll">
+              <table class="active-camp-table" id="bccPreviewTable"></table>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn-primary" id="bccSubmitBtn" onclick="submitBulkCreateCampaigns()">Upload valid rows →</button>
+            </div>
+            <div class="hint" id="bccResult" style="margin-top:10px;"></div>
+          </div>
+
+          <div class="field-divider">Uploaded files</div>
+          <div class="hint" id="bccBatchListHint">Loading…</div>
+          <div id="bccBatchList"></div>
+        </div>
       </div>
-    </div>
 
-    <div class="field-divider">2. Upload your file</div>
-    <div class="field">
-      <label>Channel Planning Detail CSV</label>
-      <input type="file" id="bulkUploadFileInput" accept=".csv,text/csv" onchange="handleBulkUploadFileChange(event)">
-      <div class="hint" id="bulkUploadFileHint">Parsed entirely in your browser — nothing is sent until you click Upload below.</div>
-    </div>
+      <!-- ============ Module 2: add rows to an existing campaign (ongoing) ============ -->
+      <div class="module accent-media" id="bulkAddRowsModule">
+        <div class="module-head" onclick="toggleModule('bulkAddRowsModule')">
+          <span class="modnum">2</span>
+          <div class="titles"><span class="tag">Ongoing</span><h2>Add rows to an existing campaign</h2></div>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="module-body">
+          <p class="hint" style="margin-top:0;">Upload Channel Planning Detail rows — the real data behind Marketing Calendar, the campaign-level Product Group/Creative Focus Group rollup, and Analysis — against any of this account's existing campaigns. Every row is added; nothing already on the campaign is replaced.</p>
 
-    <div class="field" id="bulkUploadActorWrap" style="display:none;">
-      <label>Uploading as</label>
-      <div class="stage-row" id="bulkUploadActorRoleRow"></div>
-      <input type="text" id="bulkUploadActorName" placeholder="Your name" style="margin-top:8px;max-width:320px;" oninput="renderBulkUploadPreview()">
-      <div class="hint">CX Experiences Media Ops can set vendor cost fields and mark rows Approved; an upload from your own team can leave both as drafts for review.</div>
-    </div>
+          <div class="field-divider">1. Get the template</div>
+          <div class="field">
+            <label>Download the CSV template</label>
+            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Every column after <code>campaignId</code> matches a Channel Planning Detail field exactly.</div>
+            <div class="btn-row" style="margin-top:0;">
+              <button type="button" class="btn-ghost" onclick="downloadBulkUploadTemplate()">Download CSV template →</button>
+              <button type="button" class="btn-ghost" onclick="downloadBulkUploadCampaignReference()">Download this account's Campaign IDs →</button>
+            </div>
+          </div>
 
-    <div class="field-divider" id="bulkUploadPreviewDivider" style="display:none;">3. Review &amp; upload</div>
-    <div class="field" id="bulkUploadPreviewWrap" style="display:none;">
-      <div class="hint" id="bulkUploadSummary" style="margin-bottom:10px;"></div>
-      <div class="table-scroll">
-        <table class="active-camp-table" id="bulkUploadPreviewTable"></table>
+          <div class="field-divider">2. Upload your file</div>
+          <div class="field">
+            <label>Channel Planning Detail CSV</label>
+            <input type="file" id="bulkUploadFileInput" accept=".csv,text/csv" onchange="handleBulkUploadFileChange(event)">
+            <div class="hint" id="bulkUploadFileHint">Parsed entirely in your browser — nothing is sent until you click Upload below.</div>
+          </div>
+
+          <div class="field" id="bulkUploadActorWrap" style="display:none;">
+            <label>Uploading as</label>
+            <div class="stage-row" id="bulkUploadActorRoleRow"></div>
+            <input type="text" id="bulkUploadActorName" placeholder="Your name" style="margin-top:8px;max-width:320px;" oninput="renderBulkUploadPreview()">
+            <div class="hint">CX Experiences Media Ops can set vendor cost fields and mark rows Approved; an upload from your own team can leave both as drafts for review.</div>
+          </div>
+
+          <div class="field-divider" id="bulkUploadPreviewDivider" style="display:none;">3. Review &amp; upload</div>
+          <div class="field" id="bulkUploadPreviewWrap" style="display:none;">
+            <div class="hint" id="bulkUploadSummary" style="margin-bottom:10px;"></div>
+            <div class="table-scroll">
+              <table class="active-camp-table" id="bulkUploadPreviewTable"></table>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn-primary" id="bulkUploadSubmitBtn" onclick="submitBulkUpload()">Upload valid rows →</button>
+            </div>
+            <div class="hint" id="bulkUploadResult" style="margin-top:10px;"></div>
+          </div>
+        </div>
       </div>
-      <div class="btn-row">
-        <button type="button" class="btn-primary" id="bulkUploadSubmitBtn" onclick="submitBulkUpload()">Upload valid rows →</button>
-      </div>
-      <div class="hint" id="bulkUploadResult" style="margin-top:10px;"></div>
     </div>
   </div>
 
@@ -4988,6 +5065,51 @@
       </div>
       <div class="module-body">
         <div id="taxonomyManagerBody"></div>
+      </div>
+    </div>
+
+    <!-- 2026-09-11 — module 2, per Todd's request ahead of the Marketing
+         Calendar bulk campaign upload: "What is the exact format needed to
+         upload the drop-downs." Module 1 above only ever covered Product
+         Group / Creative Focus Group, one value at a time. This module adds
+         a real file-upload path covering all SIX of the account-
+         configurable Marketing Calendar dropdown lists at once (Product
+         Group, Creative Focus Group, Audience, Buy Type, Media Type,
+         Partner) from a single wide-format file — the same shape as the
+         client's real "Lookups" tab (one column per list, values going
+         down each column), so an account's existing source file uploads
+         with no reformatting. Marketing Group/Channel is deliberately
+         NOT one of the six — that's the fixed MMM_CATEGORIES vocabulary
+         shared across every account, not an account-configurable list.
+         New backend endpoint: POST /api/accounts/:id/taxonomies/bulk (see
+         its own comment in server.js) — runs every recognized column
+         through the exact same upsertAccountTaxonomy() the single-list PUT
+         uses, so there's one validation/write path either way. -->
+    <div class="module open accent-cx" id="taxonomyBulkUploadModule" style="margin-bottom:24px;">
+      <div class="module-head" onclick="toggleModule('taxonomyBulkUploadModule')">
+        <span class="modnum">2</span>
+        <div class="titles">
+          <span class="tag">Bulk upload</span>
+          <h2>Upload all dropdown lists from a file</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="hint" style="margin:0 0 14px;">Upload a .csv or .xlsx laid out the same way as a typical Lookups tab: one column per list (Product Group, Creative Focus Group, Audience, Buy Type, Media Type, Partner), the list's values going down that column. Any other columns (Marketing Group/Channel, Impressions, Project Number, etc.) are recognized and skipped automatically — Marketing Group uses a fixed, shared list, and Impressions/Project Number aren't dropdown lists at all. Nothing is saved until you review the preview below and click Save.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label class="btn-ghost" for="taxBulkFileInput" style="cursor:pointer;">Choose file →</label>
+          <input type="file" id="taxBulkFileInput" accept=".csv,.xlsx" style="display:none;" onchange="taxBulkHandleFile(event)">
+          <span class="hint" id="taxBulkFileName"></span>
+        </div>
+        <p class="hint" id="taxBulkStatus" style="margin-top:10px;">Parsed entirely in your browser — nothing is sent until you click Save below.</p>
+        <div id="taxBulkPreviewWrap" style="display:none;margin-top:14px;">
+          <div id="taxBulkPreview"></div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="btn-primary" onclick="taxBulkSave()">Save all lists →</button>
+            <button type="button" class="btn-ghost" onclick="taxBulkReset()">Cancel</button>
+          </div>
+          <p class="hint" id="taxBulkSaveResult" style="margin-top:8px;"></p>
+        </div>
       </div>
     </div>
 
@@ -9016,7 +9138,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-zcta-ucgid-query-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-bulk-create-campaigns';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11782,7 +11904,7 @@ const BULK_UPLOAD_DATE_FIELDS = ['dropDate', 'hitDate', 'endDate'];
 // already reads (round 132c). channel deliberately validates against
 // MMM_CATEGORIES instead — that's the one channel vocabulary Campaign
 // Creation's own Channels stage already uses, not a per-account list.
-const BULK_UPLOAD_TAXONOMY_FIELD_KEYS = { audience: 'audience', buyType: 'buyType', mediaType: 'mediaType', productGroup: 'productGroup', creativeMarket: 'creativeMarket' };
+const BULK_UPLOAD_TAXONOMY_FIELD_KEYS = { audience: 'audience', buyType: 'buyType', mediaType: 'mediaType', productGroup: 'productGroup', creativeMarket: 'creativeMarket', partner: 'partner' };
 
 let bulkUploadRows = []; // [{ index, raw: {...}, errors: [str], warnings: [str] }]
 let bulkUploadActorRole = 'client';
@@ -12046,6 +12168,307 @@ async function submitBulkUpload(){
     if (data.insertedCount) await loadCampaigns();
   } catch (e){
     resultEl.textContent = 'Could not reach the backend — no rows were saved. Try again once it\'s reachable.';
+  }
+}
+
+// ============ "Create campaigns from a file" (Module 1, bulkUpload step) ============
+// 2026-09-11, per direct instruction: a second, separate bulk uploader from
+// the "add rows to an existing campaign" one above (round 132x) — this one
+// creates the CAMPAIGNS themselves from a file, for onboarding a client
+// fast, not everyday use. Every row carries both campaign-level columns
+// (campaignName, campaignClassification, campaignStartDate,
+// campaignEndDate) and the same Channel Planning Detail line-item columns
+// as the other uploader; rows sharing a campaignName become one campaign.
+// Re-uploading a name that already exists on this account OVERRIDES it
+// (replaces its rows wholesale) rather than adding alongside — per direct
+// instruction ("you shouldn't have overlapping campaigns... it's not
+// intended for every day use").
+const BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS = ['campaignName', 'campaignClassification', 'campaignStartDate', 'campaignEndDate'];
+const BULK_CREATE_CAMPAIGNS_LINE_FIELDS = ['channel', 'partner', 'audience', 'buyType', 'mediaType', 'impressions', 'dropDate', 'hitDate', 'endDate', 'productYear', 'productGroup', 'creativeMarket', 'budget'];
+const BULK_CREATE_CAMPAIGNS_ALL_FIELDS = [...BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS, ...BULK_CREATE_CAMPAIGNS_LINE_FIELDS];
+
+let bccRows = []; // [{ index, raw, errors, warnings }]
+let bccActorRole = 'client';
+
+function bulkUploadTaxonomyGateOk(){
+  const pg = cmpTaxonomyValues('productGroup');
+  const cm = cmpTaxonomyValues('creativeMarket');
+  return !!(pg && pg.length && cm && cm.length);
+}
+function renderBulkUploadTaxonomyGate(){
+  const notice = document.getElementById('bulkUploadTaxonomyGateNotice');
+  const wrap = document.getElementById('bulkUploadModulesWrap');
+  if (!notice || !wrap) return;
+  if (bulkUploadTaxonomyGateOk()){
+    notice.style.display = 'none';
+    wrap.style.opacity = '';
+    wrap.style.pointerEvents = '';
+    return;
+  }
+  notice.style.display = '';
+  notice.innerHTML = `No Product Group and Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;font-weight:600;">set it up under Product Group &amp; Creative Focus Taxonomy</a> before uploading here (quick-start templates available there).`;
+  wrap.style.opacity = '0.5';
+  wrap.style.pointerEvents = 'none';
+}
+
+function resetBulkCreateCampaignsState(){
+  bccRows = [];
+  bccActorRole = 'client';
+  const fileInput = document.getElementById('bccFileInput');
+  if (fileInput) fileInput.value = '';
+  const nameInput = document.getElementById('bccActorName');
+  if (nameInput) nameInput.value = '';
+  const wrap1 = document.getElementById('bccActorWrap'); if (wrap1) wrap1.style.display = 'none';
+  const div1 = document.getElementById('bccPreviewDivider'); if (div1) div1.style.display = 'none';
+  const wrap2 = document.getElementById('bccPreviewWrap'); if (wrap2) wrap2.style.display = 'none';
+  const result = document.getElementById('bccResult'); if (result) result.textContent = '';
+  const hint = document.getElementById('bccFileHint'); if (hint) hint.textContent = 'Parsed entirely in your browser — nothing is sent until you click Upload below.';
+}
+
+function renderBccActorRoleRow(){
+  const row = document.getElementById('bccActorRoleRow');
+  if (!row) return;
+  const options = [
+    { key: 'client', label: 'Account Team' },
+    { key: 'cx_ops', label: 'CX Experiences Media Ops' }
+  ];
+  row.innerHTML = options.map(o => `
+    <button type="button" class="stage-tile${bccActorRole === o.key ? ' selected' : ''}" onclick="setBccActorRole('${o.key}')">${o.label}</button>`).join('');
+}
+function setBccActorRole(role){
+  bccActorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
+  renderBccActorRoleRow();
+  renderBulkCreateCampaignsPreview();
+}
+
+function downloadBulkCreateCampaignsTemplate(){
+  const exampleChannel = MMM_CATEGORIES[0];
+  const exampleRow = {
+    campaignName: 'Fall Menu Launch', campaignClassification: 'Product Launch', campaignStartDate: '2026-09-01', campaignEndDate: '2026-10-01',
+    channel: exampleChannel, partner: 'Example Partner',
+    audience: (cmpTaxonomyValues('audience') || ['CX'])[0], buyType: (cmpTaxonomyValues('buyType') || ['CPM'])[0],
+    mediaType: (cmpTaxonomyValues('mediaType') || ['Social'])[0], impressions: 50000,
+    dropDate: '2026-09-01', hitDate: '2026-09-05', endDate: '2026-09-30', productYear: '2026',
+    productGroup: (cmpTaxonomyValues('productGroup') || ['Example Product Group'])[0],
+    creativeMarket: (cmpTaxonomyValues('creativeMarket') || ['Example Creative Market'])[0], budget: 5000
+  };
+  const lines = [
+    BULK_CREATE_CAMPAIGNS_ALL_FIELDS.join(','),
+    BULK_CREATE_CAMPAIGNS_ALL_FIELDS.map(f => csvEscape(exampleRow[f])).join(',')
+  ];
+  downloadCsvFile('verilume-create-campaigns-template.csv', lines.join('\n'));
+}
+
+function validateBccRow(raw){
+  const errors = [], warnings = [];
+  if (!raw.campaignName) errors.push('campaignName is required');
+  if (!raw.channel) errors.push('channel is required');
+  else if (!MMM_CATEGORIES.includes(raw.channel)) errors.push(`channel "${raw.channel}" isn't one of this account's Channels (see MMM_CATEGORIES — e.g. "${MMM_CATEGORIES[0]}")`);
+
+  Object.entries(BULK_UPLOAD_TAXONOMY_FIELD_KEYS).forEach(([field, taxKey]) => {
+    const v = raw[field];
+    if (!v) return;
+    const allowed = cmpTaxonomyValues(taxKey);
+    if (!allowed) warnings.push(`${field} "${v}" — no ${taxKey} taxonomy configured for this account yet, accepted as free text`);
+    else if (!allowed.includes(v)) errors.push(`${field} "${v}" isn't in this account's configured ${taxKey} list (${allowed.join(', ')})`);
+  });
+
+  BULK_UPLOAD_NUMERIC_FIELDS.forEach(f => {
+    if (raw[f] && (isNaN(Number(raw[f])) || Number(raw[f]) < 0)) errors.push(`${f} must be a non-negative number, got "${raw[f]}"`);
+  });
+  ['dropDate', 'hitDate', 'endDate', 'campaignStartDate', 'campaignEndDate'].forEach(f => {
+    if (raw[f] && !/^\d{4}-\d{2}-\d{2}$/.test(raw[f])) errors.push(`${f} must be yyyy-mm-dd, got "${raw[f]}"`);
+  });
+
+  if (bccActorRole !== 'cx_ops'){
+    const costCols = Object.keys(raw).filter(k => ['unitCost', 'postageCost', 'paperMfgCost', 'insertionCost'].includes(k) && raw[k]);
+    if (costCols.length) errors.push(`only CX Experiences Media Ops may set vendor cost fields (${costCols.join(', ')})`);
+  }
+  return { errors, warnings };
+}
+
+function handleBulkCreateCampaignsFile(event){
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const parsed = parseCsvText(String(reader.result || ''));
+    if (!parsed.length){
+      document.getElementById('bccFileHint').textContent = 'No data rows found in that file — check it has a header row plus at least one data row.';
+      return;
+    }
+    bccRows = parsed.map((raw, index) => {
+      const { errors, warnings } = validateBccRow(raw);
+      return { index, raw, errors, warnings };
+    });
+    document.getElementById('bccFileHint').textContent = `Parsed ${parsed.length} row${parsed.length === 1 ? '' : 's'} from ${file.name}.`;
+    document.getElementById('bccActorWrap').style.display = '';
+    document.getElementById('bccPreviewDivider').style.display = '';
+    document.getElementById('bccPreviewWrap').style.display = '';
+    document.getElementById('bccResult').textContent = '';
+    renderBccActorRoleRow();
+    renderBulkCreateCampaignsPreview();
+  };
+  reader.onerror = () => { document.getElementById('bccFileHint').textContent = 'Could not read that file — try again.'; };
+  reader.readAsText(file);
+}
+
+function renderBulkCreateCampaignsPreview(){
+  bccRows = bccRows.map(r => {
+    const { errors, warnings } = validateBccRow(r.raw);
+    return { ...r, errors, warnings };
+  });
+  const validCount = bccRows.filter(r => !r.errors.length).length;
+  const errorCount = bccRows.length - validCount;
+  const existingNames = new Set((state.campaigns || []).map(c => (c.name || c.objective || '').trim().toLowerCase()).filter(Boolean));
+  const campaignNamesInFile = new Set(bccRows.filter(r => r.raw.campaignName).map(r => r.raw.campaignName.trim().toLowerCase()));
+  const newCount = [...campaignNamesInFile].filter(n => !existingNames.has(n)).length;
+  const overrideCount = campaignNamesInFile.size - newCount;
+  document.getElementById('bccSummary').textContent =
+    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed, ${campaignNamesInFile.size} campaign${campaignNamesInFile.size === 1 ? '' : 's'} (${newCount} new, ${overrideCount} will override an existing campaign of the same name) — ${validCount} row${validCount === 1 ? '' : 's'} ready to upload, ${errorCount} with errors.`;
+
+  const table = document.getElementById('bccPreviewTable');
+  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Product Group</th><th>Creative Market</th><th>Budget</th><th>Status</th></tr></thead>
+    <tbody>${bccRows.map(r => {
+      const name = (r.raw.campaignName || '').trim();
+      const willOverride = name && existingNames.has(name.toLowerCase());
+      const campaignBadge = !name ? '' : (willOverride ? `<span style="color:var(--media);font-weight:600;">OVERRIDE</span>` : `<span style="color:var(--cx);font-weight:600;">NEW</span>`);
+      const statusHtml = r.errors.length
+        ? `<span style="color:#B3261E;">${r.errors.length} error${r.errors.length === 1 ? '' : 's'}: ${escapeHtml(r.errors.join('; '))}</span>`
+        : (r.warnings.length ? `<span style="color:var(--media);">Ready — ${escapeHtml(r.warnings.join('; '))}</span>` : `<span style="color:var(--cx);">Ready</span>`);
+      return `<tr>
+        <td class="num">${r.index + 1}</td>
+        <td>${escapeHtml(name)} ${campaignBadge}</td>
+        <td>${escapeHtml(r.raw.channel || '')}</td>
+        <td>${escapeHtml(r.raw.productGroup || '')}</td>
+        <td>${escapeHtml(r.raw.creativeMarket || '')}</td>
+        <td class="num">${escapeHtml(r.raw.budget || '')}</td>
+        <td>${statusHtml}</td>
+      </tr>`;
+    }).join('')}</tbody>`;
+
+  const btn = document.getElementById('bccSubmitBtn');
+  btn.disabled = validCount === 0;
+  btn.textContent = validCount ? `Upload ${validCount} valid row${validCount === 1 ? '' : 's'} →` : 'No valid rows to upload';
+}
+
+async function submitBulkCreateCampaigns(){
+  const validRows = bccRows.filter(r => !r.errors.length);
+  if (!validRows.length) return;
+  const actorName = document.getElementById('bccActorName').value.trim();
+  const dateRangeStart = document.getElementById('bccDateFrom').value || '';
+  const dateRangeEnd = document.getElementById('bccDateTo').value || '';
+  const fileHint = document.getElementById('bccFileHint').textContent || '';
+  const fileNameMatch = /from (.+)\.$/.exec(fileHint);
+  const resultEl = document.getElementById('bccResult');
+  resultEl.textContent = `Uploading ${validRows.length} row${validRows.length === 1 ? '' : 's'}…`;
+  const rows = validRows.map(r => ({
+    campaignName: r.raw.campaignName,
+    campaignClassification: r.raw.campaignClassification || '',
+    campaignStartDate: r.raw.campaignStartDate || '',
+    campaignEndDate: r.raw.campaignEndDate || '',
+    channel: r.raw.channel,
+    partner: r.raw.partner || '',
+    audience: r.raw.audience || '',
+    buyType: r.raw.buyType || '',
+    mediaType: r.raw.mediaType || '',
+    impressions: r.raw.impressions ? Number(r.raw.impressions) : null,
+    dropDate: r.raw.dropDate || '',
+    hitDate: r.raw.hitDate || '',
+    endDate: r.raw.endDate || '',
+    productYear: r.raw.productYear || '',
+    productGroup: r.raw.productGroup || '',
+    creativeMarket: r.raw.creativeMarket || '',
+    budget: r.raw.budget ? Number(r.raw.budget) : null
+  }));
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-create-campaigns`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actorRole: bccActorRole, actorName, fileName: fileNameMatch ? fileNameMatch[1] : '', dateRangeStart, dateRangeEnd, rows })
+    });
+    if (!resp.ok){
+      resultEl.textContent = `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`;
+      return;
+    }
+    const data = await resp.json();
+    const failedLines = (data.results || []).filter(r => !r.ok).map(r => `Row #${r.index + 1}: ${r.error}`);
+    resultEl.innerHTML = `Uploaded ${data.rowsInserted} row${data.rowsInserted === 1 ? '' : 's'} — ${data.campaignsCreated.length} campaign${data.campaignsCreated.length === 1 ? '' : 's'} created, ${data.campaignsMatched.length} existing campaign${data.campaignsMatched.length === 1 ? '' : 's'} overridden.${data.rowsFailed ? ` ${data.rowsFailed} row${data.rowsFailed === 1 ? '' : 's'} rejected by the backend.` : ''}` +
+      (failedLines.length ? `<br>${failedLines.map(escapeHtml).join('<br>')}` : '');
+    if (data.rowsInserted){
+      await loadCampaigns();
+      await loadBulkCreateCampaignsBatches();
+    }
+  } catch (e){
+    resultEl.textContent = 'Could not reach the backend — no rows were saved. Try again once it\'s reachable.';
+  }
+}
+
+// Uploaded-files history — per direct instruction ("delete at the file or
+// campaign level is valid"): each batch can be deleted as a whole (its
+// rows removed, and any campaign IT created that's now empty and has no
+// other real data hard-deleted), or a single campaign it created can be
+// deleted on its own once its rows are gone.
+async function loadBulkCreateCampaignsBatches(){
+  const hint = document.getElementById('bccBatchListHint');
+  const list = document.getElementById('bccBatchList');
+  if (!hint || !list) return;
+  hint.textContent = 'Loading…';
+  list.innerHTML = '';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-batches`);
+    if (!resp.ok){ hint.textContent = 'Could not load upload history.'; return; }
+    const data = await resp.json();
+    const batches = data.batches || [];
+    if (!batches.length){ hint.textContent = 'No files uploaded here yet.'; return; }
+    hint.textContent = '';
+    list.innerHTML = batches.map(b => {
+      const created = b.campaignsCreated || [];
+      const matched = b.campaignsMatched || [];
+      const campaignChips = [...created, ...matched].map(c => `
+        <span style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:14px;padding:3px 8px 3px 10px;font-size:0.75rem;margin:4px 6px 0 0;">
+          ${escapeHtml(c.name)}
+          <button type="button" onclick="deleteCampaignHard('${c.id}')" title="Delete this campaign" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:0.85rem;line-height:1;padding:0;">×</button>
+        </span>`).join('');
+      return `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <strong>${escapeHtml(b.fileName || '(unnamed file)')}</strong>
+            <span class="hint" style="display:block;">${b.dateRangeStart || '?'} → ${b.dateRangeEnd || '?'} · ${b.rowCount} row${b.rowCount === 1 ? '' : 's'} · ${created.length} created, ${matched.length} overridden · uploaded ${new Date(b.createdAt).toLocaleString()} by ${escapeHtml(b.uploadedByName || b.uploadedByRole || 'unknown')}</span>
+          </div>
+          <button type="button" class="btn-ghost" onclick="deleteBulkCreateCampaignsBatch('${b.id}')">Delete this file →</button>
+        </div>
+        ${campaignChips ? `<div style="margin-top:6px;">${campaignChips}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e){
+    hint.textContent = 'Could not reach the backend.';
+  }
+}
+async function deleteBulkCreateCampaignsBatch(batchId){
+  if (!confirm('Delete this uploaded file? This removes every row it added, and hard-deletes any campaign it created that is now empty and has no other data. Campaigns it only overrode stay — just their rows from this file are gone.')) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-batches/${encodeURIComponent(batchId)}`, { method: 'DELETE' });
+    if (!resp.ok){ alert(`Could not delete that file (HTTP ${resp.status}).`); return; }
+    await loadCampaigns();
+    await loadBulkCreateCampaignsBatches();
+  } catch (e){
+    alert('Could not reach the backend — nothing was deleted.');
+  }
+}
+// Campaign-level delete — the backend refuses (409) while the campaign
+// still has Channel Planning Detail rows or any other related data, and
+// this surfaces that message rather than pretending it always succeeds.
+async function deleteCampaignHard(campaignId){
+  if (!confirm('Delete this campaign entirely? Only possible while it has no Channel Planning Detail rows and no other related data.')) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}`, { method: 'DELETE' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ alert(data.error || `Could not delete that campaign (HTTP ${resp.status}).`); return; }
+    await loadCampaigns();
+    await loadBulkCreateCampaignsBatches();
+  } catch (e){
+    alert('Could not reach the backend — nothing was deleted.');
   }
 }
 
@@ -36823,6 +37246,170 @@ async function saveTaxonomyGroups(){
   }
 }
 
+// ---- Bulk dropdown-list upload (module 2 above) — 2026-09-11 ----
+// Recognizes a wide "Lookups"-shaped file (one column per dropdown list,
+// values going down the column) and maps its headers onto the six
+// account-configurable Marketing Calendar taxonomy keys. Matching is
+// case-insensitive and tolerant of the exact label variants seen in real
+// client source files (e.g. "Creative Market" vs. "Creative Focus Group"
+// both mean creativeMarket — this product's own label for that list).
+const TAX_BULK_COLUMN_MAP = [
+  { re: /^product\s*group$/i, key: 'productGroup', label: 'Product Group' },
+  { re: /^creative\s*(market|focus\s*group)$/i, key: 'creativeMarket', label: 'Creative Focus Group' },
+  { re: /^audience$/i, key: 'audience', label: 'Audience' },
+  { re: /^buy\s*type$/i, key: 'buyType', label: 'Buy Type' },
+  { re: /^media\s*type$/i, key: 'mediaType', label: 'Media Type' },
+  { re: /^partner$/i, key: 'partner', label: 'Partner' }
+];
+// Columns recognized but deliberately NOT loaded as account taxonomies —
+// shown to the user as "skipped" with why, rather than silently ignored.
+const TAX_BULK_SKIP_REASONS = [
+  { re: /^marketing\s*group$/i, reason: 'this is the shared Channel list (fixed for every account), not an account-configurable dropdown' },
+  { re: /^impressions$/i, reason: 'a numeric field on each campaign row, not a dropdown list' },
+  { re: /^project\s*number$/i, reason: 'an identifier on each campaign row, not a dropdown list' }
+];
+let taxBulkParsed = null; // { columns: [{key,label,values:[]}], skipped: [{header,reason}], ignored: [str] }
+
+function taxBulkReset(){
+  taxBulkParsed = null;
+  const fileInput = document.getElementById('taxBulkFileInput');
+  if (fileInput) fileInput.value = '';
+  const nameEl = document.getElementById('taxBulkFileName');
+  if (nameEl) nameEl.textContent = '';
+  document.getElementById('taxBulkPreviewWrap').style.display = 'none';
+  document.getElementById('taxBulkStatus').textContent = 'Parsed entirely in your browser — nothing is sent until you click Save below.';
+  document.getElementById('taxBulkSaveResult').textContent = '';
+}
+
+async function taxBulkHandleFile(event){
+  const file = event.target.files && event.target.files[0];
+  const statusEl = document.getElementById('taxBulkStatus');
+  const nameEl = document.getElementById('taxBulkFileName');
+  taxBulkParsed = null;
+  document.getElementById('taxBulkPreviewWrap').style.display = 'none';
+  document.getElementById('taxBulkSaveResult').textContent = '';
+  if (!file) return;
+  if (nameEl) nameEl.textContent = file.name;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (statusEl) statusEl.textContent = `Reading ${file.name}…`;
+  try {
+    let headers = [], rows = [];
+    if (ext === 'csv'){
+      const text = await file.text();
+      ({ headers, rows } = cfiParseCsvText(text));
+    } else if (ext === 'xlsx'){
+      const XLSX = await cfiLoadSheetJs();
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      headers = (grid[0] || []).map(h => String(h).trim());
+      rows = grid.slice(1);
+    } else {
+      if (statusEl) statusEl.textContent = `"${file.name}" isn't a .csv or .xlsx file — export to one of those and try again.`;
+      return;
+    }
+    taxBulkOnParsed(headers, rows, file.name);
+  } catch (e){
+    if (statusEl) statusEl.textContent = e.message || `Couldn't read ${file.name}.`;
+  }
+}
+
+function taxBulkOnParsed(headers, rows, sourceName){
+  const statusEl = document.getElementById('taxBulkStatus');
+  if (!headers.length){
+    if (statusEl) statusEl.textContent = `${sourceName}: no header row found.`;
+    return;
+  }
+  const columns = [];
+  const skipped = [];
+  const ignored = [];
+  headers.forEach((h, idx) => {
+    const trimmed = String(h || '').trim();
+    if (!trimmed) return;
+    const match = TAX_BULK_COLUMN_MAP.find(m => m.re.test(trimmed));
+    if (match){
+      // Distinct, trimmed, non-blank values in the order first seen —
+      // same convention as every other taxonomy save in this file (order
+      // is dropdown order).
+      const seen = new Set();
+      const values = [];
+      rows.forEach(r => {
+        const raw = r[idx];
+        const v = raw == null ? '' : String(raw).trim();
+        if (v && !seen.has(v)){ seen.add(v); values.push(v); }
+      });
+      columns.push({ key: match.key, label: match.label, sourceHeader: trimmed, values });
+      return;
+    }
+    const skip = TAX_BULK_SKIP_REASONS.find(s => s.re.test(trimmed));
+    if (skip){ skipped.push({ header: trimmed, reason: skip.reason }); return; }
+    ignored.push(trimmed);
+  });
+  if (!columns.length){
+    if (statusEl) statusEl.textContent = `${sourceName}: no recognizable dropdown-list columns found (looked for Product Group, Creative Market/Focus Group, Audience, Buy Type, Media Type, Partner) — check the header row matches one of those names.`;
+    return;
+  }
+  taxBulkParsed = { columns, skipped, ignored, sourceName };
+  if (statusEl) statusEl.textContent = `${sourceName}: ${columns.length} dropdown list${columns.length === 1 ? '' : 's'} found. Review below, then Save.`;
+  taxBulkRenderPreview();
+  document.getElementById('taxBulkPreviewWrap').style.display = '';
+}
+
+function taxBulkRenderPreview(){
+  const el = document.getElementById('taxBulkPreview');
+  if (!el || !taxBulkParsed) return;
+  const colCards = taxBulkParsed.columns.map(c => `
+    <div style="border:1px solid var(--line);border-radius:8px;padding:12px;">
+      <div style="font-weight:700;font-size:0.875rem;margin-bottom:4px;">${escapeHtml(c.label)} <span class="hint" style="font-weight:400;">(from column "${escapeHtml(c.sourceHeader)}")</span></div>
+      <div class="hint" style="margin-bottom:6px;">${c.values.length} value${c.values.length === 1 ? '' : 's'}${c.values.length ? ' — will replace whatever this account has saved for this list today' : ' — empty, will clear this list'}</div>
+      <div>${c.values.length ? c.values.map(v => `<span class="camp-tag" style="display:inline-block;margin:0 6px 6px 0;">${escapeHtml(v)}</span>`).join('') : ''}</div>
+    </div>`).join('');
+  const skippedNote = taxBulkParsed.skipped.length
+    ? `<p class="hint" style="margin:10px 0 0;">Skipped (not a dropdown list): ${taxBulkParsed.skipped.map(s => `"${escapeHtml(s.header)}" — ${escapeHtml(s.reason)}`).join('; ')}</p>`
+    : '';
+  const ignoredNote = taxBulkParsed.ignored.length
+    ? `<p class="hint" style="margin:6px 0 0;">Ignored (unrecognized column${taxBulkParsed.ignored.length === 1 ? '' : 's'}): ${taxBulkParsed.ignored.map(escapeHtml).join(', ')}</p>`
+    : '';
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;">${colCards}</div>${skippedNote}${ignoredNote}`;
+}
+
+async function taxBulkSave(){
+  const resultEl = document.getElementById('taxBulkSaveResult');
+  if (!taxBulkParsed || !taxBulkParsed.columns.length) return;
+  if (dataSourceLabel !== 'backend'){
+    if (resultEl){ resultEl.style.color = 'var(--advocacy)'; resultEl.textContent = 'No backend account session — nothing to save to yet.'; }
+    return;
+  }
+  if (resultEl){ resultEl.style.color = ''; resultEl.textContent = 'Saving…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies/bulk`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taxonomies: taxBulkParsed.columns.map(c => ({ key: c.key, label: c.label, values: c.values })) })
+    });
+    if (!resp.ok){
+      const t = await resp.text().catch(() => '');
+      if (resultEl){ resultEl.style.color = 'var(--advocacy)'; resultEl.textContent = `Couldn't save — HTTP ${resp.status} ${t.slice(0, 200)}`; }
+      return;
+    }
+    const data = await resp.json();
+    const failed = (data.results || []).filter(r => !r.ok);
+    taxBulkParsed = null;
+    document.getElementById('taxBulkPreviewWrap').style.display = 'none';
+    taxBulkReset();
+    await mktCalLoadTaxonomies(); // refreshes state.calendarTaxonomies + Campaign Creation's tiles + Marketing Calendar's own filters
+    await renderTaxonomyManager(); // module 1's read-only summary reflects the new Product Group/Creative Focus Group values immediately
+    if (resultEl){
+      resultEl.style.color = failed.length ? 'var(--advocacy)' : 'var(--cx)';
+      resultEl.textContent = failed.length
+        ? `Saved ${data.results.length - failed.length} of ${data.results.length} lists — failed: ${failed.map(f => `${f.key} (${f.error})`).join('; ')}`
+        : `Saved ${data.results.length} list${data.results.length === 1 ? '' : 's'} at ${new Date().toLocaleTimeString()} — available now on Campaign Creation and this calendar's own filters.`;
+    }
+  } catch (e){
+    if (resultEl){ resultEl.style.color = 'var(--advocacy)'; resultEl.textContent = 'Backend unreachable — not saved.'; }
+  }
+}
+
 function mktCalRenderMonthLabel(){
   const label = document.getElementById('mktCalMonthLabel');
   if (!label) return;
@@ -42522,6 +43109,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'bulkUpload'){
     resetBulkUploadState();
     renderBulkUploadActorRoleRow();
+    resetBulkCreateCampaignsState();
+    renderBulkUploadTaxonomyGate();
+    loadBulkCreateCampaignsBatches();
     document.getElementById('step-bulkUpload').classList.add('active');
   } else if (step === 'analyticsSetup'){
     renderAnalyticsSetupStep();
