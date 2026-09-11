@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-10-prospect-fit-clarity-pass (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-qualified-wealth-index-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -4969,12 +4969,23 @@ function computeStoreProspectFit(stores, radii, account){
   const nationalAvgIncome = natIncomeWeight > 0 ? natIncomeWeighted / natIncomeWeight : null;
   const demographicCoverageNote = zipsWithAnyDemographicData
     ? `Real Census-sourced demographic coverage is limited to ${zipsWithAnyDemographicData.toLocaleString()} ZCTA(s) nationally — a ring with no coverage shows "—" below, which means no data, not zero.`
-    : 'No Census-sourced demographic data is loaded yet — Audience Fit and Wealth Fit can\'t be computed until it is. Population-only figures below are still real.';
+    : 'No Census-sourced demographic data is loaded yet — Qualified estimates can\'t be computed until it is. Population-only figures below are still real.';
 
   const acctTier = accountWealthTierLabel(account);
 
+  // TIER_MIN_INDEX — the same Verilume Wealth Index thresholds
+  // wealthIndexBandBackend() already applies to label a ring's band. Used
+  // here to test the ring's OWN wealth index (avg income x generation
+  // multiplier, already computed below — no new data) against the
+  // account's configured tier, "at or above" since a wealthier ring is
+  // still a qualified prospect, not a miss.
+  const TIER_MIN_INDEX = { hnw: 200, wealthy: 130, middle: -Infinity };
+  const qualifiedCoverageNote = !acctTier
+    ? 'Set a target wealth tier on this account\'s Company Profile to estimate Qualified households — Population and Est. Population, Target Generations don\'t require it, but the wealth filter does.'
+    : null;
+
   if (!geocoded.length){
-    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens };
+    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens, accountWealthTier: acctTier, qualifiedCoverageNote };
   }
 
   const storeResults = geocoded.map(store => {
@@ -4994,20 +5005,32 @@ function computeStoreProspectFit(stores, radii, account){
       const noRingDemographicCoverage = zipsWithDemo === 0;
       const genShare = (!noRingDemographicCoverage && pop > 0) ? genPop / pop : null;
       const audienceFit = (genShare != null && nationalGenShare) ? Math.round((genShare / nationalGenShare) * 100) : null;
-      // targetPopulation: the actual estimated head count of the account's
-      // target generation(s) nearby (round 2026-09-10, direct instruction —
-      // Todd wants the count of new-to-brand-eligible households/population
-      // leading, with the Audience Fit index as secondary context). null
-      // (not 0) when the ring has no demographic coverage, same convention
-      // as audienceFit/wealthFit above.
+      // targetPopulation: the estimated head count of the account's target
+      // generation(s) nearby — an age-bracket filter only, no wealth
+      // involved. null (not 0) when the ring has no demographic coverage.
       const targetPopulation = noRingDemographicCoverage ? null : Math.round(genPop);
       const avgIncome = incomeWeight > 0 ? incomeWeighted / incomeWeight : null;
       const wealthIndex = (avgIncome != null && nationalAvgIncome) ? Math.round((avgIncome / nationalAvgIncome) * genMult * 100) : null;
       const wealthBand = wealthIndexBandBackend(wealthIndex);
+      // qualifiedPopulation — Todd, 2026-09-10: "I selected the option to
+      // use the Verilume Wealth Index that we calculate upfront in
+      // combination with the age brackets that we capture with the
+      // generation selections. You have all of the data that you need."
+      // No new Census pull, no household income-bracket data, no reload:
+      // this ring's target-generation population (targetPopulation, above)
+      // either fully counts as Qualified — if the ring's OWN Wealth Index
+      // clears the account's configured tier threshold — or none of it
+      // does. A ring that genuinely misses the threshold reports a real 0
+      // (not null); null is reserved for missing data (no wealth tier
+      // configured, or no demographic coverage in this ring).
+      const qualifiedPopulation = (targetPopulation != null && acctTier && wealthIndex != null)
+        ? (wealthIndex >= TIER_MIN_INDEX[acctTier.key] ? targetPopulation : 0)
+        : null;
       return {
         radiusMiles: radius, zipCount: zipsInRing.length, population: pop,
         noRingDemographicCoverage,
         targetPopulation,
+        qualifiedPopulation,
         audienceFit, wealthFit: wealthIndex,
         wealthBand: wealthBand ? wealthBand.label : null,
         matchesAccountWealthTier: (wealthBand && acctTier) ? wealthBand.key === acctTier.key : null
@@ -5021,6 +5044,8 @@ function computeStoreProspectFit(stores, radii, account){
     radii: ringRadii,
     targetGenerations: targetGens,
     accountWealthTier: acctTier,
+    accountWealthMultiplier: Math.round(genMult * 100) / 100,
+    qualifiedCoverageNote,
     stores: storeResults,
     demographicCoverageNote,
     zipsWithAnyDemographicData,
@@ -10960,7 +10985,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-10-prospect-fit-clarity-pass',
+        buildStamp: '2026-09-11-qualified-wealth-index-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -19803,5 +19828,6 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
 
