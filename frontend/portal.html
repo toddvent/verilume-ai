@@ -9016,7 +9016,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-qualified-wealth-index-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-real-top-bracket-income';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27085,7 +27085,7 @@ function mstProspectFitSectionHtml(data){
         <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Qualified (target age + wealth, est.)</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
-      <p class="hint" style="margin:0;">${escapeHtml(data.demographicCoverageNote || '')} ${escapeHtml(data.qualifiedCoverageNote || '')} ${escapeHtml(data.unavailableGenerationsNote || '')}</p>
+      <p class="hint" style="margin:0;">${escapeHtml(data.demographicCoverageNote || '')} ${escapeHtml(data.topBracketCoverageNote || '')} ${escapeHtml(data.qualifiedCoverageNote || '')} ${escapeHtml(data.unavailableGenerationsNote || '')}</p>
     </div>`;
 }
 

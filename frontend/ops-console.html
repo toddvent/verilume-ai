@@ -397,8 +397,22 @@
           <button class="btn" id="refDataLoadDemoTestBtn" onclick="refDataLoadDemographics(document.getElementById('refDataDemoTestStates').value)">Test these states →</button>
         </div>
       </div>
+      <!-- 2026-09-11 — real top-bracket income fix. Census's B19001 table
+           tops out at "$200,000 or more" with no further detail, so the
+           Wealth Index has always had to assume a flat $225,000 for every
+           household in that bracket, everywhere — silently capping how
+           wealthy any area can ever score. IRS SOI's public ZIP-code tax
+           data uses the same open-ended top bracket but reports the real
+           dollar total, so a genuine per-zip average can be computed. See
+           zipAvgIncomeBackend()'s comment in server.js for the mechanism. -->
+      <div class="field-row" style="margin-top:10px;">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn primary" id="refDataLoadIrsTopBracketBtn" onclick="refDataLoadIrsTopBracketIncome()">Load IRS top-bracket income (real $200k+ average) →</button>
+        </div>
+      </div>
       <p class="proto-note">2020 Census ZCTA population + public zip→DMA crosswalk, fetched server-side through this console's own session and saved to the backend in batches. Needs a Census API key configured as the CENSUS_API_KEY environment variable on the backend — if that's missing, this will say so directly.</p>
-      <p class="proto-note">Demographics: 2022 ACS 5-Year age (5 generations: Gen Z, Millennials, Gen X, Boomers, Silent Gen — the same ones Company Profile's generation picker can actually back with real Census data) and a derived average-household-income estimate, by zip — feeds the Match Market Builder's per-store trade-area Audience/Wealth Fit scoring and the Test/Control demographic matching dimension. Same Census API key requirement as above. Pulled per state (50 states + DC + Puerto Rico) and merged — a prior version pulled the whole country in one flat query, which Census's ZCTA geography doesn't support reliably and silently returned only 2.7% of zips nationally. Use "Test these states" with a couple of sample states first to confirm real per-zip coverage before running the full national reload, which takes noticeably longer (dozens of Census API calls).</p>
+      <p class="proto-note">Demographics: 2022 ACS 5-Year age (5 generations: Gen Z, Millennials, Gen X, Boomers, Silent Gen — the same ones Company Profile's generation picker can actually back with real Census data) and real per-bracket household income counts, by zip — feeds the Match Market Builder's per-store trade-area Audience/Wealth Fit scoring and the Test/Control demographic matching dimension. Same Census API key requirement as above. Pulled per state (50 states + DC + Puerto Rico) and merged — a prior version pulled the whole country in one flat query, which Census's ZCTA geography doesn't support reliably and silently returned only 2.7% of zips nationally. Use "Test these states" with a couple of sample states first to confirm real per-zip coverage before running the full national reload, which takes noticeably longer (dozens of Census API calls).</p>
+      <p class="proto-note">IRS top-bracket income: real per-zip average income for households earning $200,000+ (IRS Statistics of Income, ZIP Code Data — irs.gov, free, no API key, one national file). Census's own income table can't tell a $225,000-average area apart from a $2,000,000-average one — both land in the same open-ended top bracket — so this fills in the one number Census can't provide, letting genuinely wealthy areas score as such. Independent of the Census demographics load above; run both for the most accurate Wealth Index.</p>
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
         <div class="field-row three">
           <div>
@@ -681,7 +695,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-qualified-wealth-index-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-real-top-bracket-income';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1060,21 +1074,51 @@ const REF_DATA_SOURCES = {
           }, 0);
           out.push({ zip, attribute: `population_${gen}`, value: total });
         });
-        // One derived weighted-average household income estimate from the
-        // real B19001 bracket distribution — a disclosed approximation
-        // (bracket midpoints), not all 16 raw brackets per zip; see the
-        // backend's ACS_INCOME_BRACKET_MIDPOINTS comment for why. (Round
-        // 2026-09-10 briefly also emitted per-bracket income_hh_* counts
-        // here to estimate a household-income-qualifying share — Todd
-        // rejected that approach ("I don't want you to use the census
-        // age - income bracket. It's worthless") in favor of reusing the
-        // already-computed ring-level Verilume Wealth Index instead, so
-        // that extra pull is removed; no reload of this data is needed.)
+        // Real per-bracket household counts (B19001) — round 2026-09-10
+        // briefly emitted these to estimate a household-income-qualifying
+        // share, which Todd rejected ("I don't want you to use the census
+        // age - income bracket. It's worthless") in favor of the ring-level
+        // Verilume Wealth Index alone. Round 2026-09-11 brought them back
+        // for a different, narrower purpose: computeStoreProspectFit()'s
+        // zipAvgIncomeBackend() now computes ONE weighted-average income
+        // per zip live (same idea as the old income_avg_estimate below,
+        // just computed at read time instead of precomputed here), so it
+        // can substitute a real per-zip $200k+ average (income_top_bracket_
+        // avg, IRS-sourced — see the /proxy/irs-top-bracket-income backend
+        // comment) for the flat $225,000 top-bracket assumption when that
+        // data is loaded. That substitution needs the real per-bracket
+        // household counts to redo the weighting, not just one already-
+        // collapsed average — hence these are back, this time to fix a
+        // real accuracy bug (Census's open-ended "$200,000 or more"
+        // bracket silently capping every wealthy area's score), not to
+        // qualify individual brackets against a tier.
         const totalHouseholds = col(row, 'B19001_001E');
         if (totalHouseholds > 0){
-          const weightedSum = (meta.incomeBracketMidpoints || []).reduce((sum, pair) => sum + col(row, `B19001_${pair[0]}E`) * pair[1], 0);
-          out.push({ zip, attribute: 'income_avg_estimate', value: Math.round(weightedSum / totalHouseholds) });
+          out.push({ zip, attribute: 'income_hh_total', value: totalHouseholds });
+          (meta.incomeBracketMidpoints || []).forEach(([code]) => {
+            out.push({ zip, attribute: `income_hh_${code}`, value: col(row, `B19001_${code}E`) });
+          });
         }
+      });
+      return out;
+    }
+  },
+  // irsTopBracketIncome — 2026-09-11, the real-data fix for Census's
+  // open-ended "$200,000 or more" bracket (see zipAvgIncomeBackend()'s
+  // comment in server.js for the full mechanism/why). The backend proxy
+  // already does the CSV parsing/filtering server-side and hands back a
+  // small, already-shaped { zip, returns, avgIncome } array, so this
+  // parse() is just a straight map into the generic attribute-row shape
+  // every other loader here uses — no Census-style header/column lookup
+  // needed.
+  irsTopBracketIncome: {
+    sourceLabel: null, // set from the proxy response itself (prJson.sourceLabel) — see refDataLoadIrsTopBracketIncome()
+    parse: (rows) => {
+      const out = [];
+      (rows || []).forEach(r => {
+        if (!/^\d{5}$/.test(r.zip)) return;
+        out.push({ zip: r.zip, attribute: 'income_top_bracket_avg', value: r.avgIncome });
+        out.push({ zip: r.zip, attribute: 'income_top_bracket_returns', value: r.returns });
       });
       return out;
     }
@@ -1158,6 +1202,37 @@ async function refDataLoadDemographics(statesCsv){
   } catch (e){
     say(`Couldn't load demographics: ${e && e.message ? e.message : e}`);
   } finally { if (testBtn) testBtn.disabled = false; if (fullBtn) fullBtn.disabled = false; }
+}
+// refDataLoadIrsTopBracketIncome — 2026-09-11. Loads real per-zip average
+// income for Census's open-ended "$200,000 or more" bracket from IRS SOI's
+// public ZIP-code tax-return data (one national CSV, no API key), fixing
+// the flat $225,000 assumption that was silently capping every genuinely
+// wealthy area's Wealth Index at "upper-middle-class" — see
+// zipAvgIncomeBackend()'s comment in server.js for the full mechanism.
+// Independent of the Census "Load demographics" pull above — either can be
+// (re)run on its own — but computeStoreProspectFit() gets the most
+// accurate result once BOTH are loaded: Census demographics for the real
+// per-bracket household counts (income_hh_*), this for the real top-
+// bracket dollar average.
+async function refDataLoadIrsTopBracketIncome(){
+  const status = document.getElementById('refDataLoadStatus');
+  const say = (t) => { if (status) status.textContent = t; };
+  const btn = document.getElementById('refDataLoadIrsTopBracketBtn');
+  if (btn) btn.disabled = true;
+  try {
+    say('Fetching IRS SOI ZIP-code top-bracket income data from irs.gov (one national file — can take a little while)…');
+    const pr = await opsAuthedFetch(`${BACKEND_URL}/api/market-reference-data/proxy/irs-top-bracket-income`, { timeoutMs: 110000 });
+    if (!pr.ok){ const t = await pr.text().catch(() => ''); throw new Error(`IRS SOI fetch HTTP ${pr.status} ${t.slice(0, 200)}`); }
+    const prJson = await pr.json();
+    const rows = REF_DATA_SOURCES.irsTopBracketIncome.parse(prJson.rows);
+    if (!rows.length) throw new Error('IRS SOI data returned no usable zip rows');
+    say(`${(prJson.zctaCount || 0).toLocaleString()} zip(s) with real top-bracket income data. Loading ${rows.length.toLocaleString()} attribute rows…`);
+    const d = await refDataPostChunks('/api/market-demographic-master', rows, { sourceLabel: prJson.sourceLabel || 'IRS Statistics of Income (SOI), ZIP Code Data — irs.gov' }, (done, n) => say(`Loading IRS top-bracket income ${done.toLocaleString()} / ${n.toLocaleString()}…`));
+    say(`Done — ${(prJson.zctaCount || 0).toLocaleString()} zip(s) covered. ${d.inserted.toLocaleString()} attribute rows loaded.${d.errors.length ? ` Some rows were skipped: ${d.errors.slice(0, 3).join(' · ')}` : ''}`);
+    refDataLoadStatus();
+  } catch (e){
+    say(`Couldn't load IRS top-bracket income: ${e && e.message ? e.message : e}`);
+  } finally { if (btn) btn.disabled = false; }
 }
 async function refDataLoadPublic(){
   const status = document.getElementById('refDataLoadStatus');
