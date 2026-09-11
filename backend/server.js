@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-ledger-training-digest (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-voice-guardrail-direct-wiring (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2286,7 +2286,20 @@ function brandVoiceCriticalMessagesContext(account, extra){
   try {
     const ctx = account.accountId ? websiteContextRollup(account.accountId) : null;
     if (ctx){
-      const siteFacts = [ctx.title, ctx.metaDescription, ...(Array.isArray(ctx.headings) ? ctx.headings : [])].filter(Boolean).slice(0, 12).join(' | ').slice(0, 600);
+      // 2026-09-12 fix, per this round's finding (cxmedia-voice-guardrail-
+      // direct-wiring): ctx.excerpt (the real page body text
+      // websiteContextRollup() already computes/returns) used to be
+      // dropped entirely here — only title/metaDescription/headings ever
+      // reached the prompt, and the whole combined block was capped at
+      // 600 chars, versus Sample Writings getting up to 900 chars EACH
+      // across up to 3 samples in this same prompt. Excerpt is now
+      // appended (clearly delimited with its own "| Excerpt:" label so it
+      // reads as body text, not another heading) and the cap is raised to
+      // 1400 — closer to, though still below, the sample-writing budget,
+      // since this remains brand-UNDERSTANDING context rather than a
+      // writing-style reference the way samples are.
+      const siteFactsBase = [ctx.title, ctx.metaDescription, ...(Array.isArray(ctx.headings) ? ctx.headings : [])].filter(Boolean).slice(0, 12).join(' | ');
+      const siteFacts = (siteFactsBase + (ctx.excerpt ? ` | Excerpt: ${ctx.excerpt}` : '')).slice(0, 1400);
       if (siteFacts) lines.push(`This brand's own website (${ctx.url || account.websiteUrl || 'on file'}) — for UNDERSTANDING the brand only, never to be quoted verbatim in the drafted copy: ${siteFacts}`);
     }
   } catch (e){ /* malformed ledger content — fall through without it */ }
@@ -2386,9 +2399,9 @@ TERMS TO AVOID for this account (literal exclusions and/or tone-to-avoid phrases
 Write the guide with these sections, in this order:
 1. One-line description of how this brand sounds and who it's speaking to.
 2. Point of view (e.g. second person "you," first person plural "we") — state it explicitly and use it consistently in every example below.
-3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above.
+3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above. None of these rules may themselves use any phrase from the Terms to Avoid list above — that list is not just a section to write, it's a real constraint on every word you choose in this guide.
 4. Words/phrases to avoid — ONLY if the Terms to Avoid list above is non-empty. Each one MUST be written on its own line in EXACTLY this format: avoid "the exact phrase" — copy each phrase from the Terms to Avoid list verbatim inside the quotes, one per line, using the word "avoid" specifically (not "never say"/"don't use"/other synonyms) so this section is mechanically checkable. Do not invent phrases that aren't on that list, and do not skip this section if the list above is non-empty.
-5. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above).
+5. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above). Neither example sentence may use any phrase from the Terms to Avoid list above.
 
 Then, SEPARATELY from the draft text above (in the gaps field, not inside the draft), identify what's genuinely missing that would make this draft stronger — e.g. no Products & Services on file, no Sample Writings on file, no competitors entered, no scanned website on file, no Terms to Avoid entered yet. Only list gaps that are actually true of the context given above; an empty gaps array is correct if everything relevant is genuinely on file — never invent a gap that isn't real. Also give your real reasoning for this specific draft in the whyDraft field — what you grounded it in from the real inputs above, and what you didn't have.
 
@@ -3533,6 +3546,65 @@ function websiteContextRollup(accountId){
     WHERE accountId = ? AND sourceType = 'website_scan' ORDER BY createdAt DESC LIMIT 1`).get(accountId);
   if (!latest) return null;
   try { return JSON.parse(latest.contentJson); } catch (e){ return null; }
+}
+
+// 2026-09-12 — Voice Guardrail Direct Wiring round. Terms to Avoid and
+// website context previously only reached a copy-generation prompt
+// INDIRECTLY, via whatever text a human happened to copy into the approved
+// account.voiceGuideText the last time they ran generate+approve on the
+// Voice Draft flow (generateVoiceGuideDraftViaAI above). That created a
+// staleness gap the client explicitly flagged: a term added to Terms to
+// Avoid today, or a website rescan applied today, would silently NOT reach
+// campaign or PR/Corp Comm copy generation until someone separately
+// regenerated AND reapproved the Voice Guide. This function closes that
+// gap by reading both signals fresh off the DB/ledger every time a copy
+// prompt is built, independent of Voice Guide staleness, and is wired
+// directly into generateMessagingCopyViaAI's and buildPrCorpCommPrompt's
+// sampleContext chains below (see the comments at each call site) — ON TOP
+// OF the existing Voice-Guide-mediated path, not instead of it.
+//
+// Sibling of websiteContextRollup() above and takes only an accountId
+// (not a full account row) because it's called from two different
+// generation paths that already have the account for other reasons — a
+// standalone accountId-keyed lookup is simpler to wire into both than
+// threading a parsed-keywords value through. Same honest-empty-string
+// convention as every other ...Context(accountId) function in this file
+// (brandWritingSampleContext, creativeJobDecisionContext,
+// trainingDigestRollupContext, etc. below) — returns '' on any lookup
+// failure via try/catch, and never blocks real copy generation.
+async function liveGuardrailContext(accountId){
+  try {
+    if (!accountId) return '';
+    const lines = [];
+    // Terms to Avoid — read fresh off accounts.brandKeywordsJson.negative.
+    // Looked up directly here (rather than accepting a parsed account row,
+    // the way generateVoiceGuideDraftViaAI does at line ~2373-2377) since
+    // this is a standalone function keyed only on accountId.
+    const row = db.prepare('SELECT brandKeywordsJson FROM accounts WHERE accountId = ?').get(accountId);
+    let avoidWords = [];
+    try {
+      const parsed = row && row.brandKeywordsJson ? JSON.parse(row.brandKeywordsJson) : null;
+      if (parsed && Array.isArray(parsed.negative)) avoidWords = parsed.negative.filter(Boolean);
+    } catch (e){ /* malformed/legacy brandKeywordsJson — fall through without it */ }
+    if (avoidWords.length){
+      lines.push(`\nCURRENT TERMS TO AVOID FOR THIS ACCOUNT (live, human-entered — may not yet be reflected in the Voice Guide text above if it hasn't been regenerated recently; these apply regardless): ${avoidWords.map(w => `"${w}"`).join(', ')}\nDo not use any of these words or phrases anywhere in the copy, even if not otherwise flagged.\n`);
+    }
+    // Website context — same computed rollup brandVoiceCriticalMessagesContext()
+    // uses (see that function's comment above for why this reads the
+    // ledger rollup rather than accounts.websiteContextJson directly), and
+    // the same "never quote verbatim" framing. Includes excerpt with the
+    // same 1400-char cap as this round's fix to
+    // brandVoiceCriticalMessagesContext(), so this direct-wiring path gets
+    // equal-quality website signal to the indirect (Voice-Guide-mediated)
+    // path rather than a lesser version of it.
+    const ctx = websiteContextRollup(accountId);
+    if (ctx){
+      const siteFactsBase = [ctx.title, ctx.metaDescription, ...(Array.isArray(ctx.headings) ? ctx.headings : [])].filter(Boolean).slice(0, 12).join(' | ');
+      const siteFacts = (siteFactsBase + (ctx.excerpt ? ` | Excerpt: ${ctx.excerpt}` : '')).slice(0, 1400);
+      if (siteFacts) lines.push(`\nTHIS BRAND'S OWN WEBSITE — CURRENT UNDERSTANDING (live; title/description/headings/excerpt — for UNDERSTANDING the brand only, never to be quoted verbatim in the drafted copy): ${siteFacts}\n`);
+    }
+    return lines.join('');
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
 // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
@@ -10248,7 +10320,17 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // nothing applied yet — see trainingDigestRollupContext()'s comment
     // for why this one has no "latest row" fallback the way website
     // context does).
-    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId));
+    // 2026-09-12 — Voice Guardrail Direct Wiring. Unlike
+    // creativeJobDecisionContext()/trainingDigestRollupContext() above,
+    // which are deliberately campaign-copy-only (see their own comments),
+    // liveGuardrailContext() is account-wide guardrail/understanding
+    // signal (Terms to Avoid + live website context) that belongs in
+    // EVERY generator, not just this one — it's wired into
+    // buildPrCorpCommPrompt() below the same way. Appended last so it
+    // reads as the final, most current word on avoid-terms and website
+    // understanding, layered on top of (not replacing) whatever the
+    // approved Voice Guide text above already says.
+    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId)) + (await liveGuardrailContext(account.accountId));
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -10583,7 +10665,13 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // campaigns. Deliberately still NOT creativeJobDecisionContext() here —
   // that stays campaign-scoped, per the isolation both functions' own
   // comments describe; PR now has its own equivalent instead of none.
-  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId));
+  // 2026-09-12 — Voice Guardrail Direct Wiring. Same liveGuardrailContext()
+  // call generateMessagingCopyViaAI() makes above — Terms to Avoid and
+  // live website context are account-wide guardrail/understanding signal,
+  // not campaign-scoped, so PR/Corp Comm gets it too (unlike
+  // creativeJobDecisionContext(), which stays campaign-only by design —
+  // see the comment above this function).
+  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId));
   // 2026-09-12 — Competitive Positioning, mirroring the same block
   // generateMessagingCopyViaAI() builds from account.competitorsJson
   // (which buildPrCorpCommPrompt never read before today). Same "internal
@@ -11636,7 +11724,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-ai-brain-ledger-training-digest',
+        buildStamp: '2026-09-12-voice-guardrail-direct-wiring',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21122,5 +21210,3 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
-
-
