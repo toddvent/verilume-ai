@@ -3991,6 +3991,21 @@
           </div>
           <div class="fld-tip" id="tipTermsToAvoid" style="margin-bottom:10px;">This list drives real exclusions, not just a record: it's kept out of the generated Voice draft and the Brand &amp; Product Keywords above, and it's what campaign copy is checked against for the Brand Voice guardrail/compliance flag shown in campaign briefs and the Daily Brief. Add a short tone/style phrase (not just single words) to also steer the Voice draft's "what this voice is not" framing.</div>
           <div id="brandKeywordsNegativeList"></div>
+          <!-- 2026-09-12 fix — Terms to Avoid had no Save button of its own
+               and addBrandKeywordChip()/removeBrandKeywordChip() only ever
+               mutated client-side state, so a user who added chips here and
+               never scrolled up to the OTHER module's "Save →" button had
+               those terms sitting only in the browser tab, never persisted
+               (confirmed live: the Voice Draft generator honestly reported
+               "no Terms to Avoid on file yet" despite chips visibly present
+               in the UI). Chip add/remove now auto-saves (see
+               addBrandKeywordChip/removeBrandKeywordChip below) for all
+               three groups, so the visual confirmation of a chip appearing
+               means it's actually saved. This status element mirrors
+               #brandKeywordsSaveFlag (up in #brandKeywordsModule, physically
+               far from here) right where the user is actually working —
+               saveBrandKeywords() below now writes into both.-->
+          <div id="brandKeywordsNegativeSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:12px;"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <input type="text" id="brandKeywordsNegativeInput" placeholder="e.g. &quot;hack&quot; or &quot;budget airline chipper&quot;..." style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandKeywordChip('negative');}">
             <button type="button" class="btn-ghost" style="padding:8px 14px;" onclick="addBrandKeywordChip('negative')">Add</button>
@@ -9185,7 +9200,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-ledger-training-digest';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-guardrail-direct-wiring';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -48224,6 +48239,20 @@ function addBrandKeywordChip(group){
   // with the pick, same as the old Tone Anchors click handler used to (see
   // the removed renderToneAnchors()).
   if (group === 'brand' && typeof renderFaqI === 'function') renderFaqI();
+  // 2026-09-12 fix — this used to only mutate state.brandKeywords and
+  // re-render chips, never persisting to the backend. A chip appearing was
+  // no guarantee it was saved: the Terms to Avoid module (group='negative')
+  // has no Save button of its own, so a user working only there could add
+  // chips all session and lose every one of them (confirmed live — the
+  // Voice Draft generator honestly reported "no Terms to Avoid on file
+  // yet" despite chips visibly present). Now every add auto-saves, for all
+  // three groups, so the chip UI can't lie about what's persisted. Not
+  // awaited — this fires the save in the background and lets the chip
+  // render happen immediately, same non-blocking convention used
+  // elsewhere in this file for background saves; saveBrandKeywords()
+  // itself surfaces success/failure into the status flag(s) once it
+  // resolves.
+  saveBrandKeywords();
 }
 
 function removeBrandKeywordChip(group, i){
@@ -48236,6 +48265,10 @@ function removeBrandKeywordChip(group, i){
   state.brandKeywords[group].splice(i, 1);
   renderBrandKeywordChips();
   if (group === 'brand' && typeof renderFaqI === 'function') renderFaqI();
+  // 2026-09-12 fix — same auto-save as addBrandKeywordChip() above; a
+  // removed chip needs to actually reach the backend too, not just
+  // disappear from the client-side render.
+  saveBrandKeywords();
 }
 
 // 2026-08-26 — removed: seedNegativeKeywordsFromAvoidWords() used to pull
@@ -48244,7 +48277,19 @@ function removeBrandKeywordChip(group, i){
 // that field used to feed. Nothing left to pull in from.
 
 async function saveBrandKeywords(){
+  // 2026-09-12 fix — this used to write status into ONLY
+  // #brandKeywordsSaveFlag, which lives inside #brandKeywordsModule
+  // (Brand & Product Keywords), physically far from #negativeKeywordsModule
+  // (Terms to Avoid). Now that chip add/remove auto-saves from BOTH
+  // modules (see addBrandKeywordChip/removeBrandKeywordChip above), a user
+  // working only in Terms to Avoid needs to see save confirmation right
+  // where they're actually working, not just up in the other module — so
+  // this writes into both status elements when they exist. The manual
+  // "Save →" button in the Brand & Product Keywords module still calls
+  // this function directly too; it's now just a redundant/idempotent
+  // trigger of the same auto-save, not removed.
   const flag = document.getElementById('brandKeywordsSaveFlag');
+  const negativeFlag = document.getElementById('brandKeywordsNegativeSaveFlag');
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
@@ -48255,11 +48300,11 @@ async function saveBrandKeywords(){
       persisted = resp.ok;
     } catch (e){ /* falls through to local-only flag below */ }
   }
-  if (flag){
-    flag.textContent = persisted
-      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
-      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-  }
+  const message = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
+  if (flag) flag.textContent = message;
+  if (negativeFlag) negativeFlag.textContent = message;
 }
 
 // Round 18 — renders the Voice page's state on entry: if a voice guide is
