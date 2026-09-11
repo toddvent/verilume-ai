@@ -4597,6 +4597,62 @@
       <div class="hint" id="cpIndustryDetailsSaveFlag" style="margin-top:8px;"></div>
     </div>
 
+    <!-- 2026-09-12 — Website understanding (AI Brain Contribution Ledger,
+         "website context first" build-order item). Replaces the old
+         single-result "run a scan, see the latest result" shape (which
+         never actually shipped a UI trigger in this file) with a real scan
+         HISTORY: every POST /api/accounts/:id/website-scan is now its own
+         permanent, dated ai_brain_contributions row (server.js), never
+         silently overwritten by the next rescan. Reference/Apply/Remove
+         mirrors the MMM adstock/lag decision pattern exactly (see
+         mmmSetAdstockLagDecision()/renderMmmReadinessPanel() — same
+         cfd-standup explainer component, same prompt()-based reason
+         capture). See cpRunWebsiteScan()/cpRenderWebsiteScanHistory()/
+         cpSetWebsiteContextDecision() below. -->
+    <div id="cpWebsiteContextCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Website understanding</p>
+      <div class="hint" style="margin-bottom:12px;">Every scan of your own website (below) is kept permanently — nothing is ever silently overwritten. Decide which scans actively inform your AI-drafted copy.</div>
+      <div class="cfd cfd-ws">
+        <div class="cfd-standup" style="margin-bottom:0;">
+          <div class="cfd-avatar">✦</div>
+          <div class="cfd-bubble">
+            <strong>How to use this:</strong> each scan below is a real, dated read of your website. <strong>Reference</strong> keeps a scan visible on file but it doesn't yet feed your AI-drafted copy. <strong>Applied</strong> means it's actively part of what your account's AI-generated copy is grounded in — for brand UNDERSTANDING only, never quoted verbatim. <strong>Removed</strong> marks a scan as a false read and excludes it everywhere; a reason is required and kept on the record. Every decision is reversible and logged, never silently lost.
+          </div>
+        </div>
+      </div>
+      <div class="btn-row" style="margin:12px 0;">
+        <button type="button" class="btn-ghost" onclick="cpRunWebsiteScan()">Scan website now →</button>
+      </div>
+      <div class="hint" id="cpWebsiteScanFlag" style="margin-bottom:10px;"></div>
+      <div id="cpWebsiteScanHistory"></div>
+    </div>
+
+    <!-- 2026-09-12 — Training digest pooling (AI Brain Contribution
+         Ledger, Round 2 / build-order item 2). Same card shape as
+         cpWebsiteContextCard directly above (history list + cfd-standup
+         explainer + Reference/Apply/Remove buttons), except there is no
+         "run" trigger button here — these rows are created automatically
+         server-side the moment a human flags a campaign's messaging
+         ("Flag this style for future editorial improvements" on the
+         campaign page, cmpSaveMessagingForTraining()), not from this
+         Company Profile card. See cpLoadTrainingDigestHistory()/
+         cpRenderTrainingDigestHistory()/cpSetTrainingDigestDecision()
+         below. -->
+    <div id="cpTrainingDigestCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Training digest — flagged campaign styles</p>
+      <div class="hint" style="margin-bottom:12px;">When a campaign's messaging is flagged ("Flag this style for future editorial improvements" on the campaign page), its structural style pattern — never the literal copy — lands here as its own permanent record. Decide which ones actively shape future campaign copy.</div>
+      <div class="cfd cfd-td">
+        <div class="cfd-standup" style="margin-bottom:0;">
+          <div class="cfd-avatar">✦</div>
+          <div class="cfd-bubble">
+            <strong>How to use this:</strong> each entry below is one campaign's flagged style pattern — role/style approach, message type, length and rhythm — never its actual Key Message or Long Form Copy text. <strong>Reference</strong> keeps it visible but it doesn't yet feed new campaign copy. <strong>Applied</strong> means it's part of the account-wide style pattern your AI-drafted campaign copy is grounded in. <strong>Removed</strong> excludes it, with a required reason. A cancelled campaign's flag is cleared automatically.
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="cpTrainingDigestFlag" style="margin-bottom:10px;"></div>
+      <div id="cpTrainingDigestHistory"></div>
+    </div>
+
     <div class="btn-row">
       <button class="btn-primary" onclick="saveCompanyProfile()">Save →</button>
     </div>
@@ -9129,7 +9185,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-pr-ai-brain-parity';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-ledger-training-digest';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14801,10 +14857,17 @@ async function loadAccountData(){
       // this is used -- understanding only, never a copy source, per round
       // 132bh's correction). Parsed once here so every page load has it
       // available without a re-fetch.
-      if (record.account.websiteContextJson){
-        try { state.websiteContext = JSON.parse(record.account.websiteContextJson); }
-        catch (e){ state.websiteContext = null; }
-      }
+      //
+      // 2026-09-12 — AI Brain Contribution Ledger, "website context first":
+      // the account's single websiteContextJson column is no longer kept
+      // current server-side (every real scan is its own permanent, dated
+      // ai_brain_contributions row now — see Company Profile's scan history
+      // list, cpRenderWebsiteScanHistory()). record.account.websiteContextRollup
+      // is the computed fold over currently-applied scans (server-side
+      // websiteContextRollup()), attached by GET /api/accounts/:id itself —
+      // this is the same object shape the old column held, so every reader
+      // below (cmpBrandUnderstandingSummary() etc.) needed no change.
+      state.websiteContext = record.account.websiteContextRollup || null;
       // Round 53 — org_model (team/solo), per the Media Plan scoping doc's
       // solo/local-business flow. Governs UI density elsewhere (nav, Media
       // Plan tranche complexity) via applyOrgModel(), called once state is
@@ -48813,6 +48876,199 @@ function renderCompanyProfileStep(){
     renderCpHowYouSellFields();
     renderCpIndustryDetailsCard();
   });
+  cpLoadWebsiteScanHistory();
+  cpLoadTrainingDigestHistory();
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, "website context first".
+// Runs a real, live scan of this account's own websiteUrl (same
+// POST /api/accounts/:id/website-scan endpoint as before — the honest-
+// failure behavior on no URL/network error/timeout/non-2xx is unchanged).
+// The result now always lands as a new, permanent row in this account's
+// scan history rather than overwriting a single field, so this reloads
+// the history afterward instead of displaying a one-off result.
+async function cpRunWebsiteScan(){
+  const flag = document.getElementById('cpWebsiteScanFlag');
+  if (flag) flag.textContent = 'Scanning your website…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-scan`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (flag) flag.textContent = data.error || 'Could not scan the website right now.'; return; }
+    if (flag) flag.textContent = `Scanned ${new Date().toLocaleTimeString()} — saved to your scan history below.`;
+    await cpLoadWebsiteScanHistory();
+    // Refresh the account record too, since a freshly-scanned, not-yet-
+    // decided account's website understanding comes from this new
+    // contribution via websiteContextRollup()'s fallback (see server.js).
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not scan.'; }
+}
+
+async function cpLoadWebsiteScanHistory(){
+  const el = document.getElementById('cpWebsiteScanHistory');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading scan history…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-context-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load scan history right now.</p>'; return; }
+    const data = await resp.json();
+    cpRenderWebsiteScanHistory(data.contributions || []);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load scan history.</p>'; }
+}
+
+function cpRenderWebsiteScanHistory(contributions){
+  const el = document.getElementById('cpWebsiteScanHistory');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No scans on file yet — run one above.</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return '<span style="color:var(--cx);font-weight:600;">Applied — actively feeding your AI-drafted copy</span>';
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed — false read, excluded</span>';
+    return '<span style="color:var(--muted);">Reference only</span>';
+  };
+  el.innerHTML = contributions.map(c => {
+    const ctx = c.content || {};
+    const facts = [ctx.title, ctx.metaDescription, ...(Array.isArray(ctx.headings) ? ctx.headings.slice(0, 5) : [])].filter(Boolean).join(' | ').slice(0, 400);
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(ctx.url || 'Scan')} — ${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}</p>
+        ${statusBadge(c)}
+      </div>
+      <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(facts) || 'No title/meta/headings extracted from this scan.'}</p>
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="cpSetWebsiteContextDecision('${escapeHtml(c.id)}','reference')">Reference</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="cpSetWebsiteContextDecision('${escapeHtml(c.id)}','applied')">Apply</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="cpSetWebsiteContextDecision('${escapeHtml(c.id)}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Records a human's Reference/Apply/Remove decision on one website scan —
+// exact same prompt()-based reason-capture pattern as
+// mmmSetAdstockLagDecision() above: required reason on Remove, optional
+// note otherwise, a name-for-the-record prompt. Reuses state.mmmDecisionName
+// for that name (same "your name for the record" concept as MMM, no reason
+// to make the account holder re-type it a second time for a second ledger).
+async function cpSetWebsiteContextDecision(contributionId, status){
+  const flag = document.getElementById('cpWebsiteScanFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why is this website scan a false read? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this scan "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-context-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    if (flag) flag.textContent = `Saved — scan marked "${status}".`;
+    await cpLoadWebsiteScanHistory();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
+// pooling). Exact mirror of cpLoadWebsiteScanHistory() above, hitting the
+// training-digest-decisions endpoints instead of website-context-decisions.
+async function cpLoadTrainingDigestHistory(){
+  const el = document.getElementById('cpTrainingDigestHistory');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading flagged campaign history…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/training-digest-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load flagged campaign history right now.</p>'; return; }
+    const data = await resp.json();
+    cpRenderTrainingDigestHistory(data.contributions || []);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load flagged campaign history.</p>'; }
+}
+
+// Mirror of cpRenderWebsiteScanHistory() above, but each row shows the
+// structural digest fields (see cmpMessagingStyleDigest() — role/style,
+// message type, word/paragraph counts, offer-held-separate, primary KPI,
+// QA score at flag) plus which campaign it came from
+// (campaignLabel/campaignId), instead of website title/meta/headings.
+function cpRenderTrainingDigestHistory(contributions){
+  const el = document.getElementById('cpTrainingDigestHistory');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No campaigns flagged yet — flag one from its campaign page under "Flag this style for future editorial improvements."</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return '<span style="color:var(--cx);font-weight:600;">Applied — actively feeding your AI-drafted campaign copy</span>';
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed — excluded</span>';
+    return '<span style="color:var(--muted);">Reference only</span>';
+  };
+  el.innerHTML = contributions.map(c => {
+    const d = c.content || {};
+    const facts = [
+      d.roleStyle ? `Role/Style: ${d.roleStyle}` : null,
+      d.messageType ? `Message type: ${d.messageType}` : null,
+      typeof d.keyMessageWordCount === 'number' ? `Key Message: ${d.keyMessageWordCount}w` : null,
+      typeof d.longFormWordCount === 'number' ? `Long Form: ${d.longFormWordCount}w${typeof d.longFormParagraphCount === 'number' ? ` / ${d.longFormParagraphCount} paragraphs` : ''}` : null,
+      typeof d.avgWordsPerSentence === 'number' ? `~${d.avgWordsPerSentence} words/sentence` : null,
+      d.offerHeldSeparate === true ? 'Offer held separate' : (d.offerHeldSeparate === false ? 'Offer woven in' : null),
+      d.primaryKpi ? `Primary KPI: ${d.primaryKpi}` : null,
+      typeof d.messagingQaScoreAtFlag === 'number' ? `QA score at flag: ${d.messagingQaScoreAtFlag}` : null
+    ].filter(Boolean).join(' | ');
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(c.campaignLabel || c.campaignId || 'Campaign')} — ${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}</p>
+        ${statusBadge(c)}
+      </div>
+      <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(facts) || 'No structural digest fields on this entry.'}</p>
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="cpSetTrainingDigestDecision('${escapeHtml(c.id)}','reference')">Reference</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="cpSetTrainingDigestDecision('${escapeHtml(c.id)}','applied')">Apply</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="cpSetTrainingDigestDecision('${escapeHtml(c.id)}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Exact mirror of cpSetWebsiteContextDecision() above, hitting
+// training-digest-decisions instead — same prompt()-based reason/name
+// capture, same state.mmmDecisionName reuse.
+async function cpSetTrainingDigestDecision(contributionId, status){
+  const flag = document.getElementById('cpTrainingDigestFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why should this flagged campaign\'s style be excluded? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/training-digest-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    if (flag) flag.textContent = `Saved — marked "${status}".`;
+    await cpLoadTrainingDigestHistory();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
 
 function cpSetIndustry(value){
