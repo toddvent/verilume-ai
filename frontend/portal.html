@@ -9129,7 +9129,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-consolidation';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-pr-ai-brain-parity';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -41343,6 +41343,73 @@ const PRC_TYPE_CONFIG = {
   corp: { endpoint: 'corporate-comms', stateKey: 'corporateComms', idPrefix: 'CCM', statusMap: { approved: ['sent', 'Approved'], draft: ['pending', 'Draft'] }, nextStatus: { draft: 'approved', approved: 'draft' }, nextLabel: { draft: 'Mark Approved →', approved: 'Revert to Draft' } }
 };
 
+// 2026-09-12, per direct instruction — "I think that PR as a starting
+// point can benefit from everything except campaigns." Backend docType
+// strings (PR_DOC_TYPE_CONFIG on the server) differ from the frontend's
+// own short PRC_TYPE_CONFIG keys above ('press'/'editorial'/'corp'), so
+// this maps one to the other for the new copy-decision endpoints.
+const PRC_DOC_TYPE_MAP = { press: 'press_release', editorial: 'editorial_pitch', corp: 'corporate_comms' };
+
+// Structured approve/reject-with-reason capture for PR & Corp Comm copy —
+// mirrors submitCopyDecision()/loadCopyDecisionHistory() above (creative
+// jobs' own equivalent), calling the new
+// POST/GET /api/accounts/:id/pr-corp-comm/:docType/:recId/copy-decision(s)
+// endpoints instead. A separate signal from prcToggleStatus() above (which
+// advances the item's own draft/distributed-style workflow status) — this
+// captures WHY a specific draft of the copy was or wasn't accepted, fed
+// back into the next AI draft via the backend's
+// prCorpCommDecisionContext().
+async function prcSubmitCopyDecision(type, id, approved){
+  const docType = PRC_DOC_TYPE_MAP[type];
+  const reasonEl = document.getElementById(`prcDecisionReason-${type}-${id}`);
+  const reason = ((reasonEl && reasonEl.value) || '').trim();
+  const flag = document.getElementById(`prcDecisionFlag-${type}-${id}`);
+  if (!approved && !reason){
+    if (flag) flag.textContent = 'Add a reason before rejecting — that\'s what the next draft learns from.';
+    if (reasonEl) reasonEl.focus();
+    return;
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-corp-comm/${docType}/${encodeURIComponent(id)}/copy-decision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved, reason: reason || undefined })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok){
+      if (flag) flag.textContent = approved ? 'Approved.' : 'Rejected — logged for the next draft.';
+      if (reasonEl) reasonEl.value = '';
+      prcLoadDecisionHistory(type, id);
+    } else {
+      if (flag) flag.textContent = data.error || 'Couldn\'t save this decision — try again.';
+    }
+  } catch (e){
+    if (flag) flag.textContent = 'Backend unreachable — decision not saved.';
+  }
+}
+async function prcLoadDecisionHistory(type, id){
+  const docType = PRC_DOC_TYPE_MAP[type];
+  const holder = document.getElementById(`prcDecisionHistory-${type}-${id}`);
+  if (!holder) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-corp-comm/${docType}/${encodeURIComponent(id)}/copy-decisions`);
+    if (!resp.ok) return;
+    const { decisions } = await resp.json();
+    if (!decisions || !decisions.length){ holder.innerHTML = ''; return; }
+    const rows = decisions.slice().reverse().map(d => {
+      const when = new Date(d.decidedAt).toLocaleString();
+      const label = d.approved
+        ? `<span style="color:var(--cx);font-weight:600;">Approved</span>`
+        : `<span style="color:var(--advocacy);font-weight:600;">Rejected</span>`;
+      const reasonHtml = d.reason ? ` — "${escapeHtml(d.reason)}"` : '';
+      return `<div style="padding:5px 0;border-bottom:1px solid var(--line);font-size:0.8125rem;">${label} <span class="hint">${when}</span>${reasonHtml}</div>`;
+    }).join('');
+    holder.innerHTML = `<div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;margin-bottom:4px;">Decision history</div>${rows}`;
+  } catch (e){
+    // History is a nice-to-have on this panel — a failed fetch here
+    // shouldn't block the rest of the panel from working.
+  }
+}
+
 async function prcCreate(type, fields){
   const cfg = PRC_TYPE_CONFIG[type];
   const statusEl = document.getElementById(`prc${type}NewStatus`);
@@ -41505,6 +41572,24 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
         <textarea id="prcCopy-${type}-${item.id}" rows="6" style="width:100%;font-family:inherit;">${escapeHtml(item.workingCopy || '')}</textarea>
         <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveCopy('${type}','${item.id}')">Save →</button></div>
         <div id="prcCopyStatus-${type}-${item.id}" class="hint" style="margin-top:4px;"></div>
+        <!-- 2026-09-12, per direct instruction — "I think that PR as a
+             starting point can benefit from everything except campaigns."
+             Structured approve/reject-with-reason capture for this draft,
+             mirroring creative jobs' copy-decision panel (submitCopyDecision()
+             above), writing to the new pr_corp_comm_decisions table via
+             prcSubmitCopyDecision(). -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+          <div class="btn-row" style="flex-wrap:wrap;">
+            <button type="button" class="btn-ghost" onclick="prcSubmitCopyDecision('${type}','${item.id}', true)">Approve copy →</button>
+            <button type="button" class="btn-ghost" onclick="prcSubmitCopyDecision('${type}','${item.id}', false)">Reject copy →</button>
+          </div>
+          <div class="field" style="margin-top:8px;">
+            <label for="prcDecisionReason-${type}-${item.id}">Reason (required to reject; helps the next draft)</label>
+            <textarea id="prcDecisionReason-${type}-${item.id}" rows="2" placeholder="e.g. Too aggressive a claim for this outlet, missing the required disclosure..."></textarea>
+          </div>
+          <div id="prcDecisionFlag-${type}-${item.id}" class="hint" style="margin-top:4px;"></div>
+          <div id="prcDecisionHistory-${type}-${item.id}" style="margin-top:8px;"></div>
+        </div>
         ${type === 'press' ? `
         <!-- 2026-08-29, per direct request: "we should include a LinkedIn
              copy example" — a platform-native derivative of this release's
@@ -41523,6 +41608,12 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
       </div>` : ''}
     </div>`;
   }).join('');
+  // Decision history is fetched per expanded item, same lazy-load pattern
+  // as loadCopyDecisionHistory() for creative jobs — only items currently
+  // expanded have the #prcDecisionHistory-* mount point in the DOM.
+  rows.forEach(item => {
+    if (prcExpanded[`${type}:${item.id}`]) prcLoadDecisionHistory(type, item.id);
+  });
 }
 
 // 2026-08-29 — LinkedIn derivative: draft, and save-after-editing. Mirrors
