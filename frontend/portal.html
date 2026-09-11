@@ -3649,20 +3649,79 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('manageAccount')">Manage Account</a> / Marketing Calendar Bulk Upload</div>
     <div class="eyebrow">Workstream · Manage Account · Bulk Upload</div>
     <h1>Marketing Calendar bulk upload</h1>
-    <p class="lede">Two tools, both under Budget &amp; Taxonomy. Set up <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;">Product Group &amp; Creative Focus Taxonomy</a> first — both uploaders below validate Product Group, Creative Market, Audience, Buy Type, Media Type, and Partner against it, so campaigns and rows created here use real, consistent values from day one.</p>
+    <p class="lede">One workstream, four steps. Set up Product Groups &amp; Creative Focus Group first (Steps 1–2 below) — the two uploaders that follow (Steps 3–4) validate Product Group, Creative Market, Audience, Buy Type, Media Type, and Partner against it, so campaigns and rows created here use real, consistent values from day one.</p>
+
+    <!-- 2026-09-11, per direct instruction ("The product group and creative
+         focus taxonomy and marketing calendar uploads should be in the same
+         workstream with the dependency on the product group and creative
+         focus being established first"): the taxonomy setup tools, moved
+         bodily here from the old standalone step-taxonomyManager
+         (Configuration workstream) as this page's literal Steps 1–2, ahead
+         of the two upload tools (now Steps 3–4). Deliberately OUTSIDE
+         #bulkUploadModulesWrap below — that wrap is what the taxonomy gate
+         dims/disables until a Product Group + Creative Market exist, and
+         these two modules are exactly how an account creates its first
+         one, so they must stay usable even while the gate is active
+         (otherwise no account could ever clear its own gate). Element IDs
+         (taxonomyManagerModule/Body, taxBulk*) are unchanged from the old
+         step, so renderTaxonomyManagerStep()/taxBulk*() work as before —
+         only their container moved, not their wiring. -->
+    <div class="module open accent-cx" id="taxonomyManagerModule" style="margin-bottom:24px;">
+      <div class="module-head" onclick="toggleModule('taxonomyManagerModule')">
+        <span class="modnum">1</span>
+        <div class="titles">
+          <span class="tag">Setup</span>
+          <h2>Product Groups &amp; Creative Focus Group</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <div id="taxonomyManagerBody"></div>
+      </div>
+    </div>
+
+    <div class="module open accent-cx" id="taxonomyBulkUploadModule" style="margin-bottom:24px;">
+      <div class="module-head" onclick="toggleModule('taxonomyBulkUploadModule')">
+        <span class="modnum">2</span>
+        <div class="titles">
+          <span class="tag">Bulk upload</span>
+          <h2>Upload all dropdown lists from a file</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="hint" style="margin:0 0 14px;">Upload a .csv or .xlsx laid out the same way as a typical Lookups tab: one column per list (Product Group, Creative Focus Group, Audience, Buy Type, Media Type, Partner), the list's values going down that column. Any other columns (Marketing Group/Channel, Impressions, Project Number, etc.) are recognized and skipped automatically — Marketing Group uses a fixed, shared list, and Impressions/Project Number aren't dropdown lists at all. Nothing is saved until you review the preview below and click Save.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label class="btn-ghost" for="taxBulkFileInput" style="cursor:pointer;">Choose file →</label>
+          <input type="file" id="taxBulkFileInput" accept=".csv,.xlsx" style="display:none;" onchange="taxBulkHandleFile(event)">
+          <span class="hint" id="taxBulkFileName"></span>
+        </div>
+        <p class="hint" id="taxBulkStatus" style="margin-top:10px;">Parsed entirely in your browser — nothing is sent until you click Save below.</p>
+        <div id="taxBulkPreviewWrap" style="display:none;margin-top:14px;">
+          <div id="taxBulkPreview"></div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="btn-primary" onclick="taxBulkSave()">Save all lists →</button>
+            <button type="button" class="btn-ghost" onclick="taxBulkReset()">Cancel</button>
+          </div>
+          <p class="hint" id="taxBulkSaveResult" style="margin-top:8px;"></p>
+        </div>
+      </div>
+    </div>
 
     <!-- 2026-09-11, per direct instruction: Taxonomy and Marketing Calendar
-         upload gated together — this notice blocks both modules below
-         until the account has at least a Product Group and a Creative
-         Market list on file, same non-empty check cmpTaxonomyValues()
-         elsewhere already uses. -->
+         upload gated together — this notice blocks the two upload modules
+         below (Steps 3–4) until the account has at least a Product Group
+         and a Creative Market list on file, same non-empty check
+         cmpTaxonomyValues() elsewhere already uses. Steps 1–2 above are
+         never gated — they're how that taxonomy gets created in the first
+         place. -->
     <div class="hint" id="bulkUploadTaxonomyGateNotice" style="display:none;background:#FBF6EA;border:1px solid var(--media);border-radius:8px;padding:14px 16px;margin-bottom:20px;"></div>
 
     <div id="bulkUploadModulesWrap">
-      <!-- ============ Module 1: create campaigns from a file (onboarding) ============ -->
+      <!-- ============ Module 3: create campaigns from a file (onboarding) ============ -->
       <div class="module open accent-cx" id="bulkCreateCampaignsModule">
         <div class="module-head" onclick="toggleModule('bulkCreateCampaignsModule')">
-          <span class="modnum">1</span>
+          <span class="modnum">3</span>
           <div class="titles"><span class="tag">Onboarding</span><h2>Create campaigns from a file</h2></div>
           <span class="chevron">▸</span>
         </div>
@@ -3715,10 +3774,10 @@
         </div>
       </div>
 
-      <!-- ============ Module 2: add rows to an existing campaign (ongoing) ============ -->
+      <!-- ============ Module 4: add rows to an existing campaign (ongoing) ============ -->
       <div class="module accent-media" id="bulkAddRowsModule">
         <div class="module-head" onclick="toggleModule('bulkAddRowsModule')">
-          <span class="modnum">2</span>
+          <span class="modnum">4</span>
           <div class="titles"><span class="tag">Ongoing</span><h2>Add rows to an existing campaign</h2></div>
           <span class="chevron">▸</span>
         </div>
@@ -5036,89 +5095,17 @@
     </div>
   </div>
 
-  <!-- ================= PRODUCT & CAMPAIGN GROUPS (Configuration) =================
-       2026-08-23, per direct instruction: the Product Group / Creative
-       Focus Group setup module (originally added 2026-08-22 inside
-       step-marketingCalendar — see that step's own comment for the full
-       original context) moves here, as step 7 of 8 in the Configuration
-       workstream. Reuses the exact same module content, IDs, and JS
-       (renderTaxonomyManagerStep() → renderTaxonomyManager(), and every
-       loadTaxonomyTemplates/pickTaxonomyTemplate/etc. function below it) —
-       only the entry point and surrounding step chrome (crumb, eyebrow,
-       seq-nav) are new. account_taxonomies (backend) and
-       cmpTaxonomyValues()/mktCalLoadTaxonomies() are untouched; Marketing
-       Calendar's own filters still read the same data live. -->
-  <div class="step" id="step-taxonomyManager">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Product &amp; Campaign Groups</div>
-    <div class="eyebrow">Configuration · Product &amp; Campaign Groups</div>
-    <h1>Product Groups &amp; Creative Focus Group</h1>
-    <p class="lede lede-full">The Product Group and Creative Focus Group values every campaign, Campaign Creation's own tiles, and the Marketing Calendar's filters all read from — set up once here, real for every campaign going forward. Start from a quick-start template for a fast head start, or build your own list from scratch; either way, every value is yours to add, edit, or remove before saving.</p>
-
-    <div class="module open accent-cx" id="taxonomyManagerModule" style="margin-bottom:24px;">
-      <div class="module-head" onclick="toggleModule('taxonomyManagerModule')">
-        <span class="modnum">1</span>
-        <div class="titles">
-          <span class="tag">Setup</span>
-          <h2>Product Groups &amp; Creative Focus Group</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <div id="taxonomyManagerBody"></div>
-      </div>
-    </div>
-
-    <!-- 2026-09-11 — module 2, per Todd's request ahead of the Marketing
-         Calendar bulk campaign upload: "What is the exact format needed to
-         upload the drop-downs." Module 1 above only ever covered Product
-         Group / Creative Focus Group, one value at a time. This module adds
-         a real file-upload path covering all SIX of the account-
-         configurable Marketing Calendar dropdown lists at once (Product
-         Group, Creative Focus Group, Audience, Buy Type, Media Type,
-         Partner) from a single wide-format file — the same shape as the
-         client's real "Lookups" tab (one column per list, values going
-         down each column), so an account's existing source file uploads
-         with no reformatting. Marketing Group/Channel is deliberately
-         NOT one of the six — that's the fixed MMM_CATEGORIES vocabulary
-         shared across every account, not an account-configurable list.
-         New backend endpoint: POST /api/accounts/:id/taxonomies/bulk (see
-         its own comment in server.js) — runs every recognized column
-         through the exact same upsertAccountTaxonomy() the single-list PUT
-         uses, so there's one validation/write path either way. -->
-    <div class="module open accent-cx" id="taxonomyBulkUploadModule" style="margin-bottom:24px;">
-      <div class="module-head" onclick="toggleModule('taxonomyBulkUploadModule')">
-        <span class="modnum">2</span>
-        <div class="titles">
-          <span class="tag">Bulk upload</span>
-          <h2>Upload all dropdown lists from a file</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <p class="hint" style="margin:0 0 14px;">Upload a .csv or .xlsx laid out the same way as a typical Lookups tab: one column per list (Product Group, Creative Focus Group, Audience, Buy Type, Media Type, Partner), the list's values going down that column. Any other columns (Marketing Group/Channel, Impressions, Project Number, etc.) are recognized and skipped automatically — Marketing Group uses a fixed, shared list, and Impressions/Project Number aren't dropdown lists at all. Nothing is saved until you review the preview below and click Save.</p>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <label class="btn-ghost" for="taxBulkFileInput" style="cursor:pointer;">Choose file →</label>
-          <input type="file" id="taxBulkFileInput" accept=".csv,.xlsx" style="display:none;" onchange="taxBulkHandleFile(event)">
-          <span class="hint" id="taxBulkFileName"></span>
-        </div>
-        <p class="hint" id="taxBulkStatus" style="margin-top:10px;">Parsed entirely in your browser — nothing is sent until you click Save below.</p>
-        <div id="taxBulkPreviewWrap" style="display:none;margin-top:14px;">
-          <div id="taxBulkPreview"></div>
-          <div class="btn-row" style="margin-top:12px;">
-            <button type="button" class="btn-primary" onclick="taxBulkSave()">Save all lists →</button>
-            <button type="button" class="btn-ghost" onclick="taxBulkReset()">Cancel</button>
-          </div>
-          <p class="hint" id="taxBulkSaveResult" style="margin-top:8px;"></p>
-        </div>
-      </div>
-    </div>
-
-    <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('marketingBudgetUpload','configuration')">← Back: Marketing Budget Upload</a>
-      <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('team')">Next: Team &amp; Org Chart →</a>
-    </div>
-  </div>
+  <!-- step-taxonomyManager (Configuration workstream) removed 2026-09-11,
+       per direct instruction: "We should move product group and taxonomy
+       Marketing Calendar bulk upload as step 1 vs having it in a
+       completely different location." Its two modules (taxonomyManagerModule,
+       taxonomyBulkUploadModule — same IDs, same JS) now live inline as
+       Steps 1–2 of step-bulkUpload above, instead of as a separate
+       Configuration-workstream destination. The Configuration sequence
+       nav (Marketing Budget Upload ↔ Team & Org Chart) now skips directly
+       between those two steps — see their own seq-nav. Any stray
+       goToStep('taxonomyManager') call still redirects to 'bulkUpload' —
+       see that branch in goToStep(). -->
 
   <!-- ================= TEAM & ORG CHART (round 30) =================
        Per direct instruction: a modern marketing org chart with real
@@ -5273,7 +5260,7 @@
          outside #teamStepBody so a non-admin viewer (who never sees the
          roster modules above) can still navigate back. -->
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('taxonomyManager')">← Back: Product &amp; Campaign Groups</a>
+      <a class="btn-ghost" onclick="goToStep('marketingBudgetUpload','configuration')">← Back: Marketing Budget Upload</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('dashboard')">Done — Back to Dashboard →</a>
     </div>
@@ -9138,7 +9125,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-per-zip-qualified';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-taxonomy-inline-step1';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11832,7 +11819,7 @@ function renderCmpProductGroupRow(){
     // 2026-08-23 — Product Groups & Creative Focus Group setup moved out of
     // Marketing Calendar into the Configuration workstream (step-
     // taxonomyManager); this pointer now goes there instead.
-    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;">set it up under Configuration</a> (quick-start templates available).</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a> (quick-start templates available).</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix, per direct instruction: "remove Multi-
@@ -11862,7 +11849,7 @@ function renderCmpCreativeFocusGroupRow(){
   let values = cmpTaxonomyValues('creativeMarket');
   if (!values){
     // 2026-08-23 — same move as Product Group above.
-    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;">set it up under Configuration</a> (quick-start templates available).</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a> (quick-start templates available).</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix — same as Product Group above: MULTI-
@@ -12206,7 +12193,7 @@ function renderBulkUploadTaxonomyGate(){
     return;
   }
   notice.style.display = '';
-  notice.innerHTML = `No Product Group and Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('taxonomyManager')" style="cursor:pointer;font-weight:600;">set it up under Product Group &amp; Creative Focus Taxonomy</a> before uploading here (quick-start templates available there).`;
+  notice.innerHTML = `No Product Group and Creative Market taxonomy loaded for this account yet — complete <strong>Step 1: Product Groups &amp; Creative Focus Group</strong> above before uploading here (quick-start templates available there).`;
   wrap.style.opacity = '0.5';
   wrap.style.pointerEvents = 'none';
 }
@@ -16607,8 +16594,7 @@ const ACCOUNT_MGMT_TILE_GROUPS = [
   ]},
   { label: 'Budget & Taxonomy', items: [
     { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration', desc: 'Upfront upload only — ongoing allocation lives in Strategy' },
-    { label: 'Product Group & Creative Focus Taxonomy', step: 'taxonomyManager' },
-    { label: 'Marketing Calendar Bulk Upload', step: 'bulkUpload', desc: 'One-time historical import, not the live calendar' }
+    { label: 'Marketing Calendar Bulk Upload', step: 'bulkUpload', desc: 'Starts with Product Group & Creative Focus Group setup (Steps 1–2), then campaign/row uploads (Steps 3–4) — one-time historical import, not the live calendar' }
   ]},
   { label: 'Team', items: [
     { label: 'Team & Org Chart', step: 'team', desc: 'In-portal — canonical, account.html links back here. Admin-only.' },
@@ -31835,7 +31821,7 @@ function mbuRenderCrumb(returnTo){
       navEl.innerHTML = `
         <a class="btn-ghost" onclick="goToStep('competitivePositioning')">← Back: Competitive Positioning</a>
         <span class="seq-spacer"></span>
-        <a class="btn-primary" onclick="goToStep('taxonomyManager')">Next: Product &amp; Campaign Groups →</a>`;
+        <a class="btn-primary" onclick="goToStep('team')">Next: Team &amp; Org Chart →</a>`;
     } else {
       navEl.style.display = 'none';
       navEl.innerHTML = '';
@@ -43107,6 +43093,10 @@ function goToStep(step, arg, arg2, arg3){
     // real data is in.
     Promise.all([loadOnboardingSurvey(), mouLoadHubStatus()]).then(() => renderAiPartnerOnboardingHub(true));
   } else if (step === 'bulkUpload'){
+    // 2026-09-11 — Steps 1–2 (Product Groups & Creative Focus Group setup)
+    // moved inline onto this page from the old step-taxonomyManager; render
+    // them the same way that step always did.
+    renderTaxonomyManagerStep();
     resetBulkUploadState();
     renderBulkUploadActorRoleRow();
     resetBulkCreateCampaignsState();
@@ -43149,11 +43139,11 @@ function goToStep(step, arg, arg2, arg3){
     if (typeof mstLoad === 'function') mstLoad();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
-    // 2026-08-23 — Product & Campaign Groups, moved here from Marketing
-    // Calendar as part of the Configuration workstream — see
-    // step-taxonomyManager's own HTML comment.
-    renderTaxonomyManagerStep();
-    document.getElementById('step-taxonomyManager').classList.add('active');
+    // 2026-09-11 — step-taxonomyManager no longer exists; Product Groups &
+    // Creative Focus Group setup now lives inline as Steps 1–2 of
+    // step-bulkUpload. Redirect any stray caller there instead of
+    // 404-ing on a missing element.
+    goToStep('bulkUpload');
   } else if (step === 'brandCampaignBrief'){
     // No dedicated #step-brandCampaignBrief panel — this is a gate-then-
     // redirect pseudo-step; openBrandCampaignBrief() calls goToStep again
