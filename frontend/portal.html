@@ -4054,6 +4054,33 @@
       </div>
     </div>
 
+    <!-- 2026-09-12 — AI Brain Contribution Ledger, Round 3 (Voice Guide +
+         Competitive Positioning version history). Every time Save For AI
+         Assistance runs above, the version it's replacing used to be
+         silently gone the instant the save landed — this card gives that
+         one live field a browsable, revertible history instead, same
+         cfd-standup explainer + Reference/Apply/Remove pattern as
+         #cpWebsiteContextCard/#cpTrainingDigestCard (Company Profile). See
+         vgLoadHistory()/vgRenderHistory()/vgSetDecision() below. Unlike
+         those two cards, Apply here restores the picked version as the
+         current draft/approved text (see vgSetDecision()'s comment) —
+         there is no separate "current state" to reconcile since Voice
+         Guide only ever has one live value. -->
+    <div id="voiceHistoryCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:24px 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Version history</p>
+      <div class="hint" style="margin-bottom:12px;">Every version you've approved with Save For AI Assistance is kept here — nothing is ever silently overwritten. Apply any past version to restore it as the current Voice Guide.</div>
+      <div class="cfd cfd-vg">
+        <div class="cfd-standup" style="margin-bottom:0;">
+          <div class="cfd-avatar">✦</div>
+          <div class="cfd-bubble">
+            <strong>How to use this:</strong> each entry below is one approved version of your Voice Guide. <strong>Reference</strong> keeps a version visible on file without changing what's currently live. <strong>Applied</strong> restores that version's text as the current Voice Guide, editable draft included, and bumps the version number forward. <strong>Removed</strong> marks a version as one you never want to come back to; a reason is required and kept on the record. Every decision is reversible and logged, never silently lost.
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="voiceHistoryFlag" style="margin-bottom:10px;"></div>
+      <div id="voiceHistoryList"></div>
+    </div>
+
     <h2 style="margin:32px 0 4px;">Colors &amp; Fonts</h2>
     <p class="lede" style="margin:0 0 16px;">Logo, palette, and typography — the visual half of brand identity, alongside Voice above.</p>
 
@@ -5151,6 +5178,29 @@
         <p>The paid vendor tier Current Activity above deliberately doesn't include yet — Reddit-at-volume listening and TV/broadcast monitoring. Activate an existing license or request a new vetted relationship; Verilume handles vetting and earns a referral fee on new relationships.</p>
         <div id="partnerDirectory-competitivePositioning"></div>
       </div>
+    </div>
+
+    <!-- 2026-09-12 — AI Brain Contribution Ledger, Round 3 (Voice Guide +
+         Competitive Positioning version history). Sibling of
+         #voiceHistoryCard above (see that card's comment for the full
+         reasoning) — every approved Save here used to silently overwrite
+         whatever Industry Trends/Competitors text existed before; this
+         gives that one live pair of fields a browsable, revertible
+         history instead. See posLoadHistory()/posRenderHistory()/
+         posSetDecision() below. -->
+    <div id="positioningHistoryCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Version history</p>
+      <div class="hint" style="margin-bottom:12px;">Every version you've saved and marked approved is kept here — nothing is ever silently overwritten. Apply any past version to restore it as the current Industry Trends and Competitors.</div>
+      <div class="cfd cfd-pos">
+        <div class="cfd-standup" style="margin-bottom:0;">
+          <div class="cfd-avatar">✦</div>
+          <div class="cfd-bubble">
+            <strong>How to use this:</strong> each entry below is one approved version of your Industry Trends text and named Competitors. <strong>Reference</strong> keeps a version visible on file without changing what's currently live. <strong>Applied</strong> restores that version as the current Competitive Positioning. <strong>Removed</strong> marks a version as one you never want to come back to; a reason is required and kept on the record. Every decision is reversible and logged, never silently lost.
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="positioningHistoryFlag" style="margin-bottom:10px;"></div>
+      <div id="positioningHistoryList"></div>
     </div>
 
     <div class="btn-row">
@@ -9200,7 +9250,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-guardrail-direct-wiring';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-positioning-ledger-migration';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -48343,6 +48393,10 @@ function renderVoiceStep(){
   } else {
     banner.classList.remove('visible');
   }
+  // 2026-09-12 — AI Brain Contribution Ledger, Round 3. Same
+  // load-on-render-of-the-page-that-owns-it convention as
+  // cpLoadTrainingDigestHistory() inside renderCompanyProfileStep().
+  vgLoadHistory();
   renderStyleAssetsStep();
 }
 
@@ -49112,6 +49166,102 @@ async function cpSetTrainingDigestDecision(contributionId, status){
     }
     if (flag) flag.textContent = `Saved — marked "${status}".`;
     await cpLoadTrainingDigestHistory();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, Round 3 (Voice Guide version
+// history). Exact mirror of cpLoadTrainingDigestHistory() above, hitting
+// the voice-decisions endpoints instead.
+async function vgLoadHistory(){
+  const el = document.getElementById('voiceHistoryList');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading version history…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load version history right now.</p>'; return; }
+    const data = await resp.json();
+    vgRenderHistory(data.contributions || []);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load version history.</p>'; }
+}
+
+// Mirror of cpRenderTrainingDigestHistory() above — each row shows a short
+// preview of that version's text (content.voiceGuideText), its version
+// number (content.voiceVersion), when it was approved, current status, and
+// Reference/Apply/Remove buttons wired to vgSetDecision().
+function vgRenderHistory(contributions){
+  const el = document.getElementById('voiceHistoryList');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No approved versions yet — Save For AI Assistance above to start building history.</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return '<span style="color:var(--cx);font-weight:600;">Applied — this is the current Voice Guide</span>';
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed — excluded</span>';
+    return '<span style="color:var(--muted);">Reference only</span>';
+  };
+  el.innerHTML = contributions.map(c => {
+    const d = c.content || {};
+    const preview = (d.voiceGuideText || '').slice(0, 180);
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${typeof d.voiceVersion === 'number' ? `v${d.voiceVersion}` : 'Version'} — ${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}</p>
+        ${statusBadge(c)}
+      </div>
+      <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(preview)}${(d.voiceGuideText || '').length > 180 ? '…' : ''}</p>
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="vgSetDecision('${escapeHtml(c.id)}','reference')">Reference</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="vgSetDecision('${escapeHtml(c.id)}','applied')">Apply</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="vgSetDecision('${escapeHtml(c.id)}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Exact mirror of cpSetTrainingDigestDecision() above, hitting
+// voice-decisions instead — same prompt()-based reason/name capture, same
+// state.mmmDecisionName reuse. DIVERGES on a successful 'applied' decision:
+// the backend response includes `restored: {voiceGuideText, voiceVersion}`
+// (see POST .../voice-decisions's comment on the server for why Apply
+// means restore here, unlike the training-digest/website-scan siblings) —
+// so this updates state.voice and re-renders the Voice step, same
+// state-then-render convention saveVoiceDraft() above uses, instead of
+// just refreshing the history list.
+async function vgSetDecision(contributionId, status){
+  const flag = document.getElementById('voiceHistoryFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why should this version be excluded? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    const result = await resp.json();
+    if (status === 'applied' && result.restored){
+      state.voice.draft = result.restored.voiceGuideText;
+      state.voice.approved = true;
+      state.voice.version = result.restored.voiceVersion;
+      if (flag) flag.textContent = `Restored — this version is now the current Voice Guide (v${state.voice.version}).`;
+      renderVoiceStep();
+    } else {
+      if (flag) flag.textContent = `Saved — marked "${status}".`;
+    }
+    await vgLoadHistory();
     if (typeof loadAccountData === 'function') loadAccountData();
   } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
@@ -50056,6 +50206,9 @@ function renderPositioningStep(){
   renderCompetitorActivity();
   renderSpecialtyPartners('competitivePositioning');
   document.getElementById('positioningSaveFlag').textContent = '';
+  // 2026-09-12 — AI Brain Contribution Ledger, Round 3. Same
+  // load-on-render convention as vgLoadHistory() inside renderVoiceStep().
+  posLoadHistory();
 }
 
 // Round 24, point b — Strategic Opportunity. Templated JS standing in for a
@@ -50261,6 +50414,103 @@ async function saveCompetitivePositioning(){
     ? `Competitive Positioning: Approved ✓ — saved to the backend, available as reference to Messaging and Creative-brief prompts once those are built.`
     : `Competitive Positioning: Approved ✓ — local only, this session (no backend record for this account, or the backend is unreachable).`;
   renderBrandFoundationsModule();
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger, Round 3 (Competitive
+// Positioning version history). Exact mirror of vgLoadHistory() above,
+// hitting the positioning-decisions endpoints instead.
+async function posLoadHistory(){
+  const el = document.getElementById('positioningHistoryList');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading version history…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positioning-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load version history right now.</p>'; return; }
+    const data = await resp.json();
+    posRenderHistory(data.contributions || []);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load version history.</p>'; }
+}
+
+// Mirror of vgRenderHistory() above — each row shows a short preview of
+// that version's Industry Trends text plus its named competitors
+// (content.industryTrendsText / content.competitors), when it was
+// approved, current status, and Reference/Apply/Remove buttons wired to
+// posSetDecision().
+function posRenderHistory(contributions){
+  const el = document.getElementById('positioningHistoryList');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No approved versions yet — Save above to start building history.</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return '<span style="color:var(--cx);font-weight:600;">Applied — this is the current Competitive Positioning</span>';
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed — excluded</span>';
+    return '<span style="color:var(--muted);">Reference only</span>';
+  };
+  el.innerHTML = contributions.map(c => {
+    const d = c.content || {};
+    const preview = (d.industryTrendsText || '').slice(0, 160);
+    const competitorNames = Array.isArray(d.competitors) ? d.competitors.map(comp => (comp && comp.name) || '').filter(Boolean) : [];
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}${competitorNames.length ? ` — ${escapeHtml(competitorNames.join(', '))}` : ''}</p>
+        ${statusBadge(c)}
+      </div>
+      <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(preview)}${(d.industryTrendsText || '').length > 160 ? '…' : ''}</p>
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="posSetDecision('${escapeHtml(c.id)}','reference')">Reference</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="posSetDecision('${escapeHtml(c.id)}','applied')">Apply</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="posSetDecision('${escapeHtml(c.id)}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Exact mirror of vgSetDecision() above, hitting positioning-decisions
+// instead. On a successful 'applied' decision the backend response
+// includes `restored: {industryTrendsText, competitors}` — this updates
+// state.positioning with the restored array/text and re-renders the
+// Positioning step, same state-then-render convention
+// saveCompetitivePositioning() above uses.
+async function posSetDecision(contributionId, status){
+  const flag = document.getElementById('positioningHistoryFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why should this version be excluded? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positioning-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    const result = await resp.json();
+    if (status === 'applied' && result.restored){
+      state.positioning.industryTrendsText = result.restored.industryTrendsText || '';
+      state.positioning.competitors = Array.isArray(result.restored.competitors) && result.restored.competitors.length
+        ? result.restored.competitors.map(c => ({ name: c.name || '', note: c.note || '', sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '' }))
+        : state.positioning.competitors;
+      state.positioning.approved = true;
+      if (flag) flag.textContent = 'Restored — this version is now the current Competitive Positioning.';
+      renderPositioningStep();
+    } else {
+      if (flag) flag.textContent = `Saved — marked "${status}".`;
+    }
+    await posLoadHistory();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
 
 /* ---------- Init ----------
