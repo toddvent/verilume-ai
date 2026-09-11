@@ -16,9 +16,13 @@
     onboarding.html/account.html: shared fonts + gradient-fade background
     only, no .visual-block marketing components — this is a task/utility
     workspace, not a persuasion page. Prototype only — in-memory/session
-    state, no backend, no real Claude API call (see generateVoiceDraft()
-    below, which is templated JS standing in for one, same convention as
-    every other mocked panel in this build).
+    state; most panels are still templated JS standing in for a real Claude
+    API call, same mocked-panel convention as the rest of this build, but
+    generateVoiceDraft() (Style Guide > Voice) is a real exception since
+    2026-09-11/12 — it makes a genuine backend AI call (POST
+    /api/accounts/:id/voice-draft), same proven pattern as the Voice
+    Contest. See cxmedia-brand-voice-consolidation-human-agentic-model-
+    scoping-2026-09-11.md.
 
     Site map (see cxmedia-client-portal-structure.md Section 1): CMO
     Dashboard, then 5 function groups — PR, Brand, Marketing Ops,
@@ -3854,19 +3858,19 @@
          pointer sentence that used to sit here explaining the removal —
          nothing to say about it, just move straight to Tone anchors. -->
 
-    <!-- Round 132rr — inline style overrides display:block with flex
-         directly (rather than relying on the stylesheet's
-         `label:has(.ai-thought-icon)` rule, which an inline style would
-         otherwise out-specificity) so the new AI Thought icon lands
-         right-aligned like every other mounted icon. 2026-08-26 — added the
-         same "i" tooltip pattern as Colors & Fonts, per direct instruction
-         to keep this page's UI consistent across both sections. -->
-    <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#3A3428;margin-bottom:8px;">
-      <span style="display:flex;align-items:center;gap:7px;">Tone anchors <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipToneAnchors')" aria-label="What this drives" style="text-transform:none;letter-spacing:normal;">i</button></span>
-      <span class="ai-thought-mount" data-topic="I"></span>
-    </label>
-    <div class="fld-tip" id="tipToneAnchors" style="margin:-4px 0 10px;">Pick up to 3 — these drive the tone rules in your generated Voice draft and the emotional Brand Keywords suggested below.</div>
-    <div class="select-tile-row" id="toneAnchorRow" style="margin-bottom:18px;"></div>
+    <!-- 2026-09-11/12, per cxmedia-brand-voice-consolidation-human-agentic-
+         model-scoping-2026-09-11.md: the fixed 6-checkbox Tone Anchors
+         picker that used to live here (Confident/Warm/Playful/Formal/
+         Technical/Reassuring, max 3, state.toneAnchors — never persisted to
+         the backend at all) is removed outright. It was functionally the
+         same concept as "Brand Keywords — Emotional, Voice & Style" just
+         below — emotional/voice descriptors for this account's voice — only
+         fixed-list instead of open-ended, and duplicating it against an
+         open-ended list nobody could keep in sync. That chip list is now
+         the single input for this; the "i" tooltip AI-thought mount that
+         used to sit on this label (data-topic="I") moved to the Brand &
+         Product Keywords header below, and renderFaqI() (portal.html) was
+         rewritten to talk about that chip list instead of tone picks. -->
 
     <!-- 2026-08-26 follow-up, per direct instruction ("Wire the terms to
          avoid with the words to avoid functionality"): the standalone
@@ -3882,20 +3886,24 @@
          direct instruction: a first draft of keyword chips that reinforces
          this account's own understanding of its brand, human-editable
          (add/remove), feeding forward into content-development standards
-         for campaigns. Brand = emotional/voice/style words drafted from
-         this account's Tone Anchors (above) — NOT Industry, deliberately
-         different from Search Everywhere's old Industry-based generator
-         (see generateBrandProductKeywords()'s own comment, and Search
-         Everywhere's new home at goToStep('searchSocial'), which now reads
-         off this list instead of Industry too). Product = concrete
+         for campaigns. Brand = emotional/voice/style words — NOT Industry,
+         deliberately different from Search Everywhere's old Industry-based
+         generator (see generateBrandProductKeywords()'s own comment, and
+         Search Everywhere's new home at goToStep('searchSocial'), which now
+         reads off this list instead of Industry too). Product = concrete
          offering phrases drafted from Company Profile's Products &
-         Services field. -->
+         Services field.
+         2026-09-11/12 — this "Brand keywords" list is now ALSO the single
+         input for what used to be the separate Tone Anchors picker (see the
+         removed block above); the "i" AI-thought mount that used to sit on
+         that picker's label (data-topic="I") moved down here. -->
     <div class="field">
       <div class="fld-label-row">
         <label style="margin:0;font-size:1.0625rem;text-transform:none;letter-spacing:normal;color:var(--ink);">Brand &amp; Product Keywords</label>
         <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipBrandKeywords')" aria-label="Where these come from">i</button>
+        <span class="ai-thought-mount" data-topic="I"></span>
       </div>
-      <div class="fld-tip" id="tipBrandKeywords" style="margin-bottom:12px;">Brand keywords are emotional, voice, and style words drafted from the Tone Anchors picked above; Product keywords are drafted from the Products &amp; Services you gave in the free assessment — deliberately not based on Industry. Shown automatically below; edit directly (add or remove any chip), then Save.</div>
+      <div class="fld-tip" id="tipBrandKeywords" style="margin-bottom:12px;">Brand keywords are emotional, voice, and style words for this account's voice — this is also where you pick your tone (up to a handful of distinctive words work best); Product keywords are drafted from the Products &amp; Services you gave in the free assessment — deliberately not based on Industry. Shown automatically below; edit directly (add or remove any chip), then Save.</div>
 
       <div class="module open accent-media" id="brandKeywordsModule">
         <div class="module-head" onclick="toggleModule('brandKeywordsModule')">
@@ -3991,10 +3999,16 @@
       </div>
     </div>
 
-    <p class="hint" style="margin:0 0 8px;max-width:640px;">Draws on everything above — Tone anchors and Terms to avoid — to draft the full Voice Guide below.</p>
+    <p class="hint" style="margin:0 0 8px;max-width:640px;">Draws on everything above — Brand Keywords and Terms to avoid — plus your real Products &amp; Services and Sample Writings, to draft the full Voice Guide below with an actual AI call.</p>
     <div class="btn-row">
-      <button class="btn-primary" onclick="generateVoiceDraft()">Generate Voice Draft →</button>
+      <button class="btn-primary" id="voiceDraftGenBtn" onclick="generateVoiceDraft()">Generate Voice Draft →</button>
     </div>
+    <!-- 2026-09-12, per cxmedia-brand-voice-consolidation-human-agentic-model-
+         scoping-2026-09-11.md — this line is the loading/error state for the
+         real AI call generateVoiceDraft() now makes (POST .../voice-draft);
+         it sits above the draft panel since the panel itself only shows once
+         a real draft (or a clear not-configured note) comes back. -->
+    <div class="hint" id="voiceDraftGenStatus" style="margin:0 0 10px;"></div>
 
     <div class="draft-panel" id="voiceDraftPanel">
       <h3>Draft — edit before saving</h3>
@@ -4004,6 +4018,15 @@
       <div class="why-panel" id="voiceWhyPanel">
         <span class="why-lbl">Reasoning</span>
         <span id="voiceWhyText"></span>
+      </div>
+      <!-- 2026-09-12 — the Human Agentic Model panel: what the model flagged
+           as missing that would make a STRONGER draft (gaps[] from the new
+           backend response), separate from the reasoning above. Hidden via
+           [hidden] when there's nothing to show (no gaps returned, or no
+           draft generated yet). -->
+      <div class="why-panel" id="voiceGapsPanel">
+        <span class="why-lbl">To improve this draft</span>
+        <span id="voiceGapsText"></span>
       </div>
       <div class="btn-row">
         <button class="btn-ghost" onclick="saveVoiceDraft(false)">Save Draft</button>
@@ -9106,7 +9129,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-bulk-step3-removed';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-consolidation';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -9272,7 +9295,10 @@ const state = {
   // Same session-only, illustrative-demo state convention as above.
   budgetChartExpanded: null,
   budgetMixRange: 'ytd',
-  toneAnchors: new Set(),
+  // 2026-09-11/12 — state.toneAnchors (a session-only Set, never persisted
+  // to the backend) removed; Tone Anchors is merged into Brand Keywords
+  // (state.brandKeywords.brand below) — see cxmedia-brand-voice-
+  // consolidation-human-agentic-model-scoping-2026-09-11.md.
   // 2026-08-26 fix, per direct report (Brand Book screenshot showing "Voice
   // Guide: Approved ✓ (v0)" on what should read as a fresh, unapproved
   // account): this used to default to approved:true as a Round 101
@@ -13060,8 +13086,9 @@ const NON_WORKING_MEDIA_GUIDELINE_PCT = 20;
 // Media Loop stage (already stored as campaign.stage) layers on as a
 // modifier, not a second independent taxonomy. Benchmark ranges are honest,
 // named-source placeholders — the same mocked-but-labeled convention as
-// every other generator in this build (generateVoiceDraft(), the Analytics
-// data-strategy doc's cost tiers, etc.) — never presented as this account's
+// most other generators in this build (the Analytics data-strategy doc's
+// cost tiers, etc. — generateVoiceDraft() is a real exception since
+// 2026-09-11/12, see its own comment) — never presented as this account's
 // own measured history. `conversionRateBenchmark` is null for channels with
 // no clean, standardized rate metric (PR/Earned, Linear, Radio) — those get
 // an honest "no benchmark applies" note rather than a fabricated number.
@@ -34547,25 +34574,34 @@ function renderFaqH(){
     : '';
   el.textContent = `${base} Right now that baseline is ${genClause}, at the ${wealthClause} tier.${spread} Treat this as the account's baseline targeting, not a one-time setup checkbox: revisit it when the brand's actual customer base shifts (a new market, a new tier of service, a demographic the brand is deliberately trying to reach) rather than leaving it set to whatever was true at onboarding.`;
 }
+// 2026-09-11/12 rewrite, per cxmedia-brand-voice-consolidation-human-
+// agentic-model-scoping-2026-09-11.md: this used to describe the fixed
+// 6-checkbox Tone Anchors picker (state.toneAnchors, up to 3), now removed
+// and merged into the open-ended Brand Keywords — emotional, voice & style
+// chip list (state.brandKeywords.brand). Same "this is the real brand-
+// positioning decision" framing, now against an open-ended list instead of
+// a fixed one — so the generic-vs-specific read below is heuristic (any
+// common brand-adjective word, not a fixed GENERIC_TONE_WORDS lookup)
+// rather than checked against one known catch-all option.
+const GENERIC_BRAND_KEYWORD_WORDS = new Set(['quality', 'trusted', 'innovative', 'trustworthy', 'reliable', 'premium', 'excellence', 'excellent']);
 function renderFaqI(){
   const el = document.getElementById('bpFaqTextI');
   if (!el) return;
-  const anchors = [...state.toneAnchors];
-  const GENERIC_TONE_WORDS = new Set(['Formal']); // the one TONE_ANCHORS option that reads as a generic catch-all rather than a distinctive pick
-  const base = 'These up-to-3 anchors seed the Brand & Product Keywords and Voice Guide drafts below them — this is the actual brand-positioning decision, even though it looks like a small tile-pick.';
-  if (!anchors.length){
-    el.textContent = `${base} None are picked yet — every draft below is working from a blank, generic voice until at least one is chosen. Anchors that read as generic ("trustworthy," "quality," "innovative" — not actually on this list, which is a good sign) produce generic drafts, because there's nothing distinctive for the draft to hold onto.`;
+  const words = ((state.brandKeywords && state.brandKeywords.brand) || []).filter(Boolean);
+  const base = 'These emotional/voice/style keywords seed the Voice Guide draft below (and used to seed Brand & Product Keywords the other direction, before the two were merged into one list) — this is the actual brand-positioning decision, even though it looks like a small chip list.';
+  if (!words.length){
+    el.textContent = `${base} None are entered yet — the Voice Guide draft below is working from a blank, generic voice until at least one is added. Words that read as generic ("trustworthy," "quality," "innovative") produce generic drafts, because there's nothing distinctive for the draft to hold onto.`;
     return;
   }
-  const genericPicked = anchors.filter(a => GENERIC_TONE_WORDS.has(a));
-  const specificPicked = anchors.filter(a => !GENERIC_TONE_WORDS.has(a));
+  const genericPicked = words.filter(w => GENERIC_BRAND_KEYWORD_WORDS.has(w.toLowerCase()));
+  const specificPicked = words.filter(w => !GENERIC_BRAND_KEYWORD_WORDS.has(w.toLowerCase()));
   let read;
-  if (genericPicked.length){
-    read = `"${genericPicked.join('", "')}" is the broadest option on this list — pairing it with something more specific (${specificPicked.length ? specificPicked.join(', ') : 'a second, sharper anchor'}) keeps the combination from reading as generic on its own.`;
+  if (genericPicked.length && !specificPicked.length){
+    read = `"${genericPicked.join('", "')}" reads as the kind of word most brands would also claim — pairing it with something more specific to this brand keeps the combination from reading as generic on its own.`;
   } else {
-    read = `${anchors.join(', ')} is a specific enough combination to actually differentiate a draft — the real test is whether the Voice Guide below reads like it could only be this brand, not any brand that also picked ${anchors[0]}.`;
+    read = `${words.join(', ')} is specific enough to actually differentiate a draft — the real test is whether the Voice Guide below reads like it could only be this brand, not any brand that also picked ${words[0]}.`;
   }
-  el.textContent = `${base} This account has picked ${anchors.join(', ')}. ${read} Anchors specific to how this brand is actually different from category peers produce a voice guide worth approving as-is instead of one that needs a full rewrite.`;
+  el.textContent = `${base} This account has entered ${words.join(', ')}. ${read} Keywords specific to how this brand is actually different from category peers produce a voice guide worth approving as-is instead of one that needs a full rewrite.`;
 }
 function renderFaqJ(){
   const el = document.getElementById('bpFaqTextJ');
@@ -40219,8 +40255,9 @@ function renderProjectDetail(){
 }
 
 /* ---------- Master/derivative generators — templated JS standing in for
-   real Claude calls, same convention as generateVoiceDraft() above. Each
-   pair follows cxmedia-campaign-project-architecture.md Section 4's
+   real Claude calls (generateVoiceDraft() below used to be built the same
+   way — it now makes a real backend AI call, see its own 2026-09-11/12
+   comment). Each pair follows cxmedia-campaign-project-architecture.md Section 4's
    cascade: the master call reads Brand Voice + the campaign brief; the
    derivative call reads the master (now short) + that same shared context,
    and returns every format together in one structured pass rather than
@@ -43235,33 +43272,17 @@ function goToStep(step, arg, arg2, arg3){
 }
 
 /* ---------- Style Guide > Voice — the one fully built function ----------
-   Mirrors cxmedia-client-portal-structure.md Section 3's worked example 2
-   exactly: structured inputs (writing samples, up to 3 tone anchors, words
-   to avoid, an anti-example), a mocked "Generate draft" call, an editable
-   draft, and a Save action that marks it approved and versions it. */
-const TONE_ANCHORS = ['Confident','Warm','Playful','Formal','Technical','Reassuring'];
-
-function renderToneAnchors(){
-  const row = document.getElementById('toneAnchorRow');
-  row.innerHTML = TONE_ANCHORS.map(t => `
-    <button type="button" class="select-tile" data-tone="${t}">
-      <span class="indicator">✓</span><span class="label">${t}</span>
-    </button>`).join('');
-  row.querySelectorAll('.select-tile').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const t = btn.dataset.tone;
-      if (state.toneAnchors.has(t)){
-        state.toneAnchors.delete(t);
-        btn.classList.remove('selected');
-      } else {
-        if (state.toneAnchors.size >= 3) return; // max 3, per the input design doc
-        state.toneAnchors.add(t);
-        btn.classList.add('selected');
-      }
-      if (typeof renderFaqI === 'function') renderFaqI(); // Round 132vv — keep the tone-anchor thought live with the pick
-    });
-  });
-}
+   Originally mirrored cxmedia-client-portal-structure.md Section 3's worked
+   example 2 exactly: structured inputs (writing samples, up to 3 tone
+   anchors, words to avoid, an anti-example), a mocked "Generate draft"
+   call, an editable draft, and a Save action that marks it approved and
+   versions it. 2026-09-11/12 rewrite, per cxmedia-brand-voice-
+   consolidation-human-agentic-model-scoping-2026-09-11.md: the fixed
+   6-checkbox Tone Anchors picker (TONE_ANCHORS/renderToneAnchors, formerly
+   here) is removed — merged into the open-ended Brand & Product Keywords
+   chip list above (state.brandKeywords.brand) — and generateVoiceDraft()
+   below now makes a real backend AI call (POST .../voice-draft) instead of
+   templated JS string concatenation. */
 
 // Round 132 (2026-08-09), per campaign_audit.xlsx (Lifecycle Stage & Goals /
 // Brand Messaging — "Brief Builder," AI-drafted Key Message, Tone Notes,
@@ -43276,7 +43297,11 @@ function cmpBriefContext(){
   const name = (document.getElementById('cmpName') && document.getElementById('cmpName').value.trim()) || objective || 'this campaign';
   const segments = [...selectedSegments];
   const channels = [...selectedChannels];
-  const tones = [...state.toneAnchors];
+  // 2026-09-11/12 — state.toneAnchors is gone; Brand Keywords — emotional,
+  // voice & style (state.brandKeywords.brand) is the merged concept it used
+  // to read. See cxmedia-brand-voice-consolidation-human-agentic-model-
+  // scoping-2026-09-11.md.
+  const tones = [...((state.brandKeywords && state.brandKeywords.brand) || [])];
   const productGroups = [...selectedProductGroups];
   const creativeFocusGroups = [...selectedCreativeFocusGroups];
   const stage = selectedStage || '';
@@ -43926,7 +43951,12 @@ function cmpBrandContextProfile(){
       approved: !!state.voice.approved,
       version: state.voice.version || 0,
       draftText: state.voice.draft || null,
-      toneAnchors: [...(state.toneAnchors || [])]
+      // 2026-09-11/12 — toneAnchors renamed/repointed: Tone Anchors is
+      // merged into Brand Keywords — emotional, voice & style now (see
+      // cxmedia-brand-voice-consolidation-human-agentic-model-scoping-
+      // 2026-09-11.md). Key kept close to its old name since nothing reads
+      // this specific field downstream today (grep confirmed).
+      brandVoiceKeywords: [...((state.brandKeywords && state.brandKeywords.brand) || [])]
     },
     style: {
       approved: !!(state.styleAssets && state.styleAssets.approved),
@@ -47803,70 +47833,73 @@ function cmpSaveLifecycleAndContinue(){
   openCmpStage('perfMarketing');
 }
 
-// Templated JS standing in for a real Claude call — see the shared system
-// prompt + this function's user-turn template in
-// cxmedia-client-portal-structure.md Section 3, worked example 2.
-function generateVoiceDraft(){
-  // 2026-08-26 — the "Sample writing" textarea that used to live on this
-  // page was removed (duplicated the real Sample Writings & Presentations
-  // page, now the very next step); this generator no longer reads a
-  // samples value, so the "why" disclosure below always explains the
-  // example sentences the same way rather than branching on it.
-  // Same date, follow-up — "avoid" now comes from Terms to Avoid
-  // (state.brandKeywords.negative) instead of the removed standalone
-  // "Words to avoid" field; see cmpBrandVoiceAvoidWords()'s own comment.
-  const avoidList = cmpBrandVoiceAvoidWords();
-  const avoid = avoidList.join(', ');
-  const tones = [...state.toneAnchors];
-  const toneClause = tones.length ? tones.join(', ').toLowerCase() : 'direct and unadorned';
+// 2026-09-11/12 rewrite, per cxmedia-brand-voice-consolidation-human-
+// agentic-model-scoping-2026-09-11.md: this used to be 100% client-side
+// templated JS (string concatenation, no AI call at all — see this file's
+// own former top-of-file comment) with two hardcoded "example sentences in
+// this voice," identical for every account, and a client-computed "Why
+// this draft?" panel. It now makes a real backend AI call (POST
+// .../voice-draft — see that endpoint's own comment in server.js for the
+// full prompt/grounding), the same proven pattern the Voice Contest
+// (runBrandVoiceContest()/generateBrandVoiceCandidate()) already uses.
+// Follows this file's existing async-generate-button convention (see
+// cmpGenerateAiDraft() above): disable the button, show a "Calling the
+// model…" status line, restore on completion either way. Never
+// auto-saves/auto-approves — Save Draft / Save For AI Assistance below are
+// unchanged, still the only way this reaches the backend's accounts.voice*
+// columns.
+async function generateVoiceDraft(){
+  const btn = document.getElementById('voiceDraftGenBtn');
+  const status = document.getElementById('voiceDraftGenStatus');
+  const panel = document.getElementById('voiceDraftPanel');
+  const gapsPanel = document.getElementById('voiceGapsPanel');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Calling the model…';
+  try {
+    if (dataSourceLabel !== 'backend'){
+      if (status) status.textContent = 'Voice Draft generation requires a real backend account — no backend record for this session.';
+      return;
+    }
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-draft`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 65000
+    });
+    const data = await resp.json();
+    if (!resp.ok){
+      if (status) status.textContent = data && data.error ? `Couldn't generate a draft: ${data.error}` : `Couldn't generate a draft (${resp.status}).`;
+      return;
+    }
+    if (!data.draft){
+      // Honest not-configured/failed fallback — same discipline as
+      // generateMessagingCopyViaAI (server.js): never silently fall back to
+      // the old template, surface that generation isn't available right now.
+      if (status) status.textContent = data.note || 'AI Voice Draft generation is not available right now.';
+      return;
+    }
+    if (status) status.textContent = '';
+    document.getElementById('voiceDraftText').value = data.draft;
+    panel.classList.add('visible');
+    state.voice.draft = data.draft;
 
-  let draft = `${state.company} — Brand Voice\n\n`;
-  draft += `One-line description: ${state.company} sounds ${toneClause} — a brand for ${state.industry.toLowerCase()} that speaks to its own guests directly, never templated.\n\n`;
-  draft += `Point of view: Second person throughout — "you," "your stay," "your team" — never "the guest" or third-person distancing.\n\n`;
-  draft += `Tone rules:\n`;
-  tones.forEach(t => {
-    draft += `- ${t}: `;
-    if (t === 'Confident') draft += `state the plain claim first, reasoning after — never hedge with "we strive to."\n`;
-    else if (t === 'Warm') draft += `write like a person who was there, not a brochure — specific, not generic warmth.\n`;
-    else if (t === 'Playful') draft += `light, never at the expense of clarity — the joke should never obscure the actual information.\n`;
-    else if (t === 'Formal') draft += `precise word choice, complete sentences — formal is not the same as stiff.\n`;
-    else if (t === 'Technical') draft += `specific and accurate on anything factual (dates, amenities, policies) — never vague where precision is easy.\n`;
-    else if (t === 'Reassuring') draft += `name the actual concern before addressing it — reassurance without naming the worry reads hollow.\n`;
-  });
-  if (avoid) draft += `\nWords to avoid: ${avoid}.\n`;
-  // 2026-08-26 follow-up, per direct instruction ("make sure we have not
-  // lost any functionality... one location that includes what both areas
-  // are planned to do") — this "what this voice is not" line used to be
-  // fed by the separate anti-example field; now that Terms to Avoid is the
-  // one place to enter both literal terms and tone/style phrases, the same
-  // list feeds this line too, so the tonal-steering job isn't lost, just
-  // folded into the one input.
-  if (avoid) draft += `\nWhat this voice is not: ${avoid}.\n`;
-  draft += `\nExample sentences in this voice:\n`;
-  draft += `- "Your room's ready two hours before the posted time if you'd rather skip the wait — just say so at check-in."\n`;
-  draft += `- "We got the small things wrong for you last time. Here's exactly what changed before you arrive again."\n`;
+    document.getElementById('voiceWhyText').textContent = data.whyDraft || '(No reasoning returned with this draft.)';
+    document.getElementById('voiceWhyPanel').classList.remove('visible');
 
-  document.getElementById('voiceDraftText').value = draft;
-  document.getElementById('voiceDraftPanel').classList.add('visible');
-  state.voice.draft = draft;
-
-  // Round 132[cfd] (2026-08-12) — "Why this draft?" disclosure. Built from
-  // the exact same inputs the draft above just used — real reasoning
-  // against real state, not a fabricated explanation — per direct
-  // instruction that a visible "thinking behind what the AI did" affordance
-  // helps trust and doubles as the human-readable face of the (currently
-  // tabled) Feedback Loop Decision Log. See cxmedia-feedback-loop-decision-
-  // log-2026-08-10.md and the roadmap doc's Track 2-generalized section.
-  const whyParts = [];
-  whyParts.push(tones.length
-    ? `Pulled the tone rules from your ${tones.length} selected Tone ${tones.length === 1 ? 'Anchor' : 'Anchors'} (${tones.join(', ')}) — not a generic default.`
-    : `No Tone Anchors are picked yet, so this fell back to "direct and unadorned" rather than guessing a tone for you.`);
-  whyParts.push(`Industry set to ${state.industry || 'not set'} — the one-line description names your account's own industry, not a generic travel/hospitality default.`);
-  if (avoid) whyParts.push(`Excluded your Terms to Avoid list: ${avoid} — this same list also shaped the "what this voice is not" line above, so it's doing double duty: literal exclusion and tonal steering.`);
-  whyParts.push(`No sample writing is pulled into this generator — the example sentences below are templated to the tone rules above. Real samples now live on the Sample Writings & Presentations page.`);
-  whyParts.push(`Confidence: high on tone-rule structure (directly computed from your picks above); lower on the two example sentences specifically, since those are illustrative, not drawn from your real content — edit them before saving if they don't sound right.`);
-  document.getElementById('voiceWhyText').textContent = whyParts.join('\n\n');
-  document.getElementById('voiceWhyPanel').classList.remove('visible');
+    // Human Agentic Model — what's missing that would make a stronger
+    // draft, shown separately from the reasoning above, never folded into
+    // the draft text itself.
+    const gaps = Array.isArray(data.gaps) ? data.gaps.filter(Boolean) : [];
+    if (gapsPanel){
+      if (gaps.length){
+        document.getElementById('voiceGapsText').textContent = gaps.map(g => `• ${g}`).join('\n');
+        gapsPanel.classList.add('visible');
+      } else {
+        gapsPanel.classList.remove('visible');
+      }
+    }
+  } catch (e){
+    if (status) status.textContent = `AI draft request failed: ${e.message || 'network error'}.`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function toggleVoiceWhy(){
@@ -47950,12 +47983,22 @@ const TONE_EMOTIONAL_KEYWORDS = {
   Reassuring: ['trusted', 'dependable', 'steady', 'reliable']
 };
 
-// Prefers this session's live Tone Anchor selection (state.toneAnchors) —
-// available the moment someone picks tones, before Save — falling back to
-// detectVoiceTones() (recovered from the approved draft text) once this
-// page has been left and come back to without re-picking tones.
+// 2026-09-11/12 rewrite, per cxmedia-brand-voice-consolidation-human-
+// agentic-model-scoping-2026-09-11.md: used to prefer this session's live
+// Tone Anchor selection (state.toneAnchors, the fixed 6-word picker, now
+// removed) before falling back to detectVoiceTones() (recovered from the
+// approved draft text). Tone Anchors is merged into Brand Keywords —
+// emotional, voice & style now, which is open-ended free text rather than
+// one of TONE_KEYWORD_MODIFIER/TONE_EMOTIONAL_KEYWORDS' 6 canonical words —
+// so this prefers any live Brand Keyword that happens to (case-
+// insensitively) match one of those 6 words, available the moment someone
+// types one, before Save — falling back to detectVoiceTones() once this
+// page has been left and come back to without re-entering a matching word.
 function currentOrApprovedTones(){
-  if (state.toneAnchors && state.toneAnchors.size) return [...state.toneAnchors];
+  const canonical = Object.keys(TONE_KEYWORD_MODIFIER);
+  const liveBrandWords = (state.brandKeywords && state.brandKeywords.brand) || [];
+  const matched = canonical.filter(t => liveBrandWords.some(w => w.toLowerCase() === t.toLowerCase()));
+  if (matched.length) return matched;
   return detectVoiceTones();
 }
 
@@ -47968,9 +48011,9 @@ function generateBrandProductKeywords(){
 
   const brandCandidates = [];
   tones.forEach(t => (TONE_EMOTIONAL_KEYWORDS[t] || []).forEach(w => brandCandidates.push(w)));
-  // No tone picked yet — still produce a usable draft (one word per tone)
-  // rather than an empty list, since this can run before Tone Anchors are
-  // saved. Still never touches Industry.
+  // No tone-matching Brand Keyword entered yet (see currentOrApprovedTones())
+  // — still produce a usable draft (one word per tone) rather than an empty
+  // list. Still never touches Industry.
   if (!brandCandidates.length){
     Object.values(TONE_EMOTIONAL_KEYWORDS).forEach(words => brandCandidates.push(words[0]));
   }
@@ -48022,6 +48065,11 @@ function addBrandKeywordChip(group){
   if (!list.some(kw => kw.toLowerCase() === value.toLowerCase())) list.push(value);
   input.value = '';
   renderBrandKeywordChips();
+  // 2026-09-11/12 — 'brand' is now the merged Tone-Anchors-plus-Brand-
+  // Keywords list; keep the "I" AI-thought mount's live commentary in sync
+  // with the pick, same as the old Tone Anchors click handler used to (see
+  // the removed renderToneAnchors()).
+  if (group === 'brand' && typeof renderFaqI === 'function') renderFaqI();
 }
 
 function removeBrandKeywordChip(group, i){
@@ -48033,6 +48081,7 @@ function removeBrandKeywordChip(group, i){
   }
   state.brandKeywords[group].splice(i, 1);
   renderBrandKeywordChips();
+  if (group === 'brand' && typeof renderFaqI === 'function') renderFaqI();
 }
 
 // 2026-08-26 — removed: seedNegativeKeywordsFromAvoidWords() used to pull
@@ -48305,7 +48354,20 @@ async function runBrandVoiceContest(){
       // read from was merged into Terms to Avoid, see negativeKeywordsModule's
       // comment above); the backend already treats antiExample as optional
       // (server.js ~line 8761), so simply not sending it is safe.
-      body: JSON.stringify({ toneAnchors: [...state.toneAnchors], avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
+      // 2026-09-11/12 — toneAnchors dropped from this body: state.toneAnchors
+      // no longer exists (merged into Brand Keywords — emotional, voice &
+      // style). Not replaced with a brandKeywords param either — the
+      // backend's brandVoiceCriticalMessagesContext() already reads this
+      // account's persisted brandKeywordsJson (brand + product) directly
+      // off the account row, independent of this request body, so nothing
+      // here needs to re-push it. The one edge case this doesn't cover:
+      // live, unsaved chip edits this session (saveBrandKeywords() not yet
+      // clicked) won't reach this contest run until saved — acceptable,
+      // since Save Draft/Save For AI Assistance already carry the same
+      // "save before it's used elsewhere" expectation everywhere else on
+      // this page. See cxmedia-brand-voice-consolidation-human-agentic-
+      // model-scoping-2026-09-11.md.
+      body: JSON.stringify({ avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
       // 2026-08-26 fix, per direct question ("What does this message
@@ -49636,9 +49698,10 @@ function renderStrategicOpportunity(){
   if (el) el.textContent = computeStrategicOpportunity();
 }
 
-// Templated JS standing in for a real Claude call — same convention as
-// generateVoiceDraft(): reasoning from known category patterns, not sourced
-// from live market data (this build has no real market-research connector).
+// Templated JS standing in for a real Claude call — same convention
+// generateVoiceDraft() used to follow before its 2026-09-11/12 rewrite:
+// reasoning from known category patterns, not sourced from live market data
+// (this build has no real market-research connector).
 function generateIndustryTrendsDraft(){
   const audienceLabels = GENERATIONS.filter(g => state.audience.has(g.key)).map(g => g.label);
   const wealthLabels = WEALTH_TIERS.filter(w => state.wealth.has(w.key)).map(w => w.label);
@@ -49966,7 +50029,6 @@ async function saveCompetitivePositioning(){
   renderStageRow();
   renderStageCta();
   renderGroupGrid();
-  renderToneAnchors();
   renderBrandFoundationsModule();
   // Round 19 — the Dashboard's own three simplified sections.
   renderDailyNews();
