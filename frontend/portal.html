@@ -3684,10 +3684,13 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <div id="taxonomyManagerBody"></div>
-
-        <div class="field-divider">Or upload all dropdown lists from a file</div>
-        <p class="hint" style="margin:0 0 14px;">Same lists as above, just filled in from a spreadsheet instead of typed one at a time. Upload a .csv or .xlsx laid out the same way as a typical Lookups tab: one column per list (Product Group, Creative Focus Group, Audience, Buy Type, Media Type, Partner), the list's values going down that column. Any other columns (Marketing Group/Channel, Impressions, Project Number, etc.) are recognized and skipped automatically — Marketing Group uses a fixed, shared list, and Impressions/Project Number aren't dropdown lists at all. Nothing is saved until you review the preview below and click Save.</p>
+        <!-- 2026-09-11 reorder, per direct instruction ("The save button is
+             above and not below the bulk uploader. We can just position
+             save Under Choose File."): file-upload section now comes first
+             so its own Choose file → Save flow reads top-to-bottom without
+             the manual chip editor's Save button appearing above it. -->
+        <div class="field-divider" style="margin-top:0;padding-top:0;border-top:none;">Upload all dropdown lists from a file</div>
+        <p class="hint" style="margin:0 0 14px;">Fastest way to fill in the lists below. Upload a .csv or .xlsx laid out the same way as a typical Lookups tab: one column per list (Product Group, Creative Focus Group, Audience, Buy Type, Media Type, Partner), the list's values going down that column. Any other columns (Marketing Group/Channel, Impressions, Project Number, etc.) are recognized and skipped automatically — Marketing Group uses a fixed, shared list, and Impressions/Project Number aren't dropdown lists at all. Nothing is saved until you review the preview below and click Save.</p>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <label class="btn-ghost" for="taxBulkFileInput" style="cursor:pointer;">Choose file →</label>
           <input type="file" id="taxBulkFileInput" accept=".csv,.xlsx" style="display:none;" onchange="taxBulkHandleFile(event)">
@@ -3702,6 +3705,9 @@
           </div>
           <p class="hint" id="taxBulkSaveResult" style="margin-top:8px;"></p>
         </div>
+
+        <div class="field-divider">Or type them in by hand</div>
+        <div id="taxonomyManagerBody"></div>
       </div>
     </div>
 
@@ -9121,7 +9127,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-11-taxonomy-merged-step1';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-taxonomy-save-refresh-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11815,7 +11821,7 @@ function renderCmpProductGroupRow(){
     // 2026-08-23 — Product Groups & Creative Focus Group setup moved out of
     // Marketing Calendar into the Configuration workstream (step-
     // taxonomyManager); this pointer now goes there instead.
-    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a> (quick-start templates available).</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a>.</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix, per direct instruction: "remove Multi-
@@ -11845,7 +11851,7 @@ function renderCmpCreativeFocusGroupRow(){
   let values = cmpTaxonomyValues('creativeMarket');
   if (!values){
     // 2026-08-23 — same move as Product Group above.
-    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a> (quick-start templates available).</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a>.</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix — same as Product Group above: MULTI-
@@ -37186,6 +37192,12 @@ async function saveTaxonomyGroups(){
     taxonomyDraftSource = null;
     await mktCalLoadTaxonomies(); // refreshes state.calendarTaxonomies + Campaign Creation's tiles + this page's own filters
     await renderTaxonomyManager();
+    // 2026-09-11 fix, per direct instruction ("Create campaign uploads did
+    // not activate"): a successful save must immediately re-check the
+    // Steps 2-3 gate in place — previously this only happened on the next
+    // full navigation to this step (goToStep('bulkUpload')), so Step 1
+    // showed as saved while Steps 2-3 stayed dimmed/locked until reload.
+    renderBulkUploadTaxonomyGate();
     const freshFlag = document.getElementById('taxonomySaveFlag');
     if (freshFlag){ freshFlag.style.color = 'var(--cx)'; freshFlag.textContent = `Saved ${new Date().toLocaleTimeString()} — available now on Campaign Creation and this calendar's own filters.`; }
   } catch (e){
@@ -37344,8 +37356,21 @@ async function taxBulkSave(){
     taxBulkParsed = null;
     document.getElementById('taxBulkPreviewWrap').style.display = 'none';
     taxBulkReset();
+    // 2026-09-11 fix, per direct instruction ("The upload saved I think...
+    // The message should go away when saved"): this save path was never
+    // clearing taxonomyDraft/taxonomyDraftSource, so renderTaxonomyManager()
+    // kept re-rendering the stale, empty manual-editor draft (showing
+    // "None yet." for both lists) instead of the freshly-saved read-only
+    // summary. saveTaxonomyGroups() (the other save path) already cleared
+    // these — this brings the file-upload path to parity.
+    taxonomyDraft = null;
+    taxonomyDraftSource = null;
     await mktCalLoadTaxonomies(); // refreshes state.calendarTaxonomies + Campaign Creation's tiles + Marketing Calendar's own filters
     await renderTaxonomyManager(); // module 1's read-only summary reflects the new Product Group/Creative Focus Group values immediately
+    // 2026-09-11 fix, per direct instruction ("Create campaign uploads did
+    // not activate"): re-check the Steps 2-3 gate immediately after a
+    // successful save instead of only on the next full page navigation.
+    renderBulkUploadTaxonomyGate();
     if (resultEl){
       resultEl.style.color = failed.length ? 'var(--advocacy)' : 'var(--cx)';
       resultEl.textContent = failed.length
