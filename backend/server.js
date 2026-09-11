@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-zcta-ucgid-query-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-taxonomy-bulk-upload-irs-header-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1384,6 +1384,27 @@ createTableIfNeeded(`
 // Focus Group list was specified for Cruise Line only, so that's the only
 // one that ships with one, rather than reusing the cruise destinations list
 // for an unrelated business without being asked to.
+// upsertAccountTaxonomy — shared whole-list-replace upsert for one
+// account_taxonomies row, factored out 2026-09-11 so the new bulk endpoint
+// (POST .../taxonomies/bulk, below the route table) and the original
+// single-taxonomy PUT both run through the exact same validation/write
+// path rather than two copies that could drift.
+function upsertAccountTaxonomy(accountId, taxonomyKey, rawLabel, rawValues){
+  const values = Array.isArray(rawValues) ? rawValues.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : [];
+  const label = typeof rawLabel === 'string' && rawLabel.trim() ? rawLabel.trim() : taxonomyKey;
+  const now = new Date().toISOString();
+  const existing = db.prepare('SELECT id FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, taxonomyKey);
+  if (existing){
+    db.prepare('UPDATE account_taxonomies SET label = ?, valuesJson = ?, updatedAt = ? WHERE id = ?')
+      .run(label, JSON.stringify(values), now, existing.id);
+    return { id: existing.id, updatedAt: now, created: false };
+  }
+  const id = generateId('TAX');
+  db.prepare('INSERT INTO account_taxonomies (id, accountId, taxonomyKey, label, valuesJson, updatedAt) VALUES (?,?,?,?,?,?)')
+    .run(id, accountId, taxonomyKey, label, JSON.stringify(values), now);
+  return { id, updatedAt: now, created: true };
+}
+
 const TAXONOMY_TEMPLATES = [
   {
     key: 'cruise-line',
@@ -11033,7 +11054,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-zcta-ucgid-query-fix',
+        buildStamp: '2026-09-11-taxonomy-bulk-upload-irs-header-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -13804,19 +13825,43 @@ Submit your findings via the submit_brand_categories tool.`;
       const taxonomyKey = decodeURIComponent(parts[4]);
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
-      const values = Array.isArray(body.values) ? body.values.filter(v => typeof v === 'string' && v.trim()) : [];
-      const label = typeof body.label === 'string' && body.label.trim() ? body.label.trim() : taxonomyKey;
-      const now = new Date().toISOString();
-      const existing = db.prepare('SELECT id FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, taxonomyKey);
-      if (existing){
-        db.prepare('UPDATE account_taxonomies SET label = ?, valuesJson = ?, updatedAt = ? WHERE id = ?')
-          .run(label, JSON.stringify(values), now, existing.id);
-        return sendJson(res, 200, { id: existing.id, updatedAt: now });
-      }
-      const id = generateId('TAX');
-      db.prepare('INSERT INTO account_taxonomies (id, accountId, taxonomyKey, label, valuesJson, updatedAt) VALUES (?,?,?,?,?,?)')
-        .run(id, accountId, taxonomyKey, label, JSON.stringify(values), now);
-      return sendJson(res, 201, { id, updatedAt: now });
+      const result = upsertAccountTaxonomy(accountId, taxonomyKey, body.label, body.values);
+      return sendJson(res, result.created ? 201 : 200, { id: result.id, updatedAt: result.updatedAt });
+    }
+
+    // POST /api/accounts/:accountId/taxonomies/bulk — 2026-09-11, per
+    // Todd's request to set up the Marketing Calendar's dropdown lists
+    // (Product Group, Creative Focus Group, Audience, Buy Type, Media Type,
+    // Partner) from a single uploaded file before uploading actual campaign
+    // rows — the single-taxonomy-at-a-time PUT above works but means seven
+    // separate manual saves, and his source file (the same shape as the
+    // original MEDIA_PLANS_2H2026.xlsx "Lookups" tab from round 102) is
+    // naturally a wide table: one column per taxonomy, values going down
+    // each column. Body: { taxonomies: [{ key, label, values: [...] }, ...]
+    // }. Each entry runs through the SAME upsertAccountTaxonomy() the
+    // single PUT uses (whole-list replace per key) — this endpoint is just
+    // a loop over that, so behavior/validation stays identical whichever
+    // path a caller uses. One bad entry (missing/blank key) is skipped and
+    // reported, not a whole-batch failure — matches this file's established
+    // per-row-independent-failure convention (e.g. the channel-planning
+    // bulk endpoint above).
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomies' && parts[4] === 'bulk'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const entries = Array.isArray(body.taxonomies) ? body.taxonomies : [];
+      if (!entries.length) return sendJson(res, 400, { error: 'taxonomies must be a non-empty array of { key, label, values }' });
+      const results = entries.map(entry => {
+        const key = typeof entry.key === 'string' ? entry.key.trim() : '';
+        if (!key) return { key: entry.key || '(blank)', ok: false, error: 'missing taxonomy key' };
+        try {
+          const r = upsertAccountTaxonomy(accountId, key, entry.label, entry.values);
+          return { key, ok: true, count: Array.isArray(entry.values) ? entry.values.filter(v => typeof v === 'string' && v.trim()).length : 0, created: r.created };
+        } catch (e){
+          return { key, ok: false, error: e && e.message ? e.message : String(e) };
+        }
+      });
+      return sendJson(res, 200, { results });
     }
 
     // GET /api/accounts/:accountId/taxonomy-templates — quick-start Product
@@ -17518,10 +17563,14 @@ Submit your findings via the submit_brand_categories tool.`;
         const text = await upstream.text();
         const lines = text.split('\n');
         if (!lines.length) return sendJson(res, 502, { error: 'IRS SOI CSV returned no content' });
-        const header = lines[0].split(',').map(h => h.trim());
-        const zipIdx = header.indexOf('ZIPCODE'), stubIdx = header.indexOf('agi_stub'), n1Idx = header.indexOf('N1'), agiIdx = header.indexOf('A00100');
+        // IRS varies header casing/quoting by tax year (e.g. "zipcode" not
+        // "ZIPCODE" in the 2022 file) — match case-insensitively and strip
+        // stray quotes rather than relying on one exact spelling.
+        const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const findCol = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
+        const zipIdx = findCol('zipcode'), stubIdx = findCol('agi_stub'), n1Idx = findCol('N1'), agiIdx = findCol('A00100');
         if (zipIdx < 0 || stubIdx < 0 || n1Idx < 0 || agiIdx < 0){
-          return sendJson(res, 502, { error: `IRS SOI CSV header missing an expected column (ZIPCODE/agi_stub/N1/A00100) — got: ${header.slice(0, 10).join(', ')}...` });
+          return sendJson(res, 502, { error: `IRS SOI CSV header missing an expected column (zipcode/agi_stub/N1/A00100) — got: ${header.slice(0, 12).join(', ')}...` });
         }
         const rows = [];
         for (let i = 1; i < lines.length; i++){
@@ -19995,5 +20044,4 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
-
 
