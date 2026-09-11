@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-qualified-wealth-index-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-real-top-bracket-income (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -4945,15 +4945,51 @@ function computeStoreTradeAreas(rows, stores, radii, weightMode){
 // wealth tier. A ring with zero demographic coverage reports null (never
 // 0) for both, plus noRingDemographicCoverage:true so the UI can explain a
 // bare "—" instead of showing it unexplained.
+// zipAvgIncomeBackend(attrs2) — the household-income-bracket-weighted
+// average for one zip, computed live from the real B19001 per-bracket
+// household counts (income_hh_total/income_hh_<code>) rather than a single
+// precomputed figure. Every bracket below the top one uses the fixed
+// ACS_INCOME_BRACKET_MIDPOINTS assumption, same as always — those are
+// narrow, closed ranges (e.g. "$100,000 to $124,999") where a midpoint is a
+// reasonable stand-in. The TOP bracket (017, Census's "$200,000 or more")
+// is open-ended, so a flat $225,000 midpoint silently caps every genuinely
+// wealthy area at "upper-middle-class" — confirmed 2026-09-11 against a
+// real account (Atlas Ocean Voyages, one of the wealthiest areas in the
+// country per Todd, whose ring Wealth Index nonetheless landed in the
+// merely-"Wealthy" band because of this exact cap). When a real, per-zip
+// top-bracket average is on file (income_top_bracket_avg — sourced from
+// IRS SOI ZIP-code tax data, which reports actual AGI dollar totals for
+// its own "$200,000 or more" bracket, not an assumption; see the
+// /proxy/irs-top-bracket-income endpoint below), that real number is used
+// for the top bracket's contribution instead of the flat midpoint — so an
+// enclave where the $200k+ households actually average $900k scores very
+// differently from one where they average $230k. Falls back to the fixed
+// midpoint when IRS data isn't loaded/available for that zip (never blocks
+// the rest of the estimate). Returns null when the zip has no household-
+// count data at all (never fabricates a 0).
+function zipAvgIncomeBackend(attrs2){
+  if (!attrs2 || attrs2.income_hh_total == null || attrs2.income_hh_total <= 0) return null;
+  let weighted = 0;
+  ACS_INCOME_BRACKET_MIDPOINTS.forEach(([code, midpoint]) => {
+    const count = attrs2[`income_hh_${code}`];
+    if (count == null) return;
+    const value = (code === '017' && attrs2.income_top_bracket_avg != null) ? attrs2.income_top_bracket_avg : midpoint;
+    weighted += count * value;
+  });
+  return weighted / attrs2.income_hh_total;
+}
 function computeStoreProspectFit(stores, radii, account){
   const ringRadii = (Array.isArray(radii) && radii.length) ? radii.slice().sort((a, b) => a - b) : [5, 10, 15];
   const geocoded = (stores || []).filter(s => s.lat != null && s.lng != null);
   const targetGens = parseAccountGenerations(account);
   const genMult = generationWealthMultiplierBackend(targetGens);
-  const attrs = TRACKED_GENERATIONS.map(g => `population_${g}`).concat(['income_avg_estimate']);
+  const bracketAttrs = ACS_INCOME_BRACKET_MIDPOINTS.map(([code]) => `income_hh_${code}`);
+  const attrs = TRACKED_GENERATIONS.map(g => `population_${g}`).concat(['income_hh_total', 'income_top_bracket_avg'], bracketAttrs);
   const { centroids, population, demoByZip } = loadGeoReferenceBatch(attrs);
 
   const zipsWithAnyDemographicData = demoByZip.size;
+  let zipsWithTopBracketData = 0;
+  demoByZip.forEach(attrs2 => { if (attrs2.income_top_bracket_avg != null) zipsWithTopBracketData++; });
   // National baseline, from every zip that has BOTH population and at
   // least one demographic attribute on file — one pass over the already-
   // loaded in-memory maps, no per-ring/per-store DB call.
@@ -4963,13 +4999,23 @@ function computeStoreProspectFit(stores, radii, account){
     if (pop == null) return;
     natPop += pop;
     targetGens.forEach(g => { const v = attrs2[`population_${g}`]; if (v != null) natGenPop += v; });
-    if (attrs2.income_avg_estimate != null){ natIncomeWeighted += attrs2.income_avg_estimate * pop; natIncomeWeight += pop; }
+    const zipAvgIncome = zipAvgIncomeBackend(attrs2);
+    if (zipAvgIncome != null){ natIncomeWeighted += zipAvgIncome * pop; natIncomeWeight += pop; }
   });
   const nationalGenShare = natPop > 0 ? natGenPop / natPop : null;
   const nationalAvgIncome = natIncomeWeight > 0 ? natIncomeWeighted / natIncomeWeight : null;
   const demographicCoverageNote = zipsWithAnyDemographicData
     ? `Real Census-sourced demographic coverage is limited to ${zipsWithAnyDemographicData.toLocaleString()} ZCTA(s) nationally — a ring with no coverage shows "—" below, which means no data, not zero.`
     : 'No Census-sourced demographic data is loaded yet — Qualified estimates can\'t be computed until it is. Population-only figures below are still real.';
+  // topBracketCoverageNote — real per-zip $200k+ average income (IRS SOI)
+  // is a separate, optional load on top of the base Census demographics
+  // load; a zip with demographic coverage but no IRS data still gets a
+  // real (if capped-at-the-top-bracket) income estimate via the flat
+  // $225,000 fallback in zipAvgIncomeBackend(), so this is disclosure, not
+  // a blocker.
+  const topBracketCoverageNote = zipsWithAnyDemographicData && zipsWithTopBracketData === 0
+    ? 'Real household-count data for the $200k+ income bracket hasn\'t been loaded yet — Wealth Index currently assumes a flat $225,000 average for that bracket everywhere, which understates genuinely high-income areas. Load "IRS top-bracket income" in Ops Console for a real per-area figure.'
+    : null;
 
   const acctTier = accountWealthTierLabel(account);
 
@@ -4985,7 +5031,7 @@ function computeStoreProspectFit(stores, radii, account){
     : null;
 
   if (!geocoded.length){
-    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens, accountWealthTier: acctTier, qualifiedCoverageNote };
+    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, topBracketCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens, accountWealthTier: acctTier, qualifiedCoverageNote };
   }
 
   const storeResults = geocoded.map(store => {
@@ -4999,7 +5045,8 @@ function computeStoreProspectFit(stores, radii, account){
         if (attrs2){
           zipsWithDemo++;
           targetGens.forEach(g => { const v = attrs2[`population_${g}`]; if (v != null) genPop += v; });
-          if (attrs2.income_avg_estimate != null && p != null){ incomeWeighted += attrs2.income_avg_estimate * p; incomeWeight += p; }
+          const zipAvgIncome = zipAvgIncomeBackend(attrs2);
+          if (zipAvgIncome != null && p != null){ incomeWeighted += zipAvgIncome * p; incomeWeight += p; }
         }
       });
       const noRingDemographicCoverage = zipsWithDemo === 0;
@@ -5048,6 +5095,7 @@ function computeStoreProspectFit(stores, radii, account){
     qualifiedCoverageNote,
     stores: storeResults,
     demographicCoverageNote,
+    topBracketCoverageNote,
     zipsWithAnyDemographicData,
     nationalGenerationShare: nationalGenShare,
     nationalAverageIncome: nationalAvgIncome,
@@ -10985,7 +11033,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-qualified-wealth-index-fix',
+        buildStamp: '2026-09-11-real-top-bracket-income',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17376,6 +17424,75 @@ Submit your findings via the submit_brand_categories tool.`;
       }
     }
 
+    // GET /api/market-reference-data/proxy/irs-top-bracket-income —
+    // 2026-09-11, per Todd's real-data-fix decision on the Wealth Index
+    // undercounting genuinely wealthy areas (see zipAvgIncomeBackend()'s
+    // comment above for the full mechanism). Census's own B19001 table
+    // tops out at "$200,000 or more" with no further detail, so this app's
+    // income-bracket weighting has always had to guess a flat $225,000 for
+    // every household in that bracket, everywhere — capping how "wealthy"
+    // any area can ever score regardless of how far above $200k its real
+    // households sit. IRS SOI's ZIP-code tax-return data (irs.gov,
+    // publicly downloadable, no API key or login — a single national CSV,
+    // not a rate-limited API like Census) uses the SAME open-ended
+    // "$200,000 or more" bracket (agi_stub 6), but — unlike Census —
+    // reports the ACTUAL total dollar AGI (A00100, in thousands) and
+    // return count (N1) for that bracket per ZIP, so a REAL average can be
+    // computed per zip: totalAgiThousands*1000/returns. This endpoint
+    // fetches that one national file server-side (same "browser never
+    // hits the upstream directly" proxy pattern as .../proxy/population,
+    // .../proxy/dma, .../proxy/demographics above), filters down to just
+    // the top-bracket rows (agi_stub===6, excluding the "00000" state-
+    // aggregate pseudo-zip rows), and returns a small { zip, returns,
+    // avgIncome } array — not the full ~180-column file, which would risk
+    // Vercel's response-size ceiling for no benefit (every other column is
+    // unrelated tax-return detail this app doesn't use).
+    //
+    // IRS applies its own small-cell suppression (a handful of returns in
+    // a zip's top bracket may be blanked for privacy) — rows with missing/
+    // zero N1 are skipped, same null-not-zero posture as every other real-
+    // data gap in this app; the Ops Console loader then upserts
+    // income_top_bracket_avg (and income_top_bracket_returns, for
+    // coverage disclosure) into zip_demographic_master via the existing
+    // generic /api/market-demographic-master endpoint below — no new
+    // table or endpoint needed there.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'irs-top-bracket-income'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      try {
+        const IRS_ZIP_CSV_URL = 'https://www.irs.gov/pub/irs-soi/22zpallagi.csv';
+        const upstream = await fetch(IRS_ZIP_CSV_URL, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'text/csv' },
+          signal: AbortSignal.timeout(90000)
+        });
+        if (!upstream.ok) return sendJson(res, 502, { error: `IRS SOI CSV fetch HTTP ${upstream.status} — ${IRS_ZIP_CSV_URL}` });
+        const text = await upstream.text();
+        const lines = text.split('\n');
+        if (!lines.length) return sendJson(res, 502, { error: 'IRS SOI CSV returned no content' });
+        const header = lines[0].split(',').map(h => h.trim());
+        const zipIdx = header.indexOf('ZIPCODE'), stubIdx = header.indexOf('agi_stub'), n1Idx = header.indexOf('N1'), agiIdx = header.indexOf('A00100');
+        if (zipIdx < 0 || stubIdx < 0 || n1Idx < 0 || agiIdx < 0){
+          return sendJson(res, 502, { error: `IRS SOI CSV header missing an expected column (ZIPCODE/agi_stub/N1/A00100) — got: ${header.slice(0, 10).join(', ')}...` });
+        }
+        const rows = [];
+        for (let i = 1; i < lines.length; i++){
+          const line = lines[i];
+          if (!line) continue;
+          const cols = line.split(',');
+          if (cols[stubIdx] !== '6') continue; // top bracket only ("$200,000 or more")
+          const zip = String(cols[zipIdx] || '').trim().padStart(5, '0');
+          if (!/^\d{5}$/.test(zip) || zip === '00000') continue; // skip state-aggregate pseudo-rows
+          const returns = Number(cols[n1Idx]);
+          const agiThousands = Number(cols[agiIdx]);
+          if (!returns || !(returns > 0) || !Number.isFinite(agiThousands)) continue; // suppressed/missing — real gap, not a fabricated 0
+          rows.push({ zip, returns: Math.round(returns), avgIncome: Math.round((agiThousands * 1000) / returns) });
+        }
+        if (!rows.length) return sendJson(res, 502, { error: 'IRS SOI CSV parsed but yielded zero usable top-bracket rows — check the column layout hasn\'t changed for this tax year.' });
+        return sendJson(res, 200, { rows, zctaCount: rows.length, sourceLabel: 'IRS Statistics of Income (SOI), 2022 ZIP Code Data — irs.gov/statistics/soi-tax-stats-individual-income-tax-statistics-2022-zip-code-data-soi' });
+      } catch (e){
+        return sendJson(res, 502, { error: `IRS SOI CSV fetch failed: ${e && e.message ? e.message : e}` });
+      }
+    }
+
     // POST /api/market-demographic-master — CX Ops bulk-loads real zip-
     // level demographic attributes — { rows: [{zip, attribute, value}],
     // sourceLabel }. Generic attribute/value shape, matching
@@ -19828,6 +19945,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
-
 
 
