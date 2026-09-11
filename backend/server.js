@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-taxonomy-inline-step1 (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-taxonomy-merged-step1 (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1405,23 +1405,17 @@ function upsertAccountTaxonomy(accountId, taxonomyKey, rawLabel, rawValues){
   return { id, updatedAt: now, created: true };
 }
 
+// TAXONOMY_TEMPLATES — emptied 2026-09-11, per direct instruction: "Remove
+// cruise line or travel agency or any other vertical type display based on
+// industry code. The industry doesn't matter. We have products and we have
+// creative focus. The client creates what they want." The per-NAICS quick-
+// start concept (Cruise Line, Travel Agency, and any future industry entries
+// this array was meant to grow into) is dropped entirely, not just those two
+// — Product Group/Creative Focus Group setup is always a from-scratch,
+// client-defined list now, regardless of industry. Left as an empty array
+// (endpoint below still returns { templates: [] }) rather than deleting the
+// route outright, so nothing 404s if anything still calls it.
 const TAXONOMY_TEMPLATES = [
-  {
-    key: 'cruise-line',
-    label: 'Cruise Line',
-    naicsHint: 'Travel — Cruise Lines (NAICS 483112, Deep Sea Passenger Transportation)',
-    description: 'Ocean vs. River as the Product Group split, with the real destination markets a cruise line actually sells as Creative Focus Groups.',
-    productGroup: ['Ocean', 'River'],
-    creativeMarket: ['Caribbean', 'South America', 'Antarctica', 'Arctic', 'Mexico and Pacific Coast', 'South Pacific', 'Australia', 'Asia', 'Africa', 'Mediterranean', 'Greek Isles', 'Northern Europe', 'Baltic']
-  },
-  {
-    key: 'travel-agency',
-    label: 'Travel Agency',
-    naicsHint: 'Travel — Online/Retail Travel Agency (NAICS 561510, Travel Agencies)',
-    description: 'The core bookable categories a multi-product travel agent (e.g. an Expedia-style business) sells as Product Groups. No Creative Focus Group starting list yet for this one — define it directly for how this business actually segments its creative.',
-    productGroup: ['Hotel', 'Air', 'Car', 'Cruise', 'Train', 'Local Activities'],
-    creativeMarket: []
-  }
 ];
 
 // channel_planning_details — the doc's Section 1 extended per-channel
@@ -11112,7 +11106,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-taxonomy-inline-step1',
+        buildStamp: '2026-09-11-taxonomy-merged-step1',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
