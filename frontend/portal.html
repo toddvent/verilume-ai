@@ -9016,7 +9016,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-10-prospect-fit-clarity-pass';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-qualified-wealth-index-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27066,24 +27066,26 @@ function mstProspectFitSectionHtml(data){
     return `<div style="margin-top:8px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p><p class="hint">${escapeHtml(data.note || 'No geocoded stores on file yet.')}</p></div>`;
   }
   const gens = (data.targetGenerations || []).join(', ');
+  const tierLine = data.accountWealthTier
+    ? `Your account's target wealth tier (Company Profile): <b>${escapeHtml(data.accountWealthTier.label)}</b> — Verilume Wealth Index multiplier ×${data.accountWealthMultiplier != null ? data.accountWealthMultiplier : '—'} for ${escapeHtml(gens || 'your target generation(s)')} (the same formula your Free Assessment uses).`
+    : `No target wealth tier is set on this account's Company Profile yet — Qualified below can't be estimated until one is.`;
   const rows = (data.stores || []).map(s => s.rings.map((r, i) => `
     <tr${i === 0 ? '' : ' style="border-top:none;"'}>
       ${i === 0 ? `<td rowspan="${s.rings.length}">${escapeHtml(s.name || s.storeId || '—')}</td>` : ''}
       <td>${r.radiusMiles} mi</td>
       <td>${r.population.toLocaleString()}</td>
-      <td><b>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.targetPopulation != null ? r.targetPopulation.toLocaleString() : '—')}</b></td>
-      <td>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.audienceFit != null ? r.audienceFit : '—')}</td>
-      <td>${r.noRingDemographicCoverage ? '<span class="hint">— no coverage</span>' : (r.wealthFit != null ? `${r.wealthFit}${r.wealthBand ? ` (${escapeHtml(r.wealthBand)})` : ''}` : '—')}</td>
+      <td><b>${r.qualifiedPopulation != null ? r.qualifiedPopulation.toLocaleString() : '<span class="hint">—</span>'}</b></td>
     </tr>`).join('')).join('');
   return `
     <div style="margin-top:8px;">
-      <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p>
-      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Est. Population, Target Generations = the estimated number of people nearby who fall in your target generation(s) — a population count, not a household count. Audience Fit = that same share indexed to the national average (100 = average), for context. Wealth Fit = the same Verilume Wealth Index your Free Assessment uses, for the population nearby.</p>
+      <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Population &amp; Qualified Households</p>
+      <p class="hint" style="margin:0 0 6px;">${tierLine}</p>
+      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Population = everyone nearby, all ages. Qualified = the target-generation population nearby, counted where that ring's own Verilume Wealth Index (income + generation, the same score your Free Assessment shows) is at or above your target wealth tier — otherwise that ring counts as 0 qualified, not a partial estimate.</p>
       <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
-        <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Est. Population, Target Generations</th><th>Audience Fit</th><th>Wealth Fit</th></tr></thead>
+        <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Qualified (target age + wealth, est.)</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
-      <p class="hint" style="margin:0;">${escapeHtml(data.demographicCoverageNote || '')} ${escapeHtml(data.unavailableGenerationsNote || '')}</p>
+      <p class="hint" style="margin:0;">${escapeHtml(data.demographicCoverageNote || '')} ${escapeHtml(data.qualifiedCoverageNote || '')} ${escapeHtml(data.unavailableGenerationsNote || '')}</p>
     </div>`;
 }
 

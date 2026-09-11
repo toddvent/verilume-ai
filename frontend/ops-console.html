@@ -681,7 +681,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-10-prospect-fit-clarity-pass';
+const CXMEDIA_BUILD_STAMP = '2026-09-11-qualified-wealth-index-fix';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1063,7 +1063,13 @@ const REF_DATA_SOURCES = {
         // One derived weighted-average household income estimate from the
         // real B19001 bracket distribution — a disclosed approximation
         // (bracket midpoints), not all 16 raw brackets per zip; see the
-        // backend's ACS_INCOME_BRACKET_MIDPOINTS comment for why.
+        // backend's ACS_INCOME_BRACKET_MIDPOINTS comment for why. (Round
+        // 2026-09-10 briefly also emitted per-bracket income_hh_* counts
+        // here to estimate a household-income-qualifying share — Todd
+        // rejected that approach ("I don't want you to use the census
+        // age - income bracket. It's worthless") in favor of reusing the
+        // already-computed ring-level Verilume Wealth Index instead, so
+        // that extra pull is removed; no reload of this data is needed.)
         const totalHouseholds = col(row, 'B19001_001E');
         if (totalHouseholds > 0){
           const weightedSum = (meta.incomeBracketMidpoints || []).reduce((sum, pair) => sum + col(row, `B19001_${pair[0]}E`) * pair[1], 0);
