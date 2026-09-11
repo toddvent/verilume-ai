@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-11-demographics-chunked-load (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-11-zcta-ucgid-query-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -11033,7 +11033,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-11-demographics-chunked-load',
+        buildStamp: '2026-09-11-zcta-ucgid-query-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17339,9 +17339,31 @@ Submit your findings via the submit_brand_categories tool.`;
         // ops-console.html needed no changes at all. That fix is still in
         // use below, now run once per state instead of once nationally
         // (see the per-state note above this endpoint for fix #2).
+        // 2026-09-11 (latest) — the &for=zip%20code%20tabulation%20area:*
+        // &in=state:XX predicate the per-state fix (2026-09-10) shipped was
+        // never actually confirmed against a live call (this sandbox has no
+        // network path to census.gov) — and it turned out to be wrong.
+        // Confirmed live via Todd pasting the loader straight into DevTools
+        // Console: every single state query, even just one, came back
+        // `Census API HTTP 400 — error: unknown/unsupported geography
+        // hierarchy`. Census's own API User Guide (the "Ucgid Predicate"
+        // page) documents why: the standard for=/in= predicate pair does
+        // not support scoping ZIP Code Tabulation Area (summary level 860)
+        // inside a state at all — for that specific combination, Census
+        // requires its alternative `ucgid` pseudo-geography syntax instead:
+        // `&ucgid=pseudo(<state GEOID>$8600000)` returns every ZCTA fully
+        // or partially within that state. Switched to that syntax below,
+        // per the guide's own worked example (a different dataset, acs1
+        // profile, but the same geography-predicate mechanism):
+        // api.census.gov/data/2022/acs/acs1/profile?get=NAME,DP05_0001E&ucgid=pseudo(0400000US24$8600000)
+        // Still not independently re-verified live from this sandbox (same
+        // network restriction) — geoCol() below is deliberately built to
+        // fail with a clear, actionable error naming the ACTUAL columns
+        // Census returned if this guess about the response shape is also
+        // wrong, rather than silently coming back with zero rows again.
         const fetchCensusVars = async (vars, stateFips) => {
-          const stateQuery = stateFips ? `&in=state:${stateFips}` : '';
-          const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${vars.join(',')}&for=zip%20code%20tabulation%20area:*${stateQuery}&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
+          const ucgidValue = `pseudo(0400000US${stateFips}$8600000)`;
+          const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${vars.join(',')}&ucgid=${encodeURIComponent(ucgidValue)}&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
             signal: AbortSignal.timeout(30000)
           });
@@ -17355,7 +17377,30 @@ Submit your findings via the submit_brand_categories tool.`;
         };
         const ageVarsRequest = ['B01001_001E', ...ageVars]; // 43 vars + geography = 44 columns
         const incomeVarsRequest = ['B19001_001E', ...incomeVars]; // 17 vars + geography = 18 columns
-        const geoCol = (json) => { const h = Array.isArray(json) && json.length ? json[0] : []; return h.indexOf('zip code tabulation area'); };
+        // A ucgid-predicate response's geography column isn't the literal
+        // "zip code tabulation area" name a for=/in= query returns — it's
+        // some GEOID-shaped identifier (Census's documented example calls
+        // it "GEO_ID", formatted like "8600000US21001"). Detect it by name
+        // first (GEO_ID or ucgid, case-insensitively), falling back to
+        // scanning the first data row for a value matching that composite-
+        // GEOID shape (<digits>US<5 digits>) — robust to Census calling the
+        // column something this wasn't able to verify live. Returns both
+        // the column index AND a function to pull the real 5-digit ZCTA out
+        // of that column's raw value, since (unlike the old for=/in= query)
+        // the raw value here is NOT just the bare zip code.
+        const geoCol = (json) => {
+          const h = Array.isArray(json) && json.length ? json[0] : [];
+          let idx = h.findIndex(name => /^geo_?id$/i.test(String(name || '')) || /^ucgid$/i.test(String(name || '')));
+          if (idx < 0 && json.length > 1){
+            const row2 = json[1] || [];
+            idx = row2.findIndex(v => /^\d+US\d{5}$/.test(String(v || '')));
+          }
+          return idx;
+        };
+        const extractZip = (rawGeoValue) => {
+          const m = /US(\d{5})$/.exec(String(rawGeoValue || ''));
+          return m ? m[1] : null;
+        };
 
         // ACS5's real coverage universe: the 50 states + DC + Puerto Rico
         // (52 FIPS codes) — the territories beyond PR (Guam, American
@@ -17396,11 +17441,16 @@ Submit your findings via the submit_brand_categories tool.`;
             if (r.status !== 'fulfilled'){ statesFailed.push({ state: abbr, error: r.reason && r.reason.message ? r.reason.message : String(r.reason) }); return; }
             const { ageJson, incomeJson } = r.value;
             const ageGeoIdx = geoCol(ageJson), incomeGeoIdx = geoCol(incomeJson);
-            if (ageGeoIdx < 0 || incomeGeoIdx < 0){ statesFailed.push({ state: abbr, error: 'response missing the "zip code tabulation area" column' }); return; }
+            if (ageGeoIdx < 0 || incomeGeoIdx < 0){
+              const ageHeader = Array.isArray(ageJson) && ageJson.length ? ageJson[0] : [];
+              statesFailed.push({ state: abbr, error: `couldn't find a ZCTA geography column in Census's response — actual columns returned: ${ageHeader.join(', ')}` });
+              return;
+            }
             const incomeByZip = new Map();
-            incomeJson.slice(1).forEach(row => { incomeByZip.set(row[incomeGeoIdx], row); });
+            incomeJson.slice(1).forEach(row => { const z = extractZip(row[incomeGeoIdx]); if (z) incomeByZip.set(z, row); });
             ageJson.slice(1).forEach(ageRow => {
-              const zip = ageRow[ageGeoIdx];
+              const zip = extractZip(ageRow[ageGeoIdx]);
+              if (!zip) return;
               // A ZCTA spanning a state line can come back from more than
               // one state's query — first one seen wins (same ZCTA, same
               // data, no need to overwrite).
