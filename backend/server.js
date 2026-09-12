@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-trade-area-numeric-wealth-match (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-transparency-campaign-copy (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2507,9 +2507,257 @@ Propose your candidate via the submit_brand_voice_candidate tool.`;
 // draft text itself — so the human sees "recommend with what you have, ask
 // for more when you know you need it" as a distinct, actionable list, not
 // buried in guide prose.
+// Recomputes presence (never content-in-full — just enough of an excerpt to
+// hand to the transparency writer below) for each of the 9
+// VOICE_TRANSPARENCY_SIGNALS, independently of brandVoiceCriticalMessages
+// Context()'s own joined-string output. Deliberately duplicates these few
+// cheap lookups rather than changing that function's return shape — it has
+// three other call sites (Voice Contest x2) that only want the flat prompt
+// string, and none of them need per-signal presence/excerpts. Kept as its
+// own small function so it can be unit-tested and read independently of the
+// prompt-building code.
+async function gatherVoiceTransparencySignals(account){
+  const out = {};
+  try {
+    const audienceLabel = humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY);
+    const wealthLabel = humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY);
+    out.audience_wealth = { present: !!(audienceLabel || wealthLabel), excerpt: [audienceLabel, wealthLabel].filter(Boolean).join(' / ') || null };
+  } catch (e){ out.audience_wealth = { present: false, excerpt: null }; }
+  try {
+    let excerpt = null, present = false;
+    if (account.accountId){
+      const yearRows = db.prepare('SELECT year, grossRevenue, transactions FROM account_year_results WHERE accountId = ? ORDER BY year DESC').all(account.accountId);
+      const best = yearRows.find(r => r.grossRevenue != null && r.transactions > 0);
+      if (best){
+        present = true;
+        excerpt = `$${(Math.round((best.grossRevenue / best.transactions) * 100) / 100).toLocaleString()} avg. transaction (${best.year})`;
+      }
+    }
+    out.economics_aov = { present, excerpt };
+  } catch (e){ out.economics_aov = { present: false, excerpt: null }; }
+  out.products_services = { present: !!account.productsServices, excerpt: account.productsServices ? String(account.productsServices).slice(0, 200) : null };
+  try {
+    const parsed = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
+    const brandKw = (parsed && Array.isArray(parsed.brand)) ? parsed.brand : [];
+    const productKw = (parsed && Array.isArray(parsed.product)) ? parsed.product : [];
+    out.brand_keywords = { present: !!(brandKw.length || productKw.length), excerpt: [...brandKw, ...productKw].slice(0, 8).join(', ') || null };
+  } catch (e){ out.brand_keywords = { present: false, excerpt: null }; }
+  try {
+    const ctx = account.accountId ? websiteContextRollup(account.accountId) : null;
+    const siteFacts = ctx ? [ctx.title, ctx.metaDescription].filter(Boolean).join(' — ') : null;
+    out.website_understanding = { present: !!(ctx && (siteFacts || ctx.excerpt)), excerpt: siteFacts ? siteFacts.slice(0, 200) : null };
+  } catch (e){ out.website_understanding = { present: false, excerpt: null }; }
+  try {
+    const profile = account.accountId ? websiteProfileRollup(account.accountId) : null;
+    const profileLines = profile ? Object.keys(BRAND_PROFILE_CATEGORY_LABELS).map(key => (profile[key] && profile[key].value != null) ? `${BRAND_PROFILE_CATEGORY_LABELS[key]}: ${profile[key].value}` : null).filter(Boolean) : [];
+    out.website_brand_profile = { present: !!profileLines.length, excerpt: profileLines.slice(0, 4).join('; ') || null };
+  } catch (e){ out.website_brand_profile = { present: false, excerpt: null }; }
+  const visionStatement = (account.visionStatement || '').trim();
+  const longformVoiceExample = (account.longformVoiceExample || '').trim();
+  out.contest_winner = { present: !!(visionStatement || longformVoiceExample), excerpt: visionStatement ? visionStatement.slice(0, 200) : (longformVoiceExample ? longformVoiceExample.slice(0, 200) : null) };
+  try {
+    const sampleContext = await brandWritingSampleContext(account.accountId);
+    out.sample_writings = { present: !!sampleContext, excerpt: sampleContext ? String(sampleContext).slice(0, 200) : null };
+  } catch (e){ out.sample_writings = { present: false, excerpt: null }; }
+  try {
+    let avoidWords = [];
+    const parsedKeywords = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
+    if (parsedKeywords && Array.isArray(parsedKeywords.negative)) avoidWords = parsedKeywords.negative.filter(Boolean);
+    out.terms_to_avoid = { present: !!avoidWords.length, excerpt: avoidWords.slice(0, 5).join(', ') || null };
+  } catch (e){ out.terms_to_avoid = { present: false, excerpt: null }; }
+  return out;
+}
+// Truncates to <=300 chars at a word boundary — the hard safety net behind
+// the prompt's own "300 characters or fewer" instruction below. Never trust
+// a model's own character count.
+function clampClientText(text, maxLen){
+  const s = String(text || '').trim();
+  if (s.length <= maxLen) return s;
+  const cut = s.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut).trim();
+}
+// 2026-09-12 — generalized off the original Voice Guide-only version so the
+// same mechanism serves every AI Brain Transparency surface (Campaign Copy
+// added this round; Voice Contest/PR still to come — see the roadmap item
+// in the Copywriting product doc). One Claude call, one client-facing
+// sentence per signal (<=300 chars, enforced by clampClientText as the
+// safety net) — the actual "AI Brain Transparency" text a client sees.
+// hadSignal (was this even on file) is decided by code, before this call,
+// never by the model; hadImpact (did it actually shape THIS output) and the
+// sentence explaining it are the model's job, since that's a real judgment
+// call about the output it just wrote, not a fact lookup. Per direct
+// instruction, a signal with no measurable impact still gets an honest
+// sentence saying so — never a generic "everything helped" gloss and never
+// silently omitted. `signalRegistry` is one of the *_TRANSPARENCY_SIGNALS
+// arrays above; `subjectLabel` names what's being explained in the prompt
+// (e.g. "Brand Voice Guide draft", "campaign Long Form Copy draft");
+// `toolName` keeps each surface's tool-use call visibly distinct in logs.
+async function generateTransparencyNotes(account, signals, contentText, signalRegistry, subjectLabel, toolName){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return { items: null, note: 'AI Brain Transparency requires ANTHROPIC_API_KEY to be configured — no observations were generated for this draft.' };
+  }
+  try {
+    const signalLines = signalRegistry.map(s => {
+      const sig = signals[s.key] || { present: false, excerpt: null };
+      return `- ${s.key} (${s.label}): ${sig.present ? `ON FILE — ${sig.excerpt || '(present, no excerpt)'}` : 'NOT ON FILE for this account'}`;
+    }).join('\n');
+    const props = {};
+    signalRegistry.forEach(s => {
+      props[s.key] = {
+        type: 'object',
+        properties: {
+          hadImpact: { type: 'boolean', description: 'True only if this specific signal actually shaped a real, identifiable choice in the output below (a word, a register decision, a fact used). False if it was not on file, or was on file but this output would have read the same without it.' },
+          clientText: { type: 'string', description: 'One honest, client-facing sentence, 300 characters or fewer, plain language, no jargon, no internal function/table names. If NOT on file, say so and say what default was used instead. If on file but had no real impact, say that plainly rather than implying it helped.' }
+        },
+        required: ['hadImpact', 'clientText']
+      };
+    });
+    const prompt = `You wrote (or are explaining) a ${subjectLabel} for ${account.company || 'this company'}. Below is exactly what was on file for each of ${signalRegistry.length} possible input signals when this was generated, and the output itself. For EACH signal, tell the client in one honest sentence (300 characters max) whether it was on file and whether it actually shaped this specific output. It is completely fine — expected, even — for several of these to have had no real impact; say so plainly rather than crediting a signal that didn't actually change anything. Never invent detail beyond what's given below.
+
+SIGNALS FOR THIS GENERATION:
+${signalLines}
+
+THE OUTPUT THIS EXPLAINS:
+${(contentText || '').slice(0, 3000)}
+
+Submit your result via the ${toolName} tool — one entry per signal key listed above, using those exact keys.`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 1600,
+      content: prompt,
+      toolName,
+      toolDescription: 'Submit one client-facing observation-and-impact sentence per input signal.',
+      schema: { type: 'object', properties: props, required: signalRegistry.map(s => s.key) }
+    });
+    const items = signalRegistry.map(s => {
+      const entry = parsed[s.key] || {};
+      const sig = signals[s.key] || { present: false };
+      return {
+        signalKey: s.key,
+        signalLabel: s.label,
+        hadSignal: !!sig.present,
+        hadImpact: typeof entry.hadImpact === 'boolean' ? entry.hadImpact : false,
+        clientText: clampClientText(entry.clientText || (sig.present ? 'On file, but no client-facing summary was generated for this signal.' : 'Not on file for this account yet.'), 300)
+      };
+    });
+    return { items, note: null };
+  } catch (e){
+    return { items: null, note: 'AI Brain Transparency generation failed: ' + e.message };
+  }
+}
+// Shared by every AI Brain Transparency surface — attaches a batch of
+// per-signal observations to a successfully-generated output and persists
+// it. Never let a transparency failure take down the output itself — the
+// output is the primary deliverable, transparency is an explanation of it,
+// and a client should still get their draft if this secondary call has a
+// problem. A null/empty output (shouldn't happen on a success path, but
+// never assume) gets no transparency call — nothing real to explain yet.
+// `getContentText(result)` extracts the text to explain from that surface's
+// own result shape (Voice Guide: result.draft; Campaign Copy: result.copy).
+async function attachTransparency(contextType, signalRegistry, gatherFn, subjectLabel, toolName, account, result, getContentText){
+  const contentText = result ? getContentText(result) : null;
+  if (typeof contentText !== 'string' || !contentText.trim()){
+    return { ...result, transparency: null, transparencyNote: null };
+  }
+  try {
+    const signals = await gatherFn(account, result);
+    const { items, note } = await generateTransparencyNotes(account, signals, contentText, signalRegistry, subjectLabel, toolName);
+    if (items && items.length) saveTransparencyBatch(account.accountId, items, contextType);
+    return { ...result, transparency: items, transparencyNote: note };
+  } catch (e){
+    return { ...result, transparency: null, transparencyNote: 'AI Brain Transparency generation failed: ' + e.message };
+  }
+}
+// Thin, backward-compatible wrapper — every existing Voice Guide call site
+// keeps calling this exact signature unchanged.
+async function attachVoiceTransparency(account, result){
+  return attachTransparency('voice_guide', VOICE_TRANSPARENCY_SIGNALS, gatherVoiceTransparencySignals, 'Brand Voice Guide draft', 'submit_voice_transparency', account, result, r => r.draft);
+}
+// Persists one full batch (one row per signal, same batchId) — called only
+// when generation actually produced items, never for the note-only/failure
+// paths above (nothing real to log in those cases). Returns the batchId so
+// callers can surface it if useful later. `contextType` distinguishes which
+// surface this batch came from ('voice_guide', 'campaign_copy', ...) — the
+// client/ops read endpoints below always filter on it.
+function saveTransparencyBatch(accountId, items, contextType){
+  if (!items || !items.length) return null;
+  const batchId = generateId('ABT');
+  const now = new Date().toISOString();
+  const insert = db.prepare(`INSERT INTO ai_brain_transparency_items
+    (id, batchId, accountId, contextType, signalKey, signalLabel, hadSignal, hadImpact, clientText, createdAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  items.forEach(item => {
+    insert.run(generateId('ABTI'), batchId, accountId, contextType, item.signalKey, item.signalLabel, item.hadSignal ? 1 : 0, item.hadImpact ? 1 : 0, item.clientText, now);
+  });
+  return batchId;
+}
+// 2026-09-12 — AI Brain Transparency, Campaign Copy signals. Mirrors
+// gatherVoiceTransparencySignals() above but reads the real context-builder
+// functions generateMessagingCopyViaAI() itself calls (see that function),
+// rather than re-deriving anything — presence/excerpt is read straight off
+// each builder's own formatted output (they all share the same
+// honest-empty-string-when-nothing-applies convention), so this can never
+// drift out of sync with what the prompt actually received. `campaign` may
+// be null (a pre-generation signal check has no campaign yet) — only
+// key_message depends on it.
+async function gatherCampaignCopyTransparencySignals(account, campaign, opts){
+  opts = opts || {};
+  const out = {};
+  const presenceFromContext = (ctx) => {
+    const s = (ctx || '').trim();
+    return { present: !!s, excerpt: s ? s.replace(/\s+/g, ' ').slice(0, 200) : null };
+  };
+  out.brand_voice_guide = { present: !!(account.voiceGuideText || '').trim(), excerpt: (account.voiceGuideText || '').trim().slice(0, 200) || null };
+  const visionStatement = (account.visionStatement || '').trim();
+  const longformVoiceExample = (account.longformVoiceExample || '').trim();
+  out.vision_longform = { present: !!(visionStatement || longformVoiceExample), excerpt: visionStatement ? visionStatement.slice(0, 200) : (longformVoiceExample ? longformVoiceExample.slice(0, 200) : null) };
+  try {
+    const sampleCtx = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId));
+    out.sample_writings = presenceFromContext(sampleCtx);
+  } catch (e){ out.sample_writings = { present: false, excerpt: null }; }
+  try {
+    out.decision_history = presenceFromContext(await creativeJobDecisionContext(account.accountId));
+  } catch (e){ out.decision_history = { present: false, excerpt: null }; }
+  try {
+    out.training_digest = presenceFromContext(await trainingDigestRollupContext(account.accountId));
+  } catch (e){ out.training_digest = { present: false, excerpt: null }; }
+  try {
+    out.guardrail_website = presenceFromContext(await liveGuardrailContext(account.accountId));
+  } catch (e){ out.guardrail_website = { present: false, excerpt: null }; }
+  try {
+    out.website_brand_profile = presenceFromContext(await websiteProfileContext(account.accountId));
+  } catch (e){ out.website_brand_profile = { present: false, excerpt: null }; }
+  try {
+    let present = false, excerpt = null;
+    if (account.competitorsJson){
+      const competitors = JSON.parse(account.competitorsJson);
+      if (Array.isArray(competitors) && competitors.length){
+        present = true;
+        excerpt = competitors.map(c => c.name).filter(Boolean).slice(0, 5).join(', ');
+      }
+    }
+    out.competitive_positioning = { present, excerpt };
+  } catch (e){ out.competitive_positioning = { present: false, excerpt: null }; }
+  const keyMessage = (opts.keyMessage || '').trim();
+  out.key_message = { present: !!keyMessage, excerpt: keyMessage ? keyMessage.slice(0, 200) : null };
+  return out;
+}
+// Thin wrapper matching attachVoiceTransparency()'s shape — see
+// POST /api/campaigns/:id/messaging-ai-draft for the one call site.
+// `opts` is the same {keyMessage, style, focus} object the caller already
+// passes to generateMessagingCopyViaAI(), reused here only for keyMessage.
+async function attachCampaignCopyTransparency(account, campaign, opts, result){
+  return attachTransparency(
+    'campaign_copy', CAMPAIGN_COPY_TRANSPARENCY_SIGNALS,
+    (acct) => gatherCampaignCopyTransparencySignals(acct, campaign, opts),
+    'campaign Long Form Copy draft', 'submit_campaign_copy_transparency',
+    account, result, r => r.copy
+  );
+}
 async function generateVoiceGuideDraftViaAI(account){
   if (!process.env.ANTHROPIC_API_KEY){
-    return { draft: null, gaps: [], whyDraft: null, note: 'AI Voice Draft generation requires ANTHROPIC_API_KEY to be configured. Nothing was generated — edit the Voice Guide by hand below, or set the key to enable this.' };
+    return { draft: null, gaps: [], whyDraft: null, note: 'AI Voice Draft generation requires ANTHROPIC_API_KEY to be configured. Nothing was generated — edit the Voice Guide by hand below, or set the key to enable this.', transparency: null, transparencyNote: null };
   }
   try {
     const context = brandVoiceCriticalMessagesContext(account, {});
@@ -2578,12 +2826,12 @@ Submit your result via the submit_voice_draft tool. If you do not have a tool/fu
         const vendorText = await callVendorForText(priority.row.candidateKey, prompt);
         const vendorParsed = parseJsonBlock(vendorText);
         if (vendorParsed && typeof vendorParsed.draft === 'string'){
-          return {
+          return await attachVoiceTransparency(account, {
             draft: vendorParsed.draft,
             gaps: Array.isArray(vendorParsed.gaps) ? vendorParsed.gaps.filter(g => typeof g === 'string') : [],
             whyDraft: typeof vendorParsed.whyDraft === 'string' ? vendorParsed.whyDraft : null,
             note: null
-          };
+          });
         }
         // fall through to Anthropic below on an unparseable/empty response
       } catch (e){ /* fall through to Anthropic below */ }
@@ -2596,14 +2844,14 @@ Submit your result via the submit_voice_draft tool. If you do not have a tool/fu
       toolDescription: 'Submit the drafted Brand Voice Guide.',
       schema: VOICE_DRAFT_SCHEMA
     });
-    return {
+    return await attachVoiceTransparency(account, {
       draft: typeof parsed.draft === 'string' ? parsed.draft : null,
       gaps: Array.isArray(parsed.gaps) ? parsed.gaps.filter(g => typeof g === 'string') : [],
       whyDraft: typeof parsed.whyDraft === 'string' ? parsed.whyDraft : null,
       note: null
-    };
+    });
   } catch (e){
-    return { draft: null, gaps: [], whyDraft: null, note: 'AI Voice Draft generation failed: ' + e.message };
+    return { draft: null, gaps: [], whyDraft: null, note: 'AI Voice Draft generation failed: ' + e.message, transparency: null, transparencyNote: null };
   }
 }
 // No relevance score here — unlike the copy interview panel, there's no
@@ -3664,6 +3912,103 @@ createTableIfNeeded(`
 // convention for indexes elsewhere in this file to mirror beyond that.
 createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_ai_brain_contributions_account ON ai_brain_contributions(accountId, sourceType, status);`);
 createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_ai_brain_contribution_log_account ON ai_brain_contribution_log(accountId, contributionId);`);
+
+// 2026-09-12 — AI Brain Transparency, first test on the Voice module. Per
+// direct instruction: "I want to show clients our observations and how it
+// impacts outputs using the Voice module as the first test. It's ok if we
+// observe something and tell clients that it doesn't impact a recommendation.
+// It will also help us value the features we build." A separate table from
+// ai_brain_contributions above — that table is the INPUT ledger (what the
+// system knows); this one is the OUTPUT/explanation ledger (what the system
+// told the client about how a specific generation used what it knows). One
+// row per signal per generation event, not one row per generation, so the
+// ops rollup (GET /api/ops/ai-brain-transparency-rollup) can answer "how
+// often does signal X actually change anything" per signal, which is the
+// literal "help us value the features we build" ask.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ai_brain_transparency_items (
+    id TEXT PRIMARY KEY,
+    batchId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    contextType TEXT NOT NULL,
+    signalKey TEXT NOT NULL,
+    signalLabel TEXT NOT NULL,
+    hadSignal INTEGER NOT NULL,
+    hadImpact INTEGER,
+    clientText TEXT,
+    createdAt TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_ai_brain_transparency_account ON ai_brain_transparency_items(accountId, contextType, batchId);`);
+createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_ai_brain_transparency_signal ON ai_brain_transparency_items(contextType, signalKey);`);
+
+// Fixed key/label pairs, in the order they should render to a client — same
+// hand-maintained label-map convention as GENERATION_LABELS_FOR_COPY. Adding
+// a Voice Guide signal later means adding one entry here plus one presence
+// check in gatherVoiceTransparencySignals() below; nothing else to touch.
+const VOICE_TRANSPARENCY_SIGNALS = [
+  { key: 'audience_wealth', label: 'Target audience & wealth tier' },
+  { key: 'economics_aov', label: 'Average transaction value' },
+  { key: 'products_services', label: 'Products & services on file' },
+  { key: 'brand_keywords', label: 'Approved brand & product keywords' },
+  { key: 'website_understanding', label: 'Your scanned website' },
+  { key: 'website_brand_profile', label: 'Website brand category profile' },
+  { key: 'contest_winner', label: 'Most recent Voice Contest winner' },
+  { key: 'sample_writings', label: 'Sample writings you provided' },
+  { key: 'terms_to_avoid', label: 'Terms you asked us to avoid' }
+];
+
+// 2026-09-12 — AI Brain Transparency, second surface (Campaign Copy, per
+// the extension roadmap item logged in the Copywriting product doc's
+// decision log after the Voice Guide first test). Same fixed key/label
+// convention as VOICE_TRANSPARENCY_SIGNALS above. Matches the real inputs
+// generateMessagingCopyViaAI() actually reads (see that function) — one
+// entry per context-builder it calls, plus the two account-level voice
+// fields and the per-generation Key Message the human typed in.
+const CAMPAIGN_COPY_TRANSPARENCY_SIGNALS = [
+  { key: 'brand_voice_guide', label: 'Your approved Brand Voice Guide' },
+  { key: 'vision_longform', label: 'Brand vision statement & reference example' },
+  { key: 'sample_writings', label: 'Sample writings & website copy examples you provided' },
+  { key: 'decision_history', label: 'Your past approve/reject feedback on campaign copy' },
+  { key: 'training_digest', label: 'Pooled AI Brain training signal for this account' },
+  { key: 'guardrail_website', label: 'Terms to avoid & your scanned website' },
+  { key: 'website_brand_profile', label: 'Website brand category profile' },
+  { key: 'competitive_positioning', label: 'Your competitors on file' },
+  { key: 'key_message', label: 'The key message you typed in for this draft' }
+];
+
+// Every valid ai_brain_transparency_items.contextType value — the read
+// endpoints below validate against this list so an unrecognized contextType
+// fails loud (400) instead of silently returning an empty result. Voice
+// Contest and PR/Corporate Comm are the next two surfaces on the roadmap
+// (see the Copywriting product doc's decision log) — not yet wired to a
+// generation function, listed here as documentation of intent, not as
+// evidence they're live; only 'voice_guide' and 'campaign_copy' currently
+// have a real writer.
+const AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES = ['voice_guide', 'campaign_copy', 'voice_contest', 'pr_corp_comm'];
+
+// Shared by every client-facing AI Brain Transparency read (Voice Guide's
+// own dedicated route and the general ai-brain-transparency route below) —
+// one place that defines "the latest batch for this account+contextType"
+// and its {available, generatedAt, items} response shape.
+function readLatestTransparencyBatch(accountId, contextType){
+  const latest = db.prepare(`SELECT batchId, createdAt FROM ai_brain_transparency_items WHERE accountId = ? AND contextType = ? ORDER BY createdAt DESC LIMIT 1`).get(accountId, contextType);
+  if (!latest){
+    return { available: false, generatedAt: null, items: [] };
+  }
+  const rows = db.prepare(`SELECT signalKey, signalLabel, hadSignal, hadImpact, clientText FROM ai_brain_transparency_items WHERE accountId = ? AND contextType = ? AND batchId = ? ORDER BY rowid ASC`).all(accountId, contextType, latest.batchId);
+  return {
+    available: true,
+    generatedAt: latest.createdAt,
+    items: rows.map(r => ({
+      signalKey: r.signalKey,
+      signalLabel: r.signalLabel,
+      hadSignal: !!r.hadSignal,
+      hadImpact: !!r.hadImpact,
+      clientText: r.clientText
+    }))
+  };
+}
 
 const AI_BRAIN_CONTRIBUTION_STATUSES = ['reference', 'applied', 'removed'];
 
@@ -12447,7 +12792,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-trade-area-numeric-wealth-match',
+        buildStamp: '2026-09-12-ai-brain-transparency-campaign-copy',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -14432,6 +14777,89 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, result);
     }
 
+    // GET /api/accounts/:id/voice-transparency — 2026-09-12, AI Brain
+    // Transparency (client-facing), Voice Guide's own dedicated path —
+    // still what portal.html's Voice Guide page calls, unchanged.
+    // Equivalent to GET .../ai-brain-transparency?contextType=voice_guide
+    // below (same underlying data), kept as its own literal URL rather than
+    // migrated, so nothing already deployed on Voice Guide's page breaks.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-transparency'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, readLatestTransparencyBatch(accountId, 'voice_guide'));
+    }
+
+    // GET /api/accounts/:id/ai-brain-transparency?contextType=campaign_copy
+    // — 2026-09-12, AI Brain Transparency (client-facing), general path for
+    // every surface after the Voice Guide first test. `contextType`
+    // required, validated against AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES so an
+    // unrecognized value fails loud rather than silently returning nothing.
+    // Same requireAccount gate and same {available, generatedAt, items}
+    // response shape as the Voice Guide route above, so the frontend's
+    // render function is identical either way.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'ai-brain-transparency'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contextType = url.searchParams.get('contextType');
+      if (!contextType || !AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES.includes(contextType)){
+        return sendJson(res, 400, { error: `contextType is required and must be one of: ${AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES.join(', ')}` });
+      }
+      return sendJson(res, 200, readLatestTransparencyBatch(accountId, contextType));
+    }
+
+    // GET /api/ops/ai-brain-transparency-rollup?contextType=campaign_copy —
+    // 2026-09-12, AI Brain Transparency (internal). Per direct instruction:
+    // "It will also help us value the features we build." Aggregates
+    // hadSignal/hadImpact counts per signalKey across every account's
+    // batches for one contextType (default 'voice_guide', the original
+    // surface, for backward compatibility with the Ops Console module
+    // already calling this without the param), so we can see e.g. "Website
+    // Brand Profile was on file for 80% of accounts but only changed the
+    // draft 12% of the time" — a real signal for prioritizing future AI
+    // Brain investment. Ops-only, same X-Admin-Token/ADMIN_API_TOKEN gate
+    // as GET /api/ops/integration-status above (not requireAdminMember —
+    // that's the portal team-member gate).
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'ai-brain-transparency-rollup'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const contextType = url.searchParams.get('contextType') || 'voice_guide';
+      if (!AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES.includes(contextType)){
+        return sendJson(res, 400, { error: `contextType must be one of: ${AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES.join(', ')}` });
+      }
+      const rows = db.prepare(`
+        SELECT signalKey, signalLabel,
+               COUNT(*) AS totalRows,
+               SUM(hadSignal) AS hadSignalCount,
+               SUM(CASE WHEN hadSignal = 1 AND hadImpact = 1 THEN 1 ELSE 0 END) AS hadImpactCount,
+               COUNT(DISTINCT accountId) AS accountCount,
+               COUNT(DISTINCT batchId) AS batchCount
+        FROM ai_brain_transparency_items
+        WHERE contextType = ?
+        GROUP BY signalKey, signalLabel
+        ORDER BY signalKey ASC
+      `).all(contextType);
+      const signals = rows.map(r => ({
+        signalKey: r.signalKey,
+        signalLabel: r.signalLabel,
+        totalObservations: r.totalRows,
+        onFileCount: r.hadSignalCount,
+        onFileRate: r.totalRows ? Math.round((r.hadSignalCount / r.totalRows) * 1000) / 10 : 0,
+        impactCount: r.hadImpactCount,
+        impactRateOfOnFile: r.hadSignalCount ? Math.round((r.hadImpactCount / r.hadSignalCount) * 1000) / 10 : 0,
+        accountCount: r.accountCount,
+        batchCount: r.batchCount
+      }));
+      const batchTotals = db.prepare(`SELECT COUNT(DISTINCT batchId) AS batches, COUNT(DISTINCT accountId) AS accounts FROM ai_brain_transparency_items WHERE contextType = ?`).get(contextType);
+      return sendJson(res, 200, {
+        contextType,
+        availableContextTypes: AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES,
+        totalBatches: batchTotals ? batchTotals.batches : 0,
+        totalAccounts: batchTotals ? batchTotals.accounts : 0,
+        signals
+      });
+    }
+
     // POST /api/accounts/:id/voice-guide/clear-memory — 2026-09-12, per
     // direct instruction after the client asked (mid-conversation) for
     // Atlas Ocean Voyages' approved Voice Guide/Vision/Longform to be
@@ -15294,7 +15722,7 @@ async function handleRequest(req, res) {
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const body = await readBody(req);
-      const result = await generateMessagingCopyViaAI(campaign, account, {
+      const genOpts = {
         keyMessage: typeof body.keyMessage === 'string' ? body.keyMessage : (campaign.keyMessage || ''),
         // 2026-08-22 — falls back to this campaign's saved Role/Style
         // selection (see the roleStyle ensureColumn() comment) when the
@@ -15303,7 +15731,14 @@ async function handleRequest(req, res) {
         // stored and never read.
         style: (typeof body.style === 'string' && body.style) ? body.style : (campaign.roleStyle || ''),
         focus: typeof body.focus === 'string' ? body.focus : ''
-      });
+      };
+      let result = await generateMessagingCopyViaAI(campaign, account, genOpts);
+      // 2026-09-12 — AI Brain Transparency, Campaign Copy (second surface,
+      // per the extension roadmap logged after the Voice Guide first test).
+      // Same posture as Voice Guide: only runs on a real successful draft,
+      // never blocks the draft itself on failure — see attachTransparency()'s
+      // own comment.
+      result = await attachCampaignCopyTransparency(account, campaign, genOpts, result);
       return sendJson(res, 200, { ...result, runAt: new Date().toISOString() });
     }
 
