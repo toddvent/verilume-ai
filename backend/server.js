@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-verilume-wealth-index-display (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-trade-area-numeric-wealth-match (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -6157,19 +6157,28 @@ function computeStoreProspectFit(stores, radii, account){
 
   const acctTier = accountWealthTierLabel(account);
 
-  // TIER_MIN_INDEX — the same Verilume Wealth Index thresholds
-  // wealthIndexBandBackend() already applies to label a ring's band. Used
-  // here to test the ring's OWN wealth index (avg income x generation
-  // multiplier, already computed below — no new data) against the
-  // account's configured tier, "at or above" since a wealthier ring is
-  // still a qualified prospect, not a miss.
-  const TIER_MIN_INDEX = { hnw: 200, wealthy: 130, middle: -Infinity };
-  const qualifiedCoverageNote = !acctTier
-    ? 'Set a target wealth tier on this account\'s Company Profile to estimate Qualified households — Population and Est. Population, Target Generations don\'t require it, but the wealth filter does.'
+  // 2026-09-12 fix, per direct correction — Qualified used to compare each
+  // ZIP's own Wealth Index against a 3-bucket threshold derived from the
+  // account's HNW/Wealthy/Middle tri-select (TIER_MIN_INDEX below, now
+  // removed from the qualification test). The client's direction: HNW/
+  // Wealthy/Middle stay on the platform as display bands elsewhere
+  // (Company Profile, campaign-copy prompts), but Store Trade Area's own
+  // Qualified test should compare a ZIP's index directly against the
+  // account's own precise NUMERIC Wealth Index (accounts.wealthIndexTargetIncome,
+  // added the same round as the Company Overview income slider) — apples
+  // to apples, no bucket collapse. Honest null (not a guessed number) when
+  // the account hasn't had its income set yet — see qualifiedCoverageNote
+  // below for the resulting message.
+  const accountWealthIndex = (account.wealthIndexTargetIncome != null && nationalAvgIncome)
+    ? Math.round((account.wealthIndexTargetIncome / nationalAvgIncome) * genMult * 100)
+    : null;
+
+  const qualifiedCoverageNote = account.wealthIndexTargetIncome == null
+    ? 'Set this account\'s household income on Company Overview (Verilume Wealth Index) to estimate Qualified households — Population and Est. Population, Target Generations don\'t require it, but the wealth filter does.'
     : null;
 
   if (!geocoded.length){
-    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, topBracketCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens, accountWealthTier: acctTier, qualifiedCoverageNote };
+    return { available: false, note: 'No geocoded stores in this set yet — add or geocode at least one store to see nearby prospects.', stores: [], demographicCoverageNote, topBracketCoverageNote, zipsWithAnyDemographicData, targetGenerations: targetGens, accountWealthTier: acctTier, accountWealthIndex, qualifiedCoverageNote };
   }
 
   const storeResults = geocoded.map(store => {
@@ -6206,7 +6215,7 @@ function computeStoreProspectFit(stores, radii, account){
           if (zipAvgIncome != null && nationalAvgIncome){
             zipsTestedForWealth++;
             const zWealthIndex = Math.round((zipAvgIncome / nationalAvgIncome) * genMult * 100);
-            if (acctTier && zWealthIndex >= TIER_MIN_INDEX[acctTier.key]){
+            if (accountWealthIndex != null && zWealthIndex >= accountWealthIndex){
               zipsQualified++;
               qualifiedGenPop += zGenPop;
             }
@@ -6228,10 +6237,10 @@ function computeStoreProspectFit(stores, radii, account){
       const wealthIndex = (avgIncome != null && nationalAvgIncome) ? Math.round((avgIncome / nationalAvgIncome) * genMult * 100) : null;
       const wealthBand = wealthIndexBandBackend(wealthIndex);
       // qualifiedPopulation: null only when there's no wealth data at all
-      // to test in this ring, or no tier configured. Once there's real
-      // data to test, this is always a real number (0 included) — never a
-      // ring-wide wash-out.
-      const qualifiedPopulation = (targetPopulation != null && acctTier && zipsTestedForWealth > 0)
+      // to test in this ring, or the account has no numeric Wealth Index
+      // set yet. Once there's real data to test, this is always a real
+      // number (0 included) — never a ring-wide wash-out.
+      const qualifiedPopulation = (targetPopulation != null && accountWealthIndex != null && zipsTestedForWealth > 0)
         ? Math.round(qualifiedGenPop)
         : null;
       return {
@@ -6242,7 +6251,7 @@ function computeStoreProspectFit(stores, radii, account){
         zipsTestedForWealth, zipsQualified,
         audienceFit, wealthFit: wealthIndex,
         wealthBand: wealthBand ? wealthBand.label : null,
-        matchesAccountWealthTier: (wealthBand && acctTier) ? wealthBand.key === acctTier.key : null
+        matchesAccountWealthTier: (wealthIndex != null && accountWealthIndex != null) ? wealthIndex >= accountWealthIndex : null
       };
     });
     return { id: store.id, storeId: store.storeId, name: store.name, address: store.address, lat: store.lat, lng: store.lng, rings };
@@ -6253,6 +6262,7 @@ function computeStoreProspectFit(stores, radii, account){
     radii: ringRadii,
     targetGenerations: targetGens,
     accountWealthTier: acctTier,
+    accountWealthIndex,
     accountWealthMultiplier: Math.round(genMult * 100) / 100,
     qualifiedCoverageNote,
     stores: storeResults,
@@ -12437,7 +12447,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-verilume-wealth-index-display',
+        buildStamp: '2026-09-12-trade-area-numeric-wealth-match',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
