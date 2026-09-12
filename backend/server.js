@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-ledger-quality-style-readouts (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-analytics-setup-docs-search (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -10186,7 +10186,8 @@ function requireAdminMember(req, res, accountId){
 const HTML_NAMED_ENTITIES = {
   nbsp: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>',
   mdash: '—', ndash: '–', hellip: '…', trade: '™',
-  rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', copy: '©', reg: '®'
+  rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', copy: '©', reg: '®',
+  sect: '§', larr: '←', rarr: '→'
 };
 function stripTags(html){
   return html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
@@ -10196,6 +10197,133 @@ function stripTags(html){
              .replace(/&([a-z]+);/gi, (m, name) => HTML_NAMED_ENTITIES[name.toLowerCase()] || m)
              .replace(/\s+/g, ' ')
              .trim();
+}
+
+// ---- Product Documentation Search Index (2026-09-12) --------------------
+// Per direct instruction: "index the product documentation and add a
+// search function also supported by elevenlabs when we turn it on." A
+// future ElevenLabs conversational agent (see portal.html's own "Voice —
+// Pending Development... this is the shell the real ElevenLabs integration
+// will land in" note — nothing ElevenLabs-related is wired up anywhere in
+// this codebase today) is a real, named future consumer of this same
+// content, not a hypothetical — so this is built as a real backend search
+// endpoint (a JSON index + a GET search route) rather than a client-side-
+// only text filter that a voice agent couldn't call. Once ElevenLabs is
+// turned on, its tool definition points at GET /api/ops/docs-search
+// directly; no separate build needed then.
+//
+// Deliberately does NOT assume frontend/*.html is always readable from
+// this file at request time — Vercel's function bundle (vercel.json's
+// `includeFiles` for api/[...path].js) previously only ever bundled
+// backend/**; the six product-doc files below were added to that bundle
+// specifically to support this feature (see vercel.json). If a doc file is
+// missing for any reason (bundle drift, a new doc added here but not yet
+// added to includeFiles), that one doc is skipped with a logged warning —
+// the index still builds from whatever it can read, never throws.
+const PRODUCT_DOCS_SOURCES = [
+  { key: 'home', title: 'Verilume Product Docs — Home', file: 'verilume-product-docs.html', urlPath: '/docs/' },
+  { key: 'licensed-integrations', title: 'Licensed Integrations', file: 'verilume-product-licensed-integrations.html', urlPath: '/docs/licensed-integrations' },
+  { key: 'copywriting', title: 'Copywriting', file: 'verilume-product-copywriting.html', urlPath: '/docs/copywriting' },
+  { key: 'media-plan-budget', title: 'Marketing Budgets, Campaigns & Analysis', file: 'verilume-product-media-plan-budget.html', urlPath: '/docs/media-plan-budget' },
+  { key: 'registration-account-management', title: 'Registration & Account Management', file: 'registrationaccountmanagementproduct.html', urlPath: '/docs/registration-account-management' },
+  { key: 'company-profile-team', title: 'Company Profile & Team', file: 'verilume-product-company-profile-team.html', urlPath: '/docs/company-profile-team' }
+];
+
+let productDocsSearchIndexCache = null; // { builtAt, entries }
+const PRODUCT_DOCS_INDEX_TTL_MS = 10 * 60 * 1000; // 10 min — docs change per round, not per request; a redeploy clears this anyway (new process)
+
+function extractHeadingText(blockHtml){
+  const m = blockHtml.match(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/i);
+  if (!m) return null;
+  // Strip the decorative section-number span (<span class="num">&sect; 04</span>)
+  // these product docs' h2s carry, so the indexed heading reads as plain
+  // title text ("CRM & analytics") rather than "CRM & analytics § 03".
+  const withoutNum = m[1].replace(/<span[^>]*\bclass="num"[^>]*>[\s\S]*?<\/span>/gi, ' ');
+  return stripTags(withoutNum);
+}
+
+function buildProductDocsSearchIndex(){
+  const entries = [];
+  for (const source of PRODUCT_DOCS_SOURCES){
+    let html;
+    try {
+      html = fs.readFileSync(path.join(__dirname, '..', 'frontend', source.file), 'utf8');
+    } catch (e){
+      console.warn(`[docsSearchIndex] could not read ${source.file} — skipping this doc in the index (${(e && e.code) || (e && e.message) || e})`);
+      continue;
+    }
+    // Strip <style> blocks up front so CSS rules never leak into indexed
+    // text (stripTags already strips <script>, but a raw <style> block's
+    // selectors/declarations would otherwise pollute every section's text).
+    const cleaned = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ');
+    const sectionRe = /<(section|header)\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/\1>/gi;
+    let m;
+    let foundAny = false;
+    while ((m = sectionRe.exec(cleaned))){
+      foundAny = true;
+      const sectionId = m[2];
+      const blockHtml = m[3];
+      const heading = extractHeadingText(blockHtml) || sectionId;
+      const text = stripTags(blockHtml);
+      if (!text) continue;
+      entries.push({ docKey: source.key, docTitle: source.title, sectionId, heading, text, url: `${source.urlPath}#${sectionId}` });
+    }
+    if (!foundAny){
+      // No id="..." sections in this doc — index the whole page as one
+      // entry rather than silently contributing nothing to the index.
+      const text = stripTags(cleaned);
+      if (text) entries.push({ docKey: source.key, docTitle: source.title, sectionId: null, heading: source.title, text, url: source.urlPath });
+    }
+  }
+  return entries;
+}
+
+function getProductDocsSearchIndex(){
+  const now = Date.now();
+  if (productDocsSearchIndexCache && (now - productDocsSearchIndexCache.builtAt) < PRODUCT_DOCS_INDEX_TTL_MS){
+    return productDocsSearchIndexCache.entries;
+  }
+  const entries = buildProductDocsSearchIndex();
+  productDocsSearchIndexCache = { builtAt: now, entries };
+  return entries;
+}
+
+// Simple relevance scoring: token-overlap count, weighted 3x for a hit in
+// the section heading vs. 1x for a hit in body text. No external search
+// library (this backend's standing zero-third-party-package convention),
+// and no real need for one at this doc set's actual size (a few hundred KB
+// across 6 files) — a linear scan of the in-memory index is effectively
+// instant. Snippet is body text centered on the first matched token, so a
+// result reads as a real preview, not just a title.
+function searchProductDocs(query, limit){
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return [];
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+  const entries = getProductDocsSearchIndex();
+  const scored = [];
+  for (const entry of entries){
+    const headingLower = entry.heading.toLowerCase();
+    const textLower = entry.text.toLowerCase();
+    let score = 0;
+    let firstMatchIdx = -1;
+    for (const t of tokens){
+      if (headingLower.includes(t)) score += 3;
+      const idx = textLower.indexOf(t);
+      if (idx !== -1){
+        score += 1;
+        if (firstMatchIdx === -1 || idx < firstMatchIdx) firstMatchIdx = idx;
+      }
+    }
+    if (score === 0) continue;
+    const snippetStart = Math.max(0, firstMatchIdx - 80);
+    let snippet = entry.text.slice(snippetStart, snippetStart + 220).trim();
+    if (snippetStart > 0) snippet = '…' + snippet;
+    if (snippetStart + 220 < entry.text.length) snippet = snippet + '…';
+    scored.push({ docKey: entry.docKey, docTitle: entry.docTitle, sectionId: entry.sectionId, heading: entry.heading, url: entry.url, score, snippet });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit || 10);
 }
 
 // Round 60 — every account created before this round (accessCodeHash IS
@@ -13156,7 +13284,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-ai-brain-ledger-quality-style-readouts',
+        buildStamp: '2026-09-12-analytics-setup-docs-search',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -13284,6 +13412,31 @@ async function handleRequest(req, res) {
         }
       ];
       return sendJson(res, 200, { integrations, notBuilt, buildStamp: '132c17-2026-08-17-campaign-job-id-mailclass' });
+    }
+
+    // GET /api/ops/docs-search?q=... — 2026-09-12, per direct instruction
+    // to index the product documentation and add a search function "also
+    // supported by elevenlabs when we turn it on." Same admin-token gate
+    // as GET /api/ops/integration-status — staff/Ops Console tooling today
+    // (see the new "Setup instructions" panel in ops-console.html's Data &
+    // Connections tab), and the same shape a future ElevenLabs voice-agent
+    // tool call would hit once that's wired up. See
+    // buildProductDocsSearchIndex()/searchProductDocs() above for how the
+    // index itself is built (indexes all 6 product-doc HTML files by their
+    // id="..." sections) and scored (heading match weighted 3x over a
+    // body-text match). ?limit= is optional, capped at 25, defaults to 10.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'docs-search'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const q = url.searchParams.get('q') || '';
+      const limitRaw = parseInt(url.searchParams.get('limit'), 10);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(25, limitRaw)) : 10;
+      if (!q.trim()){
+        return sendJson(res, 200, { query: q, results: [], note: 'empty query — pass ?q=<search terms>' });
+      }
+      const results = searchProductDocs(q, limit);
+      return sendJson(res, 200, { query: q, resultCount: results.length, results });
     }
 
     // POST /api/accounts — create a new account from an assessment submission
@@ -23181,6 +23334,7 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
 
 
