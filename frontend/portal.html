@@ -4983,6 +4983,47 @@
       </div>
     </div>
 
+    <!-- 2026-09-12 — Brand Understanding (Website Brand Profile round, AI
+         Brain Contribution Ledger sourceType #5). Same card shape as
+         #cpWebsiteContextCard on Company Profile (cfd-standup explainer +
+         "run" trigger + history list + Reference/Apply/Remove buttons) —
+         see that card's own comment for the pattern this mirrors. Placed
+         here rather than on Company Profile because this is the concrete,
+         deliberate connection between two previously-separate features:
+         when this account has already curated specific pages above (the
+         rules list in Module B), a profile scan uses THOSE EXACT PAGES
+         instead of an independent sitemap guess — per direct product
+         feedback describing wanting exactly this ("support include/exclude
+         of specific pages" as part of the website understanding scan). See
+         wsRunProfileScan()/wsRenderProfileHistory()/wsSetProfileDecision()
+         below. -->
+    <div class="module open" id="wsProfileModule">
+      <div class="module-head" onclick="toggleModule('wsProfileModule')">
+        <span class="modnum">C</span>
+        <div class="titles">
+          <span class="tag">AI understanding</span>
+          <h2>Brand Understanding</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="hint" style="margin-bottom:12px;">A real AI read of what this brand sells, who it targets, and how it's positioned — derived from the pages actually on your website. If you've added specific pages above, those exact pages are used; otherwise the scan finds and reads likely product/service and press pages on its own.</p>
+        <div class="cfd cfd-ws">
+          <div class="cfd-standup" style="margin-bottom:0;">
+            <div class="cfd-avatar">✦</div>
+            <div class="cfd-bubble">
+              <strong>How to use this:</strong> each scan below extracts seven brand-category facts (scale/format, specialization, geographic reach, audience, price tier, experience style, distinctive capability) — never guessed, only what your own pages actually support. <strong>Reference</strong> keeps a scan visible on file but it doesn't yet feed your AI-drafted copy. <strong>Applied</strong> means it's actively part of what your account's AI-generated copy and Voice Guide are grounded in. <strong>Removed</strong> marks a scan as a false read and excludes it everywhere; a reason is required and kept on the record. Every decision is reversible and logged, never silently lost.
+            </div>
+          </div>
+        </div>
+        <div class="btn-row" style="margin:12px 0;">
+          <button type="button" class="btn-ghost" onclick="wsRunProfileScan()">Run analysis →</button>
+        </div>
+        <div class="hint" id="wsProfileScanFlag" style="margin-bottom:10px;"></div>
+        <div id="wsProfileHistory"></div>
+      </div>
+    </div>
+
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('voiceContest')">← Back: Voice Contest</a>
       <span class="seq-spacer"></span>
@@ -9250,7 +9291,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-avoid-terms-dialogue-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-website-brand-profile-ledger';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -28092,6 +28133,9 @@ function wsInit(){
   wsUpdatePathField();
   const status = document.getElementById('wsAddStatus'); if (status) status.textContent = '';
   wsLoadList();
+  // 2026-09-12 — Brand Understanding card (Website Brand Profile round),
+  // same step-entry load pattern as wsLoadList() directly above.
+  wsLoadProfileHistory();
 }
 // scope='site' has no meaningful path — hide the field and show a fixed
 // note instead of an editable input, since the rule always applies to '/'.
@@ -28184,6 +28228,134 @@ async function wsDeleteRule(id){
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-copy-website-examples/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (resp.ok) wsLoadList();
   } catch (e){ /* no-op — next load will show current state */ }
+}
+
+// ---------- Brand Understanding / Website Brand Profile (2026-09-12) ----------
+// AI Brain Contribution Ledger sourceType #5. `ws` prefix, same naming
+// convention as wsAddRule()/wsLoadList() above — this lives on the same
+// Website Examples page since the two features are now deliberately
+// connected (see wsProfileModule's own comment in the HTML above).
+const BRAND_PROFILE_CATEGORY_LABELS_CLIENT = {
+  scaleFormat: 'Scale/format',
+  specializationNiche: 'Specialization/niche',
+  geographicOperationalReach: 'Geographic/operational reach',
+  audienceSegmentServed: 'Audience served',
+  priceTierPosition: 'Price/tier position',
+  experienceFormatStyle: 'Experience format/style',
+  distinctiveCapabilityCertification: 'Distinctive capability/certification'
+};
+// Same "Calling the model…"-style loading convention as generateVoiceDraft()
+// above — a real Claude call can take a while (sitemap fetch + page
+// selection + up to 12 page fetches + extraction on the fallback path), so
+// the button is disabled and the status line says so rather than looking
+// stuck.
+async function wsRunProfileScan(){
+  const flag = document.getElementById('wsProfileScanFlag');
+  if (!state.companyId) return;
+  if (flag) flag.textContent = 'Calling the model…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-profile-scan`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 65000
+    });
+    const data = await resp.json();
+    if (!resp.ok){
+      if (flag) flag.textContent = data && data.error ? `Couldn't run the scan: ${data.error}` : `Couldn't run the scan (${resp.status}).`;
+      return;
+    }
+    if (data.extractionError || !data.categories){
+      // Honest failure — same discipline as generateMessagingCopyViaAI/
+      // generateVoiceDraft: never silently fall back to a fabricated
+      // result, surface exactly what didn't work.
+      if (flag) flag.textContent = data.extractionError || 'The scan did not extract any brand categories.';
+      return;
+    }
+    if (flag) flag.textContent = '';
+    await wsLoadProfileHistory();
+  } catch (e){
+    if (flag) flag.textContent = 'Backend unreachable — could not run the scan.';
+  }
+}
+async function wsLoadProfileHistory(){
+  const el = document.getElementById('wsProfileHistory');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading scan history…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-profile-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load scan history right now.</p>'; return; }
+    const data = await resp.json();
+    wsRenderProfileHistory(data.contributions || []);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load scan history.</p>'; }
+}
+function wsRenderProfileHistory(contributions){
+  const el = document.getElementById('wsProfileHistory');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No analysis on file yet — run one above.</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return '<span style="color:var(--cx);font-weight:600;">Applied — actively feeding your AI-drafted copy</span>';
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed — false read, excluded</span>';
+    return '<span style="color:var(--muted);">Reference only</span>';
+  };
+  const sourceLabel = s => s === 'website_examples' ? 'your curated Website Examples pages' : 'automatic sitemap discovery';
+  el.innerHTML = contributions.map(c => {
+    const content = c.content || {};
+    const categories = content.categories || {};
+    const categoryLines = Object.keys(BRAND_PROFILE_CATEGORY_LABELS_CLIENT)
+      .map(key => {
+        const entry = categories[key];
+        if (!entry || entry.value == null) return null;
+        return `<div style="margin-top:4px;"><strong>${escapeHtml(BRAND_PROFILE_CATEGORY_LABELS_CLIENT[key])}:</strong> ${escapeHtml(entry.value)}${entry.evidence ? ` <span style="color:var(--muted);">(evidence: ${escapeHtml(entry.evidence)})</span>` : ''}</div>`;
+      })
+      .filter(Boolean)
+      .join('');
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'} — used ${escapeHtml(sourceLabel(content.pagesUsedSource))} (${(content.pagesUsed || []).length} page(s))</p>
+        ${statusBadge(c)}
+      </div>
+      <div style="font-size:0.75rem;color:var(--text);margin:6px 0 0;">${categoryLines || '<span class="hint">No categories were supported by the pages this scan read.</span>'}</div>
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="wsSetProfileDecision('${escapeHtml(c.id)}','reference')">Reference</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="wsSetProfileDecision('${escapeHtml(c.id)}','applied')">Apply</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="wsSetProfileDecision('${escapeHtml(c.id)}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+// Records a human's Reference/Apply/Remove decision on one website brand
+// profile scan — exact same prompt()-based reason-capture pattern as
+// cpSetWebsiteContextDecision()/vgSetDecision() above. Reuses
+// state.mmmDecisionName for the "your name for the record" prompt, same
+// as every other *SetDecision function in this file.
+async function wsSetProfileDecision(contributionId, status){
+  const flag = document.getElementById('wsProfileScanFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why is this scan a false read? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this scan "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-profile-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    if (flag) flag.textContent = `Saved — scan marked "${status}".`;
+    await wsLoadProfileHistory();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
 
 // ---------- Marketing Budget Upload (format-flexibility ingestion test) ----------
