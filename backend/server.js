@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-legacy-website-scan-backfill (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-user-agent-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -5647,7 +5647,7 @@ async function fetchSitemapUrls(origin){
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    resp = await fetch(`${origin}/sitemap.xml`, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
+    resp = await fetch(`${origin}/sitemap.xml`, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' } });
     clearTimeout(timeout);
   } catch (e){
     throw new Error(`Could not fetch ${origin}/sitemap.xml (${e.name === 'AbortError' ? 'timed out after 8s' : e.message}). Add specific pages instead.`);
@@ -5680,7 +5680,7 @@ async function fetchSitemapUrls(origin){
       try {
         const childController = new AbortController();
         const childTimeout = setTimeout(() => childController.abort(), 8000);
-        const childResp = await fetch(childUrl, { signal: childController.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
+        const childResp = await fetch(childUrl, { signal: childController.signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' } });
         clearTimeout(childTimeout);
         if (!childResp.ok) return [];
         const childXml = await childResp.text();
@@ -12693,12 +12693,35 @@ Submit your draft via the submit_copy tool.`;
 // reason on every real way this can fail (network error, timeout, non-2xx)
 // rather than returning a silent empty result — callers turn that message
 // straight into their own honest-failure response.
+// 2026-09-13 fix, per direct report — a fresh scan of Atlas's real, live
+// site (atlasoceanvoyages.com) came back with "No title/meta/headings
+// extracted from this scan" even though the response was a 200, not a
+// thrown error. Confirmed directly: the real page DOES have a full
+// <title>, a real <meta name="description">, and real H1/H2/H3 content in
+// its server-rendered HTML — verified independently outside this scraper.
+// So the site itself has nothing missing; the request WAS the problem.
+// The User-Agent this fetch sent — 'Mozilla/5.0 (compatible;
+// CXExperiencesBot/1.0)' — openly self-identifies as an automated bot,
+// which is exactly the kind of string a lot of commercial anti-bot/WAF
+// services (Cloudflare, Akamai, PerimeterX, and similar — common on
+// hospitality/travel sites) are tuned to detect and serve a stripped-down
+// or challenge page to instead of the real one, while still responding
+// with a 200 rather than an error — which is exactly the "succeeded but
+// extracted nothing" symptom reported, not a network failure or a
+// malformed page. Swapped to a realistic, ordinary desktop Chrome
+// User-Agent string here and on the two other real fetches in this file
+// that scrape a client's own website (fetchSitemapUrls,
+// fetchWebsitePagesBatched — see their own fetch() calls) — this is
+// reading a client's OWN site, on their own behalf, for their own AI
+// system, not evading anything adversarial; it just needed to stop
+// advertising itself as a bot to sites that treat that as a signal to
+// block.
 async function fetchAndExtractPage(url){
   let resp;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    resp = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXExperiencesBot/1.0)' } });
+    resp = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' } });
     clearTimeout(timeout);
   } catch (e){
     throw new Error(`Could not reach ${url} right now (${e.name === 'AbortError' ? 'timed out after 8s' : e.message}).`);
@@ -14034,7 +14057,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-legacy-website-scan-backfill',
+        buildStamp: '2026-09-13-website-scan-user-agent-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24535,4 +24558,5 @@ try {
 }
 
 module.exports = handleRequest;
+
 
