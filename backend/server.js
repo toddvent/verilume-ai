@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-direct-mail-planning-benchmarks (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-snowflake-inbound-connector (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1271,6 +1271,35 @@ ensureColumn('accounts', 'analyticsRequestedAt', 'TEXT');
 // to, per the specific request, not a blanket upgrade to all four.
 ensureColumn('accounts', 'analyticsGa4AccountId', 'TEXT');
 ensureColumn('accounts', 'analyticsGa4PropertyId', 'TEXT');
+
+// 2026-09-13 — Snowflake connector provisioning fields, per direct
+// instruction ("build what we need for snowflake") following the
+// 2026-08-17 scope clarification (cxmedia-hosting-migration-followup-
+// punch-list-2026-08-17.md): direction is INBOUND — pull call data
+// (Invoca/RingCentral), leads, and bookings FROM a client's (AOV's)
+// Snowflake Secure Data Share INTO this platform. The three fields above
+// (analyticsSnowflakeAccountId/ShareName/Contact) are what the CLIENT
+// hands over when requesting the pathway — pure setup-request metadata,
+// filled in from the client-facing Analytics Integrations form. These
+// five are the other half: what VERILUME.AI'S OWN ENGINEERING configures
+// once that Secure Data Share is actually granted and mounted as a
+// database inside Verilume.AI's own Snowflake account (the client never
+// sees or sets these — no client-facing form field for them; set via the
+// admin-gated POST /api/accounts/:id/snowflake-connector-config below).
+// `analyticsSnowflakeDatabase`/`analyticsSnowflakeSchema` name where the
+// mounted share lives; the three *Table fields hold the fully-qualified
+// (or schema-relative) table/view name for each record type — left
+// individually nullable since a client's share may not expose all three
+// (e.g. AOV's Invoca/RingCentral feed may land calls and leads but not
+// bookings). `analyticsSnowflakeLastSyncAt`/`LastSyncError` are sync
+// status, written by syncSnowflakeAccount() below, never client-set.
+ensureColumn('accounts', 'analyticsSnowflakeDatabase', 'TEXT');
+ensureColumn('accounts', 'analyticsSnowflakeSchema', 'TEXT');
+ensureColumn('accounts', 'analyticsSnowflakeCallsTable', 'TEXT');
+ensureColumn('accounts', 'analyticsSnowflakeLeadsTable', 'TEXT');
+ensureColumn('accounts', 'analyticsSnowflakeBookingsTable', 'TEXT');
+ensureColumn('accounts', 'analyticsSnowflakeLastSyncAt', 'TEXT');
+ensureColumn('accounts', 'analyticsSnowflakeLastSyncError', 'TEXT');
 
 // Round 71 — Master UTM Configuration, within Analytics Integrations. Up to
 // 8 selectable elements (from the 12-item VALID_UTM_ELEMENTS whitelist in
@@ -9185,6 +9214,92 @@ createTableIfNeeded(`
     assessmentDataJson TEXT
   );
 `);
+
+// 2026-09-13 — Snowflake inbound connector landing tables, per direct
+// instruction ("build what we need for snowflake"). Three separate tables,
+// not one lumped "warehouse_records" table, because calls/leads/bookings
+// genuinely differ in shape (a call has duration/recording/tracking
+// number; a lead has contact info/lead source; a booking has a value and
+// a completion date) and the whole point of landing them locally is to
+// eventually power real features (Direct Attribution Performance, Channel
+// Performance) against typed fields, not just an opaque JSON blob.
+//
+// Deliberately named `warehouse_*`, not `calls`/`bookings`, to keep these
+// unmistakably distinct from this app's own `leads` table above (that one
+// is Verilume's own captured leads, synced outbound to HubSpot — these
+// are the OPPOSITE direction, pulled inbound from a client's warehouse).
+//
+// Every real-world Secure Data Share will expose slightly different
+// column names depending on the client's own Invoca/RingCentral/CRM setup
+// — that schema is genuinely unknown until AOV's share is actually
+// provisioned (see the punch-list doc's still-needed items). So each
+// table carries a reasonable common core of named columns (the fields a
+// call/lead/booking record almost always has) PLUS a `rawPayload` JSON
+// column holding the complete source row exactly as pulled — nothing is
+// ever discarded because it didn't map to a named column, and the named
+// columns can be extended later once AOV's real schema is in hand without
+// having to re-pull historical data (it's already sitting in rawPayload).
+//
+// `externalId` + `accountId` is the de-dupe key: syncSnowflakeAccount()
+// upserts on that pair, so re-running a sync (nightly cron, or a manual
+// admin re-sync) never creates duplicate rows even over a full-table pull.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS warehouse_calls (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    externalId TEXT NOT NULL,
+    sourceSystem TEXT,
+    fromNumber TEXT,
+    toNumber TEXT,
+    trackingNumber TEXT,
+    startedAt TEXT,
+    durationSeconds REAL,
+    recordingUrl TEXT,
+    qualified INTEGER,
+    campaignRef TEXT,
+    rawPayload TEXT,
+    syncBatchId TEXT,
+    ingestedAt TEXT NOT NULL,
+    UNIQUE(accountId, externalId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS warehouse_leads (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    externalId TEXT NOT NULL,
+    sourceSystem TEXT,
+    email TEXT,
+    phone TEXT,
+    name TEXT,
+    leadSource TEXT,
+    createdAtSource TEXT,
+    qualified INTEGER,
+    campaignRef TEXT,
+    rawPayload TEXT,
+    syncBatchId TEXT,
+    ingestedAt TEXT NOT NULL,
+    UNIQUE(accountId, externalId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS warehouse_bookings (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    externalId TEXT NOT NULL,
+    sourceSystem TEXT,
+    bookedAt TEXT,
+    value REAL,
+    currency TEXT,
+    productRef TEXT,
+    campaignRef TEXT,
+    rawPayload TEXT,
+    syncBatchId TEXT,
+    ingestedAt TEXT NOT NULL,
+    UNIQUE(accountId, externalId)
+  );
+`);
+
 // Round 126 (2026-08-08) — assessmentDataJson holds the full structured
 // assessment profile (org style, maturity levels, loop effectiveness,
 // function-group ratings, assessed stages, measured stage scores,
@@ -11204,6 +11319,279 @@ async function fetchGa4Report(propertyId){
   };
   ga4ReportCache.set(propertyId, { at: Date.now(), report });
   return report;
+}
+
+// ---------------------------------------------------------------------
+// Snowflake inbound connector — 2026-09-13, per direct instruction
+// ("build what we need for snowflake"), following the 2026-08-17 scope
+// clarification in cxmedia-hosting-migration-followup-punch-list-2026-08-17.md:
+// direction is INBOUND. AOV (and any future warehouse-equipped client)
+// grants Verilume.AI's own Snowflake account a read-only Secure Data
+// Share; this pulls call/lead/booking records FROM that shared database
+// INTO the warehouse_calls/warehouse_leads/warehouse_bookings tables
+// above. Same dormant-until-credentialed pattern as GA4 above and every
+// other integration in this file (see the integration-status list further
+// down) — fully real code, inactive and returning `configured: false`
+// until the five SNOWFLAKE_* env vars below are all set on the server.
+//
+// Auth: Snowflake key-pair JWT (RS256), the same shape GA4's
+// getGa4AccessToken() above uses for its own JWT — no snowflake-sdk (or
+// any other) npm dependency needed, this file's existing minimal-
+// dependency convention (hand-rolled JWT via the already-required
+// `crypto` + global `fetch`) covers it, same as GA4. Queries run through
+// Snowflake's SQL API (`POST /api/v2/statements` on the account's own
+// `*.snowflakecomputing.com` host) rather than a driver connection — the
+// SQL API is REST/JSON, stateless, and needs nothing beyond fetch().
+//
+// To activate for real, once Verilume.AI has its own Snowflake account
+// (punch-list item (c)) and a client's Secure Data Share is mounted:
+//   1. In Verilume.AI's Snowflake account: create a service user, assign
+//      it a role with USAGE on the shared database (read-only — the
+//      share itself is what enforces read-only, this role just needs to
+//      see it) and USAGE on a (small/serverless) warehouse to run queries.
+//   2. Generate an RSA key pair (`openssl genrsa 2048`, then
+//      `openssl rsa -pubout`), set the PUBLIC key on that Snowflake user
+//      (`ALTER USER ... SET RSA_PUBLIC_KEY = '...'`) per Snowflake's own
+//      key-pair auth docs.
+//   3. Set SNOWFLAKE_ACCOUNT_IDENTIFIER, SNOWFLAKE_USERNAME,
+//      SNOWFLAKE_PRIVATE_KEY (the PEM, single-line with \n escapes — same
+//      convention as GA4_SERVICE_ACCOUNT_KEY_JSON's private_key field),
+//      SNOWFLAKE_PRIVATE_KEY_PASSPHRASE (only if the key is encrypted —
+//      leave unset otherwise), and SNOWFLAKE_WAREHOUSE (and optionally
+//      SNOWFLAKE_ROLE) as Vercel environment variables.
+//   4. Per account (AOV, etc.), an engineer sets which database/schema/
+//      table the mounted share landed as, via the admin-gated
+//      POST /api/accounts/:id/snowflake-connector-config endpoint below —
+//      this is NOT a client-facing form field, the client never sees or
+//      sets Verilume's own internal database naming.
+//   5. That's it — syncSnowflakeAccount() below activates automatically
+//      for any account with both the global credential AND its own
+//      per-account table config on file. Nightly cron
+//      (GET /api/cron/sync-snowflake) is the primary path per Section 9
+//      of cxmedia-data-integration-architecture.md ("pull on a schedule,
+//      never real-time"); the admin-gated manual endpoint exists for
+//      one-off testing/backfill.
+//
+// NOTE ON WHAT CANNOT BE VERIFIED FROM THIS SANDBOX: this sandbox has no
+// outbound network reachability to *.snowflakecomputing.com and no real
+// client Secure Data Share to test against even if it did (see
+// cxmedia-hosting-dependent-items.md item 4) — this is real, complete
+// code, not a stub, but it has only been verified via a mocked fetch()
+// (JWT shape, request shape, response-parsing/upsert logic — see the
+// 2026-09-13 build doc). The exact issuer-string format Snowflake expects
+// (`ACCOUNT.USER.SHA256:fingerprint` — some Snowflake deployments want
+// the account identifier's org/locator split differently) should be
+// double-checked against a real account the first time this actually
+// runs, per Snowflake's own key-pair-auth documentation.
+const SNOWFLAKE_ACCOUNT_IDENTIFIER = process.env.SNOWFLAKE_ACCOUNT_IDENTIFIER || '';
+const SNOWFLAKE_USERNAME = process.env.SNOWFLAKE_USERNAME || '';
+const SNOWFLAKE_PRIVATE_KEY_PEM = process.env.SNOWFLAKE_PRIVATE_KEY || '';
+const SNOWFLAKE_PRIVATE_KEY_PASSPHRASE = process.env.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE || undefined;
+const SNOWFLAKE_WAREHOUSE = process.env.SNOWFLAKE_WAREHOUSE || '';
+const SNOWFLAKE_ROLE = process.env.SNOWFLAKE_ROLE || '';
+const SNOWFLAKE_CONFIGURED = !!(SNOWFLAKE_ACCOUNT_IDENTIFIER && SNOWFLAKE_USERNAME && SNOWFLAKE_PRIVATE_KEY_PEM && SNOWFLAKE_WAREHOUSE);
+
+// Computes the SHA256 public-key fingerprint Snowflake's key-pair auth
+// wants in the JWT issuer (`ACCOUNT.USER.SHA256:<fingerprint>`) — derived
+// from the private key, DER/SPKI-encoded, hashed, base64'd. Cached since
+// the private key never changes at runtime.
+let snowflakePublicKeyFingerprintCache = null;
+function snowflakePublicKeyFingerprint(){
+  if (snowflakePublicKeyFingerprintCache) return snowflakePublicKeyFingerprintCache;
+  const privateKeyObj = crypto.createPrivateKey({ key: SNOWFLAKE_PRIVATE_KEY_PEM, passphrase: SNOWFLAKE_PRIVATE_KEY_PASSPHRASE });
+  const publicKeyObj = crypto.createPublicKey(privateKeyObj);
+  const derBytes = publicKeyObj.export({ type: 'spki', format: 'der' });
+  const hash = crypto.createHash('sha256').update(derBytes).digest('base64');
+  snowflakePublicKeyFingerprintCache = hash;
+  return hash;
+}
+
+// Snowflake key-pair JWTs are short-lived by Snowflake's own best-practice
+// guidance; cached and regenerated the same way GA4's access token is
+// above, just with a shorter (55-minute) margin since key-pair JWTs are
+// typically capped near an hour.
+let snowflakeJwtCache = { token: null, expiresAt: 0 };
+function getSnowflakeJwt(){
+  const now = Math.floor(Date.now() / 1000);
+  if (snowflakeJwtCache.token && snowflakeJwtCache.expiresAt - 60 > now){
+    return snowflakeJwtCache.token;
+  }
+  const accountUpper = SNOWFLAKE_ACCOUNT_IDENTIFIER.toUpperCase();
+  const userUpper = SNOWFLAKE_USERNAME.toUpperCase();
+  const fingerprint = snowflakePublicKeyFingerprint();
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claims = {
+    iss: `${accountUpper}.${userUpper}.SHA256:${fingerprint}`,
+    sub: `${accountUpper}.${userUpper}`,
+    iat: now,
+    exp: now + 3300 // 55 minutes
+  };
+  const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claims))}`;
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(unsigned);
+  signer.end();
+  const privateKeyObj = crypto.createPrivateKey({ key: SNOWFLAKE_PRIVATE_KEY_PEM, passphrase: SNOWFLAKE_PRIVATE_KEY_PASSPHRASE });
+  const signature = signer.sign(privateKeyObj).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const jwt = `${unsigned}.${signature}`;
+  snowflakeJwtCache = { token: jwt, expiresAt: now + 3300 };
+  return jwt;
+}
+
+// Runs one statement through Snowflake's SQL API. `warehouseOverride`/
+// `roleOverride` let a call use a different warehouse/role than the
+// global default if ever needed; neither is used today. Returns the
+// parsed rows as an array of plain objects keyed by column name (SQL
+// API returns column metadata + row arrays separately — this reshapes
+// that into the row-object shape the rest of this file expects).
+async function snowflakeExecuteStatement(sqlText, { limit } = {}){
+  const jwt = getSnowflakeJwt();
+  const resp = await fetch(`https://${SNOWFLAKE_ACCOUNT_IDENTIFIER}.snowflakecomputing.com/api/v2/statements`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Snowflake-Authorization-Token-Type': 'KEYPAIR_JWT'
+    },
+    body: JSON.stringify({
+      statement: sqlText,
+      warehouse: SNOWFLAKE_WAREHOUSE,
+      role: SNOWFLAKE_ROLE || undefined,
+      timeout: 60,
+      resultSetMetaData: undefined
+    })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok){
+    const message = (data && data.message) || `Snowflake SQL API responded ${resp.status}`;
+    const err = new Error(message);
+    err.snowflakeCode = data && data.code;
+    throw err;
+  }
+  const columns = ((data.resultSetMetaData && data.resultSetMetaData.rowType) || []).map(c => c.name);
+  const rawRows = data.data || [];
+  let rows = rawRows.map(cells => {
+    const obj = {};
+    columns.forEach((name, i) => { obj[name] = cells[i]; });
+    return obj;
+  });
+  if (typeof limit === 'number') rows = rows.slice(0, limit);
+  return rows;
+}
+
+// Picks the first present value among a list of common column-name
+// aliases (a client's real Secure Data Share almost certainly won't use
+// the exact column names below — this gives sync a fighting chance of
+// populating the named columns without knowing their schema in advance;
+// the full row is always kept in rawPayload regardless, per the table
+// comment above).
+function firstOf(row, keys){
+  for (const k of keys){
+    if (row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k];
+  }
+  return null;
+}
+function externalIdFor(row, idKeys){
+  const found = firstOf(row, idKeys);
+  if (found !== null) return String(found);
+  // No recognizable id column — fall back to a stable hash of the row so
+  // the same source record still de-dupes across repeated syncs rather
+  // than being re-inserted every run.
+  return 'row_' + crypto.createHash('sha256').update(JSON.stringify(row)).digest('hex').slice(0, 24);
+}
+
+const WAREHOUSE_SYNC_LIMIT = 5000; // safety cap per record type per run — Section 9's "aggregated, scheduled, not unbounded" principle
+
+// Pulls calls/leads/bookings for one account from its configured
+// Snowflake tables and upserts into the warehouse_* landing tables.
+// Returns a per-type result summary; never throws for a single account
+// being unconfigured (returns configured:false / connected:false
+// instead) — only throws on an actual Snowflake query failure once
+// configured, so the caller (manual endpoint or cron loop) can decide how
+// to report/log that per account.
+async function syncSnowflakeAccount(account){
+  if (!SNOWFLAKE_CONFIGURED){
+    return { configured: false, connected: false };
+  }
+  if (!account.analyticsSnowflakeDatabase || !account.analyticsSnowflakeSchema){
+    return { configured: true, connected: false, reason: 'not_provisioned' };
+  }
+  const syncBatchId = generateId('SFSYNC');
+  const ingestedAt = new Date().toISOString();
+  const results = { calls: null, leads: null, bookings: null };
+
+  const specs = [
+    { type: 'calls', table: account.analyticsSnowflakeCallsTable, landingTable: 'warehouse_calls',
+      idKeys: ['id', 'call_id', 'CALL_ID', 'ID'],
+      mapRow: row => ({
+        sourceSystem: firstOf(row, ['source_system', 'SOURCE_SYSTEM', 'system', 'SYSTEM', 'vendor', 'VENDOR']),
+        fromNumber: firstOf(row, ['from_number', 'FROM_NUMBER', 'caller_number']),
+        toNumber: firstOf(row, ['to_number', 'TO_NUMBER', 'tracking_number']),
+        trackingNumber: firstOf(row, ['tracking_number', 'TRACKING_NUMBER']),
+        startedAt: firstOf(row, ['started_at', 'STARTED_AT', 'call_start', 'timestamp']),
+        durationSeconds: firstOf(row, ['duration_seconds', 'DURATION_SECONDS', 'duration']),
+        recordingUrl: firstOf(row, ['recording_url', 'RECORDING_URL']),
+        qualified: firstOf(row, ['qualified', 'QUALIFIED']),
+        campaignRef: firstOf(row, ['campaign_id', 'CAMPAIGN_ID', 'utm_campaign'])
+      }) },
+    { type: 'leads', table: account.analyticsSnowflakeLeadsTable, landingTable: 'warehouse_leads',
+      idKeys: ['id', 'lead_id', 'LEAD_ID', 'ID'],
+      mapRow: row => ({
+        sourceSystem: firstOf(row, ['source_system', 'SOURCE_SYSTEM', 'system', 'SYSTEM', 'vendor', 'VENDOR']),
+        email: firstOf(row, ['email', 'EMAIL']),
+        phone: firstOf(row, ['phone', 'PHONE']),
+        name: firstOf(row, ['name', 'NAME', 'full_name']),
+        leadSource: firstOf(row, ['lead_source', 'LEAD_SOURCE', 'source']),
+        createdAtSource: firstOf(row, ['created_at', 'CREATED_AT', 'timestamp']),
+        qualified: firstOf(row, ['qualified', 'QUALIFIED']),
+        campaignRef: firstOf(row, ['campaign_id', 'CAMPAIGN_ID', 'utm_campaign'])
+      }) },
+    { type: 'bookings', table: account.analyticsSnowflakeBookingsTable, landingTable: 'warehouse_bookings',
+      idKeys: ['id', 'booking_id', 'BOOKING_ID', 'ID'],
+      mapRow: row => ({
+        sourceSystem: firstOf(row, ['source_system', 'SOURCE_SYSTEM', 'system', 'SYSTEM', 'vendor', 'VENDOR']),
+        bookedAt: firstOf(row, ['booked_at', 'BOOKED_AT', 'booking_date', 'timestamp']),
+        value: firstOf(row, ['value', 'VALUE', 'booking_value', 'amount']),
+        currency: firstOf(row, ['currency', 'CURRENCY']) || 'USD',
+        productRef: firstOf(row, ['product', 'PRODUCT', 'sku']),
+        campaignRef: firstOf(row, ['campaign_id', 'CAMPAIGN_ID', 'utm_campaign'])
+      }) }
+  ];
+
+  for (const spec of specs){
+    if (!spec.table){ results[spec.type] = { skipped: true, reason: 'no_table_configured' }; continue; }
+    try {
+      const fq = `${account.analyticsSnowflakeDatabase}.${account.analyticsSnowflakeSchema}.${spec.table}`;
+      const rows = await snowflakeExecuteStatement(`SELECT * FROM ${fq}`, { limit: WAREHOUSE_SYNC_LIMIT });
+      let upserted = 0;
+      const mappedColumns = Object.keys(spec.mapRow({}));
+      const insertStmt = db.prepare(`INSERT INTO ${spec.landingTable}
+        (id, accountId, externalId, ${mappedColumns.join(', ')}, rawPayload, syncBatchId, ingestedAt)
+        VALUES (?, ?, ?, ${mappedColumns.map(() => '?').join(', ')}, ?, ?, ?)
+        ON CONFLICT(accountId, externalId) DO UPDATE SET
+          ${mappedColumns.map(k => `${k} = excluded.${k}`).join(', ')},
+          rawPayload = excluded.rawPayload, syncBatchId = excluded.syncBatchId, ingestedAt = excluded.ingestedAt`);
+      for (const row of rows){
+        const externalId = externalIdFor(row, spec.idKeys);
+        const mapped = spec.mapRow(row);
+        const values = mappedColumns.map(k => mapped[k]);
+        insertStmt.run(generateId('WH'), account.accountId, externalId, ...values, JSON.stringify(row), syncBatchId, ingestedAt);
+        upserted++;
+      }
+      results[spec.type] = { pulled: rows.length, upserted };
+    } catch (e){
+      results[spec.type] = { error: e.message };
+    }
+  }
+
+  const anyError = Object.values(results).some(r => r && r.error);
+  const anySuccess = Object.values(results).some(r => r && (r.upserted !== undefined));
+  db.prepare('UPDATE accounts SET analyticsSnowflakeLastSyncAt = ?, analyticsSnowflakeLastSyncError = ? WHERE accountId = ?')
+    .run(ingestedAt, anyError ? JSON.stringify(Object.fromEntries(Object.entries(results).filter(([,v]) => v && v.error))) : null, account.accountId);
+  if (anySuccess && account.analyticsStatus !== 'connected'){
+    db.prepare('UPDATE accounts SET analyticsStatus = ? WHERE accountId = ?').run('connected', account.accountId);
+  }
+  return { configured: true, connected: anySuccess, syncBatchId, results };
 }
 
 // Returns every campaign for an account, each with its projects nested —
@@ -13604,7 +13992,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-direct-mail-planning-benchmarks',
+        buildStamp: '2026-09-13-snowflake-inbound-connector',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -13698,6 +14086,13 @@ async function handleRequest(req, res) {
           envVars: ['GA4_SERVICE_ACCOUNT_KEY_JSON'],
           configured: !!GA4_SERVICE_ACCOUNT_KEY_JSON,
           detail: 'Live GA4 Data API reporting for connected accounts.'
+        },
+        {
+          key: 'snowflake',
+          label: 'Snowflake inbound connector (calls/leads/bookings)',
+          envVars: ['SNOWFLAKE_ACCOUNT_IDENTIFIER', 'SNOWFLAKE_USERNAME', 'SNOWFLAKE_PRIVATE_KEY', 'SNOWFLAKE_WAREHOUSE'],
+          configured: SNOWFLAKE_CONFIGURED,
+          detail: 'Global credential is only half of it — each account also needs analyticsSnowflakeDatabase/Schema/*Table set via POST /api/accounts/:id/snowflake-connector-config before its own sync can run.'
         },
         {
           key: 'cloudmersive',
@@ -16405,6 +16800,120 @@ async function handleRequest(req, res) {
         console.warn('fetchGa4Report failed for', accountId, '—', e.message);
         return sendJson(res, 200, { configured: true, connected: false, reason, message: e.message });
       }
+    }
+
+    // POST /api/accounts/:id/snowflake-connector-config — 2026-09-13,
+    // admin-gated (same ADMIN_API_TOKEN/X-Admin-Token pattern as every
+    // other staff-only endpoint in this file). This is the "engineering
+    // provisions the actual connection once the Secure Data Share is
+    // granted" step described in the block comment above the
+    // analyticsSnowflakeDatabase ensureColumn() calls — deliberately NOT
+    // reachable from the client-facing Analytics Integrations form, since
+    // the client doesn't know (and shouldn't need to know) Verilume's own
+    // internal database/schema/table naming for their mounted share.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'snowflake-connector-config'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = decodeURIComponent(parts[2]);
+      const existing = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!existing) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const merged = {
+        analyticsSnowflakeDatabase: body.analyticsSnowflakeDatabase !== undefined ? body.analyticsSnowflakeDatabase : existing.analyticsSnowflakeDatabase,
+        analyticsSnowflakeSchema: body.analyticsSnowflakeSchema !== undefined ? body.analyticsSnowflakeSchema : existing.analyticsSnowflakeSchema,
+        analyticsSnowflakeCallsTable: body.analyticsSnowflakeCallsTable !== undefined ? body.analyticsSnowflakeCallsTable : existing.analyticsSnowflakeCallsTable,
+        analyticsSnowflakeLeadsTable: body.analyticsSnowflakeLeadsTable !== undefined ? body.analyticsSnowflakeLeadsTable : existing.analyticsSnowflakeLeadsTable,
+        analyticsSnowflakeBookingsTable: body.analyticsSnowflakeBookingsTable !== undefined ? body.analyticsSnowflakeBookingsTable : existing.analyticsSnowflakeBookingsTable
+      };
+      db.prepare(`UPDATE accounts SET analyticsSnowflakeDatabase = ?, analyticsSnowflakeSchema = ?,
+        analyticsSnowflakeCallsTable = ?, analyticsSnowflakeLeadsTable = ?, analyticsSnowflakeBookingsTable = ? WHERE accountId = ?`)
+        .run(merged.analyticsSnowflakeDatabase, merged.analyticsSnowflakeSchema, merged.analyticsSnowflakeCallsTable,
+          merged.analyticsSnowflakeLeadsTable, merged.analyticsSnowflakeBookingsTable, accountId);
+      return sendJson(res, 200, merged);
+    }
+
+    // POST /api/accounts/:id/snowflake-sync — 2026-09-13, admin-gated
+    // manual trigger for syncSnowflakeAccount() (one-off testing/backfill
+    // use from Ops Console or a direct curl call). The primary path is
+    // the nightly cron below, per Section 9 of cxmedia-data-integration-
+    // architecture.md ("pull on a schedule, never on-demand/real-time") —
+    // this exists for the case where a staff member needs to confirm a
+    // newly-provisioned connection works right now rather than waiting
+    // for the next scheduled run.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'snowflake-sync'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = decodeURIComponent(parts[2]);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      try {
+        const result = await syncSnowflakeAccount(account);
+        return sendJson(res, 200, result);
+      } catch (e){
+        console.warn('syncSnowflakeAccount failed for', accountId, '—', e.message);
+        return sendJson(res, 200, { configured: true, connected: false, reason: 'error', message: e.message });
+      }
+    }
+
+    // GET /api/accounts/:id/warehouse-records?type=call|lead|booking —
+    // 2026-09-13, read side of the landing tables above. requireAccount-
+    // gated like every other account-scoped read in this file (not
+    // admin-only — once real data is landing, the account that owns it
+    // should be able to read it back, same trust level as GET /api/leads
+    // for the account's own captured leads). `type` required, one of
+    // call/lead/booking; returns the most recent rows first, capped at
+    // 200 per call — this is a raw data-access endpoint for a future UI
+    // to build on (e.g. Direct Attribution Performance), not itself a
+    // dashboard.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'warehouse-records'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const url = new URL(req.url, 'http://localhost');
+      const type = url.searchParams.get('type');
+      const TYPE_TABLES = { call: 'warehouse_calls', lead: 'warehouse_leads', booking: 'warehouse_bookings' };
+      if (!TYPE_TABLES[type]){
+        return sendJson(res, 400, { error: "type must be one of: 'call', 'lead', 'booking'" });
+      }
+      const rows = db.prepare(`SELECT * FROM ${TYPE_TABLES[type]} WHERE accountId = ? ORDER BY ingestedAt DESC LIMIT 200`).all(accountId);
+      return sendJson(res, 200, { type, count: rows.length, rows: rows.map(r => ({ ...r, rawPayload: r.rawPayload ? JSON.parse(r.rawPayload) : null })) });
+    }
+
+    // GET /api/cron/sync-snowflake — 2026-09-13, the Vercel Cron target
+    // for the nightly Snowflake sync (see vercel.json's `crons` entry).
+    // Same fail-closed CRON_SECRET pattern as GET /api/cron/refresh-
+    // intelligence above — refuses to run (501) if CRON_SECRET isn't set,
+    // rather than sitting exposed as an endpoint that could be hit to
+    // mass-trigger Snowflake queries (and warehouse compute cost) across
+    // every account. Loops every account with analyticsPathway =
+    // 'snowflake' — not just ones already 'connected', since a newly-
+    // provisioned account's first successful sync is what flips it to
+    // 'connected' in the first place (see syncSnowflakeAccount()).
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'cron' && parts[2] === 'sync-snowflake'){
+      if (!process.env.CRON_SECRET){
+        return sendJson(res, 501, { error: 'CRON_SECRET is not configured — refusing to run an unauthenticated cron endpoint. Set CRON_SECRET in the deployment environment to enable this job.' });
+      }
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${process.env.CRON_SECRET}`){
+        return sendJson(res, 401, { error: 'unauthorized' });
+      }
+      if (!SNOWFLAKE_CONFIGURED){
+        return sendJson(res, 200, { configured: false, processed: 0 });
+      }
+      const snowflakeAccounts = db.prepare("SELECT * FROM accounts WHERE analyticsPathway = 'snowflake'").all();
+      const results = { configured: true, processed: snowflakeAccounts.length, succeeded: 0, failed: [] };
+      for (const account of snowflakeAccounts){
+        try {
+          const result = await syncSnowflakeAccount(account);
+          if (result.connected) results.succeeded++;
+          else if (!result.connected && result.reason) results.failed.push({ accountId: account.accountId, reason: result.reason });
+        } catch (e){
+          console.warn('cron sync-snowflake failed for', account.accountId, '—', e.message);
+          results.failed.push({ accountId: account.accountId, reason: 'error', message: e.message });
+        }
+      }
+      return sendJson(res, 200, results);
     }
 
     // POST /api/accounts/:id/utm-config — round 71, Master UTM Configuration
@@ -23662,7 +24171,13 @@ INIT_PHASE = false;
 // (`require('./server.js')` is still directly callable exactly as before).
 handleRequest.testExports = {
   db, generateId, computeStoreTradeAreas, computeStoreProspectFit,
-  loadGeoReferenceBatch, GENERATION_WEALTH_INDEX
+  loadGeoReferenceBatch, GENERATION_WEALTH_INDEX,
+  // 2026-09-13 — Snowflake connector internals, exposed so
+  // tests/snowflake-sync.test.js can verify JWT construction and the
+  // sync/upsert logic against a mocked fetch(), since this sandbox has no
+  // real Snowflake account or network path to test against for real.
+  getSnowflakeJwt, snowflakePublicKeyFingerprint, snowflakeExecuteStatement,
+  syncSnowflakeAccount, firstOf, externalIdFor, SNOWFLAKE_CONFIGURED
 };
 
 module.exports = handleRequest;
