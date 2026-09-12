@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-user-agent-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-honest-challenge-detection (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -12730,6 +12730,44 @@ async function fetchAndExtractPage(url){
     throw new Error(`${url} responded with ${resp.status} ${resp.statusText} — the site may be blocking automated requests, or the URL may be stale.`);
   }
   const html = await resp.text();
+  // 2026-09-13 fix, part 2 — per direct report, swapping the User-Agent
+  // (see this function's own comment above) did NOT fix Atlas's scan; it
+  // came back empty again on a second try. That rules out a simple
+  // User-Agent block and points at something no request header can get
+  // past: a JavaScript-based challenge (Cloudflare "Managed Challenge"/
+  // "Just a moment...", Akamai, PerimeterX, Incapsula, and similar) — these
+  // require actually running JavaScript and often solving a timed
+  // proof-of-work puzzle in a real browser, which a plain server-side
+  // fetch() can never do, no matter what headers it sends. Before this
+  // fix, that case silently fell through to a 200-with-nothing-extracted
+  // "success" — directly contradicting this function's own stated design
+  // ("Honest failure on every real way this can fail... never a silent
+  // empty success", see the comment on fetchAndExtractPage below/above).
+  // This closes that real gap: a response that's suspiciously tiny for a
+  // real marketing homepage, or that contains one of the well-known
+  // challenge-page markers these services all use, throws a specific,
+  // honest error instead of quietly returning empty fields — so the next
+  // scan attempt tells Todd exactly what's actually happening rather than
+  // leaving him to guess between "the site has nothing" and "something's
+  // blocking us." There is no code-side fix for an actual JS challenge —
+  // getting past one for real needs either the site owner allowlisting
+  // this server's outbound IP/UA, or a headless-browser fetch path, which
+  // this codebase doesn't have (see fetchAndExtractPage's own 2026-09-02
+  // comment on why — no JS execution here at all).
+  const CHALLENGE_PAGE_MARKERS = [
+    'checking your browser', 'just a moment', 'cf-browser-verification',
+    '__cf_chl', 'cf_chl_opt', 'attention required', 'ddos protection by',
+    'enable javascript and cookies', 'px-captcha', 'perimeterx',
+    'incapsula incident id', 'access denied', 'are you a robot',
+    'verify you are a human', 'unusual traffic'
+  ];
+  const htmlLower = html.toLowerCase();
+  const matchedMarker = CHALLENGE_PAGE_MARKERS.find(marker => htmlLower.includes(marker));
+  if (matchedMarker || html.trim().length < 600){
+    throw new Error(matchedMarker
+      ? `${url} appears to be showing an automated-traffic challenge page ("${matchedMarker}") instead of the real site — this looks like bot protection (Cloudflare/Akamai/PerimeterX or similar) that a plain request can't get past. This needs to be resolved on the site's own end (allowlisting this scan), not by retrying.`
+      : `${url} returned an unusually small response (${html.trim().length} characters) for what should be a real marketing homepage — this often means an automated-traffic challenge or interstitial page rather than the real site. Try again, or check the URL loads normally in a regular browser.`);
+  }
   const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
   // Backreference on the quote character (not [^"'] ) so an apostrophe
   // inside a double-quoted attribute (e.g. content="...world's...") doesn't
@@ -14057,7 +14095,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-website-scan-user-agent-fix',
+        buildStamp: '2026-09-13-website-scan-honest-challenge-detection',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
