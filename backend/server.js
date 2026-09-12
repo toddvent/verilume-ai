@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-header-logo-size-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-agentic-input-optimization (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2253,6 +2253,46 @@ const BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA = {
 // frontend no longer sends it.
 function brandVoiceCriticalMessagesContext(account, extra){
   const lines = [];
+  // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
+  // want to waste clients time asking for sample writings and other work
+  // if it adds no incremental value downstream") — real, already-collected,
+  // zero-additional-client-effort signal now leads this function, ahead of
+  // Products & Services and everything below. This closes the same
+  // audience/wealth gap already wired into generateMessagingCopyViaAI() for
+  // campaign copy (~line 10968-10969 as of this round) — reusing its exact
+  // GENERATION_LABELS_FOR_COPY/WEALTH_TIER_LABELS_FOR_COPY/
+  // humanizeAudienceKeys() by reference, not redefined here — now applied
+  // to Voice Guide/Voice Contest generation too. Honest-omit convention
+  // matches every other block in this function: if neither resolves, push
+  // nothing (this function already has a single fallback string for the
+  // fully-empty case).
+  try {
+    const audienceLabel = humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY);
+    const wealthLabel = humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY);
+    if (audienceLabel || wealthLabel){
+      lines.push(`Target audience (from this account's Verilume assessment) — Generation(s): ${audienceLabel || '(not set)'}; Wealth tier: ${wealthLabel || '(not set)'}. Calibrate vocabulary and register accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew should shift register and reference points, not just word choice.`);
+    }
+  } catch (e){ /* malformed audience/wealth data — fall through without it */ }
+  // 2026-09-12, same round — a genuinely NEW signal never wired into any
+  // copy or voice generation prompt anywhere in this file before this:
+  // Average Transaction Value, derived from whatever real revenue/
+  // transactions the client has already entered in Media Plan & Budget ->
+  // Budget detail -> Revenue & results (account_year_results). Zero extra
+  // client effort — this is data he already put in for a completely
+  // different reason (ROAS reporting) — so per this round's direction it
+  // belongs here as real economic grounding for voice register. Most
+  // recent year with both grossRevenue and transactions on file wins;
+  // if no such year exists, push nothing rather than fabricate a number.
+  try {
+    if (account.accountId){
+      const yearRows = db.prepare('SELECT year, grossRevenue, transactions FROM account_year_results WHERE accountId = ? ORDER BY year DESC').all(account.accountId);
+      const best = yearRows.find(r => r.grossRevenue != null && r.transactions > 0);
+      if (best){
+        const avgPerTransaction = Math.round((best.grossRevenue / best.transactions) * 100) / 100;
+        lines.push(`This account's average transaction value (from its ${best.year} Media Plan & Budget revenue/transactions entry): $${avgPerTransaction.toLocaleString()}. Let this genuinely calibrate the register: a high average transaction value (luxury/considered purchase) should read restrained, specific, and unhurried — never bargain-forward or urgent; a low average transaction value (frequent/lower-consideration purchase) can read more direct and value-forward.`);
+      }
+    }
+  } catch (e){ /* malformed or missing revenue/transactions data — fall through without it */ }
   if (account.productsServices) lines.push(`Products & Services: ${String(account.productsServices).slice(0, 800)}`);
   let brandKeywords = null, productKeywords = null;
   try {
@@ -2347,16 +2387,25 @@ async function generateBrandVoiceCandidate(angle, account, extra){
     // information needed to maximize the contest").
     const sampleContext = await brandWritingSampleContext(account.accountId);
     const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
+    // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
+    // want to waste clients time asking for sample writings and other work
+    // if it adds no incremental value downstream") — the account's own real
+    // signal (assessment, brand profile, economics — see
+    // brandVoiceCriticalMessagesContext() above) now leads the prompt;
+    // Sample Writings, which requires real client effort to produce and
+    // isn't always on file, is reframed as an optional bonus layered on
+    // top rather than the primary grounding.
     const prompt = `You are a brand strategist proposing ONE distinct voice direction for a company, as part of a panel where several different directions are being compared side by side.
 
 YOUR DIRECTION FOR THIS CANDIDATE: ${angle.brief}
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-REAL SAMPLE WRITINGS FROM THIS BRAND (the clearest, highest-priority signal of how this brand actually writes — the voice you propose should sound like it belongs next to these):
-${sampleContext || '(no sample writings on file for this account yet)'}
 ${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (a human has already approved this — your proposed direction should stay consistent with it unless there's a real reason in the brand signal below to diverge):\n${voiceGuideText}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
+
+OPTIONAL — REAL SAMPLE WRITINGS FROM THIS BRAND, IF THE CLIENT HAS CHOSEN TO PROVIDE ANY (a bonus specificity/style reference on top of the real account signal above — never required, and this account's own assessment, brand profile, and economics above are always the primary foundation regardless of whether any exist):
+${sampleContext || '(no sample writings on file for this account yet)'}
 
 Propose your candidate via the submit_brand_voice_candidate tool.`;
     const parsed = await callClaudeForJSON({
@@ -2397,6 +2446,16 @@ Propose your candidate via the submit_brand_voice_candidate tool.`;
 // models learn" fix generateMessagingCopyViaAI() already benefits from) —
 // at least as well-grounded as regular campaign copy generation, not a
 // lesser version of it.
+//
+// 2026-09-12, per direct instruction ("Voice is not a campaign. It's the
+// voice of the company that applies to all campaigns that will then adjust
+// by campaign downstream.") — checked: this is already how the
+// architecture works. account.voiceGuideText/visionStatement/
+// longformVoiceExample are account-wide fields, read identically by every
+// campaign-copy and PR-copy generation call regardless of which
+// campaign/document is active (see generateMessagingCopyViaAI(),
+// buildPrCorpCommPrompt()). No code change was needed here — this comment
+// just records that the check was done.
 //
 // The prompt explicitly requires SHORT avoid-phrases to be written in the
 // exact `avoid "phrase"` shape extractVoiceGuideAvoidTerms() (below, in the
@@ -2453,23 +2512,26 @@ async function generateVoiceGuideDraftViaAI(account){
     const avoidPhrases = avoidWords.filter(w => w.length <= 40);
     const avoidGuidance = avoidWords.filter(w => w.length > 40);
     const sampleContext = await brandWritingSampleContext(account.accountId);
-    // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
-    // dispatch-scoping-2026-09-12.md, Section 2 item 1 — Todd's direct
-    // instruction was "sample writings should come before the brand in
-    // order since I think it's critical to the voice guide." Sample
-    // Writings used to be appended AFTER the CRITICAL CUSTOMER-FACING
-    // MESSAGES block below; it now leads the prompt as the highest-priority
-    // grounding, with the Voice Contest Winner block (item 2 below) right
-    // behind it, then the facts block, then the avoid-lists last (unchanged
-    // position).
+    // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
+    // want to waste clients time asking for sample writings and other work
+    // if it adds no incremental value downstream") — this supersedes the
+    // 2026-09-12 (earlier same day) "sample writings should come before the
+    // brand in order" instruction that used to lead this prompt with
+    // Sample Writings. The account's own real, already-collected signal
+    // (assessment, brand profile, economics — see
+    // brandVoiceCriticalMessagesContext() above) now leads instead, with
+    // the Voice Contest Winner block right behind it (a human already
+    // approved that direction), then Sample Writings reframed as an
+    // optional bonus layer, then the avoid-lists last (unchanged position).
     const visionStatement = (account.visionStatement || '').trim();
     const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
     const prompt = `You are a senior brand strategist writing a real, finished Brand Voice Guide for ${account.company || 'this company'} (Industry: ${account.industry || '(not set)'}) — the kind of document a copywriter could pick up cold and write correctly in this brand's voice on the first try. Not a summary of the inputs below, not meta-commentary about the brand — a real, usable guide.
 
-REAL SAMPLE WRITINGS FROM THIS BRAND (the clearest, highest-priority signal of how this brand actually writes — ground the guide in these first, above every other signal below):
-${sampleContext || '\n(No real Sample Writings on file for this account yet — write from the signal below alone, and flag the missing samples as a gap below.)\n'}
 ${(visionStatement || longformVoiceExample) ? `MOST RECENT VOICE CONTEST WINNER (a human already approved this specific direction — the guide you write should be consistent with it, refining and formalizing it into full guide form rather than contradicting it):\n${visionStatement ? `Vision statement: ${visionStatement}\n` : ''}${longformVoiceExample ? `Reference longform example: ${longformVoiceExample}\n` : ''}\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL ON FILE (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
+
+OPTIONAL — REAL SAMPLE WRITINGS FROM THIS BRAND, IF THE CLIENT HAS CHOSEN TO PROVIDE ANY (a bonus specificity/style reference on top of the real account signal above — never required, and this account's own assessment, brand profile, and economics above are always the primary foundation regardless of whether any exist):
+${sampleContext || '\n(No real Sample Writings on file for this account yet — write from the signal below alone, and flag the missing samples as a gap below.)\n'}
 
 SHORT TERMS TO AVOID for this account — literal words/phrases that must never appear verbatim (human-entered): ${avoidPhrases.length ? avoidPhrases.map(w => `"${w}"`).join(', ') : '(none on file)'}
 LONGER TONE-DIRECTION TO AVOID for this account — not literal phrases, but real guidance on register/approach to steer away from (human-entered, use the substance of this in your own words, never quote it back verbatim): ${avoidGuidance.length ? avoidGuidance.map(w => `"${w}"`).join(' / ') : '(none on file)'}
@@ -12112,16 +12174,27 @@ async function generateVendorBrandVoiceCopy(vendorKey, account, extra){
     // above, so the contest stays fair across every vendor candidate.
     const sampleContext = await brandWritingSampleContext(account.accountId);
     const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
+    // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
+    // want to waste clients time asking for sample writings and other work
+    // if it adds no incremental value downstream") — the account's own real
+    // signal (assessment, brand profile, economics — see
+    // brandVoiceCriticalMessagesContext() above) now leads the prompt;
+    // Sample Writings, which requires real client effort to produce and
+    // isn't always on file, is reframed as an optional bonus layered on
+    // top rather than the primary grounding. Kept identical to
+    // generateBrandVoiceCandidate()'s Anthropic path above so the contest
+    // stays fair across every vendor candidate.
     const prompt = `You are a brand strategist proposing ONE distinct voice direction for a company, as part of a panel where several different directions are being compared side by side.
 
 YOUR DIRECTION FOR THIS CANDIDATE: Propose your own best, most distinct voice direction for this brand — your independent judgment, not a direction assigned to you.
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-REAL SAMPLE WRITINGS FROM THIS BRAND (the clearest, highest-priority signal of how this brand actually writes — the voice you propose should sound like it belongs next to these):
-${sampleContext || '(no sample writings on file for this account yet)'}
 ${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (a human has already approved this — your proposed direction should stay consistent with it unless there's a real reason in the brand signal below to diverge):\n${voiceGuideText}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
+
+OPTIONAL — REAL SAMPLE WRITINGS FROM THIS BRAND, IF THE CLIENT HAS CHOSEN TO PROVIDE ANY (a bonus specificity/style reference on top of the real account signal above — never required, and this account's own assessment, brand profile, and economics above are always the primary foundation regardless of whether any exist):
+${sampleContext || '(no sample writings on file for this account yet)'}
 
 Respond with ONLY a JSON object with two fields:
 {"visionStatement": "<a single, memorable 1-2 sentence vision statement for this brand's voice — the north star, not a tagline>", "longformExample": "<120-200 words of real, finished longform copy in this voice, written as if it were the opening of a real customer-facing piece (e.g. a welcome email or About page) — must naturally incorporate the critical customer-facing messages above, not just describe them>"}`;
@@ -12351,7 +12424,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-header-logo-size-fix',
+        buildStamp: '2026-09-12-agentic-input-optimization',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -14327,6 +14400,47 @@ async function handleRequest(req, res) {
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const result = await generateVoiceGuideDraftViaAI(account);
       return sendJson(res, 200, result);
+    }
+
+    // POST /api/accounts/:id/voice-guide/clear-memory — 2026-09-12, per
+    // direct instruction after the client asked (mid-conversation) for
+    // Atlas Ocean Voyages' approved Voice Guide/Vision/Longform to be
+    // manually cleared as a one-time clean-slate test, then separately
+    // noted "assuming we wipe the memory when removing [sample writings]"
+    // — revealing there was no way for the client himself (non-technical,
+    // ops-console only) to do this; the only path was a direct database
+    // edit. This is that admin control. This is a destructive, account-wide
+    // reset, not a per-team-member action. Clears the live Voice Guide
+    // fields back to a genuine blank slate (never soft-deleted — there is
+    // no "undo" for a deliberate memory wipe) AND marks this account's
+    // voice_guide ai_brain_contributions rows 'removed' so a stale
+    // approved Voice Guide can't keep anchoring future generations via the
+    // ledger either. Scoped strictly to sourceType = 'voice_guide' — never
+    // touches 'competitive_positioning' or any other ledger sourceType.
+    // Deliberately NOT wrapped in a broad catch-and-continue: this is an
+    // admin-invoked destructive action, so a genuine DB/programming error
+    // should still surface as a real 500, not fail silently.
+    // Auth: ops-console.html is the only caller (per Task D) and it has no
+    // portal team-member session — it authenticates admin actions via the
+    // X-Admin-Token header against ADMIN_API_TOKEN, same as the neighboring
+    // Brand Voice Contest Review routes. Gated that way here too, not with
+    // requireAdminMember() (that's the portal team-member session gate).
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-guide' && parts[4] === 'clear-memory'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const now = new Date().toISOString();
+      db.prepare('UPDATE accounts SET voiceGuideText = NULL, voiceApproved = 0, voiceVersion = 0, voiceApprovedAt = NULL, visionStatement = NULL, longformVoiceExample = NULL WHERE accountId = ?')
+        .run(accountId);
+      const staleRows = db.prepare(`SELECT id FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'voice_guide' AND status != 'removed'`).all(accountId);
+      for (const row of staleRows){
+        db.prepare(`UPDATE ai_brain_contributions SET status = 'removed', reason = ?, decidedAt = ? WHERE id = ?`)
+          .run('Voice Guide memory cleared via admin action', now, row.id);
+      }
+      return sendJson(res, 200, { cleared: true, accountId });
     }
 
     // POST /api/accounts/:id/voice-contest/:interviewId/select — applies a
@@ -21974,4 +22088,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
