@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-channel-best-practices (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-direct-mail-planning-benchmarks (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -3614,36 +3614,103 @@ const MEASUREMENT_CHANNEL_CAPABILITIES = {
 // flagged per-entry via `vsIllustrativeCpm` for a human to weigh, not
 // silently reconciled. Changing ILLUSTRATIVE_CHANNEL_CPM is a deliberate
 // decision for Todd to make, not a side effect of building this reference.
+// DIRECT_MAIL_PLANNING_REFERENCE — 2026-09-13, per Todd's direct-given
+// planning materials (DM cost/engagement/conversion benchmarks — QR scan
+// rate by role, a luxury-watch/CPG worked-example pair, an
+// audience-x-offer-type engagement/conversion matrix, and a per-mailer-
+// format cost table). This supplements, and deliberately does NOT
+// override, the three Direct Mail channels' existing "cost per piece" —
+// those are this account's own real, direct-given cost and stay the
+// authoritative figure for planning. This reference exists for two
+// things the real cost figure doesn't cover: (1) choosing among mailer
+// formats when scoping a *new* piece with no quote yet, and (2) setting
+// realistic engagement/conversion expectations, which the old Direct
+// Mail entries didn't have at all — they only had response rate.
+// Sourcing is tier B throughout: vendor/blog aggregators (DirectMail.io,
+// Mail Movers, USPS Delivers' own calculator caveats, Invesp, CRST), not
+// a single trade-association report like the ANA data below, so ranges
+// here are directional planning inputs, not precise benchmarks.
+const DIRECT_MAIL_PLANNING_REFERENCE = {
+  asOf: '2026-09-13',
+  costByMailerFormat: [
+    { format: '4×6 postcard', pages: 2, costLow: 0.50, costBase: 0.625, costHigh: 0.75, note: 'All-in source range; 2 sides counted as pages.' },
+    { format: '6×9 postcard', pages: 2, costLow: 0.65, costBase: 0.825, costHigh: 1.00, note: 'All-in source range.' },
+    { format: '6×11 postcard (jumbo/flat)', pages: 2, costLow: 0.85, costBase: 1.075, costHigh: 1.30, note: 'All-in source range.' },
+    { format: '#10 letter', pages: 1, costLow: 0.55, costBase: 0.70, costHigh: 0.85, note: 'Envelope not counted as a content page.' },
+    { format: '#10 letter + insert', pages: 2, costLow: 0.70, costBase: 0.875, costHigh: 1.05, note: '2 content pages counted; insert treatment varies by vendor.' },
+    { format: '6×9 envelope + 4-page brochure', pages: 4, costLow: 0.95, costBase: 1.175, costHigh: 1.40, note: 'Assumes a 4-page brochure insert.' },
+    { format: '6-panel self-mailer', pages: 6, costLow: 0.75, costBase: 0.925, costHigh: 1.10, note: 'Folded panels used as pages.' },
+    { format: '8-panel self-mailer', pages: 8, costLow: 0.95, costBase: 1.175, costHigh: 1.40, note: 'Folded panels used as pages.' },
+    { format: '16-page slim-jim / brochure', pages: 16, costLow: 1.45, costBase: 1.90, costHigh: 2.45, note: 'Modeled planning estimate (10K-50K qty), not a universal published benchmark — confirm class/weight with a mail house.' },
+    { format: '32-page slim-jim / brochure', pages: 32, costLow: 2.55, costBase: 3.40, costHigh: 4.40, note: 'Modeled planning estimate (10K-50K qty) — weight-sensitive; premium stock/finishing can raise this materially.' },
+    { format: 'Newsletter / multi-page (4pp)', pages: 4, costLow: 0.60, costBase: 0.90, costHigh: 1.20, note: '1K-5K quantity range.' },
+    { format: 'Dimensional / padded mailer', pages: 1, costLow: 2.50, costBase: 3.75, costHigh: 5.00, note: 'Not comparable on a cost-per-page basis — driven by the object/premium inside, not print pages.' }
+  ],
+  qrScanRateByRole: [
+    { role: 'Secondary CTA on a general brand or offer mailer', planningScanRate: '0.1% – 0.5% of delivered pieces' },
+    { role: 'Primary CTA with a compelling, simple offer', planningScanRate: '0.3% – 1.5%' },
+    { role: 'Highly targeted, first-party/known-audience campaign', planningScanRate: '0.5% – 2.0%' }
+  ],
+  engagementFunnelByAudienceOffer: [
+    { audienceOfferType: 'Cold prospect, high-consideration / luxury purchase', engagementRate: '0.1% – 0.8%', transactionalConversion: '0.01% – 0.10%', engagementToTransaction: 'Roughly 5-25% of qualified engagements become a sale over a long window', primaryKpi: 'Qualified appointment or verified incremental sale', attributionWindow: '90-180+ days' },
+    { audienceOfferType: 'Warm first-party prospect / registered user, high-consideration', engagementRate: '0.3% – 1.5%', transactionalConversion: '0.05% – 0.30%', engagementToTransaction: 'Roughly 10-30% after qualification, depending on sales process', primaryKpi: 'Cost per qualified appointment and close rate', attributionWindow: '60-180 days' },
+    { audienceOfferType: 'Existing customer, luxury cross-sell or retention', engagementRate: '0.5% – 2.5%', transactionalConversion: '0.10% – 0.75%', engagementToTransaction: 'Driven by recency, customer value, and offer relevance', primaryKpi: 'Incremental revenue/margin per mailed customer', attributionWindow: '30-180 days' },
+    { audienceOfferType: 'Cold prospect, local service with an urgent offer', engagementRate: '0.5% – 2.5%', transactionalConversion: '0.10% – 0.60%', engagementToTransaction: 'Calls and quote requests may convert 10-35% after qualification', primaryKpi: 'Cost per booked/completed job', attributionWindow: '30-120 days' },
+    { audienceOfferType: 'Existing customer, local service / win-back', engagementRate: '1% – 5%', transactionalConversion: '0.30% – 1.50%', engagementToTransaction: 'Usually stronger than acquisition — trust already exists', primaryKpi: 'Incremental booked job or repeat revenue', attributionWindow: '30-120 days' },
+    { audienceOfferType: 'CPG / low-price consumer offer, cold household', engagementRate: '0.2% – 1.5%', transactionalConversion: '0.05% – 0.40%', engagementToTransaction: 'Coupon claims or digital engagement may not equal a verified purchase', primaryKpi: 'Incremental household purchase / redemption', attributionWindow: '14-90 days' },
+    { audienceOfferType: 'CPG / loyalty or known-buyer household', engagementRate: '0.8% – 4%', transactionalConversion: '0.20% – 1.25%', engagementToTransaction: 'Repeat-buy propensity and retailer/loyalty match rates matter', primaryKpi: 'Incremental contribution and repeat purchase', attributionWindow: '14-90 days' },
+    { audienceOfferType: 'Restaurant / retail offer with a direct coupon', engagementRate: '1% – 5%', transactionalConversion: '0.5% – 3%', engagementToTransaction: 'Redemption can run close to transaction, though margin may be thin', primaryKpi: 'Incremental gross profit after offer cost', attributionWindow: '7-45 days' }
+  ],
+  workedExamples: [
+    { label: 'Luxury watch (lapsed high-value client / affluent prospect)', deliveredPieces: 20000, engagementDefinition: 'QR scan, concierge call, boutique appointment', engagementRate: '0.4%', qualifiedEngagementRate: '0.15%', transactionDefinition: 'CRM-matched paid watch sale', transactionalConversion: '0.03%', attributionWindow: '90-180 days', incrementalityMethod: 'Randomized holdout or matched control', economicOutcome: 'Incremental gross profit per mailed piece' },
+    { label: 'CPG offer (known household buyer / target household prospect)', deliveredPieces: 100000, engagementDefinition: 'QR scan, coupon claim, retailer click', engagementRate: '0.8%', qualifiedEngagementRate: '0.5% eligible/activated', transactionDefinition: 'Verified retailer/ecommerce purchase', transactionalConversion: '0.25%', attributionWindow: '14-90 days', incrementalityMethod: 'Household-level loyalty-data holdout/control', economicOutcome: 'Incremental contribution and repeat value per mailed household' }
+  ],
+  sources: [
+    { source: 'DirectMail.io — Direct Mail Cost Pricing 2026', howUsed: 'All-in per-piece cost ranges for postcards, letters, envelopes, self-mailers, and dimensional mail.' },
+    { source: 'Mail Movers — Direct Mail Pricing Guide 2026', howUsed: 'Print, postage, mailing-list, and mail-prep cost context; multi-page newsletter ranges.' },
+    { source: 'USPS Delivers — Direct Mail Cost Calculator', howUsed: "Official calculator caveats and campaign-cost component assumptions; USPS itself states results are approximate." },
+    { source: 'Invesp — Average Direct Mail Conversion Rate', howUsed: 'General direct-mail conversion context — used cautiously since conversion definitions differ across sources.' },
+    { source: 'CRST — Direct Mail Response Rate by Industry', howUsed: 'Response can include calls, QR scans, walk-ins, and form submissions, not necessarily purchases — informed the engagement-vs-transaction split above.' },
+    { source: "Todd's own worked examples (luxury watch, CPG)", howUsed: 'Cross-checked the engagement/qualified-engagement/transaction funnel shape against real campaign structure, not just published ranges.' }
+  ]
+};
+
 const CHANNEL_BEST_PRACTICES = {
   'Direct Mail — Prospects': {
-    primaryMetrics: ['Response rate', 'Cost per response', 'Cost per acquisition'],
+    primaryMetrics: ['Response rate', 'Engagement rate (QR/call/appointment)', 'Transactional conversion rate', 'Cost per response', 'Cost per acquisition'],
     benchmarks: [
       { metric: 'Response rate (cold/prospect list)', range: '2.0% – 4.4%', tier: 'A', source: 'ANA Response Rate Report (Association of National Advertisers, formerly the Direct Marketing Association/DMA)', asOf: '2025', note: 'Response rate varies enormously by list quality — this is a cold/purchased-list range, not a house-list one.' },
-      { metric: 'Cost per piece', range: '$0.80/piece ($800 CPM)', tier: 'A', source: "This account's own real, direct-given cost (list + printing + postage) — see round 32g", asOf: '2026-09-12', note: 'Not a benchmark — this is real cost data already live in the Media Plan grid, stronger than any external benchmark.' }
+      { metric: 'Engagement rate (QR scan / call / appointment) — cold or high-consideration offer', range: '0.1% – 0.8%', tier: 'B', source: "Todd-provided planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'Engagement (a scan, a call, a claim) is a much softer signal than a transaction — see directMailPlanningReference.engagementFunnelByAudienceOffer for the full audience/offer matrix this is drawn from.' },
+      { metric: 'Transactional conversion rate — cold prospect, high-consideration', range: '0.01% – 0.10%', tier: 'B', source: "Todd-provided planning materials", asOf: '2026-09-13', note: "Only 5-25% of engagements typically become a qualified appointment or sale for a cold, high-consideration audience — don't plan revenue off the engagement rate alone." },
+      { metric: 'Cost per piece', range: '$0.80/piece ($800 CPM)', tier: 'A', source: "This account's own real, direct-given cost (list + printing + postage) — see round 32g", asOf: '2026-09-12', note: 'Not a benchmark — this is real cost data already live in the Media Plan grid, stronger than any external benchmark. See directMailPlanningReference.costByMailerFormat for format options when scoping a new piece.' }
     ],
     creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
-    testingNote: 'Response-code or unique-URL/QR tracking is the only honest way to measure — ties to the existing Tracking Link & QR Code Builder.',
+    testingNote: 'Response-code or unique-URL/QR tracking is the only honest way to measure — ties to the existing Tracking Link & QR Code Builder. Track engagement (scan/call/claim) and transaction (verified sale) as two separate rates, not one blended "response rate" — they tell different stories and the gap between them is itself a diagnostic (a high engagement rate with a low transaction rate points at offer or follow-up problems, not reach).',
     vsIllustrativeCpm: { inApp: 800, note: 'Cost is real, not benchmark-derived — nothing to reconcile here.' }
   },
   'Direct Mail — Past Guests': {
-    primaryMetrics: ['Response rate', 'Cost per response', 'Cost per acquisition'],
+    primaryMetrics: ['Response rate', 'Engagement rate (QR/call/appointment)', 'Transactional conversion rate', 'Cost per response', 'Cost per acquisition'],
     benchmarks: [
       { metric: 'Response rate (house/customer list)', range: '5% – 9%', tier: 'A', source: 'ANA Response Rate Report (Association of National Advertisers, formerly DMA)', asOf: '2025', note: 'House-list response consistently and substantially outperforms cold/prospect lists.' },
-      { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark.' }
+      { metric: 'Engagement rate (QR scan / call / claim) — existing customer, retention or cross-sell', range: '0.5% – 4%', tier: 'B', source: "Todd-provided planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'Spans the luxury cross-sell (0.5-2.5%) and CPG loyalty/known-buyer (0.8-4%) rows of the audience/offer matrix — narrow to the closer analog in directMailPlanningReference.engagementFunnelByAudienceOffer.' },
+      { metric: 'Transactional conversion rate — existing customer', range: '0.10% – 1.50%', tier: 'B', source: "Todd-provided planning materials", asOf: '2026-09-13', note: 'Existing-customer transaction rates run well above cold-prospect rates — trust and prior purchase history already established.' },
+      { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark. See directMailPlanningReference.costByMailerFormat for format options when scoping a new piece.' }
     ],
     creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
-    testingNote: 'Same as Direct Mail — Prospects: response-code/QR tracking, not A/B in the digital sense.',
+    testingNote: 'Same as Direct Mail — Prospects: response-code/QR tracking, not A/B in the digital sense. Track engagement and transaction separately, per the note above.',
     vsIllustrativeCpm: { inApp: 710, note: 'Cost is real, not benchmark-derived.' }
   },
   'Direct Mail — Inquiries': {
-    primaryMetrics: ['Response rate', 'Cost per response', 'Cost per acquisition'],
+    primaryMetrics: ['Response rate', 'Engagement rate (QR/call/appointment)', 'Transactional conversion rate', 'Cost per response', 'Cost per acquisition'],
     benchmarks: [
       { metric: 'Response rate (warm/engaged list)', range: '2.0% – 9%, directionally closer to the house-list end', tier: 'B', source: 'ANA Response Rate Report — extrapolated', asOf: '2025', note: 'The ANA report does not break out an "inquiries" list type on its own; this range brackets prospect (2.0-4.4%) and house-list (5-9%) figures as reasonable bounds for a warmer-than-cold, cooler-than-customer list. Treat as directional, not a precise citation.' },
-      { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark.' }
+      { metric: 'Engagement rate (QR scan / call / appointment) — warm first-party prospect', range: '0.3% – 1.5%', tier: 'B', source: "Todd-provided planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'The "warm first-party prospect / registered user" row of the audience/offer matrix is the closest analog to an inquiry list.' },
+      { metric: 'Transactional conversion rate — warm first-party prospect', range: '0.05% – 0.30%', tier: 'B', source: "Todd-provided planning materials", asOf: '2026-09-13', note: 'Roughly 10-30% of qualified engagements convert to close, depending on the sales process behind this list.' },
+      { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark. See directMailPlanningReference.costByMailerFormat for format options when scoping a new piece.' }
     ],
     creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
-    testingNote: 'Same as other Direct Mail rows.',
-    vsIllustrativeCpm: { inApp: 710, note: 'Cost is real, not benchmark-derived.' }
+    testingNote: 'Same as other Direct Mail rows — track engagement and transaction as two separate rates.',
+    vsIllustrativeCpm: { inApp: 710, note: 'Real cost, not benchmark-derived.' }
   },
   'Linear TV': {
     primaryMetrics: ['GRPs/reach', 'Frequency', 'CPM', 'Brand lift'],
@@ -13537,7 +13604,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-channel-best-practices',
+        buildStamp: '2026-09-13-direct-mail-planning-benchmarks',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -23295,7 +23362,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // data client-side (see vsIllustrativeCpm on each entry, which already
     // carries the in-app figure as of this build for that comparison).
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'channel-best-practices' && parts[2] === 'global'){
-      return sendJson(res, 200, { channels: CHANNEL_BEST_PRACTICES });
+      return sendJson(res, 200, { channels: CHANNEL_BEST_PRACTICES, directMailPlanningReference: DIRECT_MAIL_PLANNING_REFERENCE });
     }
 
     // GET /api/accounts/:id/print-specs — this account's own custom
@@ -23599,8 +23666,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
-
-
-
 
 
