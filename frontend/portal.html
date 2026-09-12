@@ -147,9 +147,15 @@
      giving primary-nav and ask-bar the identical bleed makes all three
      chrome bars render at the same width. (Round 17, direct feedback:
      widened from 1040/28px to 1440/32px for full page width.) */
-  .primary-nav{display:flex;gap:2px;margin:0 -32px;padding:0 32px;background:var(--hdr-navy);overflow-x:auto;}
-  .primary-nav-item{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;letter-spacing:0.01em;color:var(--hdr-muted-on-navy);background:none;border:none;border-bottom:2px solid transparent;padding:12px 14px 12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px;}
-  .primary-nav-item .num{font-size:0.6875rem;font-weight:700;opacity:0.7;}
+  /* 2026-09-13, per direct instruction — with the logo now much bigger
+     (see .account-summary .co-logo) and the "Verilume Portal" caption
+     gone, a flush-left nav row directly under a much taller logo read as
+     misaligned, so it's nudged right with extra left padding; the item
+     font size was also bumped up (both explicitly called out as
+     acceptable side effects of the logo change). */
+  .primary-nav{display:flex;gap:2px;margin:0 -32px;padding:0 32px 0 64px;background:var(--hdr-navy);overflow-x:auto;}
+  .primary-nav-item{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.9375rem;font-weight:600;letter-spacing:0.01em;color:var(--hdr-muted-on-navy);background:none;border:none;border-bottom:2px solid transparent;padding:12px 14px 12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px;}
+  .primary-nav-item .num{font-size:0.75rem;font-weight:700;opacity:0.7;}
   .primary-nav-item:hover{color:var(--hdr-ink-on-navy);}
   .primary-nav-item.active{color:var(--hdr-ink-on-navy);font-weight:700;border-bottom-color:var(--hdr-amber);}
   /* 2026-08-24 (round 17, direct feedback) — below 760px the six-tab row
@@ -351,7 +357,7 @@
      28px side padding so the navy reads as a true banner rather than a
      card floating inside the content column, closer to the comps' full-
      bleed header than a rounded card would be. */
-  .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;padding:18px 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
+  .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;padding:5px 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
   .account-summary .logo-and-name{display:flex;align-items:center;gap:14px;}
   /* 2026-09-12, per direct report — a client-uploaded sample logo was
      rendering "very small" in this header. Root cause: this cap (36px tall
@@ -363,8 +369,17 @@
      already uses, so the two now agree — object-fit:contain still scales
      the whole image (any transparent padding baked into the source file
      included) proportionally, so this is a real, visible size increase for
-     every uploaded mark, not just a bounding-box change. */
-  .account-summary .co-logo{max-height:52px;max-width:220px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
+     every uploaded mark, not just a bounding-box change.
+     2026-09-13, same-day follow-up — still reading small. Per direct
+     instruction: extend the logo to the top and bottom of the navy bar
+     with only 5px of padding above and below. .account-summary's own
+     vertical padding dropped from 18px to 5px (above) so the bar's height
+     is now driven by its tallest child; this cap raised to 90px/260px so
+     an uploaded mark actually grows to fill that space instead of leaving
+     navy above/below it. object-fit:contain still keeps the real aspect
+     ratio, so a wide/short logo won't stretch to 90px tall regardless —
+     it grows until either dimension hits its cap. */
+  .account-summary .co-logo{max-height:90px;max-width:260px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
   .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.1875rem;font-weight:700;margin:0;color:var(--hdr-ink-on-navy);}
   .account-summary .co-code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;color:var(--hdr-muted-on-navy);background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);border-radius:6px;padding:2px 7px;}
   .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);}
@@ -2740,7 +2755,10 @@
                renderAccountLogo(). -->
           <div class="co-code" id="acctClientCodeDisplay" style="display:none;"></div>
         </div>
-        <div class="acct-header-subtitle">Verilume Portal</div>
+        <!-- 2026-09-13, per direct instruction — "You don't need 'Verilume
+             Portal' next to the logo." Removed; the logo (now sized to fill
+             the bar, see .account-summary .co-logo above) carries the brand
+             on its own without a redundant caption beside it. -->
       </div>
     </div>
     <!-- 2026-08-25 — the small in-header watchdog banner that lived here
@@ -9452,7 +9470,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-project-number-partner-dates-audience-grouping';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-header-logo-nav-resize';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
