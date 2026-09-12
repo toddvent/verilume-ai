@@ -2,7 +2,7 @@
   "functions": {
     "api/[...path].js": {
       "maxDuration": 120,
-      "includeFiles": "{backend/**,node_modules/@ffmpeg-installer/**,node_modules/ffprobe-static/bin/linux/x64/**,node_modules/ffprobe-static/index.js,node_modules/ffprobe-static/package.json}"
+      "includeFiles": "{backend/**,node_modules/@ffmpeg-installer/**,node_modules/ffprobe-static/bin/linux/x64/**,node_modules/ffprobe-static/index.js,node_modules/ffprobe-static/package.json,frontend/verilume-product-docs.html,frontend/verilume-product-licensed-integrations.html,frontend/verilume-product-copywriting.html,frontend/verilume-product-media-plan-budget.html,frontend/registrationaccountmanagementproduct.html,frontend/verilume-product-company-profile-team.html}"
     }
   },
   "crons": [
