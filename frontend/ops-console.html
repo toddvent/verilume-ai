@@ -685,7 +685,7 @@
 
             <p style="margin:10px 0 4px;"><b>GA4</b> — client adds Verilume's service-account email as <b>Viewer</b> in their GA4 Property Access Management, and provides their Account ID + Property ID. Fastest pathway — same-day, no approval step on either side. The real connector already exists (<code>GET /api/accounts/:id/ga4-report</code>); it activates automatically once production has a real <code>GA4_SERVICE_ACCOUNT_KEY_JSON</code> credential — check with engineering before promising a client live data.</p>
 
-            <p style="margin:10px 0 4px;"><b>Snowflake</b> — client's own data team provisions a <b>read-only</b> Secure Data Share (never full warehouse access) and provides the account identifier, Share name, and a data-team contact. Lead time depends entirely on their team's availability. No live connector exists yet — this is still metadata capture only, so "Connected" here means "request fully documented," not "data flowing."</p>
+            <p style="margin:10px 0 4px;"><b>Snowflake</b> — client's own data team provisions a <b>read-only</b> Secure Data Share (never full warehouse access) and provides the account identifier, Share name, and a data-team contact (still what this form above captures). 2026-09-13 update: the pull connector itself is now real code (<code>syncSnowflakeAccount()</code> in server.js, key-pair JWT auth against Snowflake's SQL API, nightly cron at <code>GET /api/cron/sync-snowflake</code>) — it lands call/lead/booking records into <code>warehouse_calls</code>/<code>warehouse_leads</code>/<code>warehouse_bookings</code>. It stays dormant until two separate things exist: (1) Verilume.AI's own Snowflake account + <code>SNOWFLAKE_*</code> env vars in production, and (2) per-account provisioning — which database/schema/table the client's mounted share landed as, set via the admin-only <code>POST /api/accounts/:id/snowflake-connector-config</code> (not a form on this page; there's no client-facing UI for Verilume's own internal database naming). So "Connected" above still means "request fully documented" until an engineer does that provisioning step and a real sync succeeds — check with engineering before promising a client live data.</p>
 
             <p style="margin:10px 0 4px;"><b>Meta</b> — client adds Verilume's Business Manager System User with <code>ads_read</code> permission on the ad account(s) to report on. Slowest pathway — Meta's App Review realistically runs 1-2+ weeks, and that's Verilume's own one-time step, separate from any one client. No connector code exists yet.</p>
 
@@ -820,7 +820,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-direct-mail-planning-benchmarks';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-snowflake-inbound-connector';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
