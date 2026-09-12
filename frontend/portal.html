@@ -125,7 +125,7 @@
   .app-header-titles{min-width:0;}
   .app-header-titles .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.1875rem;font-weight:700;color:var(--hdr-ink-on-navy);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .app-header-subtitle{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);letter-spacing:0.01em;}
-  .app-header-brand .co-logo{max-height:36px;max-width:160px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
+  .app-header-brand .co-logo{max-height:52px;max-width:220px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
   .app-header-right{display:flex;align-items:center;gap:14px;flex-shrink:0;}
   .app-header-clientid{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);letter-spacing:0.01em;white-space:nowrap;}
   .app-header-user-avatar{width:32px;height:32px;border-radius:50%;background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);color:var(--hdr-ink-on-navy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -353,7 +353,18 @@
      bleed header than a rounded card would be. */
   .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;padding:18px 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
   .account-summary .logo-and-name{display:flex;align-items:center;gap:14px;}
-  .account-summary .co-logo{max-height:36px;max-width:160px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
+  /* 2026-09-12, per direct report — a client-uploaded sample logo was
+     rendering "very small" in this header. Root cause: this cap (36px tall
+     / 160px wide) was noticeably smaller than the Logo Upload preview box
+     on the Colors & Fonts page (#saLogoPreviewImg, style="max-height:52px;
+     max-width:220px" — see that element a few thousand lines down), so what
+     a client saw while uploading never matched what they'd actually get in
+     the live header. Bumped to the exact same 52px/220px bounds the preview
+     already uses, so the two now agree — object-fit:contain still scales
+     the whole image (any transparent padding baked into the source file
+     included) proportionally, so this is a real, visible size increase for
+     every uploaded mark, not just a bounding-box change. */
+  .account-summary .co-logo{max-height:52px;max-width:220px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
   .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.1875rem;font-weight:700;margin:0;color:var(--hdr-ink-on-navy);}
   .account-summary .co-code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;color:var(--hdr-muted-on-navy);background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);border-radius:6px;padding:2px 7px;}
   .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);}
@@ -4091,7 +4102,7 @@
             <span class="fld-optional-badge">Optional</span>
             <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipLogoUpload')" aria-label="Accepted formats and sizing">i</button>
           </div>
-          <div class="fld-tip" id="tipLogoUpload">The actual logo file, so it can appear in the portal header. SVG (preferred, scales cleanly) or transparent PNG/WebP — no JPG. Long side roughly 400-1200px. Aspect ratio close to 1:1 up to about 4:1 wide; very tall or very narrow marks tend to crop oddly at the 44px display height used here. Under 2MB, transparent background preferred.</div>
+          <div class="fld-tip" id="tipLogoUpload">The actual logo file, so it can appear in the portal header. SVG (preferred, scales cleanly) or transparent PNG/WebP — no JPG. Long side roughly 400-1200px. Aspect ratio close to 1:1 up to about 4:1 wide; very tall or very narrow marks tend to crop oddly at the 52px display height used here. Under 2MB, transparent background preferred.</div>
           <div class="btn-row" style="margin-top:8px;">
             <label class="btn-ghost" for="saLogoFileInput" style="cursor:pointer;">Choose Logo File</label>
             <span id="saLogoFileChosenName" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);"></span>
@@ -9295,7 +9306,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-contest-guide-loop';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-header-logo-size-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
