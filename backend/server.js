@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-website-brand-profile-ledger (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-voice-contest-guide-loop (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2006,7 +2006,7 @@ const CONTEST_TYPE_REGISTRY = {
   'Brand Voice': {
     taskType: 'brand_voice',
     subtypes: [],
-    description: 'Account-level Voice Contest — the winning Vision Statement + Longform Example become accounts.visionStatement/longformVoiceExample, which every other generation prompt in this file already reads as brand context (see buildInterviewPrompt, generateMessagingCopyViaAI, draftPrCorpCommCopyViaAI, scoreDraftCopy). No per-request vendor dispatch consumer today — recorded for consistency and future reporting regardless.'
+    description: 'Account-level Voice Contest — the winning Vision Statement + Longform Example become accounts.visionStatement/longformVoiceExample, which every other generation prompt in this file already reads as brand context (see buildInterviewPrompt, generateMessagingCopyViaAI, draftPrCorpCommCopyViaAI, scoreDraftCopy). Dispatch-consumed (2026-09-12): generateVoiceGuideDraftViaAI() checks getDispatchablePriorityModel(accountId, \'brand_voice\') for single-draft (non-contest) generation, matching Campaign (\'marketing_copy\') and PR (\'pr_copy\') parity.'
   },
   'Creative Job': {
     taskType: 'creative_job',
@@ -2336,13 +2336,26 @@ function brandVoiceCriticalMessagesContext(account, extra){
 async function generateBrandVoiceCandidate(angle, account, extra){
   try {
     const context = brandVoiceCriticalMessagesContext(account, extra);
+    // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
+    // dispatch-scoping-2026-09-12.md, Section 2 items 1-2 — the Contest
+    // used to see none of this. Sample Writings and the account's existing
+    // approved Voice Guide (when one exists) are now folded in here so a
+    // contest run after a Voice Guide exists produces candidates consistent
+    // with what's already been approved, per Todd's direct framing
+    // ("sample writings should come before the brand in order... the voice
+    // guide + website scanned document includes the critical prompt
+    // information needed to maximize the contest").
+    const sampleContext = await brandWritingSampleContext(account.accountId);
+    const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
     const prompt = `You are a brand strategist proposing ONE distinct voice direction for a company, as part of a panel where several different directions are being compared side by side.
 
 YOUR DIRECTION FOR THIS CANDIDATE: ${angle.brief}
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
+REAL SAMPLE WRITINGS FROM THIS BRAND (the clearest, highest-priority signal of how this brand actually writes — the voice you propose should sound like it belongs next to these):
+${sampleContext || '(no sample writings on file for this account yet)'}
+${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (a human has already approved this — your proposed direction should stay consistent with it unless there's a real reason in the brand signal below to diverge):\n${voiceGuideText}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
 
 Propose your candidate via the submit_brand_voice_candidate tool.`;
@@ -2440,11 +2453,24 @@ async function generateVoiceGuideDraftViaAI(account){
     const avoidPhrases = avoidWords.filter(w => w.length <= 40);
     const avoidGuidance = avoidWords.filter(w => w.length > 40);
     const sampleContext = await brandWritingSampleContext(account.accountId);
+    // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
+    // dispatch-scoping-2026-09-12.md, Section 2 item 1 — Todd's direct
+    // instruction was "sample writings should come before the brand in
+    // order since I think it's critical to the voice guide." Sample
+    // Writings used to be appended AFTER the CRITICAL CUSTOMER-FACING
+    // MESSAGES block below; it now leads the prompt as the highest-priority
+    // grounding, with the Voice Contest Winner block (item 2 below) right
+    // behind it, then the facts block, then the avoid-lists last (unchanged
+    // position).
+    const visionStatement = (account.visionStatement || '').trim();
+    const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim();
     const prompt = `You are a senior brand strategist writing a real, finished Brand Voice Guide for ${account.company || 'this company'} (Industry: ${account.industry || '(not set)'}) — the kind of document a copywriter could pick up cold and write correctly in this brand's voice on the first try. Not a summary of the inputs below, not meta-commentary about the brand — a real, usable guide.
 
-CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL ON FILE (use these specific facts — never invent products, offers, or claims not present here):
+REAL SAMPLE WRITINGS FROM THIS BRAND (the clearest, highest-priority signal of how this brand actually writes — ground the guide in these first, above every other signal below):
+${sampleContext || '\n(No real Sample Writings on file for this account yet — write from the signal below alone, and flag the missing samples as a gap below.)\n'}
+${(visionStatement || longformVoiceExample) ? `MOST RECENT VOICE CONTEST WINNER (a human already approved this specific direction — the guide you write should be consistent with it, refining and formalizing it into full guide form rather than contradicting it):\n${visionStatement ? `Vision statement: ${visionStatement}\n` : ''}${longformVoiceExample ? `Reference longform example: ${longformVoiceExample}\n` : ''}\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL ON FILE (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
-${sampleContext || '\n(No real Sample Writings on file for this account yet — write from the signal above alone, and flag the missing samples as a gap below.)\n'}
+
 SHORT TERMS TO AVOID for this account — literal words/phrases that must never appear verbatim (human-entered): ${avoidPhrases.length ? avoidPhrases.map(w => `"${w}"`).join(', ') : '(none on file)'}
 LONGER TONE-DIRECTION TO AVOID for this account — not literal phrases, but real guidance on register/approach to steer away from (human-entered, use the substance of this in your own words, never quote it back verbatim): ${avoidGuidance.length ? avoidGuidance.map(w => `"${w}"`).join(' / ') : '(none on file)'}
 
@@ -2457,7 +2483,36 @@ Write the guide with these sections, in this order:
 
 Then, SEPARATELY from the draft text above (in the gaps field, not inside the draft), identify what's genuinely missing that would make this draft stronger — e.g. no Products & Services on file, no Sample Writings on file, no competitors entered, no scanned website on file, no Terms to Avoid entered yet. Only list gaps that are actually true of the context given above; an empty gaps array is correct if everything relevant is genuinely on file — never invent a gap that isn't real. Also give your real reasoning for this specific draft in the whyDraft field — what you grounded it in from the real inputs above, and what you didn't have.
 
-Submit your result via the submit_voice_draft tool.`;
+Submit your result via the submit_voice_draft tool. If you do not have a tool/function-calling interface available, respond with ONLY a JSON object in this exact shape instead: {"draft": "...", "gaps": [...], "whyDraft": "..."}.`;
+    // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
+    // dispatch-scoping-2026-09-12.md, Section 2 item 4 — CONTEST_TYPE_
+    // REGISTRY's own 'Brand Voice' entry used to say "No per-request vendor
+    // dispatch consumer today — recorded for consistency and future
+    // reporting regardless," meaning a 'brand_voice' contest win was
+    // recorded on every select but never read back by anything. This closes
+    // that gap, matching Campaign (generateMessagingCopyViaAI() /
+    // 'marketing_copy') and PR (draftPrCorpCommCopyViaAI() / 'pr_copy')
+    // parity, per Todd's direct answer on vendor dispatch: "the winner
+    // should be the default." Same fall-through-on-failure discipline as
+    // those two dispatchers — a stale or flaky vendor pick never blocks
+    // Voice Guide generation, it just falls through to the Anthropic path
+    // below.
+    const priority = getDispatchablePriorityModel(account.accountId, 'brand_voice');
+    if (priority && !priority.stale){
+      try {
+        const vendorText = await callVendorForText(priority.row.candidateKey, prompt);
+        const vendorParsed = parseJsonBlock(vendorText);
+        if (vendorParsed && typeof vendorParsed.draft === 'string'){
+          return {
+            draft: vendorParsed.draft,
+            gaps: Array.isArray(vendorParsed.gaps) ? vendorParsed.gaps.filter(g => typeof g === 'string') : [],
+            whyDraft: typeof vendorParsed.whyDraft === 'string' ? vendorParsed.whyDraft : null,
+            note: null
+          };
+        }
+        // fall through to Anthropic below on an unparseable/empty response
+      } catch (e){ /* fall through to Anthropic below */ }
+    }
     const parsed = await callClaudeForJSON({
       model: 'claude-sonnet-4-5',
       maxTokens: 1400,
@@ -12051,13 +12106,21 @@ async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleC
 async function generateVendorBrandVoiceCopy(vendorKey, account, extra){
   try {
     const context = brandVoiceCriticalMessagesContext(account, extra);
+    // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
+    // dispatch-scoping-2026-09-12.md — identical Sample Writings + approved
+    // Voice Guide grounding as generateBrandVoiceCandidate's Anthropic path
+    // above, so the contest stays fair across every vendor candidate.
+    const sampleContext = await brandWritingSampleContext(account.accountId);
+    const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
     const prompt = `You are a brand strategist proposing ONE distinct voice direction for a company, as part of a panel where several different directions are being compared side by side.
 
 YOUR DIRECTION FOR THIS CANDIDATE: Propose your own best, most distinct voice direction for this brand — your independent judgment, not a direction assigned to you.
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
+REAL SAMPLE WRITINGS FROM THIS BRAND (the clearest, highest-priority signal of how this brand actually writes — the voice you propose should sound like it belongs next to these):
+${sampleContext || '(no sample writings on file for this account yet)'}
+${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (a human has already approved this — your proposed direction should stay consistent with it unless there's a real reason in the brand signal below to diverge):\n${voiceGuideText}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES THIS VOICE MUST WORK IN (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
 
 Respond with ONLY a JSON object with two fields:
@@ -12288,7 +12351,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-website-brand-profile-ledger',
+        buildStamp: '2026-09-12-voice-contest-guide-loop',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
