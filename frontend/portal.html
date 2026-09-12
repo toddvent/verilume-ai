@@ -8843,6 +8843,13 @@
             </div>
             <span class="hint" style="margin:0;flex:1 1 260px;">Shows each stage's and channel's $ and impressions for the selected period — the Annual field always stays the annual number. Impressions are Spend ÷ Est. CPM, not a live rate card.</span>
           </div>
+          <!-- 2026-09-12 — per direct instruction to build out channel best
+               practices (CHANNEL_BEST_PRACTICES in backend/server.js), so
+               the Est. CPM inputs above have a real, named-source benchmark
+               a team member can check them against, one click away. -->
+          <div style="margin:4px 0 0;">
+            <a href="channel-best-practices.html" target="_blank" rel="noopener" style="font-size:12.5px;color:var(--cx);text-decoration:none;font-weight:600;">View channel benchmark sources — real CPM/response-rate data by channel, with the study cited →</a>
+          </div>
         </div>
         <div id="mediaPlanGrid"></div>
       </div>
@@ -9406,7 +9413,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-analytics-setup-docs-search';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-channel-best-practices';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */

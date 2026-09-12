@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Channel Best Practices</title>
+<meta name="description" content="Real, named-source benchmark ranges by channel — CPM, response rate, and engagement metrics — with the underlying study cited, or an honest gap flagged where no defensible cross-vendor source exists.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+    2026-09-12 — Channel Best Practices, per direct instruction ("build out
+    the channel best practices"). Implements CHANNEL_BEST_PRACTICES (Section
+    2 of cxmedia-campaign-analytics-strategy.md, scoped 2026-07-27, never
+    built until now). Same visual shell/convention as print-specs.html and
+    ooh-specs.html (utility nav, back-nav, footer, card styling) but no
+    login-gate or Creative Jobs section — this is pure reference content,
+    nothing here is ever sent anywhere, so nothing here needs an account or
+    a login. Content is a benchmark table per channel, not a cascading
+    select, since the underlying data (CHANNEL_BEST_PRACTICES in
+    backend/server.js) is a flat list of channel entries, not a
+    category->format tree the way OOH/Print specs are.
+  */
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+    --tier-a:#0A7B4B; --tier-a-tint:#E3F5EC; --tier-b:#B4780A; --tier-b-tint:#FBF1DF; --tier-gap:#B4232E; --tier-gap-tint:#FBEAEA;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.08) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px;}
+  a{color:inherit;}
+
+  .back-nav{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1040px;margin:0 auto;}
+  .back-nav a{color:var(--cx);text-decoration:none;}
+  .back-nav a:hover{text-decoration:underline;}
+  .back-nav .wordmark{font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
+  .back-nav .wordmark b{color:var(--media);font-weight:500;}
+
+  main{padding:40px 0 100px;}
+  .eyebrow{font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:14px;}
+  h1{font-weight:500;font-size:clamp(26px,3.8vw,36px);line-height:1.15;margin:0 0 10px;letter-spacing:-0.01em;}
+  h2{font-weight:600;font-size:19px;margin:0 0 4px;}
+  h3{font-weight:600;font-size:16px;margin:0;}
+  p.lede{font-size:15px;line-height:1.6;color:#3A3428;max-width:700px;margin:0 0 20px;}
+
+  .status-bar{background:var(--ink);color:var(--white);border-radius:6px;padding:16px 22px;margin:0 0 28px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;font-size:13px;}
+  .status-bar .status{font-size:12.5px;}
+  .status-bar .status.ok{color:#8FDDC4;}
+  .status-bar .status.warn{color:#F0C77A;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 28px;font-size:12.5px;color:var(--muted);align-items:center;}
+  .legend .swatch{display:inline-flex;align-items:center;gap:6px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .dot.a{background:var(--tier-a);} .dot.b{background:var(--tier-b);} .dot.gap{background:var(--tier-gap);}
+
+  .filter-row{display:flex;gap:10px;margin:0 0 22px;flex-wrap:wrap;align-items:center;}
+  .filter-row input{flex:1 1 260px;padding:10px 14px;border:1px solid var(--line);border-radius:999px;font-size:14px;background:var(--paper);color:var(--ink);}
+  .filter-row select{padding:10px 14px;border:1px solid var(--line);border-radius:999px;font-size:13.5px;background:var(--paper);color:var(--ink);}
+
+  section.chan-card{background:var(--white);border:1px solid var(--line);border-radius:8px;padding:22px 24px;margin:0 0 18px;}
+  .chan-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .chan-metrics{font-size:12.5px;color:var(--muted);margin:0 0 14px;}
+  .chan-metrics b{color:var(--ink);font-weight:600;}
+
+  .bench-row{display:grid;grid-template-columns:1fr 1fr 2fr;gap:14px;padding:11px 0;border-top:1px solid var(--line-hairline);align-items:start;}
+  .bench-row:first-of-type{border-top:none;}
+  .bench-metric{font-size:13.5px;font-weight:600;}
+  .bench-range{font-size:14px;font-variant-numeric:tabular-nums;}
+  .bench-source{font-size:12.5px;color:var(--muted);line-height:1.45;}
+  .bench-source .src-name{color:var(--ink);}
+  .bench-note{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;}
+
+  .tier-tag{font-size:10px;letter-spacing:0.05em;text-transform:uppercase;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block;margin-left:6px;vertical-align:1px;}
+  .tier-tag.a{background:var(--tier-a-tint);color:var(--tier-a);}
+  .tier-tag.b{background:var(--tier-b-tint);color:var(--tier-b);}
+  .tier-tag.gap{background:var(--tier-gap-tint);color:var(--tier-gap);}
+
+  .vs-illustrative{margin-top:14px;padding:12px 14px;border-radius:6px;background:var(--paper-dim);font-size:12.5px;line-height:1.5;}
+  .vs-illustrative b{font-weight:700;}
+  .vs-illustrative.flag{background:var(--tier-b-tint);}
+
+  .testing-note{margin-top:12px;font-size:12.5px;color:var(--muted);padding-top:12px;border-top:1px solid var(--line-hairline);}
+  .testing-note b{color:var(--ink);font-weight:600;}
+  .creative-link{margin-top:10px;font-size:12.5px;}
+  .creative-link a{color:var(--cx);text-decoration:none;font-weight:600;}
+  .creative-link a:hover{text-decoration:underline;}
+
+  .empty-note{color:var(--muted);font-size:14px;padding:24px;text-align:center;}
+
+  footer{margin-top:40px;padding:24px 28px;border-top:1px solid var(--line);font-size:11.5px;color:#8a8067;text-align:center;}
+
+  .utility-nav{background:var(--ink);}
+  .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;}
+  .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
+  .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
+
+  @media (max-width:680px){
+    .bench-row{grid-template-columns:1fr;gap:2px;}
+    .status-bar{flex-direction:column;align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+<div class="utility-nav" id="utilityNav">
+  <div class="utility-nav-inner">
+    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
+    <a href="login.html" id="utilNavAuthLink">Log in</a>
+  </div>
+</div>
+<script>
+// Shared utility-nav logic, identical to every other page (see
+// print-specs.html/ooh-specs.html's own copy of this same block for the
+// full history — duplicated deliberately, this project ships each page as
+// a single self-contained file with no external <script src>).
+(function(){
+  function vlUtilBackendUrl(){
+    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:') ? '' : 'http://localhost:8787';
+  }
+  function vlActiveAccountId(){
+    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
+  }
+  function vlUtilityNavInit(){
+    var accountId = vlActiveAccountId();
+    var portalLink = document.getElementById('utilNavPortalLink');
+    var authLink = document.getElementById('utilNavAuthLink');
+    if (!portalLink || !authLink) return;
+    if (accountId){
+      portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
+      portalLink.style.display = '';
+      authLink.textContent = 'Logout';
+      authLink.href = '#';
+      authLink.onclick = function(e){
+        e.preventDefault();
+        var token = null;
+        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
+        var finish = function(){
+          try {
+            localStorage.removeItem('verilume_session_' + accountId);
+            localStorage.removeItem('verilume_member_' + accountId);
+            localStorage.removeItem('verilume_active_account');
+          } catch (e3) {}
+          location.href = '/';
+        };
+        if (token){
+          fetch(vlUtilBackendUrl() + '/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: token }) }).then(finish).catch(finish);
+        } else { finish(); }
+      };
+    } else {
+      portalLink.style.display = 'none';
+      authLink.textContent = 'Log in';
+      authLink.href = 'login.html';
+      authLink.onclick = null;
+    }
+  }
+  if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', vlUtilityNavInit); } else { vlUtilityNavInit(); }
+  window.addEventListener('pageshow', function(e){ vlUtilityNavInit(); });
+  window.addEventListener('storage', function(e){ if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit(); });
+})();
+</script>
+
+<div class="back-nav">
+  <a class="wordmark" href="index.html">Veri<b>lume</b></a>
+  <a href="portal.html" id="backToPortalLink">← Back to Client Portal</a>
+</div>
+
+<main>
+<div class="wrap">
+
+  <div class="eyebrow">Media Planning · Reference</div>
+  <h1>Channel best practices, with the real source cited.</h1>
+  <p class="lede">One entry per channel — the metrics that actually matter, a benchmark range with the named study behind it, and how that compares to this account's own in-app defaults. Where no defensible cross-channel source exists, that's flagged plainly rather than filled in with a guess or a single ad platform's own self-reported number.</p>
+
+  <div class="status-bar">
+    <div><b id="statusCount">Loading…</b></div>
+    <div class="status" id="statusText">Loading…</div>
+  </div>
+
+  <div class="legend">
+    <span class="swatch"><span class="dot a"></span> Tier A — named, primary/authoritative cross-vendor source, or this account's own real data</span>
+    <span class="swatch"><span class="dot b"></span> Tier B — real, named source, but a secondary aggregator or blended across a few vendors</span>
+    <span class="swatch"><span class="dot gap"></span> Gap — no defensible source exists; not filled in</span>
+  </div>
+
+  <div class="filter-row">
+    <input type="text" id="searchBox" placeholder="Filter by channel or metric…" oninput="renderChannels()">
+    <select id="tierFilter" onchange="renderChannels()">
+      <option value="">All sourcing tiers</option>
+      <option value="A">Tier A only</option>
+      <option value="B">Tier B only</option>
+      <option value="GAP">Gaps only</option>
+    </select>
+  </div>
+
+  <div id="channelList"></div>
+
+</div>
+</main>
+
+<footer>
+  Sourced 2026-09-12. Cross-media CPM figures are drawn primarily from the Solomon Partners US Core Media CPM Comparison (published via OAAA, dated June 2025) — a genuine cross-vendor comparison, not one ad platform's own self-reported benchmark. Direct Mail response-rate figures are from the ANA Response Rate Report (Association of National Advertisers, formerly the DMA). Email figures are blended across three named ESP-reported studies (Mailchimp, Campaign Monitor, Klaviyo), disclosed as such. Per this project's standing rule (2026-08-10), no figure here is sourced from a single ad-buying platform's own benchmark report (e.g. Google Ads, Meta) — where that was the only kind of source available (Search, Social engagement/CPA), the gap is flagged rather than filled. Served live from <code>GET /api/channel-best-practices/global</code>; re-check this page each quarter for newer editions of the underlying reports.
+</footer>
+
+<script>
+const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:') ? '' : 'http://localhost:8787';
+
+let CHANNELS = {};
+
+const TIER_LABEL = { A: 'Tier A', B: 'Tier B', GAP: 'Gap' };
+function tierClass(tier){ return tier === 'A' ? 'a' : (tier === 'B' ? 'b' : 'gap'); }
+
+function setStatus(count, ok){
+  document.getElementById('statusCount').textContent = count + ' channels';
+  const el = document.getElementById('statusText');
+  el.textContent = ok ? 'Live from the real backend' : 'Local sample only — backend unreachable';
+  el.className = 'status ' + (ok ? 'ok' : 'warn');
+}
+
+async function init(){
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/channel-best-practices/global`);
+    if (!resp.ok) throw new Error('non-200');
+    const data = await resp.json();
+    CHANNELS = data.channels || {};
+    setStatus(Object.keys(CHANNELS).length, true);
+  } catch (e){
+    CHANNELS = OFFLINE_FALLBACK_CHANNELS;
+    setStatus(Object.keys(CHANNELS).length, false);
+  }
+  renderChannels();
+}
+
+function channelMatchesFilters(name, entry, query, tierFilter){
+  if (tierFilter){
+    const hasTier = entry.benchmarks.some(b => (b.tier || 'GAP') === tierFilter || (tierFilter === 'GAP' && b.tier === 'GAP'));
+    if (!hasTier) return false;
+  }
+  if (!query) return true;
+  const q = query.toLowerCase();
+  if (name.toLowerCase().includes(q)) return true;
+  if ((entry.primaryMetrics || []).some(m => m.toLowerCase().includes(q))) return true;
+  if (entry.benchmarks.some(b => (b.metric || '').toLowerCase().includes(q))) return true;
+  return false;
+}
+
+function renderChannels(){
+  const query = document.getElementById('searchBox').value.trim();
+  const tierFilter = document.getElementById('tierFilter').value;
+  const names = Object.keys(CHANNELS).filter(name => channelMatchesFilters(name, CHANNELS[name], query, tierFilter));
+  const list = document.getElementById('channelList');
+  if (!names.length){
+    list.innerHTML = '<div class="empty-note">No channels match that filter.</div>';
+    return;
+  }
+  list.innerHTML = names.map(name => renderChannelCard(name, CHANNELS[name])).join('');
+}
+
+function renderChannelCard(name, entry){
+  const benchRows = entry.benchmarks.map(b => {
+    const tier = b.tier || 'GAP';
+    const tag = `<span class="tier-tag ${tierClass(tier)}">${TIER_LABEL[tier] || tier}</span>`;
+    const rangeHtml = b.range ? escapeHtml(b.range) : '<em style="color:var(--tier-gap);">Not populated — see note</em>';
+    const sourceHtml = b.source
+      ? `<span class="src-name">${escapeHtml(b.source)}</span>${b.asOf ? ` <span style="opacity:0.75;">(${escapeHtml(b.asOf)})</span>` : ''}`
+      : '<em>No cross-channel source found</em>';
+    return `
+      <div class="bench-row">
+        <div class="bench-metric">${escapeHtml(b.metric)}${tag}</div>
+        <div class="bench-range">${rangeHtml}</div>
+        <div>
+          <div class="bench-source">${sourceHtml}</div>
+          ${b.note ? `<div class="bench-note">${escapeHtml(b.note)}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  const vs = entry.vsIllustrativeCpm;
+  const vsFlag = vs && vs.note && /worth|review|second look|flag/i.test(vs.note);
+  const vsHtml = vs
+    ? `<div class="vs-illustrative${vsFlag ? ' flag' : ''}"><b>In-app illustrative default: $${vs.inApp}${typeof vs.inApp === 'number' && vs.inApp < 1000 ? ' CPM' : ''}.</b> ${escapeHtml(vs.note || '')}</div>`
+    : '';
+
+  const creativeLink = entry.creativeGuidanceRef
+    ? `<div class="creative-link">Creative specs: <a href="${escapeHtml(entry.creativeGuidanceRef.split(' ')[0])}" target="_blank" rel="noopener">${escapeHtml(entry.creativeGuidanceRef)} →</a></div>`
+    : '';
+
+  return `
+    <section class="chan-card">
+      <div class="chan-head"><h2>${escapeHtml(name)}</h2></div>
+      <div class="chan-metrics">Primary metrics: <b>${(entry.primaryMetrics || []).map(escapeHtml).join(', ')}</b></div>
+      ${benchRows}
+      ${vsHtml}
+      ${entry.testingNote ? `<div class="testing-note"><b>Testing:</b> ${escapeHtml(entry.testingNote)}</div>` : ''}
+      ${creativeLink}
+    </section>`;
+}
+
+function escapeHtml(s){
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Offline fallback (two channels — one fully sourced, one with a real
+// gap) so this page still demonstrates its shape if the backend is
+// unreachable, same honest-local-fallback convention as ooh-specs.html.
+const OFFLINE_FALLBACK_CHANNELS = {
+  'Out-of-Home': {
+    primaryMetrics: ['CPM', 'Reach', 'Format (see ooh-specs.html)'],
+    benchmarks: [
+      { metric: 'CPM — Bulletins / Posters / Transit Shelters', range: '$2 – $3', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: 'Local fallback sample — backend unreachable' }
+    ],
+    creativeGuidanceRef: 'ooh-specs.html',
+    testingNote: 'No direct click/response mechanism except QR/promo-code overlays.',
+    vsIllustrativeCpm: { inApp: 14, note: 'Local fallback sample — backend unreachable' }
+  },
+  'Brand Search': {
+    primaryMetrics: ['CTR', 'CPC', 'CPA', 'Quality Score'],
+    benchmarks: [
+      { metric: 'CTR / CPC / CPA', range: null, tier: 'GAP', source: null, asOf: null, note: 'No cross-platform benchmark exists — local fallback sample, backend unreachable' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Purchase-stage: CPA/ROAS is the whole game.',
+    vsIllustrativeCpm: null
+  }
+};
+
+init();
+</script>
+</body>
+</html>
