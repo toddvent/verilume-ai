@@ -4304,6 +4304,10 @@
         <button type="button" class="btn-primary" onclick="saveVisionLongformEdits()">Submit to AI Agent University →</button>
       </div>
       <div class="hint" id="voiceVisionLongformSaveFlag" style="margin-top:6px;"></div>
+      <div id="voiceContestGuideCta" style="display:none;margin-top:10px;">
+        <p class="lede" style="margin:0 0 8px;">This winning voice is saved — you can now generate an updated Voice Guide from it.</p>
+        <button type="button" class="btn-primary" onclick="generateVoiceDraftFromContestWinner()">Generate updated Voice Guide from this winner →</button>
+      </div>
     </div>
   </div>
 
@@ -9291,7 +9295,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-website-brand-profile-ledger';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-voice-contest-guide-loop';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -48570,6 +48574,16 @@ function renderVoiceStep(){
   // cpLoadTrainingDigestHistory() inside renderCompanyProfileStep().
   vgLoadHistory();
   renderStyleAssetsStep();
+  // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
+  // dispatch-scoping-2026-09-12.md — a returning user who already has a
+  // saved Contest winner should see the "generate updated Voice Guide"
+  // CTA without needing to re-save it first. Guarded with a null-check
+  // since this function can run before voiceContestGuideCta exists in
+  // some render paths.
+  if (state.voice.visionStatement){
+    const cta = document.getElementById('voiceContestGuideCta');
+    if (cta) cta.style.display = '';
+  }
 }
 
 // 2026-08-26 — the Voice contest (Vision Statement & Longform Example) now
@@ -49085,6 +49099,24 @@ async function saveVisionLongformEdits(){
       ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
       : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
   }
+  // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
+  // dispatch-scoping-2026-09-12.md — only reveal the on-ramp into
+  // generating an updated Voice Guide once the winner is actually
+  // persisted to the account (a local-only save wouldn't be seen by
+  // generateVoiceGuideDraftViaAI() anyway).
+  if (persisted){
+    const cta = document.getElementById('voiceContestGuideCta');
+    if (cta) cta.style.display = '';
+  }
+}
+// 2026-09-12 — thin wrapper: reuses the existing generateVoiceDraft() (POST
+// /api/accounts/:id/voice-draft, which after this round's backend change
+// automatically includes the Contest winner as grounding once it's saved
+// to the account) rather than duplicating its fetch logic.
+async function generateVoiceDraftFromContestWinner(){
+  await generateVoiceDraft();
+  const panel = document.getElementById('voiceDraftPanel');
+  if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Round 19 — Company Profile (Brand Foundations) edit page. Made read-only
