@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-honest-challenge-detection (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-bounded-read (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -12729,7 +12729,42 @@ async function fetchAndExtractPage(url){
   if (!resp.ok){
     throw new Error(`${url} responded with ${resp.status} ${resp.statusText} — the site may be blocking automated requests, or the URL may be stale.`);
   }
-  const html = await resp.text();
+  // 2026-09-13 fix, part 3 — per direct report, the User-Agent fix (above)
+  // got past whatever was blocking the scan, but the NEXT attempt came
+  // back as "Backend unreachable" instead of a normal result or a clean
+  // error. That's the signature of a request that took too long and got
+  // dropped, not a handled failure — and the most likely reason is that
+  // this used to read the ENTIRE response body via resp.text() with no
+  // size limit, so once the fetch stopped being blocked, it started
+  // reading and stripTags()-processing a genuinely large real marketing
+  // page in full before ever getting to the parts (title/meta/first few
+  // headings/excerpt) that actually matter, which only need the first
+  // portion of the page anyway. Bounded to the first 500KB of the response
+  // — far more than any real title/meta/heading/excerpt content needs,
+  // since that's always near the top of the document — and the read stops
+  // there instead of continuing to download and process the rest. This
+  // keeps both memory and processing time bounded no matter how large the
+  // real page turns out to be, which a plain resp.text() never was.
+  const MAX_SCAN_BYTES = 500000;
+  let html;
+  try {
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true){
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (received >= MAX_SCAN_BYTES){
+        try { await reader.cancel(); } catch (e){ /* best-effort — we already have enough to work with */ }
+        break;
+      }
+    }
+    html = Buffer.concat(chunks.map(c => Buffer.from(c))).toString('utf8');
+  } catch (e){
+    throw new Error(`Could not read the response from ${url} (${e.message}).`);
+  }
   // 2026-09-13 fix, part 2 — per direct report, swapping the User-Agent
   // (see this function's own comment above) did NOT fix Atlas's scan; it
   // came back empty again on a second try. That rules out a simple
@@ -14095,7 +14130,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-website-scan-honest-challenge-detection',
+        buildStamp: '2026-09-13-website-scan-bounded-read',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24596,5 +24631,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
