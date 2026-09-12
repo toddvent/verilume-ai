@@ -5748,6 +5748,45 @@
         </div>
         <div id="channelPerformancePanel" style="margin-top:18px;"></div>
         <div id="campaignComparisonPanel" style="margin-top:18px;"></div>
+
+        <!-- 2026-09-13, per direct instruction: "the strongest direct use
+             case is the comparative analytics workstream... Magazines and
+             Newspapers: we capture cost, household reach, total
+             circulation and creative size compared to other magazines and
+             newspapers based on calls, QR code scans, direct URL visits
+             and measurable leads. Direct Mail: same approach." A third,
+             genuinely different comparison shape from the two above —
+             this one ranks PUBLICATIONS/VENDORS within a channel (not
+             campaigns, not placements), using channel_planning_details'
+             own partner/impressions/budget fields plus the response
+             actuals now captured in the Marketing Calendar's event detail
+             overlay (see mktCalSaveActuals()). Scoring is deliberately
+             self-referential — no external benchmark constant — per
+             direct instruction: "start from base 0 and build as you go...
+             Verilume can publish metrics when we become established or
+             partner with someone who elevates us." Direct Mail is grouped
+             by publisher/vendor AND audience (Past Customer/Inquiry/
+             Prospect), per direct instruction: "we need to incorporate
+             Audience... to make it fair" — see renderPublisherPerformance-
+             Leaderboard() below. -->
+        <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--line);">
+          <h4 style="margin:0 0 6px;">Publisher / Vendor Performance</h4>
+          <p class="lede" style="margin:0 0 10px;">Which magazines, newspapers, or Direct Mail vendors actually earn a response — not just which reached the most people. Scored against this account's own placements only; Verilume will publish an external benchmark once one exists to compare against.</p>
+          <div class="field">
+            <label for="pubPerfChannel">Channel</label>
+            <select id="pubPerfChannel">
+              <option value="Magazines">Magazines</option>
+              <option value="Newspapers">Newspapers</option>
+              <option value="Direct Mail — Prospects">Direct Mail — Prospects</option>
+              <option value="Direct Mail — Past Guests">Direct Mail — Past Guests</option>
+              <option value="Direct Mail — Inquiries">Direct Mail — Inquiries</option>
+            </select>
+          </div>
+          <div class="btn-row" style="margin-top:0;">
+            <button type="button" class="btn-primary" onclick="renderPublisherPerformanceLeaderboard()">Show leaderboard →</button>
+          </div>
+          <div id="publisherPerformancePanel" style="margin-top:14px;"></div>
+        </div>
       </div>
     </div>
 
@@ -9413,7 +9452,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-snowflake-inbound-connector';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-publisher-vendor-performance';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -36645,6 +36684,66 @@ async function renderChannelPerformanceLeaderboard(){
     </tbody></table></div>`;
 }
 
+// 3c — Publisher/Vendor Performance: ranks PUBLICATIONS/VENDORS within a
+// channel, not campaigns and not placements. Backed by GET .../channel-
+// planning/publisher-performance (2026-09-13) — see that endpoint's own
+// comment in server.js for the full reasoning (self-referential scoring,
+// no external benchmark; Direct Mail grouped by partner+audience so a
+// vendor is never compared across two different lists that naturally
+// convert differently).
+async function renderPublisherPerformanceLeaderboard(){
+  const channel = document.getElementById('pubPerfChannel').value;
+  const panel = document.getElementById('publisherPerformancePanel');
+  if (!channel){ panel.innerHTML = `<p class="lede">Select a channel above first.</p>`; return; }
+  panel.innerHTML = `<p class="lede">Loading…</p>`;
+  let data;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/publisher-performance?channel=${encodeURIComponent(channel)}`);
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      panel.innerHTML = `<p class="lede">${escapeHtml(err.error || 'Could not load the leaderboard right now.')}</p>`;
+      return;
+    }
+    data = await resp.json();
+  } catch (e){
+    panel.innerHTML = `<p class="lede">Backend unreachable — could not load the leaderboard.</p>`;
+    return;
+  }
+
+  if (!data.rows.length){
+    panel.innerHTML = `<p class="lede">No response actuals recorded yet for ${escapeHtml(channel)} — enter Calls/QR scans/URL visits/Leads on a placement's Marketing Calendar event (click the event, fill in "Response actuals," Save).</p>`;
+    return;
+  }
+
+  const money = v => v === null || v === undefined ? '—' : `$${Math.round(v).toLocaleString()}`;
+  const num = v => v === null || v === undefined ? '—' : Number(v).toLocaleString();
+  panel.innerHTML = `
+    <h4 style="margin:0 0 8px;">${escapeHtml(channel)} — ranked by engagement, adjusted for reach and cost${data.groupedByAudience ? ' (within each audience segment)' : ''}</h4>
+    <p class="hint" style="margin:0 0 10px;">${escapeHtml(data.scoringNote)} ${data.placementsWithActuals} of ${data.placementsConsidered} placements have actuals recorded.</p>
+    <div class="table-scroll"><table class="active-camp-table"><thead><tr>
+      <th>Publisher / Vendor</th>${data.groupedByAudience ? '<th>Audience</th>' : ''}<th>Placements</th><th>Impressions / Reach</th><th>Budget</th><th>Calls</th><th>QR scans</th><th>URL visits</th><th>Leads</th><th>Total engagement</th><th>Engagement rate</th><th>Engagement / $1,000</th><th>Score</th>
+    </tr></thead><tbody>
+    ${data.rows.map((r, i) => {
+      const scoreCls = r.score == null ? '' : (r.score >= 66 ? 'strong' : (r.score < 34 ? 'weak' : ''));
+      return `<tr>
+        <td>${i === 0 ? '🏆 ' : ''}${escapeHtml(r.partner)}</td>
+        ${data.groupedByAudience ? `<td>${escapeHtml(r.audience || '—')}</td>` : ''}
+        <td>${r.placementCount}</td>
+        <td>${num(r.impressions)}</td>
+        <td>${money(r.budget)}</td>
+        <td>${num(r.actualCalls)}</td>
+        <td>${num(r.actualQrScans)}</td>
+        <td>${num(r.actualUrlVisits)}</td>
+        <td>${num(r.actualLeads)}</td>
+        <td>${num(r.totalEngagement)}</td>
+        <td>${r.engagementRate != null ? (r.engagementRate * 100).toFixed(3) + '%' : '—'}</td>
+        <td>${r.engagementPer1000Spend != null ? r.engagementPer1000Spend.toFixed(2) : '—'}</td>
+        <td><span class="badge ${scoreCls}">${r.score != null ? r.score : '—'}</span></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table></div>`;
+}
+
 // 3b — Campaign vs. Campaign: cross-channel, side by side, normalized per
 // $1,000 spent so a $2,000 campaign and a $50,000 campaign can be read
 // fairly. Deliberately doesn't force a shared per-channel metric column —
@@ -38419,6 +38518,7 @@ function mktCalOpenDetail(eventId){
   const titleEl = document.getElementById('mktCalModalTitle');
   if (titleEl) titleEl.textContent = e.campaignTitle || '(untitled campaign)';
   const money = v => v === null || v === undefined || v === '' ? '—' : `$${Number(v).toLocaleString()}`;
+  const num = v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString();
   const rows = [
     ['Channel', e.channel || '—'],
     ['Partner', e.partner || '—'],
@@ -38430,10 +38530,35 @@ function mktCalOpenDetail(eventId){
     ['Creative Market', e.creativeMarket || '—'],
     ['Audience', e.audience || '—'],
     ['Budget', money(e.budget)],
+    ['Impressions / Reach', num(e.impressions)],
     ['Status', e.status || '—']
   ];
   const body = document.getElementById('mktCalModalBody');
-  if (body) body.innerHTML = rows.map(([label, value]) => `<div class="mktcal-detail-row"><span class="mktcal-detail-label">${escapeHtml(label)}</span><span class="mktcal-detail-value">${escapeHtml(String(value))}</span></div>`).join('');
+  if (body){
+    // 2026-09-13 — Publisher/Vendor Performance actuals, per direct
+    // instruction ("we capture cost, household reach, total circulation
+    // and creative size compared to other magazines and newspapers based
+    // on calls, QR code scans, direct URL visits and measurable leads —
+    // Direct Mail: same approach"). Four separate inputs, not one blended
+    // response field, so which engagement type is actually driving this
+    // placement stays visible. Feeds renderPublisherPerformanceLeaderboard()
+    // below via GET .../channel-planning/publisher-performance.
+    body.innerHTML = rows.map(([label, value]) => `<div class="mktcal-detail-row"><span class="mktcal-detail-label">${escapeHtml(label)}</span><span class="mktcal-detail-value">${escapeHtml(String(value))}</span></div>`).join('')
+      + `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+           <p style="font-size:0.8125rem;font-weight:700;margin:0 0 4px;">Response actuals</p>
+           <p class="hint" style="margin:0 0 10px;">Feeds the Publisher/Vendor Performance leaderboard under Comparative Analytics.</p>
+           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+             <div class="field"><label for="mktCalActualCalls">Calls</label><input type="number" min="0" id="mktCalActualCalls" value="${e.actualCalls ?? ''}"></div>
+             <div class="field"><label for="mktCalActualQrScans">QR scans</label><input type="number" min="0" id="mktCalActualQrScans" value="${e.actualQrScans ?? ''}"></div>
+             <div class="field"><label for="mktCalActualUrlVisits">Direct URL visits</label><input type="number" min="0" id="mktCalActualUrlVisits" value="${e.actualUrlVisits ?? ''}"></div>
+             <div class="field"><label for="mktCalActualLeads">Measurable leads</label><input type="number" min="0" id="mktCalActualLeads" value="${e.actualLeads ?? ''}"></div>
+           </div>
+           <div class="btn-row" style="margin-top:10px;">
+             <button type="button" class="btn-primary" onclick="mktCalSaveActuals('${e.campaignId}','${e.id}')">Save actuals</button>
+           </div>
+           <div id="mktCalActualsSaveNote" class="hint" style="margin-top:6px;"></div>
+         </div>`;
+  }
   const footer = document.getElementById('mktCalModalFooter');
   if (footer){
     footer.innerHTML = e.campaignId
@@ -38442,6 +38567,52 @@ function mktCalOpenDetail(eventId){
   }
   const modal = document.getElementById('mktCalModal');
   if (modal) modal.classList.add('visible');
+}
+
+// 2026-09-13 — saves the four response-actuals fields from the calendar
+// detail overlay back onto this channel_planning_details row (PATCH
+// /api/campaigns/:campaignId/channel-planning/:entryId). Blank inputs are
+// sent as null (a value never entered), not 0 (a value entered as zero) —
+// same "unmeasured vs. measured-zero" distinction the backend's
+// totalEngagement computation relies on. Re-fetches the calendar afterward
+// so the in-memory mktCal.events (and any open leaderboard) reflect the
+// save immediately, not just on next page load.
+async function mktCalSaveActuals(campaignId, entryId){
+  const note = document.getElementById('mktCalActualsSaveNote');
+  const readNum = id => {
+    const el = document.getElementById(id);
+    if (!el || el.value === '') return null;
+    const n = Number(el.value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const payload = {
+    // Response actuals aren't one of the cost-guarded fields
+    // (CHANNEL_PLANNING_COST_SUBFIELDS) the backend restricts to
+    // actorRole:'cx_ops', so 'client' is a safe, always-accepted default
+    // here — there's no per-session actor identity captured elsewhere in
+    // this file to draw from for the calendar's read-mostly detail view.
+    actorRole: 'client',
+    actorName: 'Marketing Calendar',
+    actualCalls: readNum('mktCalActualCalls'),
+    actualQrScans: readNum('mktCalActualQrScans'),
+    actualUrlVisits: readNum('mktCalActualUrlVisits'),
+    actualLeads: readNum('mktCalActualLeads')
+  };
+  if (note) note.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}/channel-planning/${encodeURIComponent(entryId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (note) note.textContent = err.error || 'Could not save — try again.';
+      return;
+    }
+    if (note) note.textContent = 'Saved.';
+    await mktCalFetchEvents();
+  } catch (e){
+    if (note) note.textContent = 'Backend unreachable — could not save.';
+  }
 }
 
 function mktCalCloseModal(){
