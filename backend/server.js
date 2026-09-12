@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-transparency-campaign-copy (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-transparency-voice-contest (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2593,7 +2593,18 @@ function clampClientText(text, maxLen){
 // arrays above; `subjectLabel` names what's being explained in the prompt
 // (e.g. "Brand Voice Guide draft", "campaign Long Form Copy draft");
 // `toolName` keeps each surface's tool-use call visibly distinct in logs.
-async function generateTransparencyNotes(account, signals, contentText, signalRegistry, subjectLabel, toolName){
+// `timeoutMs` (optional, defaults to callClaudeForJSON's own 90s default
+// when omitted) — added 2026-09-12 for Voice Contest, which runs FIVE of
+// these calls per contest run, sequentially AFTER the five candidate
+// generation calls already fan out in parallel (transparency needs each
+// candidate's actual output as input, so it can't overlap generation).
+// That's real additional wall-clock on an endpoint that has hit real
+// Vercel 504s before at far less load (see runBrandVoiceContest()'s own
+// history of maxDuration bumps) — a tighter budget here means a slow
+// transparency call fails into this function's own honest null/note
+// fallback well before the whole request risks the platform timeout,
+// rather than dragging the entire contest run down with it.
+async function generateTransparencyNotes(account, signals, contentText, signalRegistry, subjectLabel, toolName, timeoutMs){
   if (!process.env.ANTHROPIC_API_KEY){
     return { items: null, note: 'AI Brain Transparency requires ANTHROPIC_API_KEY to be configured — no observations were generated for this draft.' };
   }
@@ -2628,7 +2639,8 @@ Submit your result via the ${toolName} tool — one entry per signal key listed 
       content: prompt,
       toolName,
       toolDescription: 'Submit one client-facing observation-and-impact sentence per input signal.',
-      schema: { type: 'object', properties: props, required: signalRegistry.map(s => s.key) }
+      schema: { type: 'object', properties: props, required: signalRegistry.map(s => s.key) },
+      timeoutMs
     });
     const items = signalRegistry.map(s => {
       const entry = parsed[s.key] || {};
@@ -2936,7 +2948,13 @@ async function runBrandVoiceContest(account, extra){
     return {
       key, label, vendor, model, configured: true,
       visionStatement: gen.visionStatement, longformExample: gen.longformExample, error: gen.error,
-      complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : []
+      complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : [],
+      // Real values computed below (AI Brain Transparency, per-candidate);
+      // defaulted here so a candidate that generation itself failed for
+      // (no visionStatement/longformExample — filtered out of the
+      // transparency Promise.all below) still returns an honest null
+      // rather than an undefined field.
+      transparency: null, transparencyNote: null
     };
   };
   const anthropicCandidate = buildCandidate(BRAND_VOICE_PRIMARY_BRIEF.key, BRAND_VOICE_PRIMARY_BRIEF.label, BRAND_VOICE_PRIMARY_BRIEF.vendor, BRAND_VOICE_PRIMARY_BRIEF.model, anthropicGenerated);
@@ -2945,10 +2963,61 @@ async function runBrandVoiceContest(account, extra){
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
     visionStatement: null, longformExample: null, error: `${v.envVar} not configured on this deployment.`,
-    complianceScore: null, flags: []
+    complianceScore: null, flags: [], transparency: null, transparencyNote: null
   }));
   const allLive = [anthropicCandidate, ...liveVendorCandidates];
   const allCandidates = [...allLive, ...unconfiguredCandidates];
+
+  // 2026-09-12 — AI Brain Transparency, Voice Contest (third surface). Per
+  // direct instruction: "The UI should first allow the user to pick rank
+  // participants without our influence and then expose how each model's
+  // alignment with the brand [is], based on our assessment of the output's
+  // alignment with what we know. It should include all 5 participants."
+  // Unlike Voice Guide/Campaign Copy (one result, one attachTransparency()
+  // call), a contest has up to 5 real candidates and each needs its OWN
+  // impact judgment — the same input signal can genuinely shape one
+  // model's draft and not another's. Reuses VOICE_TRANSPARENCY_SIGNALS/
+  // gatherVoiceTransparencySignals() as-is: signal PRESENCE is account-
+  // level (identical for every candidate in this run — none of the 9
+  // signals depend on which candidate is being explained), computed once
+  // here rather than 5 times; only hadImpact/clientText are genuinely
+  // per-candidate, since that's a judgment about THAT candidate's specific
+  // output. Only real candidates (configured, with actual content) get a
+  // call — skipped for a not-configured or failed slot, same "nothing real
+  // to explain yet" discipline attachTransparency() uses elsewhere. All 5
+  // calls run in Promise.all (mirrors the existing generation fan-out
+  // above) with a tighter 25s timeout each (see generateTransparencyNotes()'s
+  // own comment on the "504 risk of a sequential-after-generation step on
+  // an endpoint with a real timeout history") — a slow one fails into its
+  // own honest null/note per candidate rather than risking the whole
+  // request. Persisted per-candidate via saveTransparencyBatch() (one
+  // batch per candidate, all contextType='voice_contest') purely for the
+  // ops rollup's aggregate view — the client never reads this back through
+  // the ledger; it gets the freshly-computed result attached directly on
+  // each candidate object below (same pattern as complianceScore/flags),
+  // which is what actually reaches the panel.
+  try {
+    const contestSignals = await gatherVoiceTransparencySignals(account);
+    await Promise.all(allCandidates.filter(c => c.configured && c.visionStatement && c.longformExample).map(async (c) => {
+      const contentText = [c.visionStatement, c.longformExample].filter(Boolean).join('\n\n');
+      const { items, note } = await generateTransparencyNotes(
+        account, contestSignals, contentText, VOICE_TRANSPARENCY_SIGNALS,
+        'Voice Contest candidate (a Vision Statement + Longform Example pair, one of several run blind against each other)',
+        'submit_voice_contest_transparency', 25000
+      );
+      c.transparency = items;
+      c.transparencyNote = note;
+      if (items && items.length){
+        try { saveTransparencyBatch(account.accountId, items, 'voice_contest'); }
+        catch (e){ /* ops-rollup persistence is a nice-to-have — never block the contest result over it */ }
+      }
+    }));
+  } catch (e){
+    // Never let a transparency failure take down the contest itself — the
+    // candidates are the primary deliverable.
+    allCandidates.forEach(c => { if (c.transparency === undefined) { c.transparency = null; c.transparencyNote = null; } });
+  }
+
   // 2026-08-27 fix, per direct report — "You should never list the source
   // of the output." The client-facing label used to be the vendor/style
   // name itself (e.g. "GPT (OpenAI)"), which defeats the blind test even
@@ -3015,7 +3084,22 @@ function redactBrandVoiceCandidatesForClient(candidates){
     // multi-round evaluation, which this build doesn't do; rating alone now
     // drives both the highlight and the single "Select Contest Winner"
     // action, see pickRecommendedCandidate above.)
-    rating: (typeof c.rating === 'number') ? c.rating : null
+    rating: (typeof c.rating === 'number') ? c.rating : null,
+    // 2026-09-12 — AI Brain Transparency, Voice Contest (third surface, per
+    // direct instruction: "The UI should first allow the user to pick rank
+    // participants without our influence and then expose how each model's
+    // alignment with the brand [is], based on our assessment of the
+    // output's alignment with what we know. It should include all 5
+    // participants."). Computed and attached per-candidate in
+    // runBrandVoiceContest() before this function ever runs — safe to pass
+    // straight through here since (like complianceScore/flags above) it
+    // never names a vendor/model, only what was observed about THIS
+    // candidate's own output. The "rank first, reveal after" sequencing is
+    // a frontend concern (portal.html gates rendering this behind a
+    // "Reveal AI Brain Alignment" action) — the data is present in every
+    // response regardless, same as every other field here.
+    transparency: c.transparency || null,
+    transparencyNote: c.transparencyNote || null
   }));
 }
 
@@ -3979,12 +4063,12 @@ const CAMPAIGN_COPY_TRANSPARENCY_SIGNALS = [
 
 // Every valid ai_brain_transparency_items.contextType value — the read
 // endpoints below validate against this list so an unrecognized contextType
-// fails loud (400) instead of silently returning an empty result. Voice
-// Contest and PR/Corporate Comm are the next two surfaces on the roadmap
-// (see the Copywriting product doc's decision log) — not yet wired to a
-// generation function, listed here as documentation of intent, not as
-// evidence they're live; only 'voice_guide' and 'campaign_copy' currently
-// have a real writer.
+// fails loud (400) instead of silently returning an empty result.
+// 'voice_contest' added 2026-09-12 (see runBrandVoiceContest() — per-
+// candidate, all 5 participants). PR/Corporate Comm is the one surface
+// still on the roadmap (see the Copywriting product doc's decision log) —
+// not yet wired to a generation function, listed here as documentation of
+// intent, not as evidence it's live.
 const AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES = ['voice_guide', 'campaign_copy', 'voice_contest', 'pr_corp_comm'];
 
 // Shared by every client-facing AI Brain Transparency read (Voice Guide's
@@ -12792,7 +12876,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-ai-brain-transparency-campaign-copy',
+        buildStamp: '2026-09-12-ai-brain-transparency-voice-contest',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
