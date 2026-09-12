@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-analytics-setup-docs-search (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-channel-best-practices (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -3570,6 +3570,259 @@ const MEASUREMENT_CHANNEL_CAPABILITIES = {
   'Radio': { firstParty: false, callTracking: true, qr: false, comparative: true },
   'Podcasts': { firstParty: false, callTracking: true, qr: false, comparative: true },
   'Email — Remarketing': { firstParty: true, callTracking: false, qr: false, comparative: true }
+};
+
+// CHANNEL_BEST_PRACTICES — 2026-09-12, per direct instruction: "build out
+// the channel best practices," the implementation of Section 2 of
+// cxmedia-campaign-analytics-strategy.md ("Best practices by campaign
+// type"), which was scoped 2026-07-27 but never built (CHANNEL_BEST_PRACTICES
+// existed only as a comment reference elsewhere in this file, no data).
+//
+// Keyed on the SAME 22 channel strings ILLUSTRATIVE_CHANNEL_CPM already
+// uses in portal.html's Media Plan grid — not the older 12-value CHANNELS
+// list the scoping doc sketched, which predates this app's real channel
+// taxonomy. One source of truth for channel identifiers across the app.
+//
+// SOURCING DISCIPLINE (direct instruction, 2026-08-10, "never use Google
+// data Adsfunnel benchmark studies for anything that we forecast...
+// assumptions need to be media partner agnostic" — the same rule that
+// forced WordStream's Google-Ads-specific data out of the funnel model in
+// cxmedia-round132q-funnel-hierarchy-model.md): no benchmarkRange here is
+// sourced from a single ad-buying platform's own self-reported study
+// (Google Ads, Meta, etc). Every populated range is either (a) a named,
+// genuinely cross-vendor/cross-platform industry source, or (b) this
+// account's own real cost/performance data, already used elsewhere in this
+// file (Direct Mail's per-piece cost). Where no defensible cross-channel
+// source exists, the entry says so explicitly via `gap` rather than
+// quietly filling the space with a single-platform number — same honest-
+// gap discipline as cxmedia-media-mix-benchmark-research-2026-08-17.md.
+//
+// tier: 'A' = a named, current, primary or authoritative cross-vendor
+// source (a trade association's own published report, or this account's
+// own real data). 'B' = a real, named source, but either a secondary
+// aggregator republishing primary data, or blended across a small number
+// of named vendors whose methodologies differ (disclosed in `note`) —
+// still real, just a softer citation than tier A.
+//
+// Two things this deliberately does NOT do, per this doc's own written
+// discipline: (1) invent a benchmark for a channel/metric that structurally
+// doesn't have one (PR/Earned has no CPA-style metric — see its entry);
+// (2) quietly overwrite ILLUSTRATIVE_CHANNEL_CPM in portal.html with these
+// numbers. Several of these sourced ranges differ meaningfully from this
+// app's existing illustrative defaults (Magazines, Out-of-Home, Radio, Paid
+// Social all run notably lower here than the in-app default) — that's
+// flagged per-entry via `vsIllustrativeCpm` for a human to weigh, not
+// silently reconciled. Changing ILLUSTRATIVE_CHANNEL_CPM is a deliberate
+// decision for Todd to make, not a side effect of building this reference.
+const CHANNEL_BEST_PRACTICES = {
+  'Direct Mail — Prospects': {
+    primaryMetrics: ['Response rate', 'Cost per response', 'Cost per acquisition'],
+    benchmarks: [
+      { metric: 'Response rate (cold/prospect list)', range: '2.0% – 4.4%', tier: 'A', source: 'ANA Response Rate Report (Association of National Advertisers, formerly the Direct Marketing Association/DMA)', asOf: '2025', note: 'Response rate varies enormously by list quality — this is a cold/purchased-list range, not a house-list one.' },
+      { metric: 'Cost per piece', range: '$0.80/piece ($800 CPM)', tier: 'A', source: "This account's own real, direct-given cost (list + printing + postage) — see round 32g", asOf: '2026-09-12', note: 'Not a benchmark — this is real cost data already live in the Media Plan grid, stronger than any external benchmark.' }
+    ],
+    creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
+    testingNote: 'Response-code or unique-URL/QR tracking is the only honest way to measure — ties to the existing Tracking Link & QR Code Builder.',
+    vsIllustrativeCpm: { inApp: 800, note: 'Cost is real, not benchmark-derived — nothing to reconcile here.' }
+  },
+  'Direct Mail — Past Guests': {
+    primaryMetrics: ['Response rate', 'Cost per response', 'Cost per acquisition'],
+    benchmarks: [
+      { metric: 'Response rate (house/customer list)', range: '5% – 9%', tier: 'A', source: 'ANA Response Rate Report (Association of National Advertisers, formerly DMA)', asOf: '2025', note: 'House-list response consistently and substantially outperforms cold/prospect lists.' },
+      { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark.' }
+    ],
+    creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
+    testingNote: 'Same as Direct Mail — Prospects: response-code/QR tracking, not A/B in the digital sense.',
+    vsIllustrativeCpm: { inApp: 710, note: 'Cost is real, not benchmark-derived.' }
+  },
+  'Direct Mail — Inquiries': {
+    primaryMetrics: ['Response rate', 'Cost per response', 'Cost per acquisition'],
+    benchmarks: [
+      { metric: 'Response rate (warm/engaged list)', range: '2.0% – 9%, directionally closer to the house-list end', tier: 'B', source: 'ANA Response Rate Report — extrapolated', asOf: '2025', note: 'The ANA report does not break out an "inquiries" list type on its own; this range brackets prospect (2.0-4.4%) and house-list (5-9%) figures as reasonable bounds for a warmer-than-cold, cooler-than-customer list. Treat as directional, not a precise citation.' },
+      { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark.' }
+    ],
+    creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
+    testingNote: 'Same as other Direct Mail rows.',
+    vsIllustrativeCpm: { inApp: 710, note: 'Cost is real, not benchmark-derived.' }
+  },
+  'Linear TV': {
+    primaryMetrics: ['GRPs/reach', 'Frequency', 'CPM', 'Brand lift'],
+    benchmarks: [
+      { metric: 'CPM — Broadcast, Primetime', range: '$45', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (published via OAAA)', asOf: 'June 2025', note: null },
+      { metric: 'CPM — Broadcast, ex-Primetime', range: '$24', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: null },
+      { metric: 'CPM — Cable, Primetime', range: '$21', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: null },
+      { metric: 'CPM — Cable, ex-Primetime', range: '$13', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: null }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Attribution is inherently indirect — no direct click/response mechanism. Geo/matched-market holdouts are the only honest incrementality read.',
+    vsIllustrativeCpm: { inApp: 22, note: 'In-app default sits between the Cable ex-Primetime ($13) and Cable Primetime/Broadcast ex-Primetime ($21-24) tiers — reasonable as a blended placeholder, but worth deciding which daypart mix this account actually buys.' }
+  },
+  'OTV': {
+    primaryMetrics: ['View-through rate', 'Completion rate', 'CPV', 'CPM'],
+    benchmarks: [
+      { metric: 'CPM — Streaming (blended)', range: '$23', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: 'Solomon reports one blended "Streaming" figure and does not split OTV from CTV — see the CTV entry below for the same caveat.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Completion rate + reach for Awareness; click-through to a landing experience for Consideration.',
+    vsIllustrativeCpm: { inApp: 26, note: 'Close to Solomon\'s $23 blended streaming figure.' }
+  },
+  'CTV': {
+    primaryMetrics: ['View-through rate', 'Completion rate', 'CPV', 'CPM'],
+    benchmarks: [
+      { metric: 'CPM — Streaming (blended)', range: '$23', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: 'Same caveat as OTV — this source does not report CTV separately from OTV under one "Streaming" line.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Same as OTV.',
+    vsIllustrativeCpm: { inApp: 28, note: 'Close to Solomon\'s $23 blended streaming figure.' }
+  },
+  'Paid Social': {
+    primaryMetrics: ['Engagement rate', 'CPM', 'CPA', 'Video view-through'],
+    benchmarks: [
+      { metric: 'CPM (blended, cross-platform)', range: '$2', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA) — "Social Media"', asOf: 'June 2025', note: 'A genuine cross-platform blend, not one platform\'s self-reported number.' },
+      { metric: 'Engagement rate / CPA', range: null, tier: 'GAP', source: null, asOf: null, note: 'No defensible cross-platform benchmark exists for engagement rate or CPA — every source found is one platform\'s own reported average. Per the 2026-08-10 media-partner-agnostic rule, a single platform\'s benchmark should not be substituted here. Use this account\'s own live campaign data once available, per platform, not blended.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: '50/50 split A/B where the platform allows it; a clean, real early-read metric.',
+    vsIllustrativeCpm: { inApp: 9, note: 'Meaningfully higher than Solomon\'s $2 blended cross-platform figure — worth a look. Could reflect a richer/video-heavy placement mix this account actually buys, or the default may be dated; flagging for review rather than changing it.' }
+  },
+  'Brand Search': {
+    primaryMetrics: ['CTR', 'CPC', 'CPA', 'Quality Score'],
+    benchmarks: [
+      { metric: 'CTR / CPC / CPA', range: null, tier: 'GAP', source: null, asOf: null, note: 'No cross-platform (Google + Bing + Amazon, etc.) CPC/CTR benchmark exists — every study found is single-platform (the Google-Ads-specific WordStream data was already removed from this app\'s funnel model for exactly this reason, per cxmedia-round132q-funnel-hierarchy-model.md, 2026-08-10). This remains the same open research gap that round documented, still unresolved. Do not seed this from any single platform\'s benchmark report.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Purchase-stage: CPA/ROAS is the whole game. A/B on ad copy or landing page is directly measurable.',
+    vsIllustrativeCpm: { inApp: 4, note: 'No external benchmark to compare against — flagged, not silently validated.' }
+  },
+  'Non-Brand Search': {
+    primaryMetrics: ['CTR', 'CPC', 'CPA', 'Quality Score'],
+    benchmarks: [
+      { metric: 'CTR / CPC / CPA', range: null, tier: 'GAP', source: null, asOf: null, note: 'Same gap as Brand Search — no cross-platform source exists.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Same as Brand Search.',
+    vsIllustrativeCpm: { inApp: 6, note: 'No external benchmark to compare against.' }
+  },
+  'Internal Email': {
+    primaryMetrics: ['Open rate', 'CTR', 'Conversion rate', 'Unsubscribe rate'],
+    benchmarks: [
+      { metric: 'Open rate', range: '21.5% – 35.6%', tier: 'B', source: 'Blended across three named ESP-reported studies: Mailchimp (all-user average), Campaign Monitor (100B+ emails analyzed, 2021 report), Klaviyo (ecommerce-focused)', asOf: '2025-2026 (Mailchimp/Klaviyo); 2021 (Campaign Monitor, still widely cited)', note: 'Each ESP only sees its own client base and defines "open" slightly differently (Apple Mail Privacy Protection affects open-rate measurement differently across tools) — the range reflects genuine measurement variance across named sources, not one authoritative number. This is not a single-platform ad-buying bias (email has no auction/bidding dynamic the way Search/Social do), but it is a single-vendor-per-figure caveat, disclosed here rather than picking one and presenting it as THE number.' },
+      { metric: 'Click-through rate', range: '1.7% – 2.3%', tier: 'B', source: 'Same three sources as Open rate', asOf: '2025-2026', note: null }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Not a bought-media channel — 50/50 subject-line or send-time A/B is the standard, low-cost test.',
+    vsIllustrativeCpm: { inApp: 1, note: 'Not a CPM channel by nature (owned/first-party); the in-app $1 figure is a nominal placeholder for the blended-CPM math elsewhere, not a real per-1,000-send cost.' }
+  },
+  'Email — Remarketing': {
+    primaryMetrics: ['Open rate', 'CTR', 'Conversion rate', 'Unsubscribe rate'],
+    benchmarks: [
+      { metric: 'Open rate', range: '21.5% – 35.6%', tier: 'B', source: 'Same blended ESP sources as Internal Email', asOf: '2025-2026', note: null },
+      { metric: 'Click-through rate', range: '1.7% – 2.3%', tier: 'B', source: 'Same blended ESP sources as Internal Email', asOf: '2025-2026', note: null }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Segment-list quality (this account\'s ACCOUNT_SEGMENTS) matters as much as creative for a remarketing send.',
+    vsIllustrativeCpm: { inApp: 200, note: 'Worth a second look, not a fix made here: $200 CPM is an outlier next to every other channel in ILLUSTRATIVE_CHANNEL_CPM ($1-$40 for the impression-priced channels), and Email — Remarketing is not in the NON_IMPRESSION_CHANNELS exclusion set the way Direct Mail and Field/ABM are — so this figure currently feeds computeBlendedCpm() as if it were a real per-1,000-send cost. No sourced email benchmark supports a $200 CPM for owned/first-party email. Flagging for a deliberate decision, not changing it as a side effect of this build.' }
+  },
+  'PR': {
+    primaryMetrics: ['Placements/mentions', 'Estimated reach', 'Sentiment'],
+    benchmarks: [
+      { metric: 'CPA / conversion-style metric', range: null, tier: 'GAP', source: null, asOf: null, note: 'Structural, not a sourcing gap: PR/Earned has no clean CPA-style metric at all, and forcing a conversion-rate box onto it for table symmetry would be dishonest — per cxmedia-campaign-analytics-strategy.md Section 2\'s own explicit guidance. Awareness-only by nature.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Cannot be A/B tested in the digital sense — no direct click/response mechanism exists for earned coverage.',
+    vsIllustrativeCpm: { inApp: 15, note: 'The in-app $15 CPM is a rough placeholder for blended-CPM math; PR fundamentally does not have a real per-impression buy cost the way paid media does.' }
+  },
+  'Programmatic Display': {
+    primaryMetrics: ['CTR', 'Viewability', 'CPM'],
+    benchmarks: [
+      { metric: 'CPM', range: '$5', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA) — "Digital Display"', asOf: 'June 2025', note: 'CTR benchmarks for display are notoriously low (often cited around 0.1%) and shouldn\'t be judged against Search-style CTR — no cross-platform CTR source was found for this build; flagged as a secondary gap within an otherwise-sourced row.' }
+    ],
+    creativeGuidanceRef: 'the digital ad spec tree in cxmedia-creative-specs-tree.json',
+    testingNote: 'Almost always Awareness/Consideration-stage — judge on viewability and reach, not conversion.',
+    vsIllustrativeCpm: { inApp: 7, note: 'Close to Solomon\'s $5 figure.' }
+  },
+  'Partner Media': {
+    primaryMetrics: ['CPM or negotiated rate', 'Reach'],
+    benchmarks: [
+      { metric: 'Rate', range: null, tier: 'GAP', source: null, asOf: null, note: 'No external benchmark applies — Partner Media rates are individually negotiated per partnership agreement, not set by a market with a published average.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Depends entirely on what tracking the specific partner agreement supports.',
+    vsIllustrativeCpm: { inApp: 12, note: 'No external benchmark to compare against — reasonable to leave as an editable placeholder given there is no market rate to check it against.' }
+  },
+  'Retail Media': {
+    primaryMetrics: ['CTR', 'CPM', 'ROAS (on-platform)'],
+    benchmarks: [
+      { metric: 'CPM', range: '$20 – $60 (avg. ~$35)', tier: 'B', source: 'Secondary aggregator (adsposure.com 2026 U.S. Media CPM Benchmark Report), not independently confirmed in the primary Solomon Partners PDF, which does not break out a Retail Media Networks category', asOf: '2025-2026', note: 'Weaker sourcing tier than the Solomon-sourced rows above — worth a paid/primary source (e.g. a retail media network\'s own published rate card, or this account\'s real performance data) before leaning on this for forecasting.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'On-platform attribution is usually available directly from the retail media network — a real, not proxy, conversion signal when it exists.',
+    vsIllustrativeCpm: { inApp: 9, note: 'Notably lower than the $20-60 secondary-sourced range — worth checking against a real retail media network rate card if this channel sees real spend.' }
+  },
+  'Field / ABM': {
+    primaryMetrics: ['Cost per contact', 'Meetings/opportunities generated'],
+    benchmarks: [
+      { metric: 'Cost per contact', range: null, tier: 'GAP', source: null, asOf: null, note: 'No credible public per-contact benchmark exists — ABM vendors (Demandbase, 6sense) publish some figures, but they are vendor-marketing content, not the kind of named, independent study this file otherwise requires. Real performance data from this account, or a paid ABM-platform benchmark, would be the right way to fill this.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Almost always Consideration/Purchase for B2B-style accounts — not testable via A/B in the traditional sense; track meetings/opportunities per program wave instead.',
+    vsIllustrativeCpm: { inApp: 650, note: 'No external benchmark to compare against — this is a non-impression channel (per-contact, not per-1,000-impressions) already excluded from computeBlendedCpm(), same as Direct Mail.' }
+  },
+  'Magazines': {
+    primaryMetrics: ['Reach', 'CPM', 'Response rate (if coded offer used)'],
+    benchmarks: [
+      { metric: 'CPM', range: '$13', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: 'A prior vertical-by-vertical benchmark pass (cxmedia-media-mix-benchmark-research-2026-08-17.md) found no usable channel-mix percentage for most industries in print specifically — this CPM figure is a real, cross-title average, not an industry-specific number.' }
+    ],
+    creativeGuidanceRef: 'print-specs.html (Magazine section)',
+    testingNote: 'Long lead times, long-tail readership — response can trail weeks behind the insertion date, unlike digital.',
+    vsIllustrativeCpm: { inApp: 40, note: 'Notably higher than Solomon\'s $13 broad-average figure — plausible if this account buys premium/niche titles rather than the broad market Solomon averages across; worth confirming which end of the market this account actually buys before treating either number as "right."' }
+  },
+  'Newspapers': {
+    primaryMetrics: ['Reach', 'CPM', 'Response rate (if coded offer used)'],
+    benchmarks: [
+      { metric: 'CPM', range: '$40', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: null }
+    ],
+    creativeGuidanceRef: 'print-specs.html (Newspaper section)',
+    testingNote: 'Same coded-offer caveat as Magazines.',
+    vsIllustrativeCpm: { inApp: 34, note: 'Close to Solomon\'s $40 figure.' }
+  },
+  'Out-of-Home': {
+    primaryMetrics: ['CPM', 'Reach', 'Format (see ooh-specs.html)'],
+    benchmarks: [
+      { metric: 'CPM — Bulletins / Posters / Transit Shelters', range: '$2 – $3', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: null },
+      { metric: 'CPM — Digital Place-Based (airport, etc.)', range: '$7', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: null }
+    ],
+    creativeGuidanceRef: 'ooh-specs.html',
+    testingNote: 'No direct click/response mechanism except QR/promo-code overlays — geo/matched-market holdouts are the honest incrementality read.',
+    vsIllustrativeCpm: { inApp: 14, note: 'Meaningfully higher than Solomon\'s $2-7 range across every OOH format — worth a review; OOH is also the format most often cited by industry sources (including this same Solomon data) as the CHEAPEST major channel on a real-impressions basis, which makes the in-app default worth double-checking rather than assuming it needs to stay put.' }
+  },
+  'Radio': {
+    primaryMetrics: ['Reach/frequency', 'Response rate (via promo code)', 'CPM'],
+    benchmarks: [
+      { metric: 'CPM', range: '$4', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: 'RAB (Radio Advertising Bureau) publishes revenue and reach data but no clean public CPM figure was found directly from RAB in this pass — Solomon\'s cross-media comparison is the sourced figure used here instead.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Same attribution caveat as Linear TV — indirect, geo-testable; promo codes give a real, trackable response signal.',
+    vsIllustrativeCpm: { inApp: 18, note: 'Meaningfully higher than Solomon\'s $4 — worth a review.' }
+  },
+  'Podcasts': {
+    primaryMetrics: ['Promo-code redemptions', 'Listens/downloads (if available)', 'Cost per acquisition'],
+    benchmarks: [
+      { metric: 'CPM', range: '$18', tier: 'A', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA)', asOf: 'June 2025', note: 'IAB\'s own Podcast Advertising Revenue Study (with PwC) reports total-market revenue (~$2.6B projected 2026) but not a CPM figure directly — Solomon\'s cross-media comparison is the sourced CPM used here.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Response tracking depends entirely on a unique promo code or URL — ties directly to the Tracking Link/QR Builder.',
+    vsIllustrativeCpm: { inApp: 20, note: 'Close to Solomon\'s $18 figure.' }
+  },
+  'Remarketing': {
+    primaryMetrics: ['CTR', 'CPM', 'CPA'],
+    benchmarks: [
+      { metric: 'CPM', range: '~$5 (directional — priced like open-auction Programmatic Display)', tier: 'B', source: 'Solomon Partners US Core Media CPM Comparison (via OAAA) — "Digital Display," not a retargeting-specific line', asOf: 'June 2025', note: 'No source found breaks out pixel/audience-based retargeting as its own CPM line separate from general display — this is a directional read, not a precise citation for retargeting specifically.' }
+    ],
+    creativeGuidanceRef: null,
+    testingNote: 'Comparative/on-platform attribution is usually available directly, similar to Paid Social.',
+    vsIllustrativeCpm: { inApp: 10, note: 'Reasonably in range of the directional $5 display-adjacent figure.' }
+  }
 };
 
 // Round 132bz — Partner Capability Requests (buildout item #5): "extend
@@ -13284,7 +13537,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-analytics-setup-docs-search',
+        buildStamp: '2026-09-12-channel-best-practices',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -23033,6 +23286,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { specs: GLOBAL_OOH_SPECS });
     }
 
+    // GET /api/channel-best-practices/global — 2026-09-12, per direct
+    // instruction to build out CHANNEL_BEST_PRACTICES. Same trust level as
+    // the other /global endpoints above: read-only reference data, no auth
+    // required, identical for every account. Returns the full library plus
+    // the in-app ILLUSTRATIVE_CHANNEL_CPM values are NOT duplicated here —
+    // those live in portal.html and are compared against this endpoint's
+    // data client-side (see vsIllustrativeCpm on each entry, which already
+    // carries the in-app figure as of this build for that comparison).
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'channel-best-practices' && parts[2] === 'global'){
+      return sendJson(res, 200, { channels: CHANNEL_BEST_PRACTICES });
+    }
+
     // GET /api/accounts/:id/print-specs — this account's own custom
     // publication/spec additions (round 61, per direct instruction: teams
     // can add a publication the master catalog is missing, saved to their
@@ -23334,6 +23599,7 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
 
 
