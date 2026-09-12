@@ -352,6 +352,17 @@
       </div>
       <div id="voiceContestReviewError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
       <div id="voiceContestReviewResult"></div>
+      <!-- 2026-09-12 — Clear Voice Guide Memory, per Task D2. Reuses the same
+           Account ID / Admin token inputs above rather than duplicating them.
+           Destructive, account-wide reset — see clearVoiceGuideMemory() and
+           the backend POST /api/accounts/:id/voice-guide/clear-memory route
+           it calls (same ADMIN_API_TOKEN gate as this panel's lookup call). -->
+      <div class="field-row" style="margin-top:10px;align-items:flex-start;">
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn danger" onclick="clearVoiceGuideMemory()">Clear Voice Guide Memory</button>
+        </div>
+        <div id="voiceGuideClearResult" style="flex:1 1 auto;"></div>
+      </div>
     </div>
 
     <!-- 2026-09-09, per direct question ("Does a client need to see the
@@ -695,7 +706,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-header-logo-size-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-agentic-input-optimization';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1785,6 +1796,49 @@ async function checkVoiceContestReview(){
     `).join('');
   } catch (e){
     errEl.textContent = 'Could not reach the backend to look up voice contests.';
+    errEl.style.display = 'block';
+  }
+}
+
+// 2026-09-12 — Clear Voice Guide Memory, per Task D2. Reuses the exact same
+// #voiceContestLookupAccountId / #voiceContestAdminToken fields and
+// #voiceContestReviewError element the lookup above uses, following the
+// identical read/header/error pattern as checkVoiceContestReview() for
+// consistency. This is a destructive, account-wide reset (never soft-deleted,
+// no undo) so it's gated behind a native confirm() before the call fires.
+async function clearVoiceGuideMemory(){
+  const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
+  const token = document.getElementById('voiceContestAdminToken').value.trim();
+  const errEl = document.getElementById('voiceContestReviewError');
+  const clearResultEl = document.getElementById('voiceGuideClearResult');
+  errEl.style.display = 'none';
+  clearResultEl.innerHTML = '';
+  if (!accountId){
+    errEl.textContent = 'Enter an account ID to look up.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const confirmed = confirm('This permanently clears the approved Voice Guide, Vision Statement, and Longform Example for this account, and removes it from the Voice Guide contribution ledger. This cannot be undone. Continue?');
+  if (!confirmed) return;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/voice-guide/clear-memory`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't clear Voice Guide memory (${resp.status}).`;
+      errEl.style.display = 'block';
+      return;
+    }
+    clearResultEl.innerHTML = `<div class="empty-note" style="font-style:normal;color:var(--success, #1a7a4c);">Voice Guide memory cleared for ${accountId}.</div>`;
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to clear Voice Guide memory.';
     errEl.style.display = 'block';
   }
 }
