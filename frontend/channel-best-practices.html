@@ -98,6 +98,34 @@
 
   .empty-note{color:var(--muted);font-size:14px;padding:24px;text-align:center;}
 
+  /* 2026-09-13 — Direct Mail planning toolkit (per Todd-provided cost/
+     engagement/conversion materials). Sits above the filterable channel
+     list since it's cross-cutting reference for the 3 Direct Mail
+     channels rather than a per-channel benchmark row. */
+  .dm-toolkit{background:var(--white);border:1px solid var(--line);border-radius:8px;padding:22px 24px;margin:0 0 28px;}
+  .dm-toolkit h2{margin-bottom:6px;}
+  .dm-toolkit .sub-lede{font-size:13px;color:var(--muted);line-height:1.55;margin:0 0 18px;max-width:760px;}
+  .dm-toolkit h3{margin:22px 0 10px;font-size:14.5px;}
+  .dm-toolkit h3:first-of-type{margin-top:4px;}
+  .dm-table-wrap{overflow-x:auto;}
+  table.dm-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.dm-table th{text-align:left;font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.dm-table td{padding:8px 10px;border-bottom:1px solid var(--line-hairline);vertical-align:top;}
+  table.dm-table td.num{font-variant-numeric:tabular-nums;white-space:nowrap;}
+  table.dm-table tr:last-child td{border-bottom:none;}
+  table.dm-table td.note{color:var(--muted);font-size:11.5px;}
+
+  .dm-calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:0 0 16px;}
+  .dm-calc label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px;}
+  .dm-calc input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;font-variant-numeric:tabular-nums;}
+  .dm-calc-out{background:var(--paper-dim);border-radius:6px;padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px 20px;font-size:12.5px;}
+  .dm-calc-out .stat b{display:block;font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:2px;}
+  .dm-calc-note{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+
+  .dm-examples{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+  .dm-example{background:var(--paper-dim);border-radius:6px;padding:14px 16px;font-size:12px;line-height:1.65;}
+  .dm-example b{color:var(--ink);}
+
   footer{margin-top:40px;padding:24px 28px;border-top:1px solid var(--line);font-size:11.5px;color:#8a8067;text-align:center;}
 
   .utility-nav{background:var(--ink);}
@@ -192,6 +220,50 @@
     <span class="swatch"><span class="dot gap"></span> Gap — no defensible source exists; not filled in</span>
   </div>
 
+  <div id="dmToolkit" class="dm-toolkit" style="display:none;">
+    <div class="eyebrow">Direct Mail</div>
+    <h2>Planning toolkit: cost, engagement, and conversion</h2>
+    <p class="sub-lede">Direct Mail — Prospects / Past Guests / Inquiries keep their real, direct-given cost per piece as the authoritative planning number (that doesn't change here). This toolkit adds what those three entries didn't have before: a per-format cost table for scoping a new piece with no quote yet, and — for the first time — engagement and transactional-conversion expectations by audience and offer type, since a QR scan or a call is a much softer signal than a verified sale.</p>
+
+    <h3>Cost per piece by mailer format</h3>
+    <div class="dm-table-wrap">
+      <table class="dm-table">
+        <thead><tr><th>Format</th><th>Pages/panels</th><th>Low</th><th>Base</th><th>High</th><th>Note</th></tr></thead>
+        <tbody id="dmCostTableBody"></tbody>
+      </table>
+    </div>
+
+    <h3>QR scan rate by role on the piece</h3>
+    <div class="dm-table-wrap">
+      <table class="dm-table">
+        <thead><tr><th>QR code role</th><th>Planning scan rate</th></tr></thead>
+        <tbody id="dmQrTableBody"></tbody>
+      </table>
+    </div>
+
+    <h3>Engagement &amp; transactional conversion by audience/offer type</h3>
+    <div class="dm-table-wrap">
+      <table class="dm-table">
+        <thead><tr><th>Audience / offer type</th><th>Engagement rate</th><th>Transactional conversion</th><th>Engagement → transaction</th><th>Primary KPI</th><th>Attribution window</th></tr></thead>
+        <tbody id="dmFunnelTableBody"></tbody>
+      </table>
+    </div>
+
+    <h3>Quick forecast</h3>
+    <div class="dm-calc">
+      <div><label for="dmDelivered">Delivered pieces</label><input type="number" id="dmDelivered" value="20000" min="0" oninput="renderDmCalc()"></div>
+      <div><label for="dmEngage">Engagement rate (%)</label><input type="number" id="dmEngage" value="0.4" step="0.01" min="0" oninput="renderDmCalc()"></div>
+      <div><label for="dmConv">Transactional conversion (%)</label><input type="number" id="dmConv" value="0.03" step="0.001" min="0" oninput="renderDmCalc()"></div>
+      <div><label for="dmRevenue">Avg. revenue per transaction ($)</label><input type="number" id="dmRevenue" value="20000" min="0" oninput="renderDmCalc()"></div>
+      <div><label for="dmCost">Cost per piece ($)</label><input type="number" id="dmCost" value="1.90" step="0.01" min="0" oninput="renderDmCalc()"></div>
+    </div>
+    <div class="dm-calc-out" id="dmCalcOut"></div>
+    <div class="dm-calc-note">Defaults preloaded to Todd's luxury-watch worked example (20,000 pieces, 0.4% engagement, 0.03% transactional conversion, $20,000 avg. sale, $1.90/piece). Replace with your campaign's own numbers, or with a channel's real cost per piece and a closer audience/offer row above.</div>
+
+    <h3>Worked examples</h3>
+    <div class="dm-examples" id="dmExamples"></div>
+  </div>
+
   <div class="filter-row">
     <input type="text" id="searchBox" placeholder="Filter by channel or metric…" oninput="renderChannels()">
     <select id="tierFilter" onchange="renderChannels()">
@@ -208,13 +280,14 @@
 </main>
 
 <footer>
-  Sourced 2026-09-12. Cross-media CPM figures are drawn primarily from the Solomon Partners US Core Media CPM Comparison (published via OAAA, dated June 2025) — a genuine cross-vendor comparison, not one ad platform's own self-reported benchmark. Direct Mail response-rate figures are from the ANA Response Rate Report (Association of National Advertisers, formerly the DMA). Email figures are blended across three named ESP-reported studies (Mailchimp, Campaign Monitor, Klaviyo), disclosed as such. Per this project's standing rule (2026-08-10), no figure here is sourced from a single ad-buying platform's own benchmark report (e.g. Google Ads, Meta) — where that was the only kind of source available (Search, Social engagement/CPA), the gap is flagged rather than filled. Served live from <code>GET /api/channel-best-practices/global</code>; re-check this page each quarter for newer editions of the underlying reports.
+  Sourced 2026-09-12, Direct Mail planning toolkit added 2026-09-13. Cross-media CPM figures are drawn primarily from the Solomon Partners US Core Media CPM Comparison (published via OAAA, dated June 2025) — a genuine cross-vendor comparison, not one ad platform's own self-reported benchmark. Direct Mail response-rate figures are from the ANA Response Rate Report (Association of National Advertisers, formerly the DMA); Direct Mail cost/engagement/conversion planning figures are Tier B, sourced from vendor/blog aggregators (DirectMail.io, Mail Movers, USPS Delivers, Invesp, CRST) plus Todd's own worked examples — directional planning inputs, not precise citations. Email figures are blended across three named ESP-reported studies (Mailchimp, Campaign Monitor, Klaviyo), disclosed as such. Per this project's standing rule (2026-08-10), no figure here is sourced from a single ad-buying platform's own benchmark report (e.g. Google Ads, Meta) — where that was the only kind of source available (Search, Social engagement/CPA), the gap is flagged rather than filled. Served live from <code>GET /api/channel-best-practices/global</code>; re-check this page each quarter for newer editions of the underlying reports.
 </footer>
 
 <script>
 const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:') ? '' : 'http://localhost:8787';
 
 let CHANNELS = {};
+let DM_PLANNING_REF = null;
 
 const TIER_LABEL = { A: 'Tier A', B: 'Tier B', GAP: 'Gap' };
 function tierClass(tier){ return tier === 'A' ? 'a' : (tier === 'B' ? 'b' : 'gap'); }
@@ -232,12 +305,83 @@ async function init(){
     if (!resp.ok) throw new Error('non-200');
     const data = await resp.json();
     CHANNELS = data.channels || {};
+    DM_PLANNING_REF = data.directMailPlanningReference || null;
     setStatus(Object.keys(CHANNELS).length, true);
   } catch (e){
     CHANNELS = OFFLINE_FALLBACK_CHANNELS;
+    DM_PLANNING_REF = null;
     setStatus(Object.keys(CHANNELS).length, false);
   }
+  renderDmToolkit();
   renderChannels();
+}
+
+function renderDmToolkit(){
+  const toolkit = document.getElementById('dmToolkit');
+  if (!DM_PLANNING_REF){ toolkit.style.display = 'none'; return; }
+  toolkit.style.display = '';
+
+  document.getElementById('dmCostTableBody').innerHTML = DM_PLANNING_REF.costByMailerFormat.map(r => `
+    <tr>
+      <td>${escapeHtml(r.format)}</td>
+      <td class="num">${r.pages}</td>
+      <td class="num">$${r.costLow.toFixed(2)}</td>
+      <td class="num"><b>$${r.costBase.toFixed(2)}</b></td>
+      <td class="num">$${r.costHigh.toFixed(2)}</td>
+      <td class="note">${escapeHtml(r.note || '')}</td>
+    </tr>`).join('');
+
+  document.getElementById('dmQrTableBody').innerHTML = DM_PLANNING_REF.qrScanRateByRole.map(r => `
+    <tr><td>${escapeHtml(r.role)}</td><td class="num">${escapeHtml(r.planningScanRate)}</td></tr>`).join('');
+
+  document.getElementById('dmFunnelTableBody').innerHTML = DM_PLANNING_REF.engagementFunnelByAudienceOffer.map(r => `
+    <tr>
+      <td>${escapeHtml(r.audienceOfferType)}</td>
+      <td class="num">${escapeHtml(r.engagementRate)}</td>
+      <td class="num">${escapeHtml(r.transactionalConversion)}</td>
+      <td class="note">${escapeHtml(r.engagementToTransaction)}</td>
+      <td class="note">${escapeHtml(r.primaryKpi)}</td>
+      <td class="num">${escapeHtml(r.attributionWindow)}</td>
+    </tr>`).join('');
+
+  document.getElementById('dmExamples').innerHTML = DM_PLANNING_REF.workedExamples.map(ex => `
+    <div class="dm-example">
+      <b>${escapeHtml(ex.label)}</b><br>
+      ${ex.deliveredPieces.toLocaleString()} pieces · engagement (${escapeHtml(ex.engagementDefinition)}): <b>${escapeHtml(ex.engagementRate)}</b>, qualified: ${escapeHtml(ex.qualifiedEngagementRate)}<br>
+      Transaction (${escapeHtml(ex.transactionDefinition)}): <b>${escapeHtml(ex.transactionalConversion)}</b> · attribution ${escapeHtml(ex.attributionWindow)}<br>
+      Incrementality: ${escapeHtml(ex.incrementalityMethod)} · KPI: ${escapeHtml(ex.economicOutcome)}
+    </div>`).join('');
+
+  renderDmCalc();
+}
+
+function renderDmCalc(){
+  const pieces = parseFloat(document.getElementById('dmDelivered').value) || 0;
+  const engagePct = parseFloat(document.getElementById('dmEngage').value) || 0;
+  const convPct = parseFloat(document.getElementById('dmConv').value) || 0;
+  const revenuePer = parseFloat(document.getElementById('dmRevenue').value) || 0;
+  const costPer = parseFloat(document.getElementById('dmCost').value) || 0;
+
+  const expectedEngagements = pieces * (engagePct / 100);
+  const expectedTransactions = pieces * (convPct / 100);
+  const estRevenue = expectedTransactions * revenuePer;
+  const estCost = pieces * costPer;
+  const revenuePerPiece = pieces > 0 ? estRevenue / pieces : 0;
+  const costPerTransaction = expectedTransactions > 0 ? estCost / expectedTransactions : null;
+  const roi = estCost > 0 ? ((estRevenue - estCost) / estCost) * 100 : null;
+
+  const fmtMoney = n => '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const fmtNum = n => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
+
+  document.getElementById('dmCalcOut').innerHTML = `
+    <div class="stat">Expected engagements<b>${fmtNum(expectedEngagements)}</b></div>
+    <div class="stat">Expected transactions<b>${fmtNum(expectedTransactions)}</b></div>
+    <div class="stat">Estimated mailing cost<b>${fmtMoney(estCost)}</b></div>
+    <div class="stat">Estimated attributed revenue<b>${fmtMoney(estRevenue)}</b></div>
+    <div class="stat">Revenue per mailed piece<b>$${revenuePerPiece.toFixed(2)}</b></div>
+    <div class="stat">Cost per transaction<b>${costPerTransaction === null ? '—' : fmtMoney(costPerTransaction)}</b></div>
+    <div class="stat">Estimated ROI<b>${roi === null ? '—' : roi.toFixed(0) + '%'}</b></div>
+  `;
 }
 
 function channelMatchesFilters(name, entry, query, tierFilter){
