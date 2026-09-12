@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-agentic-input-optimization (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-verilume-wealth-index-display (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -632,6 +632,19 @@ ensureColumn('accounts', 'longformVoiceExample', 'TEXT');
 // table — this is a short, fixed-vocabulary multi-select on both fields.
 ensureColumn('accounts', 'audience', 'TEXT');
 ensureColumn('accounts', 'wealth', 'TEXT');
+// 2026-09-12 fix — per direct client report ("I don't see the Verilume
+// Wealth Index... go ahead and do what you need to do to add it"): `wealth`
+// above only ever stored the already-collapsed 3-tier category
+// (hnw/wealthy/middle); the raw household-income slider input that actually
+// drives assessment.html's verilumeWealthIndex() formula was computed there
+// but never sent or stored, so the real index number could never be
+// reconstructed or shown anywhere downstream of account creation. This
+// column stores that raw input so portal.html can recompute and display the
+// actual index (same formula, ported — see portal.html's own copy of
+// verilumeWealthIndex()). Nullable/honest-omit: an account that predates
+// this field (or was never given an income) stores null, never a fabricated
+// default.
+ensureColumn('accounts', 'wealthIndexTargetIncome', 'REAL');
 // Added 2026-08-05 (round 32, follow-on) — which of the 18 MMM_CATEGORIES
 // channels this account has actually activated. Comma-joined, same shape
 // as audience/wealth above. Empty/null means "never configured" — the
@@ -12424,7 +12437,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-agentic-input-optimization',
+        buildStamp: '2026-09-12-verilume-wealth-index-display',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -12639,7 +12652,13 @@ async function handleRequest(req, res) {
       // this loop is the actual guarantee. Bounded at 5 attempts so a
       // genuinely broken database (not just an unlucky roll) still fails
       // loudly instead of retrying forever.
-      const insertAccount = db.prepare('INSERT INTO accounts (accountId, company, industry, footprint, audience, wealth, competitorsJson, assessedStagesJson, websiteUrl, assessmentDescription, productsServices, accessCodeHash, accessCodeSalt, paidTier, paidTierActivatedAt, websiteContextJson, websiteContextFetchedAt, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+      const insertAccount = db.prepare('INSERT INTO accounts (accountId, company, industry, footprint, audience, wealth, wealthIndexTargetIncome, competitorsJson, assessedStagesJson, websiteUrl, assessmentDescription, productsServices, accessCodeHash, accessCodeSalt, paidTier, paidTierActivatedAt, websiteContextJson, websiteContextFetchedAt, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+      // 2026-09-12 fix — see ensureColumn('accounts', 'wealthIndexTargetIncome', ...)
+      // above for why this exists. Never fabricate a value: only a genuine
+      // number from buildScorecardPayload() is stored, otherwise null.
+      const wealthIndexTargetIncome = (typeof body.wealthIndexTargetIncome === 'number' && isFinite(body.wealthIndexTargetIncome))
+        ? body.wealthIndexTargetIncome
+        : null;
       const MAX_ACCOUNT_ID_ATTEMPTS = 5;
       for (let attempt = 1; ; attempt++){
         accountId = generateAccountId(body.footprint);
@@ -12647,6 +12666,7 @@ async function handleRequest(req, res) {
           insertAccount.run(accountId, body.company, body.industry || '', body.footprint || '',
             Array.isArray(body.audience) ? body.audience.join(', ') : '',
             Array.isArray(body.wealth) ? body.wealth.join(', ') : '',
+            wealthIndexTargetIncome,
             competitorsJson,
             assessedStagesJson,
             body.url || '',
@@ -14948,6 +14968,15 @@ async function handleRequest(req, res) {
         productsServices: body.productsServices !== undefined ? body.productsServices : existing.productsServices,
         audience: Array.isArray(body.audience) ? body.audience.join(', ') : existing.audience,
         wealth: Array.isArray(body.wealth) ? body.wealth.join(', ') : existing.wealth,
+        // 2026-09-12 fix — Verilume Wealth Index raw income input, same
+        // merge-update convention as audience/wealth above: only overwrite
+        // when this call actually sent a valid number, otherwise keep
+        // whatever was already stored (never overwrite a real stored value
+        // with null just because a caller didn't send the field this time,
+        // and never fabricate one if it was never set).
+        wealthIndexTargetIncome: (typeof body.wealthIndexTargetIncome === 'number' && isFinite(body.wealthIndexTargetIncome))
+          ? body.wealthIndexTargetIncome
+          : existing.wealthIndexTargetIncome,
         // Round 32, follow-on — Active Channels, same merge-update convention.
         activeChannels: Array.isArray(body.activeChannels) ? body.activeChannels.join(', ') : existing.activeChannels,
         // Round 132c17 — 3-letter Partner Code (Campaign ID generation).
@@ -14958,8 +14987,8 @@ async function handleRequest(req, res) {
           ? String(body.partnerCode || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3)
           : existing.partnerCode
       };
-      db.prepare('UPDATE accounts SET company = ?, industry = ?, footprint = ?, productsServices = ?, audience = ?, wealth = ?, activeChannels = ?, partnerCode = ? WHERE accountId = ?')
-        .run(merged.company, merged.industry, merged.footprint, merged.productsServices, merged.audience, merged.wealth, merged.activeChannels, merged.partnerCode, accountId);
+      db.prepare('UPDATE accounts SET company = ?, industry = ?, footprint = ?, productsServices = ?, audience = ?, wealth = ?, wealthIndexTargetIncome = ?, activeChannels = ?, partnerCode = ? WHERE accountId = ?')
+        .run(merged.company, merged.industry, merged.footprint, merged.productsServices, merged.audience, merged.wealth, merged.wealthIndexTargetIncome, merged.activeChannels, merged.partnerCode, accountId);
       return sendJson(res, 200, { updatedAt: new Date().toISOString(), company: merged.company });
     }
 
