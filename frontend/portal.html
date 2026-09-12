@@ -4520,6 +4520,30 @@
         <label>Wealth tier</label>
         <div id="cpWealthTiles" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
+      <!-- 2026-09-12 fix — per direct client report on this exact card
+           ("I don't see the Verilume Wealth Index... go ahead and do what
+           you need to do to add it"): the Wealth tier tri-select above is
+           only the DERIVED category — this section shows the actual
+           Verilume Wealth Index number/label + the raw income input that
+           drives it (see the ported formula block and renderCpWealthIndex()/
+           cpUpdateWealthIndexSlider()/cpApplyWealthIndexSuggestion() below).
+           Slider changes only update state (live-recomputed readout below);
+           persisting happens through this card's own existing Save →
+           button, same as every other field here — no separate save
+           trigger. -->
+      <div class="field" style="margin:14px 0 0;max-width:none;">
+        <label>Verilume Wealth Index</label>
+        <div id="cpWealthIndexEmptyNote" class="hint" style="display:none;margin-bottom:6px;"></div>
+        <input type="range" id="cpWealthIndexSlider" min="15000" max="250000" step="5000" value="75000" style="width:100%;" oninput="cpUpdateWealthIndexSlider()">
+        <div style="display:flex;justify-content:space-between;font-size:0.6875rem;color:var(--muted);margin-top:2px;">
+          <span>$15,000</span><span id="cpWealthIndexSliderValueLabel">$75,000</span><span>$250,000+</span>
+        </div>
+        <div style="text-align:center;margin:12px 0 4px;">
+          <div id="cpWealthIndexVal" style="font-size:2.375rem;font-weight:700;color:var(--ink);">—</div>
+          <div id="cpWealthIndexBandLabel" class="hint" style="margin-top:2px;"></div>
+        </div>
+        <div id="cpWealthIndexSuggestion" style="display:none;font-size:0.8125rem;color:#3A3428;background:var(--paper-dim);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-top:8px;"></div>
+      </div>
       <div class="field" style="margin:14px 0 0;max-width:none;">
         <label>Product themes</label>
         <textarea id="cpProductThemesInput" rows="2" placeholder="e.g. Polar Expeditions, Cultural Expeditions, small luxury expedition yachts" oninput="cpProductThemesChanged(this.value)"></textarea>
@@ -9306,7 +9330,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-agentic-input-optimization';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-verilume-wealth-index-display';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -9433,6 +9457,11 @@ const state = {
   // has them.
   audience: new Set((HANDOFF && HANDOFF.audience) || ['millennial']),
   wealth: new Set((HANDOFF && HANDOFF.wealth) || ['wealthy']),
+  // 2026-09-12 fix — Verilume Wealth Index raw income input. Honest null
+  // (not a fabricated default) until loadAccountData() sets it from a real
+  // saved value — see that comment for why an account can genuinely have
+  // none yet.
+  wealthIndexTargetIncome: null,
   // Round 32, follow-on — which of the 18 MMM_CATEGORIES channels this
   // account actually uses (per direct instruction: "companies do not use
   // all of the channels that we have available... providing the
@@ -13655,6 +13684,97 @@ const WEALTH_TIERS = [
   { key: 'wealthy', label: 'Wealthy' },
   { key: 'middle', label: 'Middle Income' }
 ];
+
+// 2026-09-12 fix — per direct client report on Company Overview ("I don't
+// see the Verilume Wealth Index... go ahead and do what you need to do to
+// add it"). Company Overview showed the DERIVED WEALTH_TIERS tri-select
+// above but never the actual Verilume Wealth Index number/label that
+// produces it. assessment.html's buildScorecardPayload() now sends the raw
+// household-income input (wealthIndexTargetIncome — see accounts table /
+// POST .../profile in server.js) so it can be recomputed and shown here.
+// Everything below is ported verbatim (same constants, same band cutoffs)
+// from assessment.html's own copy of this formula — intentionally kept in
+// sync with it, same "ported, not reinvented" convention already used for
+// generationWealthMultiplierBackend()/wealthIndexBandBackend() server-side
+// for the unrelated Store Trade Area feature (which pulls live Census
+// zip-level data — the wrong tool for this per-account portal display).
+// Any change to assessment.html's formula/bands must be mirrored here too.
+
+// Same 16-bracket [lowerBound, upperBoundExclusive] pairs as
+// assessment.html's INCOME_BRACKET_BOUNDS.
+const INCOME_BRACKET_BOUNDS = [
+  [0,10000],[10000,15000],[15000,20000],[20000,25000],[25000,30000],[30000,35000],
+  [35000,40000],[40000,45000],[45000,50000],[50000,60000],[60000,75000],[75000,100000],
+  [100000,125000],[125000,150000],[150000,200000],[200000,Infinity]
+];
+
+// Same illustrative fallback national household-income distribution as
+// assessment.html's INCOME_BRACKETS_FALLBACK_SHARES. Unlike assessment.html
+// (which prefers a live per-visitor Census fetch via incomeBracketShares()
+// when one has resolved), portal.html has no live/per-account Census fetch
+// to draw on for this display — it always uses this same disclosed-
+// illustrative fallback, never presented as live Census data.
+const INCOME_BRACKETS_FALLBACK_SHARES = [
+  0.06, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.03, 0.03, 0.07, 0.09, 0.12, 0.09, 0.07, 0.09, 0.11
+];
+
+// Weighted-mean national household income off the fallback shares above —
+// same math as assessment.html's nationalAverageIncome(), just without the
+// live/fallback branch (see comment above). Resolves to ~$97,900.
+function nationalAverageIncome(){
+  const midpoints = INCOME_BRACKET_BOUNDS.map(([lo, hi]) => hi === Infinity ? 300000 : (lo + hi) / 2);
+  return INCOME_BRACKETS_FALLBACK_SHARES.reduce((sum, share, i) => sum + (share || 0) * midpoints[i], 0);
+}
+
+// Same Fed SCF-sourced generation net-worth index as assessment.html's
+// GENERATION_WEALTH_INDEX (see that file's comment for sourcing/caveats on
+// genalpha/genbeta/greatest).
+const GENERATION_WEALTH_INDEX = {
+  genz: 0.20, millennial: 0.47, genx: 1.32, boomer: 1.82, silent: 1.74, general: 1.0,
+  genalpha: 0.05, genbeta: 0.0, greatest: 1.74
+};
+
+// Same average-across-selected-generations logic as assessment.html's
+// generationWealthMultiplier(), reading this file's own state.audience
+// (same Set/key shape).
+function generationWealthMultiplier(){
+  const gens = [...state.audience].filter(g => g !== 'general');
+  if (!gens.length) return 1.0;
+  const sum = gens.reduce((s, g) => s + (GENERATION_WEALTH_INDEX[g] ?? 1.0), 0);
+  return sum / gens.length;
+}
+
+// The Verilume Wealth Index itself — same formula as assessment.html's
+// verilumeWealthIndex(), just taking the household income as a parameter
+// (targetIncome) instead of reading state.targetIncome, since portal.html's
+// state has no such field — the account's saved value lives at
+// state.wealthIndexTargetIncome instead (see account-load below). 100 = the
+// average U.S. household; deliberately uncapped.
+function verilumeWealthIndex(targetIncome){
+  const ratio = targetIncome / nationalAverageIncome();
+  const mult = generationWealthMultiplier();
+  return Math.round(ratio * mult * 100);
+}
+
+// Same band cutoffs as assessment.html's wealthIndexLabel().
+function wealthIndexLabel(index){
+  if (index >= 200) return 'High Net-Worth / Luxury';
+  if (index >= 130) return 'Wealthy';
+  if (index >= 70) return 'Mainstream Affluent';
+  return 'Value-Conscious';
+}
+
+// Same 4-band-to-3-key mapping as assessment.html's
+// deriveWealthTiersFromIndex(), onto the same 'hnw'/'wealthy'/'middle' Set
+// shape WEALTH_TIERS above already uses.
+function deriveWealthTiersFromIndex(index){
+  const set = new Set();
+  if (index >= 200) set.add('hnw');
+  else if (index >= 130) set.add('wealthy');
+  else set.add('middle');
+  return set;
+}
+
 const FOOTPRINTS = ['Local', 'National', 'Franchise'];
 // Round 21, point 4/5 — Style Guide: Colors & Fonts' Heading/Body font
 // fields. A short list of standard/system-safe fonts plus this app's own
@@ -15023,6 +15143,12 @@ async function loadAccountData(){
       // buildScorecardPayload() has actually sent them for this account).
       if (record.account.audience) state.audience = new Set(record.account.audience.split(',').map(s => s.trim()).filter(Boolean));
       if (record.account.wealth) state.wealth = new Set(record.account.wealth.split(',').map(s => s.trim()).filter(Boolean));
+      // 2026-09-12 fix — Verilume Wealth Index raw income input (see the
+      // ported formula block above and ensureColumn('accounts',
+      // 'wealthIndexTargetIncome', ...) in server.js). Honest null, never a
+      // fabricated default, for an account (e.g. Atlas, today) that
+      // predates this field and has never had an income entered.
+      state.wealthIndexTargetIncome = (typeof record.account.wealthIndexTargetIncome === 'number') ? record.account.wealthIndexTargetIncome : null;
       // Round 32, follow-on — Active Channels. An empty/missing saved value
       // means "never configured," not "nothing active" — keep the
       // all-channels-active default from state's own initialization rather
@@ -49172,6 +49298,8 @@ function renderCompanyProfileStep(){
       </button>`).join('');
   }
 
+  renderCpWealthIndex();
+
   const themesEl = document.getElementById('cpProductThemesInput');
   if (themesEl && document.activeElement !== themesEl) themesEl.value = state.productsServices || '';
 
@@ -49650,6 +49778,84 @@ function cpToggleWealth(key){
 }
 function cpProductThemesChanged(value){ state.productsServices = value; }
 
+// 2026-09-12 fix — see this card's own HTML comment above
+// (#cpWealthIndexSlider) for the client report this closes. Renders the
+// honest-empty-state note, the slider's seeded value, the computed index +
+// band, and the non-blocking Wealth Tier suggestion — called from
+// renderCompanyProfileStep() (full re-render, e.g. on load or after an
+// audience/wealth tile toggle) and from cpUpdateWealthIndexSlider() (slider
+// drag, so only this section updates, not the whole card).
+function renderCpWealthIndex(){
+  const slider = document.getElementById('cpWealthIndexSlider');
+  if (!slider) return; // this card only exists on step-companyProfile
+  const emptyNote = document.getElementById('cpWealthIndexEmptyNote');
+  const valueLabel = document.getElementById('cpWealthIndexSliderValueLabel');
+  const valEl = document.getElementById('cpWealthIndexVal');
+  const bandEl = document.getElementById('cpWealthIndexBandLabel');
+  const suggestEl = document.getElementById('cpWealthIndexSuggestion');
+
+  const hasValue = typeof state.wealthIndexTargetIncome === 'number';
+  // Neutral mid-point shown on the slider itself when nothing is on file
+  // yet — never presented as "on file" (the empty-state note stays visible
+  // until the user actually sets and saves a value).
+  const income = hasValue ? state.wealthIndexTargetIncome : 75000;
+  // Don't fight the user's own drag — only force the slider's value when
+  // it isn't the thing currently being interacted with.
+  if (document.activeElement !== slider) slider.value = income;
+  if (valueLabel) valueLabel.textContent = '$' + income.toLocaleString();
+  if (emptyNote){
+    emptyNote.style.display = hasValue ? 'none' : 'block';
+    emptyNote.textContent = 'Not yet set for this account — enter this account\'s household income below to calculate it.';
+  }
+
+  const index = verilumeWealthIndex(income);
+  const label = wealthIndexLabel(index);
+  if (valEl) valEl.textContent = hasValue ? String(index) : '—';
+  if (bandEl) bandEl.textContent = hasValue ? label : 'Set an income above to calculate';
+
+  if (suggestEl){
+    if (!hasValue){
+      suggestEl.style.display = 'none';
+      suggestEl.innerHTML = '';
+    } else {
+      const derived = deriveWealthTiersFromIndex(index);
+      const alreadyMatches = state.wealth.size === derived.size && [...derived].every(k => state.wealth.has(k));
+      if (alreadyMatches){
+        suggestEl.style.display = 'none';
+        suggestEl.innerHTML = '';
+      } else {
+        const derivedKey = [...derived][0];
+        const tierLabel = (WEALTH_TIERS.find(t => t.key === derivedKey) || {}).label || derivedKey;
+        suggestEl.style.display = 'block';
+        suggestEl.innerHTML = `Based on this income and audience, this reads as <b>${escapeHtml(tierLabel)}</b> — apply to Wealth Tier? <button type="button" class="btn-ghost" style="font-size:0.75rem;padding:2px 8px;margin-left:4px;" onclick="cpApplyWealthIndexSuggestion('${derivedKey}')">Apply</button>`;
+      }
+    }
+  }
+}
+
+// Slider oninput handler — updates state and re-renders only this section
+// (never the whole card mid-drag) and never auto-saves; saving this value
+// happens through the card's existing Save → button (saveCompanyProfile()),
+// exactly like every other field here.
+function cpUpdateWealthIndexSlider(){
+  const slider = document.getElementById('cpWealthIndexSlider');
+  if (!slider) return;
+  state.wealthIndexTargetIncome = Number(slider.value);
+  renderCpWealthIndex();
+}
+
+// Non-blocking suggestion's one-click "Apply" — mirrors
+// assessment.html's applyIndustryTierSuggestion()'s single-click-apply
+// pattern. Wealth Tier is a tri-select the rest of the app already reads as
+// a single derived category once one exists (see WEALTH_TIER_ORDER's
+// "highest tier present" convention) — applying here clears any other tile
+// first rather than adding alongside them, same as assessment.html's own
+// deriveWealthTiersFromIndex() always produces a single-key Set.
+function cpApplyWealthIndexSuggestion(key){
+  state.wealth = new Set([key]);
+  renderCompanyProfileStep();
+}
+
 // Brand Description — edit/approve/feedback loop (round 22, 2026-09-08).
 // See cpBrandDescriptionCard's own comment in the HTML for the instruction
 // this implements. Text is state.assessmentDescription; approval and
@@ -49954,7 +50160,7 @@ async function saveCompanyProfile(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
+        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], wealthIndexTargetIncome: state.wealthIndexTargetIncome, activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
       });
       if (resp.ok) persisted = true;
     } catch (e){ console.warn('saveCompanyProfile: backend write failed, saved locally only.', e); }

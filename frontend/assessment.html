@@ -6760,6 +6760,17 @@ function buildScorecardPayload(){
     // reads these back, so they need to travel in this same payload.
     audience: [...state.audience],
     wealth: [...state.wealth],
+    // 2026-09-12 fix — per direct client report ("I don't see the Verilume
+    // Wealth Index... go ahead and do what you need to do to add it"): the
+    // raw household-income slider input (state.targetIncome) that actually
+    // drives verilumeWealthIndex() was fully computed here on Step 2 but was
+    // NEVER sent to the backend — only the already-collapsed 3-tier `wealth`
+    // Set above was. That meant the real index number could never be
+    // reconstructed or displayed anywhere downstream of account creation
+    // (Company Overview only ever showed the derived tri-select tiles).
+    // Sending the raw income here lets any later screen (portal.html's
+    // Company Overview) recompute and show the real index, same formula.
+    wealthIndexTargetIncome: state.targetIncome,
     // 2026-08-29 — competitors is intentionally NOT part of this payload.
     // Round 25 once carried a Step 1 "Top 3 U.S. competitors" field here,
     // but Round 106 removed that field from the assessment (see the removed
