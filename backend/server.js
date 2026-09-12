@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-snowflake-inbound-connector (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-publisher-vendor-performance (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1549,6 +1549,29 @@ createTableIfNeeded(`
 `);
 ensureColumn('channel_planning_details', 'uploadBatchId', 'TEXT');
 ensureColumn('campaigns', 'createdByUploadBatchId', 'TEXT');
+
+// 2026-09-13 — Publisher/Vendor Performance actuals, per direct instruction:
+// Magazines/Newspapers and Direct Mail placements should be comparable on
+// cost, reach (already captured here as `impressions` — per-placement
+// household reach/circulation, confirmed same field, no new column needed)
+// and creative size (already covered by the print-specs catalog) against
+// calls/QR scans/direct URL visits/measurable leads. Kept as four separate
+// columns, not one blended response number, so which engagement TYPE is
+// actually driving a placement's response stays visible — the same
+// distinction the Direct Mail planning benchmarks (engagement rate vs.
+// transactional conversion rate) already draw. `channel_planning_details`
+// is the right row to carry these: it's the one place a real placement
+// already has `partner` (publication/vendor) + `impressions` (reach) +
+// `budget`/cost sub-fields together, per-row. `creative_jobs`' actuals
+// stay untouched — this is additive to a different table, not a
+// migration.
+ensureColumn('channel_planning_details', 'actualCalls', 'REAL');
+ensureColumn('channel_planning_details', 'actualQrScans', 'REAL');
+ensureColumn('channel_planning_details', 'actualUrlVisits', 'REAL');
+ensureColumn('channel_planning_details', 'actualLeads', 'REAL');
+ensureColumn('channel_planning_details', 'actualsEnteredByRole', 'TEXT');
+ensureColumn('channel_planning_details', 'actualsEnteredByName', 'TEXT');
+ensureColumn('channel_planning_details', 'actualsUpdatedAt', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -9585,6 +9608,13 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'trafficPackageJson'],
   ['campaigns', 'trafficSentAt'],
   ['campaigns', 'transactionWindowDays'],
+  ['channel_planning_details', 'actualCalls'],
+  ['channel_planning_details', 'actualLeads'],
+  ['channel_planning_details', 'actualQrScans'],
+  ['channel_planning_details', 'actualUrlVisits'],
+  ['channel_planning_details', 'actualsEnteredByName'],
+  ['channel_planning_details', 'actualsEnteredByRole'],
+  ['channel_planning_details', 'actualsUpdatedAt'],
   ['channel_planning_details', 'allocationId'],
   ['channel_planning_details', 'buyType'],
   ['channel_planning_details', 'campaignId'],
@@ -13992,7 +14022,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-snowflake-inbound-connector',
+        buildStamp: '2026-09-13-publisher-vendor-performance',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17517,7 +17547,8 @@ async function handleRequest(req, res) {
     function getMarketingCalendarEvents(accountId, q){
       let sql = `SELECT cpd.id, cpd.campaignId, c.name AS campaignName, c.objective AS campaignObjective,
           cpd.channel, cpd.partner, cpd.hitDate, cpd.dropDate, cpd.endDate,
-          cpd.productYear, cpd.productGroup, cpd.creativeMarket, cpd.audience, cpd.budget, cpd.status
+          cpd.productYear, cpd.productGroup, cpd.creativeMarket, cpd.audience, cpd.budget, cpd.status,
+          cpd.impressions, cpd.actualCalls, cpd.actualQrScans, cpd.actualUrlVisits, cpd.actualLeads
         FROM channel_planning_details cpd
         JOIN campaigns c ON c.id = cpd.campaignId
         WHERE c.accountId = ?`;
@@ -17549,7 +17580,15 @@ async function handleRequest(req, res) {
         creativeMarket: r.creativeMarket,
         audience: r.audience,
         budget: r.budget === null ? null : Number(r.budget),
-        status: r.status
+        status: r.status,
+        // 2026-09-13 — carried through so the calendar's own event-detail
+        // overlay can show/record Publisher/Vendor Performance actuals
+        // without a second round trip to the plain channel-planning list.
+        impressions: r.impressions === null ? null : Number(r.impressions),
+        actualCalls: r.actualCalls === null ? null : Number(r.actualCalls),
+        actualQrScans: r.actualQrScans === null ? null : Number(r.actualQrScans),
+        actualUrlVisits: r.actualUrlVisits === null ? null : Number(r.actualUrlVisits),
+        actualLeads: r.actualLeads === null ? null : Number(r.actualLeads)
       }));
     }
 
@@ -18115,11 +18154,21 @@ async function handleRequest(req, res) {
       return CHANNEL_PLANNING_COST_SUBFIELDS.filter(k => detailsJson[k] !== undefined && detailsJson[k] !== null && detailsJson[k] !== '');
     }
     function serializeChannelPlanningRow(row){
+      const actualCalls = row.actualCalls === null || row.actualCalls === undefined ? null : Number(row.actualCalls);
+      const actualQrScans = row.actualQrScans === null || row.actualQrScans === undefined ? null : Number(row.actualQrScans);
+      const actualUrlVisits = row.actualUrlVisits === null || row.actualUrlVisits === undefined ? null : Number(row.actualUrlVisits);
+      const actualLeads = row.actualLeads === null || row.actualLeads === undefined ? null : Number(row.actualLeads);
+      const anyActual = [actualCalls, actualQrScans, actualUrlVisits, actualLeads].some(v => v != null);
+      const totalEngagement = anyActual
+        ? [actualCalls, actualQrScans, actualUrlVisits, actualLeads].reduce((sum, v) => sum + (v || 0), 0)
+        : null;
       return {
         ...row,
         impressions: row.impressions === null ? null : Number(row.impressions),
         budget: row.budget === null ? null : Number(row.budget),
-        detailsJson: row.detailsJson ? JSON.parse(row.detailsJson) : {}
+        detailsJson: row.detailsJson ? JSON.parse(row.detailsJson) : {},
+        actualCalls, actualQrScans, actualUrlVisits, actualLeads,
+        totalEngagement
       };
     }
 
@@ -18299,18 +18348,37 @@ async function handleRequest(req, res) {
         productGroup: body.productGroup !== undefined ? body.productGroup : existing.productGroup,
         creativeMarket: body.creativeMarket !== undefined ? body.creativeMarket : existing.creativeMarket,
         budget: body.budget !== undefined ? body.budget : existing.budget,
-        status
+        status,
+        // 2026-09-13 — Publisher/Vendor Performance actuals (see the
+        // ensureColumn block above for the "why this table" reasoning).
+        // Kept as four separate numbers, not one blended response count.
+        actualCalls: body.actualCalls !== undefined ? body.actualCalls : existing.actualCalls,
+        actualQrScans: body.actualQrScans !== undefined ? body.actualQrScans : existing.actualQrScans,
+        actualUrlVisits: body.actualUrlVisits !== undefined ? body.actualUrlVisits : existing.actualUrlVisits,
+        actualLeads: body.actualLeads !== undefined ? body.actualLeads : existing.actualLeads
       };
+      const actualsTouched = ['actualCalls', 'actualQrScans', 'actualUrlVisits', 'actualLeads'].some(k => body[k] !== undefined);
       const now = new Date().toISOString();
       db.prepare(`UPDATE channel_planning_details SET
           allocationId = ?, channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?,
           dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?,
-          detailsJson = ?, status = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ?
+          detailsJson = ?, status = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ?,
+          actualCalls = ?, actualQrScans = ?, actualUrlVisits = ?, actualLeads = ?,
+          actualsEnteredByRole = CASE WHEN ? THEN ? ELSE actualsEnteredByRole END,
+          actualsEnteredByName = CASE WHEN ? THEN ? ELSE actualsEnteredByName END,
+          actualsUpdatedAt = CASE WHEN ? THEN ? ELSE actualsUpdatedAt END
         WHERE id = ?`
       ).run(
         merged.allocationId, merged.channel, merged.partner, merged.audience, merged.buyType, merged.mediaType, merged.impressions,
         merged.dropDate, merged.hitDate, merged.endDate, merged.productYear, merged.productGroup, merged.creativeMarket, merged.budget,
         JSON.stringify(mergedDetails), merged.status, actorRole, actorName, now,
+        typeof merged.actualCalls === 'number' ? merged.actualCalls : null,
+        typeof merged.actualQrScans === 'number' ? merged.actualQrScans : null,
+        typeof merged.actualUrlVisits === 'number' ? merged.actualUrlVisits : null,
+        typeof merged.actualLeads === 'number' ? merged.actualLeads : null,
+        actualsTouched ? 1 : 0, actorRole,
+        actualsTouched ? 1 : 0, actorName,
+        actualsTouched ? 1 : 0, now,
         entryId
       );
       // Round 132x (2026-08-10) — an edit can change productGroup/
@@ -18335,6 +18403,132 @@ async function handleRequest(req, res) {
       // for why this is a no-op, not a blank-out, when none remain).
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
       return sendJson(res, 200, { deleted: true });
+    }
+
+    // GET /api/accounts/:accountId/channel-planning/publisher-performance
+    // ?channel=Magazines — 2026-09-13, per direct instruction: "the
+    // strongest direct use case is the comparative analytics workstream...
+    // Magazines and Newspapers: we capture cost, household reach, total
+    // circulation and creative size compared to other magazines and
+    // newspapers based on calls, QR code scans, direct URL visits and
+    // measurable leads. Direct Mail: same approach." Groups every
+    // channel_planning_details row for this account, on the given channel,
+    // by `partner` (the publication/vendor) — one leaderboard row per
+    // publication/vendor, summed across every placement/insertion, not one
+    // row per campaign. Rows with no actuals recorded at all are excluded
+    // (nothing to rank yet), not shown as zeros.
+    //
+    // Scoring, per direct instruction: "start from base 0 and build as you
+    // go... Verilume can publish metrics when we become established or
+    // partner with someone who elevates us" — there is deliberately NO
+    // external benchmark constant here (unlike CHANNEL_BEST_PRACTICES'
+    // conversionRateBenchmark elsewhere, which IS sourced externally).
+    // Every score is computed relative to this account's OWN observed
+    // range for this channel only — the leaderboard tells you which of
+    // YOUR publications/vendors are actually working relative to each
+    // other, not against an outside number nobody has published yet. When
+    // Verilume (or a partner) eventually publishes a real external
+    // benchmark for this channel, that constant slots in as an optional
+    // second axis alongside this one — this function's shape doesn't need
+    // to change, just gains a benchmarkVerdict field once one exists.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'publisher-performance'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const channel = (reqUrl.searchParams.get('channel') || '').trim();
+      if (!channel) return sendJson(res, 400, { error: 'channel query param is required' });
+      // 2026-09-13, per direct instruction on Direct Mail specifically:
+      // "we need to incorporate Audience (Past Customer, Inquiry, Prospect
+      // List Audience) to make it fair." A Prospect list and a Past-Guest
+      // list convert at genuinely different rates (see
+      // DIRECT_MAIL_PLANNING_REFERENCE — Prospects/Past Guests/Inquiries
+      // are three separate channel entries for exactly this reason), so
+      // grouping Direct Mail vendors/lists without also splitting by
+      // audience would let a vendor look strong or weak purely because of
+      // which list they happened to mail, not the vendor/creative itself.
+      // `channel_planning_details.audience` already exists and is
+      // populated (CX/FUT/INQ/OPT-OUT/PG/PR/Trade/Multi-Audience, per the
+      // real AOV taxonomy) — this reuses that field rather than adding a
+      // new one. For Direct Mail, the group key becomes partner+audience;
+      // for every other channel (Magazines/Newspapers included, where
+      // list audience isn't the variable that matters — the publication's
+      // own readership is) grouping stays partner-only, unchanged.
+      const isDirectMail = /^direct mail/i.test(channel);
+      const rows = db.prepare(`
+        SELECT cpd.* FROM channel_planning_details cpd
+        JOIN campaigns c ON c.id = cpd.campaignId
+        WHERE c.accountId = ? AND cpd.channel = ?
+      `).all(accountId, channel).map(serializeChannelPlanningRow);
+
+      const byGroup = new Map();
+      rows.forEach(r => {
+        if (r.totalEngagement == null) return; // nothing measured on this placement yet
+        const partnerLabel = (r.partner || '').trim() || '(no publication/vendor recorded)';
+        const audienceLabel = (r.audience || '').trim() || '(no audience recorded)';
+        const key = isDirectMail ? `${partnerLabel}::${audienceLabel}` : partnerLabel;
+        if (!byGroup.has(key)){
+          byGroup.set(key, {
+            partner: partnerLabel,
+            audience: isDirectMail ? audienceLabel : null,
+            placementCount: 0, impressions: 0, budget: 0,
+            actualCalls: 0, actualQrScans: 0, actualUrlVisits: 0, actualLeads: 0, totalEngagement: 0
+          });
+        }
+        const agg = byGroup.get(key);
+        agg.placementCount += 1;
+        agg.impressions += (r.impressions || 0);
+        agg.budget += (r.budget || 0);
+        agg.actualCalls += (r.actualCalls || 0);
+        agg.actualQrScans += (r.actualQrScans || 0);
+        agg.actualUrlVisits += (r.actualUrlVisits || 0);
+        agg.actualLeads += (r.actualLeads || 0);
+        agg.totalEngagement += (r.totalEngagement || 0);
+      });
+
+      const groupRows = [...byGroup.values()].map(agg => {
+        const engagementRate = agg.impressions > 0 ? agg.totalEngagement / agg.impressions : null;
+        const engagementPer1000Spend = agg.budget > 0 ? agg.totalEngagement / (agg.budget / 1000) : null;
+        return { ...agg, engagementRate, engagementPer1000Spend };
+      });
+
+      // Self-referential 0-100 index: each axis scored against the MAX
+      // observed for that axis within this account's own rows for this
+      // channel (base 0, per direct instruction — no external floor/
+      // ceiling assumed). For Direct Mail this max is computed WITHIN each
+      // audience segment, not across all of them — a Prospect list scores
+      // against other Prospect-list placements, a Past-Guest list against
+      // other Past-Guest placements, so a naturally-higher-converting
+      // audience doesn't make every vendor mailing to it look artificially
+      // strong (and vice versa for a naturally colder list). A publisher/
+      // vendor missing one axis (e.g. no budget logged) is scored on the
+      // axis it has, not penalized to zero for a data gap.
+      const scopeKeyFor = r => isDirectMail ? (r.audience || '') : '__all__';
+      const maxByScope = {};
+      groupRows.forEach(r => {
+        const scope = scopeKeyFor(r);
+        if (!maxByScope[scope]) maxByScope[scope] = { rate: 0, eff: 0 };
+        if (r.engagementRate) maxByScope[scope].rate = Math.max(maxByScope[scope].rate, r.engagementRate);
+        if (r.engagementPer1000Spend) maxByScope[scope].eff = Math.max(maxByScope[scope].eff, r.engagementPer1000Spend);
+      });
+      groupRows.forEach(r => {
+        const scope = maxByScope[scopeKeyFor(r)];
+        const rateScore = (scope.rate > 0 && r.engagementRate != null) ? (r.engagementRate / scope.rate) * 100 : null;
+        const effScore = (scope.eff > 0 && r.engagementPer1000Spend != null) ? (r.engagementPer1000Spend / scope.eff) * 100 : null;
+        const parts = [rateScore, effScore].filter(v => v != null);
+        r.score = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+      });
+      groupRows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+
+      return sendJson(res, 200, {
+        channel,
+        groupedByAudience: isDirectMail,
+        rows: groupRows,
+        scoringNote: isDirectMail
+          ? 'Score is relative to other placements on the SAME audience segment (Past Customer/Inquiry/Prospect) for this account and channel — no external benchmark is published yet, and vendors mailing different lists are never compared directly against each other.'
+          : 'Score is relative to this account\'s own placements on this channel only — no external benchmark is published yet.',
+        placementsConsidered: rows.length,
+        placementsWithActuals: rows.filter(r => r.totalEngagement != null).length
+      });
     }
 
     // POST /api/accounts/:accountId/channel-planning/bulk — round 132x
@@ -24177,9 +24371,12 @@ handleRequest.testExports = {
   // sync/upsert logic against a mocked fetch(), since this sandbox has no
   // real Snowflake account or network path to test against for real.
   getSnowflakeJwt, snowflakePublicKeyFingerprint, snowflakeExecuteStatement,
-  syncSnowflakeAccount, firstOf, externalIdFor, SNOWFLAKE_CONFIGURED
+  syncSnowflakeAccount, firstOf, externalIdFor, SNOWFLAKE_CONFIGURED,
+  // 2026-09-13 — Publisher/Vendor Performance tests need a real session
+  // token to call the authed publisher-performance/channel-planning
+  // endpoints without going through the full login/MFA flow.
+  createSession
 };
 
 module.exports = handleRequest;
-
 
