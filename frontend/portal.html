@@ -9452,7 +9452,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-publisher-vendor-performance';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-project-number-partner-dates-audience-grouping';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38533,6 +38533,14 @@ function mktCalOpenDetail(eventId){
     ['Impressions / Reach', num(e.impressions)],
     ['Status', e.status || '—']
   ];
+  // 2026-09-13 — Project # (client reference): the client's own internal
+  // Wrike job/project number, stored read-only pass-through (never used in
+  // any Verilume logic — see backend's projectNumber ensureColumn comment).
+  // Display only, and only when present — an empty "Project #: —" row on
+  // every entry that lacks one would just be clutter.
+  if (e.projectNumber){
+    rows.splice(rows.length - 1, 0, ['Project # (client reference)', e.projectNumber]);
+  }
   const body = document.getElementById('mktCalModalBody');
   if (body){
     // 2026-09-13 — Publisher/Vendor Performance actuals, per direct
