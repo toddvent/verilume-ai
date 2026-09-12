@@ -1,0 +1,838 @@
+<title>Registration & Account Management</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22;
+  --slate:#5B6472;
+  --slate-soft:#8891A0;
+  --paper:#FFFFFF;
+  --paper-sunk:#F4F6F9;
+  --line:#E2E6EC;
+  --brand:#2B5FE0;
+  --brand-soft:#EDF2FE;
+  --confirmed:#1F8A5F;
+  --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A;
+  --flagged-soft:#FBEAE4;
+  --warning:#B8791A;
+  --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720;
+  --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF;
+    --slate:#A8B1C0;
+    --slate-soft:#7A8393;
+    --paper:#12161D;
+    --paper-sunk:#191F29;
+    --line:#2A3140;
+    --brand:#7EA0FF;
+    --brand-soft:#1B2740;
+    --confirmed:#4FCC93;
+    --confirmed-soft:#122A20;
+    --flagged:#FF8A68;
+    --flagged-soft:#2E1710;
+    --warning:#E5AC55;
+    --warning-soft:#2C2110;
+    --mono-bg:#0A0E14;
+    --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF;
+  --slate:#A8B1C0;
+  --slate-soft:#7A8393;
+  --paper:#12161D;
+  --paper-sunk:#191F29;
+  --line:#2A3140;
+  --brand:#7EA0FF;
+  --brand-soft:#1B2740;
+  --confirmed:#4FCC93;
+  --confirmed-soft:#122A20;
+  --flagged:#FF8A68;
+  --flagged-soft:#2E1710;
+  --warning:#E5AC55;
+  --warning-soft:#2C2110;
+  --mono-bg:#0A0E14;
+  --mono-ink:#C6CEDA;
+}
+
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:15.5px;
+  line-height:1.6;
+}
+::selection{background:var(--brand-soft);}
+
+a{color:var(--brand);}
+
+h1,h2,h3,h4{
+  font-family:'Source Serif 4',Georgia,serif;
+  font-weight:600;
+  color:var(--ink);
+  text-wrap:balance;
+  line-height:1.25;
+}
+
+code, .mono{
+  font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  font-size:0.87em;
+}
+
+/* ---------- shell layout ---------- */
+.shell{
+  display:grid;
+  grid-template-columns:272px minmax(0,1fr);
+  max-width:1280px;
+  margin:0 auto;
+}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr;}
+  .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}
+}
+
+.toc{
+  position:sticky;
+  top:0;
+  align-self:start;
+  height:100vh;
+  overflow-y:auto;
+  padding:28px 20px 40px 28px;
+  border-right:1px solid var(--line);
+}
+.toc-brand{
+  font-family:'Source Serif 4',serif;
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:0.01em;
+  margin-bottom:2px;
+}
+.toc-sub{
+  font-size:11.5px;
+  color:var(--slate);
+  margin-bottom:22px;
+}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{
+  font-size:10.5px;
+  font-weight:600;
+  letter-spacing:0.09em;
+  text-transform:uppercase;
+  color:var(--slate-soft);
+  margin:0 0 8px;
+}
+.toc a{
+  display:block;
+  font-size:13px;
+  color:var(--slate);
+  text-decoration:none;
+  padding:5px 0 5px 10px;
+  border-left:2px solid transparent;
+  margin-left:-1px;
+}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" ⚑"; color:var(--flagged); }
+
+.main{
+  padding:40px 48px 120px;
+  min-width:0;
+}
+@media (max-width:640px){ .main{padding:28px 20px 90px;} }
+
+/* ---------- header block ---------- */
+.doc-header{margin-bottom:44px;}
+.doc-kicker{
+  font-size:11.5px;
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  color:var(--brand);
+  margin-bottom:10px;
+}
+.doc-header h1{font-size:34px; margin:0 0 12px;}
+.doc-dek{
+  font-size:16px;
+  color:var(--slate);
+  max-width:62ch;
+  margin:0 0 20px;
+}
+.meta-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 22px;
+  font-size:12.5px;
+  color:var(--slate-soft);
+  padding-top:16px;
+  border-top:1px solid var(--line);
+}
+.meta-row b{color:var(--slate); font-weight:600;}
+
+/* ---------- status pills ---------- */
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:11.5px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  padding:3px 10px 3px 8px;
+  border-radius:99px;
+  white-space:nowrap;
+}
+.pill::before{content:""; width:6px; height:6px; border-radius:50%; flex:none;}
+.pill--confirmed{background:var(--confirmed-soft); color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft); color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft); color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk); color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+
+/* ---------- sections ---------- */
+section{margin-bottom:56px; scroll-margin-top:24px;}
+section > h2{
+  font-size:22px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--line);
+  margin:0 0 20px;
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  justify-content:space-between;
+}
+section > h2 .num{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  color:var(--slate-soft);
+  font-weight:400;
+}
+h3{font-size:16.5px; margin:28px 0 10px;}
+h4{font-size:14px; margin:20px 0 8px; color:var(--slate);}
+p{margin:0 0 14px; max-width:72ch;}
+ul,ol{margin:0 0 14px; padding-left:22px; max-width:70ch;}
+li{margin-bottom:5px;}
+
+.lede{font-size:15px; color:var(--slate); max-width:72ch;}
+
+/* ---------- callout / finding cards ---------- */
+.card{
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px 20px;
+  margin:16px 0;
+  background:var(--paper-sunk);
+}
+.card--confirmed{background:var(--confirmed-soft); border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft); border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft); border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{
+  display:flex; align-items:center; gap:10px;
+  font-weight:600; font-size:14px; margin-bottom:8px; color:var(--ink);
+}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px; color:var(--slate-soft); margin-top:8px;}
+
+/* ---------- findings grid on overview ---------- */
+.finding-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:14px;
+  margin:20px 0 8px;
+}
+.finding-tile{
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:16px 18px;
+}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px; font-size:13.5px; color:var(--ink);}
+.finding-tile p{font-size:13px; color:var(--slate); margin:0;}
+
+/* ---------- flow steps ---------- */
+.flow{
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:hidden;
+  margin:18px 0 24px;
+}
+.flow-step{
+  display:grid;
+  grid-template-columns:40px 1fr;
+  gap:14px;
+  padding:16px 20px;
+  border-bottom:1px solid var(--line);
+}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  color:var(--brand);
+  font-weight:500;
+  padding-top:2px;
+}
+.flow-step h4{margin:0 0 4px; font-size:14px; color:var(--ink);}
+.flow-step p{margin:0; font-size:13.5px; color:var(--slate);}
+.flow-step .endpoint{
+  display:inline-block;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11.5px;
+  color:var(--slate);
+  background:var(--paper);
+  border:1px solid var(--line);
+  padding:1px 7px;
+  border-radius:5px;
+  margin-top:6px;
+}
+
+/* ---------- tables ---------- */
+.table-wrap{overflow-x:auto; margin:16px 0 24px; border:1px solid var(--line); border-radius:10px;}
+table{border-collapse:collapse; width:100%; font-size:13px; min-width:560px;}
+th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top;}
+thead th{
+  background:var(--paper-sunk);
+  font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--slate);
+  white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+
+/* ---------- env var badges ---------- */
+.env-list{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 20px;}
+.env-badge{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  background:var(--mono-bg);
+  color:var(--mono-ink);
+  padding:5px 10px;
+  border-radius:6px;
+}
+
+/* code block */
+pre{
+  background:var(--mono-bg);
+  color:var(--mono-ink);
+  border-radius:10px;
+  padding:16px 18px;
+  overflow-x:auto;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12.5px;
+  line-height:1.6;
+  margin:14px 0 20px;
+}
+
+hr.rule{border:none; border-top:1px solid var(--line); margin:40px 0;}
+
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+
+.foot{
+  margin-top:60px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  font-size:12px;
+  color:var(--slate-soft);
+}
+</style>
+
+<div class="shell">
+
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Registration & Account Management</div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#flow-signup">Signup & verification</a>
+      <a href="#flow-login">Login & step-up MFA</a>
+      <a href="#flow-recovery">Password recovery</a>
+      <a href="#flow-logout">Sessions & logout</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Integrations</p>
+      <a href="#twilio">Twilio (SMS / Verify)</a>
+      <a href="#hubspot">HubSpot (CRM sync)</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Data & trust</p>
+      <a href="#isolation">Multi-tenant isolation</a>
+      <a href="#retention" class="flag">Data retention & purge</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#data-model">Data model reference</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#gotchas">Incident log / gotchas</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Registration &amp; Account Management</h1>
+      <p class="doc-dek">
+        The subsystem that gets a client from "never heard of Verilume" to a
+        logged-in, correctly-isolated account: signup, identity verification,
+        login, step-up MFA, password recovery, session lifecycle, and the
+        Twilio and HubSpot integrations that ride alongside it. This document
+        is the current-state reference for that Product — what's actually
+        built and running today, verified against the live codebase rather
+        than against what was planned.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>frontend/*.html</code> + <code>backend/server.js</code></span>
+        <span><b>Verified against</b> production code, 2026-09-12</span>
+        <span><b>Status</b> Built; this doc file itself is not yet deployed — see the home page</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">requested this cycle</span></h2>
+      <p class="lede">
+        Two things were explicitly asked to be validated rather than assumed: whether client
+        data can mix across accounts, and what happens to data when a contract ends. Both were
+        checked directly against the code — not against prior planning docs.
+      </p>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>Multi-tenant isolation</h4>
+          <p>Every account-scoped, data-touching route is gated by a single, consistently-applied
+          server-side check. No cross-account leak paths found. Details in §&nbsp;Multi-tenant isolation.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Not implemented</span>
+          <h4>Data retention &amp; purge</h4>
+          <p>No soft-delete, hard-delete, account status, contract-end date, or export-and-purge
+          flow exists anywhere in the code — despite being planned and discussed. Details in
+          §&nbsp;Data retention &amp; purge.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Fixed 2026-08-22</span>
+          <h4>Privilege escalation — closed</h4>
+          <p>This doc originally flagged team-member routes as never checking
+          <code>isAdmin</code>. That gap was real and was closed the next day — this
+          document was drafted 2026-08-21, then never re-verified or deployed before
+          now. Re-checked directly against the running code on 2026-09-12: fixed.
+          See §&nbsp;Known gaps.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--neutral">Working as designed</span>
+          <h4>Signup verification gate</h4>
+          <p>Account creation hard-requires a consumed, matching Twilio/email verification code —
+          one verified code produces exactly one account.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="flow-signup">
+      <h2><span>Signup &amp; identity verification</span><span class="num">§ 01</span></h2>
+      <p class="lede">
+        Account creation is gated end-to-end by a verification code — a new account cannot be
+        created without first proving control of the phone number or email on the registration.
+      </p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>Registrant submits signup details</h4>
+          <p>Business info + a contact method (phone preferred, email fallback) is collected client-side.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>Verification code sent</h4>
+          <p>Server sends a one-time code via Twilio Verify (SMS) when configured, or falls back to
+          an on-screen "interim" code when Twilio isn't configured for the environment.</p>
+          <span class="endpoint">POST /api/auth/verify-signup-code</span></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>Code checked, verification row consumed</h4>
+          <p>On a correct code, the server marks <code>verified=1</code> on that verification row and
+          returns a <code>verificationId</code> the client must carry into registration.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Account creation, hard-gated</h4>
+          <p>Registration is rejected unless it carries a <code>verificationId</code> whose row is
+          <code>verified=1</code> and <code>consumedAt IS NULL</code>, and whose verified target
+          (phone/email) matches the registration. The row is then marked consumed — enforcing
+          "one verified code → exactly one account," with no replay.</p>
+          <span class="endpoint">POST /api/auth/register-admin</span></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">05</div>
+          <div><h4>Lead synced to HubSpot</h4>
+          <p>Registration also feeds the HubSpot sync (see §&nbsp;HubSpot) — non-blocking, doesn't
+          fail the signup if HubSpot is down.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="flow-login">
+      <h2><span>Login &amp; step-up MFA</span><span class="num">§ 02</span></h2>
+      <p class="lede">
+        Password + device trust decide whether a login completes immediately or requires a
+        second factor. This is real and currently wired — not a placeholder.
+      </p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>Credentials submitted</h4>
+          <p>Email/password checked against the account.</p>
+          <span class="endpoint">POST /api/auth/login-user</span></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>Trusted-device check</h4>
+          <p>Server checks for a valid <code>trusted_devices</code> token for this browser/device
+          (30-day lifetime, independent of session lifetime). Valid trust → session issued immediately,
+          no MFA prompt.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>No trusted device → MFA required</h4>
+          <p>Server sends a code (SMS if a phone is on file, otherwise email) and responds with
+          <code>{ mfaRequired: true, verificationId }</code> — <strong>no session is issued at this point.</strong></p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Code verified → session created</h4>
+          <p>Only this call actually creates the session and (optionally) marks the device trusted
+          for future logins.</p>
+          <span class="endpoint">POST /api/auth/verify-login-code</span></div>
+        </div>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">⚠ Recovery dead-end</div>
+        <p>A team member with no phone number on file and no access to the account email has no
+        path through step-up MFA today. Flagged in §&nbsp;Known gaps.</p>
+      </div>
+    </section>
+
+    <section id="flow-recovery">
+      <h2><span>Password recovery</span><span class="num">§ 03</span></h2>
+      <p class="lede">
+        Standard reset-by-email flow. One gap found: the reset request endpoint has no rate
+        limit.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Purpose</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><code>POST /api/auth/request-password-reset</code></td><td>Issues a reset token/email</td><td class="mono" style="color:var(--flagged)">No rate limit — see Known gaps</td></tr>
+            <tr><td><code>POST /api/auth/reset-password</code></td><td>Consumes the token, sets new password</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="flow-logout">
+      <h2><span>Sessions &amp; logout</span><span class="num">§ 04</span></h2>
+      <div class="two-col">
+        <div>
+          <h3>Session mechanics</h3>
+          <p><code>sessions</code> table: <code>token</code> (PK), <code>accountId</code>,
+          <code>memberId</code> (nullable — null for the account admin), <code>createdAt</code>,
+          <code>expiresAt</code>. 7-day lifetime, minted by <code>createSession()</code>.
+          <code>authenticate(req)</code> reads <code>Authorization: Bearer &lt;token&gt;</code>,
+          looks the row up, and lazily expires stale rows on read.</p>
+        </div>
+        <div>
+          <h3>Client-side pointers</h3>
+          <p>Per-account bearer token is stored under
+          <code>verilume_session_&lt;accountId&gt;</code> in <code>localStorage</code>. A separate
+          key, <code>verilume_active_account</code>, is the sitewide "who's currently logged in"
+          pointer — found to be set <em>inconsistently</em>
+          (<code>forgot-password.html</code>'s <code>persistSessionFor()</code> never sets it),
+          which is the likely root cause of the "logged in as the wrong account" symptom reported
+          and fixed earlier this cycle.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="twilio">
+      <h2><span>Twilio — SMS &amp; Verify</span><span class="num">§ 05</span></h2>
+      <p class="lede">Used exclusively for one-time verification codes (signup and login MFA) — not for general notifications.</p>
+
+      <h3>Configuration</h3>
+      <p>All three of the following must be set for Twilio to be considered configured
+      (<code>TWILIO_CONFIGURED</code>). If any is missing, the platform falls back to an
+      "interim" on-screen code instead of sending SMS.</p>
+      <div class="env-list">
+        <span class="env-badge">TWILIO_ACCOUNT_SID</span>
+        <span class="env-badge">TWILIO_AUTH_TOKEN</span>
+        <span class="env-badge">TWILIO_VERIFY_SERVICE_SID</span>
+      </div>
+
+      <h3>Functions</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Function</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td><code>sendVerificationCode()</code></td><td>Starts a Twilio Verify check for a phone number</td></tr>
+            <tr><td><code>checkVerificationCode()</code></td><td>Confirms the code the user submitted against Twilio</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card card--warning">
+        <div class="card-title">⚠ Interim fallback exposes the raw code</div>
+        <p>When Twilio isn't configured, the "interim" fallback code is hashed at rest, but the
+        <strong>raw code is returned directly in the live JSON API response body</strong> so the
+        frontend can display it on-screen. Acceptable for a demo/interim environment; worth a
+        second look before this fallback is ever reachable in a fully-configured production
+        account.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Production status</div>
+        <p>Twilio credentials are present in the Vercel production environment
+        (confirmed via the Aug 21 environment-variables screenshot), but as of this writing the
+        integration has not been exercised end-to-end with real credentials in production —
+        flagged as a follow-up in §&nbsp;Known gaps.</p>
+      </div>
+    </section>
+
+    <section id="hubspot">
+      <h2><span>HubSpot — CRM sync</span><span class="num">§ 06</span></h2>
+      <p class="lede">Server-side-only sync of leads/accounts into HubSpot contacts — the browser never talks to HubSpot directly.</p>
+
+      <div class="env-list">
+        <span class="env-badge">HUBSPOT_ACCESS_TOKEN</span>
+        <span class="env-badge">HUBSPOT_SEND_CUSTOM_PROPERTIES</span>
+      </div>
+
+      <h3>What triggers a sync</h3>
+      <ul>
+        <li><code>POST /api/leads</code> — new lead capture</li>
+        <li><code>POST /api/leads/enhance</code> — enriched lead data</li>
+      </ul>
+      <p>Both call <code>syncLeadToHubspot()</code> synchronously inline in the request, which
+      posts to a single HubSpot endpoint:</p>
+      <pre>POST https://api.hubapi.com/crm/v3/objects/contacts/batch/upsert</pre>
+
+      <div class="card">
+        <div class="card-title">Failure behavior</div>
+        <p>HubSpot sync never blocks or fails the user-facing flow — if the HubSpot call errors,
+        the lead/registration still succeeds. There is currently no retry logic, so a HubSpot
+        outage silently drops that sync rather than queuing it for later.</p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="isolation">
+      <h2><span>Multi-tenant data isolation</span><span class="num">§ 07 — validated</span></h2>
+      <span class="pill pill--confirmed" style="margin-bottom:14px;">Confirmed solid</span>
+      <p class="lede">
+        Requested validation: "how we protect client data from mixing with other clients."
+        Checked directly against the code, not against documentation of intent.
+      </p>
+
+      <div class="card card--confirmed">
+        <div class="card-title">Enforcement mechanism</div>
+        <p>A single function, <code>requireAccount(req, res, accountId)</code>
+        (<code>server.js</code>, line 4351), is the consistently-applied server-side gate. It is
+        called <strong>113 times</strong> across the codebase. Every account-scoped, data-touching
+        route either checks the URL-supplied <code>accountId</code> directly against the caller's
+        session, or — for child resources like <code>creative_jobs</code>, <code>team_members</code>,
+        and <code>invoices</code> — first resolves the resource's true owning <code>accountId</code>
+        from the database, and only then checks it. A client can never supply an
+        <code>accountId</code> and have it trusted at face value.</p>
+      </div>
+
+      <h3>Two legitimate exceptions</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Route</th><th>Why it's global by design</th></tr></thead>
+          <tbody>
+            <tr><td><code>/api/market-population-master*</code></td><td>Shared reference/master data, not client-owned</td></tr>
+            <tr><td><code>POST /api/leads</code></td><td>Public lead-capture endpoint, pre-account by definition</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card card--warning">
+        <div class="card-title">Enforcement layer</div>
+        <p>Isolation is <strong>100% application-layer</strong> — there is no Postgres Row-Level
+        Security (RLS) underneath it. This matches what was already documented as current-state
+        (vs. planned) in the master technical architecture doc. It's a real and working control
+        today, but it means every new account-scoped route must remember to call
+        <code>requireAccount()</code> — there's no database-level backstop if one is missed.</p>
+      </div>
+    </section>
+
+    <section id="retention">
+      <h2><span>Data retention &amp; purge on contract end</span><span class="num">§ 08 — validated</span></h2>
+      <span class="pill pill--flagged" style="margin-bottom:14px;">Not implemented</span>
+      <p class="lede">
+        Requested validation: "permanent vs. passive purge processes when contracts expire."
+        This is the most important finding in this document — the capability does not exist in
+        the running system today, despite being planned and discussed.
+      </p>
+
+      <div class="card card--flagged">
+        <div class="card-title">⚑ Nothing found in code</div>
+        <p>A direct search of <code>backend/server.js</code> and <code>frontend/ops-console.html</code>
+        turned up none of the following:</p>
+        <ul>
+          <li>Soft-delete or hard-delete on any account-level record</li>
+          <li>An account-level status field (Active / Suspended / Terminated)</li>
+          <li>A contract/subscription end-date field (e.g. <code>accountEndDate</code>)</li>
+          <li>An "export all client data" endpoint</li>
+          <li>Any retention-window or scheduled cleanup job (cron or otherwise)</li>
+        </ul>
+      </div>
+
+      <h3>What exists instead</h3>
+      <p><code>ops-console.html</code> displays an <code>ACCOUNTS</code> object with account
+      status shown in the UI — but it's a hardcoded mock, explicitly commented in the source as
+      illustrative, and is <strong>not wired to any backend endpoint</strong>. Changing a status
+      there today would change nothing about the underlying account or its data.</p>
+
+      <h3>What was planned but not built</h3>
+      <p>Account lifecycle controls (status transitions, admin-level lifecycle actions) were
+      scoped and documented on 2026-08-18, but implementation has not shipped. This gap should
+      be treated as a real product requirement, not an oversight — until it's built, there is no
+      technical mechanism to purge or export a client's data when a contract ends; any such
+      action today would be entirely manual (direct database intervention).</p>
+    </section>
+
+    <hr class="rule">
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">§ 09</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Table</th><th>Key fields</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>accounts</code></td><td><code>accountId</code> (PK)</td><td>No status or contract-end field today (see §08)</td></tr>
+            <tr><td><code>sessions</code></td><td><code>token</code> (PK), <code>accountId</code>, <code>memberId</code></td><td>7-day lifetime, lazy-expired on read</td></tr>
+            <tr><td><code>trusted_devices</code></td><td><code>accountId</code>, device token</td><td>30-day lifetime, independent of session lifetime</td></tr>
+            <tr><td><code>team_members</code></td><td><code>accountId</code>, <code>isAdmin</code></td><td>Owning account resolved before <code>requireAccount()</code> check; see §10 for the <code>isAdmin</code> gap</td></tr>
+            <tr><td><code>phone_verifications</code></td><td><code>verificationId</code>, <code>verified</code>, <code>consumedAt</code></td><td>One-time-use gate for both signup and login MFA</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">§ 10 — for product awareness</span></h2>
+      <p class="lede">
+        Surfaced by this cycle's research. None of these have been fixed yet — they're listed
+        here so the product team can prioritize, not because a fix has already shipped.
+      </p>
+
+      <div class="card card--confirmed">
+        <div class="card-title">✓ Fixed 2026-08-22 — privilege escalation via <code>isAdmin</code></div>
+        <p>Originally flagged here (2026-08-21 draft) as a live account-takeover path:
+        <code>requireAccount()</code> confirmed a caller belonged to the account but never
+        checked <code>isAdmin</code>, so any logged-in team member could self-promote,
+        demote the real admin, reissue the admin's login credentials, or invite a new
+        admin. Closed the next day with a new <code>requireAdminMember(req, res, accountId)</code>
+        (<code>server.js</code>) — re-authenticates the caller, and for a real
+        <code>memberId</code> session re-reads <code>team_members.isAdmin</code> from the
+        database on every call (never trusted from the session token, so a revoked admin
+        flag takes effect immediately); a legacy account-level login with no
+        <code>memberId</code> is treated as root-equivalent, same as <code>requireAccount()</code>
+        already did. Verified gating each of the four actions this cycle: <code>PATCH
+        /api/team/:id</code> requires it only when <code>isAdmin</code> is actually changing
+        (so a non-admin can still edit their own name/email/level); <code>DELETE
+        /api/team/:id</code>; <code>POST /api/team/:id/reissue-credentials</code>; and
+        <code>POST /api/accounts/:id/team</code> when the invite itself requests
+        <code>isAdmin:1</code>. This document sat drafted-but-undeployed for three weeks
+        (see meta above) — a reminder to redeploy a doc promptly, since a stale flagged
+        vulnerability read as still-open is its own kind of misinformation.</p>
+      </div>
+
+      <div class="card card--warning">
+        <div class="card-title">⚠ No rate limit on password-reset requests</div>
+        <p><code>POST /api/auth/request-password-reset</code> can be called without limit,
+        opening it to enumeration/abuse.</p>
+      </div>
+
+      <div class="card card--warning">
+        <div class="card-title">⚠ MFA recovery dead-end</div>
+        <p>A team member with no phone on file and no access to the account's email has no
+        documented recovery path through step-up MFA.</p>
+      </div>
+
+      <div class="card card--warning">
+        <div class="card-title">⚠ Twilio credentials unverified in production</div>
+        <p>Env vars are present in Vercel, but the integration hasn't been exercised end-to-end
+        with real credentials in production yet.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Housekeeping</div>
+        <p><code>select-tier.html</code> exists but isn't linked from anywhere on the live site.
+        A previously-noted pasted Twilio Auth Token needs rotation confirmation. Some code
+        comments reference a nav "login modal" that doesn't exist in current markup, and others
+        say <code>sessionStorage</code> where the actual calls are all <code>localStorage</code>
+        — stale comments worth a documentation pass, not functional bugs.</p>
+      </div>
+    </section>
+
+    <section id="gotchas">
+      <h2><span>Incident log — this cycle</span><span class="num">§ 11</span></h2>
+      <p class="lede">Recent production incidents touching this Product, for context on why the
+      auth path looks the way it does today. Full detail lives in the deploy runbook.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Symptom</th><th>Root cause</th><th>Resolution</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-08-21</td><td>Site-credential popup looping mid-page on <code>portal.html</code></td><td>Basic Auth not reliably reused on background <code>fetch()</code>/XHR calls</td><td>Signed session cookie minted on first success; all later requests ride the cookie</td></tr>
+            <tr><td class="mono">2026-08-21</td><td>Logout not working / wrong account shown</td><td><code>verilume_active_account</code> pointer set inconsistently across pages</td><td>Traced to <code>forgot-password.html</code>'s session-persist path</td></tr>
+            <tr><td class="mono">2026-08-21</td><td>Login/logout/every DB call 500ing</td><td>Column-casing migration auto-ran at cold start, exceeded Vercel's 30s function limit</td><td>Converted to on-demand admin endpoint with bulk pre-check</td></tr>
+            <tr><td class="mono">2026-08-21</td><td>19 columns with duplicate old/new casing</td><td><code>ensureColumn()</code> had added fresh columns rather than renaming</td><td>Old lowercase duplicates dropped, confirmed via Todd</td></tr>
+            <tr><td class="mono">2026-08-21</td><td>Admin fix-tool "Failed to fetch"</td><td>CORS preflight (<code>OPTIONS</code>) gated by the same-day Basic Auth middleware</td><td><code>OPTIONS</code> now passes through unconditionally</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">§ 12</span></h2>
+      <ol>
+        <li><strong>Build the account lifecycle/retention layer</strong> — status field, contract-end date, and an explicit purge-or-export action, wired to a real backend (not the current mock). This is the direct answer to "how do we handle data when contracts expire," and today the honest answer is "manually." Still open as of 2026-09-12 — the highest-priority remaining item in this document (the <code>isAdmin</code> gap that used to lead this list was closed 2026-08-22; see Known gaps).</li>
+        <li><strong>Add rate limiting</strong> to <code>request-password-reset</code>.</li>
+        <li><strong>Exercise Twilio end-to-end in production</strong> with real credentials before relying on it for a live client.</li>
+        <li><strong>Decide on an MFA recovery path</strong> for team members without a phone on file.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Originally drafted 2026-08-21; re-verified
+      against <code>backend/server.js</code> and <code>frontend/*.html</code> on 2026-09-12
+      after discovering this file had never actually been deployed (see meta above) — the
+      <code>isAdmin</code> privilege-escalation gap it flagged was fixed 2026-08-22 and is
+      now documented as closed. Update this document as the Product changes — it's meant to
+      be the living reference, not a point-in-time snapshot.
+    </div>
+
+  </main>
+</div>

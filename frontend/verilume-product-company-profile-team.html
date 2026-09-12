@@ -1,0 +1,399 @@
+<title>Company Profile & Team — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+</style>
+
+<div class="shell">
+
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Company Profile &amp; Team</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Company Overview &amp; Wealth Index</p>
+      <a href="#formula">The Verilume Wealth Index formula</a>
+      <a href="#flow">How a client sets it</a>
+      <a href="#consumers">Who reads it downstream</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Not yet documented</p>
+      <a href="#not-covered" class="flag">Assessment, Reputation &amp; PR, Team Roster</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#data-model">Data model reference</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#log">Decision log — this cycle</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Company Profile &amp; Team</h1>
+      <p class="doc-dek">
+        This Product group covers company and team assessments, business-profile
+        workstreams, channel-level assessments, and reputation/PR. This first edition
+        documents only the one sub-area that reached a real, verified, shipped state
+        this cycle — the <b>Verilume Wealth Index on Company Overview</b> — and says so
+        plainly rather than padding out sections for the other three, which remain
+        genuinely not yet built or not yet documented. See &sect; Not yet documented.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>frontend/assessment.html</code>, <code>frontend/portal.html</code>, <code>backend/server.js</code></span>
+        <span><b>Verified against</b> working tree, 2026-09-12</span>
+        <span><b>Status</b> Wealth Index section: built; not yet deployed (see the home page)</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">this cycle</span></h2>
+      <p class="lede">
+        Prompted directly: "I don't see the Verilume Wealth Index. The portal page
+        that is supposed to contain the information is above" (two Company Overview
+        screenshots). Checked against the real assessment/portal/backend code, not
+        against what was planned.
+      </p>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Root cause found</span>
+          <h4>The number was never sent to the backend</h4>
+          <p><code>assessment.html</code> computed a real Verilume Wealth Index client-side
+          during the Free Assessment, but <code>buildScorecardPayload()</code> only ever sent
+          the <i>derived</i> audience/wealth tri-select — never the raw target-income slider
+          value the index is computed from. The number could never be reconstructed or shown
+          anywhere after account creation.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Fixed this cycle</span>
+          <h4>Raw income now travels and persists</h4>
+          <p>New <code>accounts.wealthIndexTargetIncome</code> column, sent from the
+          assessment, editable on Company Overview, and rendered with the same formula
+          the assessment itself uses — see &sect; The Verilume Wealth Index formula.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--neutral">Working as designed</span>
+          <h4>Honest empty state, non-forcing suggestion</h4>
+          <p>An account with no income on file shows a plain "not set yet" note, never a
+          fabricated number; a Luxury/Mass-Market suggestion nudges the slider without
+          silently overwriting a value the client already chose.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Not covered here</span>
+          <h4>Three sub-areas remain undocumented</h4>
+          <p>Assessment &amp; Scoring Engine, Reputation &amp; PR Monitoring, and Team Roster
+          &amp; Org Profile are real gaps in documentation, not confirmed-absent features —
+          see &sect; Not yet documented.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="formula">
+      <h2><span>The Verilume Wealth Index formula</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">
+        One formula, implemented twice — once in <code>assessment.html</code> (built
+        earlier, documented in <code>cxmedia-assessment-step2-step5-rebuild-2026-08-31.md</code>
+        in the Claude project) and ported byte-identical into <code>portal.html</code> this
+        cycle so Company Overview shows the exact same number the Free Assessment did, not
+        an approximation.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Step</th><th>What it does</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">nationalAverageIncome()</td><td>Weighted-mean U.S. household income off 16 Census income brackets (<code>INCOME_BRACKET_BOUNDS</code>/<code>INCOME_BRACKETS_FALLBACK_SHARES</code>) — &asymp;$97,900 off the fallback shares</td><td>portal.html's port is fallback-only (no live Census call); assessment.html can also use live data</td></tr>
+            <tr><td class="mono">generationWealthMultiplier()</td><td>Average of <code>GENERATION_WEALTH_INDEX</code> (Fed SCF-sourced) across the account's selected generation(s), or 1.0 for "general"</td><td>Gen Z 0.20, Millennial 0.47, Gen X 1.32, Boomer 1.82, Silent 1.74 — Gen Alpha/Beta/Greatest are estimate/placeholder values, flagged as such in the source</td></tr>
+            <tr><td class="mono">verilumeWealthIndex(targetIncome)</td><td><code>round((targetIncome / nationalAverageIncome()) &times; generationWealthMultiplier() &times; 100)</code></td><td>100 = the average U.S. household; deliberately uncapped, not clamped to a tier's midpoint</td></tr>
+            <tr><td class="mono">wealthIndexLabel(index)</td><td>&ge;200 High Net-Worth/Luxury; &ge;130 Wealthy; &ge;70 Mainstream Affluent; else Value-Conscious</td><td>Display label only</td></tr>
+            <tr><td class="mono">deriveWealthTiersFromIndex(index)</td><td>Maps the 4-band index back to the 3-key <code>hnw</code>/<code>wealthy</code>/<code>middle</code> shape every existing downstream consumer expects</td><td>The bridge between the new numeric index and the pre-existing tri-select — see &sect; Who reads it downstream</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Two independent implementations, kept in sync by discipline, not by code sharing</div>
+        <p><code>assessment.html</code> and <code>portal.html</code> are two separate,
+        unbundled front-end files with no shared module system — the formula was ported
+        by hand and confirmed byte-identical at build time, but nothing prevents the two
+        copies from drifting apart on a future edit to one file only. See &sect; Known gaps.</p>
+      </div>
+    </section>
+
+    <section id="flow">
+      <h2><span>How a client sets it</span><span class="num">&sect; 02</span></h2>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>Free Assessment — household income slider</h4>
+          <p>A visitor sets a target household income (<code>state.targetIncome</code>); the
+          assessment computes and shows the index live during the flow.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>Sent and persisted at account creation</h4>
+          <p><code>buildScorecardPayload()</code> now includes <code>wealthIndexTargetIncome:
+          state.targetIncome</code> alongside the existing <code>audience</code>/<code>wealth</code>
+          fields; the backend stores it on the new <code>accounts.wealthIndexTargetIncome</code>
+          column (REAL, nullable — no value means "not set," never a fabricated 0).</p>
+          <span class="endpoint">POST /api/accounts</span></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>Shown and editable on Company Overview</h4>
+          <p>A "Verilume Wealth Index" block ($15,000&ndash;$250,000 slider, live-recomputed
+          number, band label, and a non-forcing Luxury/Mass-Market suggestion) renders inside
+          the existing Company Overview card. An account with no value on file shows an
+          explicit empty-state note instead of a guessed number.</p>
+          <span class="endpoint">renderCpWealthIndex() / cpUpdateWealthIndexSlider() / cpApplyWealthIndexSuggestion()</span></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Saved back on profile update</h4>
+          <p><code>saveCompanyProfile()</code> sends <code>wealthIndexTargetIncome</code> in the
+          same PATCH as the rest of Company Overview; the backend's merge-update convention
+          keeps the existing value when the field isn't present in a given request.</p>
+          <span class="endpoint">POST /api/accounts/:id/profile</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="consumers">
+      <h2><span>Who reads it downstream</span><span class="num">&sect; 03</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Consumer</th><th>What it reads</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Store Trade Area — Qualified households</td><td><code>account.wealthIndexTargetIncome</code> directly, via a server-side port of the same formula (<code>generationWealthMultiplierBackend()</code>/<code>wealthIndexBandBackend()</code>)</td><td>As of 2026-09-12, compares each ZIP's own real Wealth Index against this numeric account value directly — see the Media Plan &amp; Budget product doc's decision log</td></tr>
+            <tr><td>Copywriting — Voice Guide / Voice Contest / Campaign Copy grounding</td><td>The derived <code>account.wealth</code> tri-select (via <code>WEALTH_TIER_LABELS_FOR_COPY</code>), not the raw income number</td><td>Unchanged by this cycle's work — see the Copywriting product doc</td></tr>
+            <tr><td>Company Profile display elsewhere in the Portal</td><td><code>account.wealth</code> tri-select</td><td>Populated since well before this cycle (Round 19) — this cycle only added the numeric index alongside it, it did not replace the tri-select</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Two numbers, deliberately kept both</div>
+        <p>The numeric Verilume Wealth Index (this section) and the derived HNW/Wealthy/
+        Middle tri-select are both real, both persisted, and both still in active use —
+        per direct instruction, the tri-select was never meant to be removed, only
+        supplemented with the more precise number where precision earns its place (Store
+        Trade Area's Qualified calculation). Anywhere else that read the tri-select before
+        this cycle still does.</p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="not-covered">
+      <h2><span>Not yet documented — for product awareness</span><span class="num">&sect; 04</span></h2>
+      <p class="lede">
+        These are real gaps in documentation coverage, called out plainly rather than
+        left implicit. None have been checked against the running code for this
+        document; each needs its own research pass before it can be marked either
+        "built" or "not built."
+      </p>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Assessment &amp; Scoring Engine</div>
+        <p>The free assessment itself, activation routing into Portal sections, and
+        continuous re-rating/score-trend tracking. Substantial and load-bearing — the
+        Wealth Index work in this doc touches only one small slice of
+        <code>assessment.html</code> (the income slider); the rest of the assessment/
+        scoring engine is out of scope here.</p>
+      </div>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Reputation &amp; PR Monitoring</div>
+        <p>Reach measurement and reputation/media-listening surfaces. Note: the Licensed
+        Integrations doc already confirms no live SEO/AEO/GEO or press-monitoring vendor
+        is connected — the Portal's Enterprise-gated version of this is demo-only. Whether
+        anything else exists under this heading is unverified.</p>
+      </div>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Team Roster &amp; Org Profile</div>
+        <p>Team bios/org display for Company Profile — distinct from team-member access
+        control (login, <code>isAdmin</code>), which is covered under Data Management &gt;
+        Registration &amp; Account Management. The Team &amp; Org Chart feature
+        (<code>GET/POST /api/accounts/:id/team</code>) exists in the code per that doc, but
+        whether it satisfies "Team Roster &amp; Org Profile" as a Company Profile &amp; Team
+        deliverable hasn't been assessed from that angle.</p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">&sect; 05</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>accounts.wealthIndexTargetIncome</code></td><td>REAL, nullable</td><td>Added this cycle; raw household-income slider value the Verilume Wealth Index is computed from</td></tr>
+            <tr><td><code>accounts.audience</code></td><td>TEXT (comma-joined keys)</td><td>Selected generation(s) — pre-existing</td></tr>
+            <tr><td><code>accounts.wealth</code></td><td>TEXT (comma-joined keys)</td><td>Derived HNW/Wealthy/Middle tri-select — pre-existing since Round 19, unchanged by this cycle</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 06 — for product awareness</span></h2>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Formula exists in two unbundled files</div>
+        <p><code>assessment.html</code> and <code>portal.html</code> each carry their own
+        copy of the Wealth Index formula. A future change to one (a new income bracket, a
+        revised generation multiplier) must be manually mirrored to the other or the two
+        surfaces will quietly disagree.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No backfill for pre-existing accounts</div>
+        <p>Any account whose assessment ran before this cycle has no
+        <code>wealthIndexTargetIncome</code> on file and shows the honest empty state
+        everywhere that reads it (Company Overview, Store Trade Area Qualified) until
+        someone sets it manually on Company Overview. No bulk backfill tool exists.</p>
+      </div>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Three of four Company Profile &amp; Team sub-areas unresearched</div>
+        <p>See &sect; Not yet documented — this is the largest open item in this document,
+        not a footnote.</p>
+      </div>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log — this cycle</span><span class="num">&sect; 07</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Ask</th><th>Resolution</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-09-12</td><td>Two Company Overview screenshots (Company Overview page, Media CX Index panel): "The generations and wealth selections are included on the company profile page in the portal. I don't see the Verilume Wealth index. The portal page that is supposed to contain the information is above. Go ahead and do what you need to do to add it."</td><td>Traced the root cause (income never sent from the assessment — see &sect; Headline findings), added <code>wealthIndexTargetIncome</code> end to end (assessment payload, backend column, Company Overview UI, save path), ported the formula byte-identical into portal.html. This document was written the same cycle, in real, verified state — not backdated.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 08</span></h2>
+      <ol>
+        <li><strong>Research and document Assessment &amp; Scoring Engine, Reputation &amp; PR Monitoring, and Team Roster &amp; Org Profile</strong> as their own sections or their own docs — the largest open item in this Product group.</li>
+        <li><strong>Consider a shared formula module</strong> (or at minimum a single source-of-truth comment block referenced by both files) so the Wealth Index formula can't silently drift between assessment.html and portal.html.</li>
+        <li><strong>Decide whether a backfill pass is worth building</strong> for pre-existing accounts with no household income on file, or whether the honest-empty-state posture is the permanent answer.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. First edition, written 2026-09-12, scoped
+      deliberately narrow to the one sub-area verified this cycle. Update this document as
+      the Product changes, and extend it — don't replace it — once the other three
+      sub-areas are researched.
+    </div>
+
+  </main>
+</div>

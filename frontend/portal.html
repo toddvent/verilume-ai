@@ -4092,6 +4092,35 @@
       <div id="voiceHistoryList"></div>
     </div>
 
+    <!-- 2026-09-12 — AI Brain Transparency, first test on the Voice module.
+         Per direct instruction: "I want to show clients our observations and
+         how it impacts outputs using the Voice module as the first test.
+         It's ok if we observe something and tell clients that it doesn't
+         impact a recommendation. It will also help us value the features we
+         build." Distinct from the Version history card above: that card is
+         about YOUR approved Voice Guide text over time; this one is about
+         WHAT THE SYSTEM OBSERVED the last time a draft was generated, and
+         whether each observation actually shaped the draft — including
+         honest "on file, but didn't change this draft" cases. Populated two
+         ways: immediately from generateVoiceDraft()'s response right after a
+         new draft is generated (see that function's transparency handling),
+         and loaded fresh on page entry via vtLoadTransparency() below (GET
+         .../voice-transparency) so a returning user sees the last batch
+         without regenerating. -->
+    <div id="voiceTransparencyCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:24px 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">What we observed — and what it changed</p>
+      <div class="cfd cfd-vg">
+        <div class="cfd-standup" style="margin-bottom:0;">
+          <div class="cfd-avatar">✦</div>
+          <div class="cfd-bubble">
+            <strong>How to read this:</strong> each row below is one thing the system looked at while drafting your Voice Guide — on file or not, and whether it actually changed the last draft. We show the honest answer either way, including when something was on file but made no real difference.
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="voiceTransparencyFlag" style="margin-bottom:10px;"></div>
+      <div id="voiceTransparencyList"></div>
+    </div>
+
     <h2 style="margin:32px 0 4px;">Colors &amp; Fonts</h2>
     <p class="lede" style="margin:0 0 16px;">Logo, palette, and typography — the visual half of brand identity, alongside Voice above.</p>
 
@@ -9330,7 +9359,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-trade-area-numeric-wealth-match';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-transparency-campaign-copy';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -44734,6 +44763,12 @@ async function cmpGenerateAiDraft(){
     });
     const data = await resp.json();
     if (data.copy){
+      // 2026-09-12 — AI Brain Transparency, Campaign Copy (second surface,
+      // extending the Voice Guide first test — see cxmedia-product-
+      // copywriting.html §12 decision log). This panel is rebuilt fresh
+      // each generation (unlike Voice Guide's static card), so its
+      // transparency list/flag elements are created here and rendered via
+      // the shared vtRenderTransparency() with their own element ids.
       panel.innerHTML = `
         <p class="hint" style="margin-bottom:6px;"><strong>AI-generated draft</strong> — review before using; this replaces nothing until you copy it into the field above.</p>
         <textarea readonly rows="10" style="width:100%;font-family:inherit;">${escapeHtml(data.copy)}</textarea>
@@ -44741,7 +44776,18 @@ async function cmpGenerateAiDraft(){
           <button type="button" class="btn-primary" onclick="document.getElementById('cmpLongFormCopy').value = ${JSON.stringify(data.copy)}; cmpUnapproveMsgField('longform'); cmpRenderAllMsgGates();">Use this draft →</button>
         </div>
         ${data.sourcesUsed && data.sourcesUsed.length ? `<p class="hint" style="margin-top:6px;">Real brand sources it drew on: ${cmpFormatQuotedList(data.sourcesUsed)}.</p>` : ''}
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-hairline);">
+          <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">What we observed — and what it changed</p>
+          <div class="hint" id="cmpTransparencyFlag" style="margin-bottom:8px;"></div>
+          <div id="cmpTransparencyList"></div>
+        </div>
       `;
+      vtRenderTransparency(
+        Array.isArray(data.transparency) && data.transparency.length
+          ? { available: true, generatedAt: new Date().toISOString(), items: data.transparency }
+          : { available: false, note: data.transparencyNote || null },
+        { listId: 'cmpTransparencyList', flagId: 'cmpTransparencyFlag' }
+      );
     } else {
       panel.innerHTML = `<p class="hint">${escapeHtml(data.note || 'AI draft unavailable.')}</p>`;
     }
@@ -48433,6 +48479,17 @@ async function generateVoiceDraft(){
         gapsPanel.classList.remove('visible');
       }
     }
+
+    // 2026-09-12 — AI Brain Transparency. Render straight off this same
+    // response (already persisted server-side by attachVoiceTransparency())
+    // instead of a second round trip to GET .../voice-transparency —
+    // vtRenderTransparency() takes the same {available, generatedAt, items}
+    // shape either way, so normalize this response into it here.
+    if (Array.isArray(data.transparency) && data.transparency.length){
+      vtRenderTransparency({ available: true, generatedAt: new Date().toISOString(), items: data.transparency });
+    } else {
+      vtRenderTransparency({ available: false, note: data.transparencyNote || null });
+    }
   } catch (e){
     if (status) status.textContent = `AI draft request failed: ${e.message || 'network error'}.`;
   } finally {
@@ -48716,6 +48773,9 @@ function renderVoiceStep(){
   // load-on-render-of-the-page-that-owns-it convention as
   // cpLoadTrainingDigestHistory() inside renderCompanyProfileStep().
   vgLoadHistory();
+  // 2026-09-12 — AI Brain Transparency. Same load-on-render-of-the-page-
+  // that-owns-it convention as vgLoadHistory() immediately above.
+  vtLoadTransparency();
   renderStyleAssetsStep();
   // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
   // dispatch-scoping-2026-09-12.md — a returning user who already has a
@@ -49613,6 +49673,77 @@ async function vgSetDecision(contributionId, status){
     await vgLoadHistory();
     if (typeof loadAccountData === 'function') loadAccountData();
   } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
+}
+
+// 2026-09-12 — AI Brain Transparency (client-facing, Voice module first
+// test). GET .../voice-transparency, same load-on-render convention as
+// vgLoadHistory() above. Called on Voice-step entry (renderVoiceStep()) so
+// a returning user sees the last batch without regenerating; also called
+// directly with an already-fetched payload from generateVoiceDraft()'s own
+// response (see that function) so a fresh draft's observations show up
+// immediately without a second round trip.
+async function vtLoadTransparency(){
+  const el = document.getElementById('voiceTransparencyList');
+  if (!el || !state.companyId) return;
+  if (dataSourceLabel !== 'backend'){
+    el.innerHTML = '<p class="hint">Requires a real backend account — no backend record for this session.</p>';
+    return;
+  }
+  el.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-transparency`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load this right now.</p>'; return; }
+    const data = await resp.json();
+    vtRenderTransparency(data);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load this right now.</p>'; }
+}
+
+// Renders {available, generatedAt, items[]} — same shape whether it comes
+// from GET .../voice-transparency (vtLoadTransparency above) or straight
+// off generateVoiceDraft()'s response (data.transparency/transparencyNote,
+// normalized into this shape there). Each item: signalLabel, hadSignal,
+// hadImpact, clientText (<=300-char generative sentence from the backend —
+// never rewritten or truncated further here). hadImpact only means
+// something when hadSignal is true; an item not on file always reads as
+// "not on file," never as "no impact."
+// 2026-09-12 — generalized (via opts.listId/opts.flagId, both defaulting to
+// the original Voice Guide element ids for backward compatibility) so the
+// same renderer serves every AI Brain Transparency surface — Campaign Copy
+// added this round (see cmpGenerateAiDraft() below), which builds its
+// panel dynamically rather than using a static card, so it passes its own
+// element ids.
+function vtRenderTransparency(data, opts){
+  opts = opts || {};
+  const el = document.getElementById(opts.listId || 'voiceTransparencyList');
+  const flag = document.getElementById(opts.flagId || 'voiceTransparencyFlag');
+  if (!el) return;
+  if (!data || !data.available || !Array.isArray(data.items) || !data.items.length){
+    el.innerHTML = '<p class="hint">Nothing to show yet — generate a Voice Draft above and we\'ll show what was observed and what it changed.</p>';
+    if (flag) flag.textContent = data && data.note ? data.note : '';
+    return;
+  }
+  if (flag){
+    flag.textContent = data.generatedAt ? `From the draft generated ${new Date(data.generatedAt).toLocaleString()}.` : '';
+  }
+  el.innerHTML = data.items.map(item => {
+    const onFile = !!item.hadSignal;
+    const impacted = onFile && !!item.hadImpact;
+    let badge;
+    if (!onFile){
+      badge = '<span style="color:var(--muted);">Not on file</span>';
+    } else if (impacted){
+      badge = '<span style="color:var(--cx);font-weight:600;">On file — shaped this draft</span>';
+    } else {
+      badge = '<span style="color:var(--muted);">On file — no impact on this draft</span>';
+    }
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(item.signalLabel || item.signalKey || 'Signal')}</p>
+        ${badge}
+      </div>
+      <p style="font-size:0.8125rem;color:var(--ink);margin:6px 0 0;">${escapeHtml(item.clientText || '')}</p>
+    </div>`;
+  }).join('');
 }
 
 function cpSetIndustry(value){

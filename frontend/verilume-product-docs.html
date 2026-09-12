@@ -129,9 +129,21 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <div class="meta-row">
       <span><b>Owner</b> Todd Brown</span>
       <span><b>Audience</b> Product, engineering leadership, future CTO onboarding</span>
-      <span><b>Updated</b> 2026-08-27</span>
+      <span><b>Updated</b> 2026-09-12</span>
     </div>
   </header>
+
+  <div class="card card--warning">
+    <div class="card-title">&#9888; Two of these doc files were built and delivered, but never actually deployed</div>
+    <p>Found during this pass: <code>registrationaccountmanagementproduct.html</code> and
+    <code>verilume-product-media-plan-budget.html</code> exist in this working tree (and were
+    delivered as files) but were never pasted into GitHub, so they 404 on the live
+    <code>/docs</code> site even though this home page links to them as "Documented." Both
+    were re-verified against current code this pass and are current as written — they just
+    need to actually be copied in. The Registration &amp; Account Management doc also had a
+    stale finding: a privilege-escalation gap it flagged as open was fixed weeks ago and has
+    now been corrected in the doc itself.</p>
+  </div>
 
   <div class="card card--confirmed">
     <div class="card-title">Two boundary calls made explicit, not silently decided</div>
@@ -191,11 +203,11 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <div class="group-head"><span class="group-num">04</span><h2>Marketing Budgets, Campaigns &amp; Analysis</h2></div>
     <p class="group-dek">Campaign Management, Media Plan &amp; Budget, the CMO Dashboard, and portal-wide analytics.</p>
     <div class="product-grid">
-      <a class="product-card disabled" href="#">
+      <a class="product-card" href="verilume-product-media-plan-budget.html">
         <div class="pc-group">Marketing &amp; Analysis</div>
         <h3>Media Plan &amp; Budget</h3>
-        <p>Campaign budgeting, channel mix, and the Media Plan / Budget architecture.</p>
-        <span class="pill pill--neutral">Not yet documented</span>
+        <p>Plan Setup front door, budget upload &amp; category mapping, the Manual Media Plan wizard (budget → stage weighting → channel mix → monthly curve), International scope, Active Channels gate, and the reporting view.</p>
+        <span class="pill pill--confirmed">Documented</span>
       </a>
 <a class="product-card disabled" href="#">
         <div class="pc-group">Marketing &amp; Analysis</div>
@@ -209,6 +221,12 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <div class="group-head"><span class="group-num">05</span><h2>Company Profile &amp; Team</h2></div>
     <p class="group-dek">Company and team assessments, business profile workstreams, channel-level assessments, reputation management and PR.</p>
     <div class="product-grid">
+      <a class="product-card" href="verilume-product-company-profile-team.html">
+        <div class="pc-group">Company Profile &amp; Team</div>
+        <h3>Company Overview &amp; Verilume Wealth Index</h3>
+        <p>The numeric Wealth Index formula, how a client sets it on the Free Assessment and edits it on Company Overview, and who reads it downstream (Store Trade Area's Qualified households). Deliberately narrow first edition — the other three cards below remain genuinely undocumented.</p>
+        <span class="pill pill--confirmed">Documented</span>
+      </a>
       <a class="product-card disabled" href="#">
         <div class="pc-group">Company Profile &amp; Team</div>
         <h3>Assessment &amp; Scoring Engine</h3>

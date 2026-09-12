@@ -238,6 +238,7 @@
   <div class="topnav-inner">
     <div class="wordmark"><b>Verilume</b><span class="sub">Ops Console</span></div>
     <div class="nav-actions">
+      <a href="verilume-product-docs.html" target="_blank" rel="noopener" class="single-admin-note" style="text-decoration:none;color:inherit;">Product Docs &#8599;</a>
       <span class="single-admin-note">Single-admin mode — multi-staff roles &amp; audit log are future work</span>
     </div>
   </div>
@@ -362,6 +363,54 @@
           <button class="btn danger" onclick="clearVoiceGuideMemory()">Clear Voice Guide Memory</button>
         </div>
         <div id="voiceGuideClearResult" style="flex:1 1 auto;"></div>
+      </div>
+    </div>
+
+    <!-- 2026-09-12 — AI Brain Transparency, value rollup. Per direct
+         instruction: "It will also help us value the features we build."
+         Platform-wide (not per-account), so it lives here alongside
+         Platform Integration Status rather than in a per-account workspace
+         tab. Reads the new GET /api/ops/ai-brain-transparency-rollup (same
+         ADMIN_API_TOKEN gate as the other Staff-only modules on this page),
+         which aggregates every transparency batch for one surface
+         (?contextType=) across every account: for each input signal, how
+         often it was actually on file for an account, and — of the times
+         it was on file — how often it actually changed the generated
+         output. That second number is the real "is this feature worth
+         building further" signal; the first is just adoption/data-
+         completeness. Client-facing panels this rolls up from live on the
+         Voice Guide page and the Campaign Copy AI-draft panel in the
+         Portal. Surface dropdown added 2026-09-12 when Campaign Copy
+         became the second surface — Voice Contest and PR/Corporate Comm
+         are listed too (matching AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES on
+         the backend) even before they have a real generation path wired
+         in, so the rollup honestly reports "no data yet" for those rather
+         than the dropdown silently omitting them. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>AI Brain Transparency — Value Rollup <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Across every account's generations for one surface: how often each input signal was actually on file, and — of the times it was on file — how often it actually changed the generated output. Low impact-of-on-file for a signal we spend real effort maintaining is the concrete "is this worth building further" answer this was built to surface.</p>
+      <div class="field-row" id="transparencyRollupAuthRow">
+        <div>
+          <label>Surface</label>
+          <select id="transparencyRollupContextType">
+            <option value="voice_guide">Voice Guide</option>
+            <option value="campaign_copy">Campaign Copy</option>
+            <option value="voice_contest">Voice Contest (not built yet)</option>
+            <option value="pr_corp_comm">PR / Corporate Comm (not built yet)</option>
+          </select>
+        </div>
+        <div>
+          <label>Admin token</label>
+          <input type="text" id="transparencyRollupAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkTransparencyRollup()">Check rollup →</button>
+        </div>
+      </div>
+      <div id="transparencyRollupError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="transparencyRollupResult" style="display:none;">
+        <div class="proto-note" id="transparencyRollupSummary" style="margin-bottom:12px;"></div>
+        <div id="transparencyRollupList"></div>
       </div>
     </div>
 
@@ -706,7 +755,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-trade-area-numeric-wealth-match';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-transparency-campaign-copy';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1622,6 +1671,67 @@ async function checkIntegrationStatus(){
     resultEl.style.display = 'block';
   } catch (e){
     errEl.textContent = 'Could not reach the backend to check integration status.';
+    errEl.style.display = 'block';
+    resultEl.style.display = 'none';
+  }
+}
+
+// AI Brain Transparency — Value Rollup — 2026-09-12, generalized the same
+// day Campaign Copy became the second surface. Same admin-token-gated,
+// no-auto-fire posture as checkIntegrationStatus() above. Reads GET
+// /api/ops/ai-brain-transparency-rollup?contextType=..., which aggregates
+// every transparency batch for the selected surface platform-wide.
+// onFileRate is adoption/data-completeness (does this account have this
+// data on file at all); impactRateOfOnFile is the actual "did it change
+// the output when we had it" number — the one that answers "is this worth
+// building further."
+async function checkTransparencyRollup(){
+  const token = document.getElementById('transparencyRollupAdminToken').value.trim();
+  const contextType = document.getElementById('transparencyRollupContextType').value;
+  const contextLabel = document.getElementById('transparencyRollupContextType').selectedOptions[0].textContent.replace(' (not built yet)', '');
+  const errEl = document.getElementById('transparencyRollupError');
+  const resultEl = document.getElementById('transparencyRollupResult');
+  errEl.style.display = 'none';
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment to check the rollup.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/ops/ai-brain-transparency-rollup?contextType=${encodeURIComponent(contextType)}`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't check the rollup (${resp.status}).`;
+      errEl.style.display = 'block';
+      resultEl.style.display = 'none';
+      return;
+    }
+    const signals = data.signals || [];
+    document.getElementById('transparencyRollupSummary').textContent =
+      signals.length
+        ? `${contextLabel}: ${data.totalBatches || 0} generation${data.totalBatches === 1 ? '' : 's'} observed, across ${data.totalAccounts || 0} account${data.totalAccounts === 1 ? '' : 's'}.`
+        : `No ${contextLabel} drafts have been generated with AI Brain Transparency enabled yet.`;
+    document.getElementById('transparencyRollupList').innerHTML = signals.length
+      ? signals.slice().sort((a, b) => b.impactRateOfOnFile - a.impactRateOfOnFile).map(s => {
+          const impactColor = s.impactRateOfOnFile >= 60 ? '#1a7a4c' : (s.impactRateOfOnFile >= 25 ? '#8a6d1a' : '#a3312a');
+          return `
+            <div class="integ-row">
+              <div>
+                <div class="integ-label">${s.signalLabel || s.signalKey}</div>
+                <div class="integ-detail">On file in ${s.onFileRate}% of generations (${s.onFileCount} of ${s.totalObservations}) across ${s.accountCount} account${s.accountCount === 1 ? '' : 's'}.</div>
+              </div>
+              <div class="integ-right">
+                <span style="font-weight:700;color:${impactColor};">${s.impactRateOfOnFile}%</span>
+                <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">changed the draft, of on-file</div>
+              </div>
+            </div>`;
+        }).join('')
+      : '';
+    resultEl.style.display = 'block';
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to check the rollup.';
     errEl.style.display = 'block';
     resultEl.style.display = 'none';
   }
