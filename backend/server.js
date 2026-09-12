@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-project-number-partner-dates-audience-grouping (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-legacy-website-scan-backfill (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -14034,7 +14034,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-project-number-partner-dates-audience-grouping',
+        buildStamp: '2026-09-13-legacy-website-scan-backfill',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24484,6 +24484,55 @@ handleRequest.testExports = {
   createSession
 };
 
-module.exports = handleRequest;
+// 2026-09-13 — startup backfill, per direct report: "no scanned website on
+// file" was still showing in Voice Draft's gaps panel for an account Todd
+// confirmed genuinely has an assessment-time website scan on file. Root
+// cause: the auto-create-first-contribution step at account intake (see the
+// 2026-09-12 comment there, "so websiteContextRollup's fallback ... has
+// something to find immediately") only runs at the MOMENT an account is
+// created — any account created before that fix shipped has its real scan
+// sitting inert in accounts.websiteContextJson (kept exactly for this
+// reason — "kept as an inert legacy column... rather than removed
+// outright") but no matching ai_brain_contributions row, so
+// websiteContextRollup() correctly finds nothing and the gap message was
+// technically accurate for THAT account's ledger state, even though real
+// scan content exists on the account. This is the missing other half: a
+// one-time, idempotent backfill that runs on every server start (same
+// posture as the ensureColumn calls near the top of this file — cheap to
+// re-check, safe to run repeatedly), creating the missing first
+// contribution for any account that has real legacy scan content but no
+// website_scan contribution yet. Once this has run once against an
+// account, it never touches that account again
+// (getWebsiteScanContributions(accountId).length gates it) — a human
+// Applying/Removing that backfilled contribution afterward is completely
+// unaffected by this running again on the next restart.
+//
+// Placed here, at the very end of the file rather than up near
+// createWebsiteScanContribution's own definition, because it calls
+// generateId() (via createWebsiteScanContribution), and generateId's
+// counter (`let generateIdCounter`) isn't initialized until much later in
+// this file — calling it from up there threw "Cannot access
+// 'generateIdCounter' before initialization" on every startup (caught
+// silently by this block's own per-row try/catch, so it looked like it
+// simply found nothing to backfill rather than erroring). Every function
+// this block calls is fully defined by this point in the file.
+try {
+  const legacyScanRows = db.prepare(`SELECT accountId, websiteContextJson FROM accounts
+    WHERE websiteContextJson IS NOT NULL AND websiteContextJson <> ''`).all();
+  let backfilled = 0;
+  legacyScanRows.forEach(row => {
+    try {
+      if (getWebsiteScanContributions(row.accountId).length) return; // already has one — never touch it again
+      const parsed = JSON.parse(row.websiteContextJson);
+      if (!parsed || typeof parsed !== 'object') return; // malformed legacy JSON — nothing usable to backfill from
+      createWebsiteScanContribution(row.accountId, parsed);
+      backfilled++;
+    } catch (e){ /* one bad row shouldn't block the rest of the backfill */ }
+  });
+  if (backfilled) console.log(`[startup] backfilled ${backfilled} legacy account(s) with a website_scan contribution from their assessment-time scan`);
+} catch (e){
+  console.log('[startup] website_scan backfill failed — continuing without crashing the process:', e && e.message);
+}
 
+module.exports = handleRequest;
 
