@@ -4979,6 +4979,27 @@
       </div>
     </div>
 
+    <!-- 2026-09-12 — AI Brain Contribution Ledger sourceType #6
+         (brand_writing_sample_style), closing design doc section 6b.
+         "Analyze style →" per row above calls bwsAnalyzeStyle(); this
+         module lists what's been found, with the same Reference/Apply/
+         Remove pattern every other ledger card in this file already uses. -->
+    <div class="module open" id="bwsStyleModule">
+      <div class="module-head" onclick="toggleModule('bwsStyleModule')">
+        <span class="modnum">E</span>
+        <div class="titles">
+          <span class="tag">AI Brain</span>
+          <h2>Style patterns learned</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="hint" style="margin:0 0 10px;">Real patterns Claude found in your own uploaded samples — tone, vocabulary, sentence rhythm, structure. A bonus specificity layer on top of your Voice Guide, scoped by writing purpose (a Sales pattern is never blended into PR copy). Click "Analyze style →" on a file-backed sample above to add one.</p>
+        <div id="bwsStyleFlag" class="hint" style="margin-bottom:8px;"></div>
+        <div id="bwsStyleHistory"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Book</a>
       <span class="seq-spacer"></span>
@@ -5831,6 +5852,32 @@
       <div class="sk-card-body" id="pcrBody">
         <p class="hint" style="margin-top:0;">Verilume doesn't run these three methodologies in-house — an account-wide capability like Media Mix Modeling or a DMA match-market/geo-lift test is brokered to an outside specialist. Requesting one here logs it for our team to follow up on; it doesn't turn the capability on by itself — once it's actually in place, come back to <a onclick="goToStep('measurementCoverage')" style="cursor:pointer;">Measurement Coverage</a> and check it there, since that's what every channel's confidence label reads from.</p>
         <p class="hint">Loading…</p>
+      </div>
+    </div>
+
+    <!-- 2026-09-12 — AI Brain Contribution Ledger sourceType #7
+         (model_readout_finding), closing design doc section 6a. Upload a
+         vendor audience/segmentation readout (e.g. an Epsilon Discover
+         Model PDF); Claude extracts each attribute/index row it can find,
+         real statistical significance is computed from each row's own
+         z-score, then a human reviews and applies findings with a scope
+         (creative market / demographic segment / product group /
+         brand-wide) before they reach any generation prompt. -->
+    <div class="sk-card" id="mrfCard" style="margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><h3>Model Readout Findings</h3><div class="kicker">Audience/segmentation model readouts (e.g. Epsilon Discover Model) — extracted, scored, human-scoped</div></div>
+        <div class="hicon">📊</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Upload a vendor readout document (Word or PDF). We extract every attribute/index row it actually contains, compute real statistical significance from each row's own z-score, and Claude drafts a one-line messaging implication per finding — a human then reviews, scopes (never brand-wide by default), and applies each one before it can shape any generated copy.</p>
+        <input type="file" id="mrfFileInput" accept=".pdf,.doc,.docx" onchange="mrfHandleFile(event)" style="font-size:0.8125rem;">
+        <span class="hint" style="margin-left:8px;">.pdf or .docx</span>
+        <div id="mrfUploadFlag" class="hint" style="margin-top:8px;"></div>
+        <p style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin:20px 0 10px;">Uploaded readouts</p>
+        <div id="mrfUploadsList"><p class="hint">Loading…</p></div>
+        <p style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin:20px 0 10px;">Findings — review &amp; scope</p>
+        <div id="mrfFindingsFlag" class="hint" style="margin-bottom:8px;"></div>
+        <div id="mrfFindingsList"><p class="hint">Loading…</p></div>
       </div>
     </div>
 
@@ -9359,7 +9406,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-transparency-voice-contest';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-ledger-quality-style-readouts';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26440,6 +26487,150 @@ function renderAnalyticsSetupStep(){
   }
   loadMmmCategories().then(() => { loadMmmInputs(); loadMmmCategoryMapping(); loadMmmReadiness(); });
   pcrLoad();
+  mrfLoadUploads();
+  mrfLoadFindings();
+}
+
+// ---------- Model Readout Findings (AI Brain Contribution Ledger
+// sourceType #7, 2026-09-12) ----------
+// Reads a file into a base64 data URI client-side, same FileReader pattern
+// every other upload in this file already uses (logo, style assets, brand
+// writing samples), then POSTs it through the shared, scanned upload
+// pipeline with purpose 'model_readout'.
+function mrfHandleFile(evt){
+  const file = evt.target.files && evt.target.files[0];
+  const flag = document.getElementById('mrfUploadFlag');
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    if (flag) flag.textContent = 'Uploading & scanning…';
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/uploads`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: 'model_readout', filename: file.name, dataUrl: reader.result, uploadedBy: state.userName || '' })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok){ if (flag) flag.textContent = data.error || (data.status ? `Upload rejected: ${data.status}` : 'Upload failed.'); return; }
+      if (flag) flag.textContent = `Uploaded "${file.name}" — click "Extract findings →" below.`;
+      const input = document.getElementById('mrfFileInput'); if (input) input.value = '';
+      mrfLoadUploads();
+    } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not upload.'; }
+  };
+  reader.readAsDataURL(file);
+}
+async function mrfLoadUploads(){
+  const el = document.getElementById('mrfUploadsList');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/model-readouts`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load uploaded readouts right now.</p>'; return; }
+    const data = await resp.json();
+    const uploads = data.uploads || [];
+    if (!uploads.length){ el.innerHTML = '<p class="hint">No readouts uploaded yet.</p>'; return; }
+    el.innerHTML = uploads.map(u => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line-hairline);border-radius:8px;padding:8px 12px;margin-bottom:6px;flex-wrap:wrap;">
+      <div>
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(u.originalFilename || u.id)}</p>
+        <p class="hint" style="margin:2px 0 0;">${u.status === 'accepted' ? `${u.findingCount} finding(s) extracted` : `Upload status: ${escapeHtml(u.status)}`}</p>
+      </div>
+      ${u.status === 'accepted' ? `<button type="button" class="btn-ghost" onclick="mrfExtract('${u.id}')">${u.findingCount ? 'Re-extract' : 'Extract findings →'}</button>` : ''}
+    </div>`).join('');
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load uploaded readouts.</p>'; }
+}
+async function mrfExtract(uploadedFileId){
+  const flag = document.getElementById('mrfFindingsFlag');
+  if (flag) flag.textContent = 'Extracting findings — this can take a few seconds…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/model-readouts/${encodeURIComponent(uploadedFileId)}/extract`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (flag) flag.textContent = data.error || 'Extraction failed.'; return; }
+    if (flag) flag.textContent = data.note || `Extracted ${(data.findings || []).length} finding(s) — see the list below.`;
+    mrfLoadUploads();
+    mrfLoadFindings();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not extract.'; }
+}
+async function mrfLoadFindings(){
+  const el = document.getElementById('mrfFindingsList');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/model-readout-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load findings right now.</p>'; return; }
+    const data = await resp.json();
+    mrfRenderFindings(data.contributions || [], data.scopeTypes || ['creative_market', 'demographic_segment', 'product_group', 'brand_wide']);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load findings.</p>'; }
+}
+function mrfRenderFindings(contributions, scopeTypes){
+  const el = document.getElementById('mrfFindingsList');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No findings yet — upload a readout above and extract it.</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return `<span style="color:var(--cx);font-weight:600;">Applied — scope: ${escapeHtml((c.scopeType || '').replace('_',' '))}: ${escapeHtml(c.scopeValue || '')}</span>`;
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed</span>';
+    return '<span style="color:var(--muted);">Reference only — not yet scoped/applied</span>';
+  };
+  el.innerHTML = contributions.map(c => {
+    const f = c.content || {};
+    const safeId = escapeHtml(c.id);
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(f.attributeLabel || f.attributeCategory || 'Finding')}</p>
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
+      </div>
+      <p class="hint" style="margin:4px 0 0;">${escapeHtml(f.attributeCategory || '')}${f.index != null ? ` — index ${escapeHtml(String(f.index))}` : ''}${f.confidenceLabel ? ` — ${escapeHtml(f.confidenceLabel)} statistical confidence${f.pValue != null ? ` (p=${Number(f.pValue).toFixed(3)})` : ''}` : ''}</p>
+      ${f.messagingImplication ? `<p style="font-size:0.8125rem;color:var(--text);margin:6px 0 0;">${escapeHtml(f.messagingImplication)}</p>` : ''}
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="mrfSetDecision('${safeId}','reference')">Reference</button>
+        <select id="mrfScopeType-${safeId}" style="font-size:0.6875rem;padding:3px 6px;">${scopeTypes.map(st => `<option value="${escapeHtml(st)}"${c.scopeType === st ? ' selected' : ''}>${escapeHtml(st.replace('_',' '))}</option>`).join('')}</select>
+        <input type="text" id="mrfScopeValue-${safeId}" placeholder="e.g. Warm Water" value="${escapeHtml(c.scopeValue || '')}" style="font-size:0.6875rem;padding:3px 6px;width:140px;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="mrfApply('${safeId}')">Apply with this scope</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mrfSetDecision('${safeId}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function mrfSetDecision(contributionId, status, scopeType, scopeValue){
+  const flag = document.getElementById('mrfFindingsFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why should this finding be excluded? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/model-readout-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag, scopeType, scopeValue })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    if (flag) flag.textContent = `Saved — marked "${status}".`;
+    await mrfLoadFindings();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
+}
+// "Apply with this scope" reads the scope type/value fields rendered next
+// to this specific finding (mrfRenderFindings above) rather than prompting
+// for them — a finding is never applied brand-wide by default (backend
+// enforces this too), so both fields must have a real value here.
+function mrfApply(contributionId){
+  const flag = document.getElementById('mrfFindingsFlag');
+  const scopeType = (document.getElementById(`mrfScopeType-${contributionId}`) || {}).value;
+  const scopeValue = ((document.getElementById(`mrfScopeValue-${contributionId}`) || {}).value || '').trim();
+  if (!scopeValue){ if (flag) flag.textContent = 'Enter a scope value (e.g. a product group or segment name) before applying.'; return; }
+  mrfSetDecision(contributionId, 'applied', scopeType, scopeValue);
 }
 
 /* ---------- Website Traffic Analysis (GA4 live pull, round 91) ----------
@@ -28065,6 +28256,91 @@ function bwsInit(){
   bwsPopulateCategorySelects();
   bwsResetForms({ clearStatus: true });
   bwsLoadLibrary();
+  bwsLoadStyleHistory();
+}
+
+// 2026-09-12 — AI Brain Contribution Ledger sourceType #6. Runs style
+// analysis on one file-backed sample (POST .../analyze-style), then
+// refreshes the Style patterns learned list below so the new finding
+// shows up immediately.
+async function bwsAnalyzeStyle(sampleId){
+  const flag = document.getElementById('bwsStyleFlag');
+  if (flag) flag.textContent = 'Analyzing…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/${encodeURIComponent(sampleId)}/analyze-style`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (flag) flag.textContent = data.error || 'Style analysis failed.'; return; }
+    if (flag) flag.textContent = 'Saved — see "Style patterns learned" below.';
+    bwsLoadStyleHistory();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not analyze this sample.'; }
+}
+async function bwsLoadStyleHistory(){
+  const el = document.getElementById('bwsStyleHistory');
+  if (!el || !state.companyId) return;
+  el.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-sample-style-decisions`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Couldn\'t load style patterns right now.</p>'; return; }
+    const data = await resp.json();
+    bwsRenderStyleHistory(data.contributions || []);
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable — couldn\'t load style patterns.</p>'; }
+}
+function bwsRenderStyleHistory(contributions){
+  const el = document.getElementById('bwsStyleHistory');
+  if (!el) return;
+  if (!contributions.length){
+    el.innerHTML = '<p class="hint">No style patterns analyzed yet — click "Analyze style →" on a file-backed sample above.</p>';
+    return;
+  }
+  const statusBadge = c => {
+    if (c.status === 'applied') return '<span style="color:var(--cx);font-weight:600;">Applied — actively feeding your AI-drafted copy</span>';
+    if (c.status === 'removed') return '<span style="color:var(--advocacy);font-weight:600;">Removed</span>';
+    return '<span style="color:var(--muted);">Reference only</span>';
+  };
+  el.innerHTML = contributions.map(c => {
+    const summary = (c.content || {}).summary || '';
+    return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(c.sampleLabel || c.sampleId)}</p>
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
+      </div>
+      <p style="font-size:0.8125rem;color:var(--text);margin:6px 0 0;">${escapeHtml(summary)}</p>
+      ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="bwsSetStyleDecision('${escapeHtml(c.id)}','reference')">Reference</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="bwsSetStyleDecision('${escapeHtml(c.id)}','applied')">Apply</button>
+        <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="bwsSetStyleDecision('${escapeHtml(c.id)}','removed')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function bwsSetStyleDecision(contributionId, status){
+  const flag = document.getElementById('bwsStyleFlag');
+  let reason = null;
+  if (status === 'removed'){
+    reason = prompt('Why should this style pattern be excluded? (required — this stays in the account\'s history)');
+    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
+  } else {
+    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
+    reason = reason.trim() || null;
+  }
+  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
+  if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-sample-style-decisions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag) flag.textContent = err.error || 'Could not save that decision.';
+      return;
+    }
+    if (flag) flag.textContent = `Saved — marked "${status}".`;
+    await bwsLoadStyleHistory();
+    if (typeof loadAccountData === 'function') loadAccountData();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
 
 // clearStatus defaults to false — a successful upload/save sets a
@@ -28247,7 +28523,7 @@ function bwsRenderLibrary(){
           ? '<span class="hint">AI video analysis — video not retained</span>'
           : (s.file ? `${escapeHtml(s.file.originalFilename || 'file')} <span class="hint">(${Math.round((s.file.sizeBytes || 0) / 1024)} KB)</span>` : 'File')}</td>
         <td>${bwsStatusCellHtml(s)}</td>
-        <td>${bwsAdminActionsHtml(s)}<button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
+        <td>${s.sourceType === 'file' ? `<button type="button" class="btn-ghost" onclick="bwsAnalyzeStyle('${s.id}')">Analyze style →</button>` : ''}${bwsAdminActionsHtml(s)}<button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
       </tr>`).join('')}</tbody>
   </table></div>`;
 }
@@ -28489,7 +28765,7 @@ function wsRenderProfileHistory(contributions){
     return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <p style="font-size:0.8125rem;font-weight:600;margin:0;">${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'} — used ${escapeHtml(sourceLabel(content.pagesUsedSource))} (${(content.pagesUsed || []).length} page(s))</p>
-        ${statusBadge(c)}
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
       </div>
       <div style="font-size:0.75rem;color:var(--text);margin:6px 0 0;">${categoryLines || '<span class="hint">No categories were supported by the pages this scan read.</span>'}</div>
       ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
@@ -28518,10 +28794,11 @@ async function wsSetProfileDecision(contributionId, status){
   }
   const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
   if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-profile-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -49525,7 +49802,7 @@ function cpRenderWebsiteScanHistory(contributions){
     return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(ctx.url || 'Scan')} — ${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}</p>
-        ${statusBadge(c)}
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(facts) || 'No title/meta/headings extracted from this scan.'}</p>
       ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
@@ -49556,10 +49833,11 @@ async function cpSetWebsiteContextDecision(contributionId, status){
   }
   const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
   if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-context-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -49619,7 +49897,7 @@ function cpRenderTrainingDigestHistory(contributions){
     return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <p style="font-size:0.8125rem;font-weight:600;margin:0;">${escapeHtml(c.campaignLabel || c.campaignId || 'Campaign')} — ${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}</p>
-        ${statusBadge(c)}
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(facts) || 'No structural digest fields on this entry.'}</p>
       ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
@@ -49647,10 +49925,11 @@ async function cpSetTrainingDigestDecision(contributionId, status){
   }
   const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
   if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/training-digest-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -49700,7 +49979,7 @@ function vgRenderHistory(contributions){
     return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <p style="font-size:0.8125rem;font-weight:600;margin:0;">${typeof d.voiceVersion === 'number' ? `v${d.voiceVersion}` : 'Version'} — ${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}</p>
-        ${statusBadge(c)}
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(preview)}${(d.voiceGuideText || '').length > 180 ? '…' : ''}</p>
       ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
@@ -49734,10 +50013,11 @@ async function vgSetDecision(contributionId, status){
   }
   const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
   if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -51097,7 +51377,7 @@ function posRenderHistory(contributions){
     return `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <p style="font-size:0.8125rem;font-weight:600;margin:0;">${c.createdAt ? new Date(c.createdAt).toLocaleString() : 'unknown date'}${competitorNames.length ? ` — ${escapeHtml(competitorNames.join(', '))}` : ''}</p>
-        ${statusBadge(c)}
+        ${statusBadge(c)}${c.qualityTag ? `<span style="margin-left:8px;font-size:0.6875rem;color:var(--muted);text-transform:capitalize;">quality: ${escapeHtml(c.qualityTag.replace('_',' '))}</span>` : ''}
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin:6px 0 0;">${escapeHtml(preview)}${(d.industryTrendsText || '').length > 160 ? '…' : ''}</p>
       ${c.reason ? `<div style="font-size:0.6875rem;color:var(--muted);margin-top:4px;">"${escapeHtml(c.reason)}"${c.decidedBy ? ' — ' + escapeHtml(c.decidedBy) : ''}</div>` : ''}
@@ -51128,10 +51408,11 @@ async function posSetDecision(contributionId, status){
   }
   const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
   if (decidedBy) state.mmmDecisionName = decidedBy;
+  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positioning-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
