@@ -147,13 +147,18 @@
      giving primary-nav and ask-bar the identical bleed makes all three
      chrome bars render at the same width. (Round 17, direct feedback:
      widened from 1040/28px to 1440/32px for full page width.) */
-  /* 2026-09-13, per direct instruction — with the logo now much bigger
-     (see .account-summary .co-logo) and the "Verilume Portal" caption
-     gone, a flush-left nav row directly under a much taller logo read as
-     misaligned, so it's nudged right with extra left padding; the item
-     font size was also bumped up (both explicitly called out as
-     acceptable side effects of the logo change). */
-  .primary-nav{display:flex;gap:2px;margin:0 -32px;padding:0 32px 0 64px;background:var(--hdr-navy);overflow-x:auto;}
+  /* 2026-09-13, second same-day follow-up, per direct instruction —
+     "Shift the navigation right so the entire area above and below logo
+     is dedicated to a client logo." The logo now spans this bar's full
+     height too (see .account-summary .logo-and-name), so this row's own
+     content has to start well clear of it — left padding pushed out to
+     400px (32px logo inset + up to 340px logo width + a real gap) rather
+     than the earlier, much smaller nudge. This is a reasonable estimate
+     against the logo's own max-width, not a measurement against Todd's
+     actual uploaded mark — flag it back if a real logo still overlaps the
+     nav text and this needs to grow further. Item font size stays bumped
+     up from the prior round, per the same "acceptable" note. */
+  .primary-nav{display:flex;gap:2px;margin:0 -32px;padding:0 32px 0 400px;background:var(--hdr-navy);overflow-x:auto;}
   .primary-nav-item{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.9375rem;font-weight:600;letter-spacing:0.01em;color:var(--hdr-muted-on-navy);background:none;border:none;border-bottom:2px solid transparent;padding:12px 14px 12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px;}
   .primary-nav-item .num{font-size:0.75rem;font-weight:700;opacity:0.7;}
   .primary-nav-item:hover{color:var(--hdr-ink-on-navy);}
@@ -168,6 +173,13 @@
   @media (max-width:760px){
     .primary-nav{display:none;}
     .primary-nav-mobile-select{display:block;}
+    /* 2026-09-13 — the 340px logo cap and 400px nav-clearance padding
+       above are sized for desktop; left untouched they'd either overflow
+       a phone-width screen or leave the mobile <select> with almost no
+       room. Scaled both down together so the logo still fills the bar's
+       height but stays proportionate on a narrow viewport. */
+    .account-summary .co-logo{max-width:150px;}
+    .primary-nav-mobile-select{padding-left:182px;}
   }
 
   /* Ask Verilume persistent bar — restyled round 17 with amber accents to
@@ -357,8 +369,29 @@
      28px side padding so the navy reads as a true banner rather than a
      card floating inside the content column, closer to the comps' full-
      bleed header than a rounded card would be. */
-  .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;padding:5px 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
-  .account-summary .logo-and-name{display:flex;align-items:center;gap:14px;}
+  /* 2026-09-13 — the position:relative anchor for .account-summary
+     .logo-and-name below (see .app-header-shell markup comment for why). */
+  .app-header-shell{position:relative;}
+  /* 2026-09-13, second same-day follow-up: reverted the 5px-padding change
+     from earlier today ("You didn't need to increase the size of the
+     header") — this bar's own height is back to its original 18px/32px, so
+     .account-summary itself is exactly as tall as it always was. The logo
+     no longer lives in this row's flex flow at all (see .logo-and-name
+     below); this row now only has to size itself to its remaining content
+     (Client ID / user avatar / gear), pinned right via margin-left:auto
+     on that wrapper (inline style, see markup) now that it's the row's
+     only real flex child. */
+  .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;padding:18px 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
+  /* 2026-09-13, per direct instruction — "Shift the navigation right so the
+     entire area above and below logo is dedicated to a client logo." Taken
+     out of .account-summary's normal flex flow and positioned against
+     .app-header-shell instead, so its height is the COMBINED height of
+     both navy bars (.account-summary + .primary-nav), not just this row —
+     top:0/bottom:0 against the shell's own (auto, but by-then-resolved)
+     height is what stretches it the full distance. 5px padding top and
+     bottom, per the original ask, still applies — now against that full
+     combined height rather than just this row's. */
+  .account-summary .logo-and-name{position:absolute;top:0;bottom:0;left:32px;padding:5px 0;box-sizing:border-box;display:flex;align-items:center;gap:14px;}
   /* 2026-09-12, per direct report — a client-uploaded sample logo was
      rendering "very small" in this header. Root cause: this cap (36px tall
      / 160px wide) was noticeably smaller than the Logo Upload preview box
@@ -370,16 +403,15 @@
      the whole image (any transparent padding baked into the source file
      included) proportionally, so this is a real, visible size increase for
      every uploaded mark, not just a bounding-box change.
-     2026-09-13, same-day follow-up — still reading small. Per direct
-     instruction: extend the logo to the top and bottom of the navy bar
-     with only 5px of padding above and below. .account-summary's own
-     vertical padding dropped from 18px to 5px (above) so the bar's height
-     is now driven by its tallest child; this cap raised to 90px/260px so
-     an uploaded mark actually grows to fill that space instead of leaving
-     navy above/below it. object-fit:contain still keeps the real aspect
-     ratio, so a wide/short logo won't stretch to 90px tall regardless —
-     it grows until either dimension hits its cap. */
-  .account-summary .co-logo{max-height:90px;max-width:260px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
+     2026-09-13 — now sized off the full-height absolutely-positioned
+     .logo-and-name box above (height:100% of that box, i.e. the combined
+     height of both navy bars minus 10px total padding) instead of a fixed
+     pixel cap, so it genuinely fills the space rather than topping out at
+     an arbitrary number. max-width is a generous outer bound only, to stop
+     an unusually wide source file from running into the nav text — width
+     stays auto/object-fit:contain, so this never stretches or distorts a
+     real uploaded mark. */
+  .account-summary .co-logo{height:100%;width:auto;max-width:340px;object-fit:contain;flex-shrink:0;}
   .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.1875rem;font-weight:700;margin:0;color:var(--hdr-ink-on-navy);}
   .account-summary .co-code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;color:var(--hdr-muted-on-navy);background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);border-radius:6px;padding:2px 7px;}
   .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);}
@@ -2710,6 +2742,21 @@
 
 <main class="wrap">
 
+  <!-- 2026-09-13, per direct instruction — "Shift the navigation right so
+       the entire area above and below logo is dedicated to a client logo.
+       Daily Brief should be aligned with the bottom part of the logo
+       'Atlas'." This wrapper is what makes that possible: .account-summary
+       and .primary-nav (plus its mobile <select>) are two separate,
+       normal-flow bars stacked on top of each other, so neither one alone
+       is tall enough to hold a genuinely large logo without visibly
+       growing that bar's own height — which the same instruction says NOT
+       to do ("You didn't need to increase the size of the header"). Giving
+       this shell position:relative lets the logo (see
+       .account-summary .logo-and-name below) be positioned absolutely
+       against the COMBINED height of both bars instead of just its own
+       row, so the two navy bars keep their original individual heights
+       while the logo spans across both. -->
+  <div class="app-header-shell">
   <div class="account-summary">
     <div class="logo-and-name">
       <!-- 2026-08-24 (nav redesign, round 17) — amber initials avatar badge,
@@ -2771,7 +2818,12 @@
          header (and everything below it) until real data is ready or the
          watchdog gives up, so the placeholder is never on screen at all,
          and there's exactly one loading/error mechanism instead of two. -->
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <!-- 2026-09-13 — margin-left:auto added. The logo (.logo-and-name) is
+         now position:absolute, out of this row's flex flow entirely, so
+         this is effectively .account-summary's only real flex child;
+         without this it would sit flush left instead of staying pinned to
+         the right edge where it's always been. -->
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto;">
       <!-- #orgModelRow / #acctTag stay in the DOM (JS at loadAccountData()'s
            completion still writes acctTag's text, and switchPrimaryTab()
            etc. don't touch either) but the comps show neither in the header
@@ -2840,6 +2892,7 @@
     <option value="dataScientist">05 · Data Scientist</option>
     <option value="accountManagement">06 · Account Management</option>
   </select>
+  </div><!-- /.app-header-shell -->
 
   <!-- 2026-08-23 (nav redesign, round 16) — Ask Verilume, per directive 3
        ("Voice becomes a persistent bar directly below the nav, present on
@@ -9470,7 +9523,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-header-logo-nav-resize';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-header-logo-spans-both-bars';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
