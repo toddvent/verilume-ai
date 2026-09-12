@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-transparency-voice-contest (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-ai-brain-ledger-quality-style-readouts (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -4096,6 +4096,30 @@ function readLatestTransparencyBatch(accountId, contextType){
 
 const AI_BRAIN_CONTRIBUTION_STATUSES = ['reference', 'applied', 'removed'];
 
+// 2026-09-12 — closes open question 4 from the ledger design doc ("does
+// qualityTag drive anything automatically, or is it purely informational
+// for a human reviewer?"). Resolved per that doc's own lean: informational
+// only, same spirit as MMM's confidence label — it never auto-decides
+// status, never gates Apply, and nothing reads it to make a decision on a
+// human's behalf. Purely a human's own editorial note on how good a
+// contribution is, independent of whether it's currently applied.
+const AI_BRAIN_QUALITY_TAGS = ['perfect', 'ok', 'needs_review'];
+ensureColumn('ai_brain_contributions', 'qualityTag', 'TEXT');
+ensureColumn('ai_brain_contribution_log', 'qualityTag', 'TEXT');
+// Open question 2 from the same doc ("who can apply/remove — any team
+// member, or a specific reviewer role?") is resolved here as a decision,
+// not a build item: every ledger endpoint already gates on requireAccount()
+// — the same account-membership check every other account-scoped endpoint
+// in this file uses — and this app has no granular role model beyond
+// Admin/member anywhere else in the product. Introducing a new reviewer
+// role just for the ledger, with nothing else in the app to hang it off
+// of, would be a standalone permissions feature nobody asked for, not a
+// natural extension of this one. Leaving this at the existing account-
+// membership gate, consistent with every other decision-recording endpoint
+// in this file (MMM adstock/lag included). If a concrete need for a
+// narrower reviewer role surfaces later, that's its own scoping
+// conversation, not something to guess at here.
+
 // Inserts one new, permanent website_scan contribution row. Always starts
 // 'reference' (captured but not yet applied), same starting state MMM's
 // adstock/lag estimates use — a human decides Apply/Remove afterward via
@@ -4111,7 +4135,7 @@ function createWebsiteScanContribution(accountId, contentObj){
 }
 
 function getWebsiteScanContributions(accountId){
-  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityTag
     FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'website_scan' ORDER BY createdAt DESC`).all(accountId);
 }
 
@@ -4186,7 +4210,7 @@ function createWebsiteProfileContribution(accountId, contentObj){
 }
 
 function getWebsiteProfileContributions(accountId){
-  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityTag
     FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'website_profile' ORDER BY createdAt DESC`).all(accountId);
 }
 
@@ -4339,7 +4363,7 @@ function createTrainingDigestContribution(accountId, campaignId, digestObj){
 // query or hide its digest row — the label just falls back to the raw
 // campaignId in that case.
 function getTrainingDigestContributions(accountId){
-  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt,
+  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt, c.qualityTag,
       c.sourceRefId AS campaignId, camp.productName AS campaignProductName, camp.campaignCode AS campaignCode, camp.startDate AS campaignStartDate
     FROM ai_brain_contributions c
     LEFT JOIN campaigns camp ON camp.id = c.sourceRefId
@@ -4348,7 +4372,7 @@ function getTrainingDigestContributions(accountId){
     const label = row.campaignProductName || row.campaignCode
       ? [row.campaignProductName, row.campaignCode].filter(Boolean).join(' — ') + (row.campaignStartDate ? ` (${row.campaignStartDate})` : '')
       : row.campaignId; // campaign since deleted (or never had a name/code) — fall back to the raw id rather than breaking
-    return { id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, campaignId: row.campaignId, campaignLabel: label };
+    return { id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, campaignId: row.campaignId, campaignLabel: label };
   });
 }
 
@@ -4478,7 +4502,7 @@ function createVoiceGuideContribution(accountId, contentObj){
 }
 
 function getVoiceGuideContributions(accountId){
-  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityTag
     FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'voice_guide' ORDER BY createdAt DESC`).all(accountId);
 }
 
@@ -4498,8 +4522,243 @@ function createPositioningContribution(accountId, contentObj){
 }
 
 function getPositioningContributions(accountId){
-  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityTag
     FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'competitive_positioning' ORDER BY createdAt DESC`).all(accountId);
+}
+
+// ---------- AI Brain Contribution Ledger, sourceType #6: brand_writing_sample_style ----------
+// 2026-09-12 — closes section 6b of the original ledger design doc
+// ("Brand writing sample style patterns — qualitative, purpose-scoped"),
+// left explicitly not-built when the doc was written: "the upload feature
+// stores and categorizes the file. It does not parse it, and nothing
+// writes a brand_writing_sample_style contribution row." Open question 5.6
+// ("is style-pattern extraction base product, hybrid, or generative?") is
+// resolved here as generative, real-model-backed — the same posture this
+// file already uses for every other qualitative-read task (Voice Contest
+// generation, AI Brain Transparency's own client-facing sentences, video
+// sample analysis above), gated on ANTHROPIC_API_KEY with an honest error
+// when unconfigured, never a fabricated or heuristic stand-in for "we read
+// this and here's what we found."
+//
+// sourceRefId = the brand_writing_samples row analyzed. scopeType is
+// always 'writing_purpose' (the new scope dimension section 6b named),
+// scopeValue = that sample's own category id — a Sales sample and a PR
+// sample from the same brand can legitimately sound different, so this
+// keeps their extracted patterns from blurring into one undifferentiated
+// signal, exactly as the design doc specified.
+function createBrandWritingSampleStyleContribution(accountId, sampleId, category, contentObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'brand_writing_sample_style', sampleId, 'writing_purpose', category, JSON.stringify(contentObj), 'reference', null, null, now, null);
+  return id;
+}
+// LEFT JOINs brand_writing_samples for a human-readable label, same pattern
+// getTrainingDigestContributions() already established for campaign
+// labels — falls back to the raw sample id if the sample was since deleted.
+function getBrandWritingSampleStyleContributions(accountId){
+  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt, c.qualityTag, c.scopeValue,
+      c.sourceRefId AS sampleId, s.title AS sampleTitle, s.category AS sampleCategory, s.docDate AS sampleDocDate
+    FROM ai_brain_contributions c
+    LEFT JOIN brand_writing_samples s ON s.id = c.sourceRefId
+    WHERE c.accountId = ? AND c.sourceType = 'brand_writing_sample_style' ORDER BY c.createdAt DESC`).all(accountId);
+  return rows.map(row => {
+    const label = row.sampleTitle
+      ? `${row.sampleTitle} (${categoryLabel(row.sampleCategory)}${row.sampleDocDate ? ', ' + row.sampleDocDate : ''})`
+      : row.sampleId; // sample since deleted — fall back to the raw id rather than breaking
+    return { id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, writingPurpose: row.scopeValue, sampleId: row.sampleId, sampleLabel: label };
+  });
+}
+// brandWritingSampleStyleContext(accountId, writingPurpose) — additive
+// rollup, same folding posture as trainingDigestRollupContext(): only
+// currently-'applied' findings count, capped to keep the prompt bounded,
+// most-recent first. Deliberately scoped to ONE writing_purpose per call
+// (never all purposes at once) — the whole point of the scope dimension
+// section 6b introduced is that a Sales pattern must never leak into PR
+// copy or vice versa. Returns '' (this file's standing honest-empty-
+// context convention) when nothing applied exists for that purpose, so a
+// purpose with no reviewed findings reads exactly as it did before this
+// feature existed.
+function brandWritingSampleStyleContext(accountId, writingPurpose){
+  try {
+    const rows = db.prepare(`SELECT contentJson, createdAt FROM ai_brain_contributions
+      WHERE accountId = ? AND sourceType = 'brand_writing_sample_style' AND status = 'applied' AND scopeValue = ?
+      ORDER BY createdAt DESC LIMIT 5`).all(accountId, writingPurpose);
+    if (!rows.length) return '';
+    const patterns = [];
+    rows.forEach(row => {
+      let content;
+      try { content = JSON.parse(row.contentJson); } catch (e){ return; }
+      if (content && content.summary) patterns.push(content.summary);
+    });
+    if (!patterns.length) return '';
+    return `\n\nSTYLE PATTERNS OBSERVED IN THIS ACCOUNT'S OWN ${categoryLabel(writingPurpose).toUpperCase()} SAMPLES (human-reviewed, from real uploaded samples — a bonus specificity layer on top of the Voice Guide, never a substitute for it):\n${patterns.map(p => `- ${p}`).join('\n')}`;
+  } catch (e){ return ''; } // never let a malformed row break generation
+}
+
+// ---------- AI Brain Contribution Ledger, sourceType #7: model_readout_finding ----------
+// 2026-09-12 — closes section 6a of the original ledger design doc
+// ("Model readout findings — quantitative, audience-scoped"), Layers 1-2
+// (mechanical table extraction + real statistical significance filtering,
+// both named "base product" in that doc) plus Layer 3 (the generative
+// "what does this mean for messaging" step, named there as "blocked
+// pending a live model connection" back on 2026-08-13). That blocker no
+// longer holds — this file has called a live model (callClaudeForJSON)
+// for real generation in a dozen other places since, gated on
+// ANTHROPIC_API_KEY with the same honest-null-when-unconfigured posture
+// used everywhere — so Layer 3 is built here too, not deferred again.
+//
+// A finding NEVER defaults to scopeType 'brand_wide' — per the design
+// doc, "a human sets scope before Apply, exactly parallel to the MMM
+// Reference/Apply/Remove gate." So extraction creates each finding with
+// scopeType/scopeValue left NULL, and the decision endpoint below requires
+// both to be supplied on the specific POST call that sets status='applied'.
+function createModelReadoutFindingContribution(accountId, uploadedFileId, findingObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'model_readout_finding', uploadedFileId, null, null, JSON.stringify(findingObj), 'reference', null, null, now, null);
+  return id;
+}
+function getModelReadoutFindingContributions(accountId){
+  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt, c.qualityTag, c.scopeType, c.scopeValue,
+      c.sourceRefId AS uploadedFileId, f.originalFilename AS uploadedFilename
+    FROM ai_brain_contributions c
+    LEFT JOIN uploaded_files f ON f.id = c.sourceRefId
+    WHERE c.accountId = ? AND c.sourceType = 'model_readout_finding' ORDER BY c.createdAt DESC`).all(accountId);
+  return rows.map(row => ({ id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, scopeType: row.scopeType, scopeValue: row.scopeValue, uploadedFileId: row.uploadedFileId, uploadedFilename: row.uploadedFilename || row.uploadedFileId }));
+}
+// modelReadoutFindingsContext(accountId, scopeType, scopeValue) — additive,
+// filtered rather than folded (unlike the other additive rollups, each
+// finding stays a distinct fact rather than merging into one object,
+// since "3 independent audience findings" is meaningfully different from
+// "1 merged finding"). Only 'applied' findings, only ones matching the
+// requested scope exactly — this is the enforcement point for "a Warm
+// Water finding never leaks into Arctic/Antarctica copy" the design doc
+// specified. Returns '' when nothing matches, same honest-empty convention
+// as every other optional context section in this file.
+function modelReadoutFindingsContext(accountId, scopeType, scopeValue){
+  if (!scopeType || !scopeValue) return '';
+  try {
+    const rows = db.prepare(`SELECT contentJson FROM ai_brain_contributions
+      WHERE accountId = ? AND sourceType = 'model_readout_finding' AND status = 'applied' AND scopeType = ? AND scopeValue = ?
+      ORDER BY createdAt DESC LIMIT 6`).all(accountId, scopeType, scopeValue);
+    if (!rows.length) return '';
+    const lines = [];
+    rows.forEach(row => {
+      let f;
+      try { f = JSON.parse(row.contentJson); } catch (e){ return; }
+      if (!f) return;
+      const dir = (f.index != null && f.index > 100) ? 'over-indexes' : (f.index != null ? 'under-indexes' : 'differs');
+      lines.push(`- ${f.attributeLabel || f.attributeCategory}: ${dir} vs. baseline${f.index != null ? ` (index ${f.index})` : ''}${f.messagingImplication ? ` — ${f.messagingImplication}` : ''}`);
+    });
+    if (!lines.length) return '';
+    return `\n\nREAL AUDIENCE/SEGMENT MODEL FINDINGS ON FILE FOR THIS SCOPE (${scopeType.replace('_',' ')}: ${scopeValue}; human-reviewed vendor readout data, statistically significant, applied by a human data scientist — never invent additional findings beyond these):\n${lines.join('\n')}`;
+  } catch (e){ return ''; }
+}
+// Two-tailed p-value straight from a z-score, reusing the same
+// erf/normalCdf approximation the MMM adstock/lag significance test above
+// already uses — one statistics implementation in this file, not two.
+function zScorePValue(z){
+  if (z == null || !Number.isFinite(z)) return null;
+  return 2 * (1 - normalCdf(Math.abs(z)));
+}
+// extractModelReadoutFindings() — Layer 1 (table extraction) + Layer 2
+// (significance) combined into one call: a real Claude call reads the
+// vendor readout's flattened text (mammoth/pdf-parse have already lost
+// any table layout, same caveat extractBrandGuideFields() notes above, so
+// this is a real extraction task, not a regex one) and returns each
+// attribute row it can find, honestly, never inventing a row the text
+// doesn't support. Significance (pValue/confidenceLabel) is computed here
+// in code from each row's own zscore, not asked of the model — a real
+// statistical computation, not something an LLM should be trusted to do
+// exact math on.
+async function extractModelReadoutFindings(text){
+  if (!process.env.ANTHROPIC_API_KEY) return { error: 'Model readout extraction requires ANTHROPIC_API_KEY to be configured.', findings: [] };
+  const trimmed = (text || '').trim();
+  if (!trimmed) return { error: 'No extractable text in this file.', findings: [] };
+  const prompt = `You are reading a vendor audience/segmentation model readout (e.g. an Epsilon Discover Model report, or similar audience-index document). Extract every attribute row you can find where the document reports a segment's value against a baseline, with an index and/or z-score.
+
+For EACH row, report:
+- attributeCategory: the grouping the vendor used (e.g. "Demographics", "Lifestyle", "Media Affinity")
+- attributeLabel: the specific attribute (e.g. "Household Income $150K+", "Owns a Boat")
+- baselineValue: the baseline/population value, if reported (a percentage or count as written)
+- segmentValue: the segment's own value, if reported
+- index: the index number if reported (100 = baseline; e.g. 145 means 45% over-indexed)
+- zscore: the z-score if reported (null if the document doesn't report one)
+- evidence: the exact phrase or line from the document that supports this row
+
+ONLY extract rows the document actually supports — never invent a plausible-looking row. If the document has no attribute/index table at all, return an empty findings array rather than guessing.
+
+Document text:
+${trimmed.slice(0, 40000)}
+
+Submit via the submit_model_readout_findings tool.`;
+  let parsed;
+  try {
+    parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 3000,
+      content: prompt,
+      toolName: 'submit_model_readout_findings',
+      toolDescription: 'Submit every attribute/index row actually found in this document.',
+      schema: {
+        type: 'object',
+        properties: {
+          findings: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                attributeCategory: { type: 'string' },
+                attributeLabel: { type: 'string' },
+                baselineValue: { type: ['string', 'null'] },
+                segmentValue: { type: ['string', 'null'] },
+                index: { type: ['number', 'null'] },
+                zscore: { type: ['number', 'null'] },
+                evidence: { type: 'string' }
+              },
+              required: ['attributeCategory', 'attributeLabel', 'evidence']
+            }
+          }
+        },
+        required: ['findings']
+      }
+    });
+  } catch (e){ return { error: 'Extraction failed: ' + e.message, findings: [] }; }
+  const findings = (Array.isArray(parsed.findings) ? parsed.findings : []).map(f => {
+    const pValue = zScorePValue(f.zscore);
+    return { ...f, pValue, confidenceLabel: confidenceLabelFromP(pValue) };
+  });
+  return { error: null, findings };
+}
+// Layer 3 — the generative "what does this mean for messaging" step,
+// explicitly named as blocked-on-a-live-model-connection when the design
+// doc was written; built now since that connection exists throughout this
+// file already. One short, honest sentence per finding — never a
+// confident claim beyond what the finding itself supports, same
+// anti-fabrication posture as every other generative function here.
+async function interpretModelReadoutFindingForMessaging(finding){
+  if (!process.env.ANTHROPIC_API_KEY) return null; // honest null — Layer 3 simply doesn't run without a live model, findings still save without it
+  try {
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 300,
+      content: `An audience model readout found this: "${finding.attributeLabel}" (category: ${finding.attributeCategory}) — index ${finding.index != null ? finding.index : 'n/a'}, ${finding.confidenceLabel || 'unknown'} statistical confidence. Evidence from the document: "${finding.evidence}".
+
+In one short sentence, state what this could mean for marketing messaging or channel choice for this audience segment — grounded ONLY in what this specific finding shows, never a general claim about the audience beyond this one data point. If the finding is too thin to say anything useful, say so plainly instead of inventing an implication.
+
+Submit via the submit_messaging_implication tool.`,
+      toolName: 'submit_messaging_implication',
+      toolDescription: 'Submit the one-sentence messaging implication for this finding.',
+      schema: { type: 'object', properties: { implication: { type: 'string' } }, required: ['implication'] }
+    });
+    return (parsed.implication || '').trim() || null;
+  } catch (e){ return null; } // Layer 3 is a bonus on top of the real Layer 1/2 data — never blocks saving the finding itself
 }
 
 // The single source of truth every MMM read endpoint (completeness matrix,
@@ -11454,7 +11713,22 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // account-wide and belongs alongside liveGuardrailContext() here for
     // the same reason, not folded into it — one is a guardrail/tone
     // signal, the other is factual brand understanding.
-    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId));
+    // 2026-09-12 — closes ledger design doc sections 6a/6b. Style patterns
+    // scoped to 'consumer_marketing' — the writing_purpose closest to what
+    // this function actually generates (see brandWritingSampleContext's
+    // own consumer_marketing/sales framing above). Model readout findings
+    // scoped to this campaign's own product_group(s) — productGroups is a
+    // comma-joined string (see the campaign-save recompute script), split
+    // and queried per group so a finding scoped to one product group is
+    // never blended into a different campaign's copy.
+    let modelReadoutContext = '';
+    if (campaign.productGroups){
+      const groups = String(campaign.productGroups).split(',').map(g => g.trim()).filter(Boolean);
+      for (const g of groups){
+        modelReadoutContext += modelReadoutFindingsContext(account.accountId, 'product_group', g);
+      }
+    }
+    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'consumer_marketing') + modelReadoutContext;
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -11798,7 +12072,13 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // 2026-09-12 — Website Brand Profile round. Same websiteProfileContext()
   // wiring generateMessagingCopyViaAI() gets above — real extracted brand
   // category facts are account-wide, not campaign-scoped.
-  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId));
+  // 2026-09-12 — closes ledger design doc section 6b. Scoped to 'pr' — the
+  // one writing_purpose that matches what this function generates. Model
+  // readout findings are deliberately NOT wired in here — those are
+  // product/creative-market scoped audience findings meant for consumer-
+  // facing campaign copy (see generateMessagingCopyViaAI above), not
+  // PR/Corp Comm, which has no product-group concept of its own.
+  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
   // 2026-09-12 — Competitive Positioning, mirroring the same block
   // generateMessagingCopyViaAI() builds from account.competitorsJson
   // (which buildPrCorpCommPrompt never read before today). Same "internal
@@ -12876,7 +13156,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-ai-brain-transparency-voice-contest',
+        buildStamp: '2026-09-12-ai-brain-ledger-quality-style-readouts',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -14264,9 +14544,9 @@ async function handleRequest(req, res) {
       const contributions = getWebsiteScanContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -14290,14 +14570,23 @@ async function handleRequest(req, res) {
       if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s website scans' });
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, contributionId);
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
+      // qualityTag (2026-09-12, ledger open-question 4 closed): a human's
+      // editorial "perfect/ok/needs_review" read, purely informational —
+      // never auto-decides anything, independent of status. COALESCE keeps
+      // the prior tag when this call doesn't resend one, so a plain
+      // Apply/Remove never silently clears an earlier quality read.
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag });
     }
 
     // GET /api/accounts/:id/training-digest-decisions — 2026-09-12, AI
@@ -14316,9 +14605,9 @@ async function handleRequest(req, res) {
       const contributions = getTrainingDigestContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, campaignId: row.campaignId, campaignLabel: row.campaignLabel, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+        return { id: row.id, campaignId: row.campaignId, campaignLabel: row.campaignLabel, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -14341,14 +14630,23 @@ async function handleRequest(req, res) {
       if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s training digests' });
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, contributionId);
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
+      // qualityTag (2026-09-12, ledger open-question 4 closed): a human's
+      // editorial "perfect/ok/needs_review" read, purely informational —
+      // never auto-decides anything, independent of status. COALESCE keeps
+      // the prior tag when this call doesn't resend one, so a plain
+      // Apply/Remove never silently clears an earlier quality read.
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag });
     }
 
     // GET /api/accounts/:id/voice-decisions — 2026-09-12, AI Brain
@@ -14364,9 +14662,9 @@ async function handleRequest(req, res) {
       const contributions = getVoiceGuideContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -14406,13 +14704,22 @@ async function handleRequest(req, res) {
       if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s voice guide history' });
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, contributionId);
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      // qualityTag (2026-09-12, ledger open-question 4 closed): a human's
+      // editorial "perfect/ok/needs_review" read, purely informational —
+      // never auto-decides anything, independent of status. COALESCE keeps
+      // the prior tag when this call doesn't resend one, so a plain
+      // Apply/Remove never silently clears an earlier quality read.
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
       let restored = null;
       if (body.status === 'applied'){
         try {
@@ -14424,7 +14731,7 @@ async function handleRequest(req, res) {
           restored = { voiceGuideText: snapshot.voiceGuideText, voiceVersion: nextVersion };
         } catch (e){ /* malformed snapshot — the status change above still stands, just no live restore */ }
       }
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored });
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored, qualityTag });
     }
 
     // GET /api/accounts/:id/positioning-decisions — 2026-09-12, AI Brain
@@ -14436,9 +14743,9 @@ async function handleRequest(req, res) {
       const contributions = getPositioningContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -14463,13 +14770,22 @@ async function handleRequest(req, res) {
       if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s positioning history' });
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, contributionId);
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      // qualityTag (2026-09-12, ledger open-question 4 closed): a human's
+      // editorial "perfect/ok/needs_review" read, purely informational —
+      // never auto-decides anything, independent of status. COALESCE keeps
+      // the prior tag when this call doesn't resend one, so a plain
+      // Apply/Remove never silently clears an earlier quality read.
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
       let restored = null;
       if (body.status === 'applied'){
         try {
@@ -14480,7 +14796,7 @@ async function handleRequest(req, res) {
           restored = { industryTrendsText: snapshot.industryTrendsText, competitors };
         } catch (e){ /* malformed snapshot — the status change above still stands, just no live restore */ }
       }
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored });
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored, qualityTag });
     }
 
     // POST /api/accounts/:id/website-profile-scan — 2026-09-12, AI Brain
@@ -14536,9 +14852,9 @@ async function handleRequest(req, res) {
       const contributions = getWebsiteProfileContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -14566,14 +14882,23 @@ async function handleRequest(req, res) {
       if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s website brand profile scans' });
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, contributionId);
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
+      // qualityTag (2026-09-12, ledger open-question 4 closed): a human's
+      // editorial "perfect/ok/needs_review" read, purely informational —
+      // never auto-decides anything, independent of status. COALESCE keeps
+      // the prior tag when this call doesn't resend one, so a plain
+      // Apply/Remove never silently clears an earlier quality read.
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag });
     }
 
     // POST /api/assessment/website-scan — 2026-08-25, per direct follow-up
@@ -19099,6 +19424,216 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { deleted: true });
     }
 
+    // ---------- AI Brain Contribution Ledger sourceType #6: brand_writing_sample_style ----------
+    // POST /api/accounts/:id/brand-writing-samples/:sampleId/analyze-style
+    // (2026-09-12) — closes design doc section 6b. Runs extractSampleText()
+    // on the sample's underlying uploaded file (same helper
+    // brandWritingSampleContext() already relies on for prompt text — this
+    // is its first other caller), then a real Claude call to read that
+    // text for tone/vocabulary/sentence-rhythm/structure patterns, and
+    // creates one new 'reference' ledger contribution. A link-sourced or
+    // video-sourced sample has no extractable document text — honest 422,
+    // not a silent no-op or a fabricated analysis.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-samples' && parts[5] === 'analyze-style'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sampleId = decodeURIComponent(parts[4]);
+      const sample = db.prepare('SELECT * FROM brand_writing_samples WHERE id = ? AND accountId = ?').get(sampleId, accountId);
+      if (!sample) return sendJson(res, 404, { error: 'brand writing sample not found' });
+      if (!sample.uploadedFileId) return sendJson(res, 422, { error: 'This sample has no underlying document to analyze (a link or video-analysis sample has no extractable text).' });
+      const uploadedFile = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
+      const text = await extractSampleText(uploadedFile);
+      if (!text || !text.trim()) return sendJson(res, 422, { error: 'Could not extract readable text from this file (unsupported format, or the file is a legacy .doc/.ppt not yet supported by extraction).' });
+      if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 422, { error: 'Style analysis requires ANTHROPIC_API_KEY to be configured.' });
+      let parsed;
+      try {
+        parsed = await callClaudeForJSON({
+          model: 'claude-sonnet-4-5',
+          maxTokens: 500,
+          content: `Read this real writing sample (category: ${categoryLabel(sample.category)}, from ${sample.title}) and describe the concrete style patterns it shows — tone, vocabulary choices, sentence rhythm/length, and structural habits (how it opens, how it closes, how it uses numbers/lists/questions). Ground everything in what's actually on the page — never a generic description that could apply to any brand's writing.
+
+Sample text:
+${text.slice(0, 12000)}
+
+Write 1-3 concrete, specific observations as a single short paragraph (this is a bonus specificity layer on top of the account's Voice Guide, not a replacement for it — keep it factual, not prescriptive). Submit via the submit_style_patterns tool.`,
+          toolName: 'submit_style_patterns',
+          toolDescription: 'Submit the observed style patterns for this sample.',
+          schema: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] }
+        });
+      } catch (e){ return sendJson(res, 502, { error: 'Style analysis failed: ' + e.message }); }
+      const summary = (parsed.summary || '').trim();
+      if (!summary) return sendJson(res, 422, { error: 'Style analysis returned nothing usable.' });
+      const contributionId = createBrandWritingSampleStyleContribution(accountId, sampleId, sample.category, { summary, analyzedAt: new Date().toISOString() });
+      return sendJson(res, 200, { contributionId, status: 'reference', summary });
+    }
+
+    // GET /api/accounts/:id/brand-writing-sample-style-decisions — same
+    // Reference/Apply/Remove list contract as every other ledger
+    // sourceType (see GET .../website-context-decisions for the pattern).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-sample-style-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getBrandWritingSampleStyleContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, writingPurpose: row.writingPurpose, sampleId: row.sampleId, sampleLabel: row.sampleLabel };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history });
+    }
+
+    // POST /api/accounts/:id/brand-writing-sample-style-decisions — same
+    // Reference/Apply/Remove/qualityTag contract as every other ledger
+    // sourceType. No restore-onto-a-live-field behavior — this sourceType
+    // is additive/filtered, like model_readout_finding below, not
+    // latest-wins like voice_guide/competitive_positioning.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-sample-style-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'brand_writing_sample_style'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s style pattern findings' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag });
+    }
+
+    // ---------- AI Brain Contribution Ledger sourceType #7: model_readout_finding ----------
+    // POST /api/accounts/:id/model-readouts/:uploadedFileId/extract
+    // (2026-09-12) — closes design doc section 6a, Layers 1-3. Body: none
+    // required. uploadedFileId must already reference an accepted upload
+    // (purpose: 'model_readout') via the existing, shared
+    // POST /api/accounts/:id/uploads pipeline — same scanned-upload
+    // convention Brand Writing Samples uses, not a new upload path.
+    // Extracts text (mammoth/pdf-parse via extractSampleText — same
+    // parser, reused, not duplicated), runs Layer 1+2
+    // (extractModelReadoutFindings — real table extraction + real
+    // statistical significance from each row's own z-score), then Layer 3
+    // per finding (interpretModelReadoutFindingForMessaging — the
+    // generative "what does this mean" step, honest-null if no API key
+    // configured, never blocking the save of the underlying finding).
+    // Creates one 'reference' contribution per extracted finding —
+    // scopeType/scopeValue intentionally left NULL here; a human sets both
+    // on the specific decision call that applies a finding (see the POST
+    // .../model-readout-decisions handler below), per the design doc's "a
+    // finding never defaults to brand_wide."
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'model-readouts' && parts[5] === 'extract'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const uploadedFileId = decodeURIComponent(parts[4]);
+      const uploadedFile = db.prepare('SELECT * FROM uploaded_files WHERE id = ? AND accountId = ?').get(uploadedFileId, accountId);
+      if (!uploadedFile) return sendJson(res, 404, { error: 'uploadedFileId does not reference an upload for this account' });
+      if (uploadedFile.purpose !== 'model_readout') return sendJson(res, 400, { error: `this upload has purpose "${uploadedFile.purpose}", expected "model_readout"` });
+      if (uploadedFile.status !== 'accepted') return sendJson(res, 400, { error: `this upload has status "${uploadedFile.status}" — only an accepted (scanned, clean) upload can be extracted` });
+      const text = await extractSampleText(uploadedFile);
+      if (!text || !text.trim()) return sendJson(res, 422, { error: 'Could not extract readable text from this file (unsupported format — Word/PDF only today).' });
+      const extraction = await extractModelReadoutFindings(text);
+      if (extraction.error) return sendJson(res, 422, { error: extraction.error });
+      if (!extraction.findings.length) return sendJson(res, 200, { findings: [], contributionIds: [], note: 'No attribute/index table was found in this document.' });
+      const contributionIds = [];
+      for (const finding of extraction.findings){
+        // Layer 3 sequentially per finding — small, bounded lists in
+        // practice (a vendor readout table, not thousands of rows), and
+        // sequential keeps this within a normal request timeout without
+        // needing the tighter per-call timeoutMs Voice Contest needed for
+        // its 5-way parallel case.
+        const messagingImplication = await interpretModelReadoutFindingForMessaging(finding);
+        const contributionId = createModelReadoutFindingContribution(accountId, uploadedFileId, { ...finding, messagingImplication });
+        contributionIds.push(contributionId);
+      }
+      return sendJson(res, 200, { findings: extraction.findings, contributionIds });
+    }
+
+    // GET /api/accounts/:id/model-readouts — lists this account's
+    // model_readout uploads (from the shared uploaded_files pipeline,
+    // purpose='model_readout') alongside how many findings have been
+    // extracted from each, so the frontend can show "extract" for an
+    // un-extracted upload and "N findings" for one already processed.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'model-readouts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const uploads = db.prepare(`SELECT id, originalFilename, mimeType, sizeBytes, status, createdAt FROM uploaded_files WHERE accountId = ? AND purpose = 'model_readout' ORDER BY createdAt DESC`).all(accountId);
+      const findingCounts = db.prepare(`SELECT sourceRefId, COUNT(*) AS n FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'model_readout_finding' GROUP BY sourceRefId`).all(accountId);
+      const countByFile = {};
+      findingCounts.forEach(r => { countByFile[r.sourceRefId] = r.n; });
+      return sendJson(res, 200, { uploads: uploads.map(u => ({ ...u, findingCount: countByFile[u.id] || 0 })) });
+    }
+
+    // GET /api/accounts/:id/model-readout-decisions — same Reference/
+    // Apply/Remove list contract as every other ledger sourceType.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'model-readout-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getModelReadoutFindingContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, scopeType: row.scopeType, scopeValue: row.scopeValue, uploadedFileId: row.uploadedFileId, uploadedFilename: row.uploadedFilename };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history, scopeTypes: ['creative_market', 'demographic_segment', 'product_group', 'brand_wide'] });
+    }
+
+    // POST /api/accounts/:id/model-readout-decisions — same Reference/
+    // Apply/Remove/qualityTag contract as every other ledger sourceType,
+    // with one addition unique to this sourceType: setting status
+    // 'applied' REQUIRES scopeType + scopeValue on that same call — a
+    // finding never defaults to brand_wide (per the design doc), so Apply
+    // is the one moment a human must commit to a scope, not just a status.
+    // Reference/Remove don't require scope (a human can leave a finding
+    // unscoped while still deciding, or scope it later before Apply).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'model-readout-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'model_readout_finding'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s model readout findings' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
+      const MODEL_READOUT_SCOPE_TYPES = ['creative_market', 'demographic_segment', 'product_group', 'brand_wide'];
+      let scopeType = null, scopeValue = null;
+      if (body.status === 'applied'){
+        scopeType = (body.scopeType || '').trim();
+        scopeValue = (body.scopeValue || '').trim();
+        if (!MODEL_READOUT_SCOPE_TYPES.includes(scopeType) || !scopeValue) return sendJson(res, 400, { error: `applying a finding requires scopeType (one of: ${MODEL_READOUT_SCOPE_TYPES.join(', ')}) and a non-empty scopeValue — a finding is never applied brand-wide by default` });
+      }
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
+      if (body.status === 'applied'){
+        db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag), scopeType = ?, scopeValue = ? WHERE id = ?`)
+          .run(body.status, reason, decidedBy, now, qualityTagInput, scopeType, scopeValue, contributionId);
+      } else {
+        db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
+          .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
+      }
+      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag, scopeType, scopeValue });
+    }
+
     // ---------- Brand Copy Website Examples (2026-08-25) ----------
     // POST /api/accounts/:id/brand-copy-website-examples — add a rule.
     // Body: { mode: 'include'|'exclude', scope: 'site'|'directory'|'page', path }
@@ -22646,5 +23181,6 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
 
