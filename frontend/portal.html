@@ -9330,7 +9330,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-verilume-wealth-index-display';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-trade-area-numeric-wealth-match';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27793,9 +27793,15 @@ function mstProspectFitSectionHtml(data){
     return `<div style="margin-top:8px;"><p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Audience &amp; Wealth Fit</p><p class="hint">${escapeHtml(data.note || 'No geocoded stores on file yet.')}</p></div>`;
   }
   const gens = (data.targetGenerations || []).join(', ');
-  const tierLine = data.accountWealthTier
-    ? `Your account's target wealth tier (Company Profile): <b>${escapeHtml(data.accountWealthTier.label)}</b> — Verilume Wealth Index multiplier ×${data.accountWealthMultiplier != null ? data.accountWealthMultiplier : '—'} for ${escapeHtml(gens || 'your target generation(s)')} (the same formula your Free Assessment uses).`
-    : `No target wealth tier is set on this account's Company Profile yet — Qualified below can't be estimated until one is.`;
+  // 2026-09-12 fix, per direct correction — this line used to state the
+  // account's HNW/Wealthy/Middle tier bucket; Qualified now compares each
+  // ZIP's Wealth Index against the account's own numeric Wealth Index
+  // (accounts.wealthIndexTargetIncome), so the real number is the headline
+  // fact here and the tier band (still returned, still real) is secondary
+  // context.
+  const tierLine = data.accountWealthIndex != null
+    ? `Your account's Verilume Wealth Index: <b>${data.accountWealthIndex}</b>${data.accountWealthTier ? ` (${escapeHtml(data.accountWealthTier.label)} band)` : ''} — multiplier ×${data.accountWealthMultiplier != null ? data.accountWealthMultiplier : '—'} for ${escapeHtml(gens || 'your target generation(s)')} (the same formula your Free Assessment and Company Overview use).`
+    : `No household income is set on this account's Company Overview yet — Qualified below can't be estimated until one is.`;
   const rows = (data.stores || []).map(s => s.rings.map((r, i) => `
     <tr${i === 0 ? '' : ' style="border-top:none;"'}>
       ${i === 0 ? `<td rowspan="${s.rings.length}">${escapeHtml(s.name || s.storeId || '—')}</td>` : ''}
@@ -27807,7 +27813,7 @@ function mstProspectFitSectionHtml(data){
     <div style="margin-top:8px;">
       <p style="font-size:0.9375rem;font-weight:600;margin:0 0 6px;">Nearby prospects — Population &amp; Qualified Households</p>
       <p class="hint" style="margin:0 0 6px;">${tierLine}</p>
-      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Population = everyone nearby, all ages. Qualified = the target-generation population of every individual ZIP in the ring whose OWN Verilume Wealth Index (income + generation, the same score your Free Assessment shows) is at or above your target wealth tier — each ZIP in the ring is tested on its own, not blended into one ring-wide average, so a wealthy enclave within a wider ring still counts even if the ring's population as a whole is more mixed.</p>
+      <p class="hint" style="margin:0 0 10px;">Target generation(s): ${escapeHtml(gens || 'general audience')}. Population = everyone nearby, all ages. Qualified = the target-generation population of every individual ZIP in the ring whose OWN Verilume Wealth Index (income + generation, the same score your Free Assessment shows) is at or above this account's own Verilume Wealth Index — each ZIP in the ring is tested on its own, not blended into one ring-wide average, so a wealthy enclave within a wider ring still counts even if the ring's population as a whole is more mixed.</p>
       <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
         <thead><tr><th>Store</th><th>Ring</th><th>Population</th><th>Qualified (target age + wealth, est.)</th></tr></thead>
         <tbody>${rows}</tbody>
