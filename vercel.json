@@ -6,7 +6,8 @@
     }
   },
   "crons": [
-    { "path": "/api/cron/refresh-intelligence", "schedule": "0 13 * * 1" }
+    { "path": "/api/cron/refresh-intelligence", "schedule": "0 13 * * 1" },
+    { "path": "/api/cron/sync-snowflake", "schedule": "0 9 * * *" }
   ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/[...path]" },
