@@ -289,6 +289,41 @@
       </div>
     </div>
 
+    <!-- 2026-09-12 — Product Documentation Search, per direct instruction
+         to index the product documentation and add a search function "also
+         supported by elevenlabs when we turn it on." Platform-wide, not
+         scoped to any one account, so it lives here in the Directory view
+         next to Platform Integration Status — same shape (an admin-token
+         gate, same GET /api/ops/... staff-endpoint convention) and reuses
+         the SAME stored token (INTEG_TOKEN_STORAGE_KEY) so staff who
+         already unlocked Integration Status above don't have to paste it
+         twice. Calls the new GET /api/ops/docs-search — see
+         buildProductDocsSearchIndex()/searchProductDocs() in server.js for
+         how results are ranked (heading match weighted over body text).
+         This is real search across all 6 product-doc HTML files, not a
+         page-local browser find — and the same endpoint a future
+         ElevenLabs voice-agent tool call would hit once that's turned on,
+         so no separate build is needed then. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Product Documentation Search</h3>
+      <p class="desc">Search across every product doc — Licensed Integrations, Copywriting, Marketing Budgets &amp; Campaigns, Registration &amp; Account Management, Company Profile &amp; Team, and the docs home page — by section, not just by file. Try "Snowflake lead time" or "login MFA".</p>
+      <div class="field-row" id="docsSearchAuthRow">
+        <div>
+          <label>Admin token</label>
+          <input type="text" id="docsSearchAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
+        </div>
+        <div>
+          <label>Search product docs</label>
+          <input type="text" id="docsSearchQuery" placeholder="e.g. Snowflake setup" onkeydown="if(event.key==='Enter') runDocsSearch();">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="runDocsSearch()">Search</button>
+        </div>
+      </div>
+      <div id="docsSearchError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="docsSearchResults"></div>
+    </div>
+
     <!-- 2026-08-22 — AI Interview Review, per direct instruction: "we will
          never reveal the actual model that was selected to the client but I
          do want visibility via the admin portal." The copy workspace's
@@ -631,6 +666,36 @@
         </div>
         <button class="btn primary" onclick="saveConnection()">Save connection status</button>
         <div class="proto-note">Writes to the same <code>analyticsPathway</code> / <code>analyticsGa4AccountId</code> / <code>analyticsStatus</code> fields the client Portal already reads — this screen is the missing staff-side editor for them, not a new data model.</div>
+
+        <!-- 2026-09-12 — per direct instruction to add the analytics
+             integration setup instructions to the Ops Console (they didn't
+             exist anywhere in the product before this — see the new
+             "Client analytics setup procedures" §04 in
+             verilume-product-licensed-integrations.html, which is the
+             canonical, living version of what used to be a one-off Word
+             deliverable). This panel is a condensed, staff-facing quick
+             reference next to the form staff actually fill in — full detail
+             (auth model, lead time, per-pathway build status) lives in the
+             product doc via the link below; kept in sync manually since
+             they're two different formats for the same underlying facts. -->
+        <details class="setup-instructions" style="margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:12px 16px;">
+          <summary style="cursor:pointer;font-weight:600;font-size:0.85rem;">Setup instructions — what to do once a client requests a pathway</summary>
+          <div style="margin-top:12px;font-size:0.8rem;line-height:1.55;">
+            <p class="desc" style="margin:0 0 10px;">A submitted request only sets <code>analyticsStatus = 'requested'</code> — nothing below happens automatically. Work the steps for the client's chosen pathway, then set Status to Connected above once done.</p>
+
+            <p style="margin:10px 0 4px;"><b>GA4</b> — client adds Verilume's service-account email as <b>Viewer</b> in their GA4 Property Access Management, and provides their Account ID + Property ID. Fastest pathway — same-day, no approval step on either side. The real connector already exists (<code>GET /api/accounts/:id/ga4-report</code>); it activates automatically once production has a real <code>GA4_SERVICE_ACCOUNT_KEY_JSON</code> credential — check with engineering before promising a client live data.</p>
+
+            <p style="margin:10px 0 4px;"><b>Snowflake</b> — client's own data team provisions a <b>read-only</b> Secure Data Share (never full warehouse access) and provides the account identifier, Share name, and a data-team contact. Lead time depends entirely on their team's availability. No live connector exists yet — this is still metadata capture only, so "Connected" here means "request fully documented," not "data flowing."</p>
+
+            <p style="margin:10px 0 4px;"><b>Meta</b> — client adds Verilume's Business Manager System User with <code>ads_read</code> permission on the ad account(s) to report on. Slowest pathway — Meta's App Review realistically runs 1-2+ weeks, and that's Verilume's own one-time step, separate from any one client. No connector code exists yet.</p>
+
+            <p style="margin:10px 0 4px;"><b>Google Ads / SA360</b> — client grants Verilume's OAuth app read access to their Google Ads account or MCC. Gate is Verilume's own one-time Developer Token approval (Google's process, days-weeks), not the per-client grant. No connector code exists yet.</p>
+
+            <p style="margin:10px 0 4px;"><b>Fallback (Google Sheets / manual notes)</b> — client shares a designated Sheet, kept current with their own campaign data in an agreed format. Real risk is staleness, not setup friction. No reader exists yet — this pathway stays notes-only until one is built.</p>
+
+            <p style="margin:12px 0 0;"><a href="verilume-product-licensed-integrations.html#setup-procedures" target="_blank" rel="noopener">Full setup procedure, auth models, and current build status for every pathway &#8599;</a></p>
+          </div>
+        </details>
       </div>
 
       <div class="module">
@@ -755,7 +820,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-ledger-quality-style-readouts';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-analytics-setup-docs-search';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1676,6 +1741,63 @@ async function checkIntegrationStatus(){
   }
 }
 
+// Product Documentation Search — 2026-09-12. Reuses INTEG_TOKEN_STORAGE_KEY
+// (the same sessionStorage slot Platform Integration Status writes to)
+// purely as a convenience prefill — it's the same ADMIN_API_TOKEN either
+// way, no reason to make staff paste it twice on one page. Calls the new
+// GET /api/ops/docs-search; see searchProductDocs() in server.js for the
+// ranking (heading match weighted over body text) and snippet logic.
+async function runDocsSearch(){
+  const token = document.getElementById('docsSearchAdminToken').value.trim();
+  const q = document.getElementById('docsSearchQuery').value.trim();
+  const errEl = document.getElementById('docsSearchError');
+  const resultsEl = document.getElementById('docsSearchResults');
+  errEl.style.display = 'none';
+  resultsEl.innerHTML = '';
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment to search the product docs.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!q){
+    errEl.textContent = 'Enter a search term.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try { sessionStorage.setItem(INTEG_TOKEN_STORAGE_KEY, token); } catch (e) {}
+  resultsEl.innerHTML = '<div class="empty-note">Searching…</div>';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/ops/docs-search?q=${encodeURIComponent(q)}&limit=10`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      resultsEl.innerHTML = '';
+      errEl.textContent = data.error || `Couldn't search the product docs (${resp.status}).`;
+      errEl.style.display = 'block';
+      return;
+    }
+    const results = data.results || [];
+    if (!results.length){
+      resultsEl.innerHTML = `<div class="empty-note">No matches for "${escapeHtml(q)}" across any product doc.</div>`;
+      return;
+    }
+    resultsEl.innerHTML = results.map(r => `
+      <div class="integ-row" style="display:block;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;">
+          <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener" style="font-weight:600;font-size:0.85rem;text-decoration:none;">${escapeHtml(r.heading)}</a>
+          <span class="proto-note" style="margin:0;padding:2px 8px;">${escapeHtml(r.docTitle)}</span>
+        </div>
+        <div class="integ-detail" style="margin-top:6px;">${escapeHtml(r.snippet)}</div>
+      </div>
+    `).join('');
+  } catch (e){
+    resultsEl.innerHTML = '';
+    errEl.textContent = 'Could not reach the backend to search the product docs.';
+    errEl.style.display = 'block';
+  }
+}
+
 // AI Brain Transparency — Value Rollup — 2026-09-12, generalized the same
 // day Campaign Copy became the second surface. Same admin-token-gated,
 // no-auto-fire posture as checkIntegrationStatus() above. Reads GET
@@ -1964,6 +2086,8 @@ async function clearVoiceGuideMemory(){
     document.getElementById('integAdminToken').value = stored;
     integRemember = true;
     document.getElementById('integRememberToggle').classList.add('on');
+    const docsSearchTokenEl = document.getElementById('docsSearchAdminToken');
+    if (docsSearchTokenEl) docsSearchTokenEl.value = stored;
   }
 })();
 

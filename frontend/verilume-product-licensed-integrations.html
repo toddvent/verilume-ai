@@ -132,6 +132,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <a href="#llm">LLM providers</a>
       <a href="#comms">Communications (SMS / email)</a>
       <a href="#crm-analytics">CRM &amp; analytics</a>
+      <a href="#setup-procedures">Client setup procedures</a>
       <a href="#infra">Infrastructure</a>
     </div>
 
@@ -277,8 +278,231 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       </div>
     </section>
 
+    <section id="setup-procedures">
+      <h2><span>Client analytics setup procedures</span><span class="num">&sect; 04</span></h2>
+      <p class="lede">
+        The step-by-step "what Verilume needs to do" vs. "what the client's
+        team needs to grant" for every analytics/campaign-data pathway a
+        client can choose on their Portal's Analytics Integrations step.
+        This used to live only in a standalone deliverable
+        (<code>Verilume-Integration-Setup-Procedure-2026-08-25.docx</code>,
+        produced 2026-08-25 for one-off client walkthroughs) — folded in here
+        so it's the living, expandable reference instead of a file that goes
+        stale the moment a platform's build status changes. Design rationale
+        and sequencing recommendations live in
+        <code>cxmedia-data-integration-architecture.md</code>; this section
+        is the operational how-to on top of that thinking.
+      </p>
+      <div class="card">
+        <div class="card-title">Where the client-facing request actually starts</div>
+        <p>Every pathway below is first chosen by the client on Portal's
+        Analytics Integrations step (<code>#step-analyticsSetup</code>),
+        which persists their choice and any details they provide via
+        <code>POST /api/accounts/:id/analytics-integration</code>. Submitting
+        that form only records a <b>request</b> — <code>analyticsStatus</code>
+        advances to <code>'requested'</code>, never straight to
+        <code>'connected'</code>. A staff member then has to actually work
+        the steps in this section by hand (today, for every pathway except
+        GA4's credential step, which is code-driven once configured) — the
+        Ops Console's "Media &amp; analytics connections" module is where
+        that follow-through gets tracked.</p>
+      </div>
+
+      <h3>Google Analytics 4 (GA4)</h3>
+      <p>Website behavior data — sessions, users, conversions, channel/traffic-source
+      breakdown. The lightest-weight of the four platform integrations to set
+      up, and the only one with a real, working connector today.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Hold a Google Cloud project + service account with the GA4
+            Data API enabled (one-time, org-wide — not per client).</li>
+            <li>Generate that service account's JSON key and set it as
+            <code class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</code> in
+            production.</li>
+            <li>Record the client's GA4 Account ID and Property ID once
+            provided (captured directly on the Analytics Integrations form).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>In GA4's own Property Access Management, add Verilume's
+            service account email as a <b>Viewer</b> on the property to be
+            reported on.</li>
+            <li>Provide the GA4 Account ID and Property ID (visible in their
+            own GA4 Admin settings).</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: single per-property Viewer grant &middot;
+      Typical lead time: same-day once the client actions the grant &mdash;
+      no approval process on either side &middot; Build status:
+      <span class="pill pill--warning">Connector built, dormant</span>
+      real GA4 Data API connector exists (<code>GET /api/accounts/:id/ga4-report</code>),
+      but no production <code class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</code>
+      credential is set yet, so every account correctly reads
+      <code>not_configured</code> today.</p>
+
+      <h3>Google Ads</h3>
+      <p>Campaign/ad group/keyword-level spend, clicks, and conversions from
+      a client's own Google Ads account.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Apply for and hold a Google Ads API Developer Token
+            (Verilume-side, one-time — not per client).</li>
+            <li>Build the OAuth2 read connector against the Google Ads API
+            (not started).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Grant Verilume's OAuth app read access to their Google Ads
+            account (or their MCC, if they manage multiple accounts under
+            one).</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: OAuth2 + Verilume-side Developer Token
+      &middot; Typical lead time: the client-side grant itself is fast; the
+      real gate is Verilume's own one-time Developer Token approval (Google's
+      process, days to weeks) &middot; Build status:
+      <span class="pill pill--flagged">Not built</span> no code, OAuth flow,
+      or account field exists yet.</p>
+
+      <h3>Meta (Facebook/Instagram)</h3>
+      <p>Campaign/ad-set/ad-level spend, impressions, reach, and Meta's own
+      attributed conversions.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Register and maintain a Meta Business app (Verilume-side,
+            one-time).</li>
+            <li>Complete Meta's App Review for <code class="mono">ads_read</code>
+            at scale — the slower step, not the query logic.</li>
+            <li>Generate a long-lived System User access token per client ad
+            account once the connector exists (not started).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Add Verilume's System User to their Business Manager.</li>
+            <li>Grant that System User <code class="mono">ads_read</code>
+            permission on the specific ad account(s) to be reported on.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: Meta Business app + per-account System User
+      token, <code class="mono">ads_read</code> &middot; Typical lead time:
+      slowest of the four &mdash; Meta's App Review realistically runs 1-2+
+      weeks &middot; Build status: <span class="pill pill--flagged">Not built</span>
+      no Meta-related environment variable, API call, or account field
+      exists anywhere in <code>server.js</code> today.</p>
+
+      <h3>Snowflake (Secure Data Share)</h3>
+      <p>The preferred pathway for any client who already runs a Fivetran
+      &rarr; Snowflake stack &mdash; one read-only connection covers whatever
+      source systems already flow into their warehouse, instead of Verilume
+      building a bespoke connector per ad platform.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Build the read-only Snowflake client/driver connector
+            (not started &mdash; today this step is metadata capture only).</li>
+            <li>Record the account identifier, Secure Data Share name, and
+            data-team contact the client provides (already captured on the
+            Analytics Integrations form).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Provision a <b>read-only</b> Secure Data Share (or equivalent
+            read-only role) &mdash; never full warehouse access &mdash;
+            exposing whichever views their own data team curates (campaign
+            spend/impressions/conversions by channel/date/segment, or
+            however they've already normalized it).</li>
+            <li>Provide the Snowflake account identifier, the Secure Data
+            Share name, and a data-team contact for schema questions.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: read-only Secure Data Share, scoped by the
+      client's own data team &middot; Typical lead time: depends entirely on
+      the client's data team's own availability &mdash; this is their
+      infrastructure work, not a Verilume approval step &middot; Build
+      status: <span class="pill pill--warning">Metadata capture only</span>
+      the three fields persist a real request; no live connector exists in
+      code (see &sect; 03 above and the roadmap in &sect; 09).</p>
+
+      <h3>Google Sheets (client-owned)</h3>
+      <p>The lightest-weight fallback for a client with neither a warehouse
+      nor an appetite yet for a platform-API integration &mdash; a
+      client-maintained spreadsheet of their own campaign data that Verilume
+      reads from. Distinct from Verilume's own internal per-account Sheets
+      workbook (an unrelated, already-built backend detail &mdash; see
+      <code>cxmedia-data-integration-architecture.md</code> &sect; 8 for the
+      naming disambiguation).</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Document an agreed column/tab schema for the client to
+            populate.</li>
+            <li>Build a Google Sheets API reader against that schema (not
+            started).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Share their designated Sheet (view/read access) with
+            Verilume's connector once it exists.</li>
+            <li>Keep it updated with current campaign data in the agreed
+            format &mdash; the real risk on this pathway is staleness, not
+            setup friction.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: Google Sheets API, read access to one
+      client-owned Sheet &middot; Typical lead time: fastest to set up in
+      principle &mdash; entirely dependent on the client actually keeping it
+      current &middot; Build status: <span class="pill pill--flagged">Not built</span>
+      the Analytics Integrations form captures free-text notes for this
+      pathway only; no reader exists yet.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pathway</th><th>Auth model</th><th>Typical lead time</th><th>Build status</th></tr></thead>
+          <tbody>
+            <tr><td>Snowflake</td><td>Read-only Secure Data Share</td><td>Client data-team dependent</td><td>Metadata capture only</td></tr>
+            <tr><td>GA4</td><td>Service-account Viewer grant</td><td>Same-day</td><td>Connector built, dormant on credential</td></tr>
+            <tr><td>Google Ads</td><td>OAuth2 + Developer Token</td><td>Days-weeks (Verilume's one-time token approval)</td><td>Not built</td></tr>
+            <tr><td>Meta</td><td>Business app + System User, <span class="mono">ads_read</span></td><td>1-2+ weeks (App Review)</td><td>Not built</td></tr>
+            <tr><td>Google Sheets</td><td>Sheets API, single-Sheet read grant</td><td>Fastest setup, ongoing staleness risk</td><td>Not built</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede">Sequencing guidance, per the architecture doc: steer a
+      warehouse-equipped client to Snowflake first &mdash; it's the only
+      pathway that covers every upstream source system in one connection.
+      For a client without a warehouse, GA4 first (lightest auth, free,
+      broadest applicability), then Meta, then Google Ads; Google Sheets is
+      the last-resort fallback when nothing else fits yet. Adobe Analytics
+      and SA360/DV360 are named and scoped in the architecture doc but
+      deliberately excluded from this section &mdash; narrower audiences,
+      lower build priority.</p>
+    </section>
+
     <section id="infra">
-      <h2><span>Infrastructure</span><span class="num">&sect; 04</span></h2>
+      <h2><span>Infrastructure</span><span class="num">&sect; 05</span></h2>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Vendor / service</th><th>Used for</th><th>Env vars</th><th>Fallback when unconfigured</th></tr></thead>
@@ -293,7 +517,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <hr class="rule">
 
     <section id="not-built">
-      <h2><span>Not licensed today — demo-only</span><span class="num">&sect; 05 — for product awareness</span></h2>
+      <h2><span>Not licensed today — demo-only</span><span class="num">&sect; 06 — for product awareness</span></h2>
       <p class="lede">
         These aren't behind a missing credential — no vendor is wired at all.
         Setting an env var would not turn them on; they need real build work.
@@ -324,7 +548,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     </section>
 
     <section id="status-endpoint">
-      <h2><span>Status endpoint</span><span class="num">&sect; 06</span></h2>
+      <h2><span>Status endpoint</span><span class="num">&sect; 07</span></h2>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Endpoint</th><th>Purpose</th><th>Note</th></tr></thead>
@@ -339,7 +563,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     </section>
 
     <section id="gaps">
-      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 07 — for product awareness</span></h2>
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 08 — for product awareness</span></h2>
       <div class="card card--warning">
         <div class="card-title">&#9888; No automated alerting on vendor-model deprecation</div>
         <p>The Gemini retirement this cycle was caught by reading a live 404
@@ -356,12 +580,13 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     </section>
 
     <section id="roadmap">
-      <h2><span>Suggested next steps</span><span class="num">&sect; 08</span></h2>
+      <h2><span>Suggested next steps</span><span class="num">&sect; 09</span></h2>
       <ol>
         <li><strong>Add monitoring on vendor-model 404s / deprecation notices</strong> across all 5 LLM providers.</li>
         <li><strong>Decide and scope the Meta integration</strong> if it's actually planned — nothing exists to build on top of today.</li>
         <li><strong>Build the real Snowflake connector</strong>, or remove the metadata-capture fields if it's no longer planned.</li>
         <li><strong>Add per-vendor cost visibility</strong> once the integration count grows.</li>
+        <li><strong>Keep &sect; 04 current as each pathway's build status changes</strong> — it replaces the standalone <code>Verilume-Integration-Setup-Procedure-2026-08-25.docx</code> deliverable specifically so setup steps don't drift out of sync with the code again; update it in the same pass as any Analytics Integrations or Ops Console change, not as a separate follow-up.</li>
       </ol>
     </section>
 
@@ -370,8 +595,10 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <code>INTERVIEW_VENDOR_REGISTRY</code> model strings (gpt-4o,
       gemini-3.6-flash, grok-4.6, sonar-pro) and the 7-vendor
       <code>GET /api/ops/integration-status</code> list unchanged since the prior
-      pass; no drift found. Update this document as vendors are added or
-      removed — it's meant to be the living reference, not a point-in-time
+      pass; no drift found. &sect; 04 (Client analytics setup procedures)
+      added 2026-09-12, consolidating the prior standalone Word deliverable
+      into this living document. Update this document as vendors are added
+      or removed — it's meant to be the living reference, not a point-in-time
       snapshot.
     </div>
 
