@@ -9359,7 +9359,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-transparency-campaign-copy';
+const CXMEDIA_BUILD_STAMP = '2026-09-12-ai-brain-transparency-voice-contest';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -49057,8 +49057,11 @@ async function runBrandVoiceContest(){
       holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Voice contest unavailable.')}</div>`;
       return;
     }
+    // revealed starts false on every fresh run — see rerenderVoiceContestPanel()
+    // and the "Reveal AI Brain Alignment" gating in renderBrandVoiceContestPanel().
+    result.revealed = false;
     lastVoiceContestCache = result;
-    holder.innerHTML = renderBrandVoiceContestPanel(result);
+    rerenderVoiceContestPanel(result);
   } catch (e){
     const timedOut = e && e.name === 'AbortError';
     if (timedOut){
@@ -49109,8 +49112,8 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
         // recommendedReason too (see pickRecommendedCandidate in
         // server.js), so a recovered result shows the real winner
         // highlight instead of silently losing it.
-        lastVoiceContestCache = { available: true, interviewId: fresh.id, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates };
-        if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
+        lastVoiceContestCache = { available: true, interviewId: fresh.id, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates, revealed: false };
+        rerenderVoiceContestPanel(lastVoiceContestCache);
         return true;
       }
     } catch (e){ /* transient read failure — just keep polling */ }
@@ -49174,6 +49177,7 @@ function renderBrandVoiceContestPanel(result){
         </div>
         ${typeof c.rating === 'number' ? `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">${escapeHtml(BRAND_VOICE_RATING_RUBRIC[c.rating - 1])}</div>` : `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">1 = off-brand, 5 = ready to use as-is</div>`}
       </div>
+      ${voiceContestAlignmentSectionHtml(result, c, safeId)}
     </div>`;
   }).join('');
   // 2026-08-27, per direct instruction — one action for the whole contest,
@@ -49189,11 +49193,86 @@ function renderBrandVoiceContestPanel(result){
       ? 'Rate at least one option above to select a winner.'
       : 'Two or more options are tied at the top rating — adjust a rating to break the tie before selecting a winner.';
   }
+  // 2026-09-12 — AI Brain Transparency, Voice Contest (third surface). Per
+  // direct instruction: "The UI should first allow the user to pick rank
+  // participants without our influence and then expose how each model's
+  // alignment with the brand [is]... It should include all 5 participants."
+  // So the reveal is gated on having rated every real (configured, real
+  // content) candidate — not tied to "Select Contest Winner" below, which
+  // only needs an unambiguous top rating and can fire before every option
+  // is rated. Once revealed, it stays revealed for the rest of this
+  // panel's life (result.revealed, set by revealVoiceContestAlignment()
+  // below) — re-rating an option afterward doesn't hide it again.
+  const realCandidates = (result.candidates || []).filter(c => c.configured && c.visionStatement && c.longformExample);
+  const allRealRated = realCandidates.length > 0 && realCandidates.every(c => typeof c.rating === 'number');
+  const revealHtml = result.revealed ? '' : `
+    <div style="display:flex;flex-direction:column;align-items:center;margin-top:14px;">
+      <button type="button" class="btn-ghost" ${allRealRated ? '' : 'disabled'} onclick="revealVoiceContestAlignment('${result.interviewId}')">Reveal AI Brain Alignment for all ${realCandidates.length} options →</button>
+      <div class="hint" style="margin-top:6px;text-align:center;">${allRealRated ? 'See what we observed about each option\'s alignment with your brand — after your own independent read.' : `Rate every option above (${ratedCount} of ${realCandidates.length} so far) to unlock what we observed about each one's alignment with your brand — rating first, uninfluenced, is the point.`}</div>
+    </div>`;
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;align-items:stretch;">${cards}</div>
+    ${revealHtml}
     <div style="display:flex;justify-content:center;margin-top:16px;">
       <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectContestWinner('${result.interviewId}')">Select Contest Winner</button>
     </div>
     <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>`;
+}
+// Per-card AI Brain Alignment section — collapsed placeholder until
+// result.revealed is true (see the "Reveal AI Brain Alignment" gating
+// above), then a real element the shared vtRenderTransparency() populates.
+// Only real (configured, real content) candidates get one; an unconfigured
+// or failed slot has nothing to explain.
+function voiceContestAlignmentSectionHtml(result, c, safeId){
+  if (!c.configured || !c.visionStatement || !c.longformExample) return '';
+  if (!result.revealed){
+    return `<div class="hint" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line-hairline);text-align:center;font-size:0.6875rem;">AI Brain alignment — hidden until you've rated every option</div>`;
+  }
+  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line-hairline);">
+    <p style="font-size:0.75rem;font-weight:600;margin:0 0 4px;text-align:center;">AI Brain alignment</p>
+    <div class="hint" id="voiceContestTransparencyFlag-${safeId}" style="margin-bottom:6px;text-align:center;"></div>
+    <div id="voiceContestTransparencyList-${safeId}"></div>
+  </div>`;
+}
+// Populates every card's AI Brain alignment section from its own
+// c.transparency/c.transparencyNote (already present in the response —
+// see redactBrandVoiceCandidatesForClient() in server.js — this only
+// controls when it's RENDERED, matching "rank first, reveal after").
+// Called once right after any innerHTML set of the panel where
+// result.revealed is true — see rerenderVoiceContestPanel() below, the
+// single place that should be used to update this panel from here on.
+function populateVoiceContestAlignment(result){
+  (result.candidates || []).forEach(c => {
+    if (!c.configured || !c.visionStatement || !c.longformExample) return;
+    const safeId = String(c.key).replace(/[^a-zA-Z0-9_-]/g, '');
+    vtRenderTransparency(
+      Array.isArray(c.transparency) && c.transparency.length
+        ? { available: true, generatedAt: result.createdAt || new Date().toISOString(), items: c.transparency }
+        : { available: false, note: c.transparencyNote || null },
+      { listId: 'voiceContestTransparencyList-' + safeId, flagId: 'voiceContestTransparencyFlag-' + safeId }
+    );
+  });
+}
+// Single place that (re)renders the contest panel into #voiceContestPanel
+// — replaces the several ad hoc `holder.innerHTML = renderBrandVoiceContestPanel(...)`
+// call sites this had before, so populateVoiceContestAlignment() is never
+// forgotten on any of them (a rating change, a reload, or the reveal click
+// itself all need the per-card sections repopulated the same way once
+// revealed).
+function rerenderVoiceContestPanel(result){
+  const holder = document.getElementById('voiceContestPanel');
+  if (!holder) return;
+  holder.innerHTML = renderBrandVoiceContestPanel(result);
+  if (result.revealed) populateVoiceContestAlignment(result);
+}
+// Sets result.revealed and re-renders — see the "Reveal AI Brain
+// Alignment" button in renderBrandVoiceContestPanel() above. Purely a
+// client-side UI gate: every candidate's transparency data is already
+// present in the API response (computed server-side, all 5 participants,
+// per direct instruction), this only controls when it's shown.
+function revealVoiceContestAlignment(interviewId){
+  if (!lastVoiceContestCache || lastVoiceContestCache.interviewId !== interviewId) return;
+  lastVoiceContestCache.revealed = true;
+  rerenderVoiceContestPanel(lastVoiceContestCache);
 }
 // Mobile-first: the Vision Statement (short) shows by default; the Longform
 // Example (long) stays collapsed until the client explicitly asks for it.
@@ -49234,7 +49313,12 @@ async function sendBrandVoiceRating(interviewId, body){
       // forever, no matter what got rated.
       lastVoiceContestCache.recommendedKey = result.recommendedKey;
       lastVoiceContestCache.recommendedReason = result.recommendedReason;
-      if (holder) holder.innerHTML = renderBrandVoiceContestPanel(lastVoiceContestCache);
+      // rerenderVoiceContestPanel() (not a bare innerHTML set) so that if
+      // AI Brain alignment was already revealed before this rating change,
+      // it stays populated in the freshly-rendered cards rather than going
+      // blank — revealed is preserved on lastVoiceContestCache itself, this
+      // just re-applies it.
+      rerenderVoiceContestPanel(lastVoiceContestCache);
     }
   } catch (e){ /* rating is a nice-to-have — a failed save here shouldn't block the rest of the panel */ }
 }
