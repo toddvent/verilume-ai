@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-publisher-vendor-performance (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-project-number-partner-dates-audience-grouping (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1572,6 +1572,17 @@ ensureColumn('channel_planning_details', 'actualLeads', 'REAL');
 ensureColumn('channel_planning_details', 'actualsEnteredByRole', 'TEXT');
 ensureColumn('channel_planning_details', 'actualsEnteredByName', 'TEXT');
 ensureColumn('channel_planning_details', 'actualsUpdatedAt', 'TEXT');
+
+// 2026-09-13 — Project # (client reference), per direct instruction: this
+// is the CLIENT's own internal Wrike job/project number, never a Verilume-
+// generated id. Verilume stores it only so a client integrating their own
+// systems against this number can retrieve it later (export/API round-
+// trip) — it is a pure pass-through value that Verilume's own logic
+// (grouping, scoring, matching) must never read or depend on. Settable
+// only at row creation (single POST and the bulk-create-campaigns import
+// path); the PATCH endpoint deliberately never accepts or updates it, so
+// it stays read-only after creation regardless of actorRole.
+ensureColumn('channel_planning_details', 'projectNumber', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -9631,6 +9642,7 @@ const LEGACY_CASING_COLUMNS = [
   ['channel_planning_details', 'mediaType'],
   ['channel_planning_details', 'productGroup'],
   ['channel_planning_details', 'productYear'],
+  ['channel_planning_details', 'projectNumber'],
   ['channel_planning_details', 'updatedAt'],
   ['copy_library', 'accountId'],
   ['copy_library', 'campaignId'],
@@ -14022,7 +14034,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-publisher-vendor-performance',
+        buildStamp: '2026-09-13-project-number-partner-dates-audience-grouping',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -18168,7 +18180,10 @@ async function handleRequest(req, res) {
         budget: row.budget === null ? null : Number(row.budget),
         detailsJson: row.detailsJson ? JSON.parse(row.detailsJson) : {},
         actualCalls, actualQrScans, actualUrlVisits, actualLeads,
-        totalEngagement
+        totalEngagement,
+        // 2026-09-13 — Project # (client reference). Read-only pass-through,
+        // string or null — see the projectNumber ensureColumn comment.
+        projectNumber: row.projectNumber === undefined ? null : row.projectNumber
       };
     }
 
@@ -18193,6 +18208,11 @@ async function handleRequest(req, res) {
     // HTTP-status-shaped object, not a real Error) on any validation
     // failure, so a bulk caller can catch per-row without one bad row
     // aborting the whole batch.
+    //
+    // 2026-09-13 — also accepts an optional projectNumber (the client's own
+    // internal Wrike reference — see the ensureColumn comment): settable
+    // here at creation only. The PATCH endpoint below deliberately has no
+    // equivalent — once set, it never changes.
     function insertChannelPlanningRow(body){
       const campaignId = body.campaignId;
       if (!campaignId) throw { status: 400, error: 'campaignId is required' };
@@ -18215,8 +18235,8 @@ async function handleRequest(req, res) {
       db.prepare(`INSERT INTO channel_planning_details
         (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
          dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
-         status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, createdAt, updatedAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, projectNumber, createdAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         entryId, campaignId, body.allocationId || null, body.channel,
         body.partner || null, body.audience || null, body.buyType || null, body.mediaType || null,
@@ -18226,6 +18246,7 @@ async function handleRequest(req, res) {
         typeof body.budget === 'number' ? body.budget : null,
         JSON.stringify(detailsJson), status,
         actorRole, actorName, actorRole, actorName,
+        typeof body.projectNumber === 'string' ? body.projectNumber : (body.projectNumber || null),
         now, now
       );
       return { entryId, campaignId };
@@ -18630,25 +18651,47 @@ async function handleRequest(req, res) {
     // still here unchanged, stays the "add rows to existing campaigns"
     // tool for ongoing use).
     //
-    // Body: { actorRole, actorName, fileName, dateRangeStart, dateRangeEnd,
-    // rows: [{ campaignName, campaignClassification, campaignStartDate,
-    // campaignEndDate, channel, partner, audience, buyType, mediaType,
-    // impressions, dropDate, hitDate, endDate, productYear, productGroup,
-    // creativeMarket, budget }, ...] }. Rows are grouped by campaignName
-    // (trimmed, case-insensitive) — every row sharing a name is one
-    // campaign's line items, and campaign-level fields (classification,
-    // start/end date) are read from the first row in the group that has
-    // them.
+    // REWRITTEN 2026-09-13, per direct instruction (Todd) — the grouping is
+    // NOT by campaignName: "They aren't grouped by campaign name. It's been
+    // discussed a couple times. The grouping is based on Partner + Campaign
+    // Dates + Audience." Asked to clarify "Campaign Dates," Todd gave a real
+    // example row (PARTNER: AFAR, HIT DATE: 4/20/2026, END DATE: 12/31/2026,
+    // AUDIENCE: PR), confirming Campaign Dates means Hit Date + End Date
+    // together — NOT Drop Date. Then, asked whether Channel is a separate
+    // axis: "Good catch. Add channel + partner, dates and audience." Final
+    // grouping key, exact match on all five: Channel + Partner + Hit Date +
+    // End Date + Audience. Then, asked whether this replaces the old
+    // campaignName-based endpoint or is a separate new path: "Yes, clients
+    // don't always have a name" — this REPLACES the old campaignName
+    // grouping entirely; there is no more name-based matching anywhere in
+    // this endpoint. A campaignName may still be sent per row, but it is
+    // display-only (used only to label a newly-created campaign when
+    // present) — it is never read for matching.
     //
-    // Per direct instruction ("override the existing matched campaign...
-    // you shouldn't have overlapping campaigns, the objective is to get a
-    // client up and running faster, it's not intended for every day use"):
-    // a campaignName that already exists in this account is matched and
-    // OVERRIDDEN — its existing Channel Planning Detail rows are replaced
-    // wholesale with this file's rows for that campaign, not merged
-    // alongside them. A campaignName not seen before creates a new
-    // campaign. This is a deliberately different semantic from the /bulk
-    // endpoint above (which only ever adds rows, never replaces).
+    // Also per direct instruction: "Project number is the internal Wrike #
+    // not the Verilume #. Our first step when Verilume Ids are not created
+    // is to create them and apply to each row. Uploads w/o campaign #s
+    // assume they are unique campaigns." — every row in this endpoint's
+    // batch is assumed to need a real Verilume campaign id; rows sharing a
+    // grouping key get ONE Verilume campaign id (created or matched, see
+    // below) stamped across all of them. "Assume unique" means matching is
+    // always structural (the 5-field key), never by a name string.
+    //
+    // ASSUMPTION (unconfirmed, safe default): when a batch row's key
+    // matches an EXISTING campaign's own channel_planning_details rows,
+    // the new rows are ADDED to that campaign — never used to replace or
+    // delete its existing rows. Todd was asked directly whether a key-match
+    // should add or replace (mirroring the old campaignName endpoint's
+    // replace-on-match behavior) and has not yet answered; append-only is
+    // the non-destructive default here. Flag to Todd if replace-on-match is
+    // actually wanted.
+    //
+    // Body: { actorRole, actorName, fileName, dateRangeStart, dateRangeEnd,
+    // rows: [{ campaignName (optional, display-only), campaignClassification,
+    // channel, partner, audience, buyType, mediaType, impressions, dropDate,
+    // hitDate, endDate, productYear, productGroup, creativeMarket, budget,
+    // projectNumber (client's own internal reference — read-only after
+    // creation, see the projectNumber ensureColumn comment) }, ...] }.
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'bulk-create-campaigns'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -18661,15 +18704,65 @@ async function handleRequest(req, res) {
       const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
 
-      // Group rows by campaignName (trimmed, case-insensitive key).
-      const groups = new Map(); // lowerName -> { displayName, rowsWithIndex: [{row, index}] }
+      // Normalizes a date string to a comparable YYYY-MM-DD form for the
+      // grouping key. No generic date-parsing helper exists elsewhere in
+      // this file for arbitrary upload date strings (generateCampaignCode's
+      // own `new Date(startDate)` is specific to deriving its yy/mm code,
+      // not reusable here as a comparator) — this applies that same
+      // tolerant Date parse and falls back to the trimmed raw string when
+      // it can't be parsed, so an unparsable date still participates in the
+      // key as its own literal value rather than silently collapsing every
+      // unparsable date into one group.
+      function normalizeDateForGrouping(v){
+        const raw = (v === null || v === undefined ? '' : String(v)).trim();
+        if (!raw) return '';
+        const d = new Date(raw);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+        return raw;
+      }
+      function groupKeyFor(row){
+        const channel = (row && row.channel ? String(row.channel) : '').trim().toLowerCase();
+        const partner = (row && row.partner ? String(row.partner) : '').trim().toLowerCase();
+        const hitDate = normalizeDateForGrouping(row && row.hitDate);
+        const endDate = normalizeDateForGrouping(row && row.endDate);
+        const audience = (row && row.audience ? String(row.audience) : '').trim().toLowerCase();
+        return [channel, partner, hitDate, endDate, audience].join('||');
+      }
+
+      // Group this batch's own rows by key first, so multiple rows in the
+      // same upload sharing a key land in the same new/matched campaign
+      // together.
+      const groups = new Map(); // key -> { channel, partner, hitDate, endDate, audience, entries: [{row, index}] }
       const ungroupedErrors = [];
       rows.forEach((row, index) => {
-        const name = row && typeof row.campaignName === 'string' ? row.campaignName.trim() : '';
-        if (!name){ ungroupedErrors.push({ index, ok: false, error: 'campaignName is required' }); return; }
-        const key = name.toLowerCase();
-        if (!groups.has(key)) groups.set(key, { displayName: name, entries: [] });
+        if (!row || !row.channel){ ungroupedErrors.push({ index, ok: false, error: 'channel is required' }); return; }
+        const key = groupKeyFor(row);
+        if (!groups.has(key)){
+          groups.set(key, {
+            channel: (row.channel || '').trim(),
+            partner: (row.partner || '').trim(),
+            hitDate: row.hitDate || null,
+            endDate: row.endDate || null,
+            audience: (row.audience || '').trim(),
+            entries: []
+          });
+        }
         groups.get(key).entries.push({ row, index });
+      });
+
+      // Pre-existing rows for this account, keyed the same way, so a
+      // batch's key can be matched against real existing data structurally
+      // — never by name. Fetched once, up front, rather than per group.
+      const existingRows = db.prepare(
+        `SELECT cpd.campaignId, cpd.channel, cpd.partner, cpd.hitDate, cpd.endDate, cpd.audience
+         FROM channel_planning_details cpd
+         JOIN campaigns c ON c.id = cpd.campaignId
+         WHERE c.accountId = ?`
+      ).all(accountId);
+      const existingCampaignIdByKey = new Map();
+      existingRows.forEach(r => {
+        const k = groupKeyFor(r);
+        if (!existingCampaignIdByKey.has(k)) existingCampaignIdByKey.set(k, r.campaignId);
       });
 
       const batchId = generateId('CPUB');
@@ -18678,46 +18771,52 @@ async function handleRequest(req, res) {
       const campaignIdsMatched = [];
       const results = [...ungroupedErrors];
       let insertedRowCount = 0;
+      const keyGroups = [];
 
-      groups.forEach(({ displayName, entries }) => {
+      groups.forEach((group, key) => {
+        const { channel, partner, hitDate, endDate, audience, entries } = group;
         const first = (field) => {
           for (const { row } of entries){ if (row && row[field]){ return row[field]; } }
           return '';
         };
         const campaignClassification = first('campaignClassification');
-        const campaignStartDate = first('campaignStartDate');
-        const campaignEndDate = first('campaignEndDate');
+        // campaignName is display-only — never used for matching (see the
+        // "clients don't always have a name" / "assume unique" comment
+        // above). Falls back to a generated label built from the real
+        // grouping fields when no name was supplied.
+        const displayName = first('campaignName') ||
+          [partner, channel, audience].filter(Boolean).join(' · ') || 'Unnamed campaign';
+
         let campaignId;
-        const existing = db.prepare('SELECT id FROM campaigns WHERE accountId = ? AND LOWER(TRIM(name)) = LOWER(?)').get(accountId, displayName);
-        if (existing){
-          campaignId = existing.id;
-          db.prepare('DELETE FROM channel_planning_details WHERE campaignId = ?').run(campaignId);
-          db.prepare(
-            `UPDATE campaigns SET
-               campaignType = CASE WHEN ? <> '' THEN ? ELSE campaignType END,
-               startDate = CASE WHEN ? <> '' THEN ? ELSE startDate END,
-               endDate = CASE WHEN ? <> '' THEN ? ELSE endDate END
-             WHERE id = ?`
-          ).run(campaignClassification, campaignClassification, campaignStartDate, campaignStartDate, campaignEndDate, campaignEndDate, campaignId);
+        const matchedCampaignId = existingCampaignIdByKey.get(key);
+        if (matchedCampaignId){
+          // ADD to the matched campaign — never replace/delete its existing
+          // rows. See the ASSUMPTION comment above this endpoint.
+          campaignId = matchedCampaignId;
           campaignIdsMatched.push(campaignId);
         } else {
           campaignId = generateId('CMP');
-          const campaignCode = generateCampaignCode(accountId, account.partnerCode, threeLetterCode(displayName), campaignStartDate || null);
+          const campaignCode = generateCampaignCode(accountId, account.partnerCode, threeLetterCode(partner || channel), hitDate || null);
           db.prepare(
             `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, createdAt)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-          ).run(campaignId, accountId, displayName, displayName, campaignStartDate || null, campaignEndDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, now);
+          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, now);
           campaignIdsCreated.push(campaignId);
+          // So a later group in THIS SAME batch with an identical key
+          // (shouldn't happen since groups are already deduped by key, but
+          // keeps the map consistent if the same key is ever looked up
+          // again) resolves to the campaign just created.
+          existingCampaignIdByKey.set(key, campaignId);
         }
+
         entries.forEach(({ row, index }) => {
           try {
-            if (!row.channel) throw { error: 'channel is required' };
             const entryId = generateId('CPD');
             db.prepare(`INSERT INTO channel_planning_details
               (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
                dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
-               status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, uploadBatchId, createdAt, updatedAt)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+               status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, uploadBatchId, projectNumber, createdAt, updatedAt)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
             ).run(
               entryId, campaignId, null, row.channel,
               row.partner || null, row.audience || null, row.buyType || null, row.mediaType || null,
@@ -18725,7 +18824,9 @@ async function handleRequest(req, res) {
               row.dropDate || null, row.hitDate || null, row.endDate || null,
               row.productYear || null, row.productGroup || null, row.creativeMarket || null,
               typeof row.budget === 'number' ? row.budget : (Number(row.budget) || null),
-              '{}', 'draft', actorRole, actorName, actorRole, actorName, batchId, now, now
+              '{}', 'draft', actorRole, actorName, actorRole, actorName, batchId,
+              typeof row.projectNumber === 'string' ? row.projectNumber : (row.projectNumber || null),
+              now, now
             );
             insertedRowCount++;
             results.push({ index, ok: true, entryId, campaignId });
@@ -18734,6 +18835,10 @@ async function handleRequest(req, res) {
           }
         });
         syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
+        keyGroups.push({
+          channel, partner, hitDate: hitDate || null, endDate: endDate || null, audience: audience || null,
+          campaignId, matchedExistingCampaign: !!matchedCampaignId, rowCount: entries.length
+        });
       });
 
       db.prepare(
@@ -18743,7 +18848,8 @@ async function handleRequest(req, res) {
 
       return sendJson(res, 200, {
         batchId, rowsInserted: insertedRowCount, rowsFailed: results.length - results.filter(r => r.ok).length,
-        results, campaignsCreated: campaignIdsCreated, campaignsMatched: campaignIdsMatched
+        results, campaignsCreated: campaignIdsCreated, campaignsMatched: campaignIdsMatched,
+        keyGroups
       });
     }
 
@@ -24379,4 +24485,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
