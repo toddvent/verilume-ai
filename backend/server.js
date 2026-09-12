@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-12-voice-avoid-terms-dialogue-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-12-website-brand-profile-ledger (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2303,6 +2303,31 @@ function brandVoiceCriticalMessagesContext(account, extra){
       if (siteFacts) lines.push(`This brand's own website (${ctx.url || account.websiteUrl || 'on file'}) — for UNDERSTANDING the brand only, never to be quoted verbatim in the drafted copy: ${siteFacts}`);
     }
   } catch (e){ /* malformed ledger content — fall through without it */ }
+  // 2026-09-12 — Website Brand Profile round. This is arguably the most
+  // relevant place on the whole platform for real extracted brand-category
+  // facts to land: Voice Guide generation and the Voice Contest above are
+  // literally the "understand this brand" step, so a factual profile
+  // (scale/format, audience served, price tier, etc. — derived from actual
+  // analysis of the brand's own website, not guessed) belongs directly
+  // alongside Products & Services and the website-understanding block just
+  // above. Called synchronously (websiteProfileRollup, not the async
+  // websiteProfileContext() wrapper used by the copy-generation paths)
+  // since this whole function is itself synchronous — same reason
+  // websiteContextRollup() is called directly above rather than through
+  // liveGuardrailContext()'s async wrapper.
+  try {
+    const profile = account.accountId ? websiteProfileRollup(account.accountId) : null;
+    if (profile){
+      const profileLines = Object.keys(BRAND_PROFILE_CATEGORY_LABELS)
+        .map(key => {
+          const entry = profile[key];
+          if (!entry || entry.value == null) return null;
+          return `${BRAND_PROFILE_CATEGORY_LABELS[key]}: ${entry.value}`;
+        })
+        .filter(Boolean);
+      if (profileLines.length) lines.push(`Brand category profile (from real analysis of this brand's own website — factual positioning signal): ${profileLines.join('; ')}`);
+    }
+  } catch (e){ /* malformed ledger content — fall through without it */ }
   if (extra && Array.isArray(extra.toneAnchors) && extra.toneAnchors.length) lines.push(`Tone Anchors picked for this account: ${extra.toneAnchors.join(', ')}`);
   if (extra && extra.avoidWords) lines.push(`Words to avoid: ${extra.avoidWords}`);
   if (extra && extra.antiExample) lines.push(`What this voice is NOT: ${extra.antiExample}`);
@@ -3575,6 +3600,97 @@ function websiteContextRollup(accountId){
   try { return JSON.parse(latest.contentJson); } catch (e){ return null; }
 }
 
+// 2026-09-12 — Website Brand Profile round, Contribution Ledger
+// sourceType #5 ('website_profile'). This is the client-facing
+// productionization of the ops-only POST /api/ops/website-category-scan
+// diagnostic (see that route's own long comment above for the full
+// history) — the concrete resolution of a gap flagged in an earlier
+// round's investigation: the client has wanted, for a while, an AI layer
+// that actually reads a brand's own website and derives real
+// understanding (what they sell, positioning, audience, price tier) to
+// feed copy generation, and that capability already existed but only as
+// a staff-only preview tool nobody outside engineering could ever run.
+// createWebsiteProfileContribution/getWebsiteProfileContributions below
+// are exact structural mirrors of createWebsiteScanContribution/
+// getWebsiteScanContributions above — same insert shape, same starting
+// status ('reference'), sourceRefId left null since a brand category
+// profile isn't tied to one campaign or one page the way a training
+// digest is tied to a campaign.
+function createWebsiteProfileContribution(accountId, contentObj){
+  const id = generateId('ABC');
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO ai_brain_contributions
+    (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, accountId, 'website_profile', null, null, null, JSON.stringify(contentObj), 'reference', null, null, now, null);
+  return id;
+}
+
+function getWebsiteProfileContributions(accountId){
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt
+    FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'website_profile' ORDER BY createdAt DESC`).all(accountId);
+}
+
+// websiteProfileRollup — additive, like websiteContextRollup/
+// trainingDigestRollup above, NOT latest-wins-with-restore like the
+// voice_guide/competitive_positioning pair below. The reason is the shape
+// of the content itself: a brand category profile is a SET of seven
+// independently-supportable facts (scaleFormat, audienceSegmentServed,
+// etc.), each of which can legitimately come from a different scan or a
+// different page set and still be true at the same time — it is not one
+// hand-edited document a human approves as a single unit the way a Voice
+// Guide or a Positioning writeup is. So this folds every currently-
+// 'applied' contribution's categories together, one key at a time.
+//
+// Per-key merge rule (verified by hand, not just described here): applied
+// contributions are read oldest-first, and for each of the 7
+// BRAND_PROFILE_CATEGORY_KEYS, a later contribution's entry OVERWRITES
+// the running merged value only when that later entry's value is
+// non-null. A later scan that came back null for a category (nothing on
+// the newly-scanned pages supported it) never erases an earlier scan's
+// real, evidenced finding for that same category — the merge loop simply
+// skips writing when entry.value is null, leaving whatever was already
+// there (possibly still null, possibly a real earlier value) untouched.
+//
+// FALLBACK (transitional convenience only, same posture as
+// websiteContextRollup's own fallback above — not the intended long-term
+// behavior): when an account has zero 'applied' website_profile
+// contributions yet, this falls back to the single most-recently-created
+// contribution's raw categories, so a freshly-scanned, not-yet-decided
+// account isn't left with nothing the moment this ships. Once an account
+// starts actually deciding (Reference/Apply/Remove), this fallback stops
+// applying to it the moment the first 'applied' row exists.
+function websiteProfileRollup(accountId){
+  const applied = db.prepare(`SELECT contentJson, createdAt FROM ai_brain_contributions
+    WHERE accountId = ? AND sourceType = 'website_profile' AND status = 'applied' ORDER BY createdAt ASC`).all(accountId);
+  if (applied.length){
+    const merged = {};
+    BRAND_PROFILE_CATEGORY_KEYS.forEach(key => { merged[key] = { value: null, evidence: null }; });
+    applied.forEach(row => {
+      let content;
+      try { content = JSON.parse(row.contentJson); } catch (e){ return; } // malformed row — skip, don't break the rollup
+      const categories = content && content.categories;
+      if (!categories) return;
+      BRAND_PROFILE_CATEGORY_KEYS.forEach(key => {
+        const entry = categories[key];
+        // Only a non-null value overwrites — see the merge-rule comment
+        // above. A later null is deliberately a no-op here, never a reset.
+        if (entry && entry.value != null){
+          merged[key] = { value: entry.value, evidence: entry.evidence != null ? entry.evidence : null };
+        }
+      });
+    });
+    return merged;
+  }
+  const latest = db.prepare(`SELECT contentJson FROM ai_brain_contributions
+    WHERE accountId = ? AND sourceType = 'website_profile' ORDER BY createdAt DESC LIMIT 1`).get(accountId);
+  if (!latest) return null;
+  try {
+    const content = JSON.parse(latest.contentJson);
+    return (content && content.categories) ? content.categories : null;
+  } catch (e){ return null; }
+}
+
 // 2026-09-12 — Voice Guardrail Direct Wiring round. Terms to Avoid and
 // website context previously only reached a copy-generation prompt
 // INDIRECTLY, via whatever text a human happened to copy into the approved
@@ -4444,6 +4560,298 @@ async function resolveWebsiteExampleDirectoryRule(accountId, ruleId, originUrl, 
     resolved.push({ id: pageId, path: pagePath, status });
   }
   return { ok: true, totalFound, resolvedCount: resolved.length, truncatedNote, resolved };
+}
+
+// ---------- Website Brand Profile (2026-09-12, AI Brain Contribution Ledger sourceType #5) ----------
+// The client has wanted, for a while, an AI layer that actually reads a
+// brand's own website and derives real understanding — what they sell,
+// their positioning, their audience, luxury-vs-mass-market signal — to
+// feed AI-generated copy. This section is that capability made real and
+// client-facing. It already existed as a one-off staff diagnostic (see
+// POST /api/ops/website-category-scan, gated behind ADMIN_API_TOKEN, far
+// below this section) — a real, working pipeline that was never wired
+// into anything an account could actually trigger or benefit from. The
+// three functions immediately below are that diagnostic's own
+// page-selection/fetch/extraction machinery, pulled out so BOTH the
+// original ops tool and the new client-facing runAccountWebsiteProfileScan()
+// (further below) share one real implementation instead of a second
+// hand-typed copy drifting out of sync. This is a pure extraction — the
+// ops route's own behavior (prompt text, schema, response shape) is
+// unchanged; see that route's own comment for confirmation of exactly
+// what moved and why.
+
+// Same three constants the ops route has always used (WEBSITE_SCAN_MAX_PAGES
+// = 12: homepage + up to 11 AI-selected pages; WEBSITE_SCAN_CANDIDATE_CAP
+// = 200: sitemap paths offered to the page-selection classifier, keeping
+// its prompt bounded on very large sites). Hoisted to module scope (they
+// used to be declared inline at the top of the ops route handler) so the
+// new shared functions below — used by both the ops route and
+// runAccountWebsiteProfileScan()'s fallback path — can reference them too.
+const WEBSITE_SCAN_MAX_PAGES = 12;
+const WEBSITE_SCAN_CANDIDATE_CAP = 200; // sitemap paths offered to the classifier — keeps its prompt bounded on very large sites
+
+// Sitemap discovery + AI-driven page selection, factored out of
+// POST /api/ops/website-category-scan's inline logic (see that route for
+// the full history of two decisions baked into this function: (1) a
+// sitemap-INDEX site like Atlas Ocean Voyages must still reach real
+// candidate paths, handled inside fetchSitemapUrls() itself; (2) page
+// selection asks the model to classify the REAL, actually-discovered
+// sitemap paths directly rather than matching a hand-maintained keyword
+// list, so a hallucinated or malformed path is validated against the real
+// candidate set and silently dropped, never fetched). Falls back to
+// homepage-only on every real way this can degrade (no ANTHROPIC_API_KEY,
+// no sitemap, classification failure) — same honest-degradation posture
+// as extractWebsiteBrandCategories() below, never a hard failure.
+async function discoverWebsitePageSelection(origin){
+  let sitemapUrls = [];
+  let sitemapError = null;
+  try { sitemapUrls = await fetchSitemapUrls(origin); }
+  catch (e){ sitemapError = e.message; }
+
+  const seenPaths = new Set(['/']);
+  const candidatePaths = [];
+  for (const raw of sitemapUrls){
+    let u;
+    try { u = new URL(raw, origin); } catch (e){ continue; }
+    if (u.origin !== origin) continue;
+    u.search = ''; u.hash = '';
+    const p = u.pathname;
+    if (p === '/' || seenPaths.has(p)) continue;
+    seenPaths.add(p);
+    candidatePaths.push(p);
+    if (candidatePaths.length >= WEBSITE_SCAN_CANDIDATE_CAP) break;
+  }
+
+  let selectedPaths = ['/'];
+  let pageSelectionError = null;
+  if (!candidatePaths.length){
+    if (sitemapError) pageSelectionError = 'no sitemap candidates available (' + sitemapError + ') — homepage only';
+  } else if (!process.env.ANTHROPIC_API_KEY){
+    pageSelectionError = 'not configured — ANTHROPIC_API_KEY not set; falling back to homepage only';
+  } else {
+    const selectionPrompt = `Below is the real, complete list of URL paths found on a company's website (one per line — nothing here is invented). Pick up to ${WEBSITE_SCAN_MAX_PAGES - 1} of them that most likely lead to product/service/transaction pages (what they actually sell or offer) or press/news/media pages. Judge only from the path/slug itself.
+
+${candidatePaths.join('\n')}
+
+Submit the chosen paths, copied exactly as they appear above, via the submit_selected_paths tool. If none look relevant, submit an empty list.`;
+    try {
+      const picked = await callClaudeForJSON({
+        model: 'claude-sonnet-4-5-20250929',
+        maxTokens: 500,
+        content: selectionPrompt,
+        toolName: 'submit_selected_paths',
+        toolDescription: 'Submit the selected page paths.',
+        schema: {
+          type: 'object',
+          properties: {
+            selectedPaths: { type: 'array', items: { type: 'string' }, description: 'Chosen paths, copied exactly as given in the candidate list.' }
+          },
+          required: ['selectedPaths']
+        }
+      });
+      if (Array.isArray(picked.selectedPaths)){
+        const candidateSet = new Set(candidatePaths);
+        const validated = picked.selectedPaths.filter(p => typeof p === 'string' && candidateSet.has(p)).slice(0, WEBSITE_SCAN_MAX_PAGES - 1);
+        selectedPaths = ['/', ...validated];
+      } else {
+        pageSelectionError = 'model response did not contain a parseable page list — falling back to homepage only';
+      }
+    } catch (e){
+      pageSelectionError = 'Page selection failed: ' + e.message + ' — falling back to homepage only';
+    }
+  }
+  return { sitemapUrls, sitemapError, candidatePaths, selectedPaths, pageSelectionError };
+}
+
+// Fetched in SMALL CONCURRENT BATCHES, not one at a time and not all
+// WEBSITE_SCAN_MAX_PAGES (12) at once — factored out of the ops route's
+// inline loop, batch size UNCHANGED. Sequential was too slow — up to
+// ~96s of page fetches alone (each carries its own 8s timeout inside
+// fetchAndExtractPage) plus the sitemap fetch and extraction call, which
+// tripped the platform's function-timeout page ("A server error has
+// occurred", not real JSON). Firing all 12 at once fixed that but traded
+// it for a harder failure — enough simultaneous outbound fetches
+// downloading full page HTML at once crashed the function outright
+// (FUNCTION_INVOCATION_FAILED), which happens below the level any
+// try/catch in this file can catch. Batches of 4 keep wall time close to
+// 3x one page's worst case (~24s) instead of either extreme. Do not
+// change WEBSITE_SCAN_FETCH_BATCH_SIZE without re-reading that incident.
+const WEBSITE_SCAN_FETCH_BATCH_SIZE = 4;
+async function fetchWebsitePagesBatched(origin, paths){
+  const pages = [];
+  for (let i = 0; i < paths.length; i += WEBSITE_SCAN_FETCH_BATCH_SIZE){
+    const batch = paths.slice(i, i + WEBSITE_SCAN_FETCH_BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(async (p) => {
+      try {
+        const ctx = await fetchAndExtractPage(origin + p);
+        return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt, structuredData: ctx.structuredData };
+      } catch (e){
+        return { path: p, ok: false, error: e.message };
+      }
+    }));
+    pages.push(...batchResults);
+  }
+  return pages;
+}
+
+// extractWebsiteBrandCategories(pages) — the category-extraction half of
+// the ops route, pulled out verbatim (same prompt wording/structure, same
+// BRAND_PROFILE_CATEGORY_KEYS/BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA schema)
+// so runAccountWebsiteProfileScan() below can reuse it without a second
+// hand-typed copy of this prompt drifting out of sync with the ops
+// tool's. `pages` is an array of already-fetched, already-successful page
+// objects — {path, title, metaDescription, headings, excerpt,
+// structuredData} — agnostic to WHERE those pages came from (the ops
+// route's sitemap+AI-selection flow, this account's own Website Examples
+// picks, or any future source). Returns the same honest-degradation shape
+// the ops route has always returned: never throws, never guesses a value
+// the given material doesn't support.
+async function extractWebsiteBrandCategories(pages){
+  const pageBlocks = (Array.isArray(pages) ? pages : []).map(p => {
+    const structuredBlock = (p.structuredData && p.structuredData.length)
+      ? `\nStructured product/offer data found on this page (schema.org JSON-LD, not visible page text): ${JSON.stringify(p.structuredData)}`
+      : '';
+    return `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}${structuredBlock}`;
+  }).join('\n\n');
+
+  const extractionPrompt = `You are extracting structured facts from real, live-fetched pages of a company's own website — nothing here is guessed or inferred from outside knowledge. Below are the pages actually fetched, including any real structured product/offer data (schema.org JSON-LD) found embedded in the page.
+
+${pageBlocks || '(no pages could be fetched)'}
+
+Fill in exactly these seven categories, using ONLY what the text and structured data above actually support. For any category the given material does not clearly support, set "value" to null — do not guess, infer from company name/industry alone, or use outside knowledge. Every non-null "value" must have an "evidence" field quoting or closely paraphrasing the specific text or structured data above that supports it.
+
+Categories:
+1. scaleFormat — the size or format of what they deliver (e.g. small-ship vs. mega-ship; boutique vs. big-box)
+2. specializationNiche — the specific capability that differentiates them from a generalist competitor
+3. geographicOperationalReach — where they can actually go or operate (specific regions, capabilities, certifications enabling reach)
+4. audienceSegmentServed — who they explicitly target
+5. priceTierPosition — where they position on price/tier; a structured "price"/"priceCurrency" value above is strong evidence for this, but on-page copy signaling premium/value positioning counts too
+6. experienceFormatStyle — how the experience/product is structured
+7. distinctiveCapabilityCertification — a specific, named operational fact or certification
+
+Submit your findings via the submit_brand_categories tool.`;
+
+  let categories = null;
+  let extractionError = null;
+  if (!process.env.ANTHROPIC_API_KEY){
+    extractionError = 'not configured — ANTHROPIC_API_KEY not set';
+  } else if (!pageBlocks){
+    extractionError = 'no pages were successfully fetched — nothing to extract from';
+  } else {
+    try {
+      categories = await callClaudeForJSON({
+        model: 'claude-sonnet-4-5-20250929',
+        maxTokens: 900,
+        content: extractionPrompt,
+        toolName: 'submit_brand_categories',
+        toolDescription: 'Submit the seven extracted brand categories.',
+        schema: {
+          type: 'object',
+          properties: Object.fromEntries(BRAND_PROFILE_CATEGORY_KEYS.map(key => [key, BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA])),
+          required: BRAND_PROFILE_CATEGORY_KEYS
+        }
+      });
+    } catch (e){
+      extractionError = 'Extraction failed: ' + e.message;
+    }
+  }
+  return { categories, extractionError, extractionPrompt };
+}
+
+// runAccountWebsiteProfileScan(accountId) — the client-facing
+// productionization of the ops-only diagnostic above. Three things worth
+// calling out about this function specifically:
+//
+// (a) This is the concrete resolution of the "does a real AI-interpretation
+// layer of a brand's own website exist" gap a prior round's investigation
+// flagged as wanted but not built — it existed, staff-only, unreachable by
+// any account. This function is what makes it real product.
+//
+// (b) Website-Examples-pages-take-priority: when this account has already
+// curated specific pages via the Website Examples feature (brand_copy_
+// website_examples — scope='page', mode='include', status='active'), this
+// scan uses THOSE EXACT PAGES rather than running its own sitemap+AI
+// page-selection flow. This is the deliberate, concrete connection between
+// two previously-separate features, built per direct product feedback
+// describing wanting exactly this: an AI understanding-of-the-brand scan
+// that supports "include/exclude of specific pages." A client who has
+// already told the platform which pages best represent their brand gets a
+// profile grounded in THOSE pages, not a fresh, independent guess at which
+// pages matter.
+//
+// (c) Falls back to the ops route's own sitemap-discovery + AI-page-
+// selection + batched-fetch flow (discoverWebsitePageSelection() +
+// fetchWebsitePagesBatched() above) when the account has no active Website
+// Examples pages on file yet, so this feature works for every account from
+// day one, not only ones that have already configured Website Examples.
+async function runAccountWebsiteProfileScan(accountId){
+  const account = db.prepare('SELECT websiteUrl FROM accounts WHERE accountId = ?').get(accountId);
+  const websiteUrl = account ? (account.websiteUrl || '').trim() : '';
+  // Same honest "no website URL on file" convention as
+  // POST /api/accounts/:id/website-scan's existing 400 — see that route.
+  if (!websiteUrl){
+    return { ok: false, status: 400, error: 'This account has no website URL on file — add one under Company Profile first.' };
+  }
+  let origin;
+  try { origin = new URL(websiteUrl).origin; } catch (e){
+    return { ok: false, status: 400, error: 'The website URL on file for this account is not a valid URL.' };
+  }
+
+  // Website Examples' own already-resolved page rows for this account —
+  // fetched once at add-time by resolveWebsiteExampleDirectoryRule() above,
+  // never re-fetched later, so this reads title/metaDescription/excerpt
+  // straight off that table rather than re-fetching the live page.
+  // headingsJson is stored as a JSON string (see the
+  // brand_copy_website_examples column comment above) and parsed back to
+  // an array here. That table has no structuredData column, so these page
+  // blocks simply omit it — same honest-absence convention used
+  // everywhere else in this file (a missing field is left null/omitted,
+  // never guessed at).
+  const examplePages = db.prepare(
+    `SELECT path, title, metaDescription, headingsJson, excerpt FROM brand_copy_website_examples
+     WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active'`
+  ).all(accountId);
+
+  let pages, pagesUsedSource;
+  if (examplePages.length){
+    pagesUsedSource = 'website_examples';
+    pages = examplePages.map(row => {
+      let headings = [];
+      try { headings = row.headingsJson ? JSON.parse(row.headingsJson) : []; } catch (e){ headings = []; }
+      return { path: row.path, title: row.title, metaDescription: row.metaDescription, headings, excerpt: row.excerpt, structuredData: null };
+    });
+    // The homepage is foundational context regardless of what's curated in
+    // Website Examples, so it's always included fresh — UNLESS a Website
+    // Examples rule already covers '/', in which case fetching it again
+    // here would just duplicate that row's own (already-stored) content.
+    const hasHomepage = examplePages.some(row => row.path === '/');
+    if (!hasHomepage){
+      try {
+        const home = await fetchAndExtractPage(websiteUrl);
+        pages.unshift({ path: '/', title: home.title, metaDescription: home.metaDescription, headings: home.headings, excerpt: home.excerpt, structuredData: home.structuredData });
+      } catch (e){
+        // Homepage fetch failing here is not fatal — the curated Website
+        // Examples pages are still real, usable material; the scan simply
+        // proceeds without the homepage rather than failing outright.
+      }
+    }
+  } else {
+    // No curated pages yet for this account — fall back to the same
+    // sitemap-discovery + AI-page-selection + batched-fetch flow the ops
+    // diagnostic uses, so the feature works for every account.
+    pagesUsedSource = 'auto_sitemap';
+    const { selectedPaths } = await discoverWebsitePageSelection(origin);
+    const fetched = await fetchWebsitePagesBatched(origin, selectedPaths);
+    pages = fetched.filter(p => p.ok).map(p => ({ path: p.path, title: p.title, metaDescription: p.metaDescription, headings: p.headings, excerpt: p.excerpt, structuredData: p.structuredData }));
+  }
+
+  const { categories, extractionError } = await extractWebsiteBrandCategories(pages);
+  return {
+    ok: true,
+    categories, extractionError,
+    pagesUsedSource,
+    pagesUsed: pages.map(p => p.path)
+  };
 }
 
 // ---------- PR & Corporate Communications real backend (round 132c22b) ----------
@@ -10362,6 +10770,50 @@ async function brandCopyWebsiteExampleContext(accountId){
     return `\nREAL PAGES FROM THIS BRAND'S OWN WEBSITE (client-selected as copy examples — a genuine reference for vocabulary and how this brand actually presents itself online, not a script to copy verbatim; never quote these directly, and never treat their specific facts/offers/prices as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; }
 }
+// Human-readable labels for the 7 BRAND_PROFILE_CATEGORY_KEYS, for
+// websiteProfileContext() below (and reusable by any future consumer) —
+// same hand-maintained label-map convention as GENERATION_LABELS_FOR_COPY/
+// WEALTH_TIER_LABELS_FOR_COPY just below, rather than surfacing the raw
+// camelCase key names in a generation prompt.
+const BRAND_PROFILE_CATEGORY_LABELS = {
+  scaleFormat: 'Scale/format',
+  specializationNiche: 'Specialization/niche',
+  geographicOperationalReach: 'Geographic/operational reach',
+  audienceSegmentServed: 'Audience served',
+  priceTierPosition: 'Price/tier position',
+  experienceFormatStyle: 'Experience format/style',
+  distinctiveCapabilityCertification: 'Distinctive capability/certification'
+};
+// 2026-09-12 — Website Brand Profile round. Sibling of
+// trainingDigestRollupContext()/liveGuardrailContext() above — same
+// honest-empty-string convention (returns '' on any lookup failure or
+// when nothing is on file, never blocks real copy generation). Reads
+// websiteProfileRollup(accountId) (see that function's own comment, near
+// the MMM adstock/lag decisions, for the additive-merge and null-never-
+// overwrites-a-real-value rules) and formats each non-null category as
+// one line. This is deliberately labeled as FACTUAL positioning signal —
+// distinct from brandVoiceCriticalMessagesContext()'s website-understanding
+// block, which is about tone/voice grounding — since a category like
+// priceTierPosition or audienceSegmentServed is closer to a fact about the
+// brand than a voice cue, and the two are wired into the same prompts
+// side by side rather than one replacing the other.
+async function websiteProfileContext(accountId){
+  try {
+    if (!accountId) return '';
+    const rollup = websiteProfileRollup(accountId);
+    if (!rollup) return '';
+    const lines = Object.keys(BRAND_PROFILE_CATEGORY_LABELS)
+      .map(key => {
+        const entry = rollup[key];
+        if (!entry || entry.value == null) return null;
+        const label = BRAND_PROFILE_CATEGORY_LABELS[key];
+        return entry.evidence ? `${label}: ${entry.value} (evidence: ${entry.evidence})` : `${label}: ${entry.value}`;
+      })
+      .filter(Boolean);
+    if (!lines.length) return '';
+    return `\nBRAND CATEGORY PROFILE (derived from real analysis of this brand's own website pages — factual positioning signal, not voice/tone):\n${lines.join('\n')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
 // 2026-08-31 (round 135), per direct instruction — "We need to make sure
 // that the Wealth Index + Generations impacts our copywriting product."
 // Before this, generateMessagingCopyViaAI() below only ever read
@@ -10427,7 +10879,13 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // reads as the final, most current word on avoid-terms and website
     // understanding, layered on top of (not replacing) whatever the
     // approved Voice Guide text above already says.
-    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId)) + (await liveGuardrailContext(account.accountId));
+    // 2026-09-12 — Website Brand Profile round. websiteProfileContext()
+    // is real, extracted positioning FACTS (scale/format, audience,
+    // price tier, etc. — see that function's comment), which is
+    // account-wide and belongs alongside liveGuardrailContext() here for
+    // the same reason, not folded into it — one is a guardrail/tone
+    // signal, the other is factual brand understanding.
+    const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId));
     let competitorContext = '';
     if (account.competitorsJson){
       try {
@@ -10768,7 +11226,10 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // not campaign-scoped, so PR/Corp Comm gets it too (unlike
   // creativeJobDecisionContext(), which stays campaign-only by design —
   // see the comment above this function).
-  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId));
+  // 2026-09-12 — Website Brand Profile round. Same websiteProfileContext()
+  // wiring generateMessagingCopyViaAI() gets above — real extracted brand
+  // category facts are account-wide, not campaign-scoped.
+  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId));
   // 2026-09-12 — Competitive Positioning, mirroring the same block
   // generateMessagingCopyViaAI() builds from account.competitorsJson
   // (which buildPrCorpCommPrompt never read before today). Same "internal
@@ -11691,6 +12152,12 @@ async function runCandidateInterview(campaign, account){
   // vendor in this panel is judging the same brief against the same brand,
   // so there's no reason to re-query/re-extract the same samples up to 7
   // times per click.
+  // 2026-09-12 — Website Brand Profile round: deliberately NOT wired in
+  // here, same as liveGuardrailContext()/websiteContextRollup() were left
+  // out of this function's context chain in prior rounds — this panel's
+  // context chain is its own separate, narrower thing (samples + creative
+  // job decisions only) by standing convention, not an oversight. A
+  // candidate for a future round, not this one.
   const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
   const generated = await Promise.all(
     INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext))
@@ -11821,7 +12288,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-12-voice-avoid-terms-dialogue-fix',
+        buildStamp: '2026-09-12-website-brand-profile-ledger',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -13104,6 +13571,11 @@ async function handleRequest(req, res) {
         // second round trip).
         try { record.account.trainingDigestRollup = trainingDigestRollup(record.account.accountId); }
         catch (e){ record.account.trainingDigestRollup = null; }
+        // 2026-09-12 — Website Brand Profile round (AI Brain Contribution
+        // Ledger sourceType #5). Same attach-at-the-route-level convention
+        // as websiteContextRollup/trainingDigestRollup directly above.
+        try { record.account.websiteProfileRollup = websiteProfileRollup(record.account.accountId); }
+        catch (e){ record.account.websiteProfileRollup = null; }
       }
       return sendJson(res, 200, record);
     }
@@ -13414,6 +13886,99 @@ async function handleRequest(req, res) {
         } catch (e){ /* malformed snapshot — the status change above still stands, just no live restore */ }
       }
       return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored });
+    }
+
+    // POST /api/accounts/:id/website-profile-scan — 2026-09-12, AI Brain
+    // Contribution Ledger sourceType #5 ("Website Brand Profile" round).
+    // The client-facing trigger for runAccountWebsiteProfileScan() (see
+    // that function's own comment, near resolveWebsiteExampleDirectoryRule
+    // above, for the full rationale — Website-Examples-pages-take-priority,
+    // sitemap-fallback for accounts with no curated pages yet). Only
+    // creates a permanent ledger row on a genuinely successful extraction
+    // (categories non-null AND no extractionError) — an honest scan
+    // failure is returned straight to the client instead, same as
+    // POST .../website-scan above never writes accounts.websiteContextJson
+    // on a failed fetch.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-profile-scan'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      let result;
+      try {
+        result = await runAccountWebsiteProfileScan(accountId);
+      } catch (e){
+        return sendJson(res, 502, { error: `Website Brand Profile scan failed: ${e.message}` });
+      }
+      if (!result.ok){
+        return sendJson(res, result.status || 502, { error: result.error });
+      }
+      if (result.extractionError || !result.categories){
+        // Honest failure — no contribution row is created for a scan that
+        // produced nothing real to record.
+        return sendJson(res, 200, { categories: result.categories, extractionError: result.extractionError, pagesUsedSource: result.pagesUsedSource, pagesUsed: result.pagesUsed });
+      }
+      const extractedAt = new Date().toISOString();
+      const contributionId = createWebsiteProfileContribution(accountId, {
+        categories: result.categories,
+        pagesUsedSource: result.pagesUsedSource,
+        pagesUsed: result.pagesUsed,
+        extractedAt
+      });
+      return sendJson(res, 200, {
+        categories: result.categories, extractionError: null,
+        pagesUsedSource: result.pagesUsedSource, pagesUsed: result.pagesUsed,
+        contributionId, status: 'reference'
+      });
+    }
+
+    // GET /api/accounts/:id/website-profile-decisions — 2026-09-12, AI
+    // Brain Contribution Ledger sourceType #5. Exact mirror of
+    // GET .../website-context-decisions above (full history of this
+    // account's website_profile contributions, newest first, current
+    // status folded onto each row), filtered to sourceType='website_profile'.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-profile-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const contributions = getWebsiteProfileContributions(accountId).map(row => {
+        let content = null;
+        try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt };
+      });
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt
+        FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
+      return sendJson(res, 200, { contributions, history });
+    }
+
+    // POST /api/accounts/:id/website-profile-decisions — 2026-09-12, AI
+    // Brain Contribution Ledger sourceType #5. A human recording
+    // Reference/Apply/Remove for one website_profile contribution — exact
+    // same pattern as POST .../website-context-decisions above (and
+    // .../training-digest-decisions): 'removed' requires a reason,
+    // everything else reason is optional, and every call both updates
+    // current state and appends to the append-only log. Unlike the
+    // voice_guide/competitive_positioning pair below, Apply here does NOT
+    // trigger a restore onto any account column — a category profile only
+    // ever lives in the ledger/rollup (websiteProfileRollup()), there is
+    // no single "current" account field it gets copied onto, so Apply just
+    // changes ledger status, same as website_scan/training_digest.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-profile-decisions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const contributionId = (body.contributionId || '').trim();
+      const contribution = contributionId
+        ? db.prepare(`SELECT id FROM ai_brain_contributions WHERE id = ? AND accountId = ? AND sourceType = 'website_profile'`).get(contributionId, accountId)
+        : null;
+      if (!contribution) return sendJson(res, 404, { error: 'contributionId not found for this account\'s website brand profile scans' });
+      if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
+      if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
+      const now = new Date().toISOString();
+      const reason = (body.reason || '').trim() || null;
+      const decidedBy = (body.decidedBy || '').trim() || null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ? WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, contributionId);
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now });
     }
 
     // POST /api/assessment/website-scan — 2026-08-25, per direct follow-up
@@ -14075,8 +14640,19 @@ async function handleRequest(req, res) {
     // below, never a hard failure. See fetchSitemapUrls() for the
     // matching 2026-09-02 fix that lets a sitemap-index site (like Atlas
     // Ocean Voyages) even reach this step with real candidate paths.
-    const WEBSITE_SCAN_MAX_PAGES = 12;
-    const WEBSITE_SCAN_CANDIDATE_CAP = 200; // sitemap paths offered to the classifier — keeps its prompt bounded on very large sites
+    //
+    // 2026-09-12 REFACTOR (Website Brand Profile round) — this route's own
+    // behavior is UNCHANGED (same prompt text sent to the model, same
+    // schema, same response JSON shape); only its internals now delegate
+    // to shared functions (discoverWebsitePageSelection(),
+    // fetchWebsitePagesBatched(), extractWebsiteBrandCategories() — all
+    // defined near resolveWebsiteExampleDirectoryRule() above, in the new
+    // "Website Brand Profile" section) so the client-facing
+    // runAccountWebsiteProfileScan() can reuse this exact pipeline instead
+    // of a second hand-typed copy. WEBSITE_SCAN_MAX_PAGES/
+    // WEBSITE_SCAN_CANDIDATE_CAP/WEBSITE_SCAN_FETCH_BATCH_SIZE moved to
+    // module scope alongside those shared functions for the same reason —
+    // this route no longer declares its own local copies.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'website-category-scan'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
@@ -14088,139 +14664,10 @@ async function handleRequest(req, res) {
         return sendJson(res, 400, { error: 'Not a valid URL.' });
       }
 
-      let sitemapUrls = [];
-      let sitemapError = null;
-      try { sitemapUrls = await fetchSitemapUrls(origin); }
-      catch (e){ sitemapError = e.message; }
-
-      const seenPaths = new Set(['/']);
-      const candidatePaths = [];
-      for (const raw of sitemapUrls){
-        let u;
-        try { u = new URL(raw, origin); } catch (e){ continue; }
-        if (u.origin !== origin) continue;
-        u.search = ''; u.hash = '';
-        const p = u.pathname;
-        if (p === '/' || seenPaths.has(p)) continue;
-        seenPaths.add(p);
-        candidatePaths.push(p);
-        if (candidatePaths.length >= WEBSITE_SCAN_CANDIDATE_CAP) break;
-      }
-
-      let selectedPaths = ['/'];
-      let pageSelectionError = null;
-      if (!candidatePaths.length){
-        if (sitemapError) pageSelectionError = 'no sitemap candidates available (' + sitemapError + ') — homepage only';
-      } else if (!process.env.ANTHROPIC_API_KEY){
-        pageSelectionError = 'not configured — ANTHROPIC_API_KEY not set; falling back to homepage only';
-      } else {
-        const selectionPrompt = `Below is the real, complete list of URL paths found on a company's website (one per line — nothing here is invented). Pick up to ${WEBSITE_SCAN_MAX_PAGES - 1} of them that most likely lead to product/service/transaction pages (what they actually sell or offer) or press/news/media pages. Judge only from the path/slug itself.
-
-${candidatePaths.join('\n')}
-
-Submit the chosen paths, copied exactly as they appear above, via the submit_selected_paths tool. If none look relevant, submit an empty list.`;
-        try {
-          const picked = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5-20250929',
-            maxTokens: 500,
-            content: selectionPrompt,
-            toolName: 'submit_selected_paths',
-            toolDescription: 'Submit the selected page paths.',
-            schema: {
-              type: 'object',
-              properties: {
-                selectedPaths: { type: 'array', items: { type: 'string' }, description: 'Chosen paths, copied exactly as given in the candidate list.' }
-              },
-              required: ['selectedPaths']
-            }
-          });
-          if (Array.isArray(picked.selectedPaths)){
-            const candidateSet = new Set(candidatePaths);
-            const validated = picked.selectedPaths.filter(p => typeof p === 'string' && candidateSet.has(p)).slice(0, WEBSITE_SCAN_MAX_PAGES - 1);
-            selectedPaths = ['/', ...validated];
-          } else {
-            pageSelectionError = 'model response did not contain a parseable page list — falling back to homepage only';
-          }
-        } catch (e){
-          pageSelectionError = 'Page selection failed: ' + e.message + ' — falling back to homepage only';
-        }
-      }
-
-      // Fetched in SMALL CONCURRENT BATCHES, not one at a time and not all
-      // WEBSITE_SCAN_MAX_PAGES (12) at once. Sequential was too slow — up to
-      // ~96s of page fetches alone (each carries its own 8s timeout inside
-      // fetchAndExtractPage) plus the sitemap fetch and extraction call,
-      // which tripped the platform's function-timeout page ("A server error
-      // has occurred", not real JSON). Firing all 12 at once fixed that but
-      // traded it for a harder failure — enough simultaneous outbound
-      // fetches downloading full page HTML at once crashed the function
-      // outright (FUNCTION_INVOCATION_FAILED), which happens below the
-      // level any try/catch in this file can catch. Batches of 4 keep wall
-      // time close to 3x one page's worst case (~24s) instead of either
-      // extreme.
-      const WEBSITE_SCAN_FETCH_BATCH_SIZE = 4;
-      const pages = [];
-      for (let i = 0; i < selectedPaths.length; i += WEBSITE_SCAN_FETCH_BATCH_SIZE){
-        const batch = selectedPaths.slice(i, i + WEBSITE_SCAN_FETCH_BATCH_SIZE);
-        const batchResults = await Promise.all(batch.map(async (p) => {
-          try {
-            const ctx = await fetchAndExtractPage(origin + p);
-            return { path: p, ok: true, title: ctx.title, metaDescription: ctx.metaDescription, headings: ctx.headings, excerpt: ctx.excerpt, structuredData: ctx.structuredData };
-          } catch (e){
-            return { path: p, ok: false, error: e.message };
-          }
-        }));
-        pages.push(...batchResults);
-      }
-
-      const pageBlocks = pages.filter(p => p.ok).map(p => {
-        const structuredBlock = (p.structuredData && p.structuredData.length)
-          ? `\nStructured product/offer data found on this page (schema.org JSON-LD, not visible page text): ${JSON.stringify(p.structuredData)}`
-          : '';
-        return `PAGE ${p.path}\nTitle: ${p.title || '(none)'}\nMeta description: ${p.metaDescription || '(none)'}\nHeadings: ${(p.headings || []).join(' | ') || '(none)'}\nExcerpt: ${(p.excerpt || '').slice(0, 600)}${structuredBlock}`;
-      }).join('\n\n');
-
-      const extractionPrompt = `You are extracting structured facts from real, live-fetched pages of a company's own website — nothing here is guessed or inferred from outside knowledge. Below are the pages actually fetched, including any real structured product/offer data (schema.org JSON-LD) found embedded in the page.
-
-${pageBlocks || '(no pages could be fetched)'}
-
-Fill in exactly these seven categories, using ONLY what the text and structured data above actually support. For any category the given material does not clearly support, set "value" to null — do not guess, infer from company name/industry alone, or use outside knowledge. Every non-null "value" must have an "evidence" field quoting or closely paraphrasing the specific text or structured data above that supports it.
-
-Categories:
-1. scaleFormat — the size or format of what they deliver (e.g. small-ship vs. mega-ship; boutique vs. big-box)
-2. specializationNiche — the specific capability that differentiates them from a generalist competitor
-3. geographicOperationalReach — where they can actually go or operate (specific regions, capabilities, certifications enabling reach)
-4. audienceSegmentServed — who they explicitly target
-5. priceTierPosition — where they position on price/tier; a structured "price"/"priceCurrency" value above is strong evidence for this, but on-page copy signaling premium/value positioning counts too
-6. experienceFormatStyle — how the experience/product is structured
-7. distinctiveCapabilityCertification — a specific, named operational fact or certification
-
-Submit your findings via the submit_brand_categories tool.`;
-
-      let categories = null;
-      let extractionError = null;
-      if (!process.env.ANTHROPIC_API_KEY){
-        extractionError = 'not configured — ANTHROPIC_API_KEY not set';
-      } else if (!pageBlocks){
-        extractionError = 'no pages were successfully fetched — nothing to extract from';
-      } else {
-        try {
-          categories = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5-20250929',
-            maxTokens: 900,
-            content: extractionPrompt,
-            toolName: 'submit_brand_categories',
-            toolDescription: 'Submit the seven extracted brand categories.',
-            schema: {
-              type: 'object',
-              properties: Object.fromEntries(BRAND_PROFILE_CATEGORY_KEYS.map(key => [key, BRAND_PROFILE_CATEGORY_ENTRY_SCHEMA])),
-              required: BRAND_PROFILE_CATEGORY_KEYS
-            }
-          });
-        } catch (e){
-          extractionError = 'Extraction failed: ' + e.message;
-        }
-      }
+      const { sitemapUrls, sitemapError, candidatePaths, selectedPaths, pageSelectionError } = await discoverWebsitePageSelection(origin);
+      const pages = await fetchWebsitePagesBatched(origin, selectedPaths);
+      const okPages = pages.filter(p => p.ok).map(p => ({ path: p.path, title: p.title, metaDescription: p.metaDescription, headings: p.headings, excerpt: p.excerpt, structuredData: p.structuredData }));
+      const { categories, extractionError, extractionPrompt } = await extractWebsiteBrandCategories(okPages);
 
       return sendJson(res, 200, {
         websiteUrl, origin, sitemapError,
@@ -21464,4 +21911,5 @@ handleRequest.testExports = {
 };
 
 module.exports = handleRequest;
+
 
