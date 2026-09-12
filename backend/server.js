@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-bounded-read (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-empty-extraction-honest-failure (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -12819,6 +12819,31 @@ async function fetchAndExtractPage(url){
   }
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const bodyText = stripTags(bodyMatch ? bodyMatch[1] : html);
+  // 2026-09-13 fix, part 4 — per direct report, the challenge-page/tiny-
+  // response check above (part 2) did NOT fire on Atlas's next attempt
+  // either: the response came back 200, wasn't tiny, matched none of the
+  // CHALLENGE_PAGE_MARKERS strings — and STILL extracted no title, no meta
+  // description, and no headings. That's a real, distinct failure mode
+  // part 2 didn't cover: a full-size, non-challenge page that genuinely
+  // has nothing this regex-based extractor can find — most likely because
+  // the page's real content is rendered by client-side JavaScript after
+  // load (a single-page app shell), which this plain fetch() never
+  // executes (see this function's 2026-09-02 comment below), or because
+  // the URL on file redirected somewhere unexpected. Silently returning
+  // that as a 200 "success" is exactly the silent-empty-success this
+  // function is supposed to never do (see its top comment) — so this
+  // throws instead, and folds in the diagnostic details (resolved URL,
+  // byte count, a snippet of whatever visible text WAS found) directly
+  // into the honest error message, since nobody on this team can log into
+  // either account's browser network tab to see this directly.
+  const titleText = titleMatch ? stripTags(titleMatch[1]).trim() : '';
+  if (!titleText && !descText && headings.length === 0){
+    const resolvedUrl = (resp.url && resp.url !== url) ? resp.url : null;
+    const snippet = bodyText.replace(/\s+/g, ' ').trim().slice(0, 200);
+    throw new Error(`${url} returned a full-size page (${html.trim().length} characters, no bot-challenge markers detected) but no <title>, <meta name="description">, or H1-H3 heading could be found anywhere in it.`
+      + (resolvedUrl ? ` The request was redirected to ${resolvedUrl} — check that's the intended page.` : '')
+      + (snippet ? ` The only visible text this scan could find was: "${snippet}"` : ' No visible text was found in the page at all, which usually means the real content is loaded by JavaScript after the page opens (a single-page app) rather than present in the raw page this scan reads — that would need a different kind of scan than this one can do.'));
+  }
   // 2026-09-02 addition, per direct feedback that meta/heading/excerpt
   // text alone misses real transactional/product data that lives on
   // ecommerce and booking pages — a plain fetch() here never executes
@@ -12857,7 +12882,7 @@ async function fetchAndExtractPage(url){
   }
   return {
     url,
-    title: titleMatch ? stripTags(titleMatch[1]).trim() : null,
+    title: titleText || null,
     metaDescription: descText ? stripTags(descText).trim() : null,
     headings,
     excerpt: bodyText.slice(0, 800),
@@ -14130,7 +14155,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-website-scan-bounded-read',
+        buildStamp: '2026-09-13-website-scan-empty-extraction-honest-failure',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
