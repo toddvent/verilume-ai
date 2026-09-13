@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-website-scan-empty-extraction-honest-failure (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-ai-brain-ledger-camelcase-casing-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -9890,7 +9890,39 @@ const LEGACY_CASING_COLUMNS = [
   ['accounts', 'accountLat'],
   ['accounts', 'accountLng'],
   ['accounts', 'accountAddressGeocodedAt'],
-  ['market_customer_uploads', 'periodLabel']
+  ['market_customer_uploads', 'periodLabel'],
+  // 2026-09-13 addition — same bug, same fix, this time caught directly:
+  // ai_brain_contributions.contentJson (and .qualityTag) and
+  // ai_brain_contribution_log.contributionId (and its own .qualityTag)
+  // were never added to schema-identifiers.json when the AI Brain
+  // Contribution Ledger shipped (2026-09-12), so Postgres has been
+  // folding all four to all-lowercase since the very first row was ever
+  // written — every website scan's real extracted content (title/meta/
+  // headings) was being captured correctly and written to the database
+  // successfully the whole time, then silently coming back as
+  // `undefined` (JSON.parse(undefined) -> caught -> null) on every
+  // subsequent read, which is what made a series of otherwise-correct
+  // extraction fixes (User-Agent, honest-failure detection, bounded
+  // read) all look like they weren't working: the scan was never the
+  // problem, reading its own saved result back was. Confirmed directly
+  // via a live Network-tab capture: the POST /website-scan response for
+  // one specific scan had a full real title/description/15 headings,
+  // and the very next GET .../website-context-decisions call for that
+  // same row came back with content: null and a literal lowercase
+  // "qualitytag" key. These four now get the same startup-triggerable
+  // rename repair as every other entry in this list — but see this
+  // list's own fixLegacyColumnCasing()/POST /api/admin/fix-legacy-casing
+  // comment: that rename does NOT run automatically, so every existing
+  // ai_brain_contributions/ai_brain_contribution_log row written before
+  // this fix stays permanently unreadable (content: null) until that
+  // admin action is actually triggered once against production — added
+  // a one-click button for it on the ops console (Directory tab) rather
+  // than requiring a manual curl call, since nobody on this team has the
+  // tooling to hand-craft an authenticated POST with a custom header.
+  ['ai_brain_contributions', 'contentJson'],
+  ['ai_brain_contributions', 'qualityTag'],
+  ['ai_brain_contribution_log', 'contributionId'],
+  ['ai_brain_contribution_log', 'qualityTag']
 ];
 // 2026-08-21, later same day — this used to run automatically at module
 // load (`fixLegacyColumnCasing();` right here, on every cold start), doing
@@ -14155,7 +14187,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-website-scan-empty-extraction-honest-failure',
+        buildStamp: '2026-09-13-ai-brain-ledger-camelcase-casing-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24656,6 +24688,7 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
 
