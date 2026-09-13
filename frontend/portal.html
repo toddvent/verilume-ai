@@ -4896,7 +4896,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / Sample Writings &amp; Presentations</div>
     <div class="eyebrow">Brand Groundwork · Brand Book · Sample Writings &amp; Presentations</div>
     <h1>Sample Writings &amp; Presentations</h1>
-    <p class="lede">Reference library of real writing and presentation samples for this brand — always categorized by purpose and date, so every Campaign/Project can pull the right precedent instead of guessing which file is current. Files (Word, PDF, PowerPoint) route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload before they're stored. Google Docs and Google Slides aren't files this prototype can fetch, so those go in as a labeled reference link instead. A short video (up to :30 seconds) can also be analyzed for visual style and on-screen text — see Option C below; the video itself is never stored, only the written analysis.</p>
+    <p class="lede">Reference library of real writing and presentation samples for this brand — always categorized by purpose and date, so every Campaign/Project can pull the right precedent instead of guessing which file is current. Files (Word, PDF, PowerPoint) route through the same PII/virus-scan pipeline as Market Optimization and Marketing Budget Upload before they're stored. Google Docs and Google Slides aren't files this prototype can fetch, so those go in as a labeled reference link instead. A short video (up to :30 seconds) can also be analyzed for visual style and on-screen text — see Option C below; the video itself is never stored, only the written analysis. Any sample can also be scoped to one Product Group (e.g. Antarctica) instead of the whole account — that's what feeds AI copy generation genuine, destination-specific detail (named excursions, onboard programs, culinary depth) instead of generic language; see Option D below for reading a document straight from a published URL when it's too large to upload.</p>
 
     <div class="module open accent-media" id="bwsUploadModule">
       <div class="module-head" onclick="toggleModule('bwsUploadModule')">
@@ -4930,6 +4930,11 @@
               <option value="rejected">Rejected</option>
             </select>
           </div>
+        </div>
+        <div class="field">
+          <label>Product Group (optional)</label>
+          <select id="bwsFileProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
+          <p class="hint" style="margin:4px 0 0;">Scope this sample to one product group (e.g. Antarctica) and it feeds ONLY that group's AI copy generation as Internal Experience Evidence — named excursions, onboard programs, culinary detail, anything that makes copy read as genuinely specific to this destination rather than generic. Leave unscoped for anything account-wide.</p>
         </div>
         <div class="field">
           <label>Notes (optional)</label>
@@ -4983,6 +4988,11 @@
         <div class="field">
           <label>Google Doc / Slides link</label>
           <input type="text" id="bwsLinkUrl" placeholder="https://docs.google.com/... or https://docs.google.com/presentation/...">
+        </div>
+        <div class="field">
+          <label>Product Group (optional)</label>
+          <select id="bwsLinkProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
+          <p class="hint" style="margin:4px 0 0;">A link is stored as a reference only — since there's no fetch capability here, it does not feed AI generation (scoped or otherwise). Use Option D below for a URL whose actual content should feed a product group's copy.</p>
         </div>
         <div class="field">
           <label>Notes (optional)</label>
@@ -5039,6 +5049,10 @@
             </div>
           </div>
           <div class="field">
+            <label>Product Group (optional)</label>
+            <select id="bwsVideoProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
+          </div>
+          <div class="field">
             <label>AI analysis (edit before saving if needed)</label>
             <textarea id="bwsVideoAnalysisText" rows="4"></textarea>
           </div>
@@ -5049,9 +5063,75 @@
       </div>
     </div>
 
+    <!-- Round 132z-evidence (2026-09-13), per direct instruction: "build
+         the section that allows clients to provide 'internal experience
+         evidence' to a product group... is it possible to read pdfs
+         published on a website?... the easiest path is to read the URLs
+         and directories provided by the company." Two-step flow (fetch &
+         preview, then save) mirroring Option C's video analyze/save shape
+         — bwsFetchUrl() calls the server, which reads the URL itself
+         (sidesteps the ~4.5MB inbound-upload ceiling Option A is bound by,
+         since this is an outbound fetch the server makes, not a file the
+         browser has to POST here) and returns either extracted PDF text
+         ready to review, or — for a directory/listing page like
+         atlasoceanvoyages.com/brochures — a list of the .pdf links it
+         found on the page, each fetchable with its own click. -->
+    <div class="module accent-media" id="bwsUrlModule">
+      <div class="module-head" onclick="toggleModule('bwsUrlModule')">
+        <span class="modnum">D</span>
+        <div class="titles">
+          <span class="tag">Option D</span>
+          <h2>Fetch a document from a URL or directory page</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p>Paste a direct link to a PDF, or a "brochures" directory page that links out to several — the server fetches it directly, so this isn't bound by the upload form's file-size ceiling (Option A tops out around 4.5MB once a file is base64-encoded; this path reads a large brochure PDF straight from its real URL instead). A directory page returns a list of the documents it found for you to pick from; a JS-rendered flipbook/embedded viewer (Issuu and similar) can't be read this way — paste its direct PDF link if it has one, or use Option A instead.</p>
+        <div class="field">
+          <label>URL</label>
+          <input type="text" id="bwsUrlInput" placeholder="e.g. https://www.atlasoceanvoyages.com/brochures or a direct .pdf link">
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="bwsFetchUrl()">Fetch &amp; preview</button>
+        </div>
+        <div class="hint" id="bwsUrlStatus" style="margin-top:8px;"></div>
+        <div id="bwsUrlDirectoryBlock" style="display:none;margin-top:14px;">
+          <p class="hint" style="margin:0 0 8px;">Documents found on this page — click one to fetch and preview it:</p>
+          <div id="bwsUrlDirectoryList"></div>
+        </div>
+        <div id="bwsUrlResultBlock" style="display:none;margin-top:14px;">
+          <div class="field">
+            <label>Title</label>
+            <input type="text" id="bwsUrlTitle" placeholder="e.g. 2026-2027 Antarctica Brochure">
+          </div>
+          <div class="field-row">
+            <div class="field" style="flex:1;min-width:220px;">
+              <label>Purpose</label>
+              <select id="bwsUrlCategory"></select>
+            </div>
+            <div class="field" style="flex:1;min-width:180px;">
+              <label>Date</label>
+              <input type="date" id="bwsUrlDate">
+            </div>
+          </div>
+          <div class="field">
+            <label>Product Group (optional, but this is what feeds it into product-group-scoped AI copy)</label>
+            <select id="bwsUrlProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
+          </div>
+          <div class="field">
+            <label>Extracted text (review/edit before saving)</label>
+            <textarea id="bwsUrlExtractedText" rows="6"></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="bwsSaveUrlEvidence()">Save as evidence</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="module open" id="bwsLibraryModule">
       <div class="module-head" onclick="toggleModule('bwsLibraryModule')">
-        <span class="modnum">D</span>
+        <span class="modnum">E</span>
         <div class="titles">
           <span class="tag">Library</span>
           <h2>Saved samples</h2>
@@ -5060,6 +5140,7 @@
       </div>
       <div class="module-body">
         <div class="btn-row" id="bwsFilterRow" style="margin-bottom:10px;flex-wrap:wrap;"></div>
+        <div class="btn-row" id="bwsProductGroupFilterRow" style="margin-bottom:10px;flex-wrap:wrap;"></div>
         <div id="bwsLibraryBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
@@ -5071,7 +5152,7 @@
          Remove pattern every other ledger card in this file already uses. -->
     <div class="module open" id="bwsStyleModule">
       <div class="module-head" onclick="toggleModule('bwsStyleModule')">
-        <span class="modnum">E</span>
+        <span class="modnum">F</span>
         <div class="titles">
           <span class="tag">AI Brain</span>
           <h2>Style patterns learned</h2>
@@ -28259,12 +28340,13 @@ const BWS_CATEGORIES = [
   { id: 'email_template', label: 'Email Templates' },
   { id: 'direct_mail_template', label: 'Direct Mail Templates' },
   { id: 'social_post', label: 'Social Posts' },
-  { id: 'approval_rejection', label: 'Approvals & Rejections' }
+  { id: 'approval_rejection', label: 'Approvals & Rejections' },
+  { id: 'experience_evidence', label: 'Internal Experience Evidence' }
 ];
 let bwsFileDataUrl = null, bwsFileName = null, bwsSamples = [], bwsFilterCategory = '';
 
 function bwsPopulateCategorySelects(){
-  ['bwsFileCategory', 'bwsLinkCategory', 'bwsVideoCategory'].forEach(id => {
+  ['bwsFileCategory', 'bwsLinkCategory', 'bwsVideoCategory', 'bwsUrlCategory'].forEach(id => {
     const el = document.getElementById(id);
     if (!el || el.options.length) return;
     el.innerHTML = BWS_CATEGORIES.map(c => `<option value="${c.id}">${escapeHtml(c.label)}</option>`).join('');
@@ -28272,6 +28354,11 @@ function bwsPopulateCategorySelects(){
     // video_script stays available in the dropdown as the legacy option,
     // but a fresh upload defaults to the new one.
     if (id === 'bwsVideoCategory') el.value = 'marketing_campaign_video';
+    // Round 132z-evidence: a URL fetch defaults to the new Internal
+    // Experience Evidence category — the category this whole option was
+    // built for — though any category (e.g. Digital Product Brochures)
+    // remains selectable.
+    if (id === 'bwsUrlCategory') el.value = 'experience_evidence';
   });
 }
 
@@ -28385,9 +28472,10 @@ async function bwsSaveVideoAnalysis(){
   if (!notes.trim()){ if (statusEl) statusEl.textContent = 'The analysis text is required — run Analyze video again if it\'s empty.'; return; }
   if (category === 'approval_rejection' && !outcome){ if (statusEl) statusEl.textContent = 'Outcome (Approved or Rejected) is required for the Approvals & Rejections category.'; return; }
   try {
+    const productGroup = (document.getElementById('bwsVideoProductGroup') || {}).value || '';
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), outcome, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), outcome, productGroup, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the analysis failed.'; return; }
@@ -28399,6 +28487,7 @@ async function bwsSaveVideoAnalysis(){
     const chosen = document.getElementById('bwsVideoChosenName'); if (chosen) chosen.textContent = '';
     const videoInput = document.getElementById('bwsVideoInput'); if (videoInput) videoInput.value = '';
     const videoOutcome = document.getElementById('bwsVideoOutcome'); if (videoOutcome) videoOutcome.value = '';
+    const videoProductGroup = document.getElementById('bwsVideoProductGroup'); if (videoProductGroup) videoProductGroup.value = '';
     bwsVideoMimeType = null; bwsVideoFileName = null; bwsVideoAnalysisNote = '';
     bwsLoadLibrary();
   } catch (e){
@@ -28411,6 +28500,15 @@ function bwsInit(){
   bwsResetForms({ clearStatus: true });
   bwsLoadLibrary();
   bwsLoadStyleHistory();
+  // Round 132z-evidence: this page can be reached before the Marketing
+  // Calendar has ever loaded state.calendarTaxonomies (mktCal.taxonomiesLoaded
+  // is that flag) — fetch it here if needed so the Product Group selects
+  // aren't stuck on "Account-wide" only for a real reason nobody can see.
+  if (state.calendarTaxonomies){
+    bwsPopulateProductGroupSelects();
+  } else {
+    mktCalLoadTaxonomies().then(bwsPopulateProductGroupSelects);
+  }
 }
 
 // 2026-09-12 — AI Brain Contribution Ledger sourceType #6. Runs style
@@ -28505,7 +28603,7 @@ async function bwsSetStyleDecision(contributionId, status){
 // too.
 function bwsResetForms({ clearStatus = false } = {}){
   bwsFileDataUrl = null; bwsFileName = null;
-  ['bwsFileTitle','bwsFileDate','bwsFileNotes','bwsFileOutcome','bwsLinkTitle','bwsLinkDate','bwsLinkUrl','bwsLinkNotes','bwsLinkOutcome'].forEach(id => {
+  ['bwsFileTitle','bwsFileDate','bwsFileNotes','bwsFileOutcome','bwsFileProductGroup','bwsLinkTitle','bwsLinkDate','bwsLinkUrl','bwsLinkNotes','bwsLinkOutcome','bwsLinkProductGroup'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const chosen = document.getElementById('bwsFileChosenName'); if (chosen) chosen.textContent = '';
@@ -28514,6 +28612,27 @@ function bwsResetForms({ clearStatus = false } = {}){
     const fs = document.getElementById('bwsFileStatus'); if (fs) fs.textContent = '';
     const ls = document.getElementById('bwsLinkStatus'); if (ls) ls.textContent = '';
   }
+}
+
+// Round 132z-evidence (2026-09-13): populates every Product Group select
+// across Options A/B/C/D from the SAME real, account-configured taxonomy
+// Campaign Creation already uses (cmpTaxonomyValues('productGroup') — see
+// that function's own comment, round 132c) — no invented list, and no
+// separate fetch, since mktCalLoadTaxonomies() already stashes this at
+// state.calendarTaxonomies before this page can be reached (Sample
+// Writings lives under Brand Groundwork, past Campaign Creation's own
+// gate). If the taxonomy hasn't loaded yet, every select just falls back
+// to "Account-wide" only — no separate error state, since scoping to a
+// product group has always been optional.
+function bwsPopulateProductGroupSelects(){
+  const values = cmpTaxonomyValues('productGroup') || [];
+  ['bwsFileProductGroup', 'bwsLinkProductGroup', 'bwsVideoProductGroup', 'bwsUrlProductGroup'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = el.value;
+    el.innerHTML = '<option value="">Account-wide — not scoped to one product group</option>' + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (values.includes(current)) el.value = current;
+  });
 }
 
 function bwsFileToDataUrl(file){
@@ -28581,9 +28700,10 @@ async function bwsUploadFile(){
     }
 
     if (statusEl) statusEl.textContent = 'Passed screening — saving…';
+    const productGroup = (document.getElementById('bwsFileProductGroup') || {}).value || '';
     const commitResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'file', uploadedFileId: uploadData.id, title: title.trim(), category, docDate, notes, outcome, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'file', uploadedFileId: uploadData.id, title: title.trim(), category, docDate, notes, outcome, productGroup, uploadedBy: state.userName || '' })
     });
     const commitData = await commitResp.json().catch(() => ({}));
     if (!commitResp.ok){
@@ -28612,9 +28732,10 @@ async function bwsSaveLink(){
   if (category === 'approval_rejection' && !outcome){ if (statusEl) statusEl.textContent = 'Outcome (Approved or Rejected) is required for the Approvals & Rejections category.'; return; }
   if (statusEl) statusEl.textContent = 'Saving…';
   try {
+    const productGroup = (document.getElementById('bwsLinkProductGroup') || {}).value || '';
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'link', sourceUrl: sourceUrl.trim(), title: title.trim(), category, docDate, notes, outcome, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'link', sourceUrl: sourceUrl.trim(), title: title.trim(), category, docDate, notes, outcome, productGroup, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the link failed.'; return; }
@@ -28623,6 +28744,98 @@ async function bwsSaveLink(){
     bwsLoadLibrary();
   } catch (e){
     if (statusEl) statusEl.textContent = 'Backend unreachable — could not save the link.';
+  }
+}
+
+// ---------- Option D — fetch a document from a URL (round 132z-evidence,
+// 2026-09-13) ----------
+// Two-step flow, same shape as Option C's analyze/save split: bwsFetchUrl()
+// calls the server (which does the real fetching — see
+// fetchAndExtractEvidenceUrl() in backend/server.js for why that sidesteps
+// Option A's upload-size ceiling) and shows ONE of two outcomes — a PDF's
+// extracted text, ready to review and save, or a directory page's list of
+// discovered .pdf links, each fetchable with its own click via
+// bwsFetchDiscoveredLink(). Nothing is saved until bwsSaveUrlEvidence().
+let bwsUrlLastFetchedUrl = null;
+async function bwsFetchUrl(url){
+  const statusEl = document.getElementById('bwsUrlStatus');
+  const directoryBlock = document.getElementById('bwsUrlDirectoryBlock');
+  const resultBlock = document.getElementById('bwsUrlResultBlock');
+  const targetUrl = (typeof url === 'string' ? url : (document.getElementById('bwsUrlInput') || {}).value || '').trim();
+  if (!targetUrl){ if (statusEl) statusEl.textContent = 'Enter a URL first.'; return; }
+  if (directoryBlock) directoryBlock.style.display = 'none';
+  if (resultBlock) resultBlock.style.display = 'none';
+  if (statusEl) statusEl.textContent = 'Fetching…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/fetch-url`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: targetUrl })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Could not fetch that URL.'; return; }
+    bwsUrlLastFetchedUrl = targetUrl;
+    if (data.kind === 'directory'){
+      const listEl = document.getElementById('bwsUrlDirectoryList');
+      if (listEl){
+        listEl.innerHTML = data.discoveredLinks.map(l => `<div class="btn-row" style="margin-bottom:6px;">
+          <button class="btn-ghost" onclick="bwsFetchDiscoveredLink('${escapeHtml(l.href).replace(/'/g, "\\'")}')" style="text-align:left;">${escapeHtml(l.label)}</button>
+        </div>`).join('');
+      }
+      if (directoryBlock) directoryBlock.style.display = '';
+      if (statusEl) statusEl.textContent = `Found ${data.discoveredLinks.length} document${data.discoveredLinks.length === 1 ? '' : 's'} on ${data.pageTitle || targetUrl} — click one to fetch and preview it.`;
+      return;
+    }
+    // kind === 'pdf'
+    bwsShowUrlResult(targetUrl, data.extractedText);
+    if (statusEl) statusEl.textContent = `Extracted ${data.pageCount ? `${data.pageCount} pages, ` : ''}${data.extractedText.length.toLocaleString()} characters — review below, then save.`;
+  } catch (e){
+    if (statusEl) statusEl.textContent = 'Backend unreachable — could not fetch that URL.';
+  }
+}
+function bwsFetchDiscoveredLink(href){
+  bwsFetchUrl(href);
+}
+function bwsShowUrlResult(sourceUrl, extractedText){
+  const directoryBlock = document.getElementById('bwsUrlDirectoryBlock');
+  if (directoryBlock) directoryBlock.style.display = 'none';
+  const resultBlock = document.getElementById('bwsUrlResultBlock');
+  if (resultBlock) resultBlock.style.display = '';
+  const textEl = document.getElementById('bwsUrlExtractedText');
+  if (textEl) textEl.value = extractedText;
+  const titleEl = document.getElementById('bwsUrlTitle');
+  if (titleEl && !titleEl.value){
+    try { titleEl.value = decodeURIComponent((new URL(sourceUrl)).pathname.split('/').filter(Boolean).pop() || sourceUrl).replace(/[-_]/g, ' ').replace(/\.pdf$/i, ''); }
+    catch (e){ titleEl.value = sourceUrl; }
+  }
+}
+async function bwsSaveUrlEvidence(){
+  const statusEl = document.getElementById('bwsUrlStatus');
+  const title = (document.getElementById('bwsUrlTitle') || {}).value || '';
+  const category = (document.getElementById('bwsUrlCategory') || {}).value || 'experience_evidence';
+  const docDate = (document.getElementById('bwsUrlDate') || {}).value || '';
+  const extractedText = (document.getElementById('bwsUrlExtractedText') || {}).value || '';
+  const productGroup = (document.getElementById('bwsUrlProductGroup') || {}).value || '';
+  if (!bwsUrlLastFetchedUrl){ if (statusEl) statusEl.textContent = 'Fetch a URL first.'; return; }
+  if (!title.trim()){ if (statusEl) statusEl.textContent = 'Title is required.'; return; }
+  if (!docDate){ if (statusEl) statusEl.textContent = 'Date is required — every sample is categorized by purpose AND date.'; return; }
+  if (!extractedText.trim()){ if (statusEl) statusEl.textContent = 'Extracted text is required — fetch the URL again if it\'s empty.'; return; }
+  if (statusEl) statusEl.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceType: 'url_fetch', sourceUrl: bwsUrlLastFetchedUrl, extractedText: extractedText.trim(), title: title.trim(), category, docDate, productGroup, uploadedBy: state.userName || '' })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the evidence failed.'; return; }
+    if (statusEl) statusEl.textContent = `Saved — "${title.trim()}" added to the library below.`;
+    const resultBlock = document.getElementById('bwsUrlResultBlock'); if (resultBlock) resultBlock.style.display = 'none';
+    const directoryBlock = document.getElementById('bwsUrlDirectoryBlock'); if (directoryBlock) directoryBlock.style.display = 'none';
+    const urlInput = document.getElementById('bwsUrlInput'); if (urlInput) urlInput.value = '';
+    ['bwsUrlTitle','bwsUrlDate','bwsUrlExtractedText','bwsUrlProductGroup'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    bwsUrlLastFetchedUrl = null;
+    bwsLoadLibrary();
+  } catch (e){
+    if (statusEl) statusEl.textContent = 'Backend unreachable — could not save the evidence.';
   }
 }
 
@@ -28647,6 +28860,20 @@ function bwsRenderFilters(){
   if (!row) return;
   const chip = (id, label) => `<button type="button" class="btn-ghost${bwsFilterCategory === id ? ' active' : ''}" style="${bwsFilterCategory === id ? 'background:var(--ink);color:#fff;' : ''}" onclick="bwsSetFilter('${id}')">${escapeHtml(label)}</button>`;
   row.innerHTML = chip('', 'All') + BWS_CATEGORIES.map(c => chip(c.id, c.label)).join('');
+  // Round 132z-evidence: a second filter row for Product Group, built from
+  // the real values present on saved samples (not the full account
+  // taxonomy) so a group with nothing scoped to it yet doesn't clutter
+  // this filter with an empty option.
+  const pgRow = document.getElementById('bwsProductGroupFilterRow');
+  if (pgRow){
+    const groups = [...new Set(bwsSamples.map(s => s.productGroup).filter(Boolean))].sort();
+    if (!groups.length){
+      pgRow.innerHTML = '';
+    } else {
+      const pgChip = (id, label) => `<button type="button" class="btn-ghost${bwsFilterProductGroup === id ? ' active' : ''}" style="${bwsFilterProductGroup === id ? 'background:var(--ink);color:#fff;' : ''}" onclick="bwsSetProductGroupFilter('${escapeHtml(id).replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
+      pgRow.innerHTML = `<span class="hint" style="align-self:center;margin-right:4px;">Product Group:</span>` + pgChip('', 'All') + groups.map(g => pgChip(g, g)).join('');
+    }
+  }
 }
 
 function bwsSetFilter(category){
@@ -28654,27 +28881,37 @@ function bwsSetFilter(category){
   bwsRenderFilters();
   bwsRenderLibrary();
 }
+let bwsFilterProductGroup = '';
+function bwsSetProductGroupFilter(productGroup){
+  bwsFilterProductGroup = productGroup;
+  bwsRenderFilters();
+  bwsRenderLibrary();
+}
 
 function bwsRenderLibrary(){
   const body = document.getElementById('bwsLibraryBody');
   if (!body) return;
-  const rows = bwsFilterCategory ? bwsSamples.filter(s => s.category === bwsFilterCategory) : bwsSamples;
+  let rows = bwsFilterCategory ? bwsSamples.filter(s => s.category === bwsFilterCategory) : bwsSamples;
+  if (bwsFilterProductGroup) rows = rows.filter(s => s.productGroup === bwsFilterProductGroup);
   if (!rows.length){
-    body.innerHTML = '<p class="hint">No samples saved yet — upload a file or link a Google Doc/Slides above.</p>';
+    body.innerHTML = '<p class="hint">No samples saved yet — upload a file, link a Google Doc/Slides, or fetch a URL above.</p>';
     return;
   }
   const catLabel = id => (BWS_CATEGORIES.find(c => c.id === id) || {}).label || id;
   body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-    <thead><tr><th>Title</th><th>Purpose</th><th>Date</th><th>Source</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Title</th><th>Purpose</th><th>Product Group</th><th>Date</th><th>Source</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(s => `
       <tr${s.excluded ? ' style="opacity:0.65;"' : ''}>
         <td>${escapeHtml(s.title)}${s.notes ? `<div class="hint" style="margin-top:2px;">${escapeHtml(s.notes)}</div>` : ''}</td>
         <td>${escapeHtml(catLabel(s.category))}${s.outcome === 'approved' ? '<div class="hint" style="margin-top:2px;color:var(--loyalty, #2c5f2d);">Approved</div>' : s.outcome === 'rejected' ? '<div class="hint" style="margin-top:2px;color:var(--advocacy);">Rejected</div>' : ''}</td>
+        <td>${s.productGroup ? escapeHtml(s.productGroup) : '<span class="hint">Account-wide</span>'}</td>
         <td>${escapeHtml(s.docDate)}</td>
         <td>${s.sourceType === 'link'
           ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener">Google link ↗</a>`
           : s.sourceType === 'video_analysis'
           ? '<span class="hint">AI video analysis — video not retained</span>'
+          : s.sourceType === 'url_fetch'
+          ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener">Fetched from URL ↗</a>`
           : (s.file ? `${escapeHtml(s.file.originalFilename || 'file')} <span class="hint">(${Math.round((s.file.sizeBytes || 0) / 1024)} KB)</span>` : 'File')}</td>
         <td>${bwsStatusCellHtml(s)}</td>
         <td>${s.sourceType === 'file' ? `<button type="button" class="btn-ghost" onclick="bwsAnalyzeStyle('${s.id}')">Analyze style →</button>` : ''}${bwsAdminActionsHtml(s)}<button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
