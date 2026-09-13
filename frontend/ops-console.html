@@ -254,6 +254,46 @@
       <p class="lede">Every real account CX Experiences operates. Click an account to open its workspace — data &amp; connections, team access, plan &amp; billing, and legal documents.</p>
     </div>
 
+    <!-- 2026-09-13 — Shared Staff Admin Token, per direct question ("the
+         admin token field is pasted throughout the ops console — why not
+         add it once for all applications"). Every Staff-only panel below
+         (Platform Integration Status, Product Documentation Search, Fix
+         Legacy Column Casing, AI Interview Review, Brand Voice Contest
+         Review, AI Brain Transparency) used to have its own separate
+         "Admin token" paste box — all reading/writing the exact same
+         ADMIN_API_TOKEN value, just duplicated six times. This is the one
+         shared field every panel's JS now reads from (see each
+         check*/run* function below — all changed from their own
+         "<panel>AdminToken" id to this one, opsAdminToken). Also fixes a
+         separate direct report the same day: the field was plain
+         type="text", so the token sat in full view on screen (shoulder-
+         surfing, screen shares, screenshots) the whole time it was pasted
+         in — now type="password" (masked by default) with a "Show"
+         toggle button for when you need to actually verify what you
+         pasted. "Remember for this session" is unchanged in behavior
+         (same INTEG_TOKEN_STORAGE_KEY, same opt-in-only sessionStorage
+         convention — see that key's own comment below), just now sits
+         beside the one shared field instead of only the Integration
+         Status panel. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Staff Admin Token</h3>
+      <p class="desc">Paste your ADMIN_API_TOKEN once here — every Staff-only panel below uses this same field. Masked by default; use Show if you need to check what you pasted.</p>
+      <div class="field-row" id="opsAdminTokenRow">
+        <div style="flex:1 1 320px;">
+          <label>Admin token</label>
+          <div style="display:flex;gap:8px;">
+            <input type="password" id="opsAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off" style="flex:1 1 auto;">
+            <button type="button" class="btn small" id="opsAdminTokenToggleBtn" onclick="toggleOpsAdminTokenVisibility()">Show</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <label class="toggle" id="integRememberToggle" onclick="toggleIntegRemember()" style="margin-bottom:9px;">
+            <span class="switch"></span> Remember for this browser session
+          </label>
+        </div>
+      </div>
+    </div>
+
     <!-- 2026-08-20 — Platform Integration Status, per direct instruction to
          add this to the client-management portal experience rather than
          it living only as an answer in chat. Platform-wide, not scoped to
@@ -269,15 +309,8 @@
       <h3>Platform Integration Status</h3>
       <p class="desc">Whether each vendor-backed capability is actually live on this deployment — generative copywriting, SMS/email verification (including the new login MFA), HubSpot, GA4, and more — plus the Portal's Enterprise-gated capabilities that aren't a credential away at all. Nothing below ever shows a secret value, only whether one is set.</p>
       <div class="field-row" id="integAuthRow">
-        <div>
-          <label>Admin token</label>
-          <input type="text" id="integAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
-        </div>
         <div style="display:flex;align-items:flex-end;gap:10px;">
           <button class="btn primary" onclick="checkIntegrationStatus()">Check status</button>
-          <label class="toggle" id="integRememberToggle" onclick="toggleIntegRemember()" style="margin-bottom:9px;">
-            <span class="switch"></span> Remember for this browser session
-          </label>
         </div>
       </div>
       <div id="integStatusError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
@@ -308,10 +341,6 @@
       <h3>Product Documentation Search</h3>
       <p class="desc">Search across every product doc — Licensed Integrations, Copywriting, Marketing Budgets &amp; Campaigns, Registration &amp; Account Management, Company Profile &amp; Team, and the docs home page — by section, not just by file. Try "Snowflake lead time" or "login MFA".</p>
       <div class="field-row" id="docsSearchAuthRow">
-        <div>
-          <label>Admin token</label>
-          <input type="text" id="docsSearchAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
-        </div>
         <div>
           <label>Search product docs</label>
           <input type="text" id="docsSearchQuery" placeholder="e.g. Snowflake setup" onkeydown="if(event.key==='Enter') runDocsSearch();">
@@ -347,10 +376,6 @@
       <h3>Fix Legacy Column Casing <span class="badge" style="margin-left:6px;">Staff only</span></h3>
       <p class="desc">Renames every database column that got silently created all-lowercase by Postgres back to its correct camelCase name, in place — no data is lost or moved, this only fixes the column's name. Safe to run any time; a repeat run after a successful one finds nothing left to do. Run this after adding any new camelCase column to the app if scanned/saved data ever comes back empty when it shouldn't.</p>
       <div class="field-row" id="fixCasingAuthRow">
-        <div>
-          <label>Admin token</label>
-          <input type="text" id="fixCasingAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
-        </div>
         <div style="display:flex;align-items:flex-end;">
           <button class="btn primary" onclick="runFixLegacyCasing()">Fix column casing now</button>
         </div>
@@ -384,10 +409,6 @@
             <option value="">All product types</option>
           </select>
         </div>
-        <div>
-          <label>Admin token</label>
-          <input type="text" id="interviewAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
-        </div>
         <div style="display:flex;align-items:flex-end;">
           <button class="btn primary" onclick="checkInterviewReview()">Look up →</button>
         </div>
@@ -412,10 +433,6 @@
         <div>
           <label>Account ID</label>
           <input type="text" id="voiceContestLookupAccountId" placeholder="e.g. ACC-... or CXM-...">
-        </div>
-        <div>
-          <label>Admin token</label>
-          <input type="text" id="voiceContestAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
         </div>
         <div style="display:flex;align-items:flex-end;">
           <button class="btn primary" onclick="checkVoiceContestReview()">Look up →</button>
@@ -468,10 +485,6 @@
             <option value="voice_contest">Voice Contest</option>
             <option value="pr_corp_comm">PR / Corporate Comm (not built yet)</option>
           </select>
-        </div>
-        <div>
-          <label>Admin token</label>
-          <input type="text" id="transparencyRollupAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
         </div>
         <div style="display:flex;align-items:flex-end;">
           <button class="btn primary" onclick="checkTransparencyRollup()">Check rollup →</button>
@@ -855,7 +868,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-ai-brain-ledger-camelcase-casing-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-ops-console-shared-masked-admin-token';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1135,7 +1148,7 @@ function toggleIntegRemember(){
   integRemember = !integRemember;
   document.getElementById('integRememberToggle').classList.toggle('on', integRemember);
   if (integRemember){
-    const token = document.getElementById('integAdminToken').value.trim();
+    const token = document.getElementById('opsAdminToken').value.trim();
     if (token){ try { sessionStorage.setItem(INTEG_TOKEN_STORAGE_KEY, token); } catch (e) {} }
   } else {
     try { sessionStorage.removeItem(INTEG_TOKEN_STORAGE_KEY); } catch (e) {}
@@ -1726,7 +1739,7 @@ async function refDataHandleCraFile(event, kind){
 }
 
 async function checkIntegrationStatus(){
-  const token = document.getElementById('integAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const errEl = document.getElementById('integStatusError');
   const resultEl = document.getElementById('integStatusResult');
   errEl.style.display = 'none';
@@ -1783,7 +1796,7 @@ async function checkIntegrationStatus(){
 // GET /api/ops/docs-search; see searchProductDocs() in server.js for the
 // ranking (heading match weighted over body text) and snippet logic.
 async function runDocsSearch(){
-  const token = document.getElementById('docsSearchAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const q = document.getElementById('docsSearchQuery').value.trim();
   const errEl = document.getElementById('docsSearchError');
   const resultsEl = document.getElementById('docsSearchResults');
@@ -1842,7 +1855,7 @@ async function runDocsSearch(){
 // renders its summary — see fixLegacyColumnCasing() in server.js for what
 // renamed/alreadyOk/droppedDuplicates/unexpectedErrors mean.
 async function runFixLegacyCasing(){
-  const token = document.getElementById('fixCasingAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const errEl = document.getElementById('fixCasingError');
   const resultEl = document.getElementById('fixCasingResult');
   errEl.style.display = 'none';
@@ -1887,7 +1900,7 @@ async function runFixLegacyCasing(){
 // the output when we had it" number — the one that answers "is this worth
 // building further."
 async function checkTransparencyRollup(){
-  const token = document.getElementById('transparencyRollupAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const contextType = document.getElementById('transparencyRollupContextType').value;
   const contextLabel = document.getElementById('transparencyRollupContextType').selectedOptions[0].textContent.replace(' (not built yet)', '');
   const errEl = document.getElementById('transparencyRollupError');
@@ -1973,7 +1986,7 @@ function populateInterviewProductTypeFilter(productTypes){
 async function checkInterviewReview(){
   const accountId = document.getElementById('interviewLookupAccountId').value.trim();
   const productType = document.getElementById('interviewProductTypeFilter').value;
-  const token = document.getElementById('interviewAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const errEl = document.getElementById('interviewReviewError');
   const resultEl = document.getElementById('interviewReviewResult');
   errEl.style.display = 'none';
@@ -2048,7 +2061,7 @@ async function checkInterviewReview(){
 
 async function checkVoiceContestReview(){
   const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
-  const token = document.getElementById('voiceContestAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const errEl = document.getElementById('voiceContestReviewError');
   const resultEl = document.getElementById('voiceContestReviewResult');
   errEl.style.display = 'none';
@@ -2112,14 +2125,14 @@ async function checkVoiceContestReview(){
 }
 
 // 2026-09-12 — Clear Voice Guide Memory, per Task D2. Reuses the exact same
-// #voiceContestLookupAccountId / #voiceContestAdminToken fields and
+// #voiceContestLookupAccountId field, the shared #opsAdminToken field, and
 // #voiceContestReviewError element the lookup above uses, following the
 // identical read/header/error pattern as checkVoiceContestReview() for
 // consistency. This is a destructive, account-wide reset (never soft-deleted,
 // no undo) so it's gated behind a native confirm() before the call fires.
 async function clearVoiceGuideMemory(){
   const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
-  const token = document.getElementById('voiceContestAdminToken').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
   const errEl = document.getElementById('voiceContestReviewError');
   const clearResultEl = document.getElementById('voiceGuideClearResult');
   errEl.style.display = 'none';
@@ -2155,22 +2168,34 @@ async function clearVoiceGuideMemory(){
 }
 
 // On load: if a token was remembered for this browser session, restore it
-// (and flip the toggle on) but don't auto-fire the check — staff should
-// still deliberately click "Check status" each visit, same "no silent
-// background admin calls" posture as the rest of this console.
-(function initIntegrationStatusPanel(){
+// into the one shared admin-token field (and flip the toggle on) but
+// don't auto-fire any panel's check — staff should still deliberately
+// click each panel's own button, same "no silent background admin calls"
+// posture as the rest of this console.
+(function initSharedAdminTokenField(){
   let stored = '';
   try { stored = sessionStorage.getItem(INTEG_TOKEN_STORAGE_KEY) || ''; } catch (e) {}
   if (stored){
-    document.getElementById('integAdminToken').value = stored;
+    document.getElementById('opsAdminToken').value = stored;
     integRemember = true;
     document.getElementById('integRememberToggle').classList.add('on');
-    const docsSearchTokenEl = document.getElementById('docsSearchAdminToken');
-    if (docsSearchTokenEl) docsSearchTokenEl.value = stored;
-    const fixCasingTokenEl = document.getElementById('fixCasingAdminToken');
-    if (fixCasingTokenEl) fixCasingTokenEl.value = stored;
   }
 })();
+
+// 2026-09-13 — Show/Hide toggle for the shared admin-token field, per
+// direct report that the field being plain type="text" left the token
+// visible on screen the whole time it was pasted in (shoulder-surfing,
+// screen shares, screenshots). Defaults masked (type="password"); this
+// just flips the input type and the button's own label, same convention
+// as any standard password-field reveal control.
+function toggleOpsAdminTokenVisibility(){
+  const input = document.getElementById('opsAdminToken');
+  const btn = document.getElementById('opsAdminTokenToggleBtn');
+  if (!input || !btn) return;
+  const nowVisible = input.type === 'password';
+  input.type = nowVisible ? 'text' : 'password';
+  btn.textContent = nowVisible ? 'Hide' : 'Show';
+}
 
 renderDirectory();
 
