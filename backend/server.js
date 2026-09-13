@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-competitor-intel-feeds-voice-guide (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-competitor-intel-theme-chips (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2452,7 +2452,7 @@ function brandVoiceCriticalMessagesContext(account, extra){
   // verbatim") — reused verbatim below, not reworded, so the discipline
   // stays identical across every consumer.
   //
-  // Deliberately only 3 of the 6 categorizedIntel fields (see
+  // Deliberately only 3 of the 6 marketing_positioning fields (see
   // generateCompetitorIntelligenceMultiVendor()): whyTheyCompete,
   // marketOverlap, and marketingApproach are real tone/positioning signal —
   // knowing how competitors actually sound helps this brand's voice
@@ -2462,16 +2462,26 @@ function brandVoiceCriticalMessagesContext(account, extra){
   // specifics (via Perplexity) that have no business anywhere near a
   // prompt that generates client-facing prose — same anti-verbatim
   // discipline this file applies to sample writings and brochure copy.
-  // Falls back to the legacy note/positioningText fields for a competitor
-  // that predates categorizedIntel (no "Generate competitor intelligence"
-  // run yet), same honest-degrade convention as everywhere else in this
-  // function.
+  //
+  // 2026-09-13, theme-chips feature — per direct instruction: "Only the
+  // Marketing competitive positioning should update voice." Of the now
+  // 12 research themes a client can run per competitor, ONLY
+  // marketing_positioning may ever reach this function — read ONLY
+  // c.intelByTheme.marketing_positioning (new storage) with a fallback to
+  // the legacy c.categorizedIntel (pre-theme-chips data, which was always
+  // the marketing_positioning read). Do not widen this to read any other
+  // theme key, and do not add a second read site elsewhere for Voice.
+  //
+  // Falls back further to the legacy note/positioningText fields for a
+  // competitor that predates categorizedIntel entirely (no "Generate
+  // competitor intelligence" run yet), same honest-degrade convention as
+  // everywhere else in this function.
   try {
     let competitors = account.competitorsJson ? JSON.parse(account.competitorsJson) : [];
     competitors = (Array.isArray(competitors) ? competitors : []).filter(c => c && c.name && c.name.trim()).slice(0, 5);
     if (competitors.length){
       const competitorLines = competitors.map(c => {
-        const intel = c.categorizedIntel;
+        const intel = (c.intelByTheme && c.intelByTheme.marketing_positioning) || c.categorizedIntel;
         if (intel && (intel.whyTheyCompete || intel.marketOverlap || intel.marketingApproach)){
           const parts = [];
           if (intel.whyTheyCompete) parts.push(`why they compete: ${intel.whyTheyCompete}`);
@@ -14138,138 +14148,303 @@ Respond with ONLY a JSON object with two fields:
 // recentDevelopments as the only legitimate source for that field — never
 // inventing one itself, and never accepting another vendor's guess as if
 // it were real, even if that vendor answered the question anyway.
-const COMPETITOR_INTEL_NO_WEB_INSTRUCTION = 'You have NO access to live news, web search, or any real-time data source, and do not know what this competitor has actually done recently. For "recentDevelopments", respond with null — do not guess, hedge with a vague plausible-sounding claim, or invent a specific dated event, headline, or price. For the other three fields, reason from general category knowledge and public brand positioning as you understand it — never assert a specific recent/dated fact as something that "just happened."';
-const COMPETITOR_INTEL_LIVE_WEB_INSTRUCTION = 'You have live web search. Actually search for real, current public information about this specific competitor before answering — recent news, announcements, pricing or marketing moves, market positioning. For "recentDevelopments", report only what you can genuinely find, specific enough to be checked (name what you found, in plain language); if a genuine search turns up nothing recent and specific, respond with null rather than filling the field with generic filler. Ground the other three fields in real information about this competitor wherever you can find it, not just category-level assumption.';
+const COMPETITOR_INTEL_NO_WEB_INSTRUCTION = 'You have NO access to live news, web search, or any real-time data source, and do not know what this competitor has actually done recently or anything about it that is not public, general-knowledge information. For any field that would require current, non-public, or specialized data (financials, legal/regulatory status, leadership specifics, deal terms, market share numbers, and similar), respond with null rather than guessing, hedging with a vague plausible-sounding claim, or inventing a specific dated event, name, or number. For fields that call for general strategic reasoning, reason from category knowledge and public brand positioning as you understand it — never assert a specific fact, figure, or name as something you know to be true when you do not.';
+const COMPETITOR_INTEL_LIVE_WEB_INSTRUCTION = 'You have live web search. Actually search for real, current public information about this specific competitor before answering — recent news, filings, announcements, leadership, pricing or marketing moves, market positioning, and anything else relevant to the theme below. For any field, report only what you can genuinely find and would be comfortable citing (name what you found, in plain language); if a genuine search turns up nothing specific and verifiable, respond with null rather than filling the field with generic filler or a plausible-sounding guess.';
 
-function competitorIntelPrompt(competitorName, account, isLiveWeb){
+// 2026-09-13, theme-chips feature — per direct instruction: "Let's add
+// chips that would allow a client to ask the different themes ... I'm
+// assuming that there are different output structure for each." Each
+// theme carries its own field set (label + a per-field instruction the
+// prompt builder below turns into the JSON schema), so the output shape
+// genuinely differs by theme rather than reusing one generic wrapper.
+//
+// `factual: true` on a field marks it as requiring real, current,
+// checkable information (numbers, names, dated events) — the same class
+// of field `recentDevelopments` always was. Only Perplexity has live web
+// search, so the synthesis step (below) uses ONLY Perplexity's own answer
+// for factual fields, never blending in another vendor's training-
+// knowledge guess as if it were real; other vendors are told explicitly
+// to return null on those fields rather than invent one. Fields without
+// `factual` are reasoning/positioning fields, synthesized across every
+// vendor's read same as before.
+//
+// `synthesisOnly: true` marks a field that is never asked of individual
+// vendors, only produced once in the final synthesis step from everything
+// gathered — this preserves the existing immediateOpportunity/
+// longerTermGrowth behavior on the marketing_positioning theme exactly.
+//
+// IMPORTANT — the caveat in the same instruction ("Only the Marketing
+// competitive positioning should update voice"): brandVoiceCriticalMessagesContext()
+// reads ONLY c.intelByTheme.marketing_positioning (falling back to the
+// legacy c.categorizedIntel) — see that function below. No other theme's
+// output may be wired into Voice Guide generation; when adding a theme
+// here, do not also touch that read site.
+const COMPETITOR_RESEARCH_THEMES = [
+  {
+    key: 'marketing_positioning',
+    label: 'Marketing & Competitive Positioning',
+    chipHint: 'Why they compete, market overlap, how they market themselves',
+    feedsVoice: true,
+    fields: [
+      { key: 'whyTheyCompete', label: 'Why they compete', prompt: '2-3 sentences: the real reason a prospect would compare these two brands' },
+      { key: 'marketOverlap', label: 'Market overlap', prompt: '2-3 sentences: which specific markets/audiences/segments genuinely overlap between them' },
+      { key: 'marketingApproach', label: 'How they market themselves', prompt: '2-3 sentences: how this competitor appears to market itself — channels, tone, claims' },
+      { key: 'recentDevelopments', label: 'Recent developments', prompt: 'specific recent public information about this competitor', factual: true },
+      { key: 'immediateOpportunity', label: 'Immediate opportunity', prompt: 'one concrete, specific move this company could make in the near term against THIS competitor specifically (not generic marketing advice), grounded in the reads above', synthesisOnly: true },
+      { key: 'longerTermGrowth', label: 'Longer-term growth', prompt: 'one longer-horizon strategic opportunity this competitive picture points toward — a market, capability, or positioning shift worth building toward, not a quick tactic', synthesisOnly: true }
+    ]
+  },
+  {
+    key: 'strategic_rationale',
+    label: 'Strategic Rationale & Fit',
+    chipHint: 'Why this competitor would matter strategically, adjacency, fit',
+    feedsVoice: false,
+    fields: [
+      { key: 'strategicRationale', label: 'Strategic rationale', prompt: '2-3 sentences on why this competitor would matter strategically to a would-be acquirer or partner — the underlying thesis' },
+      { key: 'adjacency', label: 'Adjacency & fit', prompt: '2-3 sentences on how this competitor\'s business adjoins or complements the assessed company\'s own — capability, customer base, geography' },
+      { key: 'risksToThesis', label: 'Risks to the thesis', prompt: '2-3 sentences on what could make the strategic rationale wrong — overlap that looks good on paper but isn\'t' }
+    ]
+  },
+  {
+    key: 'market_position',
+    label: 'Market Position & Competitive Dynamics',
+    chipHint: 'Competitive standing, share, what sets them apart',
+    feedsVoice: false,
+    fields: [
+      { key: 'competitivePosition', label: 'Competitive position', prompt: '2-3 sentences on where this competitor sits in the market relative to the assessed company — leader, challenger, niche player' },
+      { key: 'marketShare', label: 'Market share signal', prompt: 'any real, checkable indication of this competitor\'s relative scale or share', factual: true },
+      { key: 'differentiators', label: 'Differentiators', prompt: '2-3 sentences on what genuinely sets this competitor apart in the market' }
+    ]
+  },
+  {
+    key: 'financial_health',
+    label: 'Financial Health & Valuation',
+    chipHint: 'Financial profile, valuation signal, key risks — often mostly null for private companies',
+    feedsVoice: false,
+    fields: [
+      { key: 'financialProfile', label: 'Financial profile', prompt: 'real, checkable information about this competitor\'s financial health (revenue scale, profitability, funding) — most private or regional companies will legitimately have little to nothing public here', factual: true },
+      { key: 'valuationSignal', label: 'Valuation signal', prompt: 'any real, checkable valuation reference point (last raise, public multiple, comparable transaction)', factual: true },
+      { key: 'keyRisks', label: 'Key financial risks', prompt: '2-3 sentences reasoning about plausible financial risk factors for a company of this type and position, clearly framed as reasoning rather than fact' }
+    ]
+  },
+  {
+    key: 'growth_trajectory',
+    label: 'Growth Trajectory & Durability',
+    chipHint: 'Growth drivers, durability, headwinds',
+    feedsVoice: false,
+    fields: [
+      { key: 'growthDrivers', label: 'Growth drivers', prompt: '2-3 sentences on what appears to be driving this competitor\'s growth' },
+      { key: 'durabilityAssessment', label: 'Durability assessment', prompt: '2-3 sentences reasoning about how durable that growth looks — structural or trend-dependent' },
+      { key: 'headwinds', label: 'Headwinds', prompt: '2-3 sentences on plausible headwinds this competitor faces' }
+    ]
+  },
+  {
+    key: 'operational_integration',
+    label: 'Operational & Integration Risk',
+    chipHint: 'Operational complexity, integration risk, cultural compatibility',
+    feedsVoice: false,
+    fields: [
+      { key: 'operationalComplexity', label: 'Operational complexity', prompt: '2-3 sentences reasoning about how operationally complex this competitor\'s business looks to run — locations, systems, workforce' },
+      { key: 'integrationRisks', label: 'Integration risks', prompt: '2-3 sentences on what would likely be hardest about integrating this competitor\'s operations' },
+      { key: 'culturalCompatibility', label: 'Cultural compatibility', prompt: '2-3 sentences reasoning about apparent cultural/operating-style fit or mismatch, from public signals only' }
+    ]
+  },
+  {
+    key: 'technology_ip',
+    label: 'Technology, IP & Data',
+    chipHint: 'Tech stack, IP position, data assets',
+    feedsVoice: false,
+    fields: [
+      { key: 'techStackAssessment', label: 'Technology assessment', prompt: '2-3 sentences reasoning about this competitor\'s apparent technology sophistication and stack, from public signals' },
+      { key: 'ipPosition', label: 'IP position', prompt: 'any real, checkable information about this competitor\'s patents, proprietary technology, or IP filings', factual: true },
+      { key: 'dataAssets', label: 'Data assets', prompt: '2-3 sentences reasoning about what proprietary data this competitor likely holds given its business model' }
+    ]
+  },
+  {
+    key: 'customer_brand',
+    label: 'Customer & Brand',
+    chipHint: 'Brand perception, customer base, loyalty signals',
+    feedsVoice: false,
+    fields: [
+      { key: 'brandPerception', label: 'Brand perception', prompt: '2-3 sentences on how this competitor\'s brand is generally perceived' },
+      { key: 'customerBase', label: 'Customer base', prompt: 'real, checkable information about the size, makeup, or notable names in this competitor\'s customer base', factual: true },
+      { key: 'loyaltySignals', label: 'Loyalty signals', prompt: '2-3 sentences reasoning about apparent customer loyalty/retention strength, from public signals such as reviews or tenure claims' }
+    ]
+  },
+  {
+    key: 'leadership_culture',
+    label: 'Leadership, Culture & Talent',
+    chipHint: 'Leadership profile, culture signals, talent risk',
+    feedsVoice: false,
+    fields: [
+      { key: 'leadershipProfile', label: 'Leadership profile', prompt: 'real, checkable information about this competitor\'s named leadership and their background', factual: true },
+      { key: 'cultureSignals', label: 'Culture signals', prompt: '2-3 sentences reasoning about this competitor\'s apparent culture from public employer signals (careers pages, reviews, tone of communications)' },
+      { key: 'talentRisk', label: 'Talent risk', prompt: '2-3 sentences reasoning about plausible key-person or talent-retention risk for a company of this type' }
+    ]
+  },
+  {
+    key: 'legal_regulatory',
+    label: 'Legal, Regulatory & Antitrust',
+    chipHint: 'Regulatory exposure, legal risk, antitrust considerations — often mostly null',
+    feedsVoice: false,
+    fields: [
+      { key: 'regulatoryExposure', label: 'Regulatory exposure', prompt: 'real, checkable information about regulatory bodies, licenses, or compliance regimes this competitor operates under', factual: true },
+      { key: 'legalRisks', label: 'Legal risks', prompt: 'real, checkable information about known litigation, investigations, or legal disputes involving this competitor', factual: true },
+      { key: 'antitrustConsiderations', label: 'Antitrust considerations', prompt: '2-3 sentences reasoning about whether a combination with this competitor would raise plausible antitrust or market-concentration questions, clearly framed as reasoning, not legal advice' }
+    ]
+  },
+  {
+    key: 'deal_structure',
+    label: 'Deal Structure & Financing',
+    chipHint: 'Likely deal structure, financing considerations, valuation range — largely speculative',
+    feedsVoice: false,
+    fields: [
+      { key: 'likelyDealStructure', label: 'Likely deal structure', prompt: '2-3 sentences reasoning, clearly framed as speculation, about what kind of transaction structure would be plausible for a company like this (asset purchase, merger, earn-out, etc.)' },
+      { key: 'financingConsiderations', label: 'Financing considerations', prompt: '2-3 sentences reasoning about plausible financing considerations for a deal of this type' },
+      { key: 'valuationRange', label: 'Valuation range', prompt: 'any real, checkable reference point for what a transaction involving this competitor might be valued at', factual: true }
+    ]
+  },
+  {
+    key: 'post_close',
+    label: 'Post-Close Accountability',
+    chipHint: 'Integration milestones, success metrics, accountability risks',
+    feedsVoice: false,
+    fields: [
+      { key: 'integrationMilestones', label: 'Integration milestones', prompt: '2-3 sentences reasoning about what early milestones would signal a successful integration of this competitor' },
+      { key: 'successMetrics', label: 'Success metrics', prompt: '2-3 sentences on what metrics would meaningfully indicate the deal thesis is playing out' },
+      { key: 'accountabilityRisks', label: 'Accountability risks', prompt: '2-3 sentences reasoning about what tends to go unmeasured or get quietly deprioritized after a deal like this closes' }
+    ]
+  }
+];
+
+function competitorResearchTheme(themeKey){
+  return COMPETITOR_RESEARCH_THEMES.find(t => t.key === themeKey) || COMPETITOR_RESEARCH_THEMES[0];
+}
+
+function competitorIntelPrompt(theme, competitorName, account, isLiveWeb){
   const context = `COMPANY THIS COMPETITOR IS BEING ASSESSED AGAINST: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'} — Footprint: ${account.footprint || '(not set)'}${account.productsServices ? `\nProducts & Services: ${String(account.productsServices).slice(0, 400)}` : ''}`;
-  return `You are a competitive-intelligence analyst assessing why "${competitorName}" competes with the company below for the same customer.
+  const askedFields = theme.fields.filter(f => !f.synthesisOnly);
+  const fieldLines = askedFields.map(f => `"${f.key}": "<${f.prompt} — or null if you genuinely cannot answer>"`).join(',\n  ');
+  return `You are a competitive-intelligence analyst researching "${competitorName}" on behalf of "${account.company || 'this company'}", specifically on the theme "${theme.label}" (${theme.chipHint}).
 
 ${context}
 
 ${isLiveWeb ? COMPETITOR_INTEL_LIVE_WEB_INSTRUCTION : COMPETITOR_INTEL_NO_WEB_INSTRUCTION}
 
 Respond with ONLY a JSON object in this exact shape:
-{"whyTheyCompete": "<2-3 sentences: the real reason a prospect would compare these two brands>", "marketOverlap": "<2-3 sentences: which specific markets/audiences/segments genuinely overlap between them>", "marketingApproach": "<2-3 sentences: how this competitor appears to market itself — channels, tone, claims>", "recentDevelopments": "<specific recent public information, or null per the instruction above>"}`;
+{
+  ${fieldLines}
+}`;
 }
 
-// One vendor's read for one competitor — Anthropic via callClaudeForJSON
-// (real function-calling, so a malformed response is structurally
-// impossible), every other configured vendor via the shared
+// One vendor's read for one competitor on one theme — Anthropic via
+// callClaudeForJSON (real function-calling, so a malformed response is
+// structurally impossible), every other configured vendor via the shared
 // callVendorForText + parseJsonBlock path every other multi-vendor panel in
 // this file already uses. Same honest per-candidate failure shape as
 // generateVendorBrandVoiceCopy/generateVendorInterviewCopy — a single
 // vendor failing never blocks the others or the synthesis step below.
-async function generateOneCompetitorIntelRead(vendorKey, competitorName, account){
+async function generateOneCompetitorIntelRead(vendorKey, theme, competitorName, account){
   const isLiveWeb = vendorKey === 'perplexity';
-  const prompt = competitorIntelPrompt(competitorName, account, isLiveWeb);
+  const prompt = competitorIntelPrompt(theme, competitorName, account, isLiveWeb);
+  const askedFields = theme.fields.filter(f => !f.synthesisOnly);
   try {
     let parsed;
     if (vendorKey === 'anthropic-claude'){
+      const properties = {};
+      const required = [];
+      for (const f of askedFields){ properties[f.key] = { type: ['string', 'null'] }; required.push(f.key); }
       parsed = await callClaudeForJSON({
         model: 'claude-sonnet-4-5',
         maxTokens: 700,
         content: prompt,
         toolName: 'submit_competitor_read',
         toolDescription: 'Submit this competitive-intelligence read.',
-        schema: {
-          type: 'object',
-          properties: {
-            whyTheyCompete: { type: 'string' },
-            marketOverlap: { type: 'string' },
-            marketingApproach: { type: 'string' },
-            recentDevelopments: { type: ['string', 'null'] }
-          },
-          required: ['whyTheyCompete', 'marketOverlap', 'marketingApproach', 'recentDevelopments']
-        }
+        schema: { type: 'object', properties, required }
       });
     } else {
       const text = await callVendorForText(vendorKey, prompt);
       parsed = parseJsonBlock(text);
       if (!parsed) return { error: 'Generation returned no parseable JSON.' };
     }
-    return {
-      whyTheyCompete: typeof parsed.whyTheyCompete === 'string' ? parsed.whyTheyCompete : null,
-      marketOverlap: typeof parsed.marketOverlap === 'string' ? parsed.marketOverlap : null,
-      marketingApproach: typeof parsed.marketingApproach === 'string' ? parsed.marketingApproach : null,
-      recentDevelopments: typeof parsed.recentDevelopments === 'string' ? parsed.recentDevelopments : null,
-      error: null
-    };
+    const out = { error: null };
+    for (const f of askedFields){ out[f.key] = typeof parsed[f.key] === 'string' ? parsed[f.key] : null; }
+    return out;
   } catch (e){
     return { error: 'Generation failed: ' + e.message };
   }
 }
 
-// Orchestrates the full multi-vendor read for one named competitor: fan out
-// to every configured vendor (Anthropic plus whichever of
-// OpenAI/Gemini/Grok/Perplexity have their env var set) in parallel, then
-// one Anthropic synthesis call combines the successful reads into the
-// single client-facing categorized result, honestly attributing
-// recentDevelopments to Perplexity alone and adding the two Battle-Brief
-// fields (immediateOpportunity/longerTermGrowth) grounded in everything
-// above rather than generic advice.
-async function generateCompetitorIntelligenceMultiVendor(competitorName, account){
+// Orchestrates the full multi-vendor read for one named competitor on one
+// research theme: fan out to every configured vendor (Anthropic plus
+// whichever of OpenAI/Gemini/Grok/Perplexity have their env var set) in
+// parallel, then one Anthropic synthesis call combines the successful
+// reads into the single client-facing result for that theme — honestly
+// attributing every `factual` field to Perplexity alone (or null when
+// Perplexity found nothing), synthesizing every reasoning field across all
+// vendors, and (marketing_positioning only) adding the two Battle-Brief
+// fields grounded in everything above rather than generic advice.
+async function generateCompetitorIntelligenceMultiVendor(themeKey, competitorName, account){
+  const theme = competitorResearchTheme(themeKey);
   if (!process.env.ANTHROPIC_API_KEY){
     return { intelligence: null, note: 'Competitor Intelligence requires ANTHROPIC_API_KEY to be configured.' };
   }
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   const allVendors = [{ key: 'anthropic-claude', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: 'claude-sonnet-4-5' }, ...configuredVendors];
-  const reads = await Promise.all(allVendors.map(v => generateOneCompetitorIntelRead(v.key, competitorName, account)));
+  const reads = await Promise.all(allVendors.map(v => generateOneCompetitorIntelRead(v.key, theme, competitorName, account)));
   const perVendor = allVendors.map((v, i) => ({ key: v.key, label: v.label, vendor: v.vendor, model: v.model, ...reads[i] }));
   const successful = perVendor.filter(r => !r.error);
   if (!successful.length){
     return { intelligence: null, note: 'Every configured vendor failed to generate a read — try again in a moment.', perVendor };
   }
   const perplexityRead = successful.find(r => r.key === 'perplexity');
-  const readsBlock = successful.map(r => `--- ${r.label} ---\nWhy they compete: ${r.whyTheyCompete || '(no answer)'}\nMarket overlap: ${r.marketOverlap || '(no answer)'}\nMarketing approach: ${r.marketingApproach || '(no answer)'}\nRecent developments: ${r.recentDevelopments || '(none reported)'}`).join('\n\n');
+  const askedFields = theme.fields.filter(f => !f.synthesisOnly);
+  const factualFields = askedFields.filter(f => f.factual);
+  const reasoningFields = askedFields.filter(f => !f.factual);
+  const synthesisOnlyFields = theme.fields.filter(f => f.synthesisOnly);
+  const readsBlock = successful.map(r => {
+    const lines = askedFields.map(f => `${f.label}: ${r[f.key] || '(no answer)'}`);
+    return `--- ${r.label} ---\n${lines.join('\n')}`;
+  }).join('\n\n');
+  const factualGuardLines = factualFields.map(f => {
+    const pxVal = perplexityRead && perplexityRead[f.key];
+    return pxVal
+      ? `- "${f.label}": Perplexity's own read is "${pxVal}" — use that (you may tighten the wording), never invent additional specifics beyond it.`
+      : `- "${f.label}": no vendor above reported real, specific, verifiable information — answer null rather than inventing one from another vendor's training-knowledge guess.`;
+  }).join('\n');
   try {
-    const synthesisPrompt = `You are combining ${successful.length} independent competitive-intelligence reads on the same competitor ("${competitorName}", assessed against ${account.company || 'this account'}) into ONE final client-facing read.
+    const synthesisPrompt = `You are combining ${successful.length} independent competitive-intelligence reads on the same competitor ("${competitorName}", assessed against ${account.company || 'this account'}) on the theme "${theme.label}" (${theme.chipHint}) into ONE final client-facing read.
 
 ${readsBlock}
 
-CRITICAL: of the reads above, only Perplexity actually has live web search — every other vendor was explicitly told it has no web/news access and to return null for recent developments rather than guess. ${perplexityRead && perplexityRead.recentDevelopments ? `Perplexity's own recentDevelopments read is: "${perplexityRead.recentDevelopments}" — use that, and only that, as your recentDevelopments answer (you may tighten the wording, never invent additional specifics beyond it).` : 'No vendor above reported real, specific recent developments (either Perplexity was not configured/reachable, or its own search found nothing specific) — your recentDevelopments answer must honestly say so, e.g. "No current public developments found for this competitor," never inventing one from the other vendors\' training-knowledge guesses.'}
+CRITICAL: of the reads above, only Perplexity actually has live web search — every other vendor was explicitly told it has no web/news access and to return null rather than guess for anything requiring current or specialized data. For the following fields, use ONLY what is stated below — never blend in another vendor's guess as if it were real:
+${factualGuardLines || '(no fields on this theme require live/verifiable data)'}
 
-For whyTheyCompete, marketOverlap, and marketingApproach: synthesize across all the reads above into one clear, well-reasoned paragraph each (2-4 sentences), resolving disagreement in favor of whichever read is more specific and better grounded, not just averaging.
-
-Then, based on everything above, add two client-facing strategic fields:
-- immediateOpportunity: one concrete, specific move ${account.company || 'this account'} could make in the near term against THIS competitor specifically (not generic marketing advice) — grounded in the reads above.
-- longerTermGrowth: one longer-horizon strategic opportunity this competitive picture points toward — a market, capability, or positioning shift worth building toward, not a quick tactic.
+For the remaining fields (${reasoningFields.map(f => `"${f.label}"`).join(', ') || 'none'}): synthesize across all the reads above into one clear, well-reasoned answer each (2-4 sentences), resolving disagreement in favor of whichever read is more specific and better grounded, not just averaging.
+${synthesisOnlyFields.length ? `\nThen, based on everything above, also add:\n${synthesisOnlyFields.map(f => `- ${f.key}: ${f.prompt}`).join('\n')}` : ''}
 
 Respond via the submit_competitor_synthesis tool.`;
+    const properties = {};
+    const required = [];
+    for (const f of theme.fields){ properties[f.key] = { type: ['string', 'null'] }; required.push(f.key); }
     const parsed = await callClaudeForJSON({
       model: 'claude-sonnet-4-5',
       maxTokens: 900,
       content: synthesisPrompt,
       toolName: 'submit_competitor_synthesis',
       toolDescription: 'Submit the final synthesized competitive-intelligence read.',
-      schema: {
-        type: 'object',
-        properties: {
-          whyTheyCompete: { type: 'string' },
-          marketOverlap: { type: 'string' },
-          marketingApproach: { type: 'string' },
-          recentDevelopments: { type: 'string' },
-          immediateOpportunity: { type: 'string' },
-          longerTermGrowth: { type: 'string' }
-        },
-        required: ['whyTheyCompete', 'marketOverlap', 'marketingApproach', 'recentDevelopments', 'immediateOpportunity', 'longerTermGrowth']
-      }
+      schema: { type: 'object', properties, required }
     });
+    const intelligence = { competitor: competitorName, theme: theme.key };
+    for (const f of theme.fields){ intelligence[f.key] = typeof parsed[f.key] === 'string' ? parsed[f.key] : null; }
+    intelligence.hasLiveData = !!(perplexityRead && factualFields.some(f => perplexityRead[f.key]));
+    intelligence.vendorsUsed = successful.map(r => r.label);
+    intelligence.generatedAt = new Date().toISOString();
     return {
-      intelligence: {
-        competitor: competitorName,
-        whyTheyCompete: typeof parsed.whyTheyCompete === 'string' ? parsed.whyTheyCompete : null,
-        marketOverlap: typeof parsed.marketOverlap === 'string' ? parsed.marketOverlap : null,
-        marketingApproach: typeof parsed.marketingApproach === 'string' ? parsed.marketingApproach : null,
-        recentDevelopments: typeof parsed.recentDevelopments === 'string' ? parsed.recentDevelopments : null,
-        immediateOpportunity: typeof parsed.immediateOpportunity === 'string' ? parsed.immediateOpportunity : null,
-        longerTermGrowth: typeof parsed.longerTermGrowth === 'string' ? parsed.longerTermGrowth : null,
-        hasLiveData: !!(perplexityRead && perplexityRead.recentDevelopments),
-        vendorsUsed: successful.map(r => r.label),
-        generatedAt: new Date().toISOString()
-      },
+      intelligence,
       note: null,
-      perVendor
+      perVendor,
+      theme: { key: theme.key, label: theme.label, fields: theme.fields.map(f => ({ key: f.key, label: f.label })) }
     };
   } catch (e){
     return { intelligence: null, note: 'Synthesis failed: ' + e.message, perVendor };
@@ -14489,7 +14664,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-competitor-intel-feeds-voice-guide',
+        buildStamp: '2026-09-13-competitor-intel-theme-chips',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17778,7 +17953,13 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const competitorName = (body.competitorName || '').trim();
       if (!competitorName) return sendJson(res, 400, { error: 'competitorName is required' });
-      const result = await generateCompetitorIntelligenceMultiVendor(competitorName, account);
+      // themeKey — added for the theme-chips feature, 2026-09-13. Defaults
+      // to the original single theme (marketing_positioning) so an older
+      // client that never sends themeKey keeps its exact prior behavior.
+      // An unrecognized key falls back to marketing_positioning inside
+      // competitorResearchTheme() rather than erroring.
+      const themeKey = typeof body.themeKey === 'string' && body.themeKey.trim() ? body.themeKey.trim() : 'marketing_positioning';
+      const result = await generateCompetitorIntelligenceMultiVendor(themeKey, competitorName, account);
       return sendJson(res, 200, result);
     }
 
@@ -25016,6 +25197,7 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
 
