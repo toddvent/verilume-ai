@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-fix-legacy-casing-no-auto-drop (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-voice-sample-weighting-emphasis-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2461,7 +2461,9 @@ async function generateBrandVoiceCandidate(angle, account, extra){
     // ("sample writings should come before the brand in order... the voice
     // guide + website scanned document includes the critical prompt
     // information needed to maximize the contest").
-    const sampleContext = await brandWritingSampleContext(account.accountId);
+    // 2026-09-13 fix, per direct instruction — video belongs to Campaign
+    // Copy's sample context, not Overall Voice/Brand Voice generation.
+    const sampleContext = await brandWritingSampleContext(account.accountId, { includeVideo: false });
     const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
     // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
     // want to waste clients time asking for sample writings and other work
@@ -2619,7 +2621,11 @@ async function gatherVoiceTransparencySignals(account){
   const longformVoiceExample = (account.longformVoiceExample || '').trim();
   out.contest_winner = { present: !!(visionStatement || longformVoiceExample), excerpt: visionStatement ? visionStatement.slice(0, 200) : (longformVoiceExample ? longformVoiceExample.slice(0, 200) : null) };
   try {
-    const sampleContext = await brandWritingSampleContext(account.accountId);
+    // 2026-09-13 fix — this transparency signal describes Voice Guide
+    // generation, which no longer sees video samples (see includeVideo
+    // below); mirror that here so the panel never claims a signal was used
+    // that generation actually excluded.
+    const sampleContext = await brandWritingSampleContext(account.accountId, { includeVideo: false });
     out.sample_writings = { present: !!sampleContext, excerpt: sampleContext ? String(sampleContext).slice(0, 200) : null };
   } catch (e){ out.sample_writings = { present: false, excerpt: null }; }
   try {
@@ -2837,9 +2843,17 @@ async function generateVoiceGuideDraftViaAI(account){
   try {
     const context = brandVoiceCriticalMessagesContext(account, {});
     let avoidWords = [];
+    // 2026-09-13 — round 3 fix: parallel POSITIVE list, per direct
+    // instruction ("ability to include positive and negative phrases for
+    // overall guidance"). Same storage shape as negative (brandKeywordsJson
+    // .positive, an array of chips a human enters on Company Profile), same
+    // short/long split below, so the two lists are treated identically
+    // everywhere except which direction they push the voice.
+    let emphasizeWords = [];
     try {
       const parsedKeywords = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
       if (parsedKeywords && Array.isArray(parsedKeywords.negative)) avoidWords = parsedKeywords.negative.filter(Boolean);
+      if (parsedKeywords && Array.isArray(parsedKeywords.positive)) emphasizeWords = parsedKeywords.positive.filter(Boolean);
     } catch (e){ /* malformed/legacy brandKeywordsJson — fall through without it */ }
     // Same 40-char boundary extractVoiceGuideAvoidTerms()'s own capture
     // group uses (`{2,40}`) — anything longer was never going to be
@@ -2847,7 +2861,11 @@ async function generateVoiceGuideDraftViaAI(account){
     // tone-direction instead. See the comment block above this function.
     const avoidPhrases = avoidWords.filter(w => w.length <= 40);
     const avoidGuidance = avoidWords.filter(w => w.length > 40);
-    const sampleContext = await brandWritingSampleContext(account.accountId);
+    const emphasizePhrases = emphasizeWords.filter(w => w.length <= 40);
+    const emphasizeGuidance = emphasizeWords.filter(w => w.length > 40);
+    // 2026-09-13 fix, per direct instruction — video belongs to Campaign
+    // Copy's sample context, not Overall Voice/Brand Voice generation.
+    const sampleContext = await brandWritingSampleContext(account.accountId, { includeVideo: false });
     // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
     // want to waste clients time asking for sample writings and other work
     // if it adds no incremental value downstream") — this supersedes the
@@ -2871,13 +2889,16 @@ ${sampleContext || '\n(No real Sample Writings on file for this account yet — 
 
 SHORT TERMS TO AVOID for this account — literal words/phrases that must never appear verbatim (human-entered): ${avoidPhrases.length ? avoidPhrases.map(w => `"${w}"`).join(', ') : '(none on file)'}
 LONGER TONE-DIRECTION TO AVOID for this account — not literal phrases, but real guidance on register/approach to steer away from (human-entered, use the substance of this in your own words, never quote it back verbatim): ${avoidGuidance.length ? avoidGuidance.map(w => `"${w}"`).join(' / ') : '(none on file)'}
+SHORT PHRASES TO EMPHASIZE for this account — literal words/phrases this brand actively wants to sound like (human-entered): ${emphasizePhrases.length ? emphasizePhrases.map(w => `"${w}"`).join(', ') : '(none on file)'}
+LONGER TONE-DIRECTION TO EMPHASIZE for this account — not literal phrases, but real guidance on register/approach to lean into (human-entered, use the substance of this in your own words, never quote it back verbatim): ${emphasizeGuidance.length ? emphasizeGuidance.map(w => `"${w}"`).join(' / ') : '(none on file)'}
 
 Write the guide with these sections, in this order:
 1. One-line description of how this brand sounds and who it's speaking to.
 2. Point of view (e.g. second person "you," first person plural "we") — state it explicitly and use it consistently in every example below.
-3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above. If any LONGER TONE-DIRECTION TO AVOID entries exist above, at least one tone rule must incorporate that direction in your own words, written in the same natural, dialogue-voice prose as every other rule in this section — never as a quoted callout, never copied verbatim. None of these rules may themselves use any phrase from either avoid list above — those lists are not just sections to write, they're a real constraint on every word you choose in this guide.
+3. Tone rules — 3-5 real, specific rules a copywriter could actually apply (not restated adjectives), grounded in the brand signal above. If any LONGER TONE-DIRECTION TO AVOID entries exist above, at least one tone rule must incorporate that direction in your own words, written in the same natural, dialogue-voice prose as every other rule in this section — never as a quoted callout, never copied verbatim. If any LONGER TONE-DIRECTION TO EMPHASIZE entries exist above, at least one tone rule (a different rule from the avoid-direction one, when both exist) must likewise incorporate that direction in your own words, same natural prose style. None of these rules may themselves use any phrase from either avoid list above — those lists are not just sections to write, they're a real constraint on every word you choose in this guide.
 4. Words/phrases to avoid — ONLY if the SHORT TERMS TO AVOID list above is non-empty (ignore this section entirely if that list is empty, even if tone-direction entries exist — those belong in Tone rules above instead). Open with one plain sentence in the guide's own voice (e.g. "There are a few specific words and phrases we steer away from entirely:") — then list each short term on its own line in EXACTLY this format: avoid "the exact phrase" — copied verbatim from the SHORT TERMS TO AVOID list inside the quotes, one per line, using the word "avoid" specifically (not "never say"/"don't use"/other synonyms) so this section is mechanically checkable. Do not invent phrases that aren't on that list.
-5. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above). Neither example sentence may use any phrase from either avoid list above.
+5. Phrases to lean into — ONLY if the SHORT PHRASES TO EMPHASIZE list above is non-empty (ignore this section entirely if that list is empty). Open with one plain sentence in the guide's own voice (e.g. "There are also specific words and phrases we like to lean into:") — then list each short term on its own line in EXACTLY this format: emphasize "the exact phrase" — copied verbatim from the SHORT PHRASES TO EMPHASIZE list inside the quotes, one per line, using the word "emphasize" specifically, so this section is mechanically checkable. Do not invent phrases that aren't on that list.
+6. Example sentences in this voice — exactly 2 real, finished sentences that could run in actual customer-facing copy for THIS brand, grounded in the real facts given above (never generic placeholder sentences, never facts not present in the context above). Neither example sentence may use any phrase from the avoid lists above, and where practical should naturally reflect the emphasize lists.
 
 Then, SEPARATELY from the draft text above (in the gaps field, not inside the draft), identify what's genuinely missing that would make this draft stronger — e.g. no Products & Services on file, no Sample Writings on file, no competitors entered, no scanned website on file, no Terms to Avoid entered yet. Only list gaps that are actually true of the context given above; an empty gaps array is correct if everything relevant is genuinely on file — never invent a gap that isn't real. Also give your real reasoning for this specific draft in the whyDraft field — what you grounded it in from the real inputs above, and what you didn't have.
 
@@ -2895,6 +2916,23 @@ Submit your result via the submit_voice_draft tool. If you do not have a tool/fu
     // those two dispatchers — a stale or flaky vendor pick never blocks
     // Voice Guide generation, it just falls through to the Anthropic path
     // below.
+    // 2026-09-13 fix, per direct report — a long-form avoid/emphasize
+    // guidance entry can be on file and correctly fed into the prompt above
+    // (see SHORT/LONGER TERMS above) and still not survive into the actual
+    // draft, because section 3's instruction to weave it into a Tone Rule is
+    // just that — an instruction, with nothing checking whether the model
+    // actually complied. Rather than trust compliance alone, this appends a
+    // short, deterministic, code-written footer whenever either long-form
+    // list is non-empty, so the guidance is always visible in the guide
+    // regardless of how (or whether) the model's own prose reflects it.
+    // Plain string concatenation, not a second AI call — nothing here can
+    // itself fail to comply.
+    const guidanceFooterLines = [];
+    if (avoidGuidance.length) guidanceFooterLines.push(`Avoid: ${avoidGuidance.join('; ')}`);
+    if (emphasizeGuidance.length) guidanceFooterLines.push(`Lean into: ${emphasizeGuidance.join('; ')}`);
+    const guidanceFooter = guidanceFooterLines.length
+      ? `\n\nAdditional guidance on file for this account (always shown here regardless of how the Tone Rules above are worded, so it can never be silently dropped on a future draft):\n${guidanceFooterLines.map(l => `- ${l}`).join('\n')}`
+      : '';
     const priority = getDispatchablePriorityModel(account.accountId, 'brand_voice');
     if (priority && !priority.stale){
       try {
@@ -2902,7 +2940,7 @@ Submit your result via the submit_voice_draft tool. If you do not have a tool/fu
         const vendorParsed = parseJsonBlock(vendorText);
         if (vendorParsed && typeof vendorParsed.draft === 'string'){
           return await attachVoiceTransparency(account, {
-            draft: vendorParsed.draft,
+            draft: vendorParsed.draft + guidanceFooter,
             gaps: Array.isArray(vendorParsed.gaps) ? vendorParsed.gaps.filter(g => typeof g === 'string') : [],
             whyDraft: typeof vendorParsed.whyDraft === 'string' ? vendorParsed.whyDraft : null,
             note: null
@@ -2920,7 +2958,7 @@ Submit your result via the submit_voice_draft tool. If you do not have a tool/fu
       schema: VOICE_DRAFT_SCHEMA
     });
     return await attachVoiceTransparency(account, {
-      draft: typeof parsed.draft === 'string' ? parsed.draft : null,
+      draft: typeof parsed.draft === 'string' ? parsed.draft + guidanceFooter : null,
       gaps: Array.isArray(parsed.gaps) ? parsed.gaps.filter(g => typeof g === 'string') : [],
       whyDraft: typeof parsed.whyDraft === 'string' ? parsed.whyDraft : null,
       note: null
@@ -12289,7 +12327,25 @@ function sampleWeight(sample){
 // duplicating the lookup — both functions render the same
 // "(category, date — outcome)" block format.
 const categoryLabel = (id) => (BRAND_WRITING_SAMPLE_CATEGORIES.find(c => c.id === id) || {}).label || id;
-async function brandWritingSampleContext(accountId){
+// 2026-09-13 fix, per direct instruction after the Voice Test 2 review —
+// three changes from how this used to work:
+//   1) The old cap was 3 samples TOTAL across every category, ranked purely
+//      by weight. That meant two heavily-weighted video samples could (and
+//      did, in the Voice Test 2 incident) crowd two of three brochures out
+//      of the prompt entirely, even though all five were "on file." Now
+//      capped at up to 3 PER CATEGORY instead — different sample types each
+//      get their own budget rather than competing for one shared slot.
+//   2) Video ("video falls into the Campaign category more than Overall
+//      Voice," per direct instruction) is now excludable per call site via
+//      opts.includeVideo — Voice Guide/Voice Contest call sites pass
+//      includeVideo:false so video scripts inform Campaign Copy generation
+//      only, never Brand Voice. Every other call site keeps the old
+//      default (true) and is unaffected.
+const VIDEO_SAMPLE_CATEGORIES = new Set(['marketing_campaign_video', 'video_script']);
+async function brandWritingSampleContext(accountId, opts){
+  opts = opts || {};
+  const includeVideo = opts.includeVideo !== false;
+  const perCategoryCap = 3;
   try {
     // (excluded IS NULL OR excluded = 0) is the enforcement point for the
     // admin "flag as an error" control (round 141): a sample an admin has
@@ -12310,13 +12366,18 @@ async function brandWritingSampleContext(accountId){
        AND (uploadedFileId IS NOT NULL OR sourceType = 'video_analysis')
        ORDER BY docDate DESC, createdAt DESC`
     ).all(accountId);
-    if (!samples.length) return '';
-    const ranked = samples
+    const eligible = includeVideo
+      ? samples
+      : samples.filter(s => s.sourceType !== 'video_analysis' && !VIDEO_SAMPLE_CATEGORIES.has(s.category));
+    if (!eligible.length) return '';
+    const ranked = eligible
       .map(sample => ({ sample, weight: sampleWeight(sample) }))
       .sort((a, b) => b.weight - a.weight || new Date(b.sample.docDate) - new Date(a.sample.docDate));
     const blocks = [];
+    const categoryCounts = {};
     for (const { sample } of ranked){
-      if (blocks.length >= 3) break;
+      const catKey = sample.category || 'uncategorized';
+      if ((categoryCounts[catKey] || 0) >= perCategoryCap) continue;
       // Approved/rejected outcome framing — a rejected sample is an
       // explicit anti-example, never a style reference to emulate.
       const outcomeTag = sample.outcome === 'rejected'
@@ -12328,6 +12389,7 @@ async function brandWritingSampleContext(accountId){
         const text = (sample.notes || '').trim();
         if (text){
           blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${outcomeTag} — AI analysis of an uploaded video's VISUALS and on-screen text only, not audio/spoken content; the video itself was not retained) ---\n${text.replace(/\s+/g, ' ').slice(0, 900)}`);
+          categoryCounts[catKey] = (categoryCounts[catKey] || 0) + 1;
         }
         continue;
       }
@@ -12335,6 +12397,7 @@ async function brandWritingSampleContext(accountId){
       const text = await extractSampleText(file);
       if (text && text.trim()){
         blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${outcomeTag}) ---\n${text.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+        categoryCounts[catKey] = (categoryCounts[catKey] || 0) + 1;
       }
     }
     if (!blocks.length) return '';
@@ -13954,7 +14017,9 @@ async function generateVendorBrandVoiceCopy(vendorKey, account, extra){
     // dispatch-scoping-2026-09-12.md — identical Sample Writings + approved
     // Voice Guide grounding as generateBrandVoiceCandidate's Anthropic path
     // above, so the contest stays fair across every vendor candidate.
-    const sampleContext = await brandWritingSampleContext(account.accountId);
+    // 2026-09-13 fix, per direct instruction — video belongs to Campaign
+    // Copy's sample context, not Overall Voice/Brand Voice generation.
+    const sampleContext = await brandWritingSampleContext(account.accountId, { includeVideo: false });
     const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
     // 2026-09-12, per direct instruction ("Agentic Optimization... we don't
     // want to waste clients time asking for sample writings and other work
@@ -14206,7 +14271,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-fix-legacy-casing-no-auto-drop',
+        buildStamp: '2026-09-13-voice-sample-weighting-emphasis-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17586,8 +17651,11 @@ async function handleRequest(req, res) {
 
     // POST /api/accounts/:id/brand-keywords — round 32, follow-on. Brand &
     // Product Keywords (Brand Voice page) — { brand: [], product: [],
-    // negative: [] }, whole-object replaced on every save, same convention
-    // as /keywords above.
+    // negative: [], positive: [] }, whole-object replaced on every save,
+    // same convention as /keywords above. `positive` added 2026-09-13, per
+    // direct instruction ("ability to include positive and negative phrases
+    // for overall guidance") — same shape and same short/long split
+    // treatment as `negative`, see generateVoiceGuideDraftViaAI().
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-keywords'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -17597,7 +17665,8 @@ async function handleRequest(req, res) {
       const brandKeywords = {
         brand: Array.isArray(body.brand) ? body.brand : [],
         product: Array.isArray(body.product) ? body.product : [],
-        negative: Array.isArray(body.negative) ? body.negative : []
+        negative: Array.isArray(body.negative) ? body.negative : [],
+        positive: Array.isArray(body.positive) ? body.positive : []
       };
       db.prepare('UPDATE accounts SET brandKeywordsJson = ? WHERE accountId = ?')
         .run(JSON.stringify(brandKeywords), accountId);
