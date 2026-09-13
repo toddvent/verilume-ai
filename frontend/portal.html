@@ -4426,6 +4426,7 @@
           <label>Destination / Creative Focus Group</label>
           <select id="voiceContestCreativeMarket" onchange="onVoiceContestProductGroupChange()"></select>
           <div class="hint" id="voiceContestEvidenceHint" style="margin-top:4px;"></div>
+          <div id="voiceContestCreativeFocusSummary"></div>
           <!-- Fix 4 of the 4-fix round, per direct instruction: "replicate
                the option to leverage an existing video script/creative
                artifact when developing new video concepts." Left as an
@@ -29094,6 +29095,17 @@ function wsInit(){
   // 2026-09-12 — Brand Understanding card (Website Brand Profile round),
   // same step-entry load pattern as wsLoadList() directly above.
   wsLoadProfileHistory();
+  // Round "creative-focus-tagging" (2026-09-13) — the per-page Creative
+  // Focus Group retag select in wsRenderList() below needs the same real
+  // taxonomy as the Sample Writings tagging controls; load it first if this
+  // step is reached before Marketing Calendar ever has (same guard
+  // bwsInit()/renderVoiceContestStep() use for the identical reason).
+  (async () => {
+    if (!state.calendarTaxonomies && typeof mktCalLoadTaxonomies === 'function'){
+      try { await mktCalLoadTaxonomies(); } catch (e){ /* select just shows empty state below */ }
+    }
+    wsRenderList();
+  })();
 }
 // scope='site' has no meaningful path — hide the field and show a fixed
 // note instead of an editable input, since the rule always applies to '/'.
@@ -29161,6 +29173,14 @@ function wsScopeLabel(scope){ return scope === 'site' ? 'Entire site' : scope ==
 function wsStatusLabel(status){
   return { active: 'Active', excluded: 'Excluded', failed: 'Failed to resolve', 'capped-out': 'Capped out' }[status] || status;
 }
+// Round "creative-focus-tagging" (2026-09-13), per direct instruction to
+// move on the remaining open items from
+// cxmedia-video-script-evidence-pipeline-4fix-scoping-2026-09-13.md: the
+// backend PATCH .../brand-copy-website-examples/:id/tag endpoint existed
+// with no frontend control. Only a client-declared scope='page' row is
+// taggable (matches the backend's own restriction — a directory/site rule
+// covers more than one destination by nature, and its individual resolved
+// pages aren't surfaced as their own rows in this table today).
 function wsRenderList(){
   const body = document.getElementById('wsListBody');
   if (!body) return;
@@ -29168,8 +29188,10 @@ function wsRenderList(){
     body.innerHTML = '<p class="hint">No rules yet — add an include or exclude rule above.</p>';
     return;
   }
+  const cmValues = (typeof cmpTaxonomyValues === 'function' ? cmpTaxonomyValues('creativeMarket') : []) || [];
+  const cmOptionsHtml = current => '<option value="">Account-wide</option>' + cmValues.map(v => `<option value="${escapeHtml(v)}"${v === current ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
   body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-    <thead><tr><th>Mode</th><th>Scope</th><th>Path</th><th>Status</th><th>Resolved pages</th><th></th></tr></thead>
+    <thead><tr><th>Mode</th><th>Scope</th><th>Path</th><th>Status</th><th>Resolved pages</th><th>Creative Focus Group</th><th></th></tr></thead>
     <tbody>${wsRules.map(r => `
       <tr>
         <td>${escapeHtml(r.mode === 'exclude' ? 'Exclude' : 'Include')}</td>
@@ -29177,9 +29199,23 @@ function wsRenderList(){
         <td>${escapeHtml(r.path)}</td>
         <td>${escapeHtml(wsStatusLabel(r.status))}</td>
         <td>${r.resolvedPages ? `${r.resolvedPages.filter(p => p.status === 'active').length} of ${r.resolvedPages.length}` : (r.scope === 'page' ? '—' : '')}</td>
+        <td>${r.scope === 'page' && r.mode === 'include'
+          ? `<select style="font-size:0.75rem;padding:2px 4px;" onchange="wsRetagCreativeMarket('${r.id}', this.value)">${cmOptionsHtml(r.creativeMarket || '')}</select>`
+          : '<span class="hint">—</span>'}</td>
         <td><button type="button" class="btn-ghost" onclick="wsDeleteRule('${r.id}')">Remove</button></td>
       </tr>`).join('')}</tbody>
   </table></div>`;
+}
+async function wsRetagCreativeMarket(id, creativeMarket){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-copy-website-examples/${encodeURIComponent(id)}/tag`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creativeMarket })
+    });
+    if (!resp.ok){ alert('Could not save that tag — try again.'); return; }
+    const rule = wsRules.find(r => r.id === id);
+    if (rule) rule.creativeMarket = creativeMarket || null;
+  } catch (e){ alert('Backend unreachable — could not save that tag.'); }
 }
 async function wsDeleteRule(id){
   try {
@@ -49778,6 +49814,35 @@ function onVoiceContestProductGroupChange(){
   const hint = document.getElementById('voiceContestEvidenceHint');
   if (!hint) return;
   hint.textContent = 'Every configured AI model will write its own full :30 script for this destination, drawing on Voice Guide, tagged Experience Evidence, tagged Sample Writings, and tagged Website Copy for it — compare them below, then select a winner.';
+  voiceContestLoadCreativeFocusSummary();
+}
+// Fix 2 of cxmedia-video-script-evidence-pipeline-4fix-scoping-2026-09-13.md,
+// round "creative-focus-tagging" (2026-09-13), per direct instruction: "build
+// the sections that provide details for creative focus based on sample
+// longform copy, image assets available or the /URL." Loads
+// GET .../creative-focus-summary and renders it right under the destination
+// picker, so what's actually on file for this destination is visible BEFORE
+// running the contest, not discovered only after via evidenceGapNote.
+async function voiceContestLoadCreativeFocusSummary(){
+  const el = document.getElementById('voiceContestCreativeFocusSummary');
+  if (!el) return;
+  const cmEl = document.getElementById('voiceContestCreativeMarket');
+  const creativeMarket = cmEl ? cmEl.value : '';
+  if (!creativeMarket || !state.companyId){ el.innerHTML = ''; return; }
+  el.innerHTML = '<p class="hint">Checking what\'s on file for this destination…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/creative-focus-summary?creativeMarket=${encodeURIComponent(creativeMarket)}`);
+    if (!resp.ok){ el.innerHTML = ''; return; }
+    const d = await resp.json();
+    const rows = [
+      `<strong>${d.sampleCount}</strong> Sample Writing${d.sampleCount === 1 ? '' : 's'} tagged to "${escapeHtml(creativeMarket)}"${d.samples.length ? ': ' + d.samples.slice(0, 5).map(s => escapeHtml(s.title)).join(', ') + (d.samples.length > 5 ? `, +${d.samples.length - 5} more` : '') : ''}`,
+      `<strong>${d.websitePageCount}</strong> Website Copy page${d.websitePageCount === 1 ? '' : 's'} tagged${d.websitePages.length ? ': ' + d.websitePages.slice(0, 5).map(p => escapeHtml(p.path)).join(', ') + (d.websitePages.length > 5 ? `, +${d.websitePages.length - 5} more` : '') : ''}`,
+      `Internal Experience Evidence: <strong>${d.hasExperienceEvidence ? 'on file' : 'none loaded yet'}</strong>`,
+      `Image assets: <span style="color:var(--muted);">not tracked — no formal image library in this app yet</span>`,
+      `${d.referenceScriptsAvailable} legacy video script${d.referenceScriptsAvailable === 1 ? '' : 's'} available for the optional structural reference above`
+    ];
+    el.innerHTML = `<div style="border:1px solid var(--line-hairline);border-radius:8px;padding:8px 10px;margin-top:6px;font-size:0.75rem;line-height:1.5;">${rows.map(r => `<div>${r}</div>`).join('')}</div>`;
+  } catch (e){ el.innerHTML = ''; }
 }
 
 // 2026-08-27, Phase 1 of the scoring/legitimacy build (per direct
