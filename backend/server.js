@@ -5417,7 +5417,8 @@ const BRAND_WRITING_SAMPLE_CATEGORIES = [
   { id: 'email_template', label: 'Email Templates' },
   { id: 'direct_mail_template', label: 'Direct Mail Templates' },
   { id: 'social_post', label: 'Social Posts' },
-  { id: 'approval_rejection', label: 'Approvals & Rejections' }
+  { id: 'approval_rejection', label: 'Approvals & Rejections' },
+  { id: 'experience_evidence', label: 'Internal Experience Evidence' }
 ];
 const BRAND_WRITING_SAMPLE_FILE_MIME_RE = /^(application\/(msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.openxmlformats-officedocument\.presentationml\.presentation|vnd\.ms-powerpoint|pdf))$/i;
 
@@ -5648,6 +5649,33 @@ ensureColumn('brand_writing_samples', 'excludedReason', 'TEXT');
 // labeled as an explicit anti-example, never blended in as "do more of
 // this").
 ensureColumn('brand_writing_samples', 'outcome', 'TEXT');
+// Round 132z-evidence (2026-09-13), per direct instruction: "build the
+// section that allows clients to provide 'internal experience evidence' to
+// a product group" — closes the Experience Library gap identified in
+// cxmedia-video-first-creative-brief-replication-scoping-2026-09-13.md
+// (video-first copy reading as generic "destination" copy instead of true
+// Expedition-depth specificity, because nothing on file carried named
+// onboard programs, specific excursions, or footage inventory PER PRODUCT
+// GROUP). Two new columns, reusing brand_writing_samples rather than a
+// parallel table — same "extend what's proven" posture as the rest of
+// this file's schema growth:
+//  - productGroup: optional. NULL means account-wide (every existing
+//    sample, unchanged in meaning). Set means this sample is scoped
+//    evidence for ONE product group (e.g. "Antarctica") and is pulled into
+//    that product group's own generation context — see
+//    experienceEvidenceContext() below — never blended into every
+//    product group's copy indiscriminately.
+//  - extractedText: NULL for the existing 'file' and 'video_analysis'
+//    sourceTypes (their text is still derived live via extractSampleText()/
+//    notes, unchanged) and for 'link' (a Google Docs/Slides reference has
+//    no fetchable text, unchanged — 'link' samples still never reach
+//    generation context, by design). Populated ONLY for the new 'url_fetch'
+//    sourceType (below) — the one real, server-side "read a URL the client
+//    points at" ingestion path, since there is no uploaded_files row for a
+//    URL-fetched sample to derive text from later, so it has to be
+//    captured once, at save time.
+ensureColumn('brand_writing_samples', 'productGroup', 'TEXT');
+ensureColumn('brand_writing_samples', 'extractedText', 'TEXT');
 
 // ---------- Brand Copy Website Examples (2026-08-25) ----------
 // Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
@@ -12271,6 +12299,144 @@ async function extractSampleText(uploadedFile){
   } catch (e){ return null; }
   return null; // legacy .doc, .ppt/.pptx, or an unrecognized mimeType — not parsed yet
 }
+
+// ---------- Internal Experience Evidence — URL/directory fetch (round
+// 132z-evidence, 2026-09-13) ----------
+// Per direct instruction: "I couldn't upload a full 30 page pdf brochure
+// assuming because of file size... is it possible to read pdfs published
+// on a website?... The easiest path is to read the URLs and directories
+// provided by the company." Confirmed the size assumption first: this
+// deployment runs on Vercel (see vercel.json — api/[...path].js), and
+// Vercel's Node serverless functions cap the INBOUND request body around
+// 4.5MB — base64-encoding a file adds ~33% on top of that, so a real
+// 30-page brochure PDF (routinely well over 3MB once it carries photos)
+// can exceed that ceiling before pdf-parse ever sees it, even though
+// PII/virus-scanning have nothing to do with the rejection. Fetching a URL
+// SERVER-SIDE sidesteps that specific ceiling entirely — the 4.5MB figure
+// only bounds what a browser can POST to this function, not what this
+// function can itself fetch() from an outside URL — which is the real,
+// concrete reason the URL path below is worth building, not just a
+// nice-to-have alternative to uploading.
+//
+// fetchAndExtractEvidenceUrl(url) is the read-only preview half of a
+// two-step flow (mirrors analyzeVideoSample()/bwsAnalyzeVideo() above —
+// fetch & show, let the client review, THEN a separate save call commits
+// it). It never writes to the database. Two real outcomes:
+//   - the URL is a PDF itself (by Content-Type or a .pdf extension) ->
+//     fetched and parsed with the same pdf-parse pipeline extractSampleText
+//     already uses, returned as { kind: 'pdf', extractedText }.
+//   - the URL is an HTML page -> treated as a potential "directory" page
+//     (e.g. atlasoceanvoyages.com/brochures) and regex-scanned for <a>
+//     hrefs that point at a .pdf, same zero-dependency regex approach
+//     already used by stripHtmlTags/extractPrimaryCta above (no HTML/DOM
+//     library in this backend's footprint) — returned as
+//     { kind: 'directory', discoveredLinks: [...] } for the client to pick
+//     from, rather than auto-fetching every linked PDF in one call (some
+//     brochure pages link a dozen+ documents; fetching all of them inside
+//     one request risks the same function-timeout failure mode documented
+//     on fetchAndExtractPage above).
+// Reuses the same honest-failure posture as fetchAndExtractPage — a
+// timeout, a non-200, or a bot-challenge page (Cloudflare/Akamai/
+// PerimeterX and similar, common on hospitality/travel sites) throws a
+// specific, readable error rather than returning an empty "success". Note
+// on real-world limits, disclosed here rather than silently assumed away:
+// a brochure page built as a JS-rendered flipbook/embedded viewer (Issuu,
+// FlipHTML5, PaperFlite, and similar — common for "digital brochure"
+// experiences) has no real .pdf href in its static HTML at all; a plain
+// server-side fetch() can't run that JavaScript, so a viewer page like
+// that surfaces zero discovered links even though a human clicking around
+// the same page can reach the document. That's a real, disclosed gap, not
+// a bug to silently swallow — the client-facing copy in portal.html says
+// so, and the workaround is the same one that already exists for a Google
+// Doc/Slides link: paste the DIRECT PDF url if the page provides one, or
+// fall back to uploading the file (still the only reliable path over
+// ~3.4MB is via this URL fetch, not the upload form's own 4.5MB ceiling).
+const EVIDENCE_URL_FETCH_TIMEOUT_MS = 12000;
+const EVIDENCE_URL_MAX_HTML_BYTES = 500000; // matches fetchAndExtractPage's own cap and reasoning
+const EVIDENCE_URL_MAX_PDF_BYTES = 20 * 1024 * 1024; // generous vs. the 4.5MB inbound-upload ceiling this path exists to route around
+const EVIDENCE_URL_MAX_DISCOVERED_LINKS = 25;
+async function fetchAndExtractEvidenceUrl(rawUrl){
+  let url;
+  try { url = new URL(rawUrl); } catch (e){ throw new Error('That doesn\'t look like a valid URL.'); }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only http:// and https:// URLs can be fetched.');
+
+  let resp;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), EVIDENCE_URL_FETCH_TIMEOUT_MS);
+    resp = await fetch(url.toString(), { redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' } });
+    clearTimeout(timeout);
+  } catch (e){
+    throw new Error(`Could not reach ${url.toString()} right now (${e.name === 'AbortError' ? `timed out after ${EVIDENCE_URL_FETCH_TIMEOUT_MS / 1000}s` : e.message}).`);
+  }
+  if (!resp.ok) throw new Error(`${url.toString()} responded with ${resp.status} ${resp.statusText} — the URL may be stale, or the site may be blocking automated requests.`);
+
+  const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+  const looksLikePdf = contentType.includes('pdf') || /\.pdf(\?|#|$)/i.test(url.pathname);
+
+  if (looksLikePdf){
+    const arrayBuf = await resp.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
+    if (buffer.length > EVIDENCE_URL_MAX_PDF_BYTES) throw new Error(`That PDF is ${(buffer.length / 1024 / 1024).toFixed(1)}MB — evidence fetches are capped at ${(EVIDENCE_URL_MAX_PDF_BYTES / 1024 / 1024).toFixed(0)}MB.`);
+    let parsed;
+    try { parsed = await pdfParse(buffer); }
+    catch (e){ throw new Error(`Found a PDF at that URL, but couldn't parse it (${e.message}) — it may be a scanned/image-only PDF, which this pipeline doesn't OCR.`); }
+    const text = (parsed && parsed.text || '').trim();
+    if (!text) throw new Error('That PDF parsed with no extractable text — it may be a scanned/image-only PDF (this pipeline doesn\'t OCR).');
+    return { kind: 'pdf', extractedText: text, sizeBytes: buffer.length, pageCount: (parsed && parsed.numpages) || null };
+  }
+
+  // HTML path — bounded read, same 500KB cap and reasoning as
+  // fetchAndExtractPage above (real page content worth scanning is always
+  // near the top of the document).
+  let html;
+  try {
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true){
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (received >= EVIDENCE_URL_MAX_HTML_BYTES){ try { await reader.cancel(); } catch (e){} break; }
+    }
+    html = Buffer.concat(chunks.map(c => Buffer.from(c))).toString('utf8');
+  } catch (e){
+    throw new Error(`Could not read the response from ${url.toString()} (${e.message}).`);
+  }
+  const htmlLower = html.toLowerCase();
+  const CHALLENGE_PAGE_MARKERS_LOCAL = [
+    'checking your browser', 'just a moment', 'cf-browser-verification',
+    '__cf_chl', 'cf_chl_opt', 'attention required', 'ddos protection by',
+    'enable javascript and cookies', 'px-captcha', 'perimeterx',
+    'incapsula incident id', 'access denied', 'are you a robot',
+    'verify you are a human', 'unusual traffic'
+  ];
+  const matchedMarker = CHALLENGE_PAGE_MARKERS_LOCAL.find(marker => htmlLower.includes(marker));
+  if (matchedMarker) throw new Error(`${url.toString()} appears to be showing an automated-traffic challenge page ("${matchedMarker}") rather than the real page — this needs to be resolved on the site's own end (allowlisting this fetch), not by retrying.`);
+
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const pageTitle = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : null;
+
+  const linkRe = /<a\b[^>]*href\s*=\s*(["'])([^"']+?\.pdf(?:[?#][^"']*)?)\1[^>]*>([\s\S]*?)<\/a>/gi;
+  const seen = new Set();
+  const discoveredLinks = [];
+  let m;
+  while ((m = linkRe.exec(html)) && discoveredLinks.length < EVIDENCE_URL_MAX_DISCOVERED_LINKS){
+    let href;
+    try { href = new URL(m[2], url).toString(); } catch (e){ continue; }
+    if (seen.has(href)) continue;
+    seen.add(href);
+    const label = stripHtmlTags(m[3]).trim();
+    discoveredLinks.push({ href, label: label || href });
+  }
+  if (!discoveredLinks.length){
+    throw new Error(`${url.toString()} loaded, but no direct .pdf links were found in its page markup. Many "digital brochure" pages render through a JS flipbook/embedded viewer (Issuu, FlipHTML5, and similar) rather than a plain link — this fetch can't run that JavaScript to reach the file. If the page offers a direct "download PDF" link, paste that URL instead; otherwise upload the file directly.`);
+  }
+  return { kind: 'directory', pageTitle, discoveredLinks };
+}
+
 // extractBrandGuideFields() — 2026-08-26, per direct instruction: "some
 // brand books will include comprehensive information... we should populate
 // all fields we can map to, to reduce unnecessary manual client work."
@@ -12467,6 +12633,61 @@ async function brandWritingSampleContext(accountId, opts){
     }
     if (!blocks.length) return '';
     return `\nREAL BRAND WRITING SAMPLES ON FILE (this account's own actual past writing, video visuals, and campaign approval/rejection history — a genuine reference for vocabulary, rhythm, and structure, not a script to copy verbatim; a sample marked CLIENT-REJECTED shows what to avoid, not what to follow; never quote these directly, and never treat their specific facts/offers as still current):\n${blocks.join('\n\n')}\n`;
+  } catch (e){ return ''; } // a lookup failure here should never block real copy generation
+}
+
+// experienceEvidenceContext(accountId, productGroup) — round 132z-evidence
+// (2026-09-13). Closes the Experience Library gap named in
+// cxmedia-video-first-creative-brief-replication-scoping-2026-09-13.md:
+// generateMessagingCopyViaAI()'s anti-fabrication rule ("never invent facts
+// not present here") is correct and stays as-is — the actual fix is giving
+// it real, PRODUCT-GROUP-SPECIFIC facts to draw from (named onboard
+// programs, specific excursions, footage on file, culinary/wine depth —
+// whatever makes copy read as genuinely "Expedition" rather than generic
+// "small luxury cruise destination" copy), which brand_writing_samples
+// never carried per-product-group until the productGroup column above.
+//
+// Deliberately its own function rather than folded into
+// brandWritingSampleContext(): that function is account-wide and gated to
+// consumer_marketing/sales-register samples; this one is scoped to ONE
+// product group at a time (called once per group in the campaign's
+// productGroups loop, same call shape as modelReadoutFindingsContext()
+// right beside it) and pulls ANY category tagged to that group — an
+// Antarctica-scoped sample should reach Antarctica copy regardless of
+// whether it was filed as Internal Experience Evidence, Digital Product
+// Brochures, or anything else, since the client is the one deciding what's
+// evidence by tagging it to the group, not this function's category logic.
+// Same honest-empty-context convention as every optional context builder
+// in this file: never throws, returns '' when there's nothing usable so a
+// product group with no evidence on file reads identically to how it did
+// before this feature existed.
+async function experienceEvidenceContext(accountId, productGroup){
+  if (!accountId || !productGroup) return '';
+  try {
+    const rows = db.prepare(
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND productGroup = ? AND (excluded IS NULL OR excluded = 0)
+       ORDER BY docDate DESC, createdAt DESC LIMIT 8`
+    ).all(accountId, productGroup);
+    if (!rows.length) return '';
+    const blocks = [];
+    for (const sample of rows){
+      let text = null;
+      if (sample.sourceType === 'url_fetch'){
+        text = sample.extractedText;
+      } else if (sample.sourceType === 'video_analysis'){
+        text = sample.notes;
+      } else if (sample.uploadedFileId){
+        const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
+        text = await extractSampleText(file);
+      }
+      text = (text || '').trim();
+      if (!text) continue;
+      const sourceTag = sample.sourceType === 'url_fetch' ? ` — fetched from ${sample.sourceUrl}` : '';
+      blocks.push(`--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}${sourceTag}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}`);
+      if (blocks.length >= 6) break; // bounded — see the function comment on why this stays a small, curated set
+    }
+    if (!blocks.length) return '';
+    return `\nINTERNAL EXPERIENCE EVIDENCE ON FILE for the "${productGroup}" product group (real, client-provided detail — named onboard programs, specific excursions, culinary/footage detail, or brochure content actually on file for THIS product group; use this to write with genuine destination-specific depth instead of generic language, but never invent detail beyond what's here, and never treat pricing/dates/offers in it as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
@@ -12778,11 +12999,17 @@ async function generateMessagingCopyViaAI(campaign, account, opts){
     // comma-joined string (see the campaign-save recompute script), split
     // and queried per group so a finding scoped to one product group is
     // never blended into a different campaign's copy.
+    // Round 132z-evidence (2026-09-13): experienceEvidenceContext() joins
+    // modelReadoutFindingsContext() in this same per-product-group loop —
+    // same scoping rule (a group's evidence never blends into a different
+    // group's copy), same reason to await it here rather than once
+    // account-wide (see that function's own comment for the full "why").
     let modelReadoutContext = '';
     if (campaign.productGroups){
       const groups = String(campaign.productGroups).split(',').map(g => g.trim()).filter(Boolean);
       for (const g of groups){
         modelReadoutContext += modelReadoutFindingsContext(account.accountId, 'product_group', g);
+        modelReadoutContext += await experienceEvidenceContext(account.accountId, g);
       }
     }
     const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId)) + (await trainingDigestRollupContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'consumer_marketing') + modelReadoutContext;
@@ -21246,7 +21473,14 @@ async function handleRequest(req, res) {
       if (!validCategory) return sendJson(res, 400, { error: `category must be one of: ${BRAND_WRITING_SAMPLE_CATEGORIES.map(c => c.id).join(', ')}` });
       if (!body.title || !body.title.trim()) return sendJson(res, 400, { error: 'title is required' });
       if (!body.docDate || !body.docDate.trim()) return sendJson(res, 400, { error: 'docDate is required — this feature always categorizes by purpose AND date' });
-      const sourceType = body.sourceType === 'link' ? 'link' : body.sourceType === 'video_analysis' ? 'video_analysis' : 'file';
+      const sourceType = body.sourceType === 'link' ? 'link' : body.sourceType === 'video_analysis' ? 'video_analysis' : body.sourceType === 'url_fetch' ? 'url_fetch' : 'file';
+      // Round 132z-evidence: optional product-group scope. Trimmed, stored
+      // as NULL when blank (unscoped/account-wide — unchanged meaning for
+      // every sample saved before this round). Not validated against the
+      // account's taxonomy list server-side — same permissiveness as
+      // campaign.productGroups elsewhere in this file — the client sources
+      // its options from GET /api/accounts/:id/taxonomies/productGroup.
+      const productGroup = (body.productGroup || '').trim() || null;
       // Round 142: outcome ('approved'/'rejected') is required for the
       // Approvals & Rejections category (that's the whole point of the
       // category), optional elsewhere — an account may want to tag e.g. a
@@ -21270,6 +21504,16 @@ async function handleRequest(req, res) {
         uploadedFileId = uploadedFile.id;
       } else if (sourceType === 'link') {
         if (!body.sourceUrl || !body.sourceUrl.trim()) return sendJson(res, 400, { error: 'sourceUrl is required for sourceType "link" (e.g. a Google Docs or Google Slides share link)' });
+      } else if (sourceType === 'url_fetch') {
+        // Round 132z-evidence — the real "read a URL the client points at"
+        // path. Unlike 'link' above (a reference-only pointer with no
+        // fetchable text, so it never reaches generation context), this
+        // sourceType requires the extractedText a prior call to
+        // POST .../brand-writing-samples/fetch-url already produced and the
+        // client reviewed — this endpoint does NOT re-fetch the URL itself
+        // (same two-step review-then-save shape as video_analysis above).
+        if (!body.sourceUrl || !body.sourceUrl.trim()) return sendJson(res, 400, { error: 'sourceUrl is required for sourceType "url_fetch"' });
+        if (!body.extractedText || !body.extractedText.trim()) return sendJson(res, 400, { error: 'extractedText is required for sourceType "url_fetch" — fetch and review via POST /api/accounts/:id/brand-writing-samples/fetch-url first' });
       } else {
         // 'video_analysis' (round 140) — the video itself was never stored
         // (see analyzeVideoSample's ephemeral-processing design above); what
@@ -21281,10 +21525,33 @@ async function handleRequest(req, res) {
 
       const id = generateId('BWS');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO brand_writing_samples (id, accountId, uploadedFileId, sourceType, sourceUrl, title, category, docDate, notes, uploadedBy, createdAt, outcome)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, uploadedFileId, sourceType, sourceType === 'link' ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now, outcome);
+      db.prepare(`INSERT INTO brand_writing_samples (id, accountId, uploadedFileId, sourceType, sourceUrl, title, category, docDate, notes, uploadedBy, createdAt, outcome, productGroup, extractedText)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, uploadedFileId, sourceType, (sourceType === 'link' || sourceType === 'url_fetch') ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now, outcome, productGroup, sourceType === 'url_fetch' ? body.extractedText.trim() : null);
       return sendJson(res, 201, { id, status: 'saved' });
+    }
+
+    // POST /api/accounts/:id/brand-writing-samples/fetch-url (round
+    // 132z-evidence, 2026-09-13) — the preview half of the URL-fetch flow.
+    // Body: { url }. Runs fetchAndExtractEvidenceUrl() (decode -> content-
+    // type check -> pdf-parse OR directory-link scan) and returns the
+    // result WITHOUT saving anything, same two-step pattern as
+    // analyze-video above: the caller reviews (and for a 'directory'
+    // result, PICKS which discovered link to fetch next, via a second call
+    // to this same endpoint with that link's href as url) before ever
+    // committing anything via POST .../brand-writing-samples with
+    // sourceType 'url_fetch'.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-samples' && parts[4] === 'fetch-url'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!body.url || !body.url.trim()) return sendJson(res, 400, { error: 'url is required' });
+      try {
+        const result = await fetchAndExtractEvidenceUrl(body.url.trim());
+        return sendJson(res, 200, result);
+      } catch (e){
+        return sendJson(res, 422, { error: e.message || 'Could not fetch that URL.' });
+      }
     }
 
     // POST /api/accounts/:id/brand-writing-samples/analyze-video (round
@@ -21317,9 +21584,26 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const url = new URL(req.url, 'http://localhost');
       const category = url.searchParams.get('category');
-      const rows = category
-        ? db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, category)
-        : db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? ORDER BY docDate DESC, createdAt DESC').all(accountId);
+      // Round 132z-evidence: optional productGroup filter, combinable with
+      // category. 'unscoped' is a real, requestable value (not just an
+      // omitted param) so the library UI can offer "account-wide only" as
+      // its own filter tile, same convention as any other tri-state filter
+      // in this app rather than overloading an empty string two ways.
+      const productGroup = url.searchParams.get('productGroup');
+      let rows;
+      if (category && productGroup === 'unscoped'){
+        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? AND productGroup IS NULL ORDER BY docDate DESC, createdAt DESC').all(accountId, category);
+      } else if (category && productGroup){
+        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? AND productGroup = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, category, productGroup);
+      } else if (productGroup === 'unscoped'){
+        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND productGroup IS NULL ORDER BY docDate DESC, createdAt DESC').all(accountId);
+      } else if (productGroup){
+        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND productGroup = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, productGroup);
+      } else if (category){
+        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, category);
+      } else {
+        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? ORDER BY docDate DESC, createdAt DESC').all(accountId);
+      }
       const samples = rows.map(r => {
         const uploadedFile = r.uploadedFileId ? db.prepare('SELECT originalFilename, mimeType, sizeBytes FROM uploaded_files WHERE id = ?').get(r.uploadedFileId) : null;
         return { ...r, file: uploadedFile || null };
@@ -25197,7 +25481,6 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
 
