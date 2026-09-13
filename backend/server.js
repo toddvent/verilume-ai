@@ -17631,6 +17631,54 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { used, limit: INTERVIEW_WEEKLY_CAP });
     }
 
+    // GET /api/accounts/:id/creative-focus-summary?creativeMarket=... (Fix 2
+    // of cxmedia-video-script-evidence-pipeline-4fix-scoping-2026-09-13.md,
+    // round "creative-focus-tagging", 2026-09-13) — per direct instruction:
+    // "build the sections that provide details for creative focus based on
+    // sample longform copy, image assets available or the /URL." Read-only
+    // rollup of everything actually tagged to one Creative Focus Group
+    // (destination/ship), so a client can see what's on file BEFORE running
+    // the Video Script contest rather than discovering thinness only via the
+    // evidenceGapNote after. Cheap — no AI call, just the same tables
+    // brandWritingSampleContext()/brandCopyWebsiteExampleContext()/
+    // experienceEvidenceContext() already query, summarized rather than
+    // formatted as prompt text. Image assets: honestly reported as not
+    // tracked — no formal image/asset library exists in this app yet (per
+    // direct confirmation, 2026-09-13); a future DAM/MAM integration (e.g.
+    // Adobe) would be a separate, later addition, not faked here.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'creative-focus-summary'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const url = new URL(req.url, 'http://localhost');
+      const creativeMarket = (url.searchParams.get('creativeMarket') || '').trim();
+      if (!creativeMarket) return sendJson(res, 400, { error: 'creativeMarket is required' });
+      const samples = db.prepare(
+        `SELECT id, title, category, docDate, sourceType FROM brand_writing_samples
+         WHERE accountId = ? AND creativeMarket = ? AND (excluded IS NULL OR excluded = 0)
+         ORDER BY docDate DESC, createdAt DESC`
+      ).all(accountId, creativeMarket);
+      const pages = db.prepare(
+        `SELECT id, path, fetchedAt FROM brand_copy_website_examples
+         WHERE accountId = ? AND creativeMarket = ? AND scope = 'page' AND mode = 'include' AND status = 'active'
+         ORDER BY fetchedAt DESC`
+      ).all(accountId, creativeMarket);
+      let hasExperienceEvidence = false;
+      try { hasExperienceEvidence = !!(await experienceEvidenceContext(accountId, creativeMarket, 'creativeMarket')); } catch (e){ hasExperienceEvidence = false; }
+      const legacyScriptCount = db.prepare(
+        `SELECT COUNT(*) as c FROM brand_writing_samples WHERE accountId = ? AND category = 'video_script' AND (excluded IS NULL OR excluded = 0)`
+      ).get(accountId).c;
+      return sendJson(res, 200, {
+        creativeMarket,
+        samples: samples.map(s => ({ id: s.id, title: s.title, category: categoryLabel(s.category), docDate: s.docDate, sourceType: s.sourceType })),
+        sampleCount: samples.length,
+        websitePages: pages.map(p => ({ id: p.id, path: p.path, fetchedAt: p.fetchedAt })),
+        websitePageCount: pages.length,
+        hasExperienceEvidence,
+        imageAssets: { tracked: false, note: 'No formal image/asset library exists in this app yet — image assets for this destination aren\'t tracked here today.' },
+        referenceScriptsAvailable: legacyScriptCount
+      });
+    }
+
     // GET /api/accounts/:id/voice-contest — history of past contests for
     // this account, newest first, redacted the same way as the POST above.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest'){
