@@ -4406,11 +4406,15 @@
              would just add this to the existing generator that we used to
              look at some voice options. You could add a video script
              option." Defaults to Voice Guide (unchanged behavior); choosing
-             Video Script reveals a required Product Group/destination
-             select, sourced from the same real account-configured taxonomy
-             the Experience Evidence and Campaign Product Group pickers
-             already use (cmpTaxonomyValues('productGroup')) — no invented
-             list. -->
+             Video Script reveals a required Destination/Creative Focus
+             Group select, sourced from the same real account-configured
+             taxonomy Campaign Creation's Creative Focus Group tile row
+             already uses (cmpTaxonomyValues('creativeMarket')) — no
+             invented list. Corrected 2026-09-13 (round
+             "creative-focus-tagging") from an earlier Product Group field —
+             destinations are a Creative Focus Group concept in this
+             account's taxonomy, per direct instruction: "The destinations
+             fall under creative focus." -->
         <div class="field" style="margin-bottom:10px;">
           <label>What are you comparing?</label>
           <select id="voiceContestContentType" onchange="onVoiceContestContentTypeChange()">
@@ -4419,9 +4423,18 @@
           </select>
         </div>
         <div class="field" id="voiceContestProductGroupField" style="display:none;margin-bottom:10px;">
-          <label>Destination / Product Group</label>
-          <select id="voiceContestProductGroup" onchange="onVoiceContestProductGroupChange()"></select>
+          <label>Destination / Creative Focus Group</label>
+          <select id="voiceContestCreativeMarket" onchange="onVoiceContestProductGroupChange()"></select>
           <div class="hint" id="voiceContestEvidenceHint" style="margin-top:4px;"></div>
+          <!-- Fix 4 of the 4-fix round, per direct instruction: "replicate
+               the option to leverage an existing video script/creative
+               artifact when developing new video concepts." Left as an
+               explicit pre-run choice, never automatic: "It should be a
+               pre-run check. Clients may have different needs" (2026-09-13). -->
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-weight:400;text-transform:none;">
+            <input type="checkbox" id="voiceContestUseReferenceScript" style="width:auto;">
+            Use an existing video script on file (e.g. Antarctica/Brand) as a structural/tonal reference for this run
+          </label>
         </div>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
@@ -4955,7 +4968,12 @@
         <div class="field">
           <label>Product Group (optional)</label>
           <select id="bwsFileProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
-          <p class="hint" style="margin:4px 0 0;">Scope this sample to one product group (e.g. Antarctica) and it feeds ONLY that group's AI copy generation as Internal Experience Evidence — named excursions, onboard programs, culinary detail, anything that makes copy read as genuinely specific to this destination rather than generic. Leave unscoped for anything account-wide.</p>
+          <p class="hint" style="margin:4px 0 0;">Scope this sample to one product group and it feeds ONLY that group's AI copy generation.</p>
+        </div>
+        <div class="field">
+          <label>Creative Focus Group / Destination (optional)</label>
+          <select id="bwsFileCreativeMarket"><option value="">Account-wide — not scoped to one destination</option></select>
+          <p class="hint" style="margin:4px 0 0;">Scope this sample to one destination or ship (e.g. Antarctica, Mediterranean) and it feeds ONLY that destination's AI copy and video-script generation as Internal Experience Evidence — named excursions, onboard programs, culinary detail, anything that makes copy read as genuinely specific rather than generic. Leave unscoped for anything account-wide.</p>
         </div>
         <div class="field">
           <label>Notes (optional)</label>
@@ -5016,6 +5034,10 @@
           <p class="hint" style="margin:4px 0 0;">A link is stored as a reference only — since there's no fetch capability here, it does not feed AI generation (scoped or otherwise). Use Option D below for a URL whose actual content should feed a product group's copy.</p>
         </div>
         <div class="field">
+          <label>Creative Focus Group / Destination (optional)</label>
+          <select id="bwsLinkCreativeMarket"><option value="">Account-wide — not scoped to one destination</option></select>
+        </div>
+        <div class="field">
           <label>Notes (optional)</label>
           <textarea id="bwsLinkNotes" rows="2"></textarea>
         </div>
@@ -5072,6 +5094,10 @@
           <div class="field">
             <label>Product Group (optional)</label>
             <select id="bwsVideoProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
+          </div>
+          <div class="field">
+            <label>Creative Focus Group / Destination (optional)</label>
+            <select id="bwsVideoCreativeMarket"><option value="">Account-wide — not scoped to one destination</option></select>
           </div>
           <div class="field">
             <label>AI analysis (edit before saving if needed)</label>
@@ -5140,6 +5166,10 @@
             <select id="bwsUrlProductGroup"><option value="">Account-wide — not scoped to one product group</option></select>
           </div>
           <div class="field">
+            <label>Creative Focus Group / Destination (optional, this is what feeds it into destination-scoped AI copy and video scripts)</label>
+            <select id="bwsUrlCreativeMarket"><option value="">Account-wide — not scoped to one destination</option></select>
+          </div>
+          <div class="field">
             <label>Extracted text (review/edit before saving)</label>
             <textarea id="bwsUrlExtractedText" rows="6"></textarea>
           </div>
@@ -5162,6 +5192,7 @@
       <div class="module-body">
         <div class="btn-row" id="bwsFilterRow" style="margin-bottom:10px;flex-wrap:wrap;"></div>
         <div class="btn-row" id="bwsProductGroupFilterRow" style="margin-bottom:10px;flex-wrap:wrap;"></div>
+        <div class="btn-row" id="bwsCreativeMarketFilterRow" style="margin-bottom:10px;flex-wrap:wrap;"></div>
         <div id="bwsLibraryBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
@@ -28494,9 +28525,10 @@ async function bwsSaveVideoAnalysis(){
   if (category === 'approval_rejection' && !outcome){ if (statusEl) statusEl.textContent = 'Outcome (Approved or Rejected) is required for the Approvals & Rejections category.'; return; }
   try {
     const productGroup = (document.getElementById('bwsVideoProductGroup') || {}).value || '';
+    const creativeMarket = (document.getElementById('bwsVideoCreativeMarket') || {}).value || '';
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), outcome, productGroup, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'video_analysis', title: title.trim(), category, docDate, notes: notes.trim(), outcome, productGroup, creativeMarket, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the analysis failed.'; return; }
@@ -28509,6 +28541,7 @@ async function bwsSaveVideoAnalysis(){
     const videoInput = document.getElementById('bwsVideoInput'); if (videoInput) videoInput.value = '';
     const videoOutcome = document.getElementById('bwsVideoOutcome'); if (videoOutcome) videoOutcome.value = '';
     const videoProductGroup = document.getElementById('bwsVideoProductGroup'); if (videoProductGroup) videoProductGroup.value = '';
+    const videoCreativeMarket = document.getElementById('bwsVideoCreativeMarket'); if (videoCreativeMarket) videoCreativeMarket.value = '';
     bwsVideoMimeType = null; bwsVideoFileName = null; bwsVideoAnalysisNote = '';
     bwsLoadLibrary();
   } catch (e){
@@ -28624,7 +28657,7 @@ async function bwsSetStyleDecision(contributionId, status){
 // too.
 function bwsResetForms({ clearStatus = false } = {}){
   bwsFileDataUrl = null; bwsFileName = null;
-  ['bwsFileTitle','bwsFileDate','bwsFileNotes','bwsFileOutcome','bwsFileProductGroup','bwsLinkTitle','bwsLinkDate','bwsLinkUrl','bwsLinkNotes','bwsLinkOutcome','bwsLinkProductGroup'].forEach(id => {
+  ['bwsFileTitle','bwsFileDate','bwsFileNotes','bwsFileOutcome','bwsFileProductGroup','bwsFileCreativeMarket','bwsLinkTitle','bwsLinkDate','bwsLinkUrl','bwsLinkNotes','bwsLinkOutcome','bwsLinkProductGroup','bwsLinkCreativeMarket'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const chosen = document.getElementById('bwsFileChosenName'); if (chosen) chosen.textContent = '';
@@ -28652,6 +28685,25 @@ function bwsPopulateProductGroupSelects(){
     if (!el) return;
     const current = el.value;
     el.innerHTML = '<option value="">Account-wide — not scoped to one product group</option>' + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (values.includes(current)) el.value = current;
+  });
+  bwsPopulateCreativeMarketSelects();
+}
+// 2026-09-13 — round "creative-focus-tagging", sibling of
+// bwsPopulateProductGroupSelects() just above: destinations/ships are a
+// Creative Focus Group concept (cmpTaxonomyValues('creativeMarket') — the
+// same taxonomy Campaign Creation's "Creative Focus Group" tile row
+// sources from), not Product Group. Kept as its own function (rather than
+// folded into the one above) so it can also be called from the Video
+// Script contest picker below without re-populating the Product Group
+// selects every time.
+function bwsPopulateCreativeMarketSelects(){
+  const values = cmpTaxonomyValues('creativeMarket') || [];
+  ['bwsFileCreativeMarket', 'bwsLinkCreativeMarket', 'bwsVideoCreativeMarket', 'bwsUrlCreativeMarket'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = el.value;
+    el.innerHTML = '<option value="">Account-wide — not scoped to one destination</option>' + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
     if (values.includes(current)) el.value = current;
   });
 }
@@ -28722,9 +28774,10 @@ async function bwsUploadFile(){
 
     if (statusEl) statusEl.textContent = 'Passed screening — saving…';
     const productGroup = (document.getElementById('bwsFileProductGroup') || {}).value || '';
+    const creativeMarket = (document.getElementById('bwsFileCreativeMarket') || {}).value || '';
     const commitResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'file', uploadedFileId: uploadData.id, title: title.trim(), category, docDate, notes, outcome, productGroup, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'file', uploadedFileId: uploadData.id, title: title.trim(), category, docDate, notes, outcome, productGroup, creativeMarket, uploadedBy: state.userName || '' })
     });
     const commitData = await commitResp.json().catch(() => ({}));
     if (!commitResp.ok){
@@ -28754,9 +28807,10 @@ async function bwsSaveLink(){
   if (statusEl) statusEl.textContent = 'Saving…';
   try {
     const productGroup = (document.getElementById('bwsLinkProductGroup') || {}).value || '';
+    const creativeMarket = (document.getElementById('bwsLinkCreativeMarket') || {}).value || '';
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'link', sourceUrl: sourceUrl.trim(), title: title.trim(), category, docDate, notes, outcome, productGroup, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'link', sourceUrl: sourceUrl.trim(), title: title.trim(), category, docDate, notes, outcome, productGroup, creativeMarket, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the link failed.'; return; }
@@ -28836,6 +28890,7 @@ async function bwsSaveUrlEvidence(){
   const docDate = (document.getElementById('bwsUrlDate') || {}).value || '';
   const extractedText = (document.getElementById('bwsUrlExtractedText') || {}).value || '';
   const productGroup = (document.getElementById('bwsUrlProductGroup') || {}).value || '';
+  const creativeMarket = (document.getElementById('bwsUrlCreativeMarket') || {}).value || '';
   if (!bwsUrlLastFetchedUrl){ if (statusEl) statusEl.textContent = 'Fetch a URL first.'; return; }
   if (!title.trim()){ if (statusEl) statusEl.textContent = 'Title is required.'; return; }
   if (!docDate){ if (statusEl) statusEl.textContent = 'Date is required — every sample is categorized by purpose AND date.'; return; }
@@ -28844,7 +28899,7 @@ async function bwsSaveUrlEvidence(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceType: 'url_fetch', sourceUrl: bwsUrlLastFetchedUrl, extractedText: extractedText.trim(), title: title.trim(), category, docDate, productGroup, uploadedBy: state.userName || '' })
+      body: JSON.stringify({ sourceType: 'url_fetch', sourceUrl: bwsUrlLastFetchedUrl, extractedText: extractedText.trim(), title: title.trim(), category, docDate, productGroup, creativeMarket, uploadedBy: state.userName || '' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving the evidence failed.'; return; }
@@ -28852,7 +28907,7 @@ async function bwsSaveUrlEvidence(){
     const resultBlock = document.getElementById('bwsUrlResultBlock'); if (resultBlock) resultBlock.style.display = 'none';
     const directoryBlock = document.getElementById('bwsUrlDirectoryBlock'); if (directoryBlock) directoryBlock.style.display = 'none';
     const urlInput = document.getElementById('bwsUrlInput'); if (urlInput) urlInput.value = '';
-    ['bwsUrlTitle','bwsUrlDate','bwsUrlExtractedText','bwsUrlProductGroup'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['bwsUrlTitle','bwsUrlDate','bwsUrlExtractedText','bwsUrlProductGroup','bwsUrlCreativeMarket'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     bwsUrlLastFetchedUrl = null;
     bwsLoadLibrary();
   } catch (e){
@@ -28895,6 +28950,18 @@ function bwsRenderFilters(){
       pgRow.innerHTML = `<span class="hint" style="align-self:center;margin-right:4px;">Product Group:</span>` + pgChip('', 'All') + groups.map(g => pgChip(g, g)).join('');
     }
   }
+  // Round "creative-focus-tagging": same real-values-only filter row,
+  // for Creative Focus Group (destination/ship) — sibling of pgRow above.
+  const cmRow = document.getElementById('bwsCreativeMarketFilterRow');
+  if (cmRow){
+    const markets = [...new Set(bwsSamples.map(s => s.creativeMarket).filter(Boolean))].sort();
+    if (!markets.length){
+      cmRow.innerHTML = '';
+    } else {
+      const cmChip = (id, label) => `<button type="button" class="btn-ghost${bwsFilterCreativeMarket === id ? ' active' : ''}" style="${bwsFilterCreativeMarket === id ? 'background:var(--ink);color:#fff;' : ''}" onclick="bwsSetCreativeMarketFilter('${escapeHtml(id).replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
+      cmRow.innerHTML = `<span class="hint" style="align-self:center;margin-right:4px;">Creative Focus Group:</span>` + cmChip('', 'All') + markets.map(m => cmChip(m, m)).join('');
+    }
+  }
 }
 
 function bwsSetFilter(category){
@@ -28908,24 +28975,39 @@ function bwsSetProductGroupFilter(productGroup){
   bwsRenderFilters();
   bwsRenderLibrary();
 }
+let bwsFilterCreativeMarket = '';
+function bwsSetCreativeMarketFilter(creativeMarket){
+  bwsFilterCreativeMarket = creativeMarket;
+  bwsRenderFilters();
+  bwsRenderLibrary();
+}
 
 function bwsRenderLibrary(){
   const body = document.getElementById('bwsLibraryBody');
   if (!body) return;
   let rows = bwsFilterCategory ? bwsSamples.filter(s => s.category === bwsFilterCategory) : bwsSamples;
   if (bwsFilterProductGroup) rows = rows.filter(s => s.productGroup === bwsFilterProductGroup);
+  if (bwsFilterCreativeMarket) rows = rows.filter(s => s.creativeMarket === bwsFilterCreativeMarket);
   if (!rows.length){
     body.innerHTML = '<p class="hint">No samples saved yet — upload a file, link a Google Doc/Slides, or fetch a URL above.</p>';
     return;
   }
   const catLabel = id => (BWS_CATEGORIES.find(c => c.id === id) || {}).label || id;
+  // Round "creative-focus-tagging": Creative Focus Group column now
+  // includes an inline retag select, sourced from the same real taxonomy
+  // as the upload forms — this is the retroactive tagging path Todd asked
+  // for: "a tagging process so that you could add a document once and tag
+  // it for a specific destination... without deleting and re-adding it."
+  const cmValues = cmpTaxonomyValues('creativeMarket') || [];
+  const cmOptionsHtml = current => '<option value="">Account-wide</option>' + cmValues.map(v => `<option value="${escapeHtml(v)}"${v === current ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
   body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
-    <thead><tr><th>Title</th><th>Purpose</th><th>Product Group</th><th>Date</th><th>Source</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Title</th><th>Purpose</th><th>Product Group</th><th>Creative Focus Group</th><th>Date</th><th>Source</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(s => `
       <tr${s.excluded ? ' style="opacity:0.65;"' : ''}>
         <td>${escapeHtml(s.title)}${s.notes ? `<div class="hint" style="margin-top:2px;">${escapeHtml(s.notes)}</div>` : ''}</td>
         <td>${escapeHtml(catLabel(s.category))}${s.outcome === 'approved' ? '<div class="hint" style="margin-top:2px;color:var(--loyalty, #2c5f2d);">Approved</div>' : s.outcome === 'rejected' ? '<div class="hint" style="margin-top:2px;color:var(--advocacy);">Rejected</div>' : ''}</td>
         <td>${s.productGroup ? escapeHtml(s.productGroup) : '<span class="hint">Account-wide</span>'}</td>
+        <td><select style="font-size:0.75rem;padding:2px 4px;" onchange="bwsRetagCreativeMarket('${s.id}', this.value)">${cmOptionsHtml(s.creativeMarket || '')}</select></td>
         <td>${escapeHtml(s.docDate)}</td>
         <td>${s.sourceType === 'link'
           ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener">Google link ↗</a>`
@@ -28938,6 +29020,18 @@ function bwsRenderLibrary(){
         <td>${s.sourceType === 'file' ? `<button type="button" class="btn-ghost" onclick="bwsAnalyzeStyle('${s.id}')">Analyze style →</button>` : ''}${bwsAdminActionsHtml(s)}<button type="button" class="btn-ghost" onclick="bwsDeleteSample('${s.id}')">Remove</button></td>
       </tr>`).join('')}</tbody>
   </table></div>`;
+}
+async function bwsRetagCreativeMarket(id, creativeMarket){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/${encodeURIComponent(id)}/tag`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creativeMarket })
+    });
+    if (!resp.ok) { alert('Could not save that tag — try again.'); return; }
+    const sample = bwsSamples.find(s => s.id === id);
+    if (sample) sample.creativeMarket = creativeMarket || null;
+    bwsRenderFilters();
+  } catch (e){ alert('Backend unreachable — could not save that tag.'); }
 }
 
 // Round 141 (2026-08-31), per direct instruction — Sample Writings needed
@@ -49634,10 +49728,12 @@ function renderVoiceContestStep(){
   if (flag) flag.textContent = '';
   renderVoiceContestInputsPanel();
   loadInterviewUsage();
-  // 2026-09-13 — Video Script option's Product Group select needs the same
-  // real account-configured taxonomy the Experience Evidence/Campaign
-  // pickers use (cmpTaxonomyValues('productGroup')) — load it first if this
-  // step is reached before Marketing Calendar ever has (same guard
+  // 2026-09-13, corrected same day (round "creative-focus-tagging") — the
+  // Video Script option's destination select needs the real
+  // account-configured Creative Focus Group taxonomy
+  // (cmpTaxonomyValues('creativeMarket'), the same one Campaign Creation's
+  // Creative Focus Group tile row uses), not Product Group — load it first
+  // if this step is reached before Marketing Calendar ever has (same guard
   // bwsInit() uses for the identical reason).
   (async () => {
     if (!state.calendarTaxonomies && typeof mktCalLoadTaxonomies === 'function'){
@@ -49647,29 +49743,31 @@ function renderVoiceContestStep(){
   })();
 }
 // Populates the Video Script option's required destination select — unlike
-// bwsPopulateProductGroupSelects() (Experience Evidence, where scoping is
+// bwsPopulateCreativeMarketSelects() (Experience Evidence, where scoping is
 // optional), there is no "account-wide" choice here: a video script is
 // always written for one destination, so the first real value is the
-// default rather than a placeholder.
+// default rather than a placeholder. Name kept as
+// voiceContestPopulateProductGroupSelect (not renamed) only to avoid
+// touching every call site — it populates the creativeMarket select.
 function voiceContestPopulateProductGroupSelect(){
-  const el = document.getElementById('voiceContestProductGroup');
+  const el = document.getElementById('voiceContestCreativeMarket');
   if (!el) return;
-  const values = cmpTaxonomyValues('productGroup') || [];
+  const values = cmpTaxonomyValues('creativeMarket') || [];
   const current = el.value;
   if (!values.length){
-    el.innerHTML = '<option value="">No Product Groups configured for this account yet — set them up under Marketing Calendar.</option>';
+    el.innerHTML = '<option value="">No Creative Focus Groups configured for this account yet — set them up under Marketing Calendar.</option>';
     return;
   }
   el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
   if (values.includes(current)) el.value = current;
   onVoiceContestProductGroupChange();
 }
-// Shows/hides the Product Group field and refreshes its Experience Evidence
+// Shows/hides the destination field and refreshes its Experience Evidence
 // hint whenever the content-type toggle or the destination itself changes —
 // an honest heads-up (per runVideoScriptContest()'s own evidenceGapNote on
 // the backend, re-derived client-side here just from whether ANY sample is
-// tagged to this product group, so the hint shows before the contest is
-// even run, not only after) rather than a silent thin-context result.
+// tagged to this destination, so the hint shows before the contest is even
+// run, not only after) rather than a silent thin-context result.
 function onVoiceContestContentTypeChange(){
   const type = document.getElementById('voiceContestContentType').value;
   const field = document.getElementById('voiceContestProductGroupField');
@@ -49679,7 +49777,7 @@ function onVoiceContestContentTypeChange(){
 function onVoiceContestProductGroupChange(){
   const hint = document.getElementById('voiceContestEvidenceHint');
   if (!hint) return;
-  hint.textContent = 'Every configured AI model will write its own full :30 script for this destination — compare them below, then select a winner.';
+  hint.textContent = 'Every configured AI model will write its own full :30 script for this destination, drawing on Voice Guide, tagged Experience Evidence, tagged Sample Writings, and tagged Website Copy for it — compare them below, then select a winner.';
 }
 
 // 2026-08-27, Phase 1 of the scoring/legitimacy build (per direct
@@ -49836,14 +49934,17 @@ async function runBrandVoiceContest(){
   // result differ.
   const contentTypeEl = document.getElementById('voiceContestContentType');
   const contentType = contentTypeEl ? contentTypeEl.value : 'voice_guide';
-  let productGroup = '';
+  let creativeMarket = '';
+  let useReferenceScript = false;
   if (contentType === 'video_script'){
-    const pgEl = document.getElementById('voiceContestProductGroup');
-    productGroup = pgEl ? pgEl.value : '';
-    if (!productGroup){
-      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Pick a destination/Product Group above before running the Video Script option.</div>`;
+    const cmEl = document.getElementById('voiceContestCreativeMarket');
+    creativeMarket = cmEl ? cmEl.value : '';
+    if (!creativeMarket){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Pick a destination/Creative Focus Group above before running the Video Script option.</div>`;
       return;
     }
+    const refEl = document.getElementById('voiceContestUseReferenceScript');
+    useReferenceScript = refEl ? !!refEl.checked : false;
   }
   const clickStartedAt = new Date().toISOString();
   // 2026-08-27 fix, per direct feedback — "we no longer need the section in
@@ -49904,7 +50005,7 @@ async function runBrandVoiceContest(){
       // this page. See cxmedia-brand-voice-consolidation-human-agentic-
       // model-scoping-2026-09-11.md.
       body: JSON.stringify(contentType === 'video_script'
-        ? { contentType: 'video_script', productGroup }
+        ? { contentType: 'video_script', creativeMarket, useReferenceScript }
         : { avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
@@ -50012,7 +50113,7 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
         // recovered Video Script run (see GET .../voice-contest above,
         // which now returns both) renders via renderVideoScriptContestPanel
         // instead of falling back to the Voice Guide shape.
-        lastVoiceContestCache = { available: true, interviewId: fresh.id, contentType: fresh.contentType || 'voice_guide', productGroup: fresh.productGroup || null, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates, revealed: false };
+        lastVoiceContestCache = { available: true, interviewId: fresh.id, contentType: fresh.contentType || 'voice_guide', creativeMarket: fresh.creativeMarket || null, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates, revealed: false };
         rerenderVoiceContestPanel(lastVoiceContestCache);
         return true;
       }
