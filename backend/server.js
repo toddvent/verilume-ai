@@ -2114,7 +2114,7 @@ const CONTEST_TYPE_REGISTRY = {
   'Video Script': {
     taskType: 'video_script',
     subtypes: [],
-    description: 'Video Script option on the Voice Contest panel, subtyped by Product Group/destination. Produces a full 8-beat :30 script (per the video-first creative brief beat grid) per configured vendor, grounded in the account\'s Voice Guide plus that destination\'s Internal Experience Evidence when any is on file. No dispatch consumer today — no single-draft (non-contest) video-script generator exists in this file yet.'
+    description: 'Video Script option on the Voice Contest panel, subtyped by Creative Focus Group/destination (not Product Group — corrected 2026-09-13). Produces a full 8-beat :30 script (per the video-first creative brief beat grid) per configured vendor, grounded in the account\'s Voice Guide, that destination\'s Internal Experience Evidence, tagged Sample Writings, tagged Website Copy pages, and optionally an existing legacy video script for structural reference (pre-run choice). No dispatch consumer today — no single-draft (non-contest) video-script generator exists in this file yet.'
   }
 };
 // The one call every contest's /select endpoint makes — replaces separately
@@ -3341,17 +3341,70 @@ const VIDEO_SCRIPT_BEAT_SCHEMA = {
   },
   required: ['beats']
 };
-function videoScriptPromptContext(account, productGroup){
+// 2026-09-13 — round "creative-focus-tagging": every "productGroup" in this
+// block renamed to "creativeMarket" (destinations are a Creative Focus
+// Group concept — see the schema comment on brand_writing_samples.
+// creativeMarket). Also newly wired in here: brandWritingSampleContext()
+// and brandCopyWebsiteExampleContext(), scoped to this destination — this
+// function used to call NEITHER, which was the 4th gap reported to Todd in
+// cxmedia-video-script-evidence-pipeline-4fix-scoping-2026-09-13.md (his
+// uploaded brochures and Website Copy URL inclusions never reached this
+// generator at all, regardless of tagging).
+function videoScriptPromptContext(account, creativeMarket){
   const context = brandVoiceCriticalMessagesContext(account, {});
   const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
   const visionStatement = (account.visionStatement || '').trim();
   return { context, voiceGuideText, visionStatement };
 }
-async function buildVideoScriptPrompt(account, productGroup){
-  const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, productGroup);
+// referenceVideoScriptContext(accountId) — Fix 4 of the 4-fix round, per
+// direct instruction: "replicate the option to leverage an existing video
+// script/creative artifact when developing new video concepts." Pulls up
+// to 2 samples filed under the 'video_script' (legacy) category — e.g.
+// Todd's existing Antarctica/Brand scripts — as a STRUCTURAL/TONAL
+// reference only (pacing, beat rhythm, voice), never as content to copy
+// into a different destination's facts. Deliberately opt-in per run, not
+// automatic: "It should be a pre-run check. Clients may have different
+// needs" (2026-09-13) — see the useReferenceScript param on
+// buildVideoScriptPrompt/runVideoScriptContest below and the contentType
+// === 'video_script' branch of the voice-contest POST endpoint, which
+// reads it from the request body.
+async function referenceVideoScriptContext(accountId){
+  try {
+    const rows = db.prepare(
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = 'video_script' AND (excluded IS NULL OR excluded = 0)
+       ORDER BY docDate DESC, createdAt DESC LIMIT 2`
+    ).all(accountId);
+    if (!rows.length) return '';
+    const blocks = [];
+    for (const sample of rows){
+      let text = null;
+      if (sample.sourceType === 'url_fetch') text = sample.extractedText;
+      else if (sample.sourceType === 'video_analysis') text = sample.notes;
+      else if (sample.uploadedFileId){
+        const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
+        text = await extractSampleText(file);
+      }
+      text = (text || '').trim();
+      if (!text) continue;
+      blocks.push(`--- "${sample.title}" (${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}`);
+    }
+    if (!blocks.length) return '';
+    return `\nEXISTING VIDEO SCRIPT(S) ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (real scripts this brand has already produced for another destination — match their pacing, beat rhythm, and voice; NEVER copy their destination-specific facts, named excursions, or footage into this different destination's script):\n${blocks.join('\n\n')}\n`;
+  } catch (e){ return ''; }
+}
+async function buildVideoScriptPrompt(account, creativeMarket, useReferenceScript){
+  const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, creativeMarket);
   let evidence = '';
-  try { evidence = await experienceEvidenceContext(account.accountId, productGroup); } catch (e){ evidence = ''; }
-  return `You are writing one candidate :30-second video script for the "${productGroup}" destination/product group, as part of a panel where several independently-written scripts are being compared side by side.
+  try { evidence = await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket'); } catch (e){ evidence = ''; }
+  let sampleCtx = '';
+  try { sampleCtx = await brandWritingSampleContext(account.accountId, { creativeMarket, includeVideo: false }); } catch (e){ sampleCtx = ''; }
+  let websiteCtx = '';
+  try { websiteCtx = await brandCopyWebsiteExampleContext(account.accountId, creativeMarket); } catch (e){ websiteCtx = ''; }
+  let referenceCtx = '';
+  if (useReferenceScript){
+    try { referenceCtx = await referenceVideoScriptContext(account.accountId); } catch (e){ referenceCtx = ''; }
+  }
+  return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination, as part of a panel where several independently-written scripts are being compared side by side.
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
@@ -3360,16 +3413,16 @@ ${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this
 CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
 
-${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${productGroup}": none loaded yet for this product group. Write from the brand signal above only — do not invent named onboard programs, specific excursions, or footage that isn't given to you here.`}
-
+${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${creativeMarket}": none loaded yet for this destination. Write from the brand signal above only — do not invent named onboard programs, specific excursions, or footage that isn't given to you here.`}
+${sampleCtx}${websiteCtx}${referenceCtx}
 THE FIXED 8-BEAT STRUCTURE (write content for exactly these 8 beats, in this order — do not rename or reorder them):
 ${VIDEO_SCRIPT_BEAT_GRID.map((b, i) => `${i + 1}. ${b.beat} (${b.timestamp})`).join('\n')}
 
 Submit your candidate via the submit_video_script_candidate tool.`;
 }
-async function generateVideoScriptCandidate(account, productGroup){
+async function generateVideoScriptCandidate(account, creativeMarket, useReferenceScript){
   try {
-    const prompt = await buildVideoScriptPrompt(account, productGroup);
+    const prompt = await buildVideoScriptPrompt(account, creativeMarket, useReferenceScript);
     const parsed = await callClaudeForJSON({
       model: BRAND_VOICE_PRIMARY_BRIEF.model,
       maxTokens: 1400,
@@ -3385,9 +3438,9 @@ async function generateVideoScriptCandidate(account, productGroup){
     return { beats: null, error: 'Generation failed: ' + e.message };
   }
 }
-async function generateVendorVideoScriptCopy(vendorKey, account, productGroup){
+async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, useReferenceScript){
   try {
-    const prompt = (await buildVideoScriptPrompt(account, productGroup)) + `\n\nRespond with ONLY a JSON object: {"beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
+    const prompt = (await buildVideoScriptPrompt(account, creativeMarket, useReferenceScript)) + `\n\nRespond with ONLY a JSON object: {"beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
     const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
@@ -3443,7 +3496,9 @@ function redactVideoScriptCandidatesForClient(candidates){
 // per-beat equivalent hasn't been designed) — flagged honestly as an open
 // item rather than bolted on incorrectly. transparency/transparencyNote are
 // simply absent from this candidate shape.
-async function runVideoScriptContest(account, productGroup, extra){
+async function runVideoScriptContest(account, creativeMarket, extra){
+  extra = extra || {};
+  const useReferenceScript = !!extra.useReferenceScript;
   if (!process.env.ANTHROPIC_API_KEY){
     return {
       available: false,
@@ -3452,13 +3507,13 @@ async function runVideoScriptContest(account, productGroup, extra){
       candidates: []
     };
   }
-  if (!productGroup || typeof productGroup !== 'string'){
-    return { available: false, note: 'A Product Group/destination is required to run the Video Script option.', recommendedKey: null, candidates: [] };
+  if (!creativeMarket || typeof creativeMarket !== 'string'){
+    return { available: false, note: 'A Creative Focus Group/destination is required to run the Video Script option.', recommendedKey: null, candidates: [] };
   }
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   const [anthropicGenerated, vendorGenerated] = await Promise.all([
-    generateVideoScriptCandidate(account, productGroup),
-    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, productGroup)))
+    generateVideoScriptCandidate(account, creativeMarket, useReferenceScript),
+    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, creativeMarket, useReferenceScript)))
   ]);
   const buildCandidate = (key, label, vendor, model, gen) => {
     const combinedText = Array.isArray(gen.beats) ? gen.beats.map(b => b.vo).filter(Boolean).join(' ') : '';
@@ -3491,10 +3546,11 @@ async function runVideoScriptContest(account, productGroup, extra){
   });
   const recommended = pickRecommendedVideoScriptCandidate(allCandidates);
   let evidenceOnFile = false;
-  try { evidenceOnFile = !!(await experienceEvidenceContext(account.accountId, productGroup)); } catch (e){ evidenceOnFile = false; }
+  try { evidenceOnFile = !!(await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket')); } catch (e){ evidenceOnFile = false; }
   return {
     available: true, note: null,
-    evidenceGapNote: evidenceOnFile ? null : `No Internal Experience Evidence is loaded for "${productGroup}" yet — every candidate below was written from brand-level and website signal only, not destination-specific facts. Load evidence for this Product Group (Sample Writings & Presentations → Option D) for a materially stronger comparison.`,
+    evidenceGapNote: evidenceOnFile ? null : `No Internal Experience Evidence is loaded for "${creativeMarket}" yet — every candidate below was written from brand-level and website signal only, not destination-specific facts. Tag evidence to this Creative Focus Group (Sample Writings & Presentations → Option D, or retag an existing sample) for a materially stronger comparison.`,
+    usedReferenceScript: useReferenceScript,
     recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates
   };
 }
@@ -5912,6 +5968,23 @@ ensureColumn('brand_writing_samples', 'outcome', 'TEXT');
 //    captured once, at save time.
 ensureColumn('brand_writing_samples', 'productGroup', 'TEXT');
 ensureColumn('brand_writing_samples', 'extractedText', 'TEXT');
+// 2026-09-13 — round "creative-focus-tagging": corrects a naming mistake
+// from the round above. Todd, direct instruction: "The first mistake was
+// the product group only designation for this test. It should have been
+// creative focus or product group. The destinations fall under creative
+// focus." This account already has TWO distinct, established taxonomy
+// dimensions (see 'Product Group & Creative Focus Group Taxonomy' — the
+// same module Campaign Creation's tile rows source from): Product Group
+// (productGroup column above, e.g. via cmpTaxonomyValues('productGroup'))
+// and Creative Focus Group, internal key creativeMarket throughout this
+// file (campaigns.creativeFocusGroups, channel_planning_details.
+// creativeMarket, cmpTaxonomyValues('creativeMarket')). Destinations
+// (Antarctica, Mediterranean, Arctic, ships, etc.) are Creative Focus
+// Group values, not Product Group values — so a sample is now taggable to
+// EITHER or BOTH, independently: productGroup for a real product-line
+// scope, creativeMarket for a destination/ship scope. NULL in either
+// column keeps its existing "account-wide on that axis" meaning.
+ensureColumn('brand_writing_samples', 'creativeMarket', 'TEXT');
 
 // 2026-09-13 — Video Script option added to the existing Voice Contest
 // panel, per direct instruction: "I would just add this to the existing
@@ -5920,11 +5993,17 @@ ensureColumn('brand_writing_samples', 'extractedText', 'TEXT');
 // account_voice_interviews table the Voice Contest already writes to —
 // NULL/absent preserves every existing row's meaning exactly (a
 // contentType of NULL is read as 'voice_guide' everywhere below, so no
-// prior Voice Contest history changes shape). productGroup scopes a
-// video-script run to one destination (Antarctica, Mediterranean, etc.);
-// left NULL for ordinary voice_guide runs, which are account-wide.
+// prior Voice Contest history changes shape).
+//
+// productGroup below is now VESTIGIAL for this feature — see the
+// creative-focus-tagging comment above brand_writing_samples.creativeMarket
+// just above. Destinations belong on the creativeMarket column added here;
+// productGroup stays only so any interview rows already written before
+// this fix keep reading back unchanged (none exist yet in practice — Fix 1
+// shipped before this feature had any real usage).
 ensureColumn('account_voice_interviews', 'contentType', 'TEXT');
 ensureColumn('account_voice_interviews', 'productGroup', 'TEXT');
+ensureColumn('account_voice_interviews', 'creativeMarket', 'TEXT');
 
 // ---------- Brand Copy Website Examples (2026-08-25) ----------
 // Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
@@ -5956,6 +6035,13 @@ createTableIfNeeded(`
 `);
 const WEBSITE_EXAMPLE_MAX_DIRECTORIES = 5;
 const WEBSITE_EXAMPLE_MAX_PAGES = 20;
+// 2026-09-13 — round "creative-focus-tagging": same destination tag as
+// brand_writing_samples.creativeMarket above, on an included PAGE row only
+// (scope='page'; directory/site rules and excludes are never destination-
+// scoped). NULL means account-wide, unchanged existing meaning. Set via
+// PATCH .../brand-copy-website-examples/:id/tag below — retaggable any
+// time without re-fetching the page.
+ensureColumn('brand_copy_website_examples', 'creativeMarket', 'TEXT');
 // Strips query strings (always, per spec — every include/exclude/discovered
 // URL) and normalizes a directory path to a trailing-slash form so
 // '/brand/product' and '/brand/product/' compare as the same rule.
@@ -12825,6 +12911,19 @@ const VIDEO_SAMPLE_CATEGORIES = new Set(['marketing_campaign_video', 'video_scri
 async function brandWritingSampleContext(accountId, opts){
   opts = opts || {};
   const includeVideo = opts.includeVideo !== false;
+  // Round "creative-focus-tagging" (2026-09-13): optional destination
+  // scope, closing the gap named in
+  // cxmedia-video-script-evidence-pipeline-4fix-scoping-2026-09-13.md —
+  // this function used to ignore creativeMarket/productGroup tagging
+  // entirely and pull from the whole account-wide pool regardless of
+  // caller. When opts.creativeMarket is passed, a sample now has to be
+  // either tagged to that exact destination OR untagged (account-wide) to
+  // be eligible — a sample tagged to a DIFFERENT specific destination is
+  // excluded, so e.g. an Arctic generation call never pulls in a
+  // Mediterranean-tagged brochure. Every existing call site (none pass
+  // this option today) is unaffected — omitting it keeps the old
+  // account-wide-regardless-of-tag behavior exactly.
+  const creativeMarketScope = (opts.creativeMarket || '').trim() || null;
   const perCategoryCap = 3;
   try {
     // (excluded IS NULL OR excluded = 0) is the enforcement point for the
@@ -12844,8 +12943,9 @@ async function brandWritingSampleContext(accountId, opts){
       `SELECT * FROM brand_writing_samples WHERE accountId = ? AND (excluded IS NULL OR excluded = 0)
        AND category NOT IN ('pr', 'internal_comms')
        AND (uploadedFileId IS NOT NULL OR sourceType = 'video_analysis')
+       ${creativeMarketScope ? 'AND (creativeMarket IS NULL OR creativeMarket = ?)' : ''}
        ORDER BY docDate DESC, createdAt DESC`
-    ).all(accountId);
+    ).all(...(creativeMarketScope ? [accountId, creativeMarketScope] : [accountId]));
     const eligible = includeVideo
       ? samples
       : samples.filter(s => s.sourceType !== 'video_analysis' && !VIDEO_SAMPLE_CATEGORIES.has(s.category));
@@ -12910,13 +13010,24 @@ async function brandWritingSampleContext(accountId, opts){
 // in this file: never throws, returns '' when there's nothing usable so a
 // product group with no evidence on file reads identically to how it did
 // before this feature existed.
-async function experienceEvidenceContext(accountId, productGroup){
-  if (!accountId || !productGroup) return '';
+// 2026-09-13 — round "creative-focus-tagging": generalized with a 3rd
+// param, `field`, so the same function can scope by EITHER real taxonomy
+// dimension instead of always assuming productGroup. Whitelisted (never
+// interpolated from unchecked input) to keep this a plain parameterized
+// query. Every existing call site (Campaign copy's productGroups loop)
+// keeps calling this with just (accountId, value) — field defaults to
+// 'productGroup', so that call site's behavior is unchanged. The Video
+// Script contest below now calls this with field: 'creativeMarket', since
+// destinations are a Creative Focus Group concept, not Product Group — see
+// the schema comment on brand_writing_samples.creativeMarket.
+async function experienceEvidenceContext(accountId, value, field){
+  field = field === 'creativeMarket' ? 'creativeMarket' : 'productGroup';
+  if (!accountId || !value) return '';
   try {
     const rows = db.prepare(
-      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND productGroup = ? AND (excluded IS NULL OR excluded = 0)
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND ${field} = ? AND (excluded IS NULL OR excluded = 0)
        ORDER BY docDate DESC, createdAt DESC LIMIT 8`
-    ).all(accountId, productGroup);
+    ).all(accountId, value);
     if (!rows.length) return '';
     const blocks = [];
     for (const sample of rows){
@@ -12936,7 +13047,8 @@ async function experienceEvidenceContext(accountId, productGroup){
       if (blocks.length >= 6) break; // bounded — see the function comment on why this stays a small, curated set
     }
     if (!blocks.length) return '';
-    return `\nINTERNAL EXPERIENCE EVIDENCE ON FILE for the "${productGroup}" product group (real, client-provided detail — named onboard programs, specific excursions, culinary/footage detail, or brochure content actually on file for THIS product group; use this to write with genuine destination-specific depth instead of generic language, but never invent detail beyond what's here, and never treat pricing/dates/offers in it as still current):\n${blocks.join('\n\n')}\n`;
+    const scopeLabel = field === 'creativeMarket' ? `"${value}" destination` : `"${value}" product group`;
+    return `\nINTERNAL EXPERIENCE EVIDENCE ON FILE for the ${scopeLabel} (real, client-provided detail — named onboard programs, specific excursions, culinary/footage detail, or brochure content actually on file for THIS ${field === 'creativeMarket' ? 'destination' : 'product group'}; use this to write with genuine destination-specific depth instead of generic language, but never invent detail beyond what's here, and never treat pricing/dates/offers in it as still current):\n${blocks.join('\n\n')}\n`;
   } catch (e){ return ''; } // a lookup failure here should never block real copy generation
 }
 
@@ -13120,11 +13232,22 @@ async function prCorpCommDecisionContext(accountId){
 // (see WEBSITE_EXAMPLE_CONTEXT_CHARS_PER_PAGE below) so a full 20-page
 // account still yields a bounded prompt addition.
 const WEBSITE_EXAMPLE_CONTEXT_CHARS_PER_PAGE = 500;
-async function brandCopyWebsiteExampleContext(accountId){
+// 2026-09-13 — round "creative-focus-tagging": optional 2nd param,
+// mirroring brandWritingSampleContext()'s opts.creativeMarket above. When
+// passed, a page is eligible only if it's tagged to that exact destination
+// OR untagged (account-wide) — a page tagged to a DIFFERENT destination is
+// excluded. Every existing call site (Brand Voice, Campaign, PR — see grep
+// for brandCopyWebsiteExampleContext(account.accountId)) keeps calling
+// this with no 2nd argument, so their behavior is unchanged: still every
+// active page, account-wide.
+async function brandCopyWebsiteExampleContext(accountId, creativeMarket){
+  const scope = (creativeMarket || '').trim() || null;
   try {
     const pages = db.prepare(
-      `SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' AND excerpt IS NOT NULL ORDER BY fetchedAt DESC LIMIT ${WEBSITE_EXAMPLE_MAX_PAGES}`
-    ).all(accountId);
+      `SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' AND excerpt IS NOT NULL
+       ${scope ? 'AND (creativeMarket IS NULL OR creativeMarket = ?)' : ''}
+       ORDER BY fetchedAt DESC LIMIT ${WEBSITE_EXAMPLE_MAX_PAGES}`
+    ).all(...(scope ? [accountId, scope] : [accountId]));
     if (!pages.length) return '';
     const blocks = [];
     for (const page of pages){
@@ -17173,20 +17296,26 @@ async function handleRequest(req, res) {
       const now = new Date().toISOString();
       const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
       if (contentType === 'video_script'){
-        const productGroup = typeof body.productGroup === 'string' ? body.productGroup.trim() : '';
-        if (!productGroup){
-          return sendJson(res, 400, { error: 'productGroup is required for the Video Script option' });
+        // Round "creative-focus-tagging": renamed from productGroup —
+        // destinations are a Creative Focus Group concept. useReferenceScript
+        // is the Fix 4 pre-run check ("It should be a pre-run check. Clients
+        // may have different needs" — 2026-09-13): opt-in per run, never
+        // automatic.
+        const creativeMarket = typeof body.creativeMarket === 'string' ? body.creativeMarket.trim() : '';
+        if (!creativeMarket){
+          return sendJson(res, 400, { error: 'creativeMarket is required for the Video Script option' });
         }
-        const result = await runVideoScriptContest(account, productGroup, {});
+        const useReferenceScript = !!body.useReferenceScript;
+        const result = await runVideoScriptContest(account, creativeMarket, { useReferenceScript });
         if (!result.available){
           return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
         }
         const interviewId = generateId('AVI');
-        db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt, contentType, productGroup) VALUES (?,?,?,?,?,?,?)`)
-          .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'video_script', productGroup);
+        db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt, contentType, creativeMarket) VALUES (?,?,?,?,?,?,?)`)
+          .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'video_script', creativeMarket);
         return sendJson(res, 200, {
-          available: true, contentType: 'video_script', productGroup, interviewId, recommendedKey: result.recommendedKey,
-          evidenceGapNote: result.evidenceGapNote || null,
+          available: true, contentType: 'video_script', creativeMarket, interviewId, recommendedKey: result.recommendedKey,
+          evidenceGapNote: result.evidenceGapNote || null, usedReferenceScript: result.usedReferenceScript,
           candidates: redactVideoScriptCandidatesForClient(result.candidates), createdAt: now,
           beatGrid: VIDEO_SCRIPT_BEAT_GRID
         });
@@ -17398,8 +17527,8 @@ async function handleRequest(req, res) {
         const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
         db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
           .run(body.candidateKey, selectedBy, now, interviewId);
-        recordContestResult(accountId, 'Video Script', interview.productGroup || null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
-        return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, productGroup: interview.productGroup, beats: chosen.beats });
+        recordContestResult(accountId, 'Video Script', interview.creativeMarket || null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
+        return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, creativeMarket: interview.creativeMarket, beats: chosen.beats });
       }
       if (!chosen || !chosen.visionStatement || !chosen.longformExample){
         return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
@@ -17507,7 +17636,7 @@ async function handleRequest(req, res) {
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, createdAt, contentType, productGroup FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, createdAt, contentType, creativeMarket FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
       const interviews = rows.map(r => {
         let candidates = [];
         try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
@@ -17524,7 +17653,7 @@ async function handleRequest(req, res) {
         const redacted = isVideoScript ? redactVideoScriptCandidatesForClient(candidates) : redactBrandVoiceCandidatesForClient(candidates);
         return {
           id: r.id, requestedBy: r.requestedBy, candidates: redacted,
-          contentType: r.contentType || 'voice_guide', productGroup: r.productGroup || null,
+          contentType: r.contentType || 'voice_guide', creativeMarket: r.creativeMarket || null,
           recommendedKey: recommended.key, recommendedReason: recommended.reason,
           selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
           feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, createdAt: r.createdAt
@@ -21800,6 +21929,12 @@ async function handleRequest(req, res) {
       // campaign.productGroups elsewhere in this file — the client sources
       // its options from GET /api/accounts/:id/taxonomies/productGroup.
       const productGroup = (body.productGroup || '').trim() || null;
+      // Round "creative-focus-tagging": destination/ship tag, independent
+      // of productGroup above — see the schema comment on
+      // brand_writing_samples.creativeMarket. Same permissiveness: not
+      // validated server-side against the taxonomy list, client sources
+      // options from GET /api/accounts/:id/taxonomies/creativeMarket.
+      const creativeMarket = (body.creativeMarket || '').trim() || null;
       // Round 142: outcome ('approved'/'rejected') is required for the
       // Approvals & Rejections category (that's the whole point of the
       // category), optional elsewhere — an account may want to tag e.g. a
@@ -21844,9 +21979,9 @@ async function handleRequest(req, res) {
 
       const id = generateId('BWS');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO brand_writing_samples (id, accountId, uploadedFileId, sourceType, sourceUrl, title, category, docDate, notes, uploadedBy, createdAt, outcome, productGroup, extractedText)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, uploadedFileId, sourceType, (sourceType === 'link' || sourceType === 'url_fetch') ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now, outcome, productGroup, sourceType === 'url_fetch' ? body.extractedText.trim() : null);
+      db.prepare(`INSERT INTO brand_writing_samples (id, accountId, uploadedFileId, sourceType, sourceUrl, title, category, docDate, notes, uploadedBy, createdAt, outcome, productGroup, extractedText, creativeMarket)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, uploadedFileId, sourceType, (sourceType === 'link' || sourceType === 'url_fetch') ? body.sourceUrl.trim() : null, body.title.trim(), category, body.docDate.trim(), (body.notes || '').trim() || null, (body.uploadedBy || '').trim() || null, now, outcome, productGroup, sourceType === 'url_fetch' ? body.extractedText.trim() : null, creativeMarket);
       return sendJson(res, 201, { id, status: 'saved' });
     }
 
@@ -21909,20 +22044,19 @@ async function handleRequest(req, res) {
       // its own filter tile, same convention as any other tri-state filter
       // in this app rather than overloading an empty string two ways.
       const productGroup = url.searchParams.get('productGroup');
-      let rows;
-      if (category && productGroup === 'unscoped'){
-        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? AND productGroup IS NULL ORDER BY docDate DESC, createdAt DESC').all(accountId, category);
-      } else if (category && productGroup){
-        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? AND productGroup = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, category, productGroup);
-      } else if (productGroup === 'unscoped'){
-        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND productGroup IS NULL ORDER BY docDate DESC, createdAt DESC').all(accountId);
-      } else if (productGroup){
-        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND productGroup = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, productGroup);
-      } else if (category){
-        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = ? ORDER BY docDate DESC, createdAt DESC').all(accountId, category);
-      } else {
-        rows = db.prepare('SELECT * FROM brand_writing_samples WHERE accountId = ? ORDER BY docDate DESC, createdAt DESC').all(accountId);
-      }
+      // Round "creative-focus-tagging": same 'unscoped' tri-state
+      // convention as productGroup above, added as its own independent
+      // filter (both can be combined — e.g. category + creativeMarket, or
+      // productGroup + creativeMarket together).
+      const creativeMarket = url.searchParams.get('creativeMarket');
+      const clauses = ['accountId = ?'];
+      const params = [accountId];
+      if (category){ clauses.push('category = ?'); params.push(category); }
+      if (productGroup === 'unscoped'){ clauses.push('productGroup IS NULL'); }
+      else if (productGroup){ clauses.push('productGroup = ?'); params.push(productGroup); }
+      if (creativeMarket === 'unscoped'){ clauses.push('creativeMarket IS NULL'); }
+      else if (creativeMarket){ clauses.push('creativeMarket = ?'); params.push(creativeMarket); }
+      const rows = db.prepare(`SELECT * FROM brand_writing_samples WHERE ${clauses.join(' AND ')} ORDER BY docDate DESC, createdAt DESC`).all(...params);
       const samples = rows.map(r => {
         const uploadedFile = r.uploadedFileId ? db.prepare('SELECT originalFilename, mimeType, sizeBytes FROM uploaded_files WHERE id = ?').get(r.uploadedFileId) : null;
         return { ...r, file: uploadedFile || null };
@@ -21958,6 +22092,33 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE brand_writing_samples SET excluded = ?, excludedAt = ?, excludedBy = ?, excludedReason = ? WHERE id = ?')
         .run(excluded, excludedAt, excludedBy, excludedReason, sampleId);
       return sendJson(res, 200, { id: sampleId, excluded: !!excluded, excludedAt, excludedBy, excludedReason });
+    }
+
+    // PATCH /api/accounts/:id/brand-writing-samples/:sampleId/tag (round
+    // "creative-focus-tagging", 2026-09-13) — lets an existing sample be
+    // (re)tagged to a Product Group and/or Creative Focus Group (destination/
+    // ship) AFTER it was uploaded, without deleting and re-adding it. Direct
+    // instruction: "a tagging process so that you could add a document once
+    // and tag it for a specific destination, ship, etc." This is the
+    // retroactive half of that — the upload-time productGroup/creativeMarket
+    // fields above are the forward-going half. Same non-admin-can-view/
+    // admin-can-change posture as .../exclude just above: not gated behind
+    // requireAdminMember on purpose, since tagging (unlike excluding) isn't a
+    // moderation action — any team member curating the library should be
+    // able to fix a mistagged or untagged sample. Body: { productGroup,
+    // creativeMarket } — either key omitted leaves that field unchanged;
+    // pass an empty string to clear a field back to account-wide/unscoped.
+    if (req.method === 'PATCH' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-writing-samples' && parts[5] === 'tag'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sampleId = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM brand_writing_samples WHERE id = ? AND accountId = ?').get(sampleId, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'brand writing sample not found' });
+      const body = await readBody(req);
+      const productGroup = body.productGroup !== undefined ? ((body.productGroup || '').trim() || null) : existing.productGroup;
+      const creativeMarket = body.creativeMarket !== undefined ? ((body.creativeMarket || '').trim() || null) : existing.creativeMarket;
+      db.prepare('UPDATE brand_writing_samples SET productGroup = ?, creativeMarket = ? WHERE id = ?').run(productGroup, creativeMarket, sampleId);
+      return sendJson(res, 200, { id: sampleId, productGroup, creativeMarket });
     }
 
     // DELETE /api/accounts/:id/brand-writing-samples/:sampleId
@@ -22294,6 +22455,26 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }));
       const usage = websiteExampleCapUsage(accountId);
       return sendJson(res, 200, { rules: rows, directoriesUsed: usage.directoriesUsed, directoriesCap: WEBSITE_EXAMPLE_MAX_DIRECTORIES, pagesUsed: usage.pagesUsed, pagesCap: WEBSITE_EXAMPLE_MAX_PAGES });
+    }
+
+    // PATCH /api/accounts/:id/brand-copy-website-examples/:id/tag (round
+    // "creative-focus-tagging", 2026-09-13) — tags an already-fetched PAGE
+    // row (client-declared or resolved from a directory/site rule) to a
+    // Creative Focus Group destination, without re-fetching it. Only
+    // scope='page' rows are taggable — a directory/site rule itself covers
+    // multiple destinations by nature, so it isn't. Body: { creativeMarket }
+    // — empty string clears back to account-wide.
+    if (req.method === 'PATCH' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brand-copy-website-examples' && parts[5] === 'tag'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const id = decodeURIComponent(parts[4]);
+      const existing = db.prepare('SELECT * FROM brand_copy_website_examples WHERE id = ? AND accountId = ?').get(id, accountId);
+      if (!existing) return sendJson(res, 404, { error: 'website example not found' });
+      if (existing.scope !== 'page') return sendJson(res, 400, { error: 'only a specific page row can be tagged — a directory/site rule covers more than one destination by nature' });
+      const body = await readBody(req);
+      const creativeMarket = (body.creativeMarket || '').trim() || null;
+      db.prepare('UPDATE brand_copy_website_examples SET creativeMarket = ? WHERE id = ?').run(creativeMarket, id);
+      return sendJson(res, 200, { id, creativeMarket });
     }
 
     // DELETE /api/accounts/:id/brand-copy-website-examples/:id — remove a
