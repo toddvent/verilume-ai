@@ -9537,7 +9537,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-competitor-intel-feeds-voice-guide';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-competitor-intel-theme-chips';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51485,10 +51485,44 @@ function generateIndustryTrendsDraft(){
 // Round 22 — Direct Competitors list (<=5). Rebuilds the whole list on
 // every edit, same pattern as renderCompanyProfileStep() — simple, and this
 // list is small enough that a full re-render is cheap.
+// 2026-09-13, theme-chips feature — per direct instruction: "add chips
+// that would allow a client to ask the different themes ... and return
+// the outputs based on them." Only key/label/chipHint are duplicated here
+// for chip rendering; the actual field structure per theme comes back
+// self-describing in each generation response (data.theme.fields — see
+// generateCompetitorIntelligenceMultiVendor() on the backend) so this file
+// never has to hardcode a second copy of each theme's output shape.
+//
+// IMPORTANT — the same instruction's caveat: "Only the Marketig [sic]
+// competitive positioning should update voice." That enforcement lives
+// entirely on the backend (brandVoiceCriticalMessagesContext() reads only
+// c.intelByTheme.marketing_positioning) — nothing here needs to gate
+// which themes are selectable; a client can run any of the 12, only one
+// of them is ever wired into Voice Guide generation.
+const COMPETITOR_RESEARCH_THEMES_FRONTEND = [
+  { key: 'marketing_positioning', label: 'Marketing & Positioning', chipHint: 'Why they compete, market overlap, marketing approach' },
+  { key: 'strategic_rationale', label: 'Strategic Rationale & Fit', chipHint: 'Why this competitor would matter strategically' },
+  { key: 'market_position', label: 'Market Position & Dynamics', chipHint: 'Competitive standing, share, differentiators' },
+  { key: 'financial_health', label: 'Financial Health & Valuation', chipHint: 'Financial profile, valuation signal, risks' },
+  { key: 'growth_trajectory', label: 'Growth Trajectory & Durability', chipHint: 'Growth drivers, durability, headwinds' },
+  { key: 'operational_integration', label: 'Operational & Integration Risk', chipHint: 'Operational complexity, integration risk' },
+  { key: 'technology_ip', label: 'Technology, IP & Data', chipHint: 'Tech stack, IP position, data assets' },
+  { key: 'customer_brand', label: 'Customer & Brand', chipHint: 'Brand perception, customer base, loyalty' },
+  { key: 'leadership_culture', label: 'Leadership, Culture & Talent', chipHint: 'Leadership profile, culture, talent risk' },
+  { key: 'legal_regulatory', label: 'Legal, Regulatory & Antitrust', chipHint: 'Regulatory exposure, legal and antitrust risk' },
+  { key: 'deal_structure', label: 'Deal Structure & Financing', chipHint: 'Likely deal structure, financing, valuation' },
+  { key: 'post_close', label: 'Post-Close Accountability', chipHint: 'Integration milestones, success metrics, risks' }
+];
 function renderCompetitorRows(){
   const container = document.getElementById('competitorRows');
   const competitors = state.positioning.competitors;
-  container.innerHTML = competitors.map((c, i) => `
+  container.innerHTML = competitors.map((c, i) => {
+    const activeTheme = c.activeTheme || 'marketing_positioning';
+    const chips = COMPETITOR_RESEARCH_THEMES_FRONTEND.map(t => `
+      <button type="button" class="illustrative-tag" title="${escapeHtml(t.chipHint)}"
+        style="cursor:pointer;border:1px solid var(--border, #ddd);${t.key === activeTheme ? 'background:var(--brand, #1E2761);color:#fff;' : 'background:transparent;'}"
+        onclick="runCompetitorIntelligence(${i}, '${t.key}')">${escapeHtml(t.label)}</button>`).join(' ');
+    return `
     <div class="dash-tile" style="margin-bottom:14px;">
       <div class="field" style="margin-bottom:12px;max-width:none;">
         <label>Competitor ${i + 1} — company name (within ${escapeHtml(state.industry)})</label>
@@ -51507,39 +51541,43 @@ function renderCompetitorRows(){
       </div>
       <input type="file" id="ctFile${i}" accept=".txt,.md,.docx,.doc,.pdf,.png,.jpg,.jpeg" style="display:none;" onchange="handleCompetitorFile(event, ${i})">
       <div class="hint" id="ctFileNote${i}" style="margin-bottom:10px;">${c.sourceFileName ? `On file: ${escapeHtml(c.sourceFileName)}` : ''}</div>
-      <div class="btn-row">
-        <button type="button" class="btn-ghost" id="ctIntelBtn${i}" onclick="runCompetitorIntelligence(${i})">Generate competitor intelligence →</button>
-      </div>
-      <div class="hint" id="ctIntelStatus${i}" style="margin-top:6px;"></div>
-      ${renderCompetitorIntelBlock(c)}
-    </div>`).join('') || `<p class="lede" style="margin-bottom:14px;">No competitors added yet — add up to 5 companies within ${escapeHtml(state.industry)}.</p>`;
+      <div class="hint" style="margin-bottom:6px;">Research theme — pick what to ask about this competitor:</div>
+      <div class="btn-row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px;">${chips}</div>
+      <div class="hint" id="ctIntelStatus${i}" style="margin-top:2px;"></div>
+      ${renderCompetitorIntelBlock(c, activeTheme)}
+    </div>`;
+  }).join('') || `<p class="lede" style="margin-bottom:14px;">No competitors added yet — add up to 5 companies within ${escapeHtml(state.industry)}.</p>`;
   document.getElementById('addCompetitorBtn').style.display = competitors.length >= 5 ? 'none' : 'inline-block';
 }
-// 2026-09-13 — renders state.positioning.competitors[i].categorizedIntel,
-// the real multi-vendor read from runCompetitorIntelligence() below (4
-// categories + the 2 Battle Brief fields, see
-// generateCompetitorIntelligenceMultiVendor() on the backend). Falls back
-// to the old single-paragraph positioningText for a competitor generated
-// before this round, so nothing on file silently disappears.
-function renderCompetitorIntelBlock(c){
-  const intel = c.categorizedIntel;
+// 2026-09-13 — renders the read for the currently-selected theme chip.
+// New data lives at state.positioning.competitors[i].intelByTheme[themeKey]
+// and is self-describing (carries its own __fields list from the backend's
+// data.theme.fields, so this renders generically for all 12 themes without
+// hardcoding each one's field names). c.categorizedIntel is kept only as a
+// read fallback for a competitor generated before this round (legacy data
+// that predates intelByTheme — always the marketing_positioning read).
+function renderCompetitorIntelBlock(c, activeTheme){
+  const themeMeta = COMPETITOR_RESEARCH_THEMES_FRONTEND.find(t => t.key === activeTheme) || COMPETITOR_RESEARCH_THEMES_FRONTEND[0];
+  const intel = (c.intelByTheme && c.intelByTheme[activeTheme])
+    || (activeTheme === 'marketing_positioning' ? c.categorizedIntel : null);
   if (!intel){
-    return c.positioningText
-      ? `<div class="hint" style="margin-top:10px;white-space:pre-wrap;">${escapeHtml(c.positioningText)}</div>`
-      : '';
+    if (activeTheme === 'marketing_positioning' && c.positioningText){
+      return `<div class="hint" style="margin-top:10px;white-space:pre-wrap;">${escapeHtml(c.positioningText)}</div>`;
+    }
+    return `<div class="hint" style="margin-top:10px;color:var(--muted);">No "${escapeHtml(themeMeta.label)}" read generated yet for this competitor.</div>`;
   }
   const liveTag = intel.hasLiveData
     ? `<span class="illustrative-tag" style="background:var(--advocacy-light, #EAF4EA);color:var(--advocacy, #2F7D3C);">Live web-checked</span>`
     : `<span class="illustrative-tag">AI reasoning — no live public data found</span>`;
   const row = (label, text) => text ? `<div class="hint" style="margin-top:8px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(text)}</div>` : '';
+  const fields = intel.__fields || [];
+  const rows = fields.length
+    ? fields.map(f => row(f.label, intel[f.key])).join('')
+    // Legacy fallback (no __fields on file — a pre-theme-chips categorizedIntel): the original fixed 6-field marketing_positioning layout.
+    : `${row('Why they compete', intel.whyTheyCompete)}${row('Market overlap', intel.marketOverlap)}${row('Marketing approach', intel.marketingApproach)}${row('Recent developments', intel.recentDevelopments)}${row('Immediate opportunity', intel.immediateOpportunity)}${row('Longer-term growth', intel.longerTermGrowth)}`;
   return `<div style="margin-top:10px;">
-    <div class="hint" style="font-size:0.75rem;color:var(--muted);">Generated ${new Date(intel.generatedAt).toLocaleString()} from ${intel.vendorsUsed.length} model${intel.vendorsUsed.length === 1 ? '' : 's'} (${escapeHtml(intel.vendorsUsed.join(', '))}) ${liveTag}</div>
-    ${row('Why they compete', intel.whyTheyCompete)}
-    ${row('Market overlap', intel.marketOverlap)}
-    ${row('Marketing approach', intel.marketingApproach)}
-    ${row('Recent developments', intel.recentDevelopments)}
-    ${row('Immediate opportunity', intel.immediateOpportunity)}
-    ${row('Longer-term growth', intel.longerTermGrowth)}
+    <div class="hint" style="font-size:0.75rem;color:var(--muted);">${escapeHtml(themeMeta.label)} — generated ${new Date(intel.generatedAt).toLocaleString()} from ${intel.vendorsUsed.length} model${intel.vendorsUsed.length === 1 ? '' : 's'} (${escapeHtml(intel.vendorsUsed.join(', '))}) ${liveTag}</div>
+    ${rows}
   </div>`;
 }
 // Replaces the old client-side template (generateCompetitorPositioning()/
@@ -51551,10 +51589,21 @@ function renderCompetitorIntelBlock(c){
 // success via saveCompetitivePositioning() so a generated read is never
 // lost the way un-saved chips used to be (same fix class as
 // addBrandKeywordChip's auto-save).
-async function runCompetitorIntelligence(i){
+// 2026-09-13 — now takes a themeKey (defaults to marketing_positioning,
+// the original single-theme behavior) per the theme-chips feature. Sets
+// c.activeTheme so the row re-renders showing the theme just requested,
+// stores the result at c.intelByTheme[themeKey], and — ONLY for
+// marketing_positioning — also mirrors it into the legacy c.categorizedIntel
+// field and syncs positioningText, exactly as before, so every other place
+// that already reads those two fields (Battle Brief, account intelligence
+// context, campaign/PR competitorContext) keeps working unchanged. No other
+// theme touches categorizedIntel/positioningText — that's what keeps Voice
+// (which reads only c.intelByTheme.marketing_positioning on the backend)
+// from ever seeing any of the other 11 themes.
+async function runCompetitorIntelligence(i, themeKey){
+  themeKey = themeKey || 'marketing_positioning';
   const c = state.positioning.competitors[i];
   const statusEl = document.getElementById(`ctIntelStatus${i}`);
-  const btn = document.getElementById(`ctIntelBtn${i}`);
   if (!c || !c.name.trim()){
     if (statusEl) statusEl.textContent = 'Add a company name first.';
     return;
@@ -51563,25 +51612,30 @@ async function runCompetitorIntelligence(i){
     if (statusEl) statusEl.textContent = 'Competitor intelligence needs a live backend connection — not available in local/demo mode.';
     return;
   }
-  if (btn) btn.disabled = true;
-  if (statusEl) statusEl.textContent = 'Checking with every configured AI model — this can take up to 30 seconds…';
+  c.activeTheme = themeKey;
+  renderCompetitorRows();
+  const freshStatusEl = document.getElementById(`ctIntelStatus${i}`);
+  if (freshStatusEl) freshStatusEl.textContent = 'Checking with every configured AI model — this can take up to 30 seconds…';
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/competitor-intelligence`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ competitorName: c.name.trim() })
+      body: JSON.stringify({ competitorName: c.name.trim(), themeKey })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data.intelligence){
-      if (statusEl) statusEl.textContent = data.note || 'Could not generate a read right now — try again in a moment.';
+      const el = document.getElementById(`ctIntelStatus${i}`);
+      if (el) el.textContent = data.note || 'Could not generate a read right now — try again in a moment.';
       return;
     }
-    c.categorizedIntel = data.intelligence;
-    // Keep positioningText in sync (a short summary) so every OTHER place
-    // that already reads positioningText — Battle Brief's old fallback,
-    // account intelligence context, campaign/PR competitorContext — keeps
-    // working without each needing its own categorizedIntel-aware branch.
-    c.positioningText = data.intelligence.whyTheyCompete || '';
-    if (statusEl) statusEl.textContent = '';
+    if (!c.intelByTheme) c.intelByTheme = {};
+    // __fields rides along on the stored record so renderCompetitorIntelBlock
+    // can render this (and any future) theme generically without a second,
+    // hand-maintained copy of each theme's field list in this file.
+    c.intelByTheme[themeKey] = { ...data.intelligence, __fields: (data.theme && data.theme.fields) || [] };
+    if (themeKey === 'marketing_positioning'){
+      c.categorizedIntel = data.intelligence;
+      c.positioningText = data.intelligence.whyTheyCompete || '';
+    }
     renderCompetitorRows();
     if (typeof renderBattleBrief === 'function') renderBattleBrief();
     // Persist directly rather than via saveCompetitivePositioning() — that
@@ -51595,21 +51649,20 @@ async function runCompetitorIntelligence(i){
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             industryTrendsText: state.positioning.industryTrendsText,
-            competitors: state.positioning.competitors.map(x => ({ name: (x.name || '').trim(), note: (x.note || '').trim(), sourceFileName: x.sourceFileName || '', positioningText: x.positioningText || '', categorizedIntel: x.categorizedIntel || null })),
+            competitors: state.positioning.competitors.map(x => ({ name: (x.name || '').trim(), note: (x.note || '').trim(), sourceFileName: x.sourceFileName || '', positioningText: x.positioningText || '', categorizedIntel: x.categorizedIntel || null, intelByTheme: x.intelByTheme || {} })),
             approved: !!state.positioning.approved
           })
         });
       } catch (e){ console.warn('runCompetitorIntelligence: could not persist the generated read.', e); }
     }
   } catch (e){
-    if (statusEl) statusEl.textContent = 'Backend unreachable — could not generate a read.';
-  } finally {
-    if (btn) btn.disabled = false;
+    const el = document.getElementById(`ctIntelStatus${i}`);
+    if (el) el.textContent = 'Backend unreachable — could not generate a read.';
   }
 }
 function addCompetitorRow(){
   if (state.positioning.competitors.length >= 5) return;
-  state.positioning.competitors.push({ name: '', note: '', sourceFileName: '', positioningText: '', categorizedIntel: null });
+  state.positioning.competitors.push({ name: '', note: '', sourceFileName: '', positioningText: '', categorizedIntel: null, intelByTheme: {}, activeTheme: 'marketing_positioning' });
   renderCompetitorRows();
   if (typeof renderFaqJ === 'function') renderFaqJ();
   if (typeof renderBattleBrief === 'function') renderBattleBrief();
@@ -51706,7 +51759,7 @@ async function saveCompetitivePositioning(){
   // the legacy 4 fields — otherwise a manual "Save" here would silently
   // wipe it from the persisted record the next time this function ran.
   const competitors = state.positioning.competitors
-    .map(c => ({ name: (c.name || '').trim(), note: (c.note || '').trim(), sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '', categorizedIntel: c.categorizedIntel || null }));
+    .map(c => ({ name: (c.name || '').trim(), note: (c.note || '').trim(), sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '', categorizedIntel: c.categorizedIntel || null, intelByTheme: c.intelByTheme || {} }));
 
   const hasContent = !!(state.positioning.industryTrendsText || competitors.some(c => c.name || c.sourceFileName));
   if (!hasContent){
@@ -51816,7 +51869,7 @@ async function posSetDecision(contributionId, status){
     if (status === 'applied' && result.restored){
       state.positioning.industryTrendsText = result.restored.industryTrendsText || '';
       state.positioning.competitors = Array.isArray(result.restored.competitors) && result.restored.competitors.length
-        ? result.restored.competitors.map(c => ({ name: c.name || '', note: c.note || '', sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '', categorizedIntel: c.categorizedIntel || null }))
+        ? result.restored.competitors.map(c => ({ name: c.name || '', note: c.note || '', sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '', categorizedIntel: c.categorizedIntel || null, intelByTheme: c.intelByTheme || {} }))
         : state.positioning.competitors;
       state.positioning.approved = true;
       if (flag) flag.textContent = 'Restored — this version is now the current Competitive Positioning.';
