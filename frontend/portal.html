@@ -4074,9 +4074,43 @@
           </div>
         </div>
       </div>
+
+      <!-- 2026-09-13 — Terms to Emphasize, per direct instruction ("ability
+           to include positive and negative phrases for overall guidance").
+           Exact structural mirror of #negativeKeywordsModule above — same
+           chip list, same auto-save via addBrandKeywordChip('positive'),
+           same short/long split on the backend (generateVoiceGuideDraftViaAI):
+           a short entry becomes a literal "emphasize" line in the Voice
+           Guide's own "Phrases to lean into" section, a longer entry becomes
+           register/approach guidance woven into a Tone Rule (and, either
+           way, is now also guaranteed to show up in the guide's own
+           deterministic guidance footer, so it can't be silently dropped). -->
+      <div class="module open accent-advocacy" id="positiveKeywordsModule" style="margin-top:14px;">
+        <div class="module-head" onclick="toggleModule('positiveKeywordsModule')">
+          <span class="modnum">3</span>
+          <div class="titles">
+            <span class="tag">Positive keywords</span>
+            <h2>Terms to emphasize</h2>
+          </div>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="module-body">
+          <div class="fld-label-row" style="margin-bottom:2px;">
+            <p class="lede" style="margin:0;">Enter words or short phrases this brand actively wants to sound like — specific terms to lean into (e.g. "restraint," "specificity") as well as tones or registers to reach for (e.g. "poetic precision, not promotional excitement").</p>
+            <button type="button" class="fld-tip-btn" onclick="toggleFieldTip('tipTermsToEmphasize')" aria-label="Where this is used">i</button>
+          </div>
+          <div class="fld-tip" id="tipTermsToEmphasize" style="margin-bottom:10px;">Same treatment as Terms to Avoid, in the opposite direction: a short term shows up as its own "emphasize" line in the generated Voice Guide, and a longer tone/register phrase gets woven into a Tone Rule. Both are also always shown in a short guidance line at the end of the guide, so this can't quietly disappear on a future draft.</div>
+          <div id="brandKeywordsPositiveList"></div>
+          <div id="brandKeywordsPositiveSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:12px;"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <input type="text" id="brandKeywordsPositiveInput" placeholder="e.g. &quot;restraint&quot; or &quot;poetic precision, not promotional excitement&quot;..." style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandKeywordChip('positive');}">
+            <button type="button" class="btn-ghost" style="padding:8px 14px;" onclick="addBrandKeywordChip('positive')">Add</button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <p class="hint" style="margin:0 0 8px;max-width:640px;">Draws on everything above — Brand Keywords and Terms to avoid — plus your real Products &amp; Services and Sample Writings, to draft the full Voice Guide below with an actual AI call.</p>
+    <p class="hint" style="margin:0 0 8px;max-width:640px;">Draws on everything above — Brand Keywords, Terms to avoid, and Terms to emphasize — plus your real Products &amp; Services and Sample Writings, to draft the full Voice Guide below with an actual AI call.</p>
     <div class="btn-row">
       <button class="btn-primary" id="voiceDraftGenBtn" onclick="generateVoiceDraft()">Generate Voice Draft →</button>
     </div>
@@ -9503,7 +9537,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-fix-legacy-casing-no-auto-drop';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-voice-sample-weighting-emphasis-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -9743,7 +9777,7 @@ const state = {
   // Each group is a plain array of strings — no volume-band/rationale
   // shape like searchKeywords above, since these aren't ranked by
   // estimated search volume, they're a reference list.
-  brandKeywords: { brand: [], product: [], negative: [] },
+  brandKeywords: { brand: [], product: [], negative: [], positive: [] },
   // Round 132c[6] (2026-08-17) — buildout item #6, Onboarding Survey (core +
   // industry module). Null until loadOnboardingSurvey() resolves — the
   // onboarding-hub card's status() reads this defensively (see
@@ -15410,7 +15444,8 @@ async function loadAccountData(){
           state.brandKeywords = {
             brand: Array.isArray(parsed.brand) ? parsed.brand : [],
             product: Array.isArray(parsed.product) ? parsed.product : [],
-            negative: Array.isArray(parsed.negative) ? parsed.negative : []
+            negative: Array.isArray(parsed.negative) ? parsed.negative : [],
+            positive: Array.isArray(parsed.positive) ? parsed.positive : []
           };
         } catch (e){ console.warn('loadAccountData: brandKeywordsJson failed to parse.', e); }
       }
@@ -49151,7 +49186,7 @@ function generateAndRenderBrandKeywords(){
 }
 
 function renderBrandKeywordChips(){
-  ['brand', 'product', 'negative'].forEach(group => {
+  ['brand', 'product', 'negative', 'positive'].forEach(group => {
     const el = document.getElementById(`brandKeywords${group[0].toUpperCase()}${group.slice(1)}List`);
     if (!el) return;
     const list = state.brandKeywords[group] || [];
@@ -49230,12 +49265,13 @@ async function saveBrandKeywords(){
   // trigger of the same auto-save, not removed.
   const flag = document.getElementById('brandKeywordsSaveFlag');
   const negativeFlag = document.getElementById('brandKeywordsNegativeSaveFlag');
+  const positiveFlag = document.getElementById('brandKeywordsPositiveSaveFlag');
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-keywords`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand: state.brandKeywords.brand, product: state.brandKeywords.product, negative: state.brandKeywords.negative })
+        body: JSON.stringify({ brand: state.brandKeywords.brand, product: state.brandKeywords.product, negative: state.brandKeywords.negative, positive: state.brandKeywords.positive })
       });
       persisted = resp.ok;
     } catch (e){ /* falls through to local-only flag below */ }
@@ -49245,6 +49281,7 @@ async function saveBrandKeywords(){
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
   if (flag) flag.textContent = message;
   if (negativeFlag) negativeFlag.textContent = message;
+  if (positiveFlag) positiveFlag.textContent = message;
 }
 
 // Round 18 — renders the Voice page's state on entry: if a voice guide is
