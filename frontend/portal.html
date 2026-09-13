@@ -4402,6 +4402,27 @@
              it existed to set up for. -->
         <p class="lede" style="margin:0 0 10px;">A voice option that sounds great on its own can still clash with what you actually sell — check each Longform Example against your real Products &amp; Services, not just how it reads.</p>
         <div class="partner-grid" id="voiceContestInputsGrid" style="margin-bottom:10px;"></div>
+        <!-- 2026-09-13 — Content type selector, per direct instruction: "I
+             would just add this to the existing generator that we used to
+             look at some voice options. You could add a video script
+             option." Defaults to Voice Guide (unchanged behavior); choosing
+             Video Script reveals a required Product Group/destination
+             select, sourced from the same real account-configured taxonomy
+             the Experience Evidence and Campaign Product Group pickers
+             already use (cmpTaxonomyValues('productGroup')) — no invented
+             list. -->
+        <div class="field" style="margin-bottom:10px;">
+          <label>What are you comparing?</label>
+          <select id="voiceContestContentType" onchange="onVoiceContestContentTypeChange()">
+            <option value="voice_guide">Voice options (Vision Statement + Longform Example)</option>
+            <option value="video_script">Video script options (a full :30 beat-by-beat script)</option>
+          </select>
+        </div>
+        <div class="field" id="voiceContestProductGroupField" style="display:none;margin-bottom:10px;">
+          <label>Destination / Product Group</label>
+          <select id="voiceContestProductGroup" onchange="onVoiceContestProductGroupChange()"></select>
+          <div class="hint" id="voiceContestEvidenceHint" style="margin-top:4px;"></div>
+        </div>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
         </div>
@@ -49613,6 +49634,52 @@ function renderVoiceContestStep(){
   if (flag) flag.textContent = '';
   renderVoiceContestInputsPanel();
   loadInterviewUsage();
+  // 2026-09-13 — Video Script option's Product Group select needs the same
+  // real account-configured taxonomy the Experience Evidence/Campaign
+  // pickers use (cmpTaxonomyValues('productGroup')) — load it first if this
+  // step is reached before Marketing Calendar ever has (same guard
+  // bwsInit() uses for the identical reason).
+  (async () => {
+    if (!state.calendarTaxonomies && typeof mktCalLoadTaxonomies === 'function'){
+      try { await mktCalLoadTaxonomies(); } catch (e){ /* select just shows empty state below */ }
+    }
+    voiceContestPopulateProductGroupSelect();
+  })();
+}
+// Populates the Video Script option's required destination select — unlike
+// bwsPopulateProductGroupSelects() (Experience Evidence, where scoping is
+// optional), there is no "account-wide" choice here: a video script is
+// always written for one destination, so the first real value is the
+// default rather than a placeholder.
+function voiceContestPopulateProductGroupSelect(){
+  const el = document.getElementById('voiceContestProductGroup');
+  if (!el) return;
+  const values = cmpTaxonomyValues('productGroup') || [];
+  const current = el.value;
+  if (!values.length){
+    el.innerHTML = '<option value="">No Product Groups configured for this account yet — set them up under Marketing Calendar.</option>';
+    return;
+  }
+  el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+  if (values.includes(current)) el.value = current;
+  onVoiceContestProductGroupChange();
+}
+// Shows/hides the Product Group field and refreshes its Experience Evidence
+// hint whenever the content-type toggle or the destination itself changes —
+// an honest heads-up (per runVideoScriptContest()'s own evidenceGapNote on
+// the backend, re-derived client-side here just from whether ANY sample is
+// tagged to this product group, so the hint shows before the contest is
+// even run, not only after) rather than a silent thin-context result.
+function onVoiceContestContentTypeChange(){
+  const type = document.getElementById('voiceContestContentType').value;
+  const field = document.getElementById('voiceContestProductGroupField');
+  if (field) field.style.display = type === 'video_script' ? 'block' : 'none';
+  if (type === 'video_script') onVoiceContestProductGroupChange();
+}
+function onVoiceContestProductGroupChange(){
+  const hint = document.getElementById('voiceContestEvidenceHint');
+  if (!hint) return;
+  hint.textContent = 'Every configured AI model will write its own full :30 script for this destination — compare them below, then select a winner.';
 }
 
 // 2026-08-27, Phase 1 of the scoring/legitimacy build (per direct
@@ -49761,6 +49828,23 @@ const RECOMMENDED_REASON_LABEL = {
 async function runBrandVoiceContest(){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder || !state.companyId) return;
+  // 2026-09-13 — Video Script option, per direct instruction to add it to
+  // this same generator. Read the content-type toggle here rather than
+  // duplicating this whole function — everything below (timeout handling,
+  // 504 recovery, error surfacing) applies identically to either content
+  // type; only the request body and which render function receives the
+  // result differ.
+  const contentTypeEl = document.getElementById('voiceContestContentType');
+  const contentType = contentTypeEl ? contentTypeEl.value : 'voice_guide';
+  let productGroup = '';
+  if (contentType === 'video_script'){
+    const pgEl = document.getElementById('voiceContestProductGroup');
+    productGroup = pgEl ? pgEl.value : '';
+    if (!productGroup){
+      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Pick a destination/Product Group above before running the Video Script option.</div>`;
+      return;
+    }
+  }
   const clickStartedAt = new Date().toISOString();
   // 2026-08-27 fix, per direct feedback — "we no longer need the section in
   // blue while we are thinking and when we view results." The blue
@@ -49819,7 +49903,9 @@ async function runBrandVoiceContest(){
       // "save before it's used elsewhere" expectation everywhere else on
       // this page. See cxmedia-brand-voice-consolidation-human-agentic-
       // model-scoping-2026-09-11.md.
-      body: JSON.stringify({ avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
+      body: JSON.stringify(contentType === 'video_script'
+        ? { contentType: 'video_script', productGroup }
+        : { avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
       // 2026-08-26 fix, per direct question ("What does this message
@@ -49922,7 +50008,11 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
         // recommendedReason too (see pickRecommendedCandidate in
         // server.js), so a recovered result shows the real winner
         // highlight instead of silently losing it.
-        lastVoiceContestCache = { available: true, interviewId: fresh.id, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates, revealed: false };
+        // 2026-09-13 — contentType/productGroup carried through so a
+        // recovered Video Script run (see GET .../voice-contest above,
+        // which now returns both) renders via renderVideoScriptContestPanel
+        // instead of falling back to the Voice Guide shape.
+        lastVoiceContestCache = { available: true, interviewId: fresh.id, contentType: fresh.contentType || 'voice_guide', productGroup: fresh.productGroup || null, recommendedKey: fresh.recommendedKey, recommendedReason: fresh.recommendedReason, candidates: fresh.candidates, revealed: false };
         rerenderVoiceContestPanel(lastVoiceContestCache);
         return true;
       }
@@ -50071,8 +50161,110 @@ function populateVoiceContestAlignment(result){
 function rerenderVoiceContestPanel(result){
   const holder = document.getElementById('voiceContestPanel');
   if (!holder) return;
+  // 2026-09-13 — branch on contentType. Video Script candidates have no AI
+  // Brain Transparency pass yet (see runVideoScriptContest()'s own comment
+  // on the backend) and a different card shape (beats, not
+  // visionStatement/longformExample), so they get their own render function
+  // rather than forcing renderBrandVoiceContestPanel() to handle both
+  // shapes.
+  if (result.contentType === 'video_script'){
+    holder.innerHTML = renderVideoScriptContestPanel(result);
+    return;
+  }
   holder.innerHTML = renderBrandVoiceContestPanel(result);
   if (result.revealed) populateVoiceContestAlignment(result);
+}
+// Video Script option's panel — one card per configured vendor, each
+// showing that candidate's full 8-beat script as a table (Beat / Timestamp /
+// Visual / VO / Caption / Pillar), matching the same column shape as the
+// video-first creative brief workbook this option was built to replace an
+// external process for. Same blind-labeling as the Voice Guide panel (no
+// vendor/model ever shown — c.label is already the redacted "Option N").
+function renderVideoScriptContestPanel(result){
+  const evidenceHtml = result.evidenceGapNote
+    ? `<div class="hint" style="color:var(--advocacy);margin-bottom:10px;">${escapeHtml(result.evidenceGapNote)}</div>` : '';
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    const safeId = String(c.key).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
+      </div>`;
+    }
+    if (!Array.isArray(c.beats) || c.beats.length !== 8){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    const rows = c.beats.map(b => `<tr>
+        <td style="padding:6px 8px;font-weight:700;vertical-align:top;white-space:nowrap;">${escapeHtml(b.beat)}<div class="hint" style="font-weight:400;">${escapeHtml(b.timestamp)}</div></td>
+        <td style="padding:6px 8px;vertical-align:top;">${escapeHtml(b.visual)}</td>
+        <td style="padding:6px 8px;vertical-align:top;font-style:italic;">${escapeHtml(b.vo)}</td>
+        <td style="padding:6px 8px;vertical-align:top;">${escapeHtml(b.caption)}</td>
+        <td style="padding:6px 8px;vertical-align:top;white-space:nowrap;">${escapeHtml(b.pillar)}</td>
+      </tr>`).join('');
+    return `<div style="border:${border};border-radius:8px;padding:10px;margin-bottom:12px;">
+      <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ` <span class="hint" style="color:var(--cx);font-weight:700;">${escapeHtml(RECOMMENDED_REASON_LABEL[result.recommendedReason] || '— recommended')}</span>` : ''}</div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:4px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <div style="overflow-x:auto;margin-top:8px;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
+          <thead><tr style="text-align:left;border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">Beat</th><th style="padding:4px 8px;">Visual</th><th style="padding:4px 8px;">Voiceover</th><th style="padding:4px 8px;">Caption</th><th style="padding:4px 8px;">Pillar</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;align-items:center;text-align:center;">
+        <div style="display:flex;gap:4px;">
+          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="${escapeHtml(BRAND_VOICE_RATING_RUBRIC[n - 1])}">${n}</button>`).join('')}
+        </div>
+        ${typeof c.rating === 'number' ? `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">${escapeHtml(BRAND_VOICE_RATING_RUBRIC[c.rating - 1])}</div>` : `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">1 = off-brand, 5 = ready to use as-is</div>`}
+      </div>
+    </div>`;
+  }).join('');
+  const hasWinner = !!result.recommendedKey;
+  const ratedCount = (result.candidates || []).filter(c => typeof c.rating === 'number').length;
+  let selectWinnerHint = '';
+  if (!hasWinner){
+    selectWinnerHint = ratedCount === 0
+      ? 'Rate at least one option above to select a winner.'
+      : 'Two or more options are tied at the top rating — adjust a rating to break the tie before selecting a winner.';
+  }
+  return `${evidenceHtml}${cards}
+    <div style="display:flex;justify-content:center;margin-top:6px;">
+      <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectVideoScriptWinner('${result.interviewId}')">Select Contest Winner</button>
+    </div>
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>`;
+}
+// Video Script's own "Select Contest Winner" — unlike selectContestWinner()
+// (Voice Guide, which writes straight into the Vision Statement/Longform
+// Example fields on this same page), a video script has nowhere on this
+// platform to land yet: it just confirms the pick, records it server-side
+// (recordContestResult('Video Script', productGroup, ...) — see the
+// backend's /select branch), and leaves the winning script visible on
+// screen (the winning card's border) for the client to copy from directly.
+async function selectVideoScriptWinner(interviewId){
+  const flag = document.getElementById('voiceContestSelectFlag');
+  const candidateKey = lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId
+    ? lastVoiceContestCache.recommendedKey : null;
+  if (!candidateKey){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'No unambiguous top-rated option yet — rate the options above first.'; }
+    return;
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't select this — try again."; }
+      return;
+    }
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected as the winning script for this destination — copy the beats above into your video brief/production doc.'; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not selected.'; }
+  }
 }
 // Sets result.revealed and re-renders — see the "Reveal AI Brain
 // Alignment" button in renderBrandVoiceContestPanel() above. Purely a
