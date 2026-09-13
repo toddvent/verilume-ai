@@ -101,7 +101,7 @@
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
   .field-row.three{grid-template-columns:1fr 1fr 1fr;}
   label{font-size:0.75rem;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;}
-  select,input[type=text],input[type=number],input[type=date],textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);}
+  select,input[type=text],input[type=number],input[type=date],input[type=password],textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);}
   textarea{resize:vertical;min-height:60px;}
   .btn{font-size:0.8rem;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;}
   .btn:hover{border-color:var(--line-strong);}
@@ -374,7 +374,7 @@
          same ADMIN_API_TOKEN either way. -->
     <div class="module" style="border-top-color:var(--advocacy-tint);">
       <h3>Fix Legacy Column Casing <span class="badge" style="margin-left:6px;">Staff only</span></h3>
-      <p class="desc">Renames every database column that got silently created all-lowercase by Postgres back to its correct camelCase name, in place — no data is lost or moved, this only fixes the column's name. Safe to run any time; a repeat run after a successful one finds nothing left to do. Run this after adding any new camelCase column to the app if scanned/saved data ever comes back empty when it shouldn't.</p>
+      <p class="desc">Renames a column that got silently created all-lowercase by Postgres back to its correct camelCase name, in place — a plain rename never loses data. Run this after adding any new camelCase column to the app if scanned/saved data ever comes back empty when it shouldn't. <strong>As of 2026-09-13, this no longer deletes anything on its own.</strong> When it finds a table with two copies of a column (one already correct, one leftover lowercase one), it now only lists them below for you to review — dropping a leftover duplicate is a separate, manual step you take directly in Supabase after checking it really is unused, never something this button does by itself.</p>
       <div class="field-row" id="fixCasingAuthRow">
         <div style="display:flex;align-items:flex-end;">
           <button class="btn primary" onclick="runFixLegacyCasing()">Fix column casing now</button>
@@ -868,7 +868,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-ops-console-shared-masked-admin-token';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-fix-legacy-casing-no-auto-drop';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1881,8 +1881,15 @@ async function runFixLegacyCasing(){
     }
     try { sessionStorage.setItem(INTEG_TOKEN_STORAGE_KEY, token); } catch (e) {}
     const errCount = (data.errorDetails || []).length;
-    resultEl.textContent = `Done — ${data.renamed} column(s) renamed, ${data.alreadyOk} already correct/absent, ${data.droppedDuplicates} leftover duplicate(s) dropped, ${data.unexpectedErrors} unexpected error(s).`
+    const dupes = data.duplicatesFound || [];
+    let text = `Done — ${data.renamed} column(s) renamed, ${data.alreadyOk} already correct/absent, ${dupes.length} leftover duplicate(s) FOUND (not dropped — see below), ${data.unexpectedErrors} unexpected error(s).`
       + (errCount ? ` First issue: ${data.errorDetails[0].table}.${data.errorDetails[0].column} — ${data.errorDetails[0].message}` : '');
+    if (dupes.length){
+      text += '\n\nDuplicates found — each of these tables has BOTH a lowercase and a correctly-cased copy of the same column. Nothing was deleted. Review each one directly in Supabase before dropping the lowercase copy yourself:\n'
+        + dupes.map(d => `  • ${d.table}: "${d.lowercaseColumn}" (lowercase, leftover) alongside "${d.camelCaseColumn}" (correct)`).join('\n');
+    }
+    resultEl.style.whiteSpace = 'pre-wrap';
+    resultEl.textContent = text;
   } catch (e){
     resultEl.style.display = 'none';
     errEl.textContent = 'Could not reach the backend to run this.';
