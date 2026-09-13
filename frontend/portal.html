@@ -9537,7 +9537,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-voice-sample-weighting-emphasis-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-competitor-intelligence-multivendor';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -16638,12 +16638,17 @@ function competitorBriefContent(name){
   if (!c) return null;
   const note = (c.note || '').trim();
   const positioningText = (c.positioningText || '').trim();
-  if (!note && !positioningText) return null;
+  if (!note && !positioningText && !c.categorizedIntel) return null;
   return {
     competitor: name,
     positioningSummary: note || 'No "why they compete" note on file yet for this competitor — add one in Direct Competitors above.',
     differentiation: positioningText || null,
-    messagingAngles: []
+    messagingAngles: [],
+    // 2026-09-13 — the real multi-vendor read (see
+    // runCompetitorIntelligence() in Direct Competitors above), when one
+    // has been generated for this competitor. renderBattleBrief()'s
+    // briefBlock() renders this block when present.
+    categorizedIntel: c.categorizedIntel || null
   };
 }
 
@@ -16775,11 +16780,28 @@ function renderBattleBrief(){
         ? `<div class="seo-row" style="flex-direction:column;align-items:flex-start;"><div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(name)}</div>${watchHtml}</div>`
         : `<div class="seo-row"><div class="seo-row-main"><div class="seo-row-title">${escapeHtml(name)}</div><div class="seo-row-detail">No Battle Brief drafted yet — add a "why they compete" note or generate a positioning read for this competitor above.</div></div></div>`;
     }
+    // 2026-09-13 — the real multi-vendor read (categorizedIntel, from
+    // runCompetitorIntelligence() in Direct Competitors above), when one
+    // exists for this competitor. Rendered as its own block, additive to
+    // the legacy positioningSummary/differentiation lines above (which stay
+    // in sync with categorizedIntel.whyTheyCompete — see
+    // runCompetitorIntelligence()'s own comment — so nothing here duplicates
+    // stale content). Answers Todd's Battle Brief ask directly: immediate
+    // opportunity vs. longer-term growth, grounded in the categorized read.
+    const intel = brief.categorizedIntel;
+    const intelHtml = intel ? `
+      ${intel.marketOverlap ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>Market overlap:</strong> ${escapeHtml(intel.marketOverlap)}</div>` : ''}
+      ${intel.marketingApproach ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>How they market themselves:</strong> ${escapeHtml(intel.marketingApproach)}</div>` : ''}
+      <div class="seo-row-detail" style="margin-bottom:6px;"><strong>Recent developments:</strong> ${intel.recentDevelopments ? escapeHtml(intel.recentDevelopments) : 'No current public developments found for this competitor.'} ${intel.hasLiveData ? `<span class="illustrative-tag" style="background:var(--advocacy-light, #EAF4EA);color:var(--advocacy, #2F7D3C);">Live web-checked</span>` : `<span class="illustrative-tag">AI reasoning — no live source found</span>`}</div>
+      ${intel.immediateOpportunity ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>Immediate opportunity:</strong> ${escapeHtml(intel.immediateOpportunity)}</div>` : ''}
+      ${intel.longerTermGrowth ? `<div class="seo-row-detail" style="margin-bottom:${watchHtml ? '6px' : '0'};"><strong>Longer-term growth:</strong> ${escapeHtml(intel.longerTermGrowth)}</div>` : ''}
+    ` : '';
     return `<div class="seo-row" style="flex-direction:column;align-items:flex-start;">
       <div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(brief.competitor)}</div>
       <div class="seo-row-detail" style="margin-bottom:6px;"><strong>Their position:</strong> ${escapeHtml(brief.positioningSummary)}</div>
       ${brief.differentiation ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>Our differentiation:</strong> ${escapeHtml(brief.differentiation)}</div>` : ''}
-      ${brief.messagingAngles && brief.messagingAngles.length ? `<div class="seo-row-detail" style="margin-bottom:${watchHtml ? '6px' : '0'};"><strong>Messaging angles:</strong><ul style="margin:4px 0 0;padding-left:18px;">${brief.messagingAngles.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul></div>` : ''}
+      ${brief.messagingAngles && brief.messagingAngles.length ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>Messaging angles:</strong><ul style="margin:4px 0 0;padding-left:18px;">${brief.messagingAngles.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul></div>` : ''}
+      ${intelHtml}
       ${watchHtml}
     </div>`;
   };
@@ -51486,15 +51508,108 @@ function renderCompetitorRows(){
       <input type="file" id="ctFile${i}" accept=".txt,.md,.docx,.doc,.pdf,.png,.jpg,.jpeg" style="display:none;" onchange="handleCompetitorFile(event, ${i})">
       <div class="hint" id="ctFileNote${i}" style="margin-bottom:10px;">${c.sourceFileName ? `On file: ${escapeHtml(c.sourceFileName)}` : ''}</div>
       <div class="btn-row">
-        <button type="button" class="btn-ghost" onclick="generateCompetitorPositioning(${i})">Generate positioning read →</button>
+        <button type="button" class="btn-ghost" id="ctIntelBtn${i}" onclick="runCompetitorIntelligence(${i})">Generate competitor intelligence →</button>
       </div>
-      ${c.positioningText ? `<div class="hint" style="margin-top:10px;white-space:pre-wrap;">${escapeHtml(c.positioningText)}</div>` : ''}
+      <div class="hint" id="ctIntelStatus${i}" style="margin-top:6px;"></div>
+      ${renderCompetitorIntelBlock(c)}
     </div>`).join('') || `<p class="lede" style="margin-bottom:14px;">No competitors added yet — add up to 5 companies within ${escapeHtml(state.industry)}.</p>`;
   document.getElementById('addCompetitorBtn').style.display = competitors.length >= 5 ? 'none' : 'inline-block';
 }
+// 2026-09-13 — renders state.positioning.competitors[i].categorizedIntel,
+// the real multi-vendor read from runCompetitorIntelligence() below (4
+// categories + the 2 Battle Brief fields, see
+// generateCompetitorIntelligenceMultiVendor() on the backend). Falls back
+// to the old single-paragraph positioningText for a competitor generated
+// before this round, so nothing on file silently disappears.
+function renderCompetitorIntelBlock(c){
+  const intel = c.categorizedIntel;
+  if (!intel){
+    return c.positioningText
+      ? `<div class="hint" style="margin-top:10px;white-space:pre-wrap;">${escapeHtml(c.positioningText)}</div>`
+      : '';
+  }
+  const liveTag = intel.hasLiveData
+    ? `<span class="illustrative-tag" style="background:var(--advocacy-light, #EAF4EA);color:var(--advocacy, #2F7D3C);">Live web-checked</span>`
+    : `<span class="illustrative-tag">AI reasoning — no live public data found</span>`;
+  const row = (label, text) => text ? `<div class="hint" style="margin-top:8px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(text)}</div>` : '';
+  return `<div style="margin-top:10px;">
+    <div class="hint" style="font-size:0.75rem;color:var(--muted);">Generated ${new Date(intel.generatedAt).toLocaleString()} from ${intel.vendorsUsed.length} model${intel.vendorsUsed.length === 1 ? '' : 's'} (${escapeHtml(intel.vendorsUsed.join(', '))}) ${liveTag}</div>
+    ${row('Why they compete', intel.whyTheyCompete)}
+    ${row('Market overlap', intel.marketOverlap)}
+    ${row('Marketing approach', intel.marketingApproach)}
+    ${row('Recent developments', intel.recentDevelopments)}
+    ${row('Immediate opportunity', intel.immediateOpportunity)}
+    ${row('Longer-term growth', intel.longerTermGrowth)}
+  </div>`;
+}
+// Replaces the old client-side template (generateCompetitorPositioning()/
+// generateCompetitorNoteDraft() — kept below, unused by this button, only
+// because handleCompetitorNameBlur() still calls generateCompetitorNoteDraft()
+// for the "why they compete" text field's own instant first-pass draft,
+// which is a separate, smaller thing from this real multi-vendor call) with
+// a real backend call across every configured AI vendor. Auto-saves on
+// success via saveCompetitivePositioning() so a generated read is never
+// lost the way un-saved chips used to be (same fix class as
+// addBrandKeywordChip's auto-save).
+async function runCompetitorIntelligence(i){
+  const c = state.positioning.competitors[i];
+  const statusEl = document.getElementById(`ctIntelStatus${i}`);
+  const btn = document.getElementById(`ctIntelBtn${i}`);
+  if (!c || !c.name.trim()){
+    if (statusEl) statusEl.textContent = 'Add a company name first.';
+    return;
+  }
+  if (dataSourceLabel !== 'backend'){
+    if (statusEl) statusEl.textContent = 'Competitor intelligence needs a live backend connection — not available in local/demo mode.';
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Checking with every configured AI model — this can take up to 30 seconds…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/competitor-intelligence`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ competitorName: c.name.trim() })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.intelligence){
+      if (statusEl) statusEl.textContent = data.note || 'Could not generate a read right now — try again in a moment.';
+      return;
+    }
+    c.categorizedIntel = data.intelligence;
+    // Keep positioningText in sync (a short summary) so every OTHER place
+    // that already reads positioningText — Battle Brief's old fallback,
+    // account intelligence context, campaign/PR competitorContext — keeps
+    // working without each needing its own categorizedIntel-aware branch.
+    c.positioningText = data.intelligence.whyTheyCompete || '';
+    if (statusEl) statusEl.textContent = '';
+    renderCompetitorRows();
+    if (typeof renderBattleBrief === 'function') renderBattleBrief();
+    // Persist directly rather than via saveCompetitivePositioning() — that
+    // function always sends approved:true, and generating a read is not the
+    // same deliberate act as clicking "Save — mark approved" below. This
+    // preserves whatever approval state already exists so a read a team
+    // member is still reviewing doesn't silently get marked Approved.
+    if (dataSourceLabel === 'backend'){
+      try {
+        await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positioning`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            industryTrendsText: state.positioning.industryTrendsText,
+            competitors: state.positioning.competitors.map(x => ({ name: (x.name || '').trim(), note: (x.note || '').trim(), sourceFileName: x.sourceFileName || '', positioningText: x.positioningText || '', categorizedIntel: x.categorizedIntel || null })),
+            approved: !!state.positioning.approved
+          })
+        });
+      } catch (e){ console.warn('runCompetitorIntelligence: could not persist the generated read.', e); }
+    }
+  } catch (e){
+    if (statusEl) statusEl.textContent = 'Backend unreachable — could not generate a read.';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 function addCompetitorRow(){
   if (state.positioning.competitors.length >= 5) return;
-  state.positioning.competitors.push({ name: '', note: '', sourceFileName: '', positioningText: '' });
+  state.positioning.competitors.push({ name: '', note: '', sourceFileName: '', positioningText: '', categorizedIntel: null });
   renderCompetitorRows();
   if (typeof renderFaqJ === 'function') renderFaqJ();
   if (typeof renderBattleBrief === 'function') renderBattleBrief();
@@ -51586,8 +51701,12 @@ function generateCompetitorPositioning(i){
 // same direction as Style Assets.
 async function saveCompetitivePositioning(){
   state.positioning.industryTrendsText = document.getElementById('ctIndustryTrendsText').value.trim();
+  // 2026-09-13 — categorizedIntel (the real multi-vendor read from
+  // runCompetitorIntelligence()) must ride along on every save, not just
+  // the legacy 4 fields — otherwise a manual "Save" here would silently
+  // wipe it from the persisted record the next time this function ran.
   const competitors = state.positioning.competitors
-    .map(c => ({ name: (c.name || '').trim(), note: (c.note || '').trim(), sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '' }));
+    .map(c => ({ name: (c.name || '').trim(), note: (c.note || '').trim(), sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '', categorizedIntel: c.categorizedIntel || null }));
 
   const hasContent = !!(state.positioning.industryTrendsText || competitors.some(c => c.name || c.sourceFileName));
   if (!hasContent){
@@ -51697,7 +51816,7 @@ async function posSetDecision(contributionId, status){
     if (status === 'applied' && result.restored){
       state.positioning.industryTrendsText = result.restored.industryTrendsText || '';
       state.positioning.competitors = Array.isArray(result.restored.competitors) && result.restored.competitors.length
-        ? result.restored.competitors.map(c => ({ name: c.name || '', note: c.note || '', sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '' }))
+        ? result.restored.competitors.map(c => ({ name: c.name || '', note: c.note || '', sourceFileName: c.sourceFileName || '', positioningText: c.positioningText || '', categorizedIntel: c.categorizedIntel || null }))
         : state.positioning.competitors;
       state.positioning.approved = true;
       if (flag) flag.textContent = 'Restored — this version is now the current Competitive Positioning.';
