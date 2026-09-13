@@ -324,6 +324,41 @@
       <div id="docsSearchResults"></div>
     </div>
 
+    <!-- 2026-09-13 — Fix Legacy Column Casing, per direct debugging of the
+         website-scan "No title/meta/headings extracted" report: the real
+         root cause turned out to be that ai_brain_contributions.contentJson/
+         qualityTag and ai_brain_contribution_log.contributionId/qualityTag
+         were never added to schema-identifiers.json, so Postgres has been
+         silently folding those four columns to all-lowercase since the AI
+         Brain Contribution Ledger shipped — every website scan (and every
+         other Apply/Remove decision on this ledger) was writing real data
+         successfully, then getting back `undefined`/null on every read.
+         This calls the existing (already-built, previously curl-only)
+         POST /api/admin/fix-legacy-casing, which renames every legacy-
+         lowercase column this codebase knows about back to its correct
+         camelCase name in place (data-preserving — see that endpoint's own
+         comment in server.js). It only actually needs running once to
+         repair this specific gap, but it's safe to click again any time —
+         each call starts with a fast bulk check, so a repeat call after a
+         successful one costs almost nothing. Reuses the same admin token
+         field/storage as Platform Integration Status above, since it's the
+         same ADMIN_API_TOKEN either way. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Fix Legacy Column Casing <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Renames every database column that got silently created all-lowercase by Postgres back to its correct camelCase name, in place — no data is lost or moved, this only fixes the column's name. Safe to run any time; a repeat run after a successful one finds nothing left to do. Run this after adding any new camelCase column to the app if scanned/saved data ever comes back empty when it shouldn't.</p>
+      <div class="field-row" id="fixCasingAuthRow">
+        <div>
+          <label>Admin token</label>
+          <input type="text" id="fixCasingAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="runFixLegacyCasing()">Fix column casing now</button>
+        </div>
+      </div>
+      <div id="fixCasingError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="fixCasingResult" class="proto-note" style="margin-top:14px;display:none;"></div>
+    </div>
+
     <!-- 2026-08-22 — AI Interview Review, per direct instruction: "we will
          never reveal the actual model that was selected to the client but I
          do want visibility via the admin portal." The copy workspace's
@@ -820,7 +855,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-website-scan-bounded-read';
+const CXMEDIA_BUILD_STAMP = '2026-09-13-ai-brain-ledger-camelcase-casing-fix';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -1798,6 +1833,50 @@ async function runDocsSearch(){
   }
 }
 
+// Fix Legacy Column Casing — 2026-09-13. Same admin-token-gated, no-auto-
+// fire posture as checkIntegrationStatus() above; reads/writes the same
+// INTEG_TOKEN_STORAGE_KEY sessionStorage slot so staff who already
+// unlocked Integration Status don't have to paste ADMIN_API_TOKEN a third
+// time. Calls the existing POST /api/admin/fix-legacy-casing (built
+// 2026-08-21, previously only reachable via a manual curl call) and
+// renders its summary — see fixLegacyColumnCasing() in server.js for what
+// renamed/alreadyOk/droppedDuplicates/unexpectedErrors mean.
+async function runFixLegacyCasing(){
+  const token = document.getElementById('fixCasingAdminToken').value.trim();
+  const errEl = document.getElementById('fixCasingError');
+  const resultEl = document.getElementById('fixCasingResult');
+  errEl.style.display = 'none';
+  resultEl.style.display = 'none';
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment to run this.';
+    errEl.style.display = 'block';
+    return;
+  }
+  resultEl.style.display = 'block';
+  resultEl.textContent = 'Running…';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/admin/fix-legacy-casing`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      resultEl.style.display = 'none';
+      errEl.textContent = data.error || `Couldn't run this (${resp.status}).`;
+      errEl.style.display = 'block';
+      return;
+    }
+    try { sessionStorage.setItem(INTEG_TOKEN_STORAGE_KEY, token); } catch (e) {}
+    const errCount = (data.errorDetails || []).length;
+    resultEl.textContent = `Done — ${data.renamed} column(s) renamed, ${data.alreadyOk} already correct/absent, ${data.droppedDuplicates} leftover duplicate(s) dropped, ${data.unexpectedErrors} unexpected error(s).`
+      + (errCount ? ` First issue: ${data.errorDetails[0].table}.${data.errorDetails[0].column} — ${data.errorDetails[0].message}` : '');
+  } catch (e){
+    resultEl.style.display = 'none';
+    errEl.textContent = 'Could not reach the backend to run this.';
+    errEl.style.display = 'block';
+  }
+}
+
 // AI Brain Transparency — Value Rollup — 2026-09-12, generalized the same
 // day Campaign Copy became the second surface. Same admin-token-gated,
 // no-auto-fire posture as checkIntegrationStatus() above. Reads GET
@@ -2088,6 +2167,8 @@ async function clearVoiceGuideMemory(){
     document.getElementById('integRememberToggle').classList.add('on');
     const docsSearchTokenEl = document.getElementById('docsSearchAdminToken');
     if (docsSearchTokenEl) docsSearchTokenEl.value = stored;
+    const fixCasingTokenEl = document.getElementById('fixCasingAdminToken');
+    if (fixCasingTokenEl) fixCasingTokenEl.value = stored;
   }
 })();
 
