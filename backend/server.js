@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-ops-console-shared-masked-admin-token (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-fix-legacy-casing-no-auto-drop (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -9922,7 +9922,17 @@ const LEGACY_CASING_COLUMNS = [
   ['ai_brain_contributions', 'contentJson'],
   ['ai_brain_contributions', 'qualityTag'],
   ['ai_brain_contribution_log', 'contributionId'],
-  ['ai_brain_contribution_log', 'qualityTag']
+  ['ai_brain_contribution_log', 'qualityTag'],
+  // 2026-09-13 — same bug, caught while investigating the contentJson
+  // incident above: these three were also missing from
+  // schema-identifiers.json since the table shipped, so they've been
+  // lowercase-folded (sourcerefid/scopetype/scopevalue) the whole time
+  // too. Safe to register here now that the 42701-duplicate branch above
+  // no longer auto-drops anything — the only thing this can do to these
+  // columns is a plain, data-preserving rename.
+  ['ai_brain_contributions', 'sourceRefId'],
+  ['ai_brain_contributions', 'scopeType'],
+  ['ai_brain_contributions', 'scopeValue']
 ];
 // 2026-08-21, later same day — this used to run automatically at module
 // load (`fixLegacyColumnCasing();` right here, on every cold start), doing
@@ -9978,6 +9988,25 @@ function fixLegacyColumnCasing(){
 
   let renamed = 0, alreadyOk = 0, unexpectedErrors = 0, droppedDuplicates = 0;
   const errorDetails = [];
+  // 2026-09-13 fix, per a direct, serious incident report — this used to
+  // auto-DROP the leftover lowercase column the moment it saw Postgres
+  // error 42701 ("column already exists"), on the theory (true on
+  // 2026-08-21, for a different, confirmed-test-data set of columns) that
+  // the camelCase target already existing means the lowercase one is a
+  // safe-to-discard duplicate. That assumption doesn't hold for every
+  // table this list has grown to cover since, and — worse — the old code
+  // recorded NOTHING about a drop beyond a bare count: no table name, no
+  // column name, not even a console.log line. A real run just dropped 10
+  // columns with zero way, even from Vercel's own logs, to find out which
+  // 10. That is an unacceptable blind spot for anything that deletes
+  // data. This function now NEVER drops anything itself — it renames the
+  // safe, single-column case (unchanged) and, for every 42701 duplicate,
+  // only REPORTS the table+column pair (itemized, always logged) so a
+  // person can look at each one and decide. Dropping a confirmed-safe
+  // leftover duplicate is now a separate, explicit, itemized manual
+  // action (a direct Supabase SQL statement), never something this
+  // button can do silently again.
+  const duplicatesFound = [];
   for (const [table, col] of LEGACY_CASING_COLUMNS){
     const lower = col.toLowerCase();
     if (lower === col) continue; // no casing to fix
@@ -9988,34 +10017,17 @@ function fixLegacyColumnCasing(){
     try {
       db.exec('ALTER TABLE ' + table + ' RENAME COLUMN ' + lower + ' TO ' + col);
       renamed++;
+      console.log(`[fixLegacyColumnCasing] renamed ${table}.${lower} -> ${table}."${col}" (data preserved, same column)`);
     } catch (e) {
       const msg = (e && e.message) || '';
       const isExpected = e && (e.code === '42703' || /does not exist/i.test(msg) || /no such column/i.test(msg));
-      // 2026-08-21, later still — Postgres 42701 "column already exists"
-      // means the correctly-cased column was already added separately
-      // (via ensureColumn()'s ADD COLUMN, before this table's rename ever
-      // ran), so BOTH the old lowercase and the new camelCase column now
-      // exist side by side. Confirmed with Todd directly: the app only
-      // reads/writes the camelCase one, this environment's data is test
-      // data expected to be wiped before the next phase anyway, and he
-      // explicitly asked (2026-08-21) to have the leftover lowercase
-      // duplicate dropped rather than left as unused clutter — so a 42701
-      // here drops the old column instead of just being logged.
       const isDuplicate = e && e.code === '42701';
       if (isExpected) {
         alreadyOk++;
       } else if (isDuplicate) {
-        try {
-          db.exec('ALTER TABLE ' + table + ' DROP COLUMN ' + lower);
-          droppedDuplicates++;
-        } catch (dropErr) {
-          unexpectedErrors++;
-          const dropMsg = (dropErr && dropErr.message) || '';
-          if (errorDetails.length < 25){
-            errorDetails.push({ table, column: lower, targetColumn: col, code: (dropErr && dropErr.code) || null, message: `rename hit duplicate (42701), then DROP COLUMN also failed: ${dropMsg}` });
-          }
-          console.error(`[fixLegacyColumnCasing] duplicate column ${table}.${lower} — DROP also failed:`, dropMsg);
-        }
+        droppedDuplicates++; // kept as a "found, not dropped" count for the response shape
+        duplicatesFound.push({ table, lowercaseColumn: lower, camelCaseColumn: col });
+        console.log(`[fixLegacyColumnCasing] DUPLICATE FOUND (not dropped): ${table}.${lower} sits alongside ${table}."${col}" — review both before deciding whether to drop the lowercase one manually.`);
       } else {
         unexpectedErrors++;
         // 2026-08-21, later still — return the actual error alongside the
@@ -10030,8 +10042,15 @@ function fixLegacyColumnCasing(){
       }
     }
   }
-  const summary = { renamed, alreadyOk, droppedDuplicates, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length, errorDetails };
-  console.log(`[fixLegacyColumnCasing] done: ${renamed} column(s) renamed, ${alreadyOk} already correct/absent, ${droppedDuplicates} duplicate(s) dropped, ${unexpectedErrors} unexpected error(s)`);
+  // droppedDuplicates is kept as a field name for compatibility with the
+  // existing ops-console display, but as of the 2026-09-13 fix above it
+  // counts duplicates FOUND, not dropped — duplicatesFound below is the
+  // itemized list a person actually needs to act on.
+  const summary = { renamed, alreadyOk, droppedDuplicates, duplicatesFound, unexpectedErrors, totalConsidered: LEGACY_CASING_COLUMNS.length, errorDetails };
+  console.log(`[fixLegacyColumnCasing] done: ${renamed} column(s) renamed, ${alreadyOk} already correct/absent, ${droppedDuplicates} duplicate(s) FOUND (not dropped — see duplicatesFound), ${unexpectedErrors} unexpected error(s)`);
+  if (duplicatesFound.length){
+    console.log(`[fixLegacyColumnCasing] duplicatesFound: ${JSON.stringify(duplicatesFound)}`);
+  }
   return summary;
 }
 // NOTE: deliberately NOT auto-run at module load anymore — see the comment
@@ -14187,7 +14206,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-ops-console-shared-masked-admin-token',
+        buildStamp: '2026-09-13-fix-legacy-casing-no-auto-drop',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24688,5 +24707,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
