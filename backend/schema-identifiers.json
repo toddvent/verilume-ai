@@ -77,9 +77,11 @@
   "confirmedAt",
   "confirmedMappingJson",
   "consumedAt",
+  "contentJson",
   "contentLibraryJson",
   "contestSubtype",
   "contestType",
+  "contributionId",
   "conversionType",
   "copyApproved",
   "copyApprovedAt",
@@ -243,6 +245,7 @@
   "productsServices",
   "projectType",
   "qaApproved",
+  "qualityTag",
   "rankBasis",
   "ratedAt",
   "rawCategory",
@@ -256,6 +259,8 @@
   "requestedBy",
   "richBlack",
   "roleStyle",
+  "scopeType",
+  "scopeValue",
   "scoredAt",
   "searchKeywordsJson",
   "secondaryPaletteText",
@@ -272,6 +277,7 @@
   "sourceInterviewTable",
   "sourceKey",
   "sourceLabel",
+  "sourceRefId",
   "sourceRowIndex",
   "sourceTable",
   "sourceType",
@@ -326,3 +332,4 @@
   "weightMode",
   "workingCopy"
 ]
+
