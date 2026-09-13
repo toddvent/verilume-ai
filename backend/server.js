@@ -2098,6 +2098,23 @@ const CONTEST_TYPE_REGISTRY = {
     taskType: 'pr_copy',
     subtypes: ['Press Release', 'Editorial Pitch', 'Corporate Comms'],
     description: 'PR & Corporate Copy contest, subtyped by document type. Dispatch-consumed: draftPrCorpCommCopyViaAI() checks getDispatchablePriorityModel(accountId, \'pr_copy\') for single-draft (non-contest) generation.'
+  },
+  // 2026-09-13 — added per direct instruction: extend the existing Voice
+  // Contest panel with a "Video Script" content-type option rather than
+  // building a new surface, and per the standing "contests at the asset
+  // level" direction already flagged in
+  // cxmedia-voice-contest-guide-unification-multivendor-dispatch-scoping-
+  // 2026-09-12.md Section 3 ("someone might write better social copy vs.
+  // video scripts"). Subtyped by Product Group/destination (Antarctica,
+  // Mediterranean, etc.) — dynamic per account taxonomy, so subtypes is left
+  // empty here the same way Brand Voice's is (no fixed enum to validate
+  // against). No dispatch consumer yet — see runVideoScriptContest's own
+  // comment for why a single-draft (non-contest) video-script generator
+  // doesn't exist yet either.
+  'Video Script': {
+    taskType: 'video_script',
+    subtypes: [],
+    description: 'Video Script option on the Voice Contest panel, subtyped by Product Group/destination. Produces a full 8-beat :30 script (per the video-first creative brief beat grid) per configured vendor, grounded in the account\'s Voice Guide plus that destination\'s Internal Experience Evidence when any is on file. No dispatch consumer today — no single-draft (non-contest) video-script generator exists in this file yet.'
   }
 };
 // The one call every contest's /select endpoint makes — replaces separately
@@ -3261,6 +3278,225 @@ function redactBrandVoiceCandidatesForClient(candidates){
     transparency: c.transparency || null,
     transparencyNote: c.transparencyNote || null
   }));
+}
+
+// ---------- Video Script option, Voice Contest panel (2026-09-13) ----------
+// Per direct instruction: "I would just add this to the existing generator
+// that we used to look at some voice options. You could add a video script
+// option." Reuses the exact Voice Contest mechanism above (same
+// account_voice_interviews table — see the two nullable columns added near
+// ensureColumn('brand_writing_samples', ...) — same INTERVIEW_VENDOR_REGISTRY
+// dispatch, same blind-labeling/redaction discipline) rather than a new
+// contest surface, per Todd's own instruction and per the "contests at the
+// asset level" direction already flagged in
+// cxmedia-voice-contest-guide-unification-multivendor-dispatch-scoping-
+// 2026-09-12.md.
+//
+// Grounded in exactly the confirmed input set from
+// cxmedia-video-first-creative-brief-replication-scoping-2026-09-13.md
+// Section 0 (Todd's own words, 2026-09-13): the account's approved Voice
+// Guide, this Product Group's Internal Experience Evidence (when any is on
+// file — see experienceEvidenceContext(), built earlier the same day; empty
+// honestly when nothing's loaded yet, never a fabricated placeholder), and
+// the account's website-derived brand signal via
+// brandVoiceCriticalMessagesContext(). Core demographics per destination
+// (the workbook's Core Demos tab) has no structured platform equivalent
+// yet — flagged here rather than silently skipped; see this function's
+// return path for the honest gap note surfaced to the panel.
+//
+// The 8-beat :30 grid itself (beat names + the shared timestamp allocation)
+// is NOT left to the model to invent — it's the same fixed structure Todd's
+// own workbook uses for every new (non-Antarctica-cut) film, so every
+// vendor's candidate is guaranteed to come back in the right shape and
+// comparable beat-for-beat. Only the content of each beat (visual direction,
+// VO, on-screen caption, pillar tag) is generated.
+const VIDEO_SCRIPT_BEAT_GRID = [
+  { beat: 'OPEN — the place', timestamp: '0:00–0:04' },
+  { beat: 'THE PLACE, CLOSER', timestamp: '0:04–0:08' },
+  { beat: 'THE YACHT', timestamp: '0:08–0:12' },
+  { beat: 'THE TABLE', timestamp: '0:12–0:16' },
+  { beat: 'SCALE', timestamp: '0:16–0:20' },
+  { beat: 'THE EXPEDITION', timestamp: '0:20–0:24' },
+  { beat: 'THE PAYOFF', timestamp: '0:24–0:26.5' },
+  { beat: 'END CARD', timestamp: '0:26.5–0:30' }
+];
+const VIDEO_SCRIPT_PILLARS = ['Immersive Adventure', 'Curated Boutique Hospitality', 'Luxury & Elegance', 'Deep Connection'];
+const VIDEO_SCRIPT_BEAT_SCHEMA = {
+  type: 'object',
+  properties: {
+    beats: {
+      type: 'array',
+      description: `Exactly 8 items, in this exact order, one per beat: ${VIDEO_SCRIPT_BEAT_GRID.map(b => b.beat).join(' / ')}.`,
+      items: {
+        type: 'object',
+        properties: {
+          visual: { type: 'string', description: 'Shot direction for this beat — concrete, filmable, specific to this destination. Never invent a named excursion, program, or piece of footage not present in the evidence/context given.' },
+          vo: { type: 'string', description: 'Voiceover line for this beat, or the literal string "(no VO)" if this beat should carry no voiceover (e.g. a breathing/score-only beat).' },
+          caption: { type: 'string', description: 'Short on-screen sound-off caption for this beat, ALL CAPS, matching the terse style of a real cut-down social caption.' },
+          pillar: { type: 'string', description: `Which brand pillar(s) this beat serves — one or more of: ${VIDEO_SCRIPT_PILLARS.join(', ')} (joined with " · " if more than one).` }
+        },
+        required: ['visual', 'vo', 'caption', 'pillar']
+      }
+    }
+  },
+  required: ['beats']
+};
+function videoScriptPromptContext(account, productGroup){
+  const context = brandVoiceCriticalMessagesContext(account, {});
+  const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
+  const visionStatement = (account.visionStatement || '').trim();
+  return { context, voiceGuideText, visionStatement };
+}
+async function buildVideoScriptPrompt(account, productGroup){
+  const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, productGroup);
+  let evidence = '';
+  try { evidence = await experienceEvidenceContext(account.accountId, productGroup); } catch (e){ evidence = ''; }
+  return `You are writing one candidate :30-second video script for the "${productGroup}" destination/product group, as part of a panel where several independently-written scripts are being compared side by side.
+
+COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
+
+${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
+
+CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here):
+${context}
+
+${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${productGroup}": none loaded yet for this product group. Write from the brand signal above only — do not invent named onboard programs, specific excursions, or footage that isn't given to you here.`}
+
+THE FIXED 8-BEAT STRUCTURE (write content for exactly these 8 beats, in this order — do not rename or reorder them):
+${VIDEO_SCRIPT_BEAT_GRID.map((b, i) => `${i + 1}. ${b.beat} (${b.timestamp})`).join('\n')}
+
+Submit your candidate via the submit_video_script_candidate tool.`;
+}
+async function generateVideoScriptCandidate(account, productGroup){
+  try {
+    const prompt = await buildVideoScriptPrompt(account, productGroup);
+    const parsed = await callClaudeForJSON({
+      model: BRAND_VOICE_PRIMARY_BRIEF.model,
+      maxTokens: 1400,
+      content: prompt,
+      toolName: 'submit_video_script_candidate',
+      toolDescription: 'Submit one candidate 8-beat video script.',
+      schema: VIDEO_SCRIPT_BEAT_SCHEMA
+    });
+    const beats = Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
+    if (!beats || beats.length !== 8) return { beats: null, error: 'Generation did not return all 8 beats.' };
+    return { beats: mergeVideoScriptBeats(beats), error: null };
+  } catch (e){
+    return { beats: null, error: 'Generation failed: ' + e.message };
+  }
+}
+async function generateVendorVideoScriptCopy(vendorKey, account, productGroup){
+  try {
+    const prompt = (await buildVideoScriptPrompt(account, productGroup)) + `\n\nRespond with ONLY a JSON object: {"beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
+    const text = await callVendorForText(vendorKey, prompt);
+    const parsed = parseJsonBlock(text);
+    const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
+    if (!beats || beats.length !== 8) return { beats: null, error: 'Generation returned no parseable 8-beat JSON.' };
+    return { beats: mergeVideoScriptBeats(beats), error: null };
+  } catch (e){
+    return { beats: null, error: 'Generation failed: ' + e.message };
+  }
+}
+// Marries the model's 4 written fields (visual/vo/caption/pillar) back onto
+// our own fixed beat/timestamp grid, positionally — the model is never
+// trusted to echo the beat name/timestamp back correctly, only to fill in
+// content in the order it was given.
+function mergeVideoScriptBeats(rawBeats){
+  return VIDEO_SCRIPT_BEAT_GRID.map((slot, i) => {
+    const r = rawBeats[i] || {};
+    return {
+      beat: slot.beat, timestamp: slot.timestamp,
+      visual: typeof r.visual === 'string' ? r.visual : '',
+      vo: typeof r.vo === 'string' ? r.vo : '',
+      caption: typeof r.caption === 'string' ? r.caption : '',
+      pillar: typeof r.pillar === 'string' ? r.pillar : ''
+    };
+  });
+}
+function pickRecommendedVideoScriptCandidate(candidates){
+  const list = (candidates || []).filter(c => Array.isArray(c.beats) && c.beats.length === 8);
+  if (!list.length) return { key: null, reason: null };
+  const rated = list.filter(c => typeof c.rating === 'number');
+  if (rated.length){
+    const sorted = [...rated].sort((a, b) => b.rating - a.rating);
+    const top = sorted[0];
+    const tiedWithTop = sorted.filter(c => c.rating === top.rating);
+    if (tiedWithTop.length === 1) return { key: top.key, reason: 'rating' };
+  }
+  const sorted = [...list].sort((a, b) => (b.complianceScore || 0) - (a.complianceScore || 0));
+  const top = sorted[0];
+  const tiedWithTop = sorted.filter(c => c.complianceScore === top.complianceScore);
+  if (tiedWithTop.length === 1) return { key: top.key, reason: 'compliance' };
+  return { key: null, reason: null };
+}
+function redactVideoScriptCandidatesForClient(candidates){
+  return (candidates || []).map(c => ({
+    key: c.key, label: c.blindLabel || c.label, configured: c.configured,
+    beats: c.beats, error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    complianceScore: c.complianceScore, flags: c.flags,
+    rating: (typeof c.rating === 'number') ? c.rating : null
+  }));
+}
+// No AI Brain Transparency pass for Video Script candidates in this first
+// build (unlike runBrandVoiceContest's per-candidate transparency step,
+// gatherVoiceTransparencySignals() is Voice-Guide-shaped and a genuine
+// per-beat equivalent hasn't been designed) — flagged honestly as an open
+// item rather than bolted on incorrectly. transparency/transparencyNote are
+// simply absent from this candidate shape.
+async function runVideoScriptContest(account, productGroup, extra){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return {
+      available: false,
+      note: 'The Video Script option requires ANTHROPIC_API_KEY to be configured — without it there is no real draft to run multiple ways. Set the key to enable this panel.',
+      recommendedKey: null,
+      candidates: []
+    };
+  }
+  if (!productGroup || typeof productGroup !== 'string'){
+    return { available: false, note: 'A Product Group/destination is required to run the Video Script option.', recommendedKey: null, candidates: [] };
+  }
+  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  const [anthropicGenerated, vendorGenerated] = await Promise.all([
+    generateVideoScriptCandidate(account, productGroup),
+    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, productGroup)))
+  ]);
+  const buildCandidate = (key, label, vendor, model, gen) => {
+    const combinedText = Array.isArray(gen.beats) ? gen.beats.map(b => b.vo).filter(Boolean).join(' ') : '';
+    const compliance = combinedText ? scoreComplianceHeuristically(combinedText, account) : null;
+    return {
+      key, label, vendor, model, configured: true,
+      beats: gen.beats, error: gen.error,
+      complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : []
+    };
+  };
+  const anthropicCandidate = buildCandidate(BRAND_VOICE_PRIMARY_BRIEF.key, BRAND_VOICE_PRIMARY_BRIEF.label, BRAND_VOICE_PRIMARY_BRIEF.vendor, BRAND_VOICE_PRIMARY_BRIEF.model, anthropicGenerated);
+  const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
+  const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
+    key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
+    beats: null, error: `${v.envVar} not configured on this deployment.`,
+    complianceScore: null, flags: []
+  }));
+  const allLive = [anthropicCandidate, ...liveVendorCandidates];
+  const allCandidates = [...allLive, ...unconfiguredCandidates];
+  const shuffled = [...allCandidates];
+  for (let i = shuffled.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
+  allCandidates.sort((a, b) => {
+    const na = parseInt(String(a.blindLabel).replace(/\D/g, ''), 10) || 0;
+    const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
+    return na - nb;
+  });
+  const recommended = pickRecommendedVideoScriptCandidate(allCandidates);
+  let evidenceOnFile = false;
+  try { evidenceOnFile = !!(await experienceEvidenceContext(account.accountId, productGroup)); } catch (e){ evidenceOnFile = false; }
+  return {
+    available: true, note: null,
+    evidenceGapNote: evidenceOnFile ? null : `No Internal Experience Evidence is loaded for "${productGroup}" yet — every candidate below was written from brand-level and website signal only, not destination-specific facts. Load evidence for this Product Group (Sample Writings & Presentations → Option D) for a materially stronger comparison.`,
+    recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates
+  };
 }
 
 // 2026-08-22 — pre-decision draft scoring (item 2 off the CX & Copywriting
@@ -5676,6 +5912,19 @@ ensureColumn('brand_writing_samples', 'outcome', 'TEXT');
 //    captured once, at save time.
 ensureColumn('brand_writing_samples', 'productGroup', 'TEXT');
 ensureColumn('brand_writing_samples', 'extractedText', 'TEXT');
+
+// 2026-09-13 — Video Script option added to the existing Voice Contest
+// panel, per direct instruction: "I would just add this to the existing
+// generator that we used to look at some voice options. You could add a
+// video script option." Two new nullable columns on the same
+// account_voice_interviews table the Voice Contest already writes to —
+// NULL/absent preserves every existing row's meaning exactly (a
+// contentType of NULL is read as 'voice_guide' everywhere below, so no
+// prior Voice Contest history changes shape). productGroup scopes a
+// video-script run to one destination (Antarctica, Mediterranean, etc.);
+// left NULL for ordinary voice_guide runs, which are account-wide.
+ensureColumn('account_voice_interviews', 'contentType', 'TEXT');
+ensureColumn('account_voice_interviews', 'productGroup', 'TEXT');
 
 // ---------- Brand Copy Website Examples (2026-08-25) ----------
 // Per cxmedia-brand-copy-website-examples-design-2026-08-25.md — lets a
@@ -16902,24 +17151,48 @@ async function handleRequest(req, res) {
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const body = await readBody(req);
+      // 2026-09-13 — contentType added, per direct instruction to add a
+      // Video Script option to this same generator rather than build a new
+      // one. Defaults to 'voice_guide' so every existing caller (which never
+      // sends this field) is completely unaffected.
+      const contentType = (typeof body.contentType === 'string' && body.contentType === 'video_script') ? 'video_script' : 'voice_guide';
+      const capCheck3 = checkInterviewWeeklyCap(accountId);
+      if (capCheck3) return sendJson(res, 429, capCheck3);
+      const now = new Date().toISOString();
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      if (contentType === 'video_script'){
+        const productGroup = typeof body.productGroup === 'string' ? body.productGroup.trim() : '';
+        if (!productGroup){
+          return sendJson(res, 400, { error: 'productGroup is required for the Video Script option' });
+        }
+        const result = await runVideoScriptContest(account, productGroup, {});
+        if (!result.available){
+          return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
+        }
+        const interviewId = generateId('AVI');
+        db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt, contentType, productGroup) VALUES (?,?,?,?,?,?,?)`)
+          .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'video_script', productGroup);
+        return sendJson(res, 200, {
+          available: true, contentType: 'video_script', productGroup, interviewId, recommendedKey: result.recommendedKey,
+          evidenceGapNote: result.evidenceGapNote || null,
+          candidates: redactVideoScriptCandidatesForClient(result.candidates), createdAt: now,
+          beatGrid: VIDEO_SCRIPT_BEAT_GRID
+        });
+      }
       const extra = {
         toneAnchors: Array.isArray(body.toneAnchors) ? body.toneAnchors.filter(t => typeof t === 'string') : [],
         avoidWords: typeof body.avoidWords === 'string' ? body.avoidWords : '',
         antiExample: typeof body.antiExample === 'string' ? body.antiExample : ''
       };
-      const capCheck3 = checkInterviewWeeklyCap(accountId);
-      if (capCheck3) return sendJson(res, 429, capCheck3);
       const result = await runBrandVoiceContest(account, extra);
       if (!result.available){
         return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
       }
-      const now = new Date().toISOString();
       const interviewId = generateId('AVI');
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
-      db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?)`)
-        .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now);
+      db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt, contentType) VALUES (?,?,?,?,?,?)`)
+        .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'voice_guide');
       return sendJson(res, 200, {
-        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactBrandVoiceCandidatesForClient(result.candidates), createdAt: now
+        available: true, contentType: 'voice_guide', interviewId, recommendedKey: result.recommendedKey, candidates: redactBrandVoiceCandidatesForClient(result.candidates), createdAt: now
       });
     }
 
@@ -17096,6 +17369,26 @@ async function handleRequest(req, res) {
       let candidates = [];
       try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
       const chosen = candidates.find(c => c.key === body.candidateKey);
+      // 2026-09-13 — Video Script branch. A video-script interview row has
+      // contentType === 'video_script' and its candidates carry `beats`, not
+      // visionStatement/longformExample. Selecting a winner here does NOT
+      // write anything onto the accounts row (unlike voice_guide, below) —
+      // there is no single account-wide "winning video script," only a
+      // winning script for THIS Product Group's contest run, same
+      // "record the choice, hand the content back, client applies it"
+      // discipline campaign_copy_interviews already uses for its own
+      // /select endpoint.
+      if (interview.contentType === 'video_script'){
+        if (!chosen || !Array.isArray(chosen.beats) || chosen.beats.length !== 8){
+          return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
+        }
+        const now = new Date().toISOString();
+        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+        db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+          .run(body.candidateKey, selectedBy, now, interviewId);
+        recordContestResult(accountId, 'Video Script', interview.productGroup || null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
+        return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, productGroup: interview.productGroup, beats: chosen.beats });
+      }
       if (!chosen || !chosen.visionStatement || !chosen.longformExample){
         return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
       }
@@ -17171,6 +17464,14 @@ async function handleRequest(req, res) {
       // pickRecommendedCandidate above) on every rating change and return
       // it, so the winner border actually reacts to human input instead of
       // staying frozen on the original compliance-only pick.
+      // 2026-09-13 — branch on contentType so a Video Script contest's
+      // candidates (shaped {beats}, not {visionStatement, longformExample})
+      // get recomputed/redacted with their own matching functions instead of
+      // silently losing their beats field through the Voice Guide redactor.
+      if (interview.contentType === 'video_script'){
+        const recommended = pickRecommendedVideoScriptCandidate(candidates);
+        return sendJson(res, 200, { interviewId, candidates: redactVideoScriptCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+      }
       const recommended = pickRecommendedCandidate(candidates);
       return sendJson(res, 200, { interviewId, candidates: redactBrandVoiceCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
     }
@@ -17194,7 +17495,7 @@ async function handleRequest(req, res) {
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, createdAt FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, createdAt, contentType, productGroup FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
       const interviews = rows.map(r => {
         let candidates = [];
         try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
@@ -17203,9 +17504,15 @@ async function handleRequest(req, res) {
         // and never updated), so reopening a past contest's history lost
         // the highlight entirely and any later rating/Nailed It never
         // reflected here either. Recompute live via pickRecommendedCandidate.
-        const recommended = pickRecommendedCandidate(candidates);
+        // 2026-09-13 — branch on contentType (see the /rate endpoint's own
+        // comment above) so Video Script history rows use the matching
+        // recommend/redact pair instead of the Voice Guide-shaped ones.
+        const isVideoScript = r.contentType === 'video_script';
+        const recommended = isVideoScript ? pickRecommendedVideoScriptCandidate(candidates) : pickRecommendedCandidate(candidates);
+        const redacted = isVideoScript ? redactVideoScriptCandidatesForClient(candidates) : redactBrandVoiceCandidatesForClient(candidates);
         return {
-          id: r.id, requestedBy: r.requestedBy, candidates: redactBrandVoiceCandidatesForClient(candidates),
+          id: r.id, requestedBy: r.requestedBy, candidates: redacted,
+          contentType: r.contentType || 'voice_guide', productGroup: r.productGroup || null,
           recommendedKey: recommended.key, recommendedReason: recommended.reason,
           selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
           feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, createdAt: r.createdAt
