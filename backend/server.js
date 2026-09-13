@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-voice-sample-weighting-emphasis-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-competitor-intelligence-multivendor (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -14058,6 +14058,169 @@ Respond with ONLY a JSON object with two fields:
   }
 }
 
+// ---------- Competitor Intelligence, multi-vendor (2026-09-13) ----------
+// Replaces generateCompetitorPositioning()/generateCompetitorNoteDraft() in
+// portal.html — those were always a template placeholder (no AI call at
+// all, just this account's own company/industry/footprint/audience dropped
+// into a fixed sentence; the competitor's own name was the only thing that
+// actually varied). Per direct instruction: (1) go beyond "why they
+// compete" into recent public developments, market overlap, and marketing
+// approach, broken into categories; (2) pull from all 5 configured vendor
+// models, not just Anthropic.
+//
+// Of the 5 vendors in INTERVIEW_VENDOR_REGISTRY, only Perplexity
+// (envVar PERPLEXITY_API_KEY, model sonar-pro) actually has live web-search
+// grounding — Anthropic/OpenAI/Gemini/Grok are the same kind of
+// training-knowledge-only reasoning as every other AI call in this file.
+// Asking all 5 for "recent developments" and blending the answers would
+// mean 4 of 5 either refuse or, worse, produce plausible-sounding invented
+// specifics that look identical to Perplexity's real ones once merged —
+// exactly the fabricated-intelligence-presented-as-real failure this file
+// has avoided everywhere else (see generateAccountIntelligenceViaAI's own
+// comment above). So the two vendor classes get DIFFERENT instructions
+// (COMPETITOR_INTEL_NO_WEB_INSTRUCTION vs COMPETITOR_INTEL_LIVE_WEB_INSTRUCTION
+// below), and the synthesis step is told explicitly to treat Perplexity's
+// recentDevelopments as the only legitimate source for that field — never
+// inventing one itself, and never accepting another vendor's guess as if
+// it were real, even if that vendor answered the question anyway.
+const COMPETITOR_INTEL_NO_WEB_INSTRUCTION = 'You have NO access to live news, web search, or any real-time data source, and do not know what this competitor has actually done recently. For "recentDevelopments", respond with null — do not guess, hedge with a vague plausible-sounding claim, or invent a specific dated event, headline, or price. For the other three fields, reason from general category knowledge and public brand positioning as you understand it — never assert a specific recent/dated fact as something that "just happened."';
+const COMPETITOR_INTEL_LIVE_WEB_INSTRUCTION = 'You have live web search. Actually search for real, current public information about this specific competitor before answering — recent news, announcements, pricing or marketing moves, market positioning. For "recentDevelopments", report only what you can genuinely find, specific enough to be checked (name what you found, in plain language); if a genuine search turns up nothing recent and specific, respond with null rather than filling the field with generic filler. Ground the other three fields in real information about this competitor wherever you can find it, not just category-level assumption.';
+
+function competitorIntelPrompt(competitorName, account, isLiveWeb){
+  const context = `COMPANY THIS COMPETITOR IS BEING ASSESSED AGAINST: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'} — Footprint: ${account.footprint || '(not set)'}${account.productsServices ? `\nProducts & Services: ${String(account.productsServices).slice(0, 400)}` : ''}`;
+  return `You are a competitive-intelligence analyst assessing why "${competitorName}" competes with the company below for the same customer.
+
+${context}
+
+${isLiveWeb ? COMPETITOR_INTEL_LIVE_WEB_INSTRUCTION : COMPETITOR_INTEL_NO_WEB_INSTRUCTION}
+
+Respond with ONLY a JSON object in this exact shape:
+{"whyTheyCompete": "<2-3 sentences: the real reason a prospect would compare these two brands>", "marketOverlap": "<2-3 sentences: which specific markets/audiences/segments genuinely overlap between them>", "marketingApproach": "<2-3 sentences: how this competitor appears to market itself — channels, tone, claims>", "recentDevelopments": "<specific recent public information, or null per the instruction above>"}`;
+}
+
+// One vendor's read for one competitor — Anthropic via callClaudeForJSON
+// (real function-calling, so a malformed response is structurally
+// impossible), every other configured vendor via the shared
+// callVendorForText + parseJsonBlock path every other multi-vendor panel in
+// this file already uses. Same honest per-candidate failure shape as
+// generateVendorBrandVoiceCopy/generateVendorInterviewCopy — a single
+// vendor failing never blocks the others or the synthesis step below.
+async function generateOneCompetitorIntelRead(vendorKey, competitorName, account){
+  const isLiveWeb = vendorKey === 'perplexity';
+  const prompt = competitorIntelPrompt(competitorName, account, isLiveWeb);
+  try {
+    let parsed;
+    if (vendorKey === 'anthropic-claude'){
+      parsed = await callClaudeForJSON({
+        model: 'claude-sonnet-4-5',
+        maxTokens: 700,
+        content: prompt,
+        toolName: 'submit_competitor_read',
+        toolDescription: 'Submit this competitive-intelligence read.',
+        schema: {
+          type: 'object',
+          properties: {
+            whyTheyCompete: { type: 'string' },
+            marketOverlap: { type: 'string' },
+            marketingApproach: { type: 'string' },
+            recentDevelopments: { type: ['string', 'null'] }
+          },
+          required: ['whyTheyCompete', 'marketOverlap', 'marketingApproach', 'recentDevelopments']
+        }
+      });
+    } else {
+      const text = await callVendorForText(vendorKey, prompt);
+      parsed = parseJsonBlock(text);
+      if (!parsed) return { error: 'Generation returned no parseable JSON.' };
+    }
+    return {
+      whyTheyCompete: typeof parsed.whyTheyCompete === 'string' ? parsed.whyTheyCompete : null,
+      marketOverlap: typeof parsed.marketOverlap === 'string' ? parsed.marketOverlap : null,
+      marketingApproach: typeof parsed.marketingApproach === 'string' ? parsed.marketingApproach : null,
+      recentDevelopments: typeof parsed.recentDevelopments === 'string' ? parsed.recentDevelopments : null,
+      error: null
+    };
+  } catch (e){
+    return { error: 'Generation failed: ' + e.message };
+  }
+}
+
+// Orchestrates the full multi-vendor read for one named competitor: fan out
+// to every configured vendor (Anthropic plus whichever of
+// OpenAI/Gemini/Grok/Perplexity have their env var set) in parallel, then
+// one Anthropic synthesis call combines the successful reads into the
+// single client-facing categorized result, honestly attributing
+// recentDevelopments to Perplexity alone and adding the two Battle-Brief
+// fields (immediateOpportunity/longerTermGrowth) grounded in everything
+// above rather than generic advice.
+async function generateCompetitorIntelligenceMultiVendor(competitorName, account){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return { intelligence: null, note: 'Competitor Intelligence requires ANTHROPIC_API_KEY to be configured.' };
+  }
+  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  const allVendors = [{ key: 'anthropic-claude', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: 'claude-sonnet-4-5' }, ...configuredVendors];
+  const reads = await Promise.all(allVendors.map(v => generateOneCompetitorIntelRead(v.key, competitorName, account)));
+  const perVendor = allVendors.map((v, i) => ({ key: v.key, label: v.label, vendor: v.vendor, model: v.model, ...reads[i] }));
+  const successful = perVendor.filter(r => !r.error);
+  if (!successful.length){
+    return { intelligence: null, note: 'Every configured vendor failed to generate a read — try again in a moment.', perVendor };
+  }
+  const perplexityRead = successful.find(r => r.key === 'perplexity');
+  const readsBlock = successful.map(r => `--- ${r.label} ---\nWhy they compete: ${r.whyTheyCompete || '(no answer)'}\nMarket overlap: ${r.marketOverlap || '(no answer)'}\nMarketing approach: ${r.marketingApproach || '(no answer)'}\nRecent developments: ${r.recentDevelopments || '(none reported)'}`).join('\n\n');
+  try {
+    const synthesisPrompt = `You are combining ${successful.length} independent competitive-intelligence reads on the same competitor ("${competitorName}", assessed against ${account.company || 'this account'}) into ONE final client-facing read.
+
+${readsBlock}
+
+CRITICAL: of the reads above, only Perplexity actually has live web search — every other vendor was explicitly told it has no web/news access and to return null for recent developments rather than guess. ${perplexityRead && perplexityRead.recentDevelopments ? `Perplexity's own recentDevelopments read is: "${perplexityRead.recentDevelopments}" — use that, and only that, as your recentDevelopments answer (you may tighten the wording, never invent additional specifics beyond it).` : 'No vendor above reported real, specific recent developments (either Perplexity was not configured/reachable, or its own search found nothing specific) — your recentDevelopments answer must honestly say so, e.g. "No current public developments found for this competitor," never inventing one from the other vendors\' training-knowledge guesses.'}
+
+For whyTheyCompete, marketOverlap, and marketingApproach: synthesize across all the reads above into one clear, well-reasoned paragraph each (2-4 sentences), resolving disagreement in favor of whichever read is more specific and better grounded, not just averaging.
+
+Then, based on everything above, add two client-facing strategic fields:
+- immediateOpportunity: one concrete, specific move ${account.company || 'this account'} could make in the near term against THIS competitor specifically (not generic marketing advice) — grounded in the reads above.
+- longerTermGrowth: one longer-horizon strategic opportunity this competitive picture points toward — a market, capability, or positioning shift worth building toward, not a quick tactic.
+
+Respond via the submit_competitor_synthesis tool.`;
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5',
+      maxTokens: 900,
+      content: synthesisPrompt,
+      toolName: 'submit_competitor_synthesis',
+      toolDescription: 'Submit the final synthesized competitive-intelligence read.',
+      schema: {
+        type: 'object',
+        properties: {
+          whyTheyCompete: { type: 'string' },
+          marketOverlap: { type: 'string' },
+          marketingApproach: { type: 'string' },
+          recentDevelopments: { type: 'string' },
+          immediateOpportunity: { type: 'string' },
+          longerTermGrowth: { type: 'string' }
+        },
+        required: ['whyTheyCompete', 'marketOverlap', 'marketingApproach', 'recentDevelopments', 'immediateOpportunity', 'longerTermGrowth']
+      }
+    });
+    return {
+      intelligence: {
+        competitor: competitorName,
+        whyTheyCompete: typeof parsed.whyTheyCompete === 'string' ? parsed.whyTheyCompete : null,
+        marketOverlap: typeof parsed.marketOverlap === 'string' ? parsed.marketOverlap : null,
+        marketingApproach: typeof parsed.marketingApproach === 'string' ? parsed.marketingApproach : null,
+        recentDevelopments: typeof parsed.recentDevelopments === 'string' ? parsed.recentDevelopments : null,
+        immediateOpportunity: typeof parsed.immediateOpportunity === 'string' ? parsed.immediateOpportunity : null,
+        longerTermGrowth: typeof parsed.longerTermGrowth === 'string' ? parsed.longerTermGrowth : null,
+        hasLiveData: !!(perplexityRead && perplexityRead.recentDevelopments),
+        vendorsUsed: successful.map(r => r.label),
+        generatedAt: new Date().toISOString()
+      },
+      note: null,
+      perVendor
+    };
+  } catch (e){
+    return { intelligence: null, note: 'Synthesis failed: ' + e.message, perVendor };
+  }
+}
+
 // Cost-control safety net (2026-08-22) — a single "Interview candidates"
 // or "Run contest" click is up to 6 real AI calls (up to 3 parallel
 // draft-generation calls, one per angle/vendor, plus up to 3 more scoring
@@ -14271,7 +14434,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-voice-sample-weighting-emphasis-fix',
+        buildStamp: '2026-09-13-competitor-intelligence-multivendor',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -17540,6 +17703,28 @@ async function handleRequest(req, res) {
         } catch (e){ /* never block the positioning save over a ledger write */ }
       }
       return sendJson(res, 200, { approved: !!approved, approvedAt });
+    }
+
+    // POST /api/accounts/:id/competitor-intelligence — 2026-09-13, per
+    // direct instruction. Replaces the client-side template
+    // (generateCompetitorPositioning() in portal.html) with a real,
+    // multi-vendor generation for one named competitor — see
+    // generateCompetitorIntelligenceMultiVendor()'s own comment above for
+    // the honesty design (only Perplexity may claim real recent
+    // developments). Stateless: computes and returns the result; the
+    // client attaches it to that competitor's own object and persists it
+    // through the existing POST .../positioning save, same as the old
+    // template flow did with positioningText.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'competitor-intelligence'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const competitorName = (body.competitorName || '').trim();
+      if (!competitorName) return sendJson(res, 400, { error: 'competitorName is required' });
+      const result = await generateCompetitorIntelligenceMultiVendor(competitorName, account);
+      return sendJson(res, 200, result);
     }
 
     // 2026-08-29 — GET /api/accounts/:id/intelligence: read the cached
@@ -24776,6 +24961,7 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
 
