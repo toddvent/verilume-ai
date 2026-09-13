@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-competitor-intelligence-multivendor (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-13-competitor-intel-feeds-voice-guide (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2444,6 +2444,46 @@ function brandVoiceCriticalMessagesContext(account, extra){
       if (profileLines.length) lines.push(`Brand category profile (from real analysis of this brand's own website — factual positioning signal): ${profileLines.join('; ')}`);
     }
   } catch (e){ /* malformed ledger content — fall through without it */ }
+  // 2026-09-13, per direct instruction — Voice Guide/Voice Contest
+  // generation had zero awareness of Direct Competitors before this; only
+  // Campaign Copy and PR/Corp Comm read competitorsJson. Wired in here with
+  // the exact same guardrail those two already use ("internal strategic
+  // context only — never name a competitor or repeat this reasoning
+  // verbatim") — reused verbatim below, not reworded, so the discipline
+  // stays identical across every consumer.
+  //
+  // Deliberately only 3 of the 6 categorizedIntel fields (see
+  // generateCompetitorIntelligenceMultiVendor()): whyTheyCompete,
+  // marketOverlap, and marketingApproach are real tone/positioning signal —
+  // knowing how competitors actually sound helps this brand's voice
+  // differentiate. recentDevelopments, immediateOpportunity, and
+  // longerTermGrowth are current-events/strategy fields, not tone signals,
+  // and recentDevelopments specifically can carry real, web-sourced
+  // specifics (via Perplexity) that have no business anywhere near a
+  // prompt that generates client-facing prose — same anti-verbatim
+  // discipline this file applies to sample writings and brochure copy.
+  // Falls back to the legacy note/positioningText fields for a competitor
+  // that predates categorizedIntel (no "Generate competitor intelligence"
+  // run yet), same honest-degrade convention as everywhere else in this
+  // function.
+  try {
+    let competitors = account.competitorsJson ? JSON.parse(account.competitorsJson) : [];
+    competitors = (Array.isArray(competitors) ? competitors : []).filter(c => c && c.name && c.name.trim()).slice(0, 5);
+    if (competitors.length){
+      const competitorLines = competitors.map(c => {
+        const intel = c.categorizedIntel;
+        if (intel && (intel.whyTheyCompete || intel.marketOverlap || intel.marketingApproach)){
+          const parts = [];
+          if (intel.whyTheyCompete) parts.push(`why they compete: ${intel.whyTheyCompete}`);
+          if (intel.marketOverlap) parts.push(`market overlap: ${intel.marketOverlap}`);
+          if (intel.marketingApproach) parts.push(`how they market themselves: ${intel.marketingApproach}`);
+          return `- ${c.name} — ${parts.join(' | ')}`;
+        }
+        return c.note ? `- ${c.name} — why they compete: ${c.note}` : `- ${c.name}`;
+      });
+      lines.push(`\nCOMPETITIVE POSITIONING (internal strategic context only — NEVER name a competitor or repeat this reasoning verbatim in the guide; use it only to inform what makes this brand's own voice genuinely distinctive, e.g. leaning restrained where competitors lean urgent):\n${competitorLines.join('\n')}`);
+    }
+  } catch (e){ /* malformed competitorsJson — fall through without it */ }
   if (extra && Array.isArray(extra.toneAnchors) && extra.toneAnchors.length) lines.push(`Tone Anchors picked for this account: ${extra.toneAnchors.join(', ')}`);
   if (extra && extra.avoidWords) lines.push(`Words to avoid: ${extra.avoidWords}`);
   if (extra && extra.antiExample) lines.push(`What this voice is NOT: ${extra.antiExample}`);
@@ -2620,6 +2660,15 @@ async function gatherVoiceTransparencySignals(account){
   const visionStatement = (account.visionStatement || '').trim();
   const longformVoiceExample = (account.longformVoiceExample || '').trim();
   out.contest_winner = { present: !!(visionStatement || longformVoiceExample), excerpt: visionStatement ? visionStatement.slice(0, 200) : (longformVoiceExample ? longformVoiceExample.slice(0, 200) : null) };
+  try {
+    // 2026-09-13 — mirrors the competitor block brandVoiceCriticalMessagesContext()
+    // now includes (whyTheyCompete/marketOverlap/marketingApproach only —
+    // see that function's own comment for why recentDevelopments/
+    // immediateOpportunity/longerTermGrowth are deliberately excluded).
+    let competitors = account.competitorsJson ? JSON.parse(account.competitorsJson) : [];
+    competitors = (Array.isArray(competitors) ? competitors : []).filter(c => c && c.name && c.name.trim()).slice(0, 5);
+    out.competitive_positioning = { present: !!competitors.length, excerpt: competitors.map(c => c.name).slice(0, 5).join(', ') || null };
+  } catch (e){ out.competitive_positioning = { present: false, excerpt: null }; }
   try {
     // 2026-09-13 fix — this transparency signal describes Voice Guide
     // generation, which no longer sees video samples (see includeVideo
@@ -4460,6 +4509,12 @@ const VOICE_TRANSPARENCY_SIGNALS = [
   { key: 'website_brand_profile', label: 'Website brand category profile' },
   { key: 'contest_winner', label: 'Most recent Voice Contest winner' },
   { key: 'sample_writings', label: 'Sample writings you provided' },
+  // 2026-09-13, per direct instruction — Voice Guide generation now reads
+  // Direct Competitors (see brandVoiceCriticalMessagesContext()'s own
+  // comment), so this signal is added for transparency parity with the
+  // identically-keyed/labeled entry CAMPAIGN_COPY_TRANSPARENCY_SIGNALS
+  // already has below.
+  { key: 'competitive_positioning', label: 'Your competitors on file' },
   { key: 'terms_to_avoid', label: 'Terms you asked us to avoid' }
 ];
 
@@ -14434,7 +14489,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-competitor-intelligence-multivendor',
+        buildStamp: '2026-09-13-competitor-intel-feeds-voice-guide',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24961,7 +25016,6 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
 
