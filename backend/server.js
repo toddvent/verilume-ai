@@ -13102,23 +13102,35 @@ async function prCorpCommDecisionContext(accountId){
 
 // 2026-08-25 — sibling of brandWritingSampleContext() above, reading
 // brand_copy_website_examples instead of brand_writing_samples. Same
-// 2-most-recent/900-char-cap discipline, same honest-empty-string
-// convention on any failure. Only ACTIVE resolved pages count (status
-// filter excludes 'excluded'/'failed'/'capped-out' rows) — most-recently-
-// fetched first, since a fresher fetch is more likely to reflect the site's
-// current copy.
+// honest-empty-string convention on any failure. Only ACTIVE resolved
+// pages count (status filter excludes 'excluded'/'failed'/'capped-out'
+// rows) — most-recently-fetched first, since a fresher fetch is more
+// likely to reflect the site's current copy.
+//
+// 2026-09-13 — round "website-copy-context-cap-fix": this used to stop
+// after the 2 most-recently-fetched pages regardless of how many the
+// client had actually included (storage already allows up to
+// WEBSITE_EXAMPLE_MAX_PAGES=20 — see websiteExampleCapUsage() above). A
+// client who deliberately included 10 URLs only ever had 2 of them reach
+// any generation prompt, chosen by recency rather than relevance, which
+// diluted the voice signal those 10 pages were meant to establish. Fixed
+// per direct instruction: every active included page now reaches the
+// prompt, up to the same WEBSITE_EXAMPLE_MAX_PAGES storage ceiling — no
+// separate, smaller consumption cap. Per-page excerpt length is trimmed
+// (see WEBSITE_EXAMPLE_CONTEXT_CHARS_PER_PAGE below) so a full 20-page
+// account still yields a bounded prompt addition.
+const WEBSITE_EXAMPLE_CONTEXT_CHARS_PER_PAGE = 500;
 async function brandCopyWebsiteExampleContext(accountId){
   try {
     const pages = db.prepare(
-      `SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' AND excerpt IS NOT NULL ORDER BY fetchedAt DESC`
+      `SELECT * FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' AND excerpt IS NOT NULL ORDER BY fetchedAt DESC LIMIT ${WEBSITE_EXAMPLE_MAX_PAGES}`
     ).all(accountId);
     if (!pages.length) return '';
     const blocks = [];
     for (const page of pages){
-      if (blocks.length >= 2) break;
       const bits = [page.title, page.metaDescription, (page.excerpt || '')].filter(Boolean).join(' — ');
       if (bits.trim()){
-        blocks.push(`--- ${page.path} ---\n${bits.trim().replace(/\s+/g, ' ').slice(0, 900)}`);
+        blocks.push(`--- ${page.path} ---\n${bits.trim().replace(/\s+/g, ' ').slice(0, WEBSITE_EXAMPLE_CONTEXT_CHARS_PER_PAGE)}`);
       }
     }
     if (!blocks.length) return '';
@@ -25788,6 +25800,5 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
