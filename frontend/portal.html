@@ -29008,7 +29008,7 @@ function bwsRenderLibrary(){
         <td>${escapeHtml(s.title)}${s.notes ? `<div class="hint" style="margin-top:2px;">${escapeHtml(s.notes)}</div>` : ''}</td>
         <td>${escapeHtml(catLabel(s.category))}${s.outcome === 'approved' ? '<div class="hint" style="margin-top:2px;color:var(--loyalty, #2c5f2d);">Approved</div>' : s.outcome === 'rejected' ? '<div class="hint" style="margin-top:2px;color:var(--advocacy);">Rejected</div>' : ''}</td>
         <td>${s.productGroup ? escapeHtml(s.productGroup) : '<span class="hint">Account-wide</span>'}</td>
-        <td><select style="font-size:0.75rem;padding:2px 4px;" onchange="bwsRetagCreativeMarket('${s.id}', this.value)">${cmOptionsHtml(s.creativeMarket || '')}</select></td>
+        <td><select class="tbl-select" onchange="bwsRetagCreativeMarket('${s.id}', this.value)">${cmOptionsHtml(s.creativeMarket || '')}</select></td>
         <td>${escapeHtml(s.docDate)}</td>
         <td>${s.sourceType === 'link'
           ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener">Google link ↗</a>`
@@ -29200,7 +29200,7 @@ function wsRenderList(){
         <td>${escapeHtml(wsStatusLabel(r.status))}</td>
         <td>${r.resolvedPages ? `${r.resolvedPages.filter(p => p.status === 'active').length} of ${r.resolvedPages.length}` : (r.scope === 'page' ? '—' : '')}</td>
         <td>${r.scope === 'page' && r.mode === 'include'
-          ? `<select style="font-size:0.75rem;padding:2px 4px;" onchange="wsRetagCreativeMarket('${r.id}', this.value)">${cmOptionsHtml(r.creativeMarket || '')}</select>`
+          ? `<select class="tbl-select" onchange="wsRetagCreativeMarket('${r.id}', this.value)">${cmOptionsHtml(r.creativeMarket || '')}</select>`
           : '<span class="hint">—</span>'}</td>
         <td><button type="button" class="btn-ghost" onclick="wsDeleteRule('${r.id}')">Remove</button></td>
       </tr>`).join('')}</tbody>
