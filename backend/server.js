@@ -18587,6 +18587,21 @@ async function handleRequest(req, res) {
 
       // Redact one interview row down to the "order used" + error info only
       // — no candidate content fields.
+      //
+      // 2026-09-14 BUG FIX, caught by Todd within hours of this endpoint
+      // shipping: `configured` means "this vendor's API key/integration is
+      // set up on this deployment" — it says nothing about whether THIS
+      // RUN's generation actually succeeded. A configured vendor can still
+      // fail per-run (timeout, a parse failure, an API error) and that
+      // failure is carried in `c.error`, completely independent of
+      // `configured` (see redactBrandVoiceCandidatesForClient()'s own
+      // comment a few thousand lines up — same c.error field, generic-ized
+      // for the client). The original version of this redaction only
+      // surfaced `c.error` when `!c.configured`, so a configured-but-failed
+      // candidate (Todd's real case: Grok, fully configured, hit a
+      // generation failure) silently showed NO error at all here — exactly
+      // backwards from this endpoint's whole purpose. Fixed: show `c.error`
+      // whenever it's present, regardless of `configured`.
       function redactInterview(r){
         let candidates = [];
         try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
@@ -18596,7 +18611,7 @@ async function handleRequest(req, res) {
           candidates: candidates.map(c => ({
             key: c.key, blindLabel: c.blindLabel, vendor: c.vendor || null, model: c.model || null,
             configured: !!c.configured,
-            error: !c.configured ? (c.error || 'Not configured.') : null,
+            error: c.error || (!c.configured ? 'Not configured.' : null),
             isSelected: c.key === r.selectedCandidateKey
           })),
           selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
@@ -26719,8 +26734,4 @@ try {
 }
 
 module.exports = handleRequest;
-
-
-
-
 
