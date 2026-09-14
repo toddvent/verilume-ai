@@ -3791,7 +3791,14 @@ function redactVideoScriptCandidatesForClient(candidates){
     overallApproach: c.overallApproach || null,
     beats: c.beats, error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
     complianceScore: c.complianceScore, flags: c.flags,
-    rating: (typeof c.rating === 'number') ? c.rating : null
+    rating: (typeof c.rating === 'number') ? c.rating : null,
+    // 2026-09-14 — set by POST .../finalize-script once a human has
+    // reviewed/edited the selected winner and submitted it as final (per
+    // direct instruction: "Make sure that our humans can edit the winner
+    // selected and then submit as final"). Safe to send to the client —
+    // never identifies a vendor, just whether this candidate's content is
+    // the human-confirmed final version.
+    finalized: !!c.finalized, finalizedAt: c.finalizedAt || null, finalizedBy: c.finalizedBy || null
   }));
 }
 // No AI Brain Transparency pass for Video Script candidates in this first
@@ -18148,6 +18155,76 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { visionStatement, longformVoiceExample });
     }
 
+    // POST /api/accounts/:id/video-strategy-text — 2026-09-14, per direct
+    // instruction: "Just like Voice. Make sure that our humans can edit the
+    // winner selected and then submit as final. Should be the same for all
+    // contests." Mirrors POST /vision-longform exactly (same "Save edits"
+    // manual path after a contest selection already applied the raw winner)
+    // — the one field this contest's winner fills in.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'video-strategy-text'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const existing = db.prepare('SELECT videoStrategyText FROM accounts WHERE accountId = ?').get(accountId);
+      if (!existing) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      if (typeof body.videoStrategyText !== 'string' || !body.videoStrategyText.trim()){
+        return sendJson(res, 400, { error: 'videoStrategyText is required' });
+      }
+      const videoStrategyText = body.videoStrategyText.trim().slice(0, 6000);
+      db.prepare('UPDATE accounts SET videoStrategyText = ? WHERE accountId = ?').run(videoStrategyText, accountId);
+      return sendJson(res, 200, { videoStrategyText });
+    }
+
+    // POST /api/accounts/:id/voice-contest/:interviewId/finalize-script —
+    // 2026-09-14, same direct instruction as video-strategy-text above,
+    // applied to Video Script. Unlike Voice Guide/Strategy, a video script
+    // has no single account-wide home to auto-apply to on select (one
+    // script per destination, many destinations) — per direct confirmation,
+    // the edited final version is saved back onto THIS destination's own
+    // contest record (account_voice_interviews.candidatesJson), not a new
+    // account-wide field or a new table. Requires the candidate to already
+    // be the recorded selectedCandidateKey (finalize is the edit-then-
+    // confirm step AFTER selecting, never a way to finalize an unselected
+    // candidate). beats are re-merged through mergeVideoScriptBeats() so
+    // the fixed beat/timestamp labels can never be edited away — only
+    // visual/vo/caption/pillar, the same 4 fields the model itself fills
+    // in, are ever editable.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'finalize-script'){
+      const accountId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+      if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
+      if (interview.contentType !== 'video_script'){
+        return sendJson(res, 400, { error: 'finalize-script only applies to Video Script contests' });
+      }
+      const session = authenticate(req);
+      const body = await readBody(req);
+      if (typeof body.candidateKey !== 'string' || !body.candidateKey){
+        return sendJson(res, 400, { error: 'candidateKey is required' });
+      }
+      if (interview.selectedCandidateKey !== body.candidateKey){
+        return sendJson(res, 400, { error: 'This candidate must be selected as the contest winner before it can be finalized.' });
+      }
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const target = candidates.find(c => c.key === body.candidateKey);
+      if (!target) return sendJson(res, 400, { error: 'candidateKey does not match a candidate on this contest' });
+      const rawBeats = Array.isArray(body.beats) ? body.beats.slice(0, 8) : null;
+      if (!rawBeats || rawBeats.length !== 8){
+        return sendJson(res, 400, { error: 'beats must be an array of exactly 8 items' });
+      }
+      const overallApproach = typeof body.overallApproach === 'string' ? body.overallApproach.trim().slice(0, 700) : (target.overallApproach || '');
+      target.beats = mergeVideoScriptBeats(rawBeats);
+      target.overallApproach = overallApproach;
+      target.finalized = true;
+      target.finalizedAt = new Date().toISOString();
+      target.finalizedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?')
+        .run(JSON.stringify(candidates), interviewId);
+      return sendJson(res, 200, { interviewId, candidateKey: body.candidateKey, overallApproach: target.overallApproach, beats: target.beats, finalizedAt: target.finalizedAt });
+    }
+
     // POST /api/ops/vendor-blind-panel — staff-only, one-off scoped tool
     // (2026-09-02 direct request, revised same day per five follow-up
     // corrections): fires ONE shared prompt at all five licensed vendors
@@ -26450,7 +26527,5 @@ try {
 }
 
 module.exports = handleRequest;
-
-
 
 
