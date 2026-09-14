@@ -11510,6 +11510,31 @@ function requireAccount(req, res, accountId){
   return true;
 }
 
+// 2026-09-14 — per direct instruction: move the Voice Contest run/rate/
+// select/finalize workflow's staff-testing usage out of the client-facing
+// portal entirely and into a new "Internal Testing" section of
+// ops-console.html, so staff can run/rate/select contests against ANY
+// account without needing a live portal session for that account. The
+// contest write endpoints (create run, rate, select, finalize) were all
+// requireAccount()-only (session-based) — ops-console.html has no portal
+// session, only the ADMIN_API_TOKEN it already sends as X-Admin-Token for
+// every /api/ops/... route (and for POST .../voice-guide/clear-memory,
+// the one existing precedent for an ADMIN_API_TOKEN-gated WRITE to a
+// specific account's data — see that endpoint's own comment).
+//
+// requireAccountOrAdmin() adds the admin-token path ALONGSIDE the existing
+// session path, rather than replacing it — the new client-facing Brand >
+// Voice Contest page (portal.html) still authenticates the normal way via
+// its own account session; only ops-console.html's new Internal Testing
+// section uses the admin-token path. Checked in this order: a valid
+// X-Admin-Token/ADMIN_API_TOKEN is accepted immediately (staff, any
+// account); otherwise falls back to the normal session check. Same
+// send-the-401-itself convention as requireAccount() above.
+function requireAccountOrAdmin(req, res, accountId){
+  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  return requireAccount(req, res, accountId);
+}
+
 // 2026-08-22 — closes a real, previously-flagged privilege-escalation gap
 // (see the Registration & Account Management product doc's "Known gaps"
 // section, deliberately left open at Todd's direction "for now" to make
@@ -17717,7 +17742,11 @@ async function handleRequest(req, res) {
     // — see the /select endpoint below.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest'){
       const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
+      // 2026-09-14 — requireAccountOrAdmin (not requireAccount): the new
+      // "Internal Testing" section of ops-console.html calls this same
+      // endpoint via X-Admin-Token, with no portal session for the target
+      // account. See requireAccountOrAdmin()'s own comment.
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
       const session = authenticate(req);
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
@@ -17732,7 +17761,14 @@ async function handleRequest(req, res) {
       const capCheck3 = checkInterviewWeeklyCap(accountId);
       if (capCheck3) return sendJson(res, 429, capCheck3);
       const now = new Date().toISOString();
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      // 2026-09-14 — when this call comes from ops-console.html's new
+      // Internal Testing section (admin-token auth, no portal session),
+      // send back the REAL unredacted candidates (vendor/model included)
+      // instead of the client-safe blind labels — staff testing needs to
+      // see which vendor produced what. A normal client-portal call (no
+      // admin token) is completely unaffected.
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
       if (contentType === 'video_strategy'){
         const result = await runVideoStrategyContest(account);
         if (!result.available){
@@ -17743,7 +17779,7 @@ async function handleRequest(req, res) {
           .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'video_strategy');
         return sendJson(res, 200, {
           available: true, contentType: 'video_strategy', interviewId, recommendedKey: result.recommendedKey,
-          candidates: redactVideoStrategyCandidatesForClient(result.candidates), createdAt: now
+          candidates: isStaffCaller ? result.candidates : redactVideoStrategyCandidatesForClient(result.candidates), createdAt: now
         });
       }
       if (contentType === 'video_script'){
@@ -17775,7 +17811,7 @@ async function handleRequest(req, res) {
         return sendJson(res, 200, {
           available: true, contentType: 'video_script', creativeMarket, interviewId, recommendedKey: result.recommendedKey,
           usedReferenceScript: result.usedReferenceScript,
-          candidates: redactVideoScriptCandidatesForClient(result.candidates), createdAt: now,
+          candidates: isStaffCaller ? result.candidates : redactVideoScriptCandidatesForClient(result.candidates), createdAt: now,
           beatGrid: VIDEO_SCRIPT_BEAT_GRID
         });
       }
@@ -17792,7 +17828,7 @@ async function handleRequest(req, res) {
       db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt, contentType) VALUES (?,?,?,?,?,?)`)
         .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'voice_guide');
       return sendJson(res, 200, {
-        available: true, contentType: 'voice_guide', interviewId, recommendedKey: result.recommendedKey, candidates: redactBrandVoiceCandidatesForClient(result.candidates), createdAt: now
+        available: true, contentType: 'voice_guide', interviewId, recommendedKey: result.recommendedKey, candidates: isStaffCaller ? result.candidates : redactBrandVoiceCandidatesForClient(result.candidates), createdAt: now
       });
     }
 
@@ -17958,7 +17994,7 @@ async function handleRequest(req, res) {
     if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'select'){
       const accountId = decodeURIComponent(parts[2]);
       const interviewId = decodeURIComponent(parts[4]);
-      if (!requireAccount(req, res, accountId)) return;
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
       const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
       if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
       const session = authenticate(req);
@@ -17980,7 +18016,7 @@ async function handleRequest(req, res) {
           return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
         }
         const now = new Date().toISOString();
-        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
         db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
           .run(body.candidateKey, selectedBy, now, interviewId);
         db.prepare('UPDATE accounts SET videoStrategyText = ? WHERE accountId = ?')
@@ -18002,7 +18038,7 @@ async function handleRequest(req, res) {
           return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
         }
         const now = new Date().toISOString();
-        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
         db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
           .run(body.candidateKey, selectedBy, now, interviewId);
         recordContestResult(accountId, 'Video Script', interview.creativeMarket || null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
@@ -18012,7 +18048,7 @@ async function handleRequest(req, res) {
         return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
       }
       const now = new Date().toISOString();
-      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
       db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
         .run(body.candidateKey, selectedBy, now, interviewId);
       db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?')
@@ -18052,7 +18088,7 @@ async function handleRequest(req, res) {
     if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'rate'){
       const accountId = decodeURIComponent(parts[2]);
       const interviewId = decodeURIComponent(parts[4]);
-      if (!requireAccount(req, res, accountId)) return;
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
       const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
       if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
       const session = authenticate(req);
@@ -18072,7 +18108,8 @@ async function handleRequest(req, res) {
       const target = candidates.find(c => c.key === body.candidateKey);
       if (!target) return sendJson(res, 400, { error: 'candidateKey does not match a candidate on this contest' });
       const now = new Date().toISOString();
-      const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
       if (body.rating !== undefined) target.rating = rating;
       target.ratedBy = ratedBy;
       target.ratedAt = now;
@@ -18089,14 +18126,14 @@ async function handleRequest(req, res) {
       // silently losing their beats field through the Voice Guide redactor.
       if (interview.contentType === 'video_script'){
         const recommended = pickRecommendedVideoScriptCandidate(candidates);
-        return sendJson(res, 200, { interviewId, candidates: redactVideoScriptCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+        return sendJson(res, 200, { interviewId, candidates: isStaffCaller ? candidates : redactVideoScriptCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
       }
       if (interview.contentType === 'video_strategy'){
         const recommended = pickRecommendedVideoStrategyCandidate(candidates);
-        return sendJson(res, 200, { interviewId, candidates: redactVideoStrategyCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+        return sendJson(res, 200, { interviewId, candidates: isStaffCaller ? candidates : redactVideoStrategyCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
       }
       const recommended = pickRecommendedCandidate(candidates);
-      return sendJson(res, 200, { interviewId, candidates: redactBrandVoiceCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+      return sendJson(res, 200, { interviewId, candidates: isStaffCaller ? candidates : redactBrandVoiceCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
     }
 
     // GET /api/accounts/:id/interview-usage — 2026-08-27, Phase 1 build.
@@ -18204,7 +18241,7 @@ async function handleRequest(req, res) {
     // independent of the contest/select flow above.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'vision-longform'){
       const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
       const existing = db.prepare('SELECT visionStatement, longformVoiceExample FROM accounts WHERE accountId = ?').get(accountId);
       if (!existing) return sendJson(res, 404, { error: 'account not found' });
       const body = await readBody(req);
@@ -18222,7 +18259,7 @@ async function handleRequest(req, res) {
     // — the one field this contest's winner fills in.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'video-strategy-text'){
       const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
       const existing = db.prepare('SELECT videoStrategyText FROM accounts WHERE accountId = ?').get(accountId);
       if (!existing) return sendJson(res, 404, { error: 'account not found' });
       const body = await readBody(req);
@@ -18251,7 +18288,7 @@ async function handleRequest(req, res) {
     if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'finalize-script'){
       const accountId = decodeURIComponent(parts[2]);
       const interviewId = decodeURIComponent(parts[4]);
-      if (!requireAccount(req, res, accountId)) return;
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
       const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
       if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
       if (interview.contentType !== 'video_script'){
@@ -18278,7 +18315,7 @@ async function handleRequest(req, res) {
       target.overallApproach = overallApproach;
       target.finalized = true;
       target.finalizedAt = new Date().toISOString();
-      target.finalizedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      target.finalizedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
       db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?')
         .run(JSON.stringify(candidates), interviewId);
       return sendJson(res, 200, { interviewId, candidateKey: body.candidateKey, overallApproach: target.overallApproach, beats: target.beats, finalizedAt: target.finalizedAt });
@@ -21675,7 +21712,7 @@ async function handleRequest(req, res) {
       }
       const now = new Date().toISOString();
       const interviewId = generateId('CCI');
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
       db.prepare(`INSERT INTO campaign_copy_interviews (id, campaignId, accountId, sourceKey, requestedBy, candidatesJson, createdAt)
         VALUES (?,?,?,?,?,?,?)`)
         .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now);
@@ -21840,7 +21877,7 @@ async function handleRequest(req, res) {
       }
       const now = new Date().toISOString();
       const interviewId = generateId('CJI');
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
       db.prepare(`INSERT INTO creative_job_interviews (id, jobId, accountId, requestedBy, candidatesJson, productType, createdAt)
         VALUES (?,?,?,?,?,?,?)`)
         .run(interviewId, jobId, job.accountId, requestedBy, JSON.stringify(result.candidates), 'copywriting', now);
