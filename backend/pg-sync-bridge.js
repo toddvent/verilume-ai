@@ -81,6 +81,23 @@ function createSyncDb(connectionString) {
   // any) are distinguishable in the logs. If a crash still shows none of
   // these lines, that's real evidence too — it would mean the process dies
   // somewhere between the request arriving and callWorker() ever running.
+  // 2026-09-14 fix, per direct report of the portal being "way too slow"
+  // even once it's loading real data (no more 500s). The four
+  // console.error lines below fire on EVERY single query — and this app
+  // has ~400 db.prepare() call sites, several of them (Plan Setup's page
+  // load among them) firing many queries per request. Each console.error
+  // in a Vercel Node serverless function is a real synchronous write to
+  // the logging pipe, so this "pure instrumentation" (its own 2026-08-26
+  // comment below already called it temporary, added only to find where a
+  // since-fixed crash was happening, not a permanent fix) has been adding
+  // real, compounding per-query latency ever since, on every request, not
+  // just the ones being debugged. Gated behind DEBUG_PG_BRIDGE now —
+  // unset by default (silent, fast path), settable to '1' in Vercel env
+  // vars if a future crash needs this same call-by-call trace again. The
+  // error-path logs just below (dead worker, no response, worker error)
+  // are left unconditional — those only fire when something's actually
+  // wrong, so they cost nothing on the normal path.
+  const DEBUG_PG_BRIDGE = process.env.DEBUG_PG_BRIDGE === '1';
   let callWorkerSeq = 0;
   function callWorker(sql, params, mode) {
     const callId = `pgw${++callWorkerSeq}-${Date.now().toString(36)}`;
@@ -96,12 +113,12 @@ function createSyncDb(connectionString) {
     }
     const { port1, port2 } = new MessageChannel();
     const signal = new Int32Array(new SharedArrayBuffer(4));
-    console.error(`[pg-sync-bridge] ${callId} posting to worker (mode=${mode}): ${sql.slice(0, 100)}`);
+    if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} posting to worker (mode=${mode}): ${sql.slice(0, 100)}`);
     worker.postMessage({ sql, params, mode, signal, port: port2 }, [port2]);
 
-    console.error(`[pg-sync-bridge] ${callId} entering Atomics.wait (timeout ${WAIT_TIMEOUT_MS}ms)`);
+    if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} entering Atomics.wait (timeout ${WAIT_TIMEOUT_MS}ms)`);
     const status = Atomics.wait(signal, 0, 0, WAIT_TIMEOUT_MS);
-    console.error(`[pg-sync-bridge] ${callId} Atomics.wait returned: ${status}`);
+    if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} Atomics.wait returned: ${status}`);
     if (status === 'timed-out') {
       port1.close();
       throw new Error(`pg-sync-bridge: query timed out after ${WAIT_TIMEOUT_MS}ms: ${sql.slice(0, 120)}`);
@@ -119,7 +136,7 @@ function createSyncDb(connectionString) {
       err.code = response.code;
       throw err;
     }
-    console.error(`[pg-sync-bridge] ${callId} completed ok`);
+    if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} completed ok`);
     return response.value;
   }
 
