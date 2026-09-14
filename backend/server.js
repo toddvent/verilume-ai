@@ -14639,10 +14639,71 @@ async function callVendorForText(vendorKey, prompt){
   }
   throw new Error('unhandled vendor');
 }
+// parseJsonBlock(text) — hardened 2026-09-14, per Todd's direct report
+// ("Option 3 and 5 did not return a result", then a repeat run where every
+// option failed). Root cause: this is the naive vendor-side JSON extractor
+// (a greedy \{[\s\S]*\} regex + bare JSON.parse) used by every
+// generateVendor*Copy() path — unlike the Anthropic path, which forces
+// structured output via tool-use (see the 2026-09-03 hardening comment
+// above this function) and never hits this problem. The Video Script
+// contest's new `overallApproach` field (2026-09-14) is free-flowing
+// 2-4 sentence prose, unlike the terse beat fields — real vendor replies
+// tested here break the old parser two ways: (1) a literal line break
+// typed inside the JSON string value (raw control characters are illegal
+// inside a JSON string, full stop), and (2) trailing commentary after the
+// JSON object confusing the greedy regex. Both reproduced locally against
+// this exact parser before this fix.
+//
+// Fix, in order: (1) strip a ```json ... ``` fence if the vendor wrapped
+// its reply in one; (2) find the JSON object with a real balanced-brace
+// scan (tracking string/escape state) instead of a greedy regex, so
+// trailing prose after the object no longer breaks extraction; (3) if a
+// straight JSON.parse still fails, run one repair pass that walks the
+// extracted block and escapes any literal newline/tab/CR found INSIDE a
+// string literal, then parses again. Every step is a no-op on already
+// well-formed JSON, so this only widens what parses — it never changes
+// behavior for a vendor reply that already worked.
 function parseJsonBlock(text){
-  const match = (text || '').match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]); } catch (e){ return null; }
+  if (!text) return null;
+  let candidate = String(text).trim();
+  const fenced = candidate.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) candidate = fenced[1].trim();
+  const start = candidate.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0, inString = false, escaped = false, end = -1;
+  for (let i = start; i < candidate.length; i++){
+    const ch = candidate[i];
+    if (inString){
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"'){ inString = true; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}'){ depth--; if (depth === 0){ end = i; break; } }
+  }
+  if (end === -1) return null;
+  const block = candidate.slice(start, end + 1);
+  try { return JSON.parse(block); } catch (e){ /* fall through to repair pass */ }
+  let repaired = '';
+  inString = false; escaped = false;
+  for (let i = 0; i < block.length; i++){
+    const ch = block[i];
+    if (inString){
+      if (escaped){ repaired += ch; escaped = false; continue; }
+      if (ch === '\\'){ repaired += ch; escaped = true; continue; }
+      if (ch === '"'){ inString = false; repaired += ch; continue; }
+      if (ch === '\n'){ repaired += '\\n'; continue; }
+      if (ch === '\r'){ repaired += '\\r'; continue; }
+      if (ch === '\t'){ repaired += '\\t'; continue; }
+      repaired += ch;
+    } else {
+      if (ch === '"') inString = true;
+      repaired += ch;
+    }
+  }
+  try { return JSON.parse(repaired); } catch (e){ return null; }
 }
 // Vendor-neutral brief for the copy interview panel's cross-vendor
 // candidates — deliberately NOT one of INTERVIEW_SUBAGENT_ANGLES' 3
