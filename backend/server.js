@@ -1415,6 +1415,40 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// account_taxonomy_mappings — 2026-09-14, per direct instruction. Todd:
+// "The strategies reference the expedition product groups consistently...
+// it makes sense to give the client the option to select both a product
+// group and destination creative focus... Where should clients associate
+// product groups with creative focus as an optional input" — an OPTIONAL
+// many-to-many association between this account's Product Group values and
+// its Creative Focus Group values (e.g. Todd's own example: "Polar
+// Expeditions" -> South America/Antarctica/Arctic), confirmed via
+// clarifying question to live in Taxonomy Manager (same place the two lists
+// themselves are edited) and to actively narrow the Creative Focus Group
+// dropdown on the Video Script contest once a Product Group is picked
+// (rather than being purely informational). One row per associated PAIR
+// (not one row per Product Group with a JSON array) so a value can be
+// removed/added independently of the rest of that Product Group's set,
+// same normalization reasoning as every other many-to-many table in this
+// file. Deliberately a NEW table rather than reshaping account_taxonomies.
+// valuesJson (a flat array of strings, read by cmpTaxonomyValues() and
+// relied on by Campaign Creation/Marketing Calendar/the contest picker
+// already) — changing that shape would break every existing reader.
+// IMPORTANT: 'productGroupValue'/'creativeMarketValue' are registered in
+// schema-identifiers.json in this SAME delivery round (learned from the
+// contentType/videoStrategyText incident right above this comment in the
+// file history — see LEGACY_CASING_COLUMNS's own note on that) so this
+// table never needs a legacy-casing repair.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_taxonomy_mappings (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    productGroupValue TEXT NOT NULL,
+    creativeMarketValue TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 
 // 2026-08-22 — quick-start templates for account_taxonomies above, per
 // direct instruction: a brand-new account (no Channel Planning Detail
@@ -18513,24 +18547,95 @@ async function handleRequest(req, res) {
     // vendor/model) view into the Brand Voice contest, same ADMIN_API_TOKEN
     // gate and "never reveal the actual model to the client" rationale as
     // GET /api/ops/accounts/:id/interviews.
+    //
+    // 2026-09-14 — reworked per direct instruction: "The contest results
+    // only need to include the order used for the most recent 3 contests
+    // and error messages should a model not return a result. I don't need
+    // the detailed response but want to track which model clients select
+    // for each contest somewhere at the client id level." Three changes:
+    //   1. Limited to the 3 most recent interviews PER contest type
+    //      (contentType), not 3 overall — Video Script alone can have many
+    //      runs (one per destination), which would otherwise crowd out
+    //      Voice Guide/Video Strategy entirely. Confirmed via direct
+    //      question ("3 per contest type").
+    //   2. Candidates are now hard-redacted to just the blind-label/vendor
+    //      "order" (blindLabel, vendor, model, configured) plus an error
+    //      message when a vendor didn't return a usable result — no
+    //      content fields (visionStatement/longformExample/beats/
+    //      strategyText) are sent at all anymore. This endpoint is staff-
+    //      only either way, but Todd explicitly doesn't need the detailed
+    //      response here — the full unredacted content is still available
+    //      via the client's own portal/history if actually needed.
+    //   3. New `selections` array: the most recently SELECTED candidate per
+    //      contest type (real vendor/model, blindLabel, who picked it and
+    //      when) — a client-id-level "which model did they actually pick"
+    //      summary, independent of the 3-most-recent-runs list above (a
+    //      selection can be older than the 3 most recent runs if nothing
+    //      newer has been picked yet).
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'voice-contests'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[3]);
-      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, feedbackBy, feedbackAt, createdAt FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
-      const interviews = rows.map(r => {
+      const rows = db.prepare('SELECT id, requestedBy, candidatesJson, selectedCandidateKey, selectedBy, selectedAt, feedbackNote, feedbackType, feedbackBy, feedbackAt, createdAt, contentType FROM account_voice_interviews WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+
+      // contentType is null on interviews created before the 3-way split
+      // (voice_guide/video_script/video_strategy) shipped 2026-09-13 —
+      // every one of those was a Brand Voice Guide run, so default it here
+      // rather than dropping/mislabeling old history.
+      const contestTypeOf = (r) => r.contentType || 'voice_guide';
+
+      // Redact one interview row down to the "order used" + error info only
+      // — no candidate content fields.
+      function redactInterview(r){
         let candidates = [];
         try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
         return {
           id: r.id, requestedBy: r.requestedBy,
-          candidates, // unredacted — real vendor/model included, staff-only
+          contentType: contestTypeOf(r),
+          candidates: candidates.map(c => ({
+            key: c.key, blindLabel: c.blindLabel, vendor: c.vendor || null, model: c.model || null,
+            configured: !!c.configured,
+            error: !c.configured ? (c.error || 'Not configured.') : null,
+            isSelected: c.key === r.selectedCandidateKey
+          })),
           selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
           feedbackNote: r.feedbackNote || null, feedbackType: r.feedbackType || null, feedbackBy: r.feedbackBy || null, feedbackAt: r.feedbackAt || null,
           createdAt: r.createdAt
         };
-      });
-      return sendJson(res, 200, { accountId, interviews });
+      }
+
+      // Group by contest type (rows already DESC by createdAt), keep only
+      // the first 3 per group.
+      const byType = {};
+      for (const r of rows){
+        const t = contestTypeOf(r);
+        if (!byType[t]) byType[t] = [];
+        if (byType[t].length < 3) byType[t].push(redactInterview(r));
+      }
+      const interviews = Object.keys(byType).flatMap(t => byType[t]);
+
+      // Most recent SELECTED candidate per contest type — scans the FULL
+      // row list (not just the 3-most-recent slice above), since the
+      // client's current pick can be older than the 3 most recent runs.
+      const selections = [];
+      const seenTypes = new Set();
+      for (const r of rows){
+        const t = contestTypeOf(r);
+        if (seenTypes.has(t) || !r.selectedCandidateKey) continue;
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        const winner = candidates.find(c => c.key === r.selectedCandidateKey);
+        if (!winner) continue;
+        seenTypes.add(t);
+        selections.push({
+          contentType: t, interviewId: r.id,
+          blindLabel: winner.blindLabel || null, vendor: winner.vendor || null, model: winner.model || null,
+          selectedBy: r.selectedBy || null, selectedAt: r.selectedAt || null
+        });
+      }
+
+      return sendJson(res, 200, { accountId, selections, interviews });
     }
 
     // GET /api/ops/contest-rankings — staff-only, the first real reader of
@@ -19370,6 +19475,68 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const result = upsertAccountTaxonomy(accountId, taxonomyKey, body.label, body.values);
       return sendJson(res, result.created ? 201 : 200, { id: result.id, updatedAt: result.updatedAt });
+    }
+
+    // GET /api/accounts/:accountId/taxonomy-mappings — 2026-09-14, see the
+    // account_taxonomy_mappings table comment above for the full "why".
+    // Returns { mappings: { [productGroupValue]: [creativeMarketValue, ...] } }
+    // — grouped by Product Group so the frontend can directly key into it
+    // when filtering the Creative Focus Group dropdown. A Product Group
+    // with no rows here simply won't be a key in the object — the frontend
+    // treats that as "no association defined for this one" and falls back
+    // to showing every Creative Focus Group value (optional input, never a
+    // hard requirement to associate every value).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomy-mappings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT productGroupValue, creativeMarketValue FROM account_taxonomy_mappings WHERE accountId = ? ORDER BY productGroupValue ASC, creativeMarketValue ASC').all(accountId);
+      const mappings = {};
+      rows.forEach(r => {
+        if (!mappings[r.productGroupValue]) mappings[r.productGroupValue] = [];
+        mappings[r.productGroupValue].push(r.creativeMarketValue);
+      });
+      return sendJson(res, 200, { mappings });
+    }
+
+    // PUT /api/accounts/:accountId/taxonomy-mappings — whole-set replace,
+    // same convention as PUT .../taxonomies/:taxonomyKey above (the caller
+    // always sends the full set it wants, not an incremental add/remove).
+    // Body: { mappings: { [productGroupValue]: [creativeMarketValue, ...] } }.
+    // Silently drops any pair naming a value that isn't currently a real
+    // value in this account's own productGroup/creativeMarket taxonomy
+    // lists (defends against a stale client-side draft referencing a value
+    // that's since been renamed/removed there) — reported back per-key so
+    // the caller can surface it rather than fail the whole save.
+    if (req.method === 'PUT' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomy-mappings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const mappings = (body && typeof body.mappings === 'object' && body.mappings) ? body.mappings : {};
+      const pgRow = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, 'productGroup');
+      const cmRow = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, 'creativeMarket');
+      let realPG = [], realCM = [];
+      try { realPG = pgRow ? JSON.parse(pgRow.valuesJson) : []; } catch (e){ realPG = []; }
+      try { realCM = cmRow ? JSON.parse(cmRow.valuesJson) : []; } catch (e){ realCM = []; }
+      const realPGSet = new Set(realPG);
+      const realCMSet = new Set(realCM);
+      const now = new Date().toISOString();
+      const skipped = [];
+      const rowsToInsert = [];
+      Object.keys(mappings).forEach(pgValue => {
+        if (!realPGSet.has(pgValue)){ skipped.push({ productGroupValue: pgValue, reason: 'not a current Product Group value on this account' }); return; }
+        const cmValues = Array.isArray(mappings[pgValue]) ? mappings[pgValue] : [];
+        cmValues.forEach(cmValue => {
+          if (typeof cmValue !== 'string' || !cmValue.trim()) return;
+          if (!realCMSet.has(cmValue)){ skipped.push({ productGroupValue: pgValue, creativeMarketValue: cmValue, reason: 'not a current Creative Focus Group value on this account' }); return; }
+          rowsToInsert.push([pgValue, cmValue]);
+        });
+      });
+      db.prepare('DELETE FROM account_taxonomy_mappings WHERE accountId = ?').run(accountId);
+      rowsToInsert.forEach(([pgValue, cmValue]) => {
+        db.prepare('INSERT INTO account_taxonomy_mappings (id, accountId, productGroupValue, creativeMarketValue, createdAt) VALUES (?,?,?,?,?)')
+          .run(generateId('ATM'), accountId, pgValue, cmValue, now);
+      });
+      return sendJson(res, 200, { savedPairs: rowsToInsert.length, skipped });
     }
 
     // POST /api/accounts/:accountId/taxonomies/bulk — 2026-09-11, per
@@ -26552,6 +26719,8 @@ try {
 }
 
 module.exports = handleRequest;
+
+
 
 
 
