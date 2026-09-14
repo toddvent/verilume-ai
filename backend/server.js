@@ -3356,43 +3356,41 @@ function videoScriptPromptContext(account, creativeMarket){
   const visionStatement = (account.visionStatement || '').trim();
   return { context, voiceGuideText, visionStatement };
 }
-// referenceVideoScriptContext(accountId) — Fix 4 of the 4-fix round, per
-// direct instruction: "replicate the option to leverage an existing video
-// script/creative artifact when developing new video concepts." Pulls up
-// to 2 samples filed under the 'video_script' (legacy) category — e.g.
-// Todd's existing Antarctica/Brand scripts — as a STRUCTURAL/TONAL
-// reference only (pacing, beat rhythm, voice), never as content to copy
-// into a different destination's facts. Deliberately opt-in per run, not
-// automatic: "It should be a pre-run check. Clients may have different
-// needs" (2026-09-13) — see the useReferenceScript param on
-// buildVideoScriptPrompt/runVideoScriptContest below and the contentType
-// === 'video_script' branch of the voice-contest POST endpoint, which
-// reads it from the request body.
-async function referenceVideoScriptContext(accountId){
+// referenceVideoScriptContext(accountId, sampleId) — Fix 4 of the 4-fix
+// round, per direct instruction: "replicate the option to leverage an
+// existing video script/creative artifact when developing new video
+// concepts." Originally auto-picked the 2 most-recently-dated 'video_script'
+// (legacy) category samples, account-wide, regardless of which destination
+// they were tagged to. Todd's direct follow-up correctly called that out:
+// "Why don't we just have a dropdown containing sample files?" — replaced
+// with an EXPLICIT single-sample pick, sourced from a real dropdown on the
+// frontend (Video Script contest panel) rather than a silent auto-pick the
+// client had no visibility into or control over. sampleId is optional —
+// omitted/null means no reference script this run (same as leaving the
+// checkbox off used to mean). Still framed to the model as STRUCTURAL/TONAL
+// reference only (pacing, beat rhythm, voice), never content to copy into a
+// different destination's facts — that discipline doesn't change just
+// because the pick is now explicit rather than automatic.
+async function referenceVideoScriptContext(accountId, sampleId){
+  if (!sampleId) return '';
   try {
-    const rows = db.prepare(
-      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND category = 'video_script' AND (excluded IS NULL OR excluded = 0)
-       ORDER BY docDate DESC, createdAt DESC LIMIT 2`
-    ).all(accountId);
-    if (!rows.length) return '';
-    const blocks = [];
-    for (const sample of rows){
-      let text = null;
-      if (sample.sourceType === 'url_fetch') text = sample.extractedText;
-      else if (sample.sourceType === 'video_analysis') text = sample.notes;
-      else if (sample.uploadedFileId){
-        const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
-        text = await extractSampleText(file);
-      }
-      text = (text || '').trim();
-      if (!text) continue;
-      blocks.push(`--- "${sample.title}" (${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}`);
+    const sample = db.prepare(
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND id = ? AND category = 'video_script' AND (excluded IS NULL OR excluded = 0)`
+    ).get(accountId, sampleId);
+    if (!sample) return '';
+    let text = null;
+    if (sample.sourceType === 'url_fetch') text = sample.extractedText;
+    else if (sample.sourceType === 'video_analysis') text = sample.notes;
+    else if (sample.uploadedFileId){
+      const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(sample.uploadedFileId);
+      text = await extractSampleText(file);
     }
-    if (!blocks.length) return '';
-    return `\nEXISTING VIDEO SCRIPT(S) ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (real scripts this brand has already produced for another destination — match their pacing, beat rhythm, and voice; NEVER copy their destination-specific facts, named excursions, or footage into this different destination's script):\n${blocks.join('\n\n')}\n`;
+    text = (text || '').trim();
+    if (!text) return '';
+    return `\nEXISTING VIDEO SCRIPT ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (a real script this brand has already produced, possibly for another destination — match its pacing, beat rhythm, and voice; NEVER copy its destination-specific facts, named excursions, or footage into this different destination's script):\n--- "${sample.title}" (${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}\n`;
   } catch (e){ return ''; }
 }
-async function buildVideoScriptPrompt(account, creativeMarket, useReferenceScript){
+async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId){
   const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, creativeMarket);
   let evidence = '';
   try { evidence = await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket'); } catch (e){ evidence = ''; }
@@ -3401,8 +3399,8 @@ async function buildVideoScriptPrompt(account, creativeMarket, useReferenceScrip
   let websiteCtx = '';
   try { websiteCtx = await brandCopyWebsiteExampleContext(account.accountId, creativeMarket); } catch (e){ websiteCtx = ''; }
   let referenceCtx = '';
-  if (useReferenceScript){
-    try { referenceCtx = await referenceVideoScriptContext(account.accountId); } catch (e){ referenceCtx = ''; }
+  if (referenceScriptId){
+    try { referenceCtx = await referenceVideoScriptContext(account.accountId, referenceScriptId); } catch (e){ referenceCtx = ''; }
   }
   return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination, as part of a panel where several independently-written scripts are being compared side by side.
 
@@ -3420,9 +3418,9 @@ ${VIDEO_SCRIPT_BEAT_GRID.map((b, i) => `${i + 1}. ${b.beat} (${b.timestamp})`).j
 
 Submit your candidate via the submit_video_script_candidate tool.`;
 }
-async function generateVideoScriptCandidate(account, creativeMarket, useReferenceScript){
+async function generateVideoScriptCandidate(account, creativeMarket, referenceScriptId){
   try {
-    const prompt = await buildVideoScriptPrompt(account, creativeMarket, useReferenceScript);
+    const prompt = await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId);
     const parsed = await callClaudeForJSON({
       model: BRAND_VOICE_PRIMARY_BRIEF.model,
       maxTokens: 1400,
@@ -3438,9 +3436,9 @@ async function generateVideoScriptCandidate(account, creativeMarket, useReferenc
     return { beats: null, error: 'Generation failed: ' + e.message };
   }
 }
-async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, useReferenceScript){
+async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, referenceScriptId){
   try {
-    const prompt = (await buildVideoScriptPrompt(account, creativeMarket, useReferenceScript)) + `\n\nRespond with ONLY a JSON object: {"beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
+    const prompt = (await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId)) + `\n\nRespond with ONLY a JSON object: {"beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
     const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
@@ -3498,7 +3496,7 @@ function redactVideoScriptCandidatesForClient(candidates){
 // simply absent from this candidate shape.
 async function runVideoScriptContest(account, creativeMarket, extra){
   extra = extra || {};
-  const useReferenceScript = !!extra.useReferenceScript;
+  const referenceScriptId = (typeof extra.referenceScriptId === 'string' && extra.referenceScriptId.trim()) ? extra.referenceScriptId.trim() : null;
   if (!process.env.ANTHROPIC_API_KEY){
     return {
       available: false,
@@ -3512,8 +3510,8 @@ async function runVideoScriptContest(account, creativeMarket, extra){
   }
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   const [anthropicGenerated, vendorGenerated] = await Promise.all([
-    generateVideoScriptCandidate(account, creativeMarket, useReferenceScript),
-    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, creativeMarket, useReferenceScript)))
+    generateVideoScriptCandidate(account, creativeMarket, referenceScriptId),
+    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, creativeMarket, referenceScriptId)))
   ]);
   const buildCandidate = (key, label, vendor, model, gen) => {
     const combinedText = Array.isArray(gen.beats) ? gen.beats.map(b => b.vo).filter(Boolean).join(' ') : '';
@@ -3550,7 +3548,7 @@ async function runVideoScriptContest(account, creativeMarket, extra){
   return {
     available: true, note: null,
     evidenceGapNote: evidenceOnFile ? null : `No Internal Experience Evidence is loaded for "${creativeMarket}" yet — every candidate below was written from brand-level and website signal only, not destination-specific facts. Tag evidence to this Creative Focus Group (Sample Writings & Presentations → Option D, or retag an existing sample) for a materially stronger comparison.`,
-    usedReferenceScript: useReferenceScript,
+    usedReferenceScript: referenceScriptId,
     recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates
   };
 }
@@ -17297,16 +17295,21 @@ async function handleRequest(req, res) {
       const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
       if (contentType === 'video_script'){
         // Round "creative-focus-tagging": renamed from productGroup —
-        // destinations are a Creative Focus Group concept. useReferenceScript
-        // is the Fix 4 pre-run check ("It should be a pre-run check. Clients
-        // may have different needs" — 2026-09-13): opt-in per run, never
-        // automatic.
+        // destinations are a Creative Focus Group concept. referenceScriptId
+        // is the Fix 4 pre-run choice ("It should be a pre-run check. Clients
+        // may have different needs" — 2026-09-13), reworked same day from an
+        // auto-picked boolean to an explicit sample id per Todd's direct
+        // follow-up: "Why don't we just have a dropdown containing sample
+        // files?" — the client now picks the SPECIFIC reference script (if
+        // any) from a real dropdown on the frontend, sourced from
+        // GET .../brand-writing-samples?category=video_script, rather than
+        // the backend silently auto-picking the 2 most recent ones.
         const creativeMarket = typeof body.creativeMarket === 'string' ? body.creativeMarket.trim() : '';
         if (!creativeMarket){
           return sendJson(res, 400, { error: 'creativeMarket is required for the Video Script option' });
         }
-        const useReferenceScript = !!body.useReferenceScript;
-        const result = await runVideoScriptContest(account, creativeMarket, { useReferenceScript });
+        const referenceScriptId = typeof body.referenceScriptId === 'string' ? body.referenceScriptId.trim() : '';
+        const result = await runVideoScriptContest(account, creativeMarket, { referenceScriptId });
         if (!result.available){
           return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
         }
@@ -26029,5 +26032,4 @@ try {
 }
 
 module.exports = handleRequest;
-
 
