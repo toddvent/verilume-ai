@@ -4431,11 +4431,35 @@
                the option to leverage an existing video script/creative
                artifact when developing new video concepts." Left as an
                explicit pre-run choice, never automatic: "It should be a
-               pre-run check. Clients may have different needs" (2026-09-13). -->
-          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-weight:400;text-transform:none;">
-            <input type="checkbox" id="voiceContestUseReferenceScript" style="width:auto;">
-            Use an existing video script on file (e.g. Antarctica/Brand) as a structural/tonal reference for this run
-          </label>
+               pre-run check. Clients may have different needs" (2026-09-13).
+               Reworked 2026-09-13, per direct follow-up ("Why don't we just
+               have a dropdown containing sample files?"), from a plain
+               checkbox (which silently auto-picked the 2 most recent
+               'video_script'-category samples account-wide) to a dropdown of
+               the client's saved video scripts. Broadened again 2026-09-14,
+               per direct feedback ("We're being too exact when selecting a
+               previous video... Just add all sample writing content to the
+               content picker using contenttype-file name to make it
+               easier. We're making this too complicated."): now lists every
+               saved Sample Writing, not just video-script-category ones,
+               labeled "{content type} — {title}" so any real brand content
+               can serve as the base. -->
+          <div style="margin-top:8px;">
+            <label>Use existing brand content as a base (optional)</label>
+            <select id="voiceContestReferenceScript"><option value="">None — write from scratch</option></select>
+            <p class="hint" style="margin:4px 0 0;">Only affects pacing, rhythm, and voice — the model is told never to borrow this content's destination-specific facts, excursions, or footage.</p>
+          </div>
+          <!-- Freeform "contextual relevance" box — 2026-09-14, per direct
+               request: "Should we have a free form component to provide
+               contextual relevance similar to what I did in my other
+               project?" Per-run only, sent straight into the generation
+               prompt alongside the brand/destination context — never saved
+               to the account. -->
+          <div class="field" style="margin-top:10px;max-width:none;">
+            <label>Additional context for this run (optional)</label>
+            <textarea id="voiceContestContextNotes" rows="3" placeholder="e.g. lean into wildlife excursions, mention the new dining venue, avoid overwater-bungalow imagery..."></textarea>
+            <p class="hint" style="margin:4px 0 0;">Passed straight into the prompt alongside the brand and destination context above — it can shape tone/focus, but won't override the brand facts on file.</p>
+          </div>
         </div>
         <div class="btn-row" style="margin-top:0;">
           <button type="button" class="btn-primary" onclick="runBrandVoiceContest()">Begin the Interview Process →</button>
@@ -49777,6 +49801,40 @@ function renderVoiceContestStep(){
     }
     voiceContestPopulateProductGroupSelect();
   })();
+  voiceContestPopulateReferenceScriptSelect();
+}
+// Fix 4 reworked 2026-09-13, per direct instruction ("Why don't we just
+// have a dropdown containing sample files?") — populates the reference
+// dropdown from this account's real saved Sample Writings so the client
+// sees and picks an actual title rather than the backend silently
+// auto-picking. Broadened 2026-09-14, per direct feedback ("We're being too
+// exact when selecting a previous video... Just add all sample writing
+// content to the content picker using contenttype-file name to make it
+// easier. We're making this too complicated."): no longer filtered to
+// category=video_script — every saved sample is listed, labeled
+// "{content type} — {title}" (the categories list comes back on the same
+// response, so the label always matches BRAND_WRITING_SAMPLE_CATEGORIES on
+// the backend without duplicating that list here).
+async function voiceContestPopulateReferenceScriptSelect(){
+  const el = document.getElementById('voiceContestReferenceScript');
+  if (!el || !state.companyId) return;
+  const current = el.value;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const samples = (data.samples || []).filter(s => !s.excluded);
+    const catLabel = {};
+    (data.categories || []).forEach(c => { catLabel[c.id] = c.label; });
+    if (!samples.length){
+      el.innerHTML = '<option value="">None on file yet — add content under Sample Writings & Presentations</option>';
+      return;
+    }
+    el.innerHTML = '<option value="">None — write from scratch</option>' + samples.map(s =>
+      `<option value="${escapeHtml(s.id)}">${escapeHtml(catLabel[s.category] || s.category)} — ${escapeHtml(s.title)}</option>`
+    ).join('');
+    if (samples.some(s => s.id === current)) el.value = current;
+  } catch (e){ /* leave the default "write from scratch" option in place */ }
 }
 // Populates the Video Script option's required destination select — unlike
 // bwsPopulateCreativeMarketSelects() (Experience Evidence, where scoping is
@@ -50000,7 +50058,8 @@ async function runBrandVoiceContest(){
   const contentTypeEl = document.getElementById('voiceContestContentType');
   const contentType = contentTypeEl ? contentTypeEl.value : 'voice_guide';
   let creativeMarket = '';
-  let useReferenceScript = false;
+  let referenceScriptId = '';
+  let contextualNotes = '';
   if (contentType === 'video_script'){
     const cmEl = document.getElementById('voiceContestCreativeMarket');
     creativeMarket = cmEl ? cmEl.value : '';
@@ -50008,8 +50067,10 @@ async function runBrandVoiceContest(){
       holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Pick a destination/Creative Focus Group above before running the Video Script option.</div>`;
       return;
     }
-    const refEl = document.getElementById('voiceContestUseReferenceScript');
-    useReferenceScript = refEl ? !!refEl.checked : false;
+    const refEl = document.getElementById('voiceContestReferenceScript');
+    referenceScriptId = refEl ? refEl.value : '';
+    const notesEl = document.getElementById('voiceContestContextNotes');
+    contextualNotes = notesEl ? notesEl.value.trim() : '';
   }
   const clickStartedAt = new Date().toISOString();
   // 2026-08-27 fix, per direct feedback — "we no longer need the section in
@@ -50070,7 +50131,7 @@ async function runBrandVoiceContest(){
       // this page. See cxmedia-brand-voice-consolidation-human-agentic-
       // model-scoping-2026-09-11.md.
       body: JSON.stringify(contentType === 'video_script'
-        ? { contentType: 'video_script', creativeMarket, useReferenceScript }
+        ? { contentType: 'video_script', creativeMarket, referenceScriptId, contextualNotes }
         : { avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
@@ -50375,6 +50436,7 @@ function renderVideoScriptContestPanel(result){
     return `<div style="border:${border};border-radius:8px;padding:10px;margin-bottom:12px;">
       <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ` <span class="hint" style="color:var(--cx);font-weight:700;">${escapeHtml(RECOMMENDED_REASON_LABEL[result.recommendedReason] || '— recommended')}</span>` : ''}</div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);margin-top:4px;">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      ${c.overallApproach ? `<div class="hint" style="margin-top:6px;font-style:italic;line-height:1.4;">${escapeHtml(c.overallApproach)}</div>` : ''}
       <div style="overflow-x:auto;margin-top:8px;">
         <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
           <thead><tr style="text-align:left;border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">Beat</th><th style="padding:4px 8px;">Visual</th><th style="padding:4px 8px;">Voiceover</th><th style="padding:4px 8px;">Caption</th><th style="padding:4px 8px;">Pillar</th></tr></thead>
