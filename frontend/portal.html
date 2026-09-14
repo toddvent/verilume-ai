@@ -9853,7 +9853,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-15-voice-contest-report-card';
+const CXMEDIA_BUILD_STAMP = '2026-09-14-mbu-csv-export-filename-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -32521,7 +32521,18 @@ async function mbuExportMonthlyCsv(uploadId){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `verilume-budget-monthly-detail.csv`;
+    // 2026-09-14 fix, per direct bug report: this always downloaded as the
+    // same generic filename regardless of year/scope, so a client who
+    // exported more than one year's budget (e.g. 2025 and 2026) ended up
+    // with same-named files their OS auto-numbered ("(1)", "(2)..."),
+    // making it easy to mix them up later. The backend already generates a
+    // year/scope-specific name (verilume-budget-<year>-<scope>-monthly-
+    // detail.csv) in its Content-Disposition header — use that instead of
+    // the hardcoded generic name, falling back to the old name only if a
+    // proxy/CDN ever strips that header.
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const nameMatch = disposition.match(/filename="([^"]+)"/);
+    a.download = nameMatch ? nameMatch[1] : `verilume-budget-monthly-detail.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
