@@ -3351,8 +3351,10 @@ This strategy will be handed, as a FIXED foundation, to every future individual 
 Write a strategy document (400-700 words) that covers, in your own structure:
 - The ONE throughline that must appear in every destination video, tying back to this brand's actual voice/pillars above (not generic "luxury" language).
 - How that throughline stays consistent across a whole COLLECTION of different destination videos while still leaving room for each destination's own specifics.
-- What genuinely differentiates this brand from its core competitors, based only on the brand signal given above — never invent a named competitor or a claim not grounded in what's given.
+- What genuinely differentiates this brand from its ACTUAL named competitors above (see COMPETITIVE POSITIONING, when present) — grounded ONLY in the real "why they compete"/"market overlap"/"how they market themselves" signal given for THOSE SPECIFIC competitors, never a named competitor and never a claim not grounded in what's given.
 - Concrete guidance a scriptwriter could actually use later: what to always include, what to always avoid, and how to open/close every video so the collection reads as one system.
+
+CRITICAL — do not default to a generic "small independent brand vs. a giant/mass-market rival" contrast (e.g. "not a floating resort," "not a ship of thousands," scale-based claims) unless the COMPETITIVE POSITIONING signal above actually supports it for THESE named competitors. Many real competitors in a given category are comparably sized/positioned to this brand — a scale contrast that isn't true of the actual competitors on file is a fabricated claim even if it sounds like a plausible category narrative, and this account may have already told you (in the brand signal above) if its own real category is more crowded with peers than with giants. If the competitor signal doesn't support a scale-based contrast, find the real differentiation elsewhere in what's actually given — an itinerary/expedition-style difference, a market-overlap or approach difference, a substantiated brand-pillar difference — never fall back to invented category tropes to fill the gap.
 
 Submit your candidate via the submit_video_strategy_candidate tool.`;
 }
@@ -26406,5 +26408,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
