@@ -2107,13 +2107,38 @@ async function checkVoiceContestReview(){
           ${iv.candidates.map(c => `
             <div style="border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;${c.key === iv.selectedCandidateKey ? 'background:rgba(26,122,76,0.08);' : ''}">
               <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;">
-                <b style="flex:1 1 auto;min-width:0;">${interviewEscapeHtml(c.label)}</b>
+                <!-- 2026-09-14, per direct request while debugging the Video
+                     Script contest ("tell me what it is while we test so we
+                     can figure out #3" — staff-only, never client-facing):
+                     blindLabel (the "Option N" the client portal actually
+                     shows) wasn't displayed anywhere on this unredacted admin
+                     view, so there was no way to match a client's report of
+                     "Option 3 failed" back to a real vendor/model without
+                     guessing. Shown first, real label/vendor/model right
+                     beside it. -->
+                <b style="flex:1 1 auto;min-width:0;">${interviewEscapeHtml(c.blindLabel || '?')} — ${interviewEscapeHtml(c.label)}</b>
                 ${c.key === iv.selectedCandidateKey ? `<span class="badge status-configured" style="flex:0 0 auto;">Selected${iv.selectedBy ? ' — ' + interviewEscapeHtml(iv.selectedBy) : ''}</span>` : ''}
               </div>
               <div class="empty-note" style="font-style:normal;margin-top:4px;">${c.configured ? `${interviewEscapeHtml(c.vendor || '—')} · <code>${interviewEscapeHtml(c.model || '—')}</code>` : interviewEscapeHtml(c.error || 'Not configured.')}</div>
               ${c.visionStatement ? `<div style="font-style:italic;margin:8px 0;">"${interviewEscapeHtml(c.visionStatement)}"</div>` : ''}
               ${c.longformExample ? `<div style="white-space:pre-wrap;margin:6px 0;">${interviewEscapeHtml(c.longformExample)}</div>` : ''}
               ${!c.configured || !c.visionStatement ? '' : `<div>Compliance: ${interviewScorePillHtml(c.complianceScore)}</div>`}
+              <!-- Video Script candidates (contentType='video_script') carry
+                   overallApproach/beats instead of visionStatement/
+                   longformExample — this card previously rendered nothing
+                   for them beyond the vendor line and an empty body. Added
+                   2026-09-14 for the same debugging request above. -->
+              ${c.overallApproach ? `<div style="font-style:italic;margin:8px 0;">${interviewEscapeHtml(c.overallApproach)}</div>` : ''}
+              ${c.configured && Array.isArray(c.beats) && c.beats.length === 8 ? `<div style="overflow-x:auto;margin-top:6px;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.6875rem;">
+                  <tbody>${c.beats.map(b => `<tr style="border-top:1px solid var(--line);">
+                    <td style="padding:3px 4px;font-weight:700;white-space:nowrap;vertical-align:top;">${interviewEscapeHtml(b.beat)}</td>
+                    <td style="padding:3px 4px;vertical-align:top;">${interviewEscapeHtml(b.visual)}</td>
+                    <td style="padding:3px 4px;vertical-align:top;font-style:italic;">${interviewEscapeHtml(b.vo)}</td>
+                  </tr>`).join('')}</tbody>
+                </table>
+              </div>` : ''}
+              ${c.configured && (!Array.isArray(c.beats) || c.beats.length !== 8) && !c.visionStatement ? `<div class="empty-note" style="font-style:normal;color:var(--danger);">${interviewEscapeHtml(c.error || 'Generation did not return usable content.')}</div>` : ''}
               ${c.flags && c.flags.length ? `<div class="empty-note" style="font-style:normal;color:var(--danger);">${c.flags.map(interviewEscapeHtml).join('; ')}</div>` : ''}
             </div>
           `).join('')}
