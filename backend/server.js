@@ -10713,7 +10713,32 @@ const LEGACY_CASING_COLUMNS = [
   // columns is a plain, data-preserving rename.
   ['ai_brain_contributions', 'sourceRefId'],
   ['ai_brain_contributions', 'scopeType'],
-  ['ai_brain_contributions', 'scopeValue']
+  ['ai_brain_contributions', 'scopeValue'],
+  // 2026-09-14 — root cause of a live-testing bug report ("Attempting to
+  // select a 1-5 option deleted the responses" on the Video Strategy
+  // contest): 'contentType' (added to account_voice_interviews 2026-09-13,
+  // for the Video Script contest type) and 'videoStrategyText' (added to
+  // accounts 2026-09-14, for the Video Strategy contest) were both missing
+  // from schema-identifiers.json (now fixed) at the time their ensureColumn()
+  // calls first ran in production — same exact bug shape as the
+  // ai_brain_contributions entries above and the original 2026-08-21
+  // incident this whole list exists for. Every server-side read of
+  // `interview.contentType` (the /rate, /select, GET-history branching
+  // that picks the correct redact/recommend function per contest type) was
+  // silently reading `undefined` off the real (lowercase-folded
+  // `contenttype`) row, falling through to the Voice Guide code path —
+  // which explains the reported symptom exactly: a real, successfully-
+  // generated Video Strategy candidate losing its `strategyText` field the
+  // moment ANY server round-trip that reads `contentType` off that row
+  // occurs. Registering both here means this repair action (see
+  // fixLegacyColumnCasing()/POST /api/admin/fix-legacy-casing, and the
+  // "Fix Legacy Column Casing" button on the ops console's Directory tab)
+  // renames the already-live lowercase-folded physical columns in place
+  // (data-preserving) the next time it's run — REQUIRED, not automatic:
+  // just adding these two entries here does nothing on its own until that
+  // action is actually triggered once against production.
+  ['account_voice_interviews', 'contentType'],
+  ['accounts', 'videoStrategyText']
 ];
 // 2026-08-21, later same day — this used to run automatically at module
 // load (`fixLegacyColumnCasing();` right here, on every cold start), doing
@@ -26527,5 +26552,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
