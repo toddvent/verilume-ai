@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-14-budget-uploads-sql-quoting-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-14-mbu-csv-nonworking-bom-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -15836,7 +15836,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-14-budget-uploads-sql-quoting-fix',
+        buildStamp: '2026-09-14-mbu-csv-nonworking-bom-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -25906,6 +25906,25 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const monthVals = MARKETING_BUDGET_MONTHS.map(m => months[m] || 0);
         return [cat, ...monthVals, byVerilumeCategoryTotal[cat] || 0];
       });
+      // 2026-09-14 addition, per direct bug report: this export only ever
+      // covered Working Media — Non-Working Media (agency/analytics/
+      // production spend, its own section on the Marketing Budget screen,
+      // see MBU_SECTION_BOX_STYLE / "Non-Working Media" box in portal.html)
+      // was entirely absent from the file, which is also most of what read
+      // as a dollar mismatch between this export and the totals shown on
+      // that screen (the screen's own total is Working + Non-Working; this
+      // export was Working only). computeNonWorkingLedgerForUpload already
+      // carries real month-by-month detail per direct instruction ("Non-
+      // Working will list exactly what the client lists per month or as a
+      // total") — no companion monthly function needed, unlike the Working
+      // side's category-rollup/override split. Section placed BELOW Working
+      // Media, matching the UI's own top-to-bottom order.
+      const nonWorkingLedger = computeNonWorkingLedgerForUpload(uploadId);
+      const nonWorkingRows = nonWorkingLedger.map(c => {
+        const monthVals = MARKETING_BUDGET_MONTHS.map(m => c.months[m] || 0);
+        return [c.category, ...monthVals, c.total || 0];
+      });
+      const nonWorkingTotal = nonWorkingLedger.reduce((s, c) => s + (Number(c.total) || 0), 0);
       // Round 2026-09-07 (Review 17), per direct instruction: Todd correctly
       // read a Total/monthly mismatch as expected behavior ("sub-channels do
       // not reflect the broader category level monthly distribution... we
@@ -25938,7 +25957,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           footnoteRows.push([`${bucketRemainderCats.join('; ')} — the monthly columns show this category's real imported monthly detail; the Total column shows what's left after subtracting any amount split out to its own sub-channels (listed separately above), so the two won't sum to the same figure when a split exists.`]);
         }
       }
-      const csv = [header, ...rows, ...footnoteRows].map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+      const workingSectionRows = [['WORKING MEDIA'], header, ...rows, ...footnoteRows];
+      const nonWorkingSectionRows = nonWorkingRows.length
+        ? [[''], ['NON-WORKING MEDIA'], header, ...nonWorkingRows, [''], ['Non-Working Media Total', ...MARKETING_BUDGET_MONTHS.map(() => ''), nonWorkingTotal]]
+        : [];
+      const allRows = [...workingSectionRows, ...nonWorkingSectionRows];
+      // BOM so Excel/Sheets reliably detect UTF-8 — same pattern as the
+      // marketing-calendar and media-plan CSV exports (lines ~20374,
+      // ~21762). Category names routinely carry em dashes ("Digital —
+      // Addressable") which is exactly the kind of non-ASCII character
+      // Excel mis-decodes without this, per direct bug report ("insert
+      // characters in the CSV file").
+      const csv = '﻿' + allRows.map(row => row.map(csvEscape).join(',')).join('\r\n') + '\r\n';
       const safeName = `verilume-budget-${upload.year}-${upload.scope || 'domestic'}-monthly-detail.csv`;
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
