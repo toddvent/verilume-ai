@@ -3442,7 +3442,23 @@ async function generateVendorVideoStrategyCopy(vendorKey, account){
     );
     const parsed = parseJsonBlock(text);
     const strategyText = parsed && typeof parsed.strategyText === 'string' ? parsed.strategyText.trim().slice(0, 6000) : null;
-    if (!strategyText) return { strategyText: null, error: 'Generation returned no parseable strategy JSON.' };
+    // 2026-09-14, per direct report (Todd: "Voice Strategy: Option 2 did not
+    // run / Gemini return error : Generation returned no parseable strategy
+    // JSON") — this message alone gives no way to tell WHY parseJsonBlock()
+    // failed (no "{" at all vs. a truncated/malformed block vs. valid JSON
+    // missing the strategyText key), and there's no server log access for
+    // either of us to check. A snippet of the vendor's actual raw response is
+    // appended here so the real shape is visible without needing that access.
+    // Safe to include raw text here even though this whole codepath's client
+    // response is fully redacted — redactVideoStrategyCandidatesForClient()
+    // always replaces c.error with a fixed generic message before anything
+    // reaches the client; this detail only ever surfaces to staff via Ops
+    // Console (isStaffCaller returns unredacted candidates, see server.js's
+    // POST .../voice-contest handler).
+    if (!strategyText){
+      const preview = text ? String(text).trim().slice(0, 400) : '(empty response)';
+      return { strategyText: null, error: `Generation returned no parseable strategy JSON. Raw response: ${preview}` };
+    }
     return { strategyText, error: null };
   } catch (e){
     return { strategyText: null, error: 'Generation failed: ' + e.message };
@@ -26771,4 +26787,5 @@ try {
 }
 
 module.exports = handleRequest;
+
 
