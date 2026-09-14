@@ -855,6 +855,28 @@
   .tile-card .tc-status.ok{color:var(--cx);}
   .tile-card .tc-status.pending{color:var(--advocacy);}
   .tile-card .tc-status.notbuilt{color:#B4AE9C;}
+  /* 2026-09-15, per direct instruction — the Voice Contest tile should
+     "look like one of our 3 KPI cards" (STAT_CARD_META's .stat-card, see
+     that block above) rather than the plain label+status text every other
+     .tile-card uses. Reuses .tile-card's own container (border/radius/
+     shadow/hover already identical to .stat-card) so it sits naturally in
+     this grid, and borrows .stat-card's label typography (sc-label) for
+     the report-card header, but replaces the single big number with a
+     per-stage progress-bar row — this tile reports three real counts
+     (Brand Voice Guide / Video Strategy / Video Script), not one. */
+  .tile-card .vc-report-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .tile-card .vc-report-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
+  .tile-card .vc-report-lastrun{font-size:0.6875rem;color:var(--muted);white-space:nowrap;}
+  .tile-card .vc-stage-row{margin-top:12px;}
+  .tile-card .vc-stage-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .tile-card .vc-stage-name{font-size:0.8125rem;font-weight:600;color:var(--ink);}
+  .tile-card .vc-stage-metric{font-size:0.75rem;color:var(--muted);white-space:nowrap;}
+  .tile-card .vc-stage-track{height:6px;border-radius:3px;background:var(--paper-dim);margin-top:5px;overflow:hidden;}
+  .tile-card .vc-stage-fill{height:100%;border-radius:3px;transition:width 0.3s ease;}
+  .tile-card .vc-stage-fill.ok{background:var(--cx);}
+  .tile-card .vc-stage-fill.pending{background:var(--hdr-amber);}
+  .tile-card .vc-stage-fill.notbuilt{background:var(--line);}
+  .tile-card .vc-report-footer{margin-top:auto;padding-top:12px;font-weight:600;color:var(--cx);font-size:0.8125rem;}
   .tile-shell-note{font-size:0.75rem;color:var(--muted);margin:0 0 24px;padding:12px 16px;background:var(--paper-dim);border-radius:10px;max-width:900px;}
 
   /* 2026-09-09 — sample-output modal shared by the Match Market Builder
@@ -9831,7 +9853,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-competitor-intel-theme-chips';
+const CXMEDIA_BUILD_STAMP = '2026-09-15-voice-contest-report-card';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17351,6 +17373,15 @@ function renderTileShellGroups(groups, topNote, originTab){
             // renderPendingFeatureStep()'s own comment for the rest of the
             // fix.
             : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}','${jsStrEscape(originTab || '')}')`;
+          // 2026-09-15 — optional item.render(), for a tile whose whole body
+          // needs to look different from the standard label/status/desc
+          // stack (e.g. the Voice Contest report card below). Returns raw
+          // inner HTML for the .tile-card container; the caller builds its
+          // own markup and is responsible for escaping anything user-
+          // supplied, same convention item.status() already uses.
+          if (typeof item.render === 'function'){
+            return `<div class="tile-card${item.badge === 'pending' ? ' is-pending' : ''}" onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')${onclick}">${item.render()}</div>`;
+          }
           // 2026-09-14 — optional item.status(), same {text, tone} contract as
           // the AI_PARTNER_ONBOARDING_GROUPS card pattern (renderAiPartnerOnboardingHub()),
           // for tiles here that need a real, dynamic status line rather than
@@ -17588,19 +17619,14 @@ const BRAND_SHELL_GROUPS = [
     {
       label: 'Voice Contest',
       step: 'voiceContest',
-      desc: 'Multi-model Vision Statement & Longform Example — compare distinct AI-generated voice directions and pick one, or write your own.',
-      status(){
-        if (aipoVoiceContestStats == null) return { text: 'Checking…', tone: 'pending' };
-        const s = aipoVoiceContestStats;
-        const typeOrder = ['voice_guide', 'video_script', 'video_strategy'];
-        const perType = typeOrder
-          .filter(t => s.byType[t] && s.byType[t].total > 0)
-          .map(t => `${VOICE_CONTEST_TYPE_LABEL[t]}: ${s.byType[t].winners} winner${s.byType[t].winners === 1 ? '' : 's'}, ${s.byType[t].drafts} draft${s.byType[t].drafts === 1 ? '' : 's'}`);
-        if (!perType.length) return { text: 'Not started', tone: 'pending' };
-        const lastRun = s.lastRunAt ? new Date(s.lastRunAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null;
-        const text = perType.join('<br>') + (lastRun ? `<br>Last run: ${lastRun}` : '');
-        return { text, tone: s.totalWinners > 0 ? 'ok' : 'pending' };
-      }
+      // 2026-09-15, per direct instruction — restyled as a report card
+      // matching the look of the 3 KPI stat cards (STAT_CARD_META /
+      // .stat-card), with a progress bar per contest stage instead of the
+      // plain text list the old status() built. See voiceContestReportHtml()
+      // below for the render() function itself and its own comment for why
+      // there's no "same model / different models" fun stat, despite an
+      // earlier draft sketch including one.
+      render: voiceContestReportHtml
     }
   ]},
   { label: 'Creative Production', items: [
@@ -20671,6 +20697,61 @@ async function aipoLoadVoiceContestStats(){
   // (BRAND_SHELL_GROUPS); re-render it too if that's what's currently on
   // screen, same lazy-load-then-rerender pattern as the hub above.
   if (activePrimaryTab === 'brand') renderWorkstreams();
+}
+// 2026-09-15, per direct instruction ("look like one of our 3 KPI cards...
+// add a little progress bar representing the three stages with the metrics
+// included. Make it pretty") — the Voice Contest tile's render() (see
+// BRAND_SHELL_GROUPS). One progress-bar row per contest stage (order
+// matches Todd's own draft sketch: Brand Voice Guide, Video Strategy,
+// Video Script), each stage's real winner/draft counts from
+// aipoVoiceContestStats, styled to echo the 3 KPI stat cards' typography
+// (STAT_CARD_META/.stat-card's sc-label) inside this tile's own .tile-card
+// container. Bar fill is a 3-state read of real status, not a fabricated
+// percentage: 100%/teal once a winner is selected ("ok"), 50%/amber while
+// drafts exist but nothing's been picked yet ("pending" — there's no
+// natural "how much progress" number to show honestly, since there's no
+// fixed target draft count), 0%/gray if that stage hasn't been run at all.
+//
+// Deliberately does NOT include a "you picked the same model / different
+// models across contests" fun stat, even though Todd's draft sketch had
+// one. The client-facing app runs this as a blind test on purpose — see
+// redactBrandVoiceCandidatesForClient() on the backend, `label:
+// c.blindLabel || c.label` — so the client never learns which vendor/model
+// produced which draft. A "same model" stat would have to either fabricate
+// data this page doesn't have, or leak the blind test's own answer, so
+// it's left out rather than faked; flagging this rather than silently
+// dropping it.
+function voiceContestReportHtml(){
+  const lastRunText = aipoVoiceContestStats && aipoVoiceContestStats.lastRunAt
+    ? new Date(aipoVoiceContestStats.lastRunAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : null;
+  const typeOrder = ['voice_guide', 'video_strategy', 'video_script'];
+  const bodyHtml = aipoVoiceContestStats == null
+    ? `<div class="tc-status pending" style="margin-top:12px;">Checking…</div>`
+    : typeOrder.map(t => {
+        const s = aipoVoiceContestStats.byType[t] || { total: 0, winners: 0, drafts: 0 };
+        const tone = s.winners > 0 ? 'ok' : (s.total > 0 ? 'pending' : 'notbuilt');
+        const pct = tone === 'ok' ? 100 : (tone === 'pending' ? 50 : 0);
+        const metric = s.total === 0
+          ? 'Not started'
+          : s.winners > 0
+            ? `${s.winners} winner${s.winners === 1 ? '' : 's'} · ${s.drafts} draft${s.drafts === 1 ? '' : 's'}`
+            : `${s.drafts} draft${s.drafts === 1 ? '' : 's'} · evaluating`;
+        return `<div class="vc-stage-row">
+          <div class="vc-stage-top">
+            <span class="vc-stage-name">${escapeHtml(VOICE_CONTEST_TYPE_LABEL[t])}</span>
+            <span class="vc-stage-metric">${escapeHtml(metric)}</span>
+          </div>
+          <div class="vc-stage-track"><div class="vc-stage-fill ${tone}" style="width:${pct}%;"></div></div>
+        </div>`;
+      }).join('');
+  return `
+    <div class="vc-report-head">
+      <span class="vc-report-label">Voice Contest</span>
+      ${lastRunText ? `<span class="vc-report-lastrun">Last run ${escapeHtml(lastRunText)}</span>` : ''}
+    </div>
+    ${bodyHtml}
+    <div class="vc-report-footer">Manage Voice Contest →</div>`;
 }
 // Independent of loadMmmInputs() (which only runs when Analytics Setup's own
 // #mmmInputsRows table exists on the page) — same endpoint, no DOM
