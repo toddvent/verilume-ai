@@ -3356,6 +3356,8 @@ Write a strategy document (400-700 words) that covers, in your own structure:
 
 CRITICAL — do not default to a generic "small independent brand vs. a giant/mass-market rival" contrast (e.g. "not a floating resort," "not a ship of thousands," scale-based claims) unless the COMPETITIVE POSITIONING signal above actually supports it for THESE named competitors. Many real competitors in a given category are comparably sized/positioned to this brand — a scale contrast that isn't true of the actual competitors on file is a fabricated claim even if it sounds like a plausible category narrative, and this account may have already told you (in the brand signal above) if its own real category is more crowded with peers than with giants. If the competitor signal doesn't support a scale-based contrast, find the real differentiation elsewhere in what's actually given — an itinerary/expedition-style difference, a market-overlap or approach difference, a substantiated brand-pillar difference — never fall back to invented category tropes to fill the gap.
 
+CRITICAL — this brand's fleet is NOT one uniform ship: the brand signal above may describe it with a single blended guest-capacity figure (e.g. "196-400 guests"), but that phrasing is imprecise and confusing — this brand actually operates two different ship classes with different capacities on different routes. This strategy covers the WHOLE collection (every destination, every ship), so do NOT state a specific guest-capacity number as if it applies brand-wide. If capacity or scale comes up, describe it qualitatively (e.g. "small-ship, expedition-scale, never a mass-market vessel") without committing to one blended figure — the exact per-ship number is supplied separately to each individual destination script, which knows which ship actually serves that route.
+
 Submit your candidate via the submit_video_strategy_candidate tool.`;
 }
 async function generateVideoStrategyCandidate(account){
@@ -3613,8 +3615,48 @@ async function referenceVideoScriptContext(accountId, sampleId){
     return `\nEXISTING BRAND CONTENT ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (real ${categoryLabel(sample.category)} this brand has already produced, possibly for another destination — match its pacing, rhythm, and voice; NEVER copy its destination-specific facts, named excursions, or footage into this different destination's script):\n--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}\n`;
   } catch (e){ return ''; }
 }
+// 2026-09-14 — per-destination fleet/ship fact, per direct correction: "THE
+// 196-400 guest statement confuses everyone not just models. The Polar
+// class ships visiting Antarctica, Arctic and Europe are up to 200 guests.
+// The Atlas Adventurer visiting Asia & Africa exclusively is up to 400
+// guests. How should we incorporate this into our content requests" —
+// enforcement confirmed as "Automatic, per-destination." The account's own
+// Products & Services text (frontend/assessment.html's
+// KNOWN_BRAND_OVERVIEWS, written directly into the live account record) is
+// the actual SOURCE of the confusing blended "196–400 guests" phrasing —
+// that's an account-data fix Todd owns, flagged to him directly rather than
+// edited here. This function is the code-side backstop: whatever the
+// account's own text says, every Video Script prompt gets the CORRECT
+// destination-specific ship fact, explicit enough to override it.
+// Mapping confirmed directly by Todd: Antarctica/Arctic/Northern Europe →
+// polar-class fleet (~200 guests); Mediterranean → same 3 yachts, named
+// directly rather than "polar-class" ("Mediterranean sounds odd" for that
+// label); South America → an Antarctica expedition beginning in South
+// America, polar-class, same ships EXCEPT World Voyager; Asia/Africa →
+// Atlas Adventurer exclusively, up to 400, NOT polar-class. Matched via
+// case-insensitive substring against the real creativeMarket value (an
+// account-configured taxonomy string, not a fixed enum) — no match means no
+// injected fact (honest-omit, same convention as everywhere else in this
+// file) rather than guessing at an unrecognized destination name.
+function videoScriptFleetContext(creativeMarket){
+  const m = String(creativeMarket || '').toLowerCase();
+  if (/asia|africa/.test(m)){
+    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): aboard the Atlas Adventurer — up to 400 guests. Asia and Africa are the Atlas Adventurer's EXCLUSIVE routes; this ship is NOT polar-class — never describe it with polar-class language or the ~200-guest figure.`;
+  }
+  if (/south america/.test(m)){
+    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): an Antarctica expedition beginning in South America, aboard the polar-class fleet — World Navigator or World Traveller (NOT World Voyager, which doesn't sail this route) — up to approximately 200 guests.`;
+  }
+  if (/mediterranean/.test(m)){
+    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): aboard World Navigator, World Traveller, or World Voyager — up to approximately 200 guests. Refer to these ships BY NAME here rather than "polar-class" — that label reads oddly for a Mediterranean itinerary even though it's the same fleet.`;
+  }
+  if (/antarctica|arctic|northern europe/.test(m)){
+    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): aboard the polar-class fleet — World Navigator, World Traveller, or World Voyager — up to approximately 200 guests, true polar-class capability.`;
+  }
+  return '';
+}
 async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes){
   const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, creativeMarket);
+  const fleetCtx = videoScriptFleetContext(creativeMarket);
   let evidence = '';
   try { evidence = await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket'); } catch (e){ evidence = ''; }
   let sampleCtx = '';
@@ -3648,7 +3690,7 @@ COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry
 
 ${strategyCtx ? `THIS ACCOUNT'S APPROVED VIDEO DESIGN STRATEGY (a human has already selected this as the required foundation for every destination video in this collection — FOLLOW it, do not propose a different throughline or approach of your own):\n${strategyCtx}\n\n` : ''}${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice — this is the common thread across the whole collection, not just this one destination):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
 
-CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here):
+${fleetCtx ? `${fleetCtx}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here). NOTE: this signal may still describe the fleet as a single blended "196-400 guests" range — that phrasing is imprecise; ALWAYS follow the FLEET FACT above (when given) over any guest-capacity figure mentioned below:
 ${context}
 
 ${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${creativeMarket}": none loaded yet for this destination. Write from the brand signal above only — do not invent named onboard programs, specific excursions, or footage that isn't given to you here.`}
@@ -26408,6 +26450,7 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
 
