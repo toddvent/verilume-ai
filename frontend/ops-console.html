@@ -2153,7 +2153,13 @@ async function checkVoiceContestReview(){
                   <b>${interviewEscapeHtml(c.blindLabel || '?')}</b>
                   ${c.configured ? ` — ${interviewEscapeHtml(c.vendor || '—')} · <code>${interviewEscapeHtml(c.model || '—')}</code>` : ''}
                   ${c.isSelected ? `<span class="badge status-configured" style="margin-left:6px;">Selected</span>` : ''}
-                  ${!c.configured ? `<div class="empty-note" style="font-style:normal;color:var(--danger);margin-top:2px;">${interviewEscapeHtml(c.error || 'Generation did not return a result.')}</div>` : ''}
+                  <!-- 2026-09-14 bug fix: show the error whenever one is
+                       present, not only when !c.configured — a fully
+                       configured vendor can still fail per-run (timeout,
+                       parse failure, API error), and that's exactly the
+                       case this line needs to surface. See the matching
+                       backend fix in GET .../voice-contests. -->
+                  ${c.error ? `<div class="empty-note" style="font-style:normal;color:var(--danger);margin-top:2px;">${interviewEscapeHtml(c.error)}</div>` : ''}
                 </div>
               `).join('')}
             </div>
