@@ -3337,6 +3337,17 @@ async function runBrandVoiceContest(account, extra){
   const recommended = pickRecommendedCandidate(allCandidates);
   return { available: true, note: null, recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates };
 }
+// 2026-09-14, per direct instruction ("I ran everything again and everyone
+// returned results. So I think that we just need a clever client message
+// instead of an errors. This contestant decided to not compete this
+// round.") — replaces the old blunt "This option couldn't be generated for
+// this contest run — try running the contest again" text. Shown only once
+// both passes are exhausted (pending is false and an error still stands —
+// see each redact function's own comment), so this is always a genuine
+// final, post-retry failure, not a transient one. Kept in the contest's own
+// voice on purpose (this app blind-labels candidates as contest entrants
+// throughout the client UI) rather than reading as a system error.
+const VOICE_CONTEST_CLIENT_FAILURE_MESSAGE = 'This contestant decided to not compete this round.';
 // Same allowlist discipline as redactCandidatesForClient() above — strips
 // vendor/model before anything reaches the client, per the standing "never
 // reveal the actual model" rule. A parallel function rather than reusing
@@ -3365,7 +3376,7 @@ function redactBrandVoiceCandidatesForClient(candidates){
     // message, which only appears once pending is false and error is still
     // set (i.e. the second pass also failed). See buildCandidate() in
     // runBrandVoiceContest() for where pending is set.
-    error: (c.error && !c.pending) ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    error: (c.error && !c.pending) ? VOICE_CONTEST_CLIENT_FAILURE_MESSAGE : null,
     pending: !!c.pending,
     complianceScore: c.complianceScore, flags: c.flags,
     // 2026-08-27, Phase 1 of the scoring roadmap (per direct instruction) —
@@ -3533,7 +3544,7 @@ function redactVideoStrategyCandidatesForClient(candidates){
     // 2026-09-15 — pending (see redactBrandVoiceCandidatesForClient's own
     // comment for the full reasoning): no hard-failure message while a
     // second pass (POST .../retry-pending) is about to run for this one.
-    error: (c.error && !c.pending) ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    error: (c.error && !c.pending) ? VOICE_CONTEST_CLIENT_FAILURE_MESSAGE : null,
     pending: !!c.pending,
     rating: (typeof c.rating === 'number') ? c.rating : null
   }));
@@ -3891,7 +3902,7 @@ function redactVideoScriptCandidatesForClient(candidates){
     // 2026-09-15 — pending (see redactBrandVoiceCandidatesForClient's own
     // comment for the full reasoning): no hard-failure message while a
     // second pass (POST .../retry-pending) is about to run for this one.
-    beats: c.beats, error: (c.error && !c.pending) ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    beats: c.beats, error: (c.error && !c.pending) ? VOICE_CONTEST_CLIENT_FAILURE_MESSAGE : null,
     pending: !!c.pending,
     complianceScore: c.complianceScore, flags: c.flags,
     rating: (typeof c.rating === 'number') ? c.rating : null,
@@ -27330,8 +27341,6 @@ try {
 }
 
 module.exports = handleRequest;
-
-
 
 
 
