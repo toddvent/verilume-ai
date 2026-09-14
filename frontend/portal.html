@@ -50810,6 +50810,18 @@ function renderBrandVoiceContestPanel(result){
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
       </div>`;
     }
+    // 2026-09-15 — pending, per Todd's two-pass design: this candidate
+    // failed its first attempt but hasn't been given a final verdict yet —
+    // voiceContestAutoRetryPending() (see rerenderVoiceContestPanel) is
+    // about to fire a second, full-budget attempt as a separate request.
+    // Shown distinctly from a real failure so a client doesn't read "still
+    // working on it" as "broken."
+    if (c.pending){
+      return `<div style="display:flex;flex-direction:column;height:100%;border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
+      </div>`;
+    }
     if (!c.visionStatement || !c.longformExample){
       return `<div style="display:flex;flex-direction:column;height:100%;border:1px solid var(--line);border-radius:8px;padding:10px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
@@ -50933,18 +50945,50 @@ function rerenderVoiceContestPanel(result){
   // shapes.
   if (result.contentType === 'video_script'){
     holder.innerHTML = renderVideoScriptContestPanel(result);
-    return;
-  }
-  // 2026-09-14 — Brand Video Script Strategy (contest #1). Same "own render
-  // function, own card shape" reasoning as Video Script above — a strategy
-  // candidate is one long document (strategyText), not beats or
-  // visionStatement/longformExample.
-  if (result.contentType === 'video_strategy'){
+  } else if (result.contentType === 'video_strategy'){
+    // 2026-09-14 — Brand Video Script Strategy (contest #1). Same "own
+    // render function, own card shape" reasoning as Video Script above — a
+    // strategy candidate is one long document (strategyText), not beats or
+    // visionStatement/longformExample.
     holder.innerHTML = renderVideoStrategyContestPanel(result);
-    return;
+  } else {
+    holder.innerHTML = renderBrandVoiceContestPanel(result);
+    if (result.revealed) populateVoiceContestAlignment(result);
   }
-  holder.innerHTML = renderBrandVoiceContestPanel(result);
-  if (result.revealed) populateVoiceContestAlignment(result);
+  voiceContestAutoRetryPending(result);
+}
+// 2026-09-15 — auto-fires the second pass of Todd's two-pass timeout
+// design the moment any candidate comes back pending:true ("message
+// clients when a particular model is still thinking and then run a second
+// pass... automatically" — his chosen option over a manual retry button).
+// Fires at most once per interview (voiceContestPendingRetried tracks which
+// interview ids have already been retried this session) — POST
+// .../retry-pending is itself the LAST attempt (see its own comment on the
+// backend), so there's never a reason to call it twice for the same run.
+const voiceContestPendingRetried = new Set();
+async function voiceContestAutoRetryPending(result){
+  if (!result || !result.interviewId || !Array.isArray(result.candidates)) return;
+  if (!result.candidates.some(c => c.pending)) return;
+  if (voiceContestPendingRetried.has(result.interviewId)) return;
+  voiceContestPendingRetried.add(result.interviewId);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(result.interviewId)}/retry-pending`, { method: 'POST' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!Array.isArray(data.candidates)) return;
+    // Merge straight into whichever cache object this result came from —
+    // recoverBrandVoiceContestAfterTimeout()'s recovered object and
+    // lastVoiceContestCache (the normal run path) are the same shape, and
+    // history entries rendered via voiceContestOnHistorySelectChange() use
+    // a separate, simpler table (no live retry needed there — that's
+    // already a static, past-run view, not an in-progress one).
+    if (lastVoiceContestCache && lastVoiceContestCache.interviewId === result.interviewId){
+      lastVoiceContestCache.candidates = data.candidates;
+      lastVoiceContestCache.recommendedKey = data.recommendedKey;
+      lastVoiceContestCache.recommendedReason = data.recommendedReason;
+      rerenderVoiceContestPanel(lastVoiceContestCache);
+    }
+  } catch (e){ /* leave the "still thinking" cards as-is — a manual re-run is still available */ }
 }
 // Brand Video Script Strategy panel — one card per vendor, each showing that
 // candidate's full strategy document as prose. No beats table (this isn't a
@@ -50965,6 +51009,15 @@ function renderVideoStrategyContestPanel(result){
       return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
+      </div>`;
+    }
+    // 2026-09-15 — pending, per Todd's two-pass design (see
+    // renderBrandVoiceContestPanel's matching comment for the full
+    // reasoning) — this is the exact contest type that prompted it.
+    if (c.pending){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
       </div>`;
     }
     if (!c.strategyText){
@@ -51082,6 +51135,15 @@ function renderVideoScriptContestPanel(result){
       return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
+      </div>`;
+    }
+    // 2026-09-15 — pending, per Todd's two-pass design (see
+    // renderBrandVoiceContestPanel's matching comment for the full
+    // reasoning).
+    if (c.pending){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
       </div>`;
     }
     if (!Array.isArray(c.beats) || c.beats.length !== 8){
