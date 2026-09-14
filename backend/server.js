@@ -3321,9 +3321,25 @@ const VIDEO_SCRIPT_BEAT_GRID = [
   { beat: 'END CARD', timestamp: '0:26.5–0:30' }
 ];
 const VIDEO_SCRIPT_PILLARS = ['Immersive Adventure', 'Curated Boutique Hospitality', 'Luxury & Elegance', 'Deep Connection'];
+// overallApproach — added 2026-09-14, per direct instruction: "The
+// competition needs to make sure that we're looking for a collection of
+// destination videos that leverage the common brand voice while adding
+// destination expedition style copy." Rather than build a separate
+// "designate one brand base script" flag/run mode (rejected as over-
+// engineering — "We're making this too complicated"), each candidate now
+// writes its own short framing paragraph BEFORE its 8 beats, explicitly
+// naming how this script leverages the account's one common brand voice as
+// the throughline across the whole collection of destination videos, then
+// how this destination's beats layer its own expedition-style specifics on
+// top of that. Both layers Todd asked for are now literally present in one
+// generated candidate, without adding a new picker or run mode.
 const VIDEO_SCRIPT_BEAT_SCHEMA = {
   type: 'object',
   properties: {
+    overallApproach: {
+      type: 'string',
+      description: 'A short 2-4 sentence framing written BEFORE the beats: how this candidate leverages the account\'s ONE common brand voice as the throughline shared across the whole collection of destination videos, then how this destination\'s beats layer in their own expedition-style specifics on top of that shared voice. Plain prose, not a beat, not a tagline.'
+    },
     beats: {
       type: 'array',
       description: `Exactly 8 items, in this exact order, one per beat: ${VIDEO_SCRIPT_BEAT_GRID.map(b => b.beat).join(' / ')}.`,
@@ -3339,7 +3355,7 @@ const VIDEO_SCRIPT_BEAT_SCHEMA = {
       }
     }
   },
-  required: ['beats']
+  required: ['overallApproach', 'beats']
 };
 // 2026-09-13 — round "creative-focus-tagging": every "productGroup" in this
 // block renamed to "creativeMarket" (destinations are a Creative Focus
@@ -3365,17 +3381,26 @@ function videoScriptPromptContext(account, creativeMarket){
 // "Why don't we just have a dropdown containing sample files?" — replaced
 // with an EXPLICIT single-sample pick, sourced from a real dropdown on the
 // frontend (Video Script contest panel) rather than a silent auto-pick the
-// client had no visibility into or control over. sampleId is optional —
-// omitted/null means no reference script this run (same as leaving the
-// checkbox off used to mean). Still framed to the model as STRUCTURAL/TONAL
-// reference only (pacing, beat rhythm, voice), never content to copy into a
-// different destination's facts — that discipline doesn't change just
-// because the pick is now explicit rather than automatic.
+// client had no visibility into or control over.
+//
+// 2026-09-14 — broadened from `category = 'video_script'` only to ANY saved
+// Sample Writing, per direct feedback: "We're being too exact when
+// selecting a previous video... Just add all sample writing content to the
+// content picker using contenttype-file name to make it easier. We're
+// making this too complicated." The dropdown now lists every saved sample
+// (brochure copy, longform, past video scripts, etc.), labeled by its own
+// category + title, so the client can use whichever real brand content
+// (not only a prior video script) is the best base for this run. sampleId
+// is still optional — omitted/null means no reference content this run.
+// Still framed to the model as STRUCTURAL/TONAL reference only (pacing,
+// rhythm, voice), never content to copy into a different destination's
+// facts — that discipline doesn't change just because the source category
+// is now unrestricted.
 async function referenceVideoScriptContext(accountId, sampleId){
   if (!sampleId) return '';
   try {
     const sample = db.prepare(
-      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND id = ? AND category = 'video_script' AND (excluded IS NULL OR excluded = 0)`
+      `SELECT * FROM brand_writing_samples WHERE accountId = ? AND id = ? AND (excluded IS NULL OR excluded = 0)`
     ).get(accountId, sampleId);
     if (!sample) return '';
     let text = null;
@@ -3387,10 +3412,10 @@ async function referenceVideoScriptContext(accountId, sampleId){
     }
     text = (text || '').trim();
     if (!text) return '';
-    return `\nEXISTING VIDEO SCRIPT ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (a real script this brand has already produced, possibly for another destination — match its pacing, beat rhythm, and voice; NEVER copy its destination-specific facts, named excursions, or footage into this different destination's script):\n--- "${sample.title}" (${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}\n`;
+    return `\nEXISTING BRAND CONTENT ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (real ${categoryLabel(sample.category)} this brand has already produced, possibly for another destination — match its pacing, rhythm, and voice; NEVER copy its destination-specific facts, named excursions, or footage into this different destination's script):\n--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}\n`;
   } catch (e){ return ''; }
 }
-async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId){
+async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes){
   const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, creativeMarket);
   let evidence = '';
   try { evidence = await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket'); } catch (e){ evidence = ''; }
@@ -3402,25 +3427,33 @@ async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId
   if (referenceScriptId){
     try { referenceCtx = await referenceVideoScriptContext(account.accountId, referenceScriptId); } catch (e){ referenceCtx = ''; }
   }
-  return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination, as part of a panel where several independently-written scripts are being compared side by side.
+  // notes — 2026-09-14, the freeform "contextual relevance" field per direct
+  // request ("Should we have a free form component to provide contextual
+  // relevance similar to what I did in my other project?"). Per-run only,
+  // never persisted to the account — plain client instructions layered on
+  // top of, never overriding, the brand facts above.
+  const notes = (typeof contextualNotes === 'string' ? contextualNotes.trim() : '').slice(0, 800);
+  return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination. This is one entry in a COLLECTION of destination videos across this brand's Creative Focus Groups/destinations — every entry in that collection shares the ONE brand voice below, while each destination's beats add its own expedition-style specifics on top of it. This candidate is also being compared side by side against other independently-written candidates for this same destination.
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
+${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice — this is the common thread across the whole collection, not just this one destination):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
 
 CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
 
 ${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${creativeMarket}": none loaded yet for this destination. Write from the brand signal above only — do not invent named onboard programs, specific excursions, or footage that isn't given to you here.`}
-${sampleCtx}${websiteCtx}${referenceCtx}
+${sampleCtx}${websiteCtx}${referenceCtx}${notes ? `\nADDITIONAL CONTEXT FOR THIS SPECIFIC RUN (from the client — use it to shape tone/focus/emphasis, but never let it invent a fact, offer, or claim that isn't already given to you above):\n${notes}\n` : ''}
 THE FIXED 8-BEAT STRUCTURE (write content for exactly these 8 beats, in this order — do not rename or reorder them):
 ${VIDEO_SCRIPT_BEAT_GRID.map((b, i) => `${i + 1}. ${b.beat} (${b.timestamp})`).join('\n')}
 
-Submit your candidate via the submit_video_script_candidate tool.`;
+Before the beats, write a short overallApproach: 2-4 sentences naming how this candidate leverages the ONE common brand voice above as the throughline shared across the whole collection of destination videos, then how THIS destination's beats layer in their own "${creativeMarket}" expedition-style specifics on top of that shared voice.
+
+Submit your candidate via the submit_video_script_candidate tool, including both overallApproach and beats.`;
 }
-async function generateVideoScriptCandidate(account, creativeMarket, referenceScriptId){
+async function generateVideoScriptCandidate(account, creativeMarket, referenceScriptId, contextualNotes){
   try {
-    const prompt = await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId);
+    const prompt = await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes);
     const parsed = await callClaudeForJSON({
       model: BRAND_VOICE_PRIMARY_BRIEF.model,
       maxTokens: 1400,
@@ -3430,22 +3463,24 @@ async function generateVideoScriptCandidate(account, creativeMarket, referenceSc
       schema: VIDEO_SCRIPT_BEAT_SCHEMA
     });
     const beats = Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
-    if (!beats || beats.length !== 8) return { beats: null, error: 'Generation did not return all 8 beats.' };
-    return { beats: mergeVideoScriptBeats(beats), error: null };
+    if (!beats || beats.length !== 8) return { beats: null, overallApproach: null, error: 'Generation did not return all 8 beats.' };
+    const overallApproach = typeof parsed.overallApproach === 'string' ? parsed.overallApproach.trim().slice(0, 700) : '';
+    return { beats: mergeVideoScriptBeats(beats), overallApproach, error: null };
   } catch (e){
-    return { beats: null, error: 'Generation failed: ' + e.message };
+    return { beats: null, overallApproach: null, error: 'Generation failed: ' + e.message };
   }
 }
-async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, referenceScriptId){
+async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, referenceScriptId, contextualNotes){
   try {
-    const prompt = (await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId)) + `\n\nRespond with ONLY a JSON object: {"beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
+    const prompt = (await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes)) + `\n\nRespond with ONLY a JSON object: {"overallApproach": "...", "beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
     const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
-    if (!beats || beats.length !== 8) return { beats: null, error: 'Generation returned no parseable 8-beat JSON.' };
-    return { beats: mergeVideoScriptBeats(beats), error: null };
+    if (!beats || beats.length !== 8) return { beats: null, overallApproach: null, error: 'Generation returned no parseable 8-beat JSON.' };
+    const overallApproach = parsed && typeof parsed.overallApproach === 'string' ? parsed.overallApproach.trim().slice(0, 700) : '';
+    return { beats: mergeVideoScriptBeats(beats), overallApproach, error: null };
   } catch (e){
-    return { beats: null, error: 'Generation failed: ' + e.message };
+    return { beats: null, overallApproach: null, error: 'Generation failed: ' + e.message };
   }
 }
 // Marries the model's 4 written fields (visual/vo/caption/pillar) back onto
@@ -3483,6 +3518,7 @@ function pickRecommendedVideoScriptCandidate(candidates){
 function redactVideoScriptCandidatesForClient(candidates){
   return (candidates || []).map(c => ({
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
+    overallApproach: c.overallApproach || null,
     beats: c.beats, error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
     complianceScore: c.complianceScore, flags: c.flags,
     rating: (typeof c.rating === 'number') ? c.rating : null
@@ -3497,6 +3533,7 @@ function redactVideoScriptCandidatesForClient(candidates){
 async function runVideoScriptContest(account, creativeMarket, extra){
   extra = extra || {};
   const referenceScriptId = (typeof extra.referenceScriptId === 'string' && extra.referenceScriptId.trim()) ? extra.referenceScriptId.trim() : null;
+  const contextualNotes = typeof extra.contextualNotes === 'string' ? extra.contextualNotes.trim().slice(0, 800) : '';
   if (!process.env.ANTHROPIC_API_KEY){
     return {
       available: false,
@@ -3510,15 +3547,15 @@ async function runVideoScriptContest(account, creativeMarket, extra){
   }
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   const [anthropicGenerated, vendorGenerated] = await Promise.all([
-    generateVideoScriptCandidate(account, creativeMarket, referenceScriptId),
-    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, creativeMarket, referenceScriptId)))
+    generateVideoScriptCandidate(account, creativeMarket, referenceScriptId, contextualNotes),
+    Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, creativeMarket, referenceScriptId, contextualNotes)))
   ]);
   const buildCandidate = (key, label, vendor, model, gen) => {
     const combinedText = Array.isArray(gen.beats) ? gen.beats.map(b => b.vo).filter(Boolean).join(' ') : '';
     const compliance = combinedText ? scoreComplianceHeuristically(combinedText, account) : null;
     return {
       key, label, vendor, model, configured: true,
-      beats: gen.beats, error: gen.error,
+      overallApproach: gen.overallApproach || null, beats: gen.beats, error: gen.error,
       complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : []
     };
   };
@@ -3526,7 +3563,7 @@ async function runVideoScriptContest(account, creativeMarket, extra){
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
-    beats: null, error: `${v.envVar} not configured on this deployment.`,
+    overallApproach: null, beats: null, error: `${v.envVar} not configured on this deployment.`,
     complianceScore: null, flags: []
   }));
   const allLive = [anthropicCandidate, ...liveVendorCandidates];
@@ -17309,7 +17346,10 @@ async function handleRequest(req, res) {
           return sendJson(res, 400, { error: 'creativeMarket is required for the Video Script option' });
         }
         const referenceScriptId = typeof body.referenceScriptId === 'string' ? body.referenceScriptId.trim() : '';
-        const result = await runVideoScriptContest(account, creativeMarket, { referenceScriptId });
+        // contextualNotes — 2026-09-14, the freeform "contextual relevance"
+        // box per direct request. Per-run only, not persisted to the account.
+        const contextualNotes = typeof body.contextualNotes === 'string' ? body.contextualNotes.trim() : '';
+        const result = await runVideoScriptContest(account, creativeMarket, { referenceScriptId, contextualNotes });
         if (!result.available){
           return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
         }
