@@ -29025,13 +29025,22 @@ function bwsRenderLibrary(){
   // it for a specific destination... without deleting and re-adding it."
   const cmValues = cmpTaxonomyValues('creativeMarket') || [];
   const cmOptionsHtml = current => '<option value="">Account-wide</option>' + cmValues.map(v => `<option value="${escapeHtml(v)}"${v === current ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
+  // 2026-09-14, per direct report — the Product Group column only ever
+  // showed plain read-only text ("Account-wide") while Creative Focus
+  // Group already had a real retag <select> beside it. The backend has
+  // supported retagging productGroup on this exact endpoint
+  // (PATCH .../brand-writing-samples/:sampleId/tag) since the original
+  // creative-focus-tagging round — only the frontend control for it was
+  // never built. Mirrors cmOptionsHtml/bwsRetagCreativeMarket exactly.
+  const pgValues = cmpTaxonomyValues('productGroup') || [];
+  const pgOptionsHtml = current => '<option value="">Account-wide</option>' + pgValues.map(v => `<option value="${escapeHtml(v)}"${v === current ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
   body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;">
     <thead><tr><th>Title</th><th>Purpose</th><th>Product Group</th><th>Creative Focus Group</th><th>Date</th><th>Source</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(s => `
       <tr${s.excluded ? ' style="opacity:0.65;"' : ''}>
         <td>${escapeHtml(s.title)}${s.notes ? `<div class="hint" style="margin-top:2px;">${escapeHtml(s.notes)}</div>` : ''}</td>
         <td>${escapeHtml(catLabel(s.category))}${s.outcome === 'approved' ? '<div class="hint" style="margin-top:2px;color:var(--loyalty, #2c5f2d);">Approved</div>' : s.outcome === 'rejected' ? '<div class="hint" style="margin-top:2px;color:var(--advocacy);">Rejected</div>' : ''}</td>
-        <td>${s.productGroup ? escapeHtml(s.productGroup) : '<span class="hint">Account-wide</span>'}</td>
+        <td><select class="tbl-select" onchange="bwsRetagProductGroup('${s.id}', this.value)">${pgOptionsHtml(s.productGroup || '')}</select></td>
         <td><select class="tbl-select" onchange="bwsRetagCreativeMarket('${s.id}', this.value)">${cmOptionsHtml(s.creativeMarket || '')}</select></td>
         <td>${escapeHtml(s.docDate)}</td>
         <td>${s.sourceType === 'link'
@@ -29055,6 +29064,23 @@ async function bwsRetagCreativeMarket(id, creativeMarket){
     if (!resp.ok) { alert('Could not save that tag — try again.'); return; }
     const sample = bwsSamples.find(s => s.id === id);
     if (sample) sample.creativeMarket = creativeMarket || null;
+    bwsRenderFilters();
+  } catch (e){ alert('Backend unreachable — could not save that tag.'); }
+}
+// bwsRetagProductGroup — 2026-09-14, mirrors bwsRetagCreativeMarket exactly.
+// The backend's tag endpoint already accepted productGroup (it was built
+// alongside creativeMarket from the start); only this frontend control was
+// missing, per direct report that the Product Group column had no way to
+// change it off "Account-wide."
+async function bwsRetagProductGroup(id, productGroup){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/${encodeURIComponent(id)}/tag`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productGroup })
+    });
+    if (!resp.ok) { alert('Could not save that tag — try again.'); return; }
+    const sample = bwsSamples.find(s => s.id === id);
+    if (sample) sample.productGroup = productGroup || null;
     bwsRenderFilters();
   } catch (e){ alert('Backend unreachable — could not save that tag.'); }
 }
@@ -44648,7 +44674,27 @@ function goToStep(step, arg, arg2, arg3){
     // 2026-09-11 — Step 1 (Product Groups & Creative Focus Group setup)
     // moved inline onto this page from the old step-taxonomyManager; render
     // it the same way that step always did.
-    renderTaxonomyManagerStep();
+    // 2026-09-14 fix, per direct report — the gate banner below could get
+    // stuck showing "No Product Group and Creative Market taxonomy loaded"
+    // even though Step 1 was visibly showing real, saved values. Root
+    // cause: renderTaxonomyManagerStep() is async (it awaits
+    // mktCalLoadTaxonomies() when the taxonomy list hasn't been loaded into
+    // memory yet — e.g. right after a fresh page load), but it was called
+    // here WITHOUT awaiting it, and renderBulkUploadTaxonomyGate() ran
+    // immediately after on the very next line — reading whatever stale
+    // (often still-empty) state.calendarTaxonomies happened to be in memory
+    // at that exact instant, before the load finished. The Step 1 pills
+    // themselves rendered correctly moments later once that same load
+    // resolved, but nothing ever re-checked the gate banner afterward, so it
+    // stayed stuck on its first (stale) answer indefinitely — exactly the
+    // "real values are showing above, but the banner still says nothing is
+    // loaded" state reported. Fix: keep the immediate synchronous call
+    // below for a flicker-free paint when the taxonomy list was already
+    // cached from an earlier step, but also re-run the gate check once
+    // renderTaxonomyManagerStep()'s own load actually finishes, so a
+    // still-loading (or previously failed) fetch gets a second, correct
+    // look instead of freezing the banner on its first read.
+    renderTaxonomyManagerStep().then(renderBulkUploadTaxonomyGate);
     // resetBulkUploadState()/renderBulkUploadActorRoleRow() — dropped along
     // with the old Step 3 "Add rows to an existing campaign" module (see
     // its removal comment below), per direct instruction: real Channel
