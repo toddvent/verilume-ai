@@ -453,6 +453,50 @@
       </div>
     </div>
 
+    <!-- 2026-09-14 — Internal Testing: run/rate/select a Voice Contest
+         against ANY account, no portal session required. Per direct
+         instruction: "Voice contests today are running from account
+         management for live testing. Reality is that they will be
+         initiatives from the brand page... move it to Ops Console. Create
+         a new section for internal testing work." The client-facing
+         portal now only exposes the new clean Brand > Voice Contest page
+         (create/view flow) — the raw run-then-rate-then-select workflow
+         staff need for QA lives here instead. Reuses the same Account ID /
+         admin token inputs as the panel above. Calls the SAME endpoints
+         the client portal calls (POST .../voice-contest,
+         .../rate, .../select) via X-Admin-Token instead of a portal
+         session — see requireAccountOrAdmin() in server.js. Those same
+         three endpoints now return UNREDACTED candidates (real
+         vendor/model, not just blindLabel) when called with a valid admin
+         token, since this page is staff-only. Deliberately does NOT
+         include the edit-then-finalize step (vision-longform/
+         video-strategy-text/finalize-script) in this first pass — the
+         run/rate/select loop is the actual QA need; finalize-edit is
+         already covered by the client-facing flow itself. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Internal Testing — Run a Voice Contest <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Run, rate, and select a Voice Contest winner against any account — the same generation the client-facing Voice Contest page runs, with real vendor/model names shown (never blind) since this is staff-only. Uses the Account ID / admin token above.</p>
+      <div class="field-row" id="itAuthRow">
+        <div>
+          <label>Contest type</label>
+          <select id="itContestType" onchange="itOnContestTypeChange()">
+            <option value="voice_guide">Brand Voice Guide</option>
+            <option value="video_script">Video Script</option>
+            <option value="video_strategy">Video Strategy</option>
+          </select>
+        </div>
+        <div id="itDestinationField" style="display:none;">
+          <label>Destination (Creative Focus Group)</label>
+          <input type="text" id="itDestination" placeholder="e.g. Antarctica">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="itRunContest()">Run new contest →</button>
+        </div>
+      </div>
+      <div id="itRunError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="itRunResult"></div>
+    </div>
+
     <!-- 2026-09-12 — AI Brain Transparency, value rollup. Per direct
          instruction: "It will also help us value the features we build."
          Platform-wide (not per-account), so it lives here alongside
@@ -2221,6 +2265,141 @@ async function clearVoiceGuideMemory(){
     errEl.textContent = 'Could not reach the backend to clear Voice Guide memory.';
     errEl.style.display = 'block';
   }
+}
+
+// 2026-09-14 — Internal Testing: Run a Voice Contest, per Todd's "move it to
+// Ops Console" instruction. Staff-only: uses the same shared #opsAdminToken
+// / #voiceContestLookupAccountId fields as the panels above, calls the real
+// account-scoped voice-contest endpoints with X-Admin-Token (via
+// requireAccountOrAdmin on the backend), and always shows real vendor/model
+// names (never blind) since this whole console is staff-only.
+function itOnContestTypeChange(){
+  const t = document.getElementById('itContestType').value;
+  document.getElementById('itDestinationField').style.display = t === 'video_script' ? '' : 'none';
+}
+
+let itCurrentInterview = null; // { interviewId, contentType, candidates, creativeMarket, selectedCandidateKey }
+
+async function itRunContest(){
+  const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
+  const errEl = document.getElementById('itRunError');
+  const resultEl = document.getElementById('itRunResult');
+  errEl.style.display = 'none';
+  if (!accountId || !token){
+    errEl.textContent = 'Enter an Account ID and the admin token above first.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const contentType = document.getElementById('itContestType').value;
+  const body = { contentType };
+  if (contentType === 'video_script'){
+    const dest = document.getElementById('itDestination').value.trim();
+    if (!dest){
+      errEl.textContent = 'Destination is required for Video Script.';
+      errEl.style.display = 'block';
+      return;
+    }
+    body.creativeMarket = dest;
+  }
+  resultEl.innerHTML = '<div class="empty-note">Running contest — this can take up to a couple minutes...</div>';
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/voice-contest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.available === false){
+      errEl.textContent = data.error || data.note || `Couldn't run the contest (${resp.status}).`;
+      errEl.style.display = 'block';
+      resultEl.innerHTML = '';
+      return;
+    }
+    itCurrentInterview = { interviewId: data.interviewId, contentType: data.contentType, candidates: data.candidates, creativeMarket: data.creativeMarket || null, selectedCandidateKey: null };
+    itRenderCurrentInterview();
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to run the contest.';
+    errEl.style.display = 'block';
+    resultEl.innerHTML = '';
+  }
+}
+
+function itRenderCurrentInterview(){
+  const resultEl = document.getElementById('itRunResult');
+  if (!itCurrentInterview){ resultEl.innerHTML = ''; return; }
+  const iv = itCurrentInterview;
+  resultEl.innerHTML = `
+    <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;">
+      <div class="empty-note" style="font-style:normal;">${interviewEscapeHtml(iv.interviewId)} · ${iv.creativeMarket ? interviewEscapeHtml(iv.creativeMarket) + ' · ' : ''}${interviewEscapeHtml(iv.contentType)}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;margin-top:8px;">
+        ${iv.candidates.map(c => itCandidateCardHtml(c, iv)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function itCandidateCardHtml(c, iv){
+  const isSelected = iv.selectedCandidateKey === c.key;
+  const ratingButtons = [1,2,3,4,5].map(n => `<button class="btn${c.rating === n ? ' primary' : ''}" style="padding:2px 8px;min-width:0;" onclick="itRateCandidate('${c.key}', ${n})">${n}</button>`).join(' ');
+  let body = '';
+  if (c.visionStatement) body += `<div style="font-style:italic;margin:8px 0;">"${interviewEscapeHtml(c.visionStatement)}"</div>`;
+  if (c.longformExample) body += `<div style="white-space:pre-wrap;margin:6px 0;font-size:0.8125rem;">${interviewEscapeHtml(c.longformExample)}</div>`;
+  if (c.overallApproach) body += `<div style="font-style:italic;margin:8px 0;">${interviewEscapeHtml(c.overallApproach)}</div>`;
+  if (Array.isArray(c.beats) && c.beats.length === 8){
+    body += `<div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;border-collapse:collapse;font-size:0.6875rem;"><tbody>${c.beats.map(b => `<tr style="border-top:1px solid var(--line);"><td style="padding:3px 4px;font-weight:700;white-space:nowrap;vertical-align:top;">${interviewEscapeHtml(b.beat)}</td><td style="padding:3px 4px;vertical-align:top;">${interviewEscapeHtml(b.visual)}</td><td style="padding:3px 4px;vertical-align:top;font-style:italic;">${interviewEscapeHtml(b.vo)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if (c.strategyText) body += `<div style="white-space:pre-wrap;margin:6px 0;font-size:0.8125rem;">${interviewEscapeHtml(c.strategyText)}</div>`;
+  if (c.error) body += `<div class="empty-note" style="font-style:normal;color:var(--danger);">${interviewEscapeHtml(c.error)}</div>`;
+  return `
+    <div style="border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;${isSelected ? 'background:rgba(26,122,76,0.08);' : ''}">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;">
+        <b style="flex:1 1 auto;min-width:0;">${interviewEscapeHtml(c.blindLabel || '?')} — ${interviewEscapeHtml(c.vendor || '—')} · <code>${interviewEscapeHtml(c.model || '—')}</code></b>
+        ${isSelected ? `<span class="badge status-configured">Selected</span>` : ''}
+      </div>
+      <div style="margin-top:6px;">${ratingButtons}</div>
+      ${body}
+      ${c.configured && !c.error ? `<button class="btn" style="margin-top:6px;" onclick="itSelectCandidate('${c.key}')">${isSelected ? 'Re-select' : 'Select as winner'}</button>` : ''}
+    </div>
+  `;
+}
+
+async function itRateCandidate(candidateKey, rating){
+  const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
+  if (!itCurrentInterview) return;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/voice-contest/${encodeURIComponent(itCurrentInterview.interviewId)}/rate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+      body: JSON.stringify({ candidateKey, rating })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.candidates){
+      itCurrentInterview.candidates = data.candidates;
+      itRenderCurrentInterview();
+    }
+  } catch (e){ /* leave as-is */ }
+}
+
+async function itSelectCandidate(candidateKey){
+  const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
+  if (!itCurrentInterview) return;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/voice-contest/${encodeURIComponent(itCurrentInterview.interviewId)}/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+      body: JSON.stringify({ candidateKey })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      alert(data.error || 'Could not select this candidate.');
+      return;
+    }
+    itCurrentInterview.selectedCandidateKey = candidateKey;
+    itRenderCurrentInterview();
+  } catch (e){ alert('Could not reach the backend to select this candidate.'); }
 }
 
 // On load: if a token was remembered for this browser session, restore it
