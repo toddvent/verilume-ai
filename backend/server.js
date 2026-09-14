@@ -5304,6 +5304,17 @@ const AI_BRAIN_CONTRIBUTION_STATUSES = ['reference', 'applied', 'removed'];
 const AI_BRAIN_QUALITY_TAGS = ['perfect', 'ok', 'needs_review'];
 ensureColumn('ai_brain_contributions', 'qualityTag', 'TEXT');
 ensureColumn('ai_brain_contribution_log', 'qualityTag', 'TEXT');
+// qualityRating — 2026-09-15, per direct instruction on the Voice Guide/
+// Training Digest decision modal redesign: a simple 1-5 rating alongside
+// the free-text note, distinct from the qualityTag dropdown above (a
+// categorical perfect/ok/needs_review read vs. this quick numeric score) —
+// both purely informational, same "never auto-decides anything" posture as
+// qualityTag. Only wired into voice-decisions and training-digest-decisions
+// for now (the two decision flows this round's modal redesign scoped to),
+// though the column lives on the shared table so any sibling *-decisions
+// endpoint can pick it up later without a further migration.
+ensureColumn('ai_brain_contributions', 'qualityRating', 'INTEGER');
+ensureColumn('ai_brain_contribution_log', 'qualityRating', 'INTEGER');
 // Open question 2 from the same doc ("who can apply/remove — any team
 // member, or a specific reviewer role?") is resolved here as a decision,
 // not a build item: every ledger endpoint already gates on requireAccount()
@@ -5561,7 +5572,7 @@ function createTrainingDigestContribution(accountId, campaignId, digestObj){
 // query or hide its digest row — the label just falls back to the raw
 // campaignId in that case.
 function getTrainingDigestContributions(accountId){
-  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt, c.qualityTag,
+  const rows = db.prepare(`SELECT c.id, c.contentJson, c.status, c.reason, c.decidedBy, c.createdAt, c.decidedAt, c.qualityTag, c.qualityRating,
       c.sourceRefId AS campaignId, camp.productName AS campaignProductName, camp.campaignCode AS campaignCode, camp.startDate AS campaignStartDate
     FROM ai_brain_contributions c
     LEFT JOIN campaigns camp ON camp.id = c.sourceRefId
@@ -5570,7 +5581,7 @@ function getTrainingDigestContributions(accountId){
     const label = row.campaignProductName || row.campaignCode
       ? [row.campaignProductName, row.campaignCode].filter(Boolean).join(' — ') + (row.campaignStartDate ? ` (${row.campaignStartDate})` : '')
       : row.campaignId; // campaign since deleted (or never had a name/code) — fall back to the raw id rather than breaking
-    return { id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, campaignId: row.campaignId, campaignLabel: label };
+    return { id: row.id, contentJson: row.contentJson, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, qualityRating: row.qualityRating, campaignId: row.campaignId, campaignLabel: label };
   });
 }
 
@@ -5700,7 +5711,7 @@ function createVoiceGuideContribution(accountId, contentObj){
 }
 
 function getVoiceGuideContributions(accountId){
-  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityTag
+  return db.prepare(`SELECT id, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityTag, qualityRating
     FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'voice_guide' ORDER BY createdAt DESC`).all(accountId);
 }
 
@@ -17295,9 +17306,9 @@ async function handleRequest(req, res) {
       const contributions = getTrainingDigestContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, campaignId: row.campaignId, campaignLabel: row.campaignLabel, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
+        return { id: row.id, campaignId: row.campaignId, campaignLabel: row.campaignLabel, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, qualityRating: row.qualityRating };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag, qualityRating
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -17321,6 +17332,7 @@ async function handleRequest(req, res) {
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
       if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
+      if (body.qualityRating != null && !(Number.isInteger(body.qualityRating) && body.qualityRating >= 1 && body.qualityRating <= 5)) return sendJson(res, 400, { error: 'qualityRating must be an integer 1-5, or omitted' });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
@@ -17330,13 +17342,19 @@ async function handleRequest(req, res) {
       // the prior tag when this call doesn't resend one, so a plain
       // Apply/Remove never silently clears an earlier quality read.
       const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
-      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
-      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag });
+      // qualityRating (2026-09-15) — same purely-informational, COALESCE-on-
+      // resend pattern as qualityTag just above, a simple 1-5 score
+      // alongside it (see the ensureColumn comment near AI_BRAIN_QUALITY_TAGS
+      // for why this is a separate field rather than replacing qualityTag).
+      const qualityRatingInput = (Number.isInteger(body.qualityRating) && body.qualityRating >= 1 && body.qualityRating <= 5) ? body.qualityRating : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag), qualityRating = COALESCE(?, qualityRating) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, qualityRatingInput, contributionId);
+      const qualityRow = db.prepare('SELECT qualityTag, qualityRating FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityRow ? qualityRow.qualityTag : qualityTagInput;
+      const qualityRating = qualityRow ? qualityRow.qualityRating : qualityRatingInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag, qualityRating) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag, qualityRating);
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag, qualityRating });
     }
 
     // GET /api/accounts/:id/voice-decisions — 2026-09-12, AI Brain
@@ -17352,9 +17370,9 @@ async function handleRequest(req, res) {
       const contributions = getVoiceGuideContributions(accountId).map(row => {
         let content = null;
         try { content = JSON.parse(row.contentJson); } catch (e){ /* malformed row — omit content, keep the decision trail */ }
-        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag };
+        return { id: row.id, content, status: row.status, reason: row.reason, decidedBy: row.decidedBy, createdAt: row.createdAt, decidedAt: row.decidedAt, qualityTag: row.qualityTag, qualityRating: row.qualityRating };
       });
-      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag
+      const history = db.prepare(`SELECT contributionId, status, reason, decidedBy, decidedAt, qualityTag, qualityRating
         FROM ai_brain_contribution_log WHERE accountId = ? ORDER BY decidedAt DESC`).all(accountId);
       return sendJson(res, 200, { contributions, history });
     }
@@ -17395,6 +17413,7 @@ async function handleRequest(req, res) {
       if (!AI_BRAIN_CONTRIBUTION_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${AI_BRAIN_CONTRIBUTION_STATUSES.join(', ')}` });
       if (body.status === 'removed' && !(body.reason || '').trim()) return sendJson(res, 400, { error: 'a reason is required when marking a contribution removed' });
       if (body.qualityTag != null && !AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag)) return sendJson(res, 400, { error: `qualityTag must be one of: ${AI_BRAIN_QUALITY_TAGS.join(', ')}, or omitted` });
+      if (body.qualityRating != null && !(Number.isInteger(body.qualityRating) && body.qualityRating >= 1 && body.qualityRating <= 5)) return sendJson(res, 400, { error: 'qualityRating must be an integer 1-5, or omitted' });
       const now = new Date().toISOString();
       const reason = (body.reason || '').trim() || null;
       const decidedBy = (body.decidedBy || '').trim() || null;
@@ -17404,12 +17423,18 @@ async function handleRequest(req, res) {
       // the prior tag when this call doesn't resend one, so a plain
       // Apply/Remove never silently clears an earlier quality read.
       const qualityTagInput = AI_BRAIN_QUALITY_TAGS.includes(body.qualityTag) ? body.qualityTag : null;
-      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag) WHERE id = ?`)
-        .run(body.status, reason, decidedBy, now, qualityTagInput, contributionId);
-      const qualityTagRow = db.prepare('SELECT qualityTag FROM ai_brain_contributions WHERE id = ?').get(contributionId);
-      const qualityTag = qualityTagRow ? qualityTagRow.qualityTag : qualityTagInput;
-      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag) VALUES (?,?,?,?,?,?,?,?)`)
-        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag);
+      // qualityRating (2026-09-15) — same purely-informational, COALESCE-on-
+      // resend pattern as qualityTag just above, a simple 1-5 score
+      // alongside it (see the ensureColumn comment near AI_BRAIN_QUALITY_TAGS
+      // for why this is a separate field rather than replacing qualityTag).
+      const qualityRatingInput = (Number.isInteger(body.qualityRating) && body.qualityRating >= 1 && body.qualityRating <= 5) ? body.qualityRating : null;
+      db.prepare(`UPDATE ai_brain_contributions SET status = ?, reason = ?, decidedBy = ?, decidedAt = ?, qualityTag = COALESCE(?, qualityTag), qualityRating = COALESCE(?, qualityRating) WHERE id = ?`)
+        .run(body.status, reason, decidedBy, now, qualityTagInput, qualityRatingInput, contributionId);
+      const qualityRow = db.prepare('SELECT qualityTag, qualityRating FROM ai_brain_contributions WHERE id = ?').get(contributionId);
+      const qualityTag = qualityRow ? qualityRow.qualityTag : qualityTagInput;
+      const qualityRating = qualityRow ? qualityRow.qualityRating : qualityRatingInput;
+      db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag, qualityRating) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag, qualityRating);
       let restored = null;
       if (body.status === 'applied'){
         try {
@@ -17421,7 +17446,7 @@ async function handleRequest(req, res) {
           restored = { voiceGuideText: snapshot.voiceGuideText, voiceVersion: nextVersion };
         } catch (e){ /* malformed snapshot — the status change above still stands, just no live restore */ }
       }
-      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored, qualityTag });
+      return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, restored, qualityTag, qualityRating });
     }
 
     // GET /api/accounts/:id/positioning-decisions — 2026-09-12, AI Brain
