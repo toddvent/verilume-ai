@@ -1667,6 +1667,20 @@
      table cell. Apply directly to inputs/selects inside a table cell that
      needs the standard look. */
   .tbl-input,.tbl-select{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-family:'Inter';font-size:0.8438rem;background:var(--white);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+
+  /* 2026-09-15 — the "Record this decision" modal (openDecisionModal()),
+     replacing the old native prompt()/prompt()/prompt() chain used by
+     vgSetDecision() and cpSetTrainingDigestDecision() for Voice Guide
+     history and Training Digest decisions. Per direct feedback on a
+     screenshot of the old flow: a real stylized dialog centered on the
+     page, not the browser's own unstyled prompt boxes. */
+  .decision-modal-overlay{position:fixed;inset:0;background:rgba(29,29,31,0.55);display:flex;align-items:center;justify-content:center;z-index:5000;padding:20px;}
+  .decision-modal-card{background:var(--white);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:28px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;}
+  .decision-modal-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:1.0625rem;color:var(--ink);margin-bottom:18px;}
+  .decision-modal-rating{display:flex;gap:8px;margin-bottom:10px;}
+  .decision-modal-rating-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:'Inter';font-weight:700;font-size:0.9375rem;cursor:pointer;transition:border-color 0.15s ease,background 0.15s ease,color 0.15s ease;}
+  .decision-modal-rating-btn:hover{border-color:var(--cx);}
+  .decision-modal-rating-btn.active{background:var(--cx);border-color:var(--cx);color:#fff;}
   .tbl-input:focus,.tbl-select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .tbl-select{padding-right:32px;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235B5647' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;background-size:10px 6px;}
   .tbl-select:hover{border-color:var(--cx);}
@@ -51693,6 +51707,89 @@ async function cpSetWebsiteContextDecision(contributionId, status){
   } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
 
+// 2026-09-15 — "Record this decision" modal, per direct feedback on a
+// screenshot of the old native prompt()/prompt()/prompt() chain
+// (vgSetDecision()/cpSetTrainingDigestDecision() below used to ask, in
+// order: a free-text reason, "Your name (for the record)", then a free-
+// typed quality tag). Four changes, all per direct instruction:
+//   1. A real stylized dialog centered on the page, not native browser
+//      prompt() boxes.
+//   2/4. Quality tag is now a dropdown and comes first (was free-typed,
+//      asked last).
+//   3. The name question is gone entirely — decidedBy is now read straight
+//      from state.userName (the same "based on profile" field every other
+//      *By field in this file already uses: uploadedBy/createdBy/
+//      excludedBy), never re-asked.
+//   New: a simple 1-5 quality rating alongside the note, both grouped
+//      under one "help your Agentic Brain" section, last — the note field
+//      doubles as the old required-reason-for-removal field (its
+//      placeholder and validation flex on `noteRequired`) rather than
+//      adding a redundant second free-text box.
+// Scoped to the two AI Brain / content-quality decision flows this request
+// named (Voice Guide history, Training Digest) — MMM's five decision flows
+// and the website-scan/positioning siblings keep their existing
+// prompt()-based flow for now (they have no qualityTag field today and are
+// a different domain), per direct confirmation.
+//
+// Returns a Promise resolving to {qualityTag, qualityRating, note} or null
+// if the person cancels (X, Cancel, or clicking the backdrop).
+function openDecisionModal({ statusLabel, noteRequired }){
+  return new Promise(resolve => {
+    const prior = document.getElementById('decisionModalOverlay');
+    if (prior) prior.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'decisionModalOverlay';
+    overlay.className = 'decision-modal-overlay';
+    overlay.innerHTML = `
+      <div class="decision-modal-card" role="dialog" aria-modal="true" aria-label="Record this decision">
+        <div class="decision-modal-title">Record this decision <span class="badge" style="margin-left:6px;">${escapeHtml(statusLabel)}</span></div>
+        <div class="field">
+          <label>Quality tag</label>
+          <select id="decModQualityTag">
+            <option value="">— Not tagged —</option>
+            <option value="perfect">Perfect</option>
+            <option value="ok">OK</option>
+            <option value="needs_review">Needs review</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>Help your Agentic Brain understand this decision</label>
+          <div class="decision-modal-rating">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="decision-modal-rating-btn" data-n="${n}">${n}</button>`).join('')}</div>
+          <textarea id="decModNote" placeholder="${noteRequired ? 'Why should this be excluded? (required)' : 'Optional — add context that helps train the AI Brain'}"></textarea>
+          <div class="hint" id="decModError" style="display:none;color:var(--advocacy);margin-top:5px;"></div>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:14px;">
+          <button type="button" class="btn-ghost" id="decModCancel">Cancel</button>
+          <button type="button" class="btn-primary" id="decModSave">Save decision</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    let rating = null;
+    overlay.querySelectorAll('.decision-modal-rating-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const n = Number(btn.dataset.n);
+        rating = (rating === n) ? null : n;
+        overlay.querySelectorAll('.decision-modal-rating-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.n) === rating));
+      });
+    });
+    const close = (result) => { overlay.remove(); resolve(result); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    overlay.querySelector('#decModCancel').addEventListener('click', () => close(null));
+    overlay.querySelector('#decModSave').addEventListener('click', () => {
+      const qualityTag = overlay.querySelector('#decModQualityTag').value || null;
+      const note = overlay.querySelector('#decModNote').value.trim();
+      if (noteRequired && !note){
+        const err = overlay.querySelector('#decModError');
+        err.textContent = 'A reason is required — this stays in the account\'s history.';
+        err.style.display = '';
+        return;
+      }
+      close({ qualityTag, qualityRating: rating, note: note || null });
+    });
+    setTimeout(() => { const el = overlay.querySelector('#decModNote'); if (el) el.focus(); }, 20);
+  });
+}
+
 // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
 // pooling). Exact mirror of cpLoadWebsiteScanHistory() above, hitting the
 // training-digest-decisions endpoints instead of website-context-decisions.
@@ -51753,26 +51850,24 @@ function cpRenderTrainingDigestHistory(contributions){
   }).join('');
 }
 
-// Exact mirror of cpSetWebsiteContextDecision() above, hitting
-// training-digest-decisions instead — same prompt()-based reason/name
-// capture, same state.mmmDecisionName reuse.
+// 2026-09-15 — now opens openDecisionModal() (see its own comment above)
+// instead of the old prompt()/prompt()/prompt() chain. Status label is
+// human-facing copy only; the endpoint still receives the same 'reference'/
+// 'applied'/'removed' values it always has. decidedBy comes straight from
+// state.userName (no more asking) — same field this file already uses for
+// uploadedBy/createdBy/excludedBy elsewhere, per direct instruction ("We
+// know the login information... It's based on profile").
 async function cpSetTrainingDigestDecision(contributionId, status){
   const flag = document.getElementById('cpTrainingDigestFlag');
-  let reason = null;
-  if (status === 'removed'){
-    reason = prompt('Why should this flagged campaign\'s style be excluded? (required — this stays in the account\'s history)');
-    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
-  } else {
-    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
-    reason = reason.trim() || null;
-  }
-  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
-  if (decidedBy) state.mmmDecisionName = decidedBy;
-  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
+  const statusLabel = status === 'reference' ? 'Reference' : status === 'applied' ? 'Apply' : 'Remove';
+  const result = await openDecisionModal({ statusLabel, noteRequired: status === 'removed' });
+  if (!result) return;
+  const { qualityTag, qualityRating, note: reason } = result;
+  const decidedBy = (state.userName || '').trim() || null;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/training-digest-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag, qualityRating })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -51835,32 +51930,28 @@ function vgRenderHistory(contributions){
   }).join('');
 }
 
-// Exact mirror of cpSetTrainingDigestDecision() above, hitting
-// voice-decisions instead — same prompt()-based reason/name capture, same
-// state.mmmDecisionName reuse. DIVERGES on a successful 'applied' decision:
-// the backend response includes `restored: {voiceGuideText, voiceVersion}`
-// (see POST .../voice-decisions's comment on the server for why Apply
-// means restore here, unlike the training-digest/website-scan siblings) —
-// so this updates state.voice and re-renders the Voice step, same
-// state-then-render convention saveVoiceDraft() above uses, instead of
+// 2026-09-15 — now opens openDecisionModal() (see its own comment above
+// cpSetTrainingDigestDecision's caller) instead of the old prompt()/
+// prompt()/prompt() chain; decidedBy comes from state.userName, no longer
+// asked. Otherwise an exact mirror of cpSetTrainingDigestDecision() above,
+// hitting voice-decisions instead. DIVERGES on a successful 'applied'
+// decision: the backend response includes `restored: {voiceGuideText,
+// voiceVersion}` (see POST .../voice-decisions's comment on the server for
+// why Apply means restore here, unlike the training-digest/website-scan
+// siblings) — so this updates state.voice and re-renders the Voice step,
+// same state-then-render convention saveVoiceDraft() above uses, instead of
 // just refreshing the history list.
 async function vgSetDecision(contributionId, status){
   const flag = document.getElementById('voiceHistoryFlag');
-  let reason = null;
-  if (status === 'removed'){
-    reason = prompt('Why should this version be excluded? (required — this stays in the account\'s history)');
-    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
-  } else {
-    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
-    reason = reason.trim() || null;
-  }
-  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
-  if (decidedBy) state.mmmDecisionName = decidedBy;
-  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
+  const statusLabel = status === 'reference' ? 'Reference' : status === 'applied' ? 'Apply' : 'Remove';
+  const result = await openDecisionModal({ statusLabel, noteRequired: status === 'removed' });
+  if (!result) return;
+  const { qualityTag, qualityRating, note: reason } = result;
+  const decidedBy = (state.userName || '').trim() || null;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag, qualityRating })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
