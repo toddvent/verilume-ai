@@ -622,6 +622,18 @@ ensureColumn('accounts', 'voiceApprovedAt', 'TEXT');
 // runBrandVoiceContest() below for how these get filled in.
 ensureColumn('accounts', 'visionStatement', 'TEXT');
 ensureColumn('accounts', 'longformVoiceExample', 'TEXT');
+// 2026-09-14 — Brand Video Script Strategy, the 3rd contest type (per direct
+// instruction, after Grok's 90s timeout prompted "What if we... include 2
+// contests that build the final prompt"). ONE account-wide winning strategy
+// (how the video collection stays consistent across every Creative Focus
+// Group/destination while differentiating from competitors), selected the
+// same way as Brand Voice's visionStatement/longformVoiceExample above —
+// picked after rating all candidates, applied to the account immediately on
+// select, no separate approve step. Once set, every destination's Video
+// Script contest (runVideoScriptContest/buildVideoScriptPrompt) is handed
+// this text as its required foundation instead of each vendor inventing its
+// own overallApproach fresh per destination — see buildVideoScriptPrompt.
+ensureColumn('accounts', 'videoStrategyText', 'TEXT');
 
 // Added 2026-07-23 (round 19) — Company Profile (Brand Foundations). The
 // free assessment already collects target audience (generations) and
@@ -2218,6 +2230,33 @@ async function fetchWithTimeout(url, options, ms = 90000){
     clearTimeout(timer);
   }
 }
+// 2026-09-14 — single-retry-on-timeout (Todd: Grok timed out mid-contest;
+// "What if we submitted a 2nd attempt only for the model who times out").
+// Deliberately scoped to TIMEOUT errors only (not 4xx/5xx/parse failures —
+// retrying those wastes a call and won't fix a bad model name or a parsing
+// bug). Deliberately does NOT retry with a fresh 90s window: each vendor
+// call already sits inside a Promise.all with the other 4 (see
+// runVideoScriptContest), so Vercel's 120s function ceiling is a shared
+// budget — one candidate retrying for another full 90s could push the
+// WHOLE contest past 120s and fail all 5 candidates, not just the slow
+// one. Instead the retry gets a much shorter 20s window: enough to catch
+// a transient blip (the common case) without risking the rest of the
+// panel. Worst case total for one vendor: ~110s, still under the 120s
+// ceiling with a small margin.
+async function withSingleRetryOnTimeout(attemptFn, retryFn){
+  try {
+    return await attemptFn();
+  } catch (e){
+    if (e && /timed out/i.test(e.message)){
+      try {
+        return await (retryFn ? retryFn() : attemptFn());
+      } catch (e2){
+        throw e2;
+      }
+    }
+    throw e;
+  }
+}
 // ---------- Shared hardened structured-output helper (2026-09-03) ----------
 // Root cause (Silver Trident Winery Company Profile extraction, 2026-09-03):
 // every call site in this file that asked Claude to "Respond with ONLY a
@@ -3280,6 +3319,163 @@ function redactBrandVoiceCandidatesForClient(candidates){
   }));
 }
 
+// ---------- Video Script Strategy, Voice Contest panel (2026-09-14) --------
+// Per direct instruction, after a live Grok timeout prompted the idea: "What
+// if we... include 2 contests that build the final prompt[?] 1) Create the
+// video design strategy that will include individual videos for each
+// creative focus group while consistently reinforcing the brand voice and
+// brand pillars that differentiate [this brand] from core competitors."
+// This is contest #1 — account-wide, NOT tied to any one destination. Its
+// winning candidate becomes accounts.videoStrategyText, the fixed foundation
+// every destination's Video Script contest (below) is then handed, per
+// Todd's confirmation ("the video strategy winner results will be
+// incorporated into the destination video script contest").
+// No AI Brain Transparency pass and no heuristic compliance score here,
+// same honest-omission as the Video Script contest just below — this output
+// is an internal strategy document for writers, not customer-facing copy,
+// so scoring it against customer-voice compliance heuristics wouldn't mean
+// anything. Rating (1-5, human) is still the whole selection mechanism, per
+// Todd's own answer ("User should select after rating all results").
+function buildVideoStrategyPrompt(account){
+  const context = brandVoiceCriticalMessagesContext(account, {});
+  const voiceGuideText = (account.voiceGuideText || '').slice(0, 1200).trim();
+  return `You are a brand video strategist proposing ONE video design strategy for this brand's entire collection of destination/Creative-Focus-Group videos, as part of a panel where several different strategies are being compared side by side.
+
+COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
+
+${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (the strategy must stay consistent with this):\n${voiceGuideText}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here):
+${context}
+
+This strategy will be handed, as a FIXED foundation, to every future individual destination video script written for this brand — each destination video is written separately, later, by a different process, and will be told to follow your strategy rather than invent its own. Your job here is only to set that shared foundation, not to write any one destination's script.
+
+Write a strategy document (400-700 words) that covers, in your own structure:
+- The ONE throughline that must appear in every destination video, tying back to this brand's actual voice/pillars above (not generic "luxury" language).
+- How that throughline stays consistent across a whole COLLECTION of different destination videos while still leaving room for each destination's own specifics.
+- What genuinely differentiates this brand from its core competitors, based only on the brand signal given above — never invent a named competitor or a claim not grounded in what's given.
+- Concrete guidance a scriptwriter could actually use later: what to always include, what to always avoid, and how to open/close every video so the collection reads as one system.
+
+Submit your candidate via the submit_video_strategy_candidate tool.`;
+}
+async function generateVideoStrategyCandidate(account){
+  try {
+    const prompt = buildVideoStrategyPrompt(account);
+    const parsed = await withSingleRetryOnTimeout(
+      () => callClaudeForJSON({
+        model: BRAND_VOICE_PRIMARY_BRIEF.model,
+        maxTokens: 1200,
+        content: prompt,
+        toolName: 'submit_video_strategy_candidate',
+        toolDescription: 'Submit one proposed video design strategy for the whole destination-video collection.',
+        schema: {
+          type: 'object',
+          properties: {
+            strategyText: { type: 'string', description: "400-700 words: the shared throughline, how it stays consistent across the collection, real competitive differentiation grounded only in the given brand signal, and concrete writer guidance." }
+          },
+          required: ['strategyText']
+        }
+      }),
+      () => callClaudeForJSON({
+        model: BRAND_VOICE_PRIMARY_BRIEF.model,
+        maxTokens: 1200,
+        content: prompt,
+        toolName: 'submit_video_strategy_candidate',
+        toolDescription: 'Submit one proposed video design strategy for the whole destination-video collection.',
+        schema: {
+          type: 'object',
+          properties: { strategyText: { type: 'string' } },
+          required: ['strategyText']
+        },
+        timeoutMs: 20000
+      })
+    );
+    const strategyText = typeof parsed.strategyText === 'string' ? parsed.strategyText.trim().slice(0, 6000) : null;
+    if (!strategyText) return { strategyText: null, error: 'Generation did not return a strategy.' };
+    return { strategyText, error: null };
+  } catch (e){
+    return { strategyText: null, error: 'Generation failed: ' + e.message };
+  }
+}
+async function generateVendorVideoStrategyCopy(vendorKey, account){
+  try {
+    const prompt = buildVideoStrategyPrompt(account) + `\n\nRespond with ONLY a JSON object: {"strategyText": "..."}`;
+    const text = await withSingleRetryOnTimeout(
+      () => callVendorForText(vendorKey, prompt),
+      () => callVendorForText(vendorKey, prompt, 20000)
+    );
+    const parsed = parseJsonBlock(text);
+    const strategyText = parsed && typeof parsed.strategyText === 'string' ? parsed.strategyText.trim().slice(0, 6000) : null;
+    if (!strategyText) return { strategyText: null, error: 'Generation returned no parseable strategy JSON.' };
+    return { strategyText, error: null };
+  } catch (e){
+    return { strategyText: null, error: 'Generation failed: ' + e.message };
+  }
+}
+function pickRecommendedVideoStrategyCandidate(candidates){
+  const list = (candidates || []).filter(c => typeof c.strategyText === 'string' && c.strategyText);
+  if (!list.length) return { key: null, reason: null };
+  const rated = list.filter(c => typeof c.rating === 'number');
+  if (rated.length){
+    const sorted = [...rated].sort((a, b) => b.rating - a.rating);
+    const top = sorted[0];
+    const tiedWithTop = sorted.filter(c => c.rating === top.rating);
+    if (tiedWithTop.length === 1) return { key: top.key, reason: 'rating' };
+  }
+  // No compliance heuristic for this content type (see the comment above
+  // buildVideoStrategyPrompt) — without a rating tiebreak, there is no
+  // honest automatic pick, so this deliberately returns null/null rather
+  // than fabricating a basis (matches "User should select after rating all
+  // results" — the recommendation is a bonus, never a substitute).
+  return { key: null, reason: null };
+}
+function redactVideoStrategyCandidatesForClient(candidates){
+  return (candidates || []).map(c => ({
+    key: c.key, label: c.blindLabel || c.label, configured: c.configured,
+    strategyText: c.strategyText || null,
+    error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    rating: (typeof c.rating === 'number') ? c.rating : null
+  }));
+}
+async function runVideoStrategyContest(account){
+  if (!process.env.ANTHROPIC_API_KEY){
+    return {
+      available: false,
+      note: 'The Video Script Strategy contest requires ANTHROPIC_API_KEY to be configured — without it there is no real draft to run multiple ways. Set the key to enable this panel.',
+      recommendedKey: null,
+      candidates: []
+    };
+  }
+  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  const [anthropicGenerated, vendorGenerated] = await Promise.all([
+    generateVideoStrategyCandidate(account),
+    Promise.all(configuredVendors.map(v => generateVendorVideoStrategyCopy(v.key, account)))
+  ]);
+  const buildCandidate = (key, label, vendor, model, gen) => ({
+    key, label, vendor, model, configured: true,
+    strategyText: gen.strategyText, error: gen.error
+  });
+  const anthropicCandidate = buildCandidate(BRAND_VOICE_PRIMARY_BRIEF.key, BRAND_VOICE_PRIMARY_BRIEF.label, BRAND_VOICE_PRIMARY_BRIEF.vendor, BRAND_VOICE_PRIMARY_BRIEF.model, anthropicGenerated);
+  const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
+  const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
+    key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
+    strategyText: null, error: `${v.envVar} not configured on this deployment.`
+  }));
+  const allLive = [anthropicCandidate, ...liveVendorCandidates];
+  const allCandidates = [...allLive, ...unconfiguredCandidates];
+  const shuffled = [...allCandidates];
+  for (let i = shuffled.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
+  allCandidates.sort((a, b) => {
+    const na = parseInt(String(a.blindLabel).replace(/\D/g, ''), 10) || 0;
+    const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
+    return na - nb;
+  });
+  const recommended = pickRecommendedVideoStrategyCandidate(allCandidates);
+  return { available: true, note: null, recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates };
+}
+
 // ---------- Video Script option, Voice Contest panel (2026-09-13) ----------
 // Per direct instruction: "I would just add this to the existing generator
 // that we used to look at some voice options. You could add a video script
@@ -3433,11 +3629,22 @@ async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId
   // never persisted to the account — plain client instructions layered on
   // top of, never overriding, the brand facts above.
   const notes = (typeof contextualNotes === 'string' ? contextualNotes.trim() : '').slice(0, 800);
+  // strategyCtx — 2026-09-14, per direct instruction (contest #1, "Brand
+  // Video Script Strategy" — see runVideoStrategyContest above) and its
+  // direct confirmation ("the video strategy winner results will be
+  // incorporated into the destination video script contest"). When the
+  // account has a selected winning strategy, it REPLACES ad-hoc invention:
+  // the model is told to follow it, not propose its own. When none has been
+  // selected yet (most accounts, until Todd runs and picks that contest),
+  // this is empty and the prompt falls back to its original behavior —
+  // this account's own approved Voice Guide/Vision Statement leading, and
+  // overallApproach still asks the model to state its own throughline.
+  const strategyCtx = (account.videoStrategyText || '').trim();
   return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination. This is one entry in a COLLECTION of destination videos across this brand's Creative Focus Groups/destinations — every entry in that collection shares the ONE brand voice below, while each destination's beats add its own expedition-style specifics on top of it. This candidate is also being compared side by side against other independently-written candidates for this same destination.
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice — this is the common thread across the whole collection, not just this one destination):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
+${strategyCtx ? `THIS ACCOUNT'S APPROVED VIDEO DESIGN STRATEGY (a human has already selected this as the required foundation for every destination video in this collection — FOLLOW it, do not propose a different throughline or approach of your own):\n${strategyCtx}\n\n` : ''}${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice — this is the common thread across the whole collection, not just this one destination):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
 
 CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here):
 ${context}
@@ -3447,21 +3654,33 @@ ${sampleCtx}${websiteCtx}${referenceCtx}${notes ? `\nADDITIONAL CONTEXT FOR THIS
 THE FIXED 8-BEAT STRUCTURE (write content for exactly these 8 beats, in this order — do not rename or reorder them):
 ${VIDEO_SCRIPT_BEAT_GRID.map((b, i) => `${i + 1}. ${b.beat} (${b.timestamp})`).join('\n')}
 
-Before the beats, write a short overallApproach: 2-4 sentences naming how this candidate leverages the ONE common brand voice above as the throughline shared across the whole collection of destination videos, then how THIS destination's beats layer in their own "${creativeMarket}" expedition-style specifics on top of that shared voice.
+Before the beats, write a short overallApproach: 2-4 sentences naming how this candidate ${strategyCtx ? 'executes the APPROVED VIDEO DESIGN STRATEGY above' : 'leverages the ONE common brand voice above as the throughline shared across the whole collection of destination videos'}, then how THIS destination's beats layer in their own "${creativeMarket}" expedition-style specifics on top of that shared voice.
 
 Submit your candidate via the submit_video_script_candidate tool, including both overallApproach and beats.`;
 }
 async function generateVideoScriptCandidate(account, creativeMarket, referenceScriptId, contextualNotes){
   try {
     const prompt = await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes);
-    const parsed = await callClaudeForJSON({
-      model: BRAND_VOICE_PRIMARY_BRIEF.model,
-      maxTokens: 1400,
-      content: prompt,
-      toolName: 'submit_video_script_candidate',
-      toolDescription: 'Submit one candidate 8-beat video script.',
-      schema: VIDEO_SCRIPT_BEAT_SCHEMA
-    });
+    // Single retry on timeout only — see withSingleRetryOnTimeout's comment.
+    const parsed = await withSingleRetryOnTimeout(
+      () => callClaudeForJSON({
+        model: BRAND_VOICE_PRIMARY_BRIEF.model,
+        maxTokens: 1400,
+        content: prompt,
+        toolName: 'submit_video_script_candidate',
+        toolDescription: 'Submit one candidate 8-beat video script.',
+        schema: VIDEO_SCRIPT_BEAT_SCHEMA
+      }),
+      () => callClaudeForJSON({
+        model: BRAND_VOICE_PRIMARY_BRIEF.model,
+        maxTokens: 1400,
+        content: prompt,
+        toolName: 'submit_video_script_candidate',
+        toolDescription: 'Submit one candidate 8-beat video script.',
+        schema: VIDEO_SCRIPT_BEAT_SCHEMA,
+        timeoutMs: 20000
+      })
+    );
     const beats = Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
     if (!beats || beats.length !== 8) return { beats: null, overallApproach: null, error: 'Generation did not return all 8 beats.' };
     const overallApproach = typeof parsed.overallApproach === 'string' ? parsed.overallApproach.trim().slice(0, 700) : '';
@@ -3473,7 +3692,14 @@ async function generateVideoScriptCandidate(account, creativeMarket, referenceSc
 async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, referenceScriptId, contextualNotes){
   try {
     const prompt = (await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes)) + `\n\nRespond with ONLY a JSON object: {"overallApproach": "...", "beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
-    const text = await callVendorForText(vendorKey, prompt);
+    // Single retry on timeout only (2026-09-14, per Todd — Grok timed out
+    // mid-contest). Full 90s on the first try, a short 20s on the retry so
+    // one slow vendor can't push the whole Promise.all past Vercel's 120s
+    // ceiling — see withSingleRetryOnTimeout's comment for the full reasoning.
+    const text = await withSingleRetryOnTimeout(
+      () => callVendorForText(vendorKey, prompt),
+      () => callVendorForText(vendorKey, prompt, 20000)
+    );
     const parsed = parseJsonBlock(text);
     const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
     if (!beats || beats.length !== 8) return { beats: null, overallApproach: null, error: 'Generation returned no parseable 8-beat JSON.' };
@@ -3580,11 +3806,14 @@ async function runVideoScriptContest(account, creativeMarket, extra){
     return na - nb;
   });
   const recommended = pickRecommendedVideoScriptCandidate(allCandidates);
-  let evidenceOnFile = false;
-  try { evidenceOnFile = !!(await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket')); } catch (e){ evidenceOnFile = false; }
+  // evidenceGapNote — removed 2026-09-14, per direct instruction ("Remove
+  // the banner completely"). Fix 2's creative-focus-summary panel (see the
+  // GET .../creative-focus-summary endpoint below) already surfaces what's
+  // on file for a destination BEFORE the contest runs, which is where Todd
+  // wanted that visibility — this per-run banner after the fact was no
+  // longer wanted alongside it.
   return {
     available: true, note: null,
-    evidenceGapNote: evidenceOnFile ? null : `No Internal Experience Evidence is loaded for "${creativeMarket}" yet — every candidate below was written from brand-level and website signal only, not destination-specific facts. Tag evidence to this Creative Focus Group (Sample Writings & Presentations → Option D, or retag an existing sample) for a materially stronger comparison.`,
     usedReferenceScript: referenceScriptId,
     recommendedKey: recommended.key, recommendedReason: recommended.reason, candidates: allCandidates
   };
@@ -14564,7 +14793,8 @@ const INTERVIEW_VENDOR_REGISTRY = [
 // underlying call. Throws on any failure; every caller wraps this in the
 // same try/catch → honest-error-per-candidate pattern already established
 // by generateInterviewCandidateCopy's Anthropic path.
-async function callVendorForText(vendorKey, prompt){
+async function callVendorForText(vendorKey, prompt, timeoutMs){
+  const ms = typeof timeoutMs === 'number' ? timeoutMs : undefined; // undefined -> fetchWithTimeout's own 90s default
   const v = INTERVIEW_VENDOR_REGISTRY.find(x => x.key === vendorKey);
   if (!v) throw new Error('unknown vendor');
   // 2026-08-27 fix, per direct report (Gemini candidate showing "Generation
@@ -14585,7 +14815,7 @@ async function callVendorForText(vendorKey, prompt){
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
       body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }] })
-    });
+    }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     return (data.choices && data.choices[0] && data.choices[0].message) ? (data.choices[0].message.content || '') : '';
@@ -14605,7 +14835,7 @@ async function callVendorForText(vendorKey, prompt){
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    });
+    }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
@@ -14620,7 +14850,7 @@ async function callVendorForText(vendorKey, prompt){
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.XAI_API_KEY}` },
       body: JSON.stringify({ model: v.model, input: prompt })
-    });
+    }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     if (typeof data.output_text === 'string') return data.output_text;
@@ -14632,7 +14862,7 @@ async function callVendorForText(vendorKey, prompt){
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
       body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }] })
-    });
+    }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     return (data.choices && data.choices[0] && data.choices[0].message) ? (data.choices[0].message.content || '') : '';
@@ -17386,11 +17616,26 @@ async function handleRequest(req, res) {
       // Video Script option to this same generator rather than build a new
       // one. Defaults to 'voice_guide' so every existing caller (which never
       // sends this field) is completely unaffected.
-      const contentType = (typeof body.contentType === 'string' && body.contentType === 'video_script') ? 'video_script' : 'voice_guide';
+      // 2026-09-14 — 'video_strategy' added, the 3rd contest type (see
+      // runVideoStrategyContest above).
+      const contentType = (typeof body.contentType === 'string' && (body.contentType === 'video_script' || body.contentType === 'video_strategy')) ? body.contentType : 'voice_guide';
       const capCheck3 = checkInterviewWeeklyCap(accountId);
       if (capCheck3) return sendJson(res, 429, capCheck3);
       const now = new Date().toISOString();
       const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      if (contentType === 'video_strategy'){
+        const result = await runVideoStrategyContest(account);
+        if (!result.available){
+          return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
+        }
+        const interviewId = generateId('AVI');
+        db.prepare(`INSERT INTO account_voice_interviews (id, accountId, requestedBy, candidatesJson, createdAt, contentType) VALUES (?,?,?,?,?,?)`)
+          .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'video_strategy');
+        return sendJson(res, 200, {
+          available: true, contentType: 'video_strategy', interviewId, recommendedKey: result.recommendedKey,
+          candidates: redactVideoStrategyCandidatesForClient(result.candidates), createdAt: now
+        });
+      }
       if (contentType === 'video_script'){
         // Round "creative-focus-tagging": renamed from productGroup —
         // destinations are a Creative Focus Group concept. referenceScriptId
@@ -17419,7 +17664,7 @@ async function handleRequest(req, res) {
           .run(interviewId, accountId, requestedBy, JSON.stringify(result.candidates), now, 'video_script', creativeMarket);
         return sendJson(res, 200, {
           available: true, contentType: 'video_script', creativeMarket, interviewId, recommendedKey: result.recommendedKey,
-          evidenceGapNote: result.evidenceGapNote || null, usedReferenceScript: result.usedReferenceScript,
+          usedReferenceScript: result.usedReferenceScript,
           candidates: redactVideoScriptCandidatesForClient(result.candidates), createdAt: now,
           beatGrid: VIDEO_SCRIPT_BEAT_GRID
         });
@@ -17614,6 +17859,25 @@ async function handleRequest(req, res) {
       let candidates = [];
       try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
       const chosen = candidates.find(c => c.key === body.candidateKey);
+      // 2026-09-14 — Video Script Strategy branch. Selecting a winner here
+      // WRITES accounts.videoStrategyText immediately (same "select applies
+      // directly, no separate approve step" discipline as visionStatement/
+      // longformVoiceExample just below) — per Todd's own confirmation
+      // ("Yes[,] same as content" when asked whether re-selecting later
+      // should immediately replace the current strategy for future runs).
+      if (interview.contentType === 'video_strategy'){
+        if (!chosen || !chosen.strategyText){
+          return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
+        }
+        const now = new Date().toISOString();
+        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
+        db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
+          .run(body.candidateKey, selectedBy, now, interviewId);
+        db.prepare('UPDATE accounts SET videoStrategyText = ? WHERE accountId = ?')
+          .run(chosen.strategyText, accountId);
+        recordContestResult(accountId, 'Video Strategy', null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
+        return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, strategyText: chosen.strategyText });
+      }
       // 2026-09-13 — Video Script branch. A video-script interview row has
       // contentType === 'video_script' and its candidates carry `beats`, not
       // visionStatement/longformExample. Selecting a winner here does NOT
@@ -17717,6 +17981,10 @@ async function handleRequest(req, res) {
         const recommended = pickRecommendedVideoScriptCandidate(candidates);
         return sendJson(res, 200, { interviewId, candidates: redactVideoScriptCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
       }
+      if (interview.contentType === 'video_strategy'){
+        const recommended = pickRecommendedVideoStrategyCandidate(candidates);
+        return sendJson(res, 200, { interviewId, candidates: redactVideoStrategyCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+      }
       const recommended = pickRecommendedCandidate(candidates);
       return sendJson(res, 200, { interviewId, candidates: redactBrandVoiceCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
     }
@@ -17801,8 +18069,13 @@ async function handleRequest(req, res) {
         // comment above) so Video Script history rows use the matching
         // recommend/redact pair instead of the Voice Guide-shaped ones.
         const isVideoScript = r.contentType === 'video_script';
-        const recommended = isVideoScript ? pickRecommendedVideoScriptCandidate(candidates) : pickRecommendedCandidate(candidates);
-        const redacted = isVideoScript ? redactVideoScriptCandidatesForClient(candidates) : redactBrandVoiceCandidatesForClient(candidates);
+        const isVideoStrategy = r.contentType === 'video_strategy';
+        const recommended = isVideoScript ? pickRecommendedVideoScriptCandidate(candidates)
+          : isVideoStrategy ? pickRecommendedVideoStrategyCandidate(candidates)
+          : pickRecommendedCandidate(candidates);
+        const redacted = isVideoScript ? redactVideoScriptCandidatesForClient(candidates)
+          : isVideoStrategy ? redactVideoStrategyCandidatesForClient(candidates)
+          : redactBrandVoiceCandidatesForClient(candidates);
         return {
           id: r.id, requestedBy: r.requestedBy, candidates: redacted,
           contentType: r.contentType || 'voice_guide', creativeMarket: r.creativeMarket || null,
@@ -26133,4 +26406,5 @@ try {
 }
 
 module.exports = handleRequest;
+
 
