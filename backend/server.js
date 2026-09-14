@@ -17802,6 +17802,348 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { voiceVersion: nextVersion, approved: !!approved, approvedAt: approvedAt || null });
     }
 
+    // ---------- Voice Contest — Excel / CSV export (2026-09-15) ----------
+    // Per direct instruction: "We need export functions for Excel and
+    // Google Sheets." Google Sheets export follows this app's established
+    // pattern elsewhere (Marketing Calendar, Media Plan export buttons) — a
+    // CSV download the person opens with File > Import at sheets.new, since
+    // there's no Google API/OAuth credentials this app could push through
+    // automatically (same honest reasoning as mediaPlanExport()'s own
+    // comment in portal.html). The .xlsx sibling uses ExcelJS (already a
+    // dependency — see buildMarketUploadXlsx() above) rather than that
+    // path, matching the newer in-process pattern rather than the older
+    // xlsx_gen.py subprocess.
+    //
+    // Full contest record, per direct choice: every candidate side by side
+    // with its rating, not just the finalized winner — mirrors the
+    // structure of the sample creative brief Todd shared as the target
+    // shape (a Brief/Overview tab, then a beat-by-beat Scripts grid).
+    //
+    // Same requireAccountOrAdmin + isStaffCaller pattern as every other
+    // account-scoped Voice Contest endpoint below: a client-portal export
+    // gets the same blind option labels the on-screen results already show
+    // (never a real vendor/model name); an Ops Console export (calling with
+    // X-Admin-Token) gets the real vendor/model identity, matching what
+    // Ops Console already shows on screen for staff.
+    function voiceContestExportOptionLabel(c, isStaffCaller){
+      if (isStaffCaller) return `${c.label || c.key}${c.vendor ? ` (${c.vendor}${c.model ? ' · ' + c.model : ''})` : ''}`;
+      return c.blindLabel || c.label || c.key;
+    }
+    function voiceContestExportStatus(c, selectedCandidateKey){
+      if (c.key === selectedCandidateKey) return 'WINNER';
+      if (c.pending) return 'Still thinking';
+      if (c.error) return 'Failed';
+      if (c.configured === false) return 'Not configured';
+      return '';
+    }
+    // Builds the per-contest-type "Overview" metadata block and the common
+    // Option/Winner/Rating/Status summary every content type shares —
+    // shared by both the .xlsx sheet and the flat .csv export.
+    function voiceContestExportSummaryRows(interview, candidates, isStaffCaller){
+      const selectedCandidateKey = interview.selectedCandidateKey || null;
+      return candidates.map(c => ({
+        option: voiceContestExportOptionLabel(c, isStaffCaller),
+        winner: c.key === selectedCandidateKey ? 'Yes' : '',
+        rating: (typeof c.rating === 'number') ? c.rating : '',
+        status: voiceContestExportStatus(c, selectedCandidateKey)
+      }));
+    }
+    async function buildVoiceContestXlsx(account, interview, contentType, candidates, isStaffCaller){
+      const selectedCandidateKey = interview.selectedCandidateKey || null;
+      const typeLabel = VOICE_CONTEST_EXPORT_TYPE_LABEL[contentType] || contentType;
+      const companyLabel = (account && account.company) ? account.company : interview.accountId;
+      const titleBase = `${companyLabel.toUpperCase()} — ${typeLabel.toUpperCase()} CONTEST`;
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Verilume';
+      wb.created = new Date();
+
+      // ---- Sheet 1: Overview ----
+      const overviewSheet = wb.addWorksheet('Overview', { views: [{ state: 'frozen', ySplit: 3 }] });
+      const metaRows = [
+        ['Contest type', typeLabel],
+        ['Destination / Creative Focus Group', interview.creativeMarket || '—'],
+        ['Requested by', interview.requestedBy || '—'],
+        ['Run on', interview.createdAt || '—'],
+        ['Selected winner', selectedCandidateKey ? voiceContestExportOptionLabel(candidates.find(c => c.key === selectedCandidateKey) || {}, isStaffCaller) : 'No winner selected yet'],
+        ['Selected by', interview.selectedBy || '—'],
+        ['Selected on', interview.selectedAt || '—'],
+        ['Feedback', interview.feedbackNote ? `${interview.feedbackType ? interview.feedbackType + ' — ' : ''}${interview.feedbackNote}` : '—']
+      ];
+      overviewSheet.columns = [{ width: 34 }, { width: 60 }];
+      overviewSheet.mergeCells(1, 1, 1, 2);
+      const ovTitle = overviewSheet.getCell(1, 1);
+      ovTitle.value = titleBase;
+      ovTitle.font = { bold: true, size: 14 };
+      const ovNote = overviewSheet.getCell(2, 1);
+      overviewSheet.mergeCells(2, 1, 2, 2);
+      ovNote.value = isStaffCaller
+        ? 'Staff export — option labels show the real vendor and model behind each candidate.'
+        : 'Client export — options are shown blind (no vendor or model names), matching what this contest looked like on screen.';
+      ovNote.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+      metaRows.forEach((r, i) => {
+        const row = overviewSheet.getRow(3 + i);
+        row.getCell(1).value = r[0];
+        row.getCell(1).font = { bold: true };
+        row.getCell(2).value = r[1];
+        row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+      });
+      const summaryHeaderRowNum = 3 + metaRows.length + 1;
+      const summaryTitleCell = overviewSheet.getCell(summaryHeaderRowNum, 1);
+      summaryTitleCell.value = 'RESULTS SUMMARY';
+      summaryTitleCell.font = { bold: true, size: 12 };
+      const summaryColHeaders = ['Option', 'Winner', 'Rating (1-5)', 'Status'];
+      const summaryHeaderRow = overviewSheet.getRow(summaryHeaderRowNum + 1);
+      summaryColHeaders.forEach((h, i) => {
+        const cell = summaryHeaderRow.getCell(i + 1);
+        cell.value = h;
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } };
+      });
+      const summaryRows = voiceContestExportSummaryRows(interview, candidates, isStaffCaller);
+      summaryRows.forEach((r, i) => {
+        const row = overviewSheet.getRow(summaryHeaderRowNum + 2 + i);
+        row.getCell(1).value = r.option;
+        row.getCell(2).value = r.winner;
+        row.getCell(3).value = r.rating;
+        row.getCell(4).value = r.status;
+        if (r.winner === 'Yes'){ [1, 2, 3, 4].forEach(c => { row.getCell(c).font = { bold: true }; }); }
+      });
+
+      // ---- Sheet 2: Candidates — full generated content, type-specific ----
+      const candSheet = wb.addWorksheet('Candidates', { views: [{ state: 'frozen', ySplit: 3 }] });
+      if (contentType === 'video_strategy'){
+        const cols = [
+          { header: 'Option', width: 28 }, { header: 'Winner', width: 10 },
+          { header: 'Rating', width: 10 }, { header: 'Status', width: 16 },
+          { header: 'Strategy Text', width: 90 }
+        ];
+        candSheet.columns = cols.map(c => ({ width: c.width }));
+        candSheet.mergeCells(1, 1, 1, cols.length);
+        candSheet.getCell(1, 1).value = titleBase + ' — CANDIDATES'; candSheet.getCell(1, 1).font = { bold: true, size: 14 };
+        const hRow = candSheet.getRow(3);
+        cols.forEach((c, i) => { const cell = hRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+        candidates.forEach((c, i) => {
+          const row = candSheet.getRow(4 + i);
+          row.getCell(1).value = voiceContestExportOptionLabel(c, isStaffCaller);
+          row.getCell(2).value = c.key === selectedCandidateKey ? 'Yes' : '';
+          row.getCell(3).value = (typeof c.rating === 'number') ? c.rating : '';
+          row.getCell(4).value = voiceContestExportStatus(c, selectedCandidateKey);
+          row.getCell(5).value = c.strategyText || (c.error && !c.pending ? '(generation failed for this option)' : '');
+          row.getCell(5).alignment = { wrapText: true, vertical: 'top' };
+        });
+      } else if (contentType === 'video_script'){
+        const cols = [
+          { header: 'Option', width: 28 }, { header: 'Winner', width: 10 },
+          { header: 'Rating', width: 10 }, { header: 'Status', width: 16 },
+          { header: 'Compliance Score', width: 16 }, { header: 'Flags', width: 30 },
+          { header: 'Finalized', width: 12 }, { header: 'Overall Approach', width: 70 }
+        ];
+        candSheet.columns = cols.map(c => ({ width: c.width }));
+        candSheet.mergeCells(1, 1, 1, cols.length);
+        candSheet.getCell(1, 1).value = titleBase + ' — CANDIDATES'; candSheet.getCell(1, 1).font = { bold: true, size: 14 };
+        const hRow = candSheet.getRow(3);
+        cols.forEach((c, i) => { const cell = hRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+        candidates.forEach((c, i) => {
+          const row = candSheet.getRow(4 + i);
+          row.getCell(1).value = voiceContestExportOptionLabel(c, isStaffCaller);
+          row.getCell(2).value = c.key === selectedCandidateKey ? 'Yes' : '';
+          row.getCell(3).value = (typeof c.rating === 'number') ? c.rating : '';
+          row.getCell(4).value = voiceContestExportStatus(c, selectedCandidateKey);
+          row.getCell(5).value = (typeof c.complianceScore === 'number') ? c.complianceScore : '';
+          row.getCell(6).value = Array.isArray(c.flags) ? c.flags.join('; ') : '';
+          row.getCell(7).value = c.finalized ? 'Yes' : '';
+          row.getCell(8).value = c.overallApproach || (c.error && !c.pending ? '(generation failed for this option)' : '');
+          row.getCell(8).alignment = { wrapText: true, vertical: 'top' };
+        });
+
+        // ---- Sheet 3: Scripts — one row per beat per option, same shape
+        // as the sample brief's own "Scripts" tab (Option / Beat / Timestamp
+        // / Visual / VO / Caption / Pillar). ----
+        const scriptsSheet = wb.addWorksheet('Scripts', { views: [{ state: 'frozen', ySplit: 3 }] });
+        const sCols = [
+          { header: 'Option', width: 26 }, { header: '#', width: 5 }, { header: 'Beat', width: 22 },
+          { header: 'Timestamp', width: 14 }, { header: 'Visual — shot direction', width: 46 },
+          { header: 'Voiceover', width: 40 }, { header: 'On-screen caption', width: 30 }, { header: 'Pillar', width: 26 }
+        ];
+        scriptsSheet.columns = sCols.map(c => ({ width: c.width }));
+        scriptsSheet.mergeCells(1, 1, 1, sCols.length);
+        scriptsSheet.getCell(1, 1).value = titleBase + ' — SCRIPTS (ONE ROW PER BEAT)'; scriptsSheet.getCell(1, 1).font = { bold: true, size: 14 };
+        const sHeaderRow = scriptsSheet.getRow(3);
+        sCols.forEach((c, i) => { const cell = sHeaderRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+        let sRowNum = 4;
+        candidates.forEach(c => {
+          const label = voiceContestExportOptionLabel(c, isStaffCaller);
+          const beats = Array.isArray(c.beats) ? c.beats : [];
+          beats.forEach((b, i) => {
+            const grid = VIDEO_SCRIPT_BEAT_GRID[i] || {};
+            const row = scriptsSheet.getRow(sRowNum++);
+            row.getCell(1).value = label;
+            row.getCell(2).value = i + 1;
+            row.getCell(3).value = grid.beat || '';
+            row.getCell(4).value = grid.timestamp || '';
+            row.getCell(5).value = b.visual || '';
+            row.getCell(6).value = b.vo || '';
+            row.getCell(7).value = b.caption || '';
+            row.getCell(8).value = b.pillar || '';
+            [5, 6, 7].forEach(colIdx => { row.getCell(colIdx).alignment = { wrapText: true, vertical: 'top' }; });
+          });
+        });
+
+        // ---- Sheet 4: Script Grid — voiceover by timeslot, one column per
+        // option, same shape as the sample brief's own "Script Grid" tab.
+        const gridSheet = wb.addWorksheet('Script Grid', { views: [{ state: 'frozen', ySplit: 3 }] });
+        const gCols = [{ header: 'Timestamp', width: 14 }].concat(candidates.map(c => ({ header: voiceContestExportOptionLabel(c, isStaffCaller), width: 30 })));
+        gridSheet.columns = gCols.map(c => ({ width: c.width }));
+        gridSheet.mergeCells(1, 1, 1, gCols.length);
+        gridSheet.getCell(1, 1).value = titleBase + ' — SCRIPT GRID (VOICEOVER BY TIMESLOT)'; gridSheet.getCell(1, 1).font = { bold: true, size: 14 };
+        const gHeaderRow = gridSheet.getRow(3);
+        gCols.forEach((c, i) => { const cell = gHeaderRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+        VIDEO_SCRIPT_BEAT_GRID.forEach((grid, i) => {
+          const row = gridSheet.getRow(4 + i);
+          row.getCell(1).value = grid.timestamp;
+          candidates.forEach((c, ci) => {
+            const beat = Array.isArray(c.beats) ? c.beats[i] : null;
+            const cell = row.getCell(2 + ci);
+            cell.value = beat ? (beat.vo || '') : '';
+            cell.alignment = { wrapText: true, vertical: 'top' };
+          });
+        });
+      } else {
+        // voice_guide (Voice Contest / Brand Voice)
+        const cols = [
+          { header: 'Option', width: 28 }, { header: 'Winner', width: 10 },
+          { header: 'Rating', width: 10 }, { header: 'Status', width: 16 },
+          { header: 'Compliance Score', width: 16 }, { header: 'Flags', width: 30 },
+          { header: 'Vision Statement', width: 50 }, { header: 'Longform Example', width: 70 }
+        ];
+        candSheet.columns = cols.map(c => ({ width: c.width }));
+        candSheet.mergeCells(1, 1, 1, cols.length);
+        candSheet.getCell(1, 1).value = titleBase + ' — CANDIDATES'; candSheet.getCell(1, 1).font = { bold: true, size: 14 };
+        const hRow = candSheet.getRow(3);
+        cols.forEach((c, i) => { const cell = hRow.getCell(i + 1); cell.value = c.header; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+        candidates.forEach((c, i) => {
+          const row = candSheet.getRow(4 + i);
+          row.getCell(1).value = voiceContestExportOptionLabel(c, isStaffCaller);
+          row.getCell(2).value = c.key === selectedCandidateKey ? 'Yes' : '';
+          row.getCell(3).value = (typeof c.rating === 'number') ? c.rating : '';
+          row.getCell(4).value = voiceContestExportStatus(c, selectedCandidateKey);
+          row.getCell(5).value = (typeof c.complianceScore === 'number') ? c.complianceScore : '';
+          row.getCell(6).value = Array.isArray(c.flags) ? c.flags.join('; ') : '';
+          row.getCell(7).value = c.visionStatement || '';
+          row.getCell(8).value = c.longformExample || (c.error && !c.pending ? '(generation failed for this option)' : '');
+          row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+          row.getCell(8).alignment = { wrapText: true, vertical: 'top' };
+        });
+      }
+
+      return wb.xlsx.writeBuffer();
+    }
+    function buildVoiceContestCsv(account, interview, contentType, candidates, isStaffCaller){
+      const csvCell = v => {
+        const s = v === null || v === undefined ? '' : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const selectedCandidateKey = interview.selectedCandidateKey || null;
+      let headers, rows;
+      if (contentType === 'video_script'){
+        headers = ['Option', 'Winner', 'Rating', 'Status', 'Beat #', 'Beat', 'Timestamp', 'Visual', 'Voiceover', 'Caption', 'Pillar'];
+        rows = [];
+        candidates.forEach(c => {
+          const label = voiceContestExportOptionLabel(c, isStaffCaller);
+          const winner = c.key === selectedCandidateKey ? 'Yes' : '';
+          const rating = (typeof c.rating === 'number') ? c.rating : '';
+          const status = voiceContestExportStatus(c, selectedCandidateKey);
+          const beats = Array.isArray(c.beats) ? c.beats : [];
+          if (!beats.length){ rows.push([label, winner, rating, status, '', '', '', '', '', '', '']); return; }
+          beats.forEach((b, i) => {
+            const grid = VIDEO_SCRIPT_BEAT_GRID[i] || {};
+            rows.push([label, winner, rating, status, i + 1, grid.beat || '', grid.timestamp || '', b.visual || '', b.vo || '', b.caption || '', b.pillar || '']);
+          });
+        });
+      } else if (contentType === 'video_strategy'){
+        headers = ['Option', 'Winner', 'Rating', 'Status', 'Strategy Text'];
+        rows = candidates.map(c => [
+          voiceContestExportOptionLabel(c, isStaffCaller), c.key === selectedCandidateKey ? 'Yes' : '',
+          (typeof c.rating === 'number') ? c.rating : '', voiceContestExportStatus(c, selectedCandidateKey),
+          c.strategyText || ''
+        ]);
+      } else {
+        headers = ['Option', 'Winner', 'Rating', 'Status', 'Compliance Score', 'Flags', 'Vision Statement', 'Longform Example'];
+        rows = candidates.map(c => [
+          voiceContestExportOptionLabel(c, isStaffCaller), c.key === selectedCandidateKey ? 'Yes' : '',
+          (typeof c.rating === 'number') ? c.rating : '', voiceContestExportStatus(c, selectedCandidateKey),
+          (typeof c.complianceScore === 'number') ? c.complianceScore : '', Array.isArray(c.flags) ? c.flags.join('; ') : '',
+          c.visionStatement || '', c.longformExample || ''
+        ]);
+      }
+      const lines = [headers.map(csvCell).join(',')];
+      rows.forEach(r => lines.push(r.map(csvCell).join(',')));
+      return '﻿' + lines.join('\r\n') + '\r\n';
+    }
+    const VOICE_CONTEST_EXPORT_TYPE_LABEL = { voice_guide: 'Voice Guide', video_strategy: 'Video Strategy', video_script: 'Video Script' };
+    // Shared loader for both export routes below — 404s consistently, picks
+    // the right recommend/redact pair per contentType same as every other
+    // per-interview endpoint above.
+    function loadVoiceContestForExport(accountId, interviewId){
+      const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+      if (!interview) return null;
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      return { interview, candidates, contentType: interview.contentType || 'voice_guide' };
+    }
+    // GET /api/accounts/:id/voice-contest/:interviewId/export.xlsx
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'export.xlsx'){
+      const accountId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
+      const loaded = loadVoiceContestForExport(accountId, interviewId);
+      if (!loaded) return sendJson(res, 404, { error: 'voice contest not found for this account' });
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || { accountId };
+      const candidatesForExport = isStaffCaller ? loaded.candidates : (
+        loaded.contentType === 'video_script' ? redactVideoScriptCandidatesForClient(loaded.candidates)
+        : loaded.contentType === 'video_strategy' ? redactVideoStrategyCandidatesForClient(loaded.candidates)
+        : redactBrandVoiceCandidatesForClient(loaded.candidates)
+      );
+      try {
+        const buf = await buildVoiceContestXlsx(account, loaded.interview, loaded.contentType, candidatesForExport, isStaffCaller);
+        const typeSlug = loaded.contentType.replace(/_/g, '-');
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="voice-contest-${typeSlug}-${interviewId}.xlsx"`,
+          'Access-Control-Allow-Origin': '*'
+        });
+        return res.end(Buffer.from(buf));
+      } catch (e){
+        return sendJson(res, 500, { error: 'xlsx export failed: ' + e.message });
+      }
+    }
+    // GET /api/accounts/:id/voice-contest/:interviewId/export.csv — same
+    // record, flat CSV — this is what the "Open in Google Sheets" affordance
+    // downloads (see comment above this section).
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'export.csv'){
+      const accountId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
+      const loaded = loadVoiceContestForExport(accountId, interviewId);
+      if (!loaded) return sendJson(res, 404, { error: 'voice contest not found for this account' });
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || { accountId };
+      const candidatesForExport = isStaffCaller ? loaded.candidates : (
+        loaded.contentType === 'video_script' ? redactVideoScriptCandidatesForClient(loaded.candidates)
+        : loaded.contentType === 'video_strategy' ? redactVideoStrategyCandidatesForClient(loaded.candidates)
+        : redactBrandVoiceCandidatesForClient(loaded.candidates)
+      );
+      const csv = buildVoiceContestCsv(account, loaded.interview, loaded.contentType, candidatesForExport, isStaffCaller);
+      const typeSlug = loaded.contentType.replace(/_/g, '-');
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="voice-contest-${typeSlug}-${interviewId}.csv"`,
+        'Access-Control-Allow-Origin': '*'
+      });
+      return res.end(csv);
+    }
+
     // POST /api/accounts/:id/voice-contest — 2026-08-22, the multi-model
     // Brand Voice contest (see runBrandVoiceContest() above). Body (all
     // optional): { toneAnchors: string[], avoidWords: string, antiExample:
@@ -26963,7 +27305,6 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
 
