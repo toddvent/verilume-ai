@@ -4346,8 +4346,13 @@
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
   <div class="step" id="step-voiceContest">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> / Voice Contest</div>
-    <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations · Voice Contest</div>
+    <!-- 2026-09-14, per direct instruction ("Portal Breadcrumbs are: Brand >
+         Voice Contest") — simplified to match the new IA below: this page is
+         reached from the Brand page tile now, not a Next/Back step inside
+         Sample Writings & Presentations, so both the crumb trail and eyebrow
+         drop that intermediate hop. -->
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Voice Contest</div>
+    <div class="eyebrow">Brand · Voice Contest</div>
     <!-- 2026-08-27, per direct instruction — the weekly usage counter moves
          out of a sentence-style .hint line (still fetched by
          loadInterviewUsage(), see the JS) and into its own small stat tile,
@@ -4380,6 +4385,68 @@
          vendor and not one of the five integrated here). -->
     <p class="lede">Anthropic, OpenAI, Gemini, Perplexity &amp; xAI are competing for your copywriting business. Select the winner based on how well they understand your brand. Results are based on your brand guide, sample writings, website, and overall assessment.</p>
 
+    <!-- 2026-09-14, per direct instruction: "Voice Contest Page: 1. Show
+         current headline and paragraph." "Headline" = the approved Vision
+         Statement, "paragraph" = the approved Longform Example — the same
+         two fields voiceContestWinnerModule further down edits, just shown
+         read-only up top so what's currently live is visible before anyone
+         opens a tile below. Populated in renderVoiceContestStep(); falls
+         back to a plain empty-state when nothing's been approved yet. -->
+    <div class="section-card" id="voiceContestCurrentSummary" style="margin-bottom:16px;">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Your Current Voice</h3>
+      <div class="field" style="margin-bottom:8px;">
+        <label>Headline (Vision Statement)</label>
+        <p id="voiceContestCurrentHeadline" style="margin:2px 0 0;font-weight:600;"></p>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Paragraph (Longform Example)</label>
+        <p id="voiceContestCurrentParagraph" style="margin:2px 0 0;white-space:pre-wrap;color:var(--muted);"></p>
+      </div>
+    </div>
+
+    <!-- 2026-09-14, per direct instruction: "2. Tile to create new contest
+         with drop-down including contest options. Selecting opens template
+         used to run contest." This tile's own dropdown (#voiceContestNewTileType)
+         is a plain entry point — starting a contest sets the REAL
+         #voiceContestContentType select below to match, fires its existing
+         onVoiceContestContentTypeChange() unchanged, reveals voiceContestModule
+         (hidden by default now, see its style="display:none" below), and
+         scrolls to it. None of the run/rate/select logic inside that module
+         changed — only whether it's visible before a tile choice is made. -->
+    <div class="section-card" id="voiceContestNewTile" style="margin-bottom:16px;">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Create New Contest</h3>
+      <p class="lede" style="margin:2px 0 12px;">Pick what you want the models to compete on.</p>
+      <div class="field-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field" style="flex:1 1 320px;margin-bottom:0;">
+          <select id="voiceContestNewTileType">
+            <option value="voice_guide">Voice options (Vision Statement + Longform Example)</option>
+            <option value="video_script">Video script options (a full :30 beat-by-beat script)</option>
+            <option value="video_strategy">Brand Video Script Strategy (one strategy for the whole video collection)</option>
+          </select>
+        </div>
+        <button type="button" class="btn-primary" onclick="voiceContestOpenNewTile()">Start new contest →</button>
+      </div>
+    </div>
+
+    <!-- 2026-09-14, per direct instruction: "3. Tile to view previous
+         contests with drop-down with names of completed contests." Label
+         convention per direct answer: "Type + destination + date." Reuses
+         the same client-facing GET .../voice-contest history this page
+         already fetches for the reference-script picker — no new backend
+         endpoint needed, since it already returns blind-labeled candidates
+         with their 1-5 ratings (see redactBrandVoiceCandidatesForClient /
+         redactVideoScriptCandidatesForClient / redactVideoStrategyCandidatesForClient,
+         server.js — none of them ever include vendor/model). -->
+    <div class="section-card" id="voiceContestHistoryTile" style="margin-bottom:16px;">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">View Previous Contests</h3>
+      <div class="field" style="margin-bottom:10px;">
+        <select id="voiceContestHistorySelect" onchange="voiceContestOnHistorySelectChange()">
+          <option value="">Select a completed contest…</option>
+        </select>
+      </div>
+      <div id="voiceContestHistoryDetail"></div>
+    </div>
+
     <!-- 2026-08-27, per direct instruction — accent-cx (the teal-blue
          module accent) and the "1" modnum badge are dropped: this is the
          only module on this page, so a numbered, colored-accent header
@@ -4387,8 +4454,12 @@
          of, not a real second module. Plain, unaccented module border (our
          typical outline) instead. Copy changed from "Run the contest" to
          "Your Contestants Will Review" to match the contestant framing used
-         throughout this page. -->
-    <div class="module open" id="voiceContestModule">
+         throughout this page.
+         2026-09-14 — hidden by default (style="display:none") now that
+         "Create New Contest" above is the entry point into this module, per
+         direct instruction; voiceContestOpenNewTile() / voiceContestRerunFromHistory()
+         reveal it. Nothing inside changed. -->
+    <div class="module open" id="voiceContestModule" style="display:none;">
       <div class="module-head" onclick="toggleModule('voiceContestModule')">
         <div class="titles">
           <span class="tag">Multi-model</span>
@@ -4429,6 +4500,22 @@
           </select>
         </div>
         <div class="field" id="voiceContestProductGroupField" style="display:none;margin-bottom:10px;">
+          <!-- 2026-09-14, per direct instruction: "The strategies reference
+               the expedition product groups consistently... it makes sense
+               to give the client the option to select both a product group
+               and destination creative focus... The contest can just have
+               two drop-downs with an and statement." Product Group is
+               genuinely optional — "All product groups" leaves the
+               destination dropdown below unfiltered, same as before this
+               round. When a Product Group IS picked, onVoiceContestProductGroupFilterChange()
+               narrows the destination dropdown to only the Creative Focus
+               Group values the client has associated with it in Taxonomy
+               Manager (see account_taxonomy_mappings, server.js) — a
+               Product Group with no association defined leaves every
+               destination showing, since the association itself is
+               optional input. -->
+          <label>Product Group (optional — narrows the destination list below)</label>
+          <select id="voiceContestProductGroup" onchange="onVoiceContestProductGroupFilterChange()" style="margin-bottom:10px;"><option value="">All product groups</option></select>
           <label>Destination / Creative Focus Group</label>
           <select id="voiceContestCreativeMarket" onchange="onVoiceContestProductGroupChange()"></select>
           <div class="hint" id="voiceContestEvidenceHint" style="margin-top:4px;"></div>
@@ -20104,7 +20191,25 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         source: 'Brand Groundwork',
         route: 'voiceContest',
         desc: 'Multi-model Vision Statement &amp; Longform Example — compare distinct AI-generated voice directions and pick one, or write your own.',
-        status(){ return (state.voice.visionStatement || state.voice.longformExample) ? { text: 'On file', tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
+        // 2026-09-14, per direct instruction: "Brand Page Tile: Show #
+        // Winners to reflect saved contest outputs, # Drafts to reflect
+        // pending and last contest run date," broken out per contest type
+        // (direct answer to the clarifying question). aipoVoiceContestStats
+        // is loaded once per hub render by aipoLoadVoiceContestStats() below
+        // (same lazy-load-then-rerender pattern as aipoMmmPeriodCount) —
+        // null here just means "still checking."
+        status(){
+          if (aipoVoiceContestStats == null) return { text: 'Checking…', tone: 'pending' };
+          const s = aipoVoiceContestStats;
+          const typeOrder = ['voice_guide', 'video_script', 'video_strategy'];
+          const perType = typeOrder
+            .filter(t => s.byType[t] && s.byType[t].total > 0)
+            .map(t => `${VOICE_CONTEST_TYPE_LABEL[t]}: ${s.byType[t].winners} winner${s.byType[t].winners === 1 ? '' : 's'}, ${s.byType[t].drafts} draft${s.byType[t].drafts === 1 ? '' : 's'}`);
+          if (!perType.length) return { text: 'Not started', tone: 'pending' };
+          const lastRun = s.lastRunAt ? new Date(s.lastRunAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null;
+          const text = perType.join('<br>') + (lastRun ? `<br>Last run: ${lastRun}` : '');
+          return { text, tone: s.totalWinners > 0 ? 'ok' : 'pending' };
+        }
       },
       {
         title: 'Competitive Positioning',
@@ -20473,10 +20578,51 @@ function renderAiPartnerOnboardingHub(skipMmmFetch){
       }).join('')}
     </div>`).join('');
   if (!skipMmmFetch && aipoMmmPeriodCount == null) aipoLoadMmmCount();
+  if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
 }
 function aipoOpenCard(route){
   if (route === '__accountHtml'){ window.location.href = 'account.html'; return; }
   goToStep(route);
+}
+// 2026-09-14 — Voice Contest tile stats ("# Winners"/"# Drafts" per contest
+// type, plus last run date), per direct instruction. Same lazy-load-then-
+// rerender pattern as aipoLoadMmmCount() above: reuses the client-facing GET
+// .../voice-contest history endpoint (already used by the Voice Contest page
+// itself for its own "View Previous Contests" tile — see
+// voiceContestLoadHistoryList()), computed client-side rather than adding a
+// dedicated stats endpoint. "Winner" = selectedCandidateKey set on the
+// interview; "Draft" = run but nothing selected yet.
+let aipoVoiceContestStats = null; // null = not checked yet this session
+async function aipoLoadVoiceContestStats(){
+  if (!state.companyId){
+    aipoVoiceContestStats = { byType: {}, totalWinners: 0, lastRunAt: null };
+  } else {
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`);
+      if (!resp.ok){
+        aipoVoiceContestStats = { byType: {}, totalWinners: 0, lastRunAt: null };
+      } else {
+        const data = await resp.json();
+        const interviews = data.interviews || [];
+        const byType = {};
+        let totalWinners = 0;
+        let lastRunAt = null;
+        interviews.forEach(iv => {
+          const t = iv.contentType || 'voice_guide';
+          if (!byType[t]) byType[t] = { total: 0, winners: 0, drafts: 0 };
+          byType[t].total++;
+          if (iv.selectedCandidateKey){ byType[t].winners++; totalWinners++; }
+          else byType[t].drafts++;
+          if (!lastRunAt || (iv.createdAt && iv.createdAt > lastRunAt)) lastRunAt = iv.createdAt;
+        });
+        aipoVoiceContestStats = { byType, totalWinners, lastRunAt };
+      }
+    } catch (e){
+      aipoVoiceContestStats = { byType: {}, totalWinners: 0, lastRunAt: null };
+    }
+  }
+  const stepEl = document.getElementById('step-manageAccount');
+  if (stepEl && stepEl.classList.contains('active')) renderAiPartnerOnboardingHub(true);
 }
 // Independent of loadMmmInputs() (which only runs when Analytics Setup's own
 // #mmmInputsRows table exists on the page) — same endpoint, no DOM
@@ -38479,6 +38625,7 @@ async function renderTaxonomyManager(){
     body.innerHTML = renderTaxonomyEditor();
     renderTaxonomyChipGroup('productGroup');
     renderTaxonomyChipGroup('creativeMarket');
+    renderTaxonomyMappingContainer();
     return;
   }
   const existingPG = cmpTaxonomyValues('productGroup') || [];
@@ -38496,15 +38643,36 @@ async function renderTaxonomyManager(){
 }
 
 function startBlankTaxonomy(){
-  taxonomyDraft = { productGroup: [], creativeMarket: [] };
+  taxonomyDraft = { productGroup: [], creativeMarket: [], mappings: {} };
   taxonomyDraftSource = 'blank';
   renderTaxonomyManager();
 }
 
-function editExistingTaxonomy(){
-  taxonomyDraft = { productGroup: [...(cmpTaxonomyValues('productGroup') || [])], creativeMarket: [...(cmpTaxonomyValues('creativeMarket') || [])] };
+// 2026-09-14 — now async: loads this account's existing Product Group ->
+// Creative Focus Group associations (see account_taxonomy_mappings,
+// server.js) into taxonomyDraft.mappings before rendering the editor, so
+// the mapping section below opens pre-checked with what's already on file
+// rather than blank every time.
+async function editExistingTaxonomy(){
+  taxonomyDraft = { productGroup: [...(cmpTaxonomyValues('productGroup') || [])], creativeMarket: [...(cmpTaxonomyValues('creativeMarket') || [])], mappings: {} };
   taxonomyDraftSource = 'existing';
+  await loadTaxonomyMappingsIntoDraft();
   renderTaxonomyManager();
+}
+
+// Shared by editExistingTaxonomy() above — a separate function since
+// startBlankTaxonomy()/startOverTaxonomy() deliberately start with empty
+// mappings (nothing to load: this account is starting its Product
+// Group/Creative Focus Group lists fresh, so no association can exist yet
+// either).
+async function loadTaxonomyMappingsIntoDraft(){
+  if (!taxonomyDraft || dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-mappings`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    taxonomyDraft.mappings = data.mappings || {};
+  } catch (e){ /* leave mappings empty — optional feature, non-fatal */ }
 }
 
 function cancelTaxonomyDraft(){
@@ -38522,9 +38690,9 @@ function cancelTaxonomyDraft(){
 function startOverTaxonomy(){
   const body = document.getElementById('taxonomyManagerBody');
   if (!body) return;
-  taxonomyDraft = { productGroup: [], creativeMarket: [] };
+  taxonomyDraft = { productGroup: [], creativeMarket: [], mappings: {} };
   taxonomyDraftSource = 'blank';
-  body.innerHTML = `<p class="hint" style="color:var(--advocacy);margin:0 0 10px;">Starting over replaces this account's current Product Group and Creative Focus Group values once you save — review before saving.</p>`
+  body.innerHTML = `<p class="hint" style="color:var(--advocacy);margin:0 0 10px;">Starting over replaces this account's current Product Group and Creative Focus Group values (and any Product Group/Creative Focus Group associations) once you save — review before saving.</p>`
     + renderTaxonomyEditor();
   renderTaxonomyChipGroup('productGroup');
   renderTaxonomyChipGroup('creativeMarket');
@@ -38578,11 +38746,69 @@ function renderTaxonomyEditor(){
         <button type="button" class="btn-ghost" onclick="addTaxonomyChip('creativeMarket')">Add</button>
       </div>
     </div>
+    <div id="taxonomyMappingSection"></div>
     <div class="btn-row">
       <button type="button" class="btn-primary" onclick="saveTaxonomyGroups()">Save →</button>
       <button type="button" class="btn-ghost" onclick="cancelTaxonomyDraft()">Cancel</button>
     </div>
     <div class="hint" id="taxonomySaveFlag" style="margin-top:8px;"></div>`;
+}
+// 2026-09-14, per direct instruction — Todd: "The strategies reference the
+// expedition product groups consistently... it makes sense to give the
+// client the option to select both a product group and destination
+// creative focus... Where should clients associate product groups with
+// creative focus as an optional input" — confirmed via clarifying question
+// to live here (Taxonomy Manager, same place the two lists themselves are
+// edited) and to actively narrow the Video Script contest's destination
+// dropdown once built (see onVoiceContestProductGroupFilterChange()).
+// Deliberately optional and per-Product-Group: a Product Group with
+// nothing checked simply leaves every Creative Focus Group value showing
+// for it on the contest — this section never blocks Save. Only renders
+// once both lists have at least one value (nothing to associate before
+// that).
+function renderTaxonomyMappingContainer(){
+  const el = document.getElementById('taxonomyMappingSection');
+  if (!el || !taxonomyDraft) return;
+  el.innerHTML = renderTaxonomyMappingSection();
+}
+function renderTaxonomyMappingSection(){
+  const pg = taxonomyDraft.productGroup || [];
+  const cm = taxonomyDraft.creativeMarket || [];
+  if (!pg.length || !cm.length){
+    return '';
+  }
+  const rows = pg.map((pgValue, pi) => {
+    const assoc = new Set((taxonomyDraft.mappings && taxonomyDraft.mappings[pgValue]) || []);
+    const chips = cm.map((cmValue, ci) => {
+      const on = assoc.has(cmValue);
+      return `<button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;margin:0 6px 6px 0;${on ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="toggleTaxonomyMapping(${pi}, ${ci})">${escapeHtml(cmValue)}</button>`;
+    }).join('');
+    return `<div style="margin-bottom:10px;">
+      <div style="font-weight:700;font-size:0.8125rem;margin-bottom:4px;">${escapeHtml(pgValue)}</div>
+      <div style="display:flex;flex-wrap:wrap;">${chips}</div>
+    </div>`;
+  }).join('');
+  return `<div class="field" style="margin-bottom:16px;">
+    <label>Associate Product Groups with Creative Focus Groups (optional)</label>
+    <p class="hint" style="margin:0 0 10px;">Click a Creative Focus Group under a Product Group to associate them. On the Video Script contest, picking that Product Group will then narrow the destination list to only what's checked here — leave a Product Group with nothing checked and every destination still shows for it.</p>
+    ${rows}
+  </div>`;
+}
+// Index-based (pi/ci into taxonomyDraft.productGroup/creativeMarket)
+// rather than embedding the value strings directly in the onclick — avoids
+// any quoting/escaping issue with a Product Group or Creative Focus Group
+// value that itself contains a quote or apostrophe.
+function toggleTaxonomyMapping(pi, ci){
+  if (!taxonomyDraft) return;
+  const pgValue = taxonomyDraft.productGroup[pi];
+  const cmValue = taxonomyDraft.creativeMarket[ci];
+  if (pgValue === undefined || cmValue === undefined) return;
+  if (!taxonomyDraft.mappings) taxonomyDraft.mappings = {};
+  if (!taxonomyDraft.mappings[pgValue]) taxonomyDraft.mappings[pgValue] = [];
+  const idx = taxonomyDraft.mappings[pgValue].indexOf(cmValue);
+  if (idx >= 0) taxonomyDraft.mappings[pgValue].splice(idx, 1);
+  else taxonomyDraft.mappings[pgValue].push(cmValue);
+  renderTaxonomyMappingContainer();
 }
 
 function taxonomyChipElId(key){
@@ -38609,11 +38835,27 @@ function addTaxonomyChip(key){
   if (!list.some(v => v.toLowerCase() === value.toLowerCase())) list.push(value);
   input.value = '';
   renderTaxonomyChipGroup(key);
+  // 2026-09-14 — a new Product Group or Creative Focus Group value can now
+  // be associated, so the mapping section below needs to pick it up.
+  renderTaxonomyMappingContainer();
 }
 function removeTaxonomyChip(key, i){
   if (!taxonomyDraft) return;
+  const removedValue = taxonomyDraft[key][i];
   taxonomyDraft[key].splice(i, 1);
+  // 2026-09-14 — purge any association referencing the removed value, as
+  // either side of the pair, so taxonomyDraft.mappings never holds a
+  // dangling reference to a value that no longer exists in either list.
+  if (taxonomyDraft.mappings && removedValue !== undefined){
+    if (key === 'productGroup') delete taxonomyDraft.mappings[removedValue];
+    if (key === 'creativeMarket'){
+      Object.keys(taxonomyDraft.mappings).forEach(pgValue => {
+        taxonomyDraft.mappings[pgValue] = taxonomyDraft.mappings[pgValue].filter(v => v !== removedValue);
+      });
+    }
+  }
   renderTaxonomyChipGroup(key);
+  renderTaxonomyMappingContainer();
 }
 
 async function saveTaxonomyGroups(){
@@ -38639,6 +38881,20 @@ async function saveTaxonomyGroups(){
       if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't save — try again."; }
       return;
     }
+    // 2026-09-14 — whole-set replace of the Product Group/Creative Focus
+    // Group association, same convention as the two PUTs above and PUT
+    // .../taxonomies/:key generally. Sent AFTER the two lists above save
+    // successfully since the backend validates every mapping pair against
+    // this account's current (just-saved) Product Group/Creative Focus
+    // Group values. Non-fatal on failure — the association is optional
+    // input, so a failed save here shouldn't block the two lists (the part
+    // every downstream feature actually depends on) from being saved.
+    try {
+      await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-mappings`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings: taxonomyDraft.mappings || {} })
+      });
+    } catch (e){ /* the two lists above already saved — the association is optional, not blocking */ }
     taxonomyDraft = null;
     taxonomyDraftSource = null;
     await mktCalLoadTaxonomies(); // refreshes state.calendarTaxonomies + Campaign Creation's tiles + this page's own filters
@@ -49863,8 +50119,16 @@ function renderVoiceContestStep(){
   if (longformEl) longformEl.value = state.voice.longformExample || '';
   const flag = document.getElementById('voiceVisionLongformSaveFlag');
   if (flag) flag.textContent = '';
+  // 2026-09-14 — "Show current headline and paragraph" up top, per direct
+  // instruction. Same state.voice fields the winner module below edits;
+  // this is just a read-only echo of whatever's currently approved.
+  const headlineEl = document.getElementById('voiceContestCurrentHeadline');
+  const paragraphEl = document.getElementById('voiceContestCurrentParagraph');
+  if (headlineEl) headlineEl.textContent = state.voice.visionStatement || 'Nothing approved yet — run a contest below or write your own.';
+  if (paragraphEl) paragraphEl.textContent = state.voice.longformExample || '';
   renderVoiceContestInputsPanel();
   loadInterviewUsage();
+  voiceContestLoadHistoryList();
   // 2026-09-13, corrected same day (round "creative-focus-tagging") — the
   // Video Script option's destination select needs the real
   // account-configured Creative Focus Group taxonomy
@@ -49876,9 +50140,141 @@ function renderVoiceContestStep(){
     if (!state.calendarTaxonomies && typeof mktCalLoadTaxonomies === 'function'){
       try { await mktCalLoadTaxonomies(); } catch (e){ /* select just shows empty state below */ }
     }
+    voiceContestPopulateProductGroupFilterSelect();
+    await voiceContestLoadTaxonomyMappings();
     voiceContestPopulateProductGroupSelect();
   })();
   voiceContestPopulateReferenceScriptSelect();
+}
+// 2026-09-14 — "Create New Contest" tile, per direct instruction ("Tile to
+// create new contest with drop-down including contest options. Selecting
+// opens template used to run contest"). Deliberately thin: sets the REAL
+// #voiceContestContentType select (unchanged since before this round) to
+// match the tile's own dropdown, fires the existing
+// onVoiceContestContentTypeChange() so the Video Script destination field
+// shows/hides exactly as it always has, reveals voiceContestModule (hidden
+// by default now), and scrolls to it. No run/rate/select logic touched.
+// 2026-09-14 — reveals voiceContestModule (hidden by default now — see the
+// tile functions below). toggleModule()'s own max-height calc (module-body
+// starts at max-height:0 per the base .module-body CSS rule, only expanded
+// via inline style, not the .open class alone) assumes the module is already
+// visible when it measures scrollHeight, and accResyncAll()'s MutationObserver
+// only watches childList/subtree/characterData — not style/attribute changes
+// — so it won't pick up display:none -> '' on its own. This does the same
+// max-height calc toggleModule() does, but after making the module visible
+// first, so it isn't measuring a display:none box.
+function voiceContestRevealModule(){
+  const module = document.getElementById('voiceContestModule');
+  if (!module) return;
+  module.style.display = '';
+  module.classList.add('open');
+  const body = module.querySelector('.module-body');
+  if (body) body.style.maxHeight = body.scrollHeight + 'px';
+  module.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function voiceContestOpenNewTile(){
+  const tileType = document.getElementById('voiceContestNewTileType');
+  const realType = document.getElementById('voiceContestContentType');
+  if (tileType && realType) realType.value = tileType.value;
+  if (typeof onVoiceContestContentTypeChange === 'function') onVoiceContestContentTypeChange();
+  voiceContestRevealModule();
+}
+// 2026-09-14 — "View Previous Contests" tile, per direct instruction. Reuses
+// the same client-facing GET .../voice-contest this page already calls
+// elsewhere (voiceContestPopulateReferenceScriptSelect, recoverBrandVoiceContestAfterTimeout)
+// rather than adding a new endpoint — it already returns every interview for
+// this account with blind-labeled, redacted candidates (including each
+// one's 1-5 rating), newest first. Label convention per direct answer:
+// "Type + destination + date."
+const VOICE_CONTEST_TYPE_LABEL = { voice_guide: 'Brand Voice Guide', video_script: 'Video Script', video_strategy: 'Video Strategy' };
+let voiceContestHistoryList = [];
+async function voiceContestLoadHistoryList(){
+  const sel = document.getElementById('voiceContestHistorySelect');
+  if (!sel || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    voiceContestHistoryList = data.interviews || [];
+    const options = voiceContestHistoryList.map(iv => {
+      const typeLabel = VOICE_CONTEST_TYPE_LABEL[iv.contentType] || iv.contentType;
+      const dateLabel = iv.createdAt ? new Date(iv.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const label = [typeLabel, iv.creativeMarket || null, dateLabel].filter(Boolean).join(' — ');
+      return `<option value="${escapeHtml(iv.id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    sel.innerHTML = `<option value="">Select a completed contest…</option>${options}`;
+  } catch (e){ /* leave the dropdown showing just the placeholder */ }
+}
+function voiceContestOnHistorySelectChange(){
+  const sel = document.getElementById('voiceContestHistorySelect');
+  const detailEl = document.getElementById('voiceContestHistoryDetail');
+  if (!sel || !detailEl) return;
+  const iv = voiceContestHistoryList.find(x => x.id === sel.value);
+  if (!iv){ detailEl.innerHTML = ''; return; }
+  const typeLabel = VOICE_CONTEST_TYPE_LABEL[iv.contentType] || iv.contentType;
+  // 2026-09-14, per direct instruction: "1) 1-5 ratings per version (not
+  // showing model name)" and "3) table containing the 5 results not
+  // rerunning (static)!" — one static table, blind label + rating +
+  // selected/winner flag only. No vendor/model (candidates are already
+  // blind-labeled by the time they reach the client — see the redact*
+  // functions in server.js), no re-rating here (that already lives in the
+  // interactive run panel above for a freshly-run contest).
+  const rows = (iv.candidates || []).map(c => {
+    const isWinner = c.key === iv.selectedCandidateKey;
+    const ratingText = (typeof c.rating === 'number') ? `${c.rating} / 5` : '—';
+    return `<tr${isWinner ? ' style="background:rgba(26,122,76,0.08);"' : ''}>
+      <td style="padding:6px 8px;font-weight:600;">${escapeHtml(c.label || '?')}${isWinner ? ' <span class="badge" style="margin-left:4px;">Winner</span>' : ''}</td>
+      <td style="padding:6px 8px;">${ratingText}</td>
+      <td style="padding:6px 8px;color:var(--advocacy);">${c.error ? escapeHtml(c.error) : ''}</td>
+    </tr>`;
+  }).join('');
+  // 2026-09-14, per direct instruction: "2) saved or draft winner results
+  // for editing." Only the CURRENT account-level winner is actually stored
+  // for in-place editing (accounts.visionStatement/longformExample or
+  // accounts.videoStrategyText — same one-winner-at-a-time convention this
+  // whole page has always used, see voiceContestWinnerModule /
+  // videoStrategyWinnerModule further down). A historical contest whose
+  // winner is no longer the current one is shown as a static reference with
+  // a "Set as current winner" action (re-fires the same POST .../select
+  // this page already calls) rather than a separate parallel edit surface.
+  const editHtml = iv.selectedCandidateKey
+    ? `<p class="hint" style="margin:10px 0 0;">Selected winner: ${escapeHtml((iv.candidates.find(c => c.key === iv.selectedCandidateKey) || {}).label || '?')} — <a onclick="voiceContestScrollToWinnerModule('${escapeHtml(iv.contentType)}')">edit it below ↓</a></p>`
+    : `<p class="hint" style="margin:10px 0 0;">No winner selected for this contest yet.</p>`;
+  detailEl.innerHTML = `
+    <div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px;margin-top:4px;">
+      <div class="hint" style="margin-bottom:6px;">${escapeHtml(typeLabel)}${iv.creativeMarket ? ' — ' + escapeHtml(iv.creativeMarket) : ''} — ${iv.createdAt ? new Date(iv.createdAt).toLocaleString() : ''}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
+          <thead><tr style="border-bottom:1px solid var(--line);"><th style="padding:6px 8px;text-align:left;">Option</th><th style="padding:6px 8px;text-align:left;">Rating</th><th style="padding:6px 8px;text-align:left;">Notes</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${editHtml}
+      <div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="btn-ghost" onclick="voiceContestRerunFromHistory('${escapeHtml(iv.contentType)}', ${iv.creativeMarket ? `'${escapeHtml(iv.creativeMarket)}'` : 'null'})">Run this contest again →</button>
+      </div>
+    </div>`;
+}
+// 2026-09-14 — "4) Option to run the const again." Pre-fills the real run
+// controls (content type, and destination for Video Script) and opens the
+// same run module the "Create New Contest" tile opens, then scrolls there —
+// deliberately does NOT auto-click Begin the Interview Process, so a client
+// always makes that call themselves rather than accidentally spending AI
+// usage on page load.
+function voiceContestRerunFromHistory(contentType, creativeMarket){
+  const realType = document.getElementById('voiceContestContentType');
+  if (realType) realType.value = contentType;
+  if (typeof onVoiceContestContentTypeChange === 'function') onVoiceContestContentTypeChange();
+  if (creativeMarket){
+    const cmEl = document.getElementById('voiceContestCreativeMarket');
+    if (cmEl) cmEl.value = creativeMarket;
+  }
+  voiceContestRevealModule();
+}
+function voiceContestScrollToWinnerModule(contentType){
+  const id = contentType === 'video_strategy' ? 'videoStrategyWinnerModule' : 'voiceContestWinnerModule';
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // Fix 4 reworked 2026-09-13, per direct instruction ("Why don't we just
 // have a dropdown containing sample files?") — populates the reference
@@ -49913,6 +50309,48 @@ async function voiceContestPopulateReferenceScriptSelect(){
     if (samples.some(s => s.id === current)) el.value = current;
   } catch (e){ /* leave the default "write from scratch" option in place */ }
 }
+// 2026-09-14 — populates the NEW, genuinely optional Product Group filter
+// select. Separate from voiceContestPopulateProductGroupSelect() below
+// (which, despite its legacy name, populates the Creative Focus Group/
+// destination select) — see that function's own comment for why its name
+// wasn't changed.
+function voiceContestPopulateProductGroupFilterSelect(){
+  const el = document.getElementById('voiceContestProductGroup');
+  if (!el) return;
+  const values = cmpTaxonomyValues('productGroup') || [];
+  const current = el.value;
+  el.innerHTML = '<option value="">All product groups</option>' + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+  if (values.includes(current)) el.value = current;
+}
+// 2026-09-14 — loads this account's Product Group -> Creative Focus Group
+// associations (see account_taxonomy_mappings) into
+// voiceContestTaxonomyMappings, for onVoiceContestProductGroupFilterChange()
+// to narrow the destination dropdown by. Non-fatal on failure — the
+// association is optional input in the first place, so a fetch failure
+// just means every destination shows regardless of Product Group, same as
+// before this round.
+async function voiceContestLoadTaxonomyMappings(){
+  voiceContestTaxonomyMappings = {};
+  if (!state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-mappings`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    voiceContestTaxonomyMappings = data.mappings || {};
+  } catch (e){ /* leave empty — destination dropdown just stays unfiltered */ }
+}
+// 2026-09-14 — Todd: "The strategies reference the expedition product
+// groups consistently... it makes sense to give the client the option to
+// select both a product group and destination creative focus... The
+// contest can just have two drop-downs with an and statement." Picking a
+// Product Group re-populates the destination select down to only the
+// Creative Focus Group values associated with it in Taxonomy Manager; a
+// Product Group with no association on file (or "All product groups")
+// leaves every destination showing — the association is optional input,
+// never a hard gate.
+function onVoiceContestProductGroupFilterChange(){
+  voiceContestPopulateProductGroupSelect();
+}
 // Populates the Video Script option's required destination select — unlike
 // bwsPopulateCreativeMarketSelects() (Experience Evidence, where scoping is
 // optional), there is no "account-wide" choice here: a video script is
@@ -49920,13 +50358,27 @@ async function voiceContestPopulateReferenceScriptSelect(){
 // default rather than a placeholder. Name kept as
 // voiceContestPopulateProductGroupSelect (not renamed) only to avoid
 // touching every call site — it populates the creativeMarket select.
+// 2026-09-14 — now narrows to the selected Product Group's associated
+// values (voiceContestTaxonomyMappings) when one is picked in the new
+// #voiceContestProductGroup select above; unfiltered otherwise.
 function voiceContestPopulateProductGroupSelect(){
   const el = document.getElementById('voiceContestCreativeMarket');
   if (!el) return;
-  const values = cmpTaxonomyValues('creativeMarket') || [];
+  const allValues = cmpTaxonomyValues('creativeMarket') || [];
+  const pgEl = document.getElementById('voiceContestProductGroup');
+  const selectedPG = pgEl ? pgEl.value : '';
+  let values = allValues;
+  if (selectedPG && Array.isArray(voiceContestTaxonomyMappings[selectedPG]) && voiceContestTaxonomyMappings[selectedPG].length){
+    const assoc = new Set(voiceContestTaxonomyMappings[selectedPG]);
+    values = allValues.filter(v => assoc.has(v));
+  }
   const current = el.value;
-  if (!values.length){
+  if (!allValues.length){
     el.innerHTML = '<option value="">No Creative Focus Groups configured for this account yet — set them up under Marketing Calendar.</option>';
+    return;
+  }
+  if (!values.length){
+    el.innerHTML = `<option value="">No Creative Focus Groups associated with "${escapeHtml(selectedPG)}" yet — set that up in Taxonomy Manager, or clear the Product Group filter above.</option>`;
     return;
   }
   el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
@@ -50105,6 +50557,12 @@ const VOICE_CONTEST_STATUS_TIPS = [
   "If none of the options feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above (or the inputs checklist above the button) need a second look before trying again."
 ];
 let lastVoiceContestCache = null;
+// 2026-09-14 — this account's Product Group -> Creative Focus Group
+// associations (see account_taxonomy_mappings, server.js, and Taxonomy
+// Manager's own mapping editor below), loaded once per visit to this step
+// and used only client-side to narrow #voiceContestCreativeMarket when a
+// Product Group is picked. { [productGroupValue]: [creativeMarketValue, ...] }
+let voiceContestTaxonomyMappings = {};
 // 2026-08-27, per direct feedback that a bare 1-5 scale has "no science
 // behind it" — a number without a defined meaning isn't comparable across
 // options, across runs, or across different people rating them. Anchoring
