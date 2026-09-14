@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-14-mbu-csv-nonworking-bom-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-14-coldstart-ensurecolumn-casefold-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -402,7 +402,31 @@ function ensureColumnBulkPrecheck(){
     const rows = db.prepare(
       `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`
     ).all();
-    ensureColumnExistingCache = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
+    // 2026-09-14 fix, per direct report of the portal staying "way too
+    // slow" even after every earlier cold-start fix here. Root cause: the
+    // 2026-08-27 fix below (comparing exact case, no .toLowerCase()) was
+    // only half right. Its own reasoning — "the cache is built from
+    // information_schema.columns, which returns Postgres's actual stored
+    // (quoted, case-preserved) column names" — is true ONLY for a column
+    // that was originally added with a quoted identifier (e.g. "memberId").
+    // Confirmed live via Supabase: a real, sizeable subset of this exact
+    // schema's columns (leads.naicscode, account_stores.setid/postalcode,
+    // brand_writing_samples.extractedtext, ai_brain_contributions/
+    // contribution_log.qualityrating, channel_planning_details.
+    // projectnumber, and more — 24 of the 258 columns this function
+    // currently guards, verified by cross-referencing every ensureColumn()
+    // call site against information_schema.columns) were originally added
+    // UNQUOTED, so Postgres folded them to lowercase at creation time. The
+    // exact-case check above never matches those — it still fires a real,
+    // blocking ALTER TABLE (through the synchronous worker-thread bridge:
+    // a full Postgres round trip each) on every single cold start, for
+    // every one of those 24 columns, even though all of them already
+    // exist and the ALTER is a guaranteed no-op. Storing the cache
+    // lowercased and comparing lowercased handles both origins (quoted
+    // case-preserved AND unquoted lowercase-folded) uniformly, so a
+    // genuinely-present column always skips its round trip regardless of
+    // how it was first created.
+    ensureColumnExistingCache = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`.toLowerCase()));
   } catch (e) {
     // Bulk check failed (e.g. this is the very first run against a brand
     // new database, before any tables exist yet) — fall back to the old
@@ -414,24 +438,11 @@ function ensureColumnBulkPrecheck(){
 }
 function ensureColumn(table, col, decl){
   const existing = ensureColumnBulkPrecheck();
-  // 2026-08-27 fix, per direct report — traced from a real Postgres log
-  // showing "column \"memberId\" of relation \"sessions\" already exists"
-  // firing on every cold start. Root cause: this lookup lowercased `col`
-  // ("memberId" -> "memberid") before checking the cache, but the cache is
-  // built from information_schema.columns, which returns Postgres's actual
-  // stored (quoted, case-preserved) column names — "memberId", not
-  // "memberid". Every camelCase column (nearly all of them in this schema)
-  // never matched, so the bulk precheck added on 2026-08-24 to eliminate
-  // ~184 blocking round trips per cold start was silently doing almost
-  // nothing — nearly every column still ran its real ALTER TABLE, hit a
-  // real Postgres error (caught and ignored below, but only after paying
-  // for the synchronous Atomics.wait() round trip and the error itself),
-  // on every single cold start. That's real, measurable extra time and
-  // extra synchronous-bridge exposure on every wake-up — directly in the
-  // path of "it took 3 attempts to load" and every login/portal-load
-  // crash risk this session has been chasing. Comparing exact case (no
-  // .toLowerCase()) makes this match correctly.
-  if (existing && existing.has(`${table}.${col}`)) return; // confirmed present — no round trip spent
+  // See ensureColumnBulkPrecheck's 2026-09-14 comment above — this compares
+  // lowercased against a lowercased cache so it matches regardless of
+  // whether Postgres is storing this column case-preserved or lowercase-
+  // folded, which the 2026-08-27 exact-case-only version didn't do.
+  if (existing && existing.has(`${table}.${col}`.toLowerCase())) return; // confirmed present — no round trip spent
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`); }
   catch (e) { /* column already exists — fine */ }
 }
@@ -15836,7 +15847,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-14-mbu-csv-nonworking-bom-fix',
+        buildStamp: '2026-09-14-coldstart-ensurecolumn-casefold-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
