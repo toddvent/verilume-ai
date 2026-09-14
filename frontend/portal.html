@@ -5364,7 +5364,7 @@
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Book</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('voiceContest')">Next: Voice Contest →</a>
+      <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
     </div>
   </div>
 
@@ -5475,7 +5475,7 @@
     </div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('voiceContest')">← Back: Voice Contest</a>
+      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('competitivePositioning')">Next: Competitive Positioning →</a>
     </div>
@@ -50253,6 +50253,7 @@ function voiceContestOnHistorySelectChange(){
       <div class="btn-row" style="margin-top:10px;">
         <button type="button" class="btn-ghost" onclick="voiceContestRerunFromHistory('${escapeHtml(iv.contentType)}', ${iv.creativeMarket ? `'${escapeHtml(iv.creativeMarket)}'` : 'null'})">Run this contest again →</button>
       </div>
+      ${voiceContestExportRowHtml(iv.id, 'voiceContestHistoryExportNote')}
     </div>`;
 }
 // 2026-09-14 — "4) Option to run the const again." Pre-fills the real run
@@ -50955,7 +50956,53 @@ function rerenderVoiceContestPanel(result){
     holder.innerHTML = renderBrandVoiceContestPanel(result);
     if (result.revealed) populateVoiceContestAlignment(result);
   }
+  if (result.interviewId) holder.insertAdjacentHTML('beforeend', voiceContestExportRowHtml(result.interviewId, 'voiceContestExportNote'));
   voiceContestAutoRetryPending(result);
+}
+// 2026-09-15, per direct instruction: "We need export functions for Excel
+// and Google Sheets" for Voice Contest results. Reused by both the live
+// run panel above and the "View Previous Contests" history detail below —
+// same two backend routes (.../voice-contest/:interviewId/export.xlsx and
+// export.csv), same "download, then tell the person what to do with it"
+// pattern as mediaPlanExport()/mktCalExport() elsewhere in this file
+// (there's no Google Sheets push API this app has credentials for — the
+// CSV download IS the Google Sheets integration point, see those
+// functions' own comments).
+function voiceContestExportRowHtml(interviewId, noteId){
+  return `<div class="btn-row" style="margin-top:10px;">
+    <button type="button" class="btn-ghost" onclick="voiceContestExport('${escapeHtml(interviewId)}', 'xlsx', '${noteId}')">Download Excel (.xlsx)</button>
+    <button type="button" class="btn-ghost" onclick="voiceContestExport('${escapeHtml(interviewId)}', 'csv', '${noteId}')">Open in Google Sheets</button>
+  </div>
+  <div id="${noteId}" class="hint" style="display:none;margin-top:4px;"></div>`;
+}
+async function voiceContestExport(interviewId, kind, noteId){
+  const note = document.getElementById(noteId);
+  if (note){ note.style.display = 'none'; note.textContent = ''; }
+  try {
+    const path = kind === 'xlsx' ? 'export.xlsx' : 'export.csv';
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/${path}`);
+    if (!resp.ok){
+      if (note){ note.textContent = 'Could not build the export right now.'; note.style.display = ''; }
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `voice-contest-${interviewId}.${kind}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (note){
+      note.textContent = kind === 'csv'
+        ? 'CSV downloaded — go to sheets.new and use File > Import to open it.'
+        : 'Excel file downloaded — check your downloads.';
+      note.style.display = '';
+    }
+  } catch (e){
+    if (note){ note.textContent = 'Backend unreachable — could not export.'; note.style.display = ''; }
+  }
 }
 // 2026-09-15 — auto-fires the second pass of Todd's two-pass timeout
 // design the moment any candidate comes back pending:true ("message

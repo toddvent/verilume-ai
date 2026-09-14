@@ -2212,6 +2212,7 @@ async function checkVoiceContestReview(){
               <span style="margin-left:6px;">${interviewEscapeHtml(iv.feedbackNote)}</span>
               <span class="empty-note" style="font-style:normal;display:block;margin-top:4px;">${interviewEscapeHtml(iv.feedbackBy || 'unknown')} · ${iv.feedbackAt ? new Date(iv.feedbackAt).toLocaleString() : ''}</span>
             </div>` : ''}
+            ${voiceContestExportButtonsHtml(iv.id)}
           </div>
         `).join('')}
       </div>
@@ -2335,8 +2336,71 @@ function itRenderCurrentInterview(){
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;margin-top:8px;">
         ${iv.candidates.map(c => itCandidateCardHtml(c, iv)).join('')}
       </div>
+      ${voiceContestExportButtonsHtml(iv.interviewId)}
     </div>
   `;
+  itAutoRetryPending();
+}
+// 2026-09-15, per direct instruction: "We need export functions for Excel
+// and Google Sheets" for Voice Contest results. Staff-only export, real
+// vendor/model names included (this whole console is staff-only) — hits
+// the same .../voice-contest/:interviewId/export.xlsx and export.csv
+// routes the client portal uses, with X-Admin-Token instead of a session,
+// same pattern as every other staff action on this page. "Open in Google
+// Sheets" downloads the CSV and tells the person to import it — there's no
+// Google API/OAuth this app has credentials to push through automatically
+// (same honest pattern as portal.html's own export buttons).
+function voiceContestExportButtonsHtml(interviewId){
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+    <button type="button" class="btn" onclick="voiceContestReviewExport('${interviewId}', 'xlsx')">Download Excel (.xlsx)</button>
+    <button type="button" class="btn" onclick="voiceContestReviewExport('${interviewId}', 'csv')">Open in Google Sheets</button>
+  </div>`;
+}
+async function voiceContestReviewExport(interviewId, kind){
+  const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
+  if (!accountId || !token) return;
+  try {
+    const path = kind === 'xlsx' ? 'export.xlsx' : 'export.csv';
+    const resp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/voice-contest/${encodeURIComponent(interviewId)}/${path}`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    if (!resp.ok) return;
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `voice-contest-${interviewId}.${kind}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e){ /* no export feedback element on this panel — silently no-op on failure */ }
+}
+// 2026-09-15 — same auto-fired second pass as portal.html's
+// voiceContestAutoRetryPending() (see its comment there for the full
+// design), staff-side: any pending candidate gets one automatic, full-
+// budget retry via POST .../retry-pending — no separate button, matching
+// Todd's chosen "automatic" option. Fires at most once per interview.
+const itPendingRetried = new Set();
+async function itAutoRetryPending(){
+  if (!itCurrentInterview || !itCurrentInterview.candidates.some(c => c.pending)) return;
+  if (itPendingRetried.has(itCurrentInterview.interviewId)) return;
+  itPendingRetried.add(itCurrentInterview.interviewId);
+  const accountId = document.getElementById('voiceContestLookupAccountId').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
+  if (!accountId || !token) return;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/voice-contest/${encodeURIComponent(itCurrentInterview.interviewId)}/retry-pending`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token }
+    });
+    if (!resp.ok) return;
+    const data = await resp.json().catch(() => ({}));
+    if (!Array.isArray(data.candidates)) return;
+    itCurrentInterview.candidates = data.candidates;
+    itRenderCurrentInterview();
+  } catch (e){ /* leave the "still thinking" cards as-is */ }
 }
 
 function itCandidateCardHtml(c, iv){
@@ -2350,7 +2414,11 @@ function itCandidateCardHtml(c, iv){
     body += `<div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;border-collapse:collapse;font-size:0.6875rem;"><tbody>${c.beats.map(b => `<tr style="border-top:1px solid var(--line);"><td style="padding:3px 4px;font-weight:700;white-space:nowrap;vertical-align:top;">${interviewEscapeHtml(b.beat)}</td><td style="padding:3px 4px;vertical-align:top;">${interviewEscapeHtml(b.visual)}</td><td style="padding:3px 4px;vertical-align:top;font-style:italic;">${interviewEscapeHtml(b.vo)}</td></tr>`).join('')}</tbody></table></div>`;
   }
   if (c.strategyText) body += `<div style="white-space:pre-wrap;margin:6px 0;font-size:0.8125rem;">${interviewEscapeHtml(c.strategyText)}</div>`;
-  if (c.error) body += `<div class="empty-note" style="font-style:normal;color:var(--danger);">${interviewEscapeHtml(c.error)}</div>`;
+  // 2026-09-15 — pending, per Todd's two-pass timeout design (matches
+  // portal.html's own cards) — staff sees the real error AND that a second,
+  // full-budget pass is already underway, rather than reading it as final.
+  if (c.pending) body += `<div class="empty-note" style="font-style:normal;">Still thinking — trying again now…${c.error ? ` (first attempt: ${interviewEscapeHtml(c.error)})` : ''}</div>`;
+  else if (c.error) body += `<div class="empty-note" style="font-style:normal;color:var(--danger);">${interviewEscapeHtml(c.error)}</div>`;
   return `
     <div style="border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;${isSelected ? 'background:rgba(26,122,76,0.08);' : ''}">
       <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;">
