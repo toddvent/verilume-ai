@@ -428,7 +428,7 @@
          (no product filter — there's exactly one contest type here). -->
     <div class="module" style="border-top-color:var(--advocacy-tint);">
       <h3>Brand Voice Contest Review <span class="badge" style="margin-left:6px;">Staff only</span></h3>
-      <p class="desc">Every multi-model Brand Voice contest run for an account (Vision Statement + Longform Example, three voice directions run side by side), with the real vendor and model behind each candidate — the client's own account setup only ever shows the strategic angle label. Use this for QA on the panel itself, or to answer "which model actually wrote this" if it ever comes up.</p>
+      <p class="desc">Which model the client currently has selected for each contest type (Brand Voice Guide, Video Script, Video Strategy), plus the blind-label-to-vendor order and any error messages for the 3 most recent runs of each type — the client's own account setup only ever shows the strategic angle label / "Option N," never the real vendor. <!-- 2026-09-14, per direct instruction: no full candidate content here anymore, just the order used and errors, since the detailed response isn't needed for this page's purpose. --></p>
       <div class="field-row" id="voiceContestAuthRow">
         <div>
           <label>Account ID</label>
@@ -2093,67 +2093,81 @@ async function checkVoiceContestReview(){
       errEl.style.display = 'block';
       return;
     }
-    if (!data.interviews || !data.interviews.length){
+    if ((!data.interviews || !data.interviews.length) && (!data.selections || !data.selections.length)){
       resultEl.innerHTML = `<div class="empty-note">No Brand Voice contest runs on file for ${accountId} yet.</div>`;
       return;
     }
-    resultEl.innerHTML = data.interviews.map(iv => `
-      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;">
-        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-          <div class="empty-note" style="font-style:normal;">Requested by ${iv.requestedBy || 'unknown'}</div>
-          <div class="empty-note" style="font-style:normal;">${new Date(iv.createdAt).toLocaleString()}</div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:10px;margin-top:8px;">
-          ${iv.candidates.map(c => `
-            <div style="border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;${c.key === iv.selectedCandidateKey ? 'background:rgba(26,122,76,0.08);' : ''}">
-              <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;">
-                <!-- 2026-09-14, per direct request while debugging the Video
-                     Script contest ("tell me what it is while we test so we
-                     can figure out #3" — staff-only, never client-facing):
-                     blindLabel (the "Option N" the client portal actually
-                     shows) wasn't displayed anywhere on this unredacted admin
-                     view, so there was no way to match a client's report of
-                     "Option 3 failed" back to a real vendor/model without
-                     guessing. Shown first, real label/vendor/model right
-                     beside it. -->
-                <b style="flex:1 1 auto;min-width:0;">${interviewEscapeHtml(c.blindLabel || '?')} — ${interviewEscapeHtml(c.label)}</b>
-                ${c.key === iv.selectedCandidateKey ? `<span class="badge status-configured" style="flex:0 0 auto;">Selected${iv.selectedBy ? ' — ' + interviewEscapeHtml(iv.selectedBy) : ''}</span>` : ''}
-              </div>
-              <div class="empty-note" style="font-style:normal;margin-top:4px;">${c.configured ? `${interviewEscapeHtml(c.vendor || '—')} · <code>${interviewEscapeHtml(c.model || '—')}</code>` : interviewEscapeHtml(c.error || 'Not configured.')}</div>
-              ${c.visionStatement ? `<div style="font-style:italic;margin:8px 0;">"${interviewEscapeHtml(c.visionStatement)}"</div>` : ''}
-              ${c.longformExample ? `<div style="white-space:pre-wrap;margin:6px 0;">${interviewEscapeHtml(c.longformExample)}</div>` : ''}
-              ${!c.configured || !c.visionStatement ? '' : `<div>Compliance: ${interviewScorePillHtml(c.complianceScore)}</div>`}
-              <!-- Video Script candidates (contentType='video_script') carry
-                   overallApproach/beats instead of visionStatement/
-                   longformExample — this card previously rendered nothing
-                   for them beyond the vendor line and an empty body. Added
-                   2026-09-14 for the same debugging request above. -->
-              ${c.overallApproach ? `<div style="font-style:italic;margin:8px 0;">${interviewEscapeHtml(c.overallApproach)}</div>` : ''}
-              ${c.configured && Array.isArray(c.beats) && c.beats.length === 8 ? `<div style="overflow-x:auto;margin-top:6px;">
-                <table style="width:100%;border-collapse:collapse;font-size:0.6875rem;">
-                  <tbody>${c.beats.map(b => `<tr style="border-top:1px solid var(--line);">
-                    <td style="padding:3px 4px;font-weight:700;white-space:nowrap;vertical-align:top;">${interviewEscapeHtml(b.beat)}</td>
-                    <td style="padding:3px 4px;vertical-align:top;">${interviewEscapeHtml(b.visual)}</td>
-                    <td style="padding:3px 4px;vertical-align:top;font-style:italic;">${interviewEscapeHtml(b.vo)}</td>
-                  </tr>`).join('')}</tbody>
-                </table>
-              </div>` : ''}
-              <!-- Video Script Strategy candidates (contentType='video_strategy',
-                   2026-09-14, the 3rd contest — see runVideoStrategyContest,
-                   server.js) carry strategyText only, no beats/vision fields. -->
-              ${c.strategyText ? `<div style="white-space:pre-wrap;margin:6px 0;">${interviewEscapeHtml(c.strategyText)}</div>` : ''}
-              ${c.configured && (!Array.isArray(c.beats) || c.beats.length !== 8) && !c.visionStatement && !c.strategyText ? `<div class="empty-note" style="font-style:normal;color:var(--danger);">${interviewEscapeHtml(c.error || 'Generation did not return usable content.')}</div>` : ''}
-              ${c.flags && c.flags.length ? `<div class="empty-note" style="font-style:normal;color:var(--danger);">${c.flags.map(interviewEscapeHtml).join('; ')}</div>` : ''}
+
+    // 2026-09-14 — reworked per direct instruction: "The contest results
+    // only need to include the order used for the most recent 3 contests
+    // and error messages should a model not return a result. I don't need
+    // the detailed response but want to track which model clients select
+    // for each contest somewhere at the client id level." No more full
+    // candidate content (visionStatement/beats/strategyText) — just the
+    // blind-label-to-vendor order, errors, and a "current selection per
+    // contest type" summary sourced from the new `selections` field the
+    // backend now returns.
+    const CONTEST_TYPE_LABELS = {
+      voice_guide: 'Brand Voice Guide',
+      video_script: 'Video Script',
+      video_strategy: 'Video Strategy'
+    };
+    const typeLabel = (t) => CONTEST_TYPE_LABELS[t] || interviewEscapeHtml(t);
+
+    const selectionsHtml = (data.selections && data.selections.length) ? `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;background:rgba(26,122,76,0.05);">
+        <div style="font-weight:700;margin-bottom:6px;">Currently selected model, per contest type</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">
+          ${data.selections.map(s => `
+            <div style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg, #fff);">
+              <div style="font-weight:700;">${typeLabel(s.contentType)}</div>
+              <div style="margin-top:4px;">${interviewEscapeHtml(s.blindLabel || '?')} — ${interviewEscapeHtml(s.vendor || '—')} · <code>${interviewEscapeHtml(s.model || '—')}</code></div>
+              <div class="empty-note" style="font-style:normal;margin-top:4px;">${interviewEscapeHtml(s.selectedBy || 'unknown')} · ${s.selectedAt ? new Date(s.selectedAt).toLocaleString() : ''}</div>
             </div>
           `).join('')}
         </div>
-        ${iv.feedbackNote ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:6px;">
-          <span class="badge" style="background:rgba(217,119,6,0.15);color:#92400e;">${iv.feedbackType === 'edit_manually' ? 'Close, edited manually' : 'None selected'}</span>
-          <span style="margin-left:6px;">${interviewEscapeHtml(iv.feedbackNote)}</span>
-          <span class="empty-note" style="font-style:normal;display:block;margin-top:4px;">${iv.feedbackBy || 'unknown'} · ${iv.feedbackAt ? new Date(iv.feedbackAt).toLocaleString() : ''}</span>
-        </div>` : ''}
+      </div>
+    ` : `<div class="empty-note">No contest has had a winner selected for ${accountId} yet.</div>`;
+
+    // Group the (already-limited-to-3-per-type) interviews list by contest
+    // type for display, preserving the backend's ordering.
+    const byType = {};
+    (data.interviews || []).forEach(iv => {
+      const t = iv.contentType || 'voice_guide';
+      if (!byType[t]) byType[t] = [];
+      byType[t].push(iv);
+    });
+
+    const runsHtml = Object.keys(byType).map(t => `
+      <div style="margin-top:14px;">
+        <div style="font-weight:700;margin-bottom:6px;">${typeLabel(t)} — most recent ${byType[t].length}</div>
+        ${byType[t].map(iv => `
+          <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:6px;">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div class="empty-note" style="font-style:normal;">Requested by ${interviewEscapeHtml(iv.requestedBy || 'unknown')}</div>
+              <div class="empty-note" style="font-style:normal;">${new Date(iv.createdAt).toLocaleString()}</div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+              ${iv.candidates.map(c => `
+                <div style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:0.8125rem;${c.isSelected ? 'background:rgba(26,122,76,0.08);' : ''}">
+                  <b>${interviewEscapeHtml(c.blindLabel || '?')}</b>
+                  ${c.configured ? ` — ${interviewEscapeHtml(c.vendor || '—')} · <code>${interviewEscapeHtml(c.model || '—')}</code>` : ''}
+                  ${c.isSelected ? `<span class="badge status-configured" style="margin-left:6px;">Selected</span>` : ''}
+                  ${!c.configured ? `<div class="empty-note" style="font-style:normal;color:var(--danger);margin-top:2px;">${interviewEscapeHtml(c.error || 'Generation did not return a result.')}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+            ${iv.feedbackNote ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:6px;">
+              <span class="badge" style="background:rgba(217,119,6,0.15);color:#92400e;">${iv.feedbackType === 'edit_manually' ? 'Close, edited manually' : 'None selected'}</span>
+              <span style="margin-left:6px;">${interviewEscapeHtml(iv.feedbackNote)}</span>
+              <span class="empty-note" style="font-style:normal;display:block;margin-top:4px;">${interviewEscapeHtml(iv.feedbackBy || 'unknown')} · ${iv.feedbackAt ? new Date(iv.feedbackAt).toLocaleString() : ''}</span>
+            </div>` : ''}
+          </div>
+        `).join('')}
       </div>
     `).join('');
+
+    resultEl.innerHTML = selectionsHtml + runsHtml;
   } catch (e){
     errEl.textContent = 'Could not reach the backend to look up voice contests.';
     errEl.style.display = 'block';
