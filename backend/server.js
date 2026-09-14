@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-13-competitor-intel-theme-chips (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-14-budget-uploads-sql-quoting-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -15836,7 +15836,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-13-competitor-intel-theme-chips',
+        buildStamp: '2026-09-14-budget-uploads-sql-quoting-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -25039,8 +25039,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // fallback in `u.rowCount != null ? ... : '?'`. Explicit quoted
       // aliases fix the result column names on both Postgres and
       // node:sqlite without touching schema-identifiers.json.
+      // 2026-09-14 fix — the 2026-09-10 round quoted the ALIAS ("geoLevel")
+      // but left the REFERENCE (u.geoLevel) unquoted. geoLevel isn't in
+      // schema-identifiers.json, so nothing auto-quotes that reference
+      // either; on production Postgres it folds to u.geolevel, which
+      // doesn't exist (the real column is "geoLevel"), so every call to
+      // this endpoint 500'd — confirmed live via a direct DB query showing
+      // the identical unquoted SQL fails while the quoted version returns
+      // rows fine. Same root cause class as the rowCount fix alongside it;
+      // this time the reference itself needed the quotes, not just the
+      // alias.
       const uploads = db.prepare(`
-        SELECT u.id, u.label, u.periodLabel, u.createdAt, u.weightMode, u.geoLevel AS "geoLevel",
+        SELECT u.id, u.label, u.periodLabel, u.createdAt, u.weightMode, u."geoLevel" AS "geoLevel",
           (SELECT COUNT(*) FROM market_customer_rows r WHERE r.marketUploadId = u.id) AS "rowCount"
         FROM market_customer_uploads u WHERE u.accountId = ? ORDER BY u.createdAt DESC
       `).all(accountId);
@@ -26055,7 +26065,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }, 'mediaplan'));
       // 2. final gross revenue for the year + ROAS
       inputs.push(gather('results', `${year} revenue, transactions and ROAS`, 'Media Plan & Budget → Budget detail → Revenue & results', () => {
-        const r = db.prepare('SELECT grossRevenue, plannedRevenue, transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+        // 2026-09-14 fix — plannedRevenue isn't in schema-identifiers.json,
+        // so it went unquoted and folded to lowercase on Postgres, 500ing
+        // this lookup (same bug fixed at the year-results GET endpoint
+        // below, and the marketing-budget-uploads endpoint above).
+        const r = db.prepare('SELECT grossRevenue, "plannedRevenue", transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
         const plan = db.prepare('SELECT grossRevenue FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
         const actual = r ? num(r.grossRevenue) : null;
         const planned = (r && num(r.plannedRevenue) != null) ? num(r.plannedRevenue) : (plan && num(plan.grossRevenue) > 0 ? num(plan.grossRevenue) : null);
@@ -26132,7 +26146,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const year = parseInt(url.searchParams.get('year'), 10);
       if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
-      const r = db.prepare('SELECT grossRevenue, plannedRevenue, transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
+      // 2026-09-14 fix — same plannedRevenue quoting bug fixed just above.
+      const r = db.prepare('SELECT grossRevenue, "plannedRevenue", transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
       return sendJson(res, 200, Object.assign({ accountId, year, grossRevenue: null, plannedRevenue: null, transactions: null, notes: null, updatedAt: null }, r || {}));
     }
     // POST /api/accounts/:id/year-results — final gross revenue for a year
@@ -26161,8 +26176,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         transactions: 'transactions' in body ? transactions : (existing ? existing.transactions : null),
         notes: 'notes' in body ? (body.notes || null) : (existing ? existing.notes : null)
       };
-      if (existing) db.prepare('UPDATE account_year_results SET grossRevenue = ?, plannedRevenue = ?, transactions = ?, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ?').run(next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now, accountId, year);
-      else db.prepare('INSERT INTO account_year_results (accountId, year, grossRevenue, plannedRevenue, transactions, notes, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, year, next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now);
+      // 2026-09-14 fix — same plannedRevenue quoting bug as the GET above,
+      // this time on the write path (UPDATE SET / INSERT column list).
+      if (existing) db.prepare('UPDATE account_year_results SET grossRevenue = ?, "plannedRevenue" = ?, transactions = ?, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ?').run(next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now, accountId, year);
+      else db.prepare('INSERT INTO account_year_results (accountId, year, grossRevenue, "plannedRevenue", transactions, notes, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, year, next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now);
       return sendJson(res, 200, Object.assign({ accountId, year, updatedAt: now }, next));
     }
 
@@ -26173,7 +26190,20 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-budget-uploads'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const rows = db.prepare("SELECT id, fileName, layout, status, year, COALESCE(scope, 'domestic') AS scope, COALESCE(totalOnly, 0) AS totalOnly, createdAt, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? ORDER BY createdAt DESC").all(accountId);
+      // 2026-09-14 fix — totalOnly isn't in schema-identifiers.json, so the
+      // sql-translate.js auto-quoting layer never caught it here; unquoted,
+      // Postgres folds it to totalonly, which doesn't exist (real column is
+      // "totalOnly"), so this endpoint 500'd on every call in production —
+      // confirmed live via a direct DB query reproducing the exact error,
+      // then again with the quoting fix applied showing it returns rows
+      // fine. This is what made Todd's confirmed, on-file budgets (verified
+      // still present in the table) look like they'd vanished: the old
+      // client code treated this 500 identically to "no budgets yet" (see
+      // mbuYearsLoadFailed's fix in portal.html). Quoting explicitly here
+      // rather than only adding totalOnly to schema-identifiers.json, since
+      // that file is a separately-deployed companion and has silently gone
+      // stale before (see its own 2026-09-02 comment above).
+      const rows = db.prepare("SELECT id, fileName, layout, status, year, COALESCE(scope, 'domestic') AS scope, COALESCE(\"totalOnly\", 0) AS \"totalOnly\", createdAt, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? ORDER BY createdAt DESC").all(accountId);
       // Round 6 (2026-09-05) — a Total-only row's one real number (so the
       // Plan Setup list/status view can show it without a second request
       // per upload); reuses the same override-aware rollup every other
@@ -27341,6 +27371,4 @@ try {
 }
 
 module.exports = handleRequest;
-
-
 
