@@ -4420,6 +4420,12 @@
           <select id="voiceContestContentType" onchange="onVoiceContestContentTypeChange()">
             <option value="voice_guide">Voice options (Vision Statement + Longform Example)</option>
             <option value="video_script">Video script options (a full :30 beat-by-beat script)</option>
+            <!-- 2026-09-14 — Brand Video Script Strategy, contest #1 of the
+                 two-contest build (see runVideoStrategyContest, backend).
+                 Account-wide, no Creative Focus Group field — its winner
+                 becomes the fixed foundation every destination's Video
+                 Script contest above is then handed automatically. -->
+            <option value="video_strategy">Brand Video Script Strategy (one strategy for the whole video collection)</option>
           </select>
         </div>
         <div class="field" id="voiceContestProductGroupField" style="display:none;margin-bottom:10px;">
@@ -50178,6 +50184,8 @@ async function runBrandVoiceContest(){
       // model-scoping-2026-09-11.md.
       body: JSON.stringify(contentType === 'video_script'
         ? { contentType: 'video_script', creativeMarket, referenceScriptId, contextualNotes }
+        : contentType === 'video_strategy'
+        ? { contentType: 'video_strategy' }
         : { avoidWords: cmpBrandVoiceAvoidWords().join(', ') })
     });
     if (!resp.ok){
@@ -50444,8 +50452,95 @@ function rerenderVoiceContestPanel(result){
     holder.innerHTML = renderVideoScriptContestPanel(result);
     return;
   }
+  // 2026-09-14 — Brand Video Script Strategy (contest #1). Same "own render
+  // function, own card shape" reasoning as Video Script above — a strategy
+  // candidate is one long document (strategyText), not beats or
+  // visionStatement/longformExample.
+  if (result.contentType === 'video_strategy'){
+    holder.innerHTML = renderVideoStrategyContestPanel(result);
+    return;
+  }
   holder.innerHTML = renderBrandVoiceContestPanel(result);
   if (result.revealed) populateVoiceContestAlignment(result);
+}
+// Brand Video Script Strategy panel — one card per vendor, each showing that
+// candidate's full strategy document as prose. No beats table (this isn't a
+// script), no AI Brain Transparency pass (see runVideoStrategyContest's own
+// comment on the backend — an internal strategy doc isn't customer-facing
+// copy, so voice-compliance heuristics don't apply to it the same way).
+// Selecting a winner here writes accounts.videoStrategyText immediately
+// (see selectVideoStrategyWinner below) — from then on, every destination's
+// Video Script contest is handed this text as its required foundation
+// automatically (buildVideoScriptPrompt, server.js), per direct
+// confirmation ("the video strategy winner results will be incorporated
+// into the destination video script contest").
+function renderVideoStrategyContestPanel(result){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
+      </div>`;
+    }
+    if (!c.strategyText){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;margin-bottom:12px;">
+      <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ` <span class="hint" style="color:var(--cx);font-weight:700;">${escapeHtml(RECOMMENDED_REASON_LABEL[result.recommendedReason] || '— recommended')}</span>` : ''}</div>
+      <div style="margin-top:8px;white-space:pre-wrap;line-height:1.5;font-size:0.8125rem;">${escapeHtml(c.strategyText)}</div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;align-items:center;text-align:center;">
+        <div style="display:flex;gap:4px;">
+          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn-ghost" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${c.rating === n ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="rateBrandVoiceCandidate('${result.interviewId}', '${c.key}', ${n})" title="${escapeHtml(BRAND_VOICE_RATING_RUBRIC[n - 1])}">${n}</button>`).join('')}
+        </div>
+        ${typeof c.rating === 'number' ? `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">${escapeHtml(BRAND_VOICE_RATING_RUBRIC[c.rating - 1])}</div>` : `<div class="hint" style="margin-top:3px;font-size:0.6875rem;">1 = off-brand, 5 = ready to use as-is</div>`}
+      </div>
+    </div>`;
+  }).join('');
+  const hasWinner = !!result.recommendedKey;
+  const ratedCount = (result.candidates || []).filter(c => typeof c.rating === 'number').length;
+  let selectWinnerHint = '';
+  if (!hasWinner){
+    selectWinnerHint = ratedCount === 0
+      ? 'Rate at least one option above to select a winner.'
+      : 'Two or more options are tied at the top rating — adjust a rating to break the tie before selecting a winner.';
+  }
+  return `<div class="hint" style="margin-bottom:10px;">This becomes the required foundation for every destination's Video Script contest below — select a winner once here, then every future destination run is handed it automatically.</div>
+    ${cards}
+    <div style="display:flex;justify-content:center;margin-top:6px;">
+      <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectVideoStrategyWinner('${result.interviewId}')">Select Contest Winner</button>
+    </div>
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>`;
+}
+// Video Strategy's own "Select Contest Winner" — writes accounts.
+// videoStrategyText immediately on select (see the backend /select branch),
+// same "select applies directly, no separate approve step" pattern as Voice
+// Guide's visionStatement/longformVoiceExample.
+async function selectVideoStrategyWinner(interviewId){
+  const flag = document.getElementById('voiceContestSelectFlag');
+  const candidateKey = lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId
+    ? lastVoiceContestCache.recommendedKey : null;
+  if (!candidateKey){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'No unambiguous top-rated option yet — rate the options above first.'; }
+    return;
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't select this — try again."; }
+      return;
+    }
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected — every destination\'s Video Script contest will now use this as its required foundation.'; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not selected.'; }
+  }
 }
 // Video Script option's panel — one card per configured vendor, each
 // showing that candidate's full 8-beat script as a table (Beat / Timestamp /
@@ -50453,9 +50548,13 @@ function rerenderVoiceContestPanel(result){
 // video-first creative brief workbook this option was built to replace an
 // external process for. Same blind-labeling as the Voice Guide panel (no
 // vendor/model ever shown — c.label is already the redacted "Option N").
+// evidenceHtml (the "No Internal Experience Evidence is loaded..." banner)
+// removed 2026-09-14, per direct instruction ("Remove the banner
+// completely"). The Fix 2 creative-focus-summary panel under the
+// destination picker already gives this same visibility before the contest
+// runs, which is where it was wanted — this after-the-fact repeat of it
+// stays gone.
 function renderVideoScriptContestPanel(result){
-  const evidenceHtml = result.evidenceGapNote
-    ? `<div class="hint" style="color:var(--advocacy);margin-bottom:10px;">${escapeHtml(result.evidenceGapNote)}</div>` : '';
   const cards = (result.candidates || []).map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
@@ -50505,7 +50604,7 @@ function renderVideoScriptContestPanel(result){
       ? 'Rate at least one option above to select a winner.'
       : 'Two or more options are tied at the top rating — adjust a rating to break the tie before selecting a winner.';
   }
-  return `${evidenceHtml}${cards}
+  return `${cards}
     <div style="display:flex;justify-content:center;margin-top:6px;">
       <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectVideoScriptWinner('${result.interviewId}')">Select Contest Winner</button>
     </div>
