@@ -2268,28 +2268,37 @@ async function fetchWithTimeout(url, options, ms = 90000){
 // "What if we submitted a 2nd attempt only for the model who times out").
 // Deliberately scoped to TIMEOUT errors only (not 4xx/5xx/parse failures —
 // retrying those wastes a call and won't fix a bad model name or a parsing
-// bug).
-// 2026-09-15 rebalanced, per direct follow-up (Todd, after Grok's retry
-// ALSO timed out at 20s: "why is the retry only 20 seconds... we need to
-// think about making another call that can leverage the full 90 seconds
-// again") — walked through the actual constraint with him rather than just
-// widening the number: every vendor call sits inside one Promise.all with
-// the other 4 (see runVideoScriptContest/runVideoStrategyContest), so
-// Vercel's 120s function ceiling is a SHARED, fixed budget for the whole
-// request, not something scoped per vendor or per contest. A genuine
-// timeout always burns its FULL window (that's what "timed out" means —
-// the AbortController only fires once the ms elapses), so if the first
-// attempt times out, that time is already gone; there's no way to also
-// give the retry a fresh full window without the two adding up past 120s
-// and risking Vercel killing the ENTIRE run (failing all 5 candidates, not
-// just the slow one). What was tunable was the SPLIT: the original 90s/20s
-// pairing gave the retry too little of the remaining budget. Rebalanced to
-// 55s/55s (110s worst-case total, still under the 120s ceiling with a 10s
-// margin for response handling) — Todd's chosen option ("Rebalance the
-// split") over raising Vercel's ceiling, leaving it as-is, or a bigger
-// background-job redesign that removes the 120s constraint entirely.
-const VENDOR_RETRY_FIRST_ATTEMPT_MS = 55000;
-const VENDOR_RETRY_SECOND_ATTEMPT_MS = 55000;
+// bug). Still used by the Anthropic/primary candidate's own generation
+// (generateVideoScriptCandidate, generateVideoStrategyCandidate) — unchanged
+// by the two rounds of history below, which only ever concerned the THIRD-
+// PARTY VENDOR calls.
+// 2026-09-15 rebalanced from 90s/20s to 55s/55s, per direct follow-up
+// (Todd, after Grok's retry ALSO timed out at 20s: "why is the retry only
+// 20 seconds... we need to think about making another call that can
+// leverage the full 90 seconds again") — every vendor call sits inside one
+// Promise.all with the other 4 (see runVideoScriptContest/
+// runVideoStrategyContest), so Vercel's 120s function ceiling is a SHARED,
+// fixed budget for the whole request. A genuine timeout always burns its
+// FULL window, so there was no way to give an INLINE retry (same request)
+// a fresh full window without risking the whole run past 120s.
+// 2026-09-15, superseded same day by a bigger change, per Todd's actual
+// follow-up idea: "return the results and message clients when a
+// particular model is still thinking and then run a second pass with only
+// the failed models as a new request." That sidesteps the whole shared-
+// budget problem — a second pass as its OWN HTTP request gets its OWN
+// fresh 120s Vercel ceiling, entirely independent of the first request's
+// budget. So the vendor generators below (generateVendorVideoStrategyCopy /
+// generateVendorVideoScriptCopy / generateVendorBrandVoiceCopy) no longer
+// retry INLINE at all — each vendor gets one attempt per request. A vendor
+// that fails on the first request is marked `pending: true` on its
+// candidate (see buildCandidate() in each run*Contest function) instead of
+// a hard failure; the client auto-fires POST .../retry-pending immediately
+// after, a genuinely separate request, which gives that vendor a full
+// fresh VENDOR_PASS2_TIMEOUT_MS window with none of the first request's
+// budget already spent. If that second pass also fails, THAT's the final,
+// non-retryable result — no third pass.
+const VENDOR_PASS1_TIMEOUT_MS = 90000; // first request — matches the Anthropic candidate's own first-attempt budget, so vendors aren't artificially capped tighter than Claude within the same Promise.all
+const VENDOR_PASS2_TIMEOUT_MS = 100000; // POST .../retry-pending — its own fresh 120s ceiling; 100s leaves ~20s margin for JSON parsing/DB save/response
 async function withSingleRetryOnTimeout(attemptFn, retryFn){
   try {
     return await attemptFn();
@@ -3211,6 +3220,18 @@ async function runBrandVoiceContest(account, extra){
     return {
       key, label, vendor, model, configured: true,
       visionStatement: gen.visionStatement, longformExample: gen.longformExample, error: gen.error,
+      // 2026-09-15 — pending, per Todd's two-pass design ("message clients
+      // when a particular model is still thinking and then run a second
+      // pass with only the failed models as a new request"). A candidate
+      // that failed on this first pass isn't shown as a hard failure yet —
+      // the client auto-fires POST .../retry-pending immediately after,
+      // which gets its own fresh Vercel budget (not squeezed into this
+      // request's remaining time, see VENDOR_PASS2_TIMEOUT_MS). Applies to
+      // any candidate, including the Anthropic/primary one — its own
+      // existing inline retry (withSingleRetryOnTimeout, unchanged here)
+      // still runs first; if IT also fails, retry-pending regenerates it
+      // via the same Claude path on the second pass.
+      pending: !!gen.error,
       complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : [],
       // Real values computed below (AI Brain Transparency, per-candidate);
       // defaulted here so a candidate that generation itself failed for
@@ -3226,6 +3247,8 @@ async function runBrandVoiceContest(account, extra){
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
     visionStatement: null, longformExample: null, error: `${v.envVar} not configured on this deployment.`,
+    // Never pending — a missing API key isn't retryable by a second pass.
+    pending: false,
     complianceScore: null, flags: [], transparency: null, transparencyNote: null
   }));
   const allLive = [anthropicCandidate, ...liveVendorCandidates];
@@ -3336,7 +3359,14 @@ function redactBrandVoiceCandidatesForClient(candidates){
     // error shown to the client is now a single generic message regardless
     // of vendor or failure reason — the real detail stays server-side,
     // visible only via GET /api/ops/accounts/:id/voice-contests.
-    error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    // 2026-09-15 — while pending is true, this is NOT a final failure yet
+    // (the second pass, POST .../retry-pending, is about to run) — the
+    // client shows "still thinking" for it instead of the generic error
+    // message, which only appears once pending is false and error is still
+    // set (i.e. the second pass also failed). See buildCandidate() in
+    // runBrandVoiceContest() for where pending is set.
+    error: (c.error && !c.pending) ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    pending: !!c.pending,
     complianceScore: c.complianceScore, flags: c.flags,
     // 2026-08-27, Phase 1 of the scoring roadmap (per direct instruction) —
     // a 1-5 human rating per candidate, set via POST
@@ -3446,13 +3476,15 @@ async function generateVideoStrategyCandidate(account){
     return { strategyText: null, error: 'Generation failed: ' + e.message };
   }
 }
-async function generateVendorVideoStrategyCopy(vendorKey, account){
+// 2026-09-15 — single attempt only now (no inline retry — see the
+// VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS comment above). Optional
+// `timeoutMs` lets POST .../retry-pending call this exact same function
+// again for the second pass with its own bigger budget, instead of
+// duplicating the prompt-building/parsing logic there.
+async function generateVendorVideoStrategyCopy(vendorKey, account, timeoutMs){
   try {
     const prompt = buildVideoStrategyPrompt(account) + `\n\nRespond with ONLY a JSON object: {"strategyText": "..."}`;
-    const text = await withSingleRetryOnTimeout(
-      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_FIRST_ATTEMPT_MS),
-      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_SECOND_ATTEMPT_MS)
-    );
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs || VENDOR_PASS1_TIMEOUT_MS);
     const parsed = parseJsonBlock(text);
     const strategyText = parsed && typeof parsed.strategyText === 'string' ? parsed.strategyText.trim().slice(0, 6000) : null;
     // 2026-09-14, per direct report (Todd: "Voice Strategy: Option 2 did not
@@ -3498,7 +3530,11 @@ function redactVideoStrategyCandidatesForClient(candidates){
   return (candidates || []).map(c => ({
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
     strategyText: c.strategyText || null,
-    error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    // 2026-09-15 — pending (see redactBrandVoiceCandidatesForClient's own
+    // comment for the full reasoning): no hard-failure message while a
+    // second pass (POST .../retry-pending) is about to run for this one.
+    error: (c.error && !c.pending) ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    pending: !!c.pending,
     rating: (typeof c.rating === 'number') ? c.rating : null
   }));
 }
@@ -3516,15 +3552,18 @@ async function runVideoStrategyContest(account){
     generateVideoStrategyCandidate(account),
     Promise.all(configuredVendors.map(v => generateVendorVideoStrategyCopy(v.key, account)))
   ]);
+  // 2026-09-15 — pending, per Todd's two-pass retry design (see
+  // runBrandVoiceContest's buildCandidate comment for the full reasoning) —
+  // this is the exact contest type (Video Strategy, Grok) that prompted it.
   const buildCandidate = (key, label, vendor, model, gen) => ({
     key, label, vendor, model, configured: true,
-    strategyText: gen.strategyText, error: gen.error
+    strategyText: gen.strategyText, error: gen.error, pending: !!gen.error
   });
   const anthropicCandidate = buildCandidate(BRAND_VOICE_PRIMARY_BRIEF.key, BRAND_VOICE_PRIMARY_BRIEF.label, BRAND_VOICE_PRIMARY_BRIEF.vendor, BRAND_VOICE_PRIMARY_BRIEF.model, anthropicGenerated);
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
-    strategyText: null, error: `${v.envVar} not configured on this deployment.`
+    strategyText: null, error: `${v.envVar} not configured on this deployment.`, pending: false
   }));
   const allLive = [anthropicCandidate, ...liveVendorCandidates];
   const allCandidates = [...allLive, ...unconfiguredCandidates];
@@ -3796,18 +3835,14 @@ async function generateVideoScriptCandidate(account, creativeMarket, referenceSc
     return { beats: null, overallApproach: null, error: 'Generation failed: ' + e.message };
   }
 }
-async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, referenceScriptId, contextualNotes){
+// 2026-09-15 — single attempt only now (no inline retry — see
+// VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS's comment). Optional
+// `timeoutMs` lets POST .../retry-pending reuse this exact function for the
+// second pass with its own bigger budget.
+async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket, referenceScriptId, contextualNotes, timeoutMs){
   try {
     const prompt = (await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes)) + `\n\nRespond with ONLY a JSON object: {"overallApproach": "...", "beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
-    // Single retry on timeout only (2026-09-14, per Todd — Grok timed out
-    // mid-contest; rebalanced 2026-09-15 from 90s/20s to 55s/55s after
-    // Grok's 20s retry also timed out — see withSingleRetryOnTimeout's
-    // comment above for the full reasoning on why the split moved, not just
-    // the retry window).
-    const text = await withSingleRetryOnTimeout(
-      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_FIRST_ATTEMPT_MS),
-      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_SECOND_ATTEMPT_MS)
-    );
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs || VENDOR_PASS1_TIMEOUT_MS);
     const parsed = parseJsonBlock(text);
     const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
     if (!beats || beats.length !== 8) return { beats: null, overallApproach: null, error: 'Generation returned no parseable 8-beat JSON.' };
@@ -3853,7 +3888,11 @@ function redactVideoScriptCandidatesForClient(candidates){
   return (candidates || []).map(c => ({
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
     overallApproach: c.overallApproach || null,
-    beats: c.beats, error: c.error ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    // 2026-09-15 — pending (see redactBrandVoiceCandidatesForClient's own
+    // comment for the full reasoning): no hard-failure message while a
+    // second pass (POST .../retry-pending) is about to run for this one.
+    beats: c.beats, error: (c.error && !c.pending) ? 'This option couldn’t be generated for this contest run — try running the contest again.' : null,
+    pending: !!c.pending,
     complianceScore: c.complianceScore, flags: c.flags,
     rating: (typeof c.rating === 'number') ? c.rating : null,
     // 2026-09-14 — set by POST .../finalize-script once a human has
@@ -3891,12 +3930,14 @@ async function runVideoScriptContest(account, creativeMarket, extra){
     generateVideoScriptCandidate(account, creativeMarket, referenceScriptId, contextualNotes),
     Promise.all(configuredVendors.map(v => generateVendorVideoScriptCopy(v.key, account, creativeMarket, referenceScriptId, contextualNotes)))
   ]);
+  // 2026-09-15 — pending, per Todd's two-pass retry design (see
+  // runBrandVoiceContest's buildCandidate comment for the full reasoning).
   const buildCandidate = (key, label, vendor, model, gen) => {
     const combinedText = Array.isArray(gen.beats) ? gen.beats.map(b => b.vo).filter(Boolean).join(' ') : '';
     const compliance = combinedText ? scoreComplianceHeuristically(combinedText, account) : null;
     return {
       key, label, vendor, model, configured: true,
-      overallApproach: gen.overallApproach || null, beats: gen.beats, error: gen.error,
+      overallApproach: gen.overallApproach || null, beats: gen.beats, error: gen.error, pending: !!gen.error,
       complianceScore: compliance ? compliance.complianceScore : null, flags: compliance ? compliance.flags : []
     };
   };
@@ -3904,7 +3945,7 @@ async function runVideoScriptContest(account, creativeMarket, extra){
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
-    overallApproach: null, beats: null, error: `${v.envVar} not configured on this deployment.`,
+    overallApproach: null, beats: null, error: `${v.envVar} not configured on this deployment.`, pending: false,
     complianceScore: null, flags: []
   }));
   const allLive = [anthropicCandidate, ...liveVendorCandidates];
@@ -15177,7 +15218,14 @@ async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleC
 // different JSON shape than the copy panel — visionStatement +
 // longformExample, matching generateBrandVoiceCandidate's Anthropic path
 // above) — reused by runBrandVoiceContest.
-async function generateVendorBrandVoiceCopy(vendorKey, account, extra){
+// 2026-09-15 — optional `timeoutMs` lets POST .../retry-pending reuse this
+// exact function for the second pass with a bigger budget (see
+// VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS's comment) — this
+// function never had an inline retry to begin with, so nothing else here
+// changes; a first-pass failure now just gets marked `pending: true` on
+// its candidate (see buildCandidate() in runBrandVoiceContest) instead of
+// being a final failure immediately.
+async function generateVendorBrandVoiceCopy(vendorKey, account, extra, timeoutMs){
   try {
     const context = brandVoiceCriticalMessagesContext(account, extra);
     // 2026-09-12, per cxmedia-voice-contest-guide-unification-multivendor-
@@ -15212,7 +15260,7 @@ ${sampleContext || '(no sample writings on file for this account yet)'}
 
 Respond with ONLY a JSON object with two fields:
 {"visionStatement": "<a single, memorable 1-2 sentence vision statement for this brand's voice — the north star, not a tagline>", "longformExample": "<120-200 words of real, finished longform copy in this voice, written as if it were the opening of a real customer-facing piece (e.g. a welcome email or About page) — must naturally incorporate the critical customer-facing messages above, not just describe them>"}`;
-    const text = await callVendorForText(vendorKey, prompt);
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs || VENDOR_PASS1_TIMEOUT_MS);
     const parsed = parseJsonBlock(text);
     if (!parsed) return { visionStatement: null, longformExample: null, error: 'Generation returned no parseable JSON.' };
     return {
@@ -18164,6 +18212,120 @@ async function handleRequest(req, res) {
       }
       const recommended = pickRecommendedCandidate(candidates);
       return sendJson(res, 200, { interviewId, candidates: isStaffCaller ? candidates : redactBrandVoiceCandidatesForClient(candidates), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+    }
+
+    // POST /api/accounts/:id/voice-contest/:interviewId/retry-pending —
+    // 2026-09-15, second pass of Todd's two-pass timeout design (see
+    // VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS's comment near
+    // withSingleRetryOnTimeout for the full reasoning): "return the results
+    // and message clients when a particular model is still thinking and
+    // then run a second pass with only the failed models as a new request
+    // that would not involve successful returns." Called automatically by
+    // the client immediately after the create endpoint (or GET history)
+    // returns any candidate with pending:true — this is a genuinely
+    // SEPARATE HTTP request with its own fresh Vercel 120s ceiling, so a
+    // vendor that failed on the first pass gets a real full-budget second
+    // try instead of squeezing into whatever was left of the first
+    // request's budget. Regenerates ONLY the candidates still marked
+    // pending — every already-successful candidate is left completely
+    // untouched, per "would not involve successful returns." This is the
+    // LAST attempt: pending is always cleared to false regardless of
+    // outcome (success or a final failure), so the client never has a
+    // reason to call this a third time for the same candidate.
+    // Known, deliberate simplification: the per-run "extra" inputs from the
+    // ORIGINAL create call (Terms to Avoid for Voice Guide; the optional
+    // reference-script id and contextual notes for Video Script) aren't
+    // persisted on the interview row, so a retried candidate regenerates
+    // without them — every account-level signal (Voice Guide, brand
+    // keywords, Creative Focus Group destination, evidence) is still fully
+    // included via the same context builders the first pass used. Judged an
+    // acceptable trade-off for a retry of a candidate that otherwise
+    // wouldn't exist at all; flagged here rather than silently assumed.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-contest' && parts[5] === 'retry-pending'){
+      const accountId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      if (!requireAccountOrAdmin(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+      if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const contentType = interview.contentType || 'voice_guide';
+      const recommend = () => contentType === 'video_script' ? pickRecommendedVideoScriptCandidate(candidates)
+        : contentType === 'video_strategy' ? pickRecommendedVideoStrategyCandidate(candidates)
+        : pickRecommendedCandidate(candidates);
+      const redact = () => contentType === 'video_script' ? redactVideoScriptCandidatesForClient(candidates)
+        : contentType === 'video_strategy' ? redactVideoStrategyCandidatesForClient(candidates)
+        : redactBrandVoiceCandidatesForClient(candidates);
+      const pendingCandidates = candidates.filter(c => c.pending);
+      if (!pendingCandidates.length){
+        // Cheap no-op — safe to call even if the client's own pending check
+        // raced with an earlier retry-pending call for this same interview.
+        const recommended = recommend();
+        return sendJson(res, 200, { interviewId, contentType, retried: false, candidates: isStaffCaller ? candidates : redact(), recommendedKey: recommended.key, recommendedReason: recommended.reason });
+      }
+      await Promise.all(pendingCandidates.map(async (c) => {
+        const isPrimary = c.key === BRAND_VOICE_PRIMARY_BRIEF.key;
+        try {
+          if (contentType === 'video_strategy'){
+            const gen = isPrimary ? await generateVideoStrategyCandidate(account) : await generateVendorVideoStrategyCopy(c.key, account, VENDOR_PASS2_TIMEOUT_MS);
+            c.strategyText = gen.strategyText; c.error = gen.error;
+          } else if (contentType === 'video_script'){
+            const gen = isPrimary
+              ? await generateVideoScriptCandidate(account, interview.creativeMarket, null, '')
+              : await generateVendorVideoScriptCopy(c.key, account, interview.creativeMarket, null, '', VENDOR_PASS2_TIMEOUT_MS);
+            c.overallApproach = gen.overallApproach || null; c.beats = gen.beats; c.error = gen.error;
+            const combinedText = Array.isArray(c.beats) ? c.beats.map(b => b.vo).filter(Boolean).join(' ') : '';
+            const compliance = combinedText ? scoreComplianceHeuristically(combinedText, account) : null;
+            c.complianceScore = compliance ? compliance.complianceScore : null;
+            c.flags = compliance ? compliance.flags : [];
+          } else {
+            const gen = isPrimary
+              ? await generateBrandVoiceCandidate(BRAND_VOICE_PRIMARY_BRIEF, account, {})
+              : await generateVendorBrandVoiceCopy(c.key, account, {}, VENDOR_PASS2_TIMEOUT_MS);
+            c.visionStatement = gen.visionStatement; c.longformExample = gen.longformExample; c.error = gen.error;
+            const combinedText = [c.visionStatement, c.longformExample].filter(Boolean).join('\n\n');
+            const compliance = combinedText ? scoreComplianceHeuristically(combinedText, account) : null;
+            c.complianceScore = compliance ? compliance.complianceScore : null;
+            c.flags = compliance ? compliance.flags : [];
+          }
+        } catch (e){
+          c.error = 'Generation failed: ' + e.message;
+        }
+        // Final attempt regardless of outcome — never left pending for a
+        // third pass; a still-failing candidate becomes a normal, final
+        // error once redacted below.
+        c.pending = false;
+      }));
+      // Voice Guide only — fills in AI Brain Transparency for any candidate
+      // that now has real content but never got a transparency pass (either
+      // because it was pending during the first pass's transparency step,
+      // or it just succeeded here). Mirrors runBrandVoiceContest()'s own
+      // transparency block above.
+      if (contentType === 'voice_guide'){
+        try {
+          const contestSignals = await gatherVoiceTransparencySignals(account);
+          await Promise.all(candidates.filter(c => c.configured && c.visionStatement && c.longformExample && !c.transparency).map(async (c) => {
+            const contentText = [c.visionStatement, c.longformExample].filter(Boolean).join('\n\n');
+            const { items, note } = await generateTransparencyNotes(
+              account, contestSignals, contentText, VOICE_TRANSPARENCY_SIGNALS,
+              'Voice Contest candidate (a Vision Statement + Longform Example pair, one of several run blind against each other)',
+              'submit_voice_contest_transparency', 25000
+            );
+            c.transparency = items;
+            c.transparencyNote = note;
+            if (items && items.length){
+              try { saveTransparencyBatch(account.accountId, items, 'voice_contest'); }
+              catch (e){ /* ops-rollup persistence is a nice-to-have — never block the retry result over it */ }
+            }
+          }));
+        } catch (e){ /* never let a transparency failure take down the retry result */ }
+      }
+      db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+      const recommended = recommend();
+      return sendJson(res, 200, { interviewId, contentType, retried: true, candidates: isStaffCaller ? candidates : redact(), recommendedKey: recommended.key, recommendedReason: recommended.reason });
     }
 
     // GET /api/accounts/:id/interview-usage — 2026-08-27, Phase 1 build.
@@ -26801,6 +26963,7 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
 
