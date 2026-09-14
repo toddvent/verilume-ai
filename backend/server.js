@@ -2268,15 +2268,28 @@ async function fetchWithTimeout(url, options, ms = 90000){
 // "What if we submitted a 2nd attempt only for the model who times out").
 // Deliberately scoped to TIMEOUT errors only (not 4xx/5xx/parse failures —
 // retrying those wastes a call and won't fix a bad model name or a parsing
-// bug). Deliberately does NOT retry with a fresh 90s window: each vendor
-// call already sits inside a Promise.all with the other 4 (see
-// runVideoScriptContest), so Vercel's 120s function ceiling is a shared
-// budget — one candidate retrying for another full 90s could push the
-// WHOLE contest past 120s and fail all 5 candidates, not just the slow
-// one. Instead the retry gets a much shorter 20s window: enough to catch
-// a transient blip (the common case) without risking the rest of the
-// panel. Worst case total for one vendor: ~110s, still under the 120s
-// ceiling with a small margin.
+// bug).
+// 2026-09-15 rebalanced, per direct follow-up (Todd, after Grok's retry
+// ALSO timed out at 20s: "why is the retry only 20 seconds... we need to
+// think about making another call that can leverage the full 90 seconds
+// again") — walked through the actual constraint with him rather than just
+// widening the number: every vendor call sits inside one Promise.all with
+// the other 4 (see runVideoScriptContest/runVideoStrategyContest), so
+// Vercel's 120s function ceiling is a SHARED, fixed budget for the whole
+// request, not something scoped per vendor or per contest. A genuine
+// timeout always burns its FULL window (that's what "timed out" means —
+// the AbortController only fires once the ms elapses), so if the first
+// attempt times out, that time is already gone; there's no way to also
+// give the retry a fresh full window without the two adding up past 120s
+// and risking Vercel killing the ENTIRE run (failing all 5 candidates, not
+// just the slow one). What was tunable was the SPLIT: the original 90s/20s
+// pairing gave the retry too little of the remaining budget. Rebalanced to
+// 55s/55s (110s worst-case total, still under the 120s ceiling with a 10s
+// margin for response handling) — Todd's chosen option ("Rebalance the
+// split") over raising Vercel's ceiling, leaving it as-is, or a bigger
+// background-job redesign that removes the 120s constraint entirely.
+const VENDOR_RETRY_FIRST_ATTEMPT_MS = 55000;
+const VENDOR_RETRY_SECOND_ATTEMPT_MS = 55000;
 async function withSingleRetryOnTimeout(attemptFn, retryFn){
   try {
     return await attemptFn();
@@ -3437,8 +3450,8 @@ async function generateVendorVideoStrategyCopy(vendorKey, account){
   try {
     const prompt = buildVideoStrategyPrompt(account) + `\n\nRespond with ONLY a JSON object: {"strategyText": "..."}`;
     const text = await withSingleRetryOnTimeout(
-      () => callVendorForText(vendorKey, prompt),
-      () => callVendorForText(vendorKey, prompt, 20000)
+      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_FIRST_ATTEMPT_MS),
+      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_SECOND_ATTEMPT_MS)
     );
     const parsed = parseJsonBlock(text);
     const strategyText = parsed && typeof parsed.strategyText === 'string' ? parsed.strategyText.trim().slice(0, 6000) : null;
@@ -3787,12 +3800,13 @@ async function generateVendorVideoScriptCopy(vendorKey, account, creativeMarket,
   try {
     const prompt = (await buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes)) + `\n\nRespond with ONLY a JSON object: {"overallApproach": "...", "beats": [ {"visual": "...", "vo": "...", "caption": "...", "pillar": "..."}, ... exactly 8 items, in the exact beat order given above ] }`;
     // Single retry on timeout only (2026-09-14, per Todd — Grok timed out
-    // mid-contest). Full 90s on the first try, a short 20s on the retry so
-    // one slow vendor can't push the whole Promise.all past Vercel's 120s
-    // ceiling — see withSingleRetryOnTimeout's comment for the full reasoning.
+    // mid-contest; rebalanced 2026-09-15 from 90s/20s to 55s/55s after
+    // Grok's 20s retry also timed out — see withSingleRetryOnTimeout's
+    // comment above for the full reasoning on why the split moved, not just
+    // the retry window).
     const text = await withSingleRetryOnTimeout(
-      () => callVendorForText(vendorKey, prompt),
-      () => callVendorForText(vendorKey, prompt, 20000)
+      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_FIRST_ATTEMPT_MS),
+      () => callVendorForText(vendorKey, prompt, VENDOR_RETRY_SECOND_ATTEMPT_MS)
     );
     const parsed = parseJsonBlock(text);
     const beats = parsed && Array.isArray(parsed.beats) ? parsed.beats.slice(0, 8) : null;
@@ -26787,5 +26801,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
