@@ -851,6 +851,10 @@
   .tile-card:hover{border-color:var(--hdr-navy);box-shadow:var(--shadow-md);transform:translateY(-1px);}
   .tile-card .tc-label{font-weight:700;font-size:0.875rem;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .tile-card .tc-desc{font-size:0.75rem;color:var(--muted);margin-top:4px;line-height:1.45;}
+  .tile-card .tc-status{font-size:0.8125rem;font-weight:600;margin-top:6px;line-height:1.4;}
+  .tile-card .tc-status.ok{color:var(--cx);}
+  .tile-card .tc-status.pending{color:var(--advocacy);}
+  .tile-card .tc-status.notbuilt{color:#B4AE9C;}
   .tile-shell-note{font-size:0.75rem;color:var(--muted);margin:0 0 24px;padding:12px 16px;background:var(--paper-dim);border-radius:10px;max-width:900px;}
 
   /* 2026-09-09 — sample-output modal shared by the Match Market Builder
@@ -17347,8 +17351,16 @@ function renderTileShellGroups(groups, topNote, originTab){
             // renderPendingFeatureStep()'s own comment for the rest of the
             // fix.
             : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}','${jsStrEscape(originTab || '')}')`;
+          // 2026-09-14 — optional item.status(), same {text, tone} contract as
+          // the AI_PARTNER_ONBOARDING_GROUPS card pattern (renderAiPartnerOnboardingHub()),
+          // for tiles here that need a real, dynamic status line rather than
+          // just a static desc. text may contain simple markup (e.g. <br>)
+          // since callers build it themselves, same as the aipo pattern —
+          // not run through escapeHtml.
+          const statusResult = typeof item.status === 'function' ? item.status() : null;
           return `<div class="tile-card${item.badge === 'pending' ? ' is-pending' : ''}" onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')${onclick}">
             <div class="tc-label">${escapeHtml(item.label)}${tileBadgeHtml(item.badge)}</div>
+            ${statusResult ? `<div class="tc-status ${statusResult.tone}">${statusResult.text}</div>` : ''}
             ${item.desc ? `<div class="tc-desc">${escapeHtml(item.desc)}</div>` : ''}
           </div>`;
         }).join('')}
@@ -17559,6 +17571,38 @@ function renderPartnersVendorsSection(){
 // Corporate Communications and Search Optimization are whole-section
 // Enterprise (a real production tier gate, distinct from "not built").
 const BRAND_SHELL_GROUPS = [
+  // 2026-09-14, per direct correction ("The ask was to move to brand was the
+  // brand portal page. The tile is supposed to include the last contest ran,
+  // # completed, #drafts and it is a link to the contest page that no longer
+  // lives in Account Management. It links to the activation page that we
+  // currently have in Account but now will be a page living off the Portal
+  // brand page.") — relocated from AI_PARTNER_ONBOARDING_GROUPS' "The Voice"
+  // group (Manage Account hub) to the real primary-nav Brand tab. Links to
+  // step-voiceContest, the client-facing activation page (view/select a
+  // winner) — the Ops Console Internal Testing section remains the only
+  // place to run/create new contests, unchanged by this move. Stats
+  // (# winners / # drafts per contest type, last run date) reuse
+  // aipoVoiceContestStats/aipoLoadVoiceContestStats(), the same client-side
+  // computation the old card used — see that function's own comment.
+  { label: 'Brand Voice', items: [
+    {
+      label: 'Voice Contest',
+      step: 'voiceContest',
+      desc: 'Multi-model Vision Statement & Longform Example — compare distinct AI-generated voice directions and pick one, or write your own.',
+      status(){
+        if (aipoVoiceContestStats == null) return { text: 'Checking…', tone: 'pending' };
+        const s = aipoVoiceContestStats;
+        const typeOrder = ['voice_guide', 'video_script', 'video_strategy'];
+        const perType = typeOrder
+          .filter(t => s.byType[t] && s.byType[t].total > 0)
+          .map(t => `${VOICE_CONTEST_TYPE_LABEL[t]}: ${s.byType[t].winners} winner${s.byType[t].winners === 1 ? '' : 's'}, ${s.byType[t].drafts} draft${s.byType[t].drafts === 1 ? '' : 's'}`);
+        if (!perType.length) return { text: 'Not started', tone: 'pending' };
+        const lastRun = s.lastRunAt ? new Date(s.lastRunAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null;
+        const text = perType.join('<br>') + (lastRun ? `<br>Last run: ${lastRun}` : '');
+        return { text, tone: s.totalWinners > 0 ? 'ok' : 'pending' };
+      }
+    }
+  ]},
   { label: 'Creative Production', items: [
     { label: 'Experience Development' },
     { label: 'Omni-Channel Creative', step: 'omniCreative', desc: 'Cross-channel creative production' }
@@ -17580,6 +17624,11 @@ const BRAND_SHELL_GROUPS = [
   ]}
 ];
 function brandShellHtml(){
+  // Same lazy-load-then-rerender trigger renderAiPartnerOnboardingHub() used
+  // for this same stats object — safe to call from both places since it's a
+  // no-op once aipoVoiceContestStats is non-null, and aipoLoadVoiceContestStats()
+  // re-renders whichever of this tab / the old hub is currently on screen.
+  if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
   return renderTileShellGroups(BRAND_SHELL_GROUPS, null, 'brand');
 }
 // Marketer shell. "From AI Agent Training" group (Performance Marketing /
@@ -20199,32 +20248,13 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
           return { text: 'Not yet approved', tone: 'pending' };
         }
       },
-      {
-        title: 'Voice Contest',
-        category: 'manual',
-        source: 'Brand Groundwork',
-        route: 'voiceContest',
-        desc: 'Multi-model Vision Statement &amp; Longform Example — compare distinct AI-generated voice directions and pick one, or write your own.',
-        // 2026-09-14, per direct instruction: "Brand Page Tile: Show #
-        // Winners to reflect saved contest outputs, # Drafts to reflect
-        // pending and last contest run date," broken out per contest type
-        // (direct answer to the clarifying question). aipoVoiceContestStats
-        // is loaded once per hub render by aipoLoadVoiceContestStats() below
-        // (same lazy-load-then-rerender pattern as aipoMmmPeriodCount) —
-        // null here just means "still checking."
-        status(){
-          if (aipoVoiceContestStats == null) return { text: 'Checking…', tone: 'pending' };
-          const s = aipoVoiceContestStats;
-          const typeOrder = ['voice_guide', 'video_script', 'video_strategy'];
-          const perType = typeOrder
-            .filter(t => s.byType[t] && s.byType[t].total > 0)
-            .map(t => `${VOICE_CONTEST_TYPE_LABEL[t]}: ${s.byType[t].winners} winner${s.byType[t].winners === 1 ? '' : 's'}, ${s.byType[t].drafts} draft${s.byType[t].drafts === 1 ? '' : 's'}`);
-          if (!perType.length) return { text: 'Not started', tone: 'pending' };
-          const lastRun = s.lastRunAt ? new Date(s.lastRunAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null;
-          const text = perType.join('<br>') + (lastRun ? `<br>Last run: ${lastRun}` : '');
-          return { text, tone: s.totalWinners > 0 ? 'ok' : 'pending' };
-        }
-      },
+      // 2026-09-14, per direct correction — the Voice Contest card that used
+      // to live here moved to the real primary-nav Brand tab
+      // (BRAND_SHELL_GROUPS, "Brand Voice" group): "it is a link to the
+      // contest page that no longer lives in Account Management." See that
+      // group's own comment for the full relocation. aipoVoiceContestStats/
+      // aipoLoadVoiceContestStats() (below) are unchanged and now feed that
+      // tile instead of this one.
       {
         title: 'Competitive Positioning',
         category: 'manual',
@@ -20637,6 +20667,10 @@ async function aipoLoadVoiceContestStats(){
   }
   const stepEl = document.getElementById('step-manageAccount');
   if (stepEl && stepEl.classList.contains('active')) renderAiPartnerOnboardingHub(true);
+  // 2026-09-14 — the Voice Contest tile also now lives on the real Brand tab
+  // (BRAND_SHELL_GROUPS); re-render it too if that's what's currently on
+  // screen, same lazy-load-then-rerender pattern as the hub above.
+  if (activePrimaryTab === 'brand') renderWorkstreams();
 }
 // Independent of loadMmmInputs() (which only runs when Analytics Setup's own
 // #mmmInputsRows table exists on the page) — same endpoint, no DOM
@@ -29627,6 +29661,18 @@ let mbuSelectedYear = new Date().getFullYear();
 // unless someone explicitly switches the toggle.
 let mbuSelectedScope = 'domestic';
 let mbuYearsData = [];
+// 2026-09-14, per direct report ("The budgets that I added ... are missing"
+// — checked every year/scope, all showed "no budget yet," even years that
+// had just shown a confirmed green checkmark) — root cause traced to
+// mbuLoadYearsList() below silently treating ANY fetch failure (a real
+// backend error, a misconfigured deployment, a dropped connection — not
+// just "this account genuinely has zero uploads") as an empty list. Every
+// year/scope combination then correctly shows "no budget yet" per the data
+// it was given, which is indistinguishable on screen from actual data loss.
+// This flag lets mbuRenderPlanSetup() below tell the two apart and show an
+// honest "couldn't load your budgets" error instead of implying the data
+// itself is gone.
+let mbuYearsLoadFailed = false;
 function mbuScopeLabel(s){ return s === 'international' ? 'International' : 'Domestic'; }
 function renderMbuScopeRow(){
   const row = document.getElementById('mbuScopeRow');
@@ -32721,8 +32767,24 @@ async function mbuLoadYearsList(){
   if (!state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`);
-    mbuYearsData = resp.ok ? ((await resp.json()).uploads || []) : [];
-  } catch (e){ mbuYearsData = []; }
+    if (resp.ok){
+      mbuYearsData = (await resp.json()).uploads || [];
+      mbuYearsLoadFailed = false;
+    } else {
+      // 2026-09-14 fix — see mbuYearsLoadFailed's own comment above. A
+      // non-OK response (500/503/etc.) used to be treated identically to
+      // "this account has no uploads," which reads on screen as every
+      // budget having vanished. Keep whatever was last successfully loaded
+      // (don't wipe real, previously-shown data out from under someone just
+      // because one refresh failed) and flag it so the Plan Setup card can
+      // say so honestly instead of showing "no budget yet."
+      mbuYearsLoadFailed = true;
+      console.error('mbuLoadYearsList: GET marketing-budget-uploads failed', resp.status);
+    }
+  } catch (e){
+    mbuYearsLoadFailed = true;
+    console.error('mbuLoadYearsList: GET marketing-budget-uploads failed', e);
+  }
   renderMbuYearsList();
   if (typeof renderMbuScopeRow === 'function') renderMbuScopeRow();
   if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
@@ -32844,6 +32906,19 @@ function mbuRenderPlanSetup(){
   const mount = document.getElementById('mbuPlanSetupStatus');
   if (!mount) return;
   mbuApplyPageMode();
+  // 2026-09-14 fix — see mbuYearsLoadFailed's own comment (mbuLoadYearsList
+  // above). Checked before the "no budget yet" Setup state below: a failed
+  // fetch is NOT the same thing as a genuinely empty account, and showing
+  // "no budget yet" for every year/scope when the real problem is a failed
+  // request reads exactly like every budget you ever added just vanished.
+  if (mbuYearsLoadFailed){
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);padding:12px 16px;">
+        <span><b style="color:#b91c1c;">Couldn't load your budgets.</b> This isn't necessarily "no budget yet" for ${mbuSelectedYear} — the request to check failed, so nothing could be confirmed either way. Your data is very likely still there; try again in a moment.</span>
+        <button type="button" class="btn-primary" onclick="mbuLoadYearsList()">↻ Try again →</button>
+      </div>`;
+    return;
+  }
   const active = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (active){
     // 2026-09-06 review: period-aware status. A year before the current
