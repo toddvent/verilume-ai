@@ -4499,6 +4499,31 @@
         <button type="button" class="btn-primary" onclick="generateVoiceDraftFromContestWinner()">Generate updated Voice Guide from this winner →</button>
       </div>
     </div>
+
+    <!-- 2026-09-14, per direct instruction: "Just like Voice. Make sure that
+         our humans can edit the winner selected and then submit as final.
+         Should be the same for all contests." Same edit-then-submit pattern
+         as voiceContestWinnerModule above: selectVideoStrategyWinner() loads
+         the winning strategy text in here (already written immediately to
+         accounts.videoStrategyText on select — same "select applies
+         directly" convention as Voice Guide), the client can edit it, and a
+         separate button (saveVideoStrategyEdits(), POST
+         /api/accounts/:id/video-strategy-text) commits the edited version.
+         Always visible (mirrors voiceContestWinnerModule, which is also
+         always visible regardless of which content type is selected above)
+         so a client can also just write a strategy here directly. -->
+    <div class="section-card" id="videoStrategyWinnerModule">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Your Winning Video Strategy Is Below</h3>
+      <p class="lede" style="margin:2px 0 16px;">Please review the strategy below and edit as needed. Select Submit when you want to apply it as the required foundation for every destination's Video Script.</p>
+      <div class="field">
+        <label>Video Design Strategy</label>
+        <textarea id="videoStrategyTextEdit" rows="10" placeholder="Run the Brand Video Script Strategy contest above, or write your own."></textarea>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn-primary" onclick="saveVideoStrategyEdits()">Submit as Final →</button>
+      </div>
+      <div class="hint" id="videoStrategyEditSaveFlag" style="margin-top:6px;"></div>
+    </div>
   </div>
 
   <!-- ================= SEARCH EVERYWHERE & ORGANIC SOCIAL ================= -->
@@ -50537,9 +50562,45 @@ async function selectVideoStrategyWinner(interviewId){
       if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't select this — try again."; }
       return;
     }
-    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected — every destination\'s Video Script contest will now use this as its required foundation.'; }
+    const result = await resp.json();
+    // 2026-09-14 — same "select loads into the editable module below, a
+    // separate button commits it" pattern as Voice Guide's
+    // selectContestWinner(): the /select call above already wrote
+    // accounts.videoStrategyText immediately (unchanged), this only loads
+    // the (possibly-about-to-be-edited) text into videoStrategyWinnerModule
+    // for review before the client clicks "Submit as Final →".
+    const strategyEl = document.getElementById('videoStrategyTextEdit');
+    if (strategyEl) strategyEl.value = result.strategyText || '';
+    if (strategyEl && strategyEl.scrollIntoView) strategyEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected — now loaded below for review. Edit as needed, then click "Submit as Final →" to apply it to every destination\'s Video Script contest.'; }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not selected.'; }
+  }
+}
+// "Submit as Final →" for the Video Strategy edit module — mirrors
+// saveVisionLongformEdits() below exactly, POSTing to the matching
+// /video-strategy-text endpoint (simple merge-update, same convention as
+// /vision-longform).
+async function saveVideoStrategyEdits(){
+  const flag = document.getElementById('videoStrategyEditSaveFlag');
+  const videoStrategyText = document.getElementById('videoStrategyTextEdit').value;
+  if (!videoStrategyText.trim()){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Add strategy text before submitting.'; }
+    return;
+  }
+  let persisted = false;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/video-strategy-text`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoStrategyText })
+    });
+    persisted = resp.ok;
+  } catch (e){ /* falls through to the local-only flag below */ }
+  if (flag){
+    flag.style.color = persisted ? 'var(--cx)' : 'var(--advocacy)';
+    flag.textContent = persisted
+      ? `Saved ${new Date().toLocaleTimeString()} — every destination's Video Script contest will now use this as its required foundation.`
+      : `Not saved — no backend record for this account, or the backend is unreachable.`;
   }
 }
 // Video Script option's panel — one card per configured vendor, each
@@ -50604,11 +50665,117 @@ function renderVideoScriptContestPanel(result){
       ? 'Rate at least one option above to select a winner.'
       : 'Two or more options are tied at the top rating — adjust a rating to break the tie before selecting a winner.';
   }
+  // 2026-09-14, per direct instruction: "Just like Voice. Make sure that our
+  // humans can edit the winner selected and then submit as final. Should be
+  // the same for all contests." Per direct follow-up on WHERE this saves for
+  // Video Script specifically ("Save on that destination's contest
+  // record"): once a winner is selected (result.selectedCandidateKey, set
+  // by selectVideoScriptWinner() below after a successful /select call), an
+  // editable form for that candidate's beats + overall approach renders
+  // here — a separate "Submit as Final →" button (finalizeVideoScript())
+  // commits the edited version onto THIS contest run's own candidatesJson
+  // via POST .../finalize-script, matching the fixed-labels/editable-fields
+  // split enforced server-side by mergeVideoScriptBeats().
+  const selectedCandidate = result.selectedCandidateKey
+    ? (result.candidates || []).find(c => c.key === result.selectedCandidateKey && Array.isArray(c.beats) && c.beats.length === 8)
+    : null;
   return `${cards}
     <div style="display:flex;justify-content:center;margin-top:6px;">
       <button type="button" class="btn-primary" ${hasWinner ? '' : 'disabled'} onclick="selectVideoScriptWinner('${result.interviewId}')">Select Contest Winner</button>
     </div>
-    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>`;
+    <div id="voiceContestSelectFlag" class="hint" style="margin-top:8px;text-align:center;">${escapeHtml(selectWinnerHint)}</div>
+    ${selectedCandidate ? renderVideoScriptFinalizeForm(result, selectedCandidate) : ''}`;
+}
+// The editable finalize form for the destination's selected winning script —
+// see the comment above renderVideoScriptContestPanel's selectedCandidate
+// for the "why" and the storage decision. Beat name/timestamp are shown as
+// fixed labels (never editable, matching VIDEO_SCRIPT_BEAT_GRID server-side)
+// — only Visual/VO/Caption/Pillar per beat, plus Overall Approach, are ever
+// editable fields here.
+function renderVideoScriptFinalizeForm(result, candidate){
+  const safeId = String(candidate.key).replace(/[^a-zA-Z0-9_-]/g, '');
+  const beatsHtml = candidate.beats.map((b, i) => `
+    <div style="border:1px solid var(--line-hairline);border-radius:6px;padding:10px;margin-top:8px;">
+      <div style="font-weight:700;font-size:0.75rem;">${escapeHtml(b.beat)} <span class="hint" style="font-weight:400;">${escapeHtml(b.timestamp)}</span></div>
+      <div class="field" style="margin-top:6px;">
+        <label style="font-size:0.6875rem;">Visual</label>
+        <textarea rows="2" id="vsFinal-${safeId}-visual-${i}">${escapeHtml(b.visual)}</textarea>
+      </div>
+      <div class="field" style="margin-top:6px;">
+        <label style="font-size:0.6875rem;">Voiceover</label>
+        <textarea rows="2" id="vsFinal-${safeId}-vo-${i}">${escapeHtml(b.vo)}</textarea>
+      </div>
+      <div class="field" style="margin-top:6px;">
+        <label style="font-size:0.6875rem;">Caption</label>
+        <textarea rows="1" id="vsFinal-${safeId}-caption-${i}">${escapeHtml(b.caption)}</textarea>
+      </div>
+      <div class="field" style="margin-top:6px;">
+        <label style="font-size:0.6875rem;">Pillar</label>
+        <input type="text" id="vsFinal-${safeId}-pillar-${i}" value="${escapeHtml(b.pillar)}">
+      </div>
+    </div>`).join('');
+  const finalizedNote = candidate.finalized
+    ? `<div class="hint" style="color:var(--cx);margin-bottom:8px;">Finalized${candidate.finalizedAt ? ' ' + new Date(candidate.finalizedAt).toLocaleString() : ''}.</div>`
+    : '';
+  return `<div class="section-card" id="videoScriptFinalizeModule" style="margin-top:16px;">
+    <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Your Winning Script Is Below</h3>
+    <p class="lede" style="margin:2px 0 16px;">Please review the copy below and edit as needed. Select Submit as Final when this destination's script is ready to use.</p>
+    ${finalizedNote}
+    <div class="field">
+      <label>Overall Approach</label>
+      <textarea id="vsFinal-${safeId}-overallApproach" rows="2">${escapeHtml(candidate.overallApproach || '')}</textarea>
+    </div>
+    ${beatsHtml}
+    <div class="btn-row" style="margin-top:10px;">
+      <button type="button" class="btn-primary" onclick="finalizeVideoScript('${result.interviewId}', '${candidate.key}', ${candidate.beats.length})">Submit as Final →</button>
+    </div>
+    <div class="hint" id="videoScriptFinalizeFlag" style="margin-top:6px;"></div>
+  </div>`;
+}
+// POST .../finalize-script — commits the (possibly edited) beats +
+// overallApproach onto this contest run's own candidatesJson (see the
+// backend endpoint's own comment). Updates lastVoiceContestCache and
+// re-renders so the finalized badge/timestamp and any edits show
+// immediately without a full reload.
+async function finalizeVideoScript(interviewId, candidateKey, beatCount){
+  const flag = document.getElementById('videoScriptFinalizeFlag');
+  const safeId = String(candidateKey).replace(/[^a-zA-Z0-9_-]/g, '');
+  const overallApproachEl = document.getElementById(`vsFinal-${safeId}-overallApproach`);
+  const overallApproach = overallApproachEl ? overallApproachEl.value : '';
+  const beats = [];
+  for (let i = 0; i < beatCount; i++){
+    beats.push({
+      visual: (document.getElementById(`vsFinal-${safeId}-visual-${i}`) || {}).value || '',
+      vo: (document.getElementById(`vsFinal-${safeId}-vo-${i}`) || {}).value || '',
+      caption: (document.getElementById(`vsFinal-${safeId}-caption-${i}`) || {}).value || '',
+      pillar: (document.getElementById(`vsFinal-${safeId}-pillar-${i}`) || {}).value || ''
+    });
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/finalize-script`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidateKey, overallApproach, beats })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't save — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    if (lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId){
+      const cand = (lastVoiceContestCache.candidates || []).find(c => c.key === candidateKey);
+      if (cand){
+        cand.beats = result.beats;
+        cand.overallApproach = result.overallApproach;
+        cand.finalized = true;
+        cand.finalizedAt = result.finalizedAt;
+      }
+      lastVoiceContestCache.selectedCandidateKey = candidateKey;
+      rerenderVoiceContestPanel(lastVoiceContestCache);
+    }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not saved.'; }
+  }
 }
 // Video Script's own "Select Contest Winner" — unlike selectContestWinner()
 // (Voice Guide, which writes straight into the Vision Statement/Longform
@@ -50634,7 +50801,18 @@ async function selectVideoScriptWinner(interviewId){
       if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't select this — try again."; }
       return;
     }
-    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Selected as the winning script for this destination — copy the beats above into your video brief/production doc.'; }
+    // 2026-09-14 — per direct instruction to add the same edit-then-submit
+    // pattern here as Voice Guide: record the selection on the cache and
+    // re-render, which reveals renderVideoScriptFinalizeForm() below the
+    // button (see renderVideoScriptContestPanel's selectedCandidate) so the
+    // client can edit the winning beats/approach before a separate "Submit
+    // as Final →" commits them.
+    if (lastVoiceContestCache && lastVoiceContestCache.interviewId === interviewId){
+      lastVoiceContestCache.selectedCandidateKey = candidateKey;
+      rerenderVoiceContestPanel(lastVoiceContestCache);
+    }
+    const freshFlag = document.getElementById('voiceContestSelectFlag');
+    if (freshFlag){ freshFlag.style.color = 'var(--cx)'; freshFlag.textContent = 'Selected as the winning script for this destination — review and edit it below, then click "Submit as Final →".'; }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — not selected.'; }
   }
