@@ -300,6 +300,7 @@
   "styleAssetsApprovedAt",
   "styleNotes",
   "styleSourceFileName",
+  "suggestionJson",
   "taskType",
   "taxonomyKey",
   "text",
