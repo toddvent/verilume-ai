@@ -1510,6 +1510,31 @@
   .cmp-team-chat-toolbar{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
   .cmp-team-chat-icons{font-size:0.8125rem;color:var(--muted);letter-spacing:0.15em;}
   .cmp-team-chat-toolbar button{padding:6px 16px;font-size:0.75rem;}
+  /* 2026-09-15 — AI Brain Recommendation ("campaign pitch") screen, per
+     direct correction: "It can't be missed. The entire page should be
+     redesigned" — a distinct full-screen presentation, not another
+     accordion step. Budget/dashboards/narrative on the left, the AI
+     Brain/client conversation on the right (per Todd's original: "the
+     presented budget to the left" + "Replicating our Team Collaboration UI
+     for chat conversations"). Centered modal (not a slide-in panel like
+     Team Collaboration) since this is a destination screen someone spends
+     real time on, not a quick side-glance thread. See
+     cmpOpenRecommendationPitch()/cmpCloseRecommendationPitch(). */
+  .cmp-pitch-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:70;}
+  .cmp-pitch-overlay.open{display:block;}
+  .cmp-pitch-panel{display:none;position:fixed;inset:16px;background:var(--white);border-radius:18px;box-shadow:0 30px 80px -20px rgba(15,23,42,0.45);z-index:71;flex-direction:column;overflow:hidden;}
+  .cmp-pitch-panel.open{display:flex;}
+  .cmp-pitch-head{display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid var(--line);background:#1E2761;color:#FFFFFF;flex-shrink:0;}
+  .cmp-pitch-head h2{margin:0;font-family:'Newsreader', Georgia, serif;font-size:1.375rem;font-weight:600;color:#FFFFFF;}
+  .cmp-pitch-head .sub{font-size:0.8125rem;color:#CADCFC;margin-top:2px;}
+  .cmp-pitch-head a{color:#FFFFFF;cursor:pointer;text-decoration:underline;font-size:0.8125rem;opacity:0.85;}
+  .cmp-pitch-head a:hover{opacity:1;}
+  .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);}
+  @media (max-width:1000px){ .cmp-pitch-body{grid-template-columns:1fr;overflow-y:auto;} }
+  .cmp-pitch-left{overflow-y:auto;padding:24px 28px;border-right:1px solid var(--line);}
+  .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
+  .cmp-pitch-right-body{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;}
+  .cmp-pitch-right-input{border-top:1px solid var(--line);padding:14px 22px 18px;background:var(--white);}
   /* Round 132bx follow-up, per direct instruction: "rail completely goes
      away and content working area expands into that space to give it a
      cleaner apple look" — then, per the next round's direct correction,
@@ -7474,6 +7499,43 @@
         </div>
       </div>
     </div>
+
+    <!-- 2026-09-15 — AI Brain Recommendation ("campaign pitch") full-screen
+         presentation. Opened by cmpOpenRecommendationPitch(), closed by
+         cmpCloseRecommendationPitch(). Rendered by cmpRenderPitchLeft()/
+         cmpRenderPitchRight() — see those functions for the data flow
+         (GET pitch-summary + recommendation-comments, POST cmo-narrative,
+         the PPT export, and the client-approve/approve-budget-overall
+         actions). Left = budget/dashboards/narrative/export, per Todd's
+         "presented budget to the left"; right = the conversation, same
+         avatar-chip visual language as Team Collaboration above but its
+         own persisted thread. -->
+    <div class="cmp-pitch-overlay" id="cmpPitchOverlay" onclick="cmpCloseRecommendationPitch()"></div>
+    <div class="cmp-pitch-panel" id="cmpPitchPanel">
+      <div class="cmp-pitch-head">
+        <div>
+          <h2>AI Brain Recommendation</h2>
+          <div class="sub" id="cmpPitchSubhead">—</div>
+        </div>
+        <a onclick="cmpCloseRecommendationPitch()">Close ✕</a>
+      </div>
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
+        <div class="cmp-pitch-right">
+          <div class="cmp-pitch-right-body" id="cmpPitchRightBody"></div>
+          <div class="cmp-pitch-right-input">
+            <div class="cmp-team-chat-input-row">
+              <div class="cmp-team-chat-avatar" style="background:#2F0D4D;">✦</div>
+              <textarea id="cmpRecoCommentText" rows="1" placeholder="Comment on this budget…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpRecoSendComment();}"></textarea>
+            </div>
+            <div class="cmp-team-chat-toolbar">
+              <div class="cmp-template-search-row" id="cmpRecoActorRoleRow" style="margin:0;"></div>
+              <button type="button" class="btn-primary" onclick="cmpRecoSendComment()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="cmp-layout" id="cmpLayout">
       <div class="cmp-rail" id="cmpStageRail"></div>
       <div class="cmp-stages" id="newCampaignForm">
@@ -7717,20 +7779,34 @@
              the same way every other downstream stage is (any real
              campaign loaded — see cmpUpdateRecommendationLockUI()), not a
              separate readiness gate, matching this rail's existing
-             convention. Rendered by cmpRenderRecommendationStage(); see
+             convention. (Originally rendered inline via
+             cmpRenderRecommendationStage() — superseded by the full-screen
+             presentation below, see the next comment.) See
              cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md. -->
+        <!-- 2026-09-15 follow-up, per direct correction: "It can't be
+             missed. The entire page should be redesigned" — this step
+             deliberately does NOT expand inline like the accordion stages
+             around it. Clicking it opens the full-screen pitch presentation
+             (#cmpPitchPanel, built by cmpOpenRecommendationPitch()) instead
+             — a distinct screen, not another collapsible section, matching
+             Todd's "budget to the left" / Team Collaboration-style
+             conversation description. This card stays in the rail flow
+             purely as the entry point + status badge. -->
         <div class="module cmp-stage" id="cmpStage-recommendation">
-          <div class="module-head" onclick="openCmpStage('recommendation')">
+          <div class="module-head" onclick="cmpOpenRecommendationPitch()">
             <span class="modnum">3</span>
             <div class="titles">
               <span class="tag" id="cmpTag-recommendation">Campaign Creation</span>
               <h2>AI Brain Recommendation</h2>
             </div>
-            <span class="chevron">▸</span>
+            <span class="chevron" style="transform:none;">↗</span>
           </div>
-          <div class="module-body">
+          <div class="module-body" style="max-height:none !important;padding-bottom:28px;">
             <p class="cmp-stage-note" id="cmpRecommendationLockNote" style="padding:0 0 14px;">Unlocks once this campaign is created above — the strategy pitch, dashboards, and budget approval build from this campaign's real data.</p>
-            <div id="cmpRecommendationFields" style="display:none;"></div>
+            <div id="cmpRecommendationFields" style="display:none;">
+              <p class="lede" style="margin:0 0 14px;">The full strategy pitch — dashboards, the AI Brain's CMO narrative, PowerPoint export, and client budget approval — opens as its own screen.</p>
+              <div class="btn-row"><button type="button" class="btn-primary" onclick="cmpOpenRecommendationPitch()">Open AI Brain Recommendation →</button></div>
+            </div>
           </div>
         </div>
 
@@ -12245,7 +12321,9 @@ function renderCmpDownstreamStages(){
   cmpUpdateLifecycleLockUI(campaign);
   cmpUpdateRecommendationLockUI(campaign);
   renderCmpPickupStage();
-  if (campaign && typeof cmpRenderRecommendationStage === 'function') cmpRenderRecommendationStage(campaign);
+  // Note: the Recommendation stage's real content loads on demand inside
+  // cmpOpenRecommendationPitch() (its own full-screen presentation), not
+  // here — this inline card is just the teaser/entry point.
   if (!campaign){
     el.innerHTML = [
       [8, 'QR Code & UTM'], [9, 'Creative'], [10, 'QA Rating'],
@@ -13977,6 +14055,32 @@ function audienceChannelMultiplier(channel){
   const tiers = (state.wealth && state.wealth.size) ? state.wealth : new Set();
   return avg(gens, GENERATION_CHANNEL_AFFINITY) * avg(tiers, WEALTH_CHANNEL_AFFINITY);
 }
+// 2026-09-15, per direct instruction: "all budgets come from the master
+// budget and allocation % at the campaign level should be consistent with
+// the overall mix depending on the stage." This account's own real,
+// already-saved annual Media Plan (state.mediaPlan.allocations —
+// approvedAmount, falling back to recommendedAmount for a stage/channel
+// not yet explicitly approved) split by Loop Stage, so a CAMPAIGN's
+// recommended channel weighting can match what the account has actually
+// committed to at the master-budget level for that stage, instead of only
+// ever reflecting the generic/industry heuristic table. Returns null (not
+// an empty object) when there's no saved plan yet, or nothing allocated to
+// this stage, so callers can fall back to the existing heuristic exactly
+// as before — this never touches effectiveStageChannelWeights() itself or
+// computeRecommendedMix() (the function that BUILDS the master budget in
+// the first place), which would create a circular "the plan now just
+// echoes itself back" bug; only the campaign-level picker
+// (computeSuggestedRecommendedChannels()) consumes this.
+function masterBudgetStageChannelWeights(stage){
+  const allocations = (state.mediaPlan && state.mediaPlan.allocations) || [];
+  if (!allocations.length) return null;
+  const weights = {};
+  allocations.filter(a => a.stage === stage).forEach(a => {
+    const amt = Number(a.approvedAmount) || Number(a.recommendedAmount) || 0;
+    if (amt > 0) weights[a.channel] = (weights[a.channel] || 0) + amt;
+  });
+  return Object.keys(weights).length ? weights : null;
+}
 function effectiveStageChannelWeights(stage){
   const override = INDUSTRY_STAGE_CHANNEL_WEIGHTS[state.industry];
   const base = (override && override[stage]) ? override[stage] : (STAGE_CHANNEL_WEIGHTS[stage] || {});
@@ -14043,7 +14147,15 @@ function computeSuggestedRecommendedChannels(){
   // Round 132c[10] — same industry-aware lookup as computeRecommendedMix(),
   // so a channel recommendation reads the same for an account whether it
   // comes from the Media Plan or from Campaign Creation.
-  const weights = (stage && effectiveStageChannelWeights(stage)) || null;
+  // 2026-09-15, per direct instruction — prefer this account's own real,
+  // saved master budget mix for this stage when one exists
+  // (masterBudgetStageChannelWeights(), see its own comment), so a
+  // campaign's recommended channels stay consistent with what the master
+  // budget already commits to for that stage rather than drifting toward
+  // an independently-computed heuristic. Falls back to the existing
+  // industry/generic heuristic exactly as before when there's no saved
+  // plan yet, or nothing allocated to this stage.
+  const weights = (stage && (masterBudgetStageChannelWeights(stage) || effectiveStageChannelWeights(stage))) || null;
   if (!weights || !Object.keys(weights).length) return [];
   const startVal = document.getElementById('cmpStartDate') ? document.getElementById('cmpStartDate').value : '';
   const endVal = document.getElementById('cmpEndDate') ? document.getElementById('cmpEndDate').value : '';
@@ -35743,22 +35855,32 @@ async function cmpIntakeStopVoice(){
 }
 
 // ---------------------------------------------------------------------
-// 2026-09-15 — AI Brain Recommendation ("campaign pitch") screen. Reads
-// real, already-persisted data only (GET .../pitch-summary — campaign
-// stage/segment/channels + this campaign's own channel_planning_details
-// rows), not the transient campaign-intake extraction, since Todd asked
-// for "the key elements on the lifecycle page" as real fields, not a
-// summary of one AI conversation. See
+// 2026-09-15 — AI Brain Recommendation ("campaign pitch") screen. Full-
+// screen presentation (#cmpPitchPanel), not an accordion step, per direct
+// correction: "It can't be missed. The entire page should be redesigned."
+// Reads real, already-persisted data only (GET .../pitch-summary —
+// campaign stage/segment/channels + this campaign's own
+// channel_planning_details rows), not the transient campaign-intake
+// extraction, since Todd asked for "the key elements on the lifecycle
+// page" as real fields, not a summary of one AI conversation. See
 // cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md.
 // ---------------------------------------------------------------------
 let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], actorRole: 'client', actorName: '' };
 
-async function cmpRenderRecommendationStage(campaign){
-  const mount = document.getElementById('cmpRecommendationFields');
-  if (!mount || !campaign) return;
+async function cmpOpenRecommendationPitch(){
+  const campaign = cmpRailLoadedCampaign();
+  const overlay = document.getElementById('cmpPitchOverlay');
+  const panel = document.getElementById('cmpPitchPanel');
+  if (!campaign || !overlay || !panel) return; // locked — same "no real campaign yet" gate as every other downstream stage
+  overlay.classList.add('open');
+  panel.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  const subhead = document.getElementById('cmpPitchSubhead');
+  if (subhead) subhead.textContent = campaign.name || campaign.id || '';
   if (cmpRecoState.campaignId !== campaign.id){
     cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], actorRole: 'client', actorName: cmpRecoState.actorName || '' };
-    cmpRecoRender(mount, campaign);
+    cmpRenderPitchLeft(campaign);
+    cmpRenderPitchRight(campaign);
     try {
       const [summary, commentsResp] = await Promise.all([
         cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {}),
@@ -35767,18 +35889,26 @@ async function cmpRenderRecommendationStage(campaign){
       cmpRecoState.summary = summary;
       cmpRecoState.comments = commentsResp.comments || [];
     } catch (e){
-      console.warn('cmpRenderRecommendationStage: load failed', e);
-      cmpRecoState.error = 'Could not load this campaign\'s recommendation data. Try reopening this stage.';
+      console.warn('cmpOpenRecommendationPitch: load failed', e);
+      cmpRecoState.error = 'Could not load this campaign\'s recommendation data. Close and reopen to retry.';
     }
     cmpRecoState.loading = false;
   }
-  cmpRecoRender(mount, campaign);
+  cmpRenderPitchLeft(campaign);
+  cmpRenderPitchRight(campaign);
+}
+function cmpCloseRecommendationPitch(){
+  const overlay = document.getElementById('cmpPitchOverlay');
+  const panel = document.getElementById('cmpPitchPanel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel) panel.classList.remove('open');
+  document.body.style.overflow = '';
 }
 
 function cmpRecoSetActorRole(role){
   cmpRecoState.actorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
   const campaign = cmpRailLoadedCampaign();
-  if (campaign) cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
+  if (campaign) cmpRenderPitchRight(campaign);
 }
 
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
@@ -35826,7 +35956,7 @@ async function cmpRecoGenerateNarrative(){
   if (!campaign) return;
   cmpRecoState.narrativeLoading = true;
   cmpRecoState.narrativeError = null;
-  cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
+  cmpRenderPitchLeft(campaign);
   try {
     const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/cmo-narrative`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     if (resp.narrative) cmpRecoState.narrative = resp.narrative;
@@ -35836,7 +35966,7 @@ async function cmpRecoGenerateNarrative(){
     cmpRecoState.narrativeError = 'The AI Brain could not generate a summary right now. Try again in a moment.';
   }
   cmpRecoState.narrativeLoading = false;
-  cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
+  cmpRenderPitchLeft(campaign);
 }
 
 async function cmpRecoApproveLine(entryId){
@@ -35852,7 +35982,7 @@ async function cmpRecoApproveLine(entryId){
   // Refresh from the server rather than optimistically patching local
   // state — this is a real approval record, worth confirming it stuck.
   cmpRecoState.campaignId = null;
-  cmpRenderRecommendationStage(campaign);
+  cmpOpenRecommendationPitch();
 }
 
 async function cmpRecoApproveOverall(){
@@ -35866,7 +35996,7 @@ async function cmpRecoApproveOverall(){
     });
   } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
   cmpRecoState.campaignId = null;
-  cmpRenderRecommendationStage(campaign);
+  cmpOpenRecommendationPitch();
 }
 
 async function cmpRecoSendComment(){
@@ -35883,7 +36013,7 @@ async function cmpRecoSendComment(){
     const commentsResp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {});
     cmpRecoState.comments = commentsResp.comments || [];
   } catch (e){ console.warn('cmpRecoSendComment failed:', e); }
-  cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
+  cmpRenderPitchRight(campaign);
 }
 
 // PowerPoint export — pptxgenjs loaded lazily from CDN, same "not fully
@@ -35949,9 +36079,6 @@ async function cmpRecoExportPpt(){
         { x: 0.6, y: 1.8, w: 6, colW: [4, 2], fontSize: 13, fontFace: 'Arial', border: { type: 'solid', color: 'DDDDDD', pt: 0.5 } }
       );
     }
-    if (summary.similarCampaign){
-      s2.addText(`Reference campaign: ${summary.similarCampaign.name} — ${summary.similarCampaign.why}`, { x: 7.0, y: 1.8, w: 5.5, h: 1.5, fontSize: 13, italic: true, color: '555555', fontFace: 'Arial' });
-    }
 
     await pptx.writeFile({ fileName: `${(campaign.name || campaign.id || 'campaign').replace(/[^a-z0-9]+/gi, '-')}-pitch.pptx` });
   } catch (e){
@@ -35962,7 +36089,11 @@ async function cmpRecoExportPpt(){
   }
 }
 
-function cmpRecoRender(mount, campaign){
+// Left panel — the pitch itself: summary, similar campaign, dashboards,
+// CMO narrative, PPT export, and budget line-item approval. Per Todd:
+// "the presented budget to the left."
+function cmpRenderPitchLeft(campaign){
+  const mount = document.getElementById('cmpPitchLeft');
   if (!mount) return;
   const s = cmpRecoState;
   if (s.loading){ mount.innerHTML = `<p class="lede">Loading this campaign's recommendation…</p>`; return; }
@@ -35979,23 +36110,14 @@ function cmpRecoRender(mount, campaign){
       <br><b>Channels:</b> ${(summary.channels || []).length ? escapeHtml(summary.channels.join(', ')) : '(none selected yet)'}
       <br><b>Total Spend:</b> ${fmtMoney(summary.totalSpend)} &nbsp; <b>Total Impressions:</b> ${Math.round(summary.totalImpressions || 0).toLocaleString()}
       <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn-ghost" onclick="openCmpStage('perfMarketing')">Edit channels, CPM &amp; impressions →</button>
+        <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit channels, CPM &amp; impressions →</button>
       </div>
     </div>
-
-    ${summary.similarCampaign ? `
-    <div class="template-rec-row" style="margin-bottom:18px;">
-      <div class="template-rec-card">
-        <div class="template-rec-name">Similar campaign: ${escapeHtml(summary.similarCampaign.name)}</div>
-        <div class="template-rec-id">${escapeHtml(summary.similarCampaign.id)}</div>
-        <div class="template-rec-actions"><div class="template-rec-match">${escapeHtml(summary.similarCampaign.why)}</div></div>
-      </div>
-    </div>` : ''}
 
     <div class="stage-row" style="margin-bottom:8px;">
       <h3 style="margin:0;font-size:1rem;">Campaign Dashboards</h3>
     </div>
-    <div class="exec-chart-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:22px;">
+    <div class="exec-chart-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:22px;">
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Loop Stage Distribution</h4>${cmpRecoMeterRows(loopRows)}</div>
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Channel Mix</h4>${cmpRecoMeterRows(mixRows)}</div>
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Audience Mix</h4>${cmpRecoMeterRows(audienceRows)}</div>
@@ -36017,9 +36139,6 @@ function cmpRecoRender(mount, campaign){
     <div class="stage-row" style="margin-bottom:8px;">
       <h3 style="margin:0;font-size:1rem;">Budget Line-Item Approval</h3>
     </div>
-    <div class="cmp-template-search-row" style="margin-bottom:12px;">
-      ${[['client', 'Account Team'], ['cx_ops', 'CX Experiences Media Ops']].map(([key, label]) => `<button type="button" class="stage-tile${s.actorRole === key ? ' selected' : ''}" onclick="cmpRecoSetActorRole('${key}')">${label}</button>`).join('')}
-    </div>
     ${(summary.lineItems || []).length ? `
     <div class="table-scroll"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
       <thead><tr><th>Channel</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
@@ -36033,27 +36152,33 @@ function cmpRecoRender(mount, campaign){
           </tr>`).join('')}
       </tbody>
     </table></div>` : `<p class="lede">No channel plan lines entered for this campaign yet.</p>`}
-    <div class="btn-row" style="margin-bottom:26px;">
+    <div class="btn-row">
       ${summary.budgetApprovedAt
         ? `<span class="lede">✓ Overall budget approved${summary.budgetApprovedBy ? ' by ' + escapeHtml(summary.budgetApprovedBy) : ''}</span>`
         : `<button type="button" class="btn-primary" onclick="cmpRecoApproveOverall()">Approve Overall Budget →</button>`}
     </div>
-
-    <div class="stage-row" style="margin-bottom:8px;">
-      <h3 style="margin:0;font-size:1rem;">Conversation</h3>
-    </div>
-    <div class="cmp-team-chat-body" style="max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px;">
-      ${s.comments.length ? s.comments.map(c => `
-        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;">
-          <div class="cmp-team-chat-avatar" style="background:${cmpAvatarColor(c.authorName || c.authorRole)};">${escapeHtml(cmpInitials(c.authorName || (c.authorRole === 'cx_ops' ? 'CX' : 'AT')))}</div>
-          <div><div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(c.authorName || (c.authorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'))}</div><div>${escapeHtml(c.text)}</div></div>
-        </div>`).join('') : '<p class="lede">No comments yet — start the conversation below.</p>'}
-    </div>
-    <div class="cmp-team-chat-input-row">
-      <textarea id="cmpRecoCommentText" rows="1" placeholder="Comment on this budget…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpRecoSendComment();}"></textarea>
-      <button type="button" class="btn-primary" onclick="cmpRecoSendComment()">Send</button>
-    </div>
   `;
+}
+
+// Right panel — the conversation. Same avatar-chip visual language as Team
+// Collaboration, its own persisted thread. Only fills the body + the
+// actor-role toggle; the input row itself is static HTML (#cmpPitchPanel).
+function cmpRenderPitchRight(campaign){
+  const bodyMount = document.getElementById('cmpPitchRightBody');
+  const roleMount = document.getElementById('cmpRecoActorRoleRow');
+  const s = cmpRecoState;
+  if (roleMount){
+    roleMount.innerHTML = [['client', 'Account Team'], ['cx_ops', 'CX Experiences Media Ops']]
+      .map(([key, label]) => `<button type="button" class="stage-tile${s.actorRole === key ? ' selected' : ''}" onclick="cmpRecoSetActorRole('${key}')">${label}</button>`).join('');
+  }
+  if (!bodyMount) return;
+  if (s.loading){ bodyMount.innerHTML = `<p class="lede">Loading…</p>`; return; }
+  bodyMount.innerHTML = s.comments.length ? s.comments.map(c => `
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      <div class="cmp-team-chat-avatar" style="background:${cmpAvatarColor(c.authorName || c.authorRole)};">${escapeHtml(cmpInitials(c.authorName || (c.authorRole === 'cx_ops' ? 'CX' : 'AT')))}</div>
+      <div><div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(c.authorName || (c.authorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'))}</div><div>${escapeHtml(c.text)}</div></div>
+    </div>`).join('') : '<p class="lede">No comments yet — start the conversation below.</p>';
+  bodyMount.scrollTop = bodyMount.scrollHeight;
 }
 
 // Real code does the recommending — the model only extracted intent (see
@@ -37085,6 +37210,10 @@ function closeFaqDrawer(){
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeFaqDrawer();
+  if (e.key === 'Escape'){
+    const pitchPanel = document.getElementById('cmpPitchPanel');
+    if (pitchPanel && pitchPanel.classList.contains('open')) cmpCloseRecommendationPitch();
+  }
 });
 
 // Round 100 (2026-08-06) — click-to-toggle for collapsible Campaign Detail
