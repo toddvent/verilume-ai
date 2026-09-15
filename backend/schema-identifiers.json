@@ -44,6 +44,8 @@
   "audienceTargets",
   "audienceType",
   "auditJson",
+  "authorName",
+  "authorRole",
   "bleedHeightIn",
   "bleedWidthIn",
   "bodyFontName",
@@ -54,6 +56,8 @@
   "brandKeywordsJson",
   "brandStage",
   "brandToneNotes",
+  "budgetApprovedAt",
+  "budgetApprovedBy",
   "buyType",
   "buyerType",
   "campaignCode",
@@ -64,6 +68,8 @@
   "cancelledAt",
   "candidateKey",
   "candidatesJson",
+  "clientApprovedAt",
+  "clientApprovedBy",
   "codeHash",
   "codeSalt",
   "collectionId",
@@ -296,6 +302,7 @@
   "styleSourceFileName",
   "taskType",
   "taxonomyKey",
+  "text",
   "topic",
   "totalBudget",
   "trackingUrl",
@@ -337,5 +344,3 @@
   "weightMode",
   "workingCopy"
 ]
-
-
