@@ -851,6 +851,32 @@
   .tile-card:hover{border-color:var(--hdr-navy);box-shadow:var(--shadow-md);transform:translateY(-1px);}
   .tile-card .tc-label{font-weight:700;font-size:0.875rem;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .tile-card .tc-desc{font-size:0.75rem;color:var(--muted);margin-top:4px;line-height:1.45;}
+  .tile-card .tc-status{font-size:0.8125rem;font-weight:600;margin-top:6px;line-height:1.4;}
+  .tile-card .tc-status.ok{color:var(--cx);}
+  .tile-card .tc-status.pending{color:var(--advocacy);}
+  .tile-card .tc-status.notbuilt{color:#B4AE9C;}
+  /* 2026-09-15, per direct instruction — the Voice Contest tile should
+     "look like one of our 3 KPI cards" (STAT_CARD_META's .stat-card, see
+     that block above) rather than the plain label+status text every other
+     .tile-card uses. Reuses .tile-card's own container (border/radius/
+     shadow/hover already identical to .stat-card) so it sits naturally in
+     this grid, and borrows .stat-card's label typography (sc-label) for
+     the report-card header, but replaces the single big number with a
+     per-stage progress-bar row — this tile reports three real counts
+     (Brand Voice Guide / Video Strategy / Video Script), not one. */
+  .tile-card .vc-report-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .tile-card .vc-report-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
+  .tile-card .vc-report-lastrun{font-size:0.6875rem;color:var(--muted);white-space:nowrap;}
+  .tile-card .vc-stage-row{margin-top:12px;}
+  .tile-card .vc-stage-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .tile-card .vc-stage-name{font-size:0.8125rem;font-weight:600;color:var(--ink);}
+  .tile-card .vc-stage-metric{font-size:0.75rem;color:var(--muted);white-space:nowrap;}
+  .tile-card .vc-stage-track{height:6px;border-radius:3px;background:var(--paper-dim);margin-top:5px;overflow:hidden;}
+  .tile-card .vc-stage-fill{height:100%;border-radius:3px;transition:width 0.3s ease;}
+  .tile-card .vc-stage-fill.ok{background:var(--cx);}
+  .tile-card .vc-stage-fill.pending{background:var(--hdr-amber);}
+  .tile-card .vc-stage-fill.notbuilt{background:var(--line);}
+  .tile-card .vc-report-footer{margin-top:auto;padding-top:12px;font-weight:600;color:var(--cx);font-size:0.8125rem;}
   .tile-shell-note{font-size:0.75rem;color:var(--muted);margin:0 0 24px;padding:12px 16px;background:var(--paper-dim);border-radius:10px;max-width:900px;}
 
   /* 2026-09-09 — sample-output modal shared by the Match Market Builder
@@ -1667,6 +1693,20 @@
      table cell. Apply directly to inputs/selects inside a table cell that
      needs the standard look. */
   .tbl-input,.tbl-select{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-family:'Inter';font-size:0.8438rem;background:var(--white);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+
+  /* 2026-09-15 — the "Record this decision" modal (openDecisionModal()),
+     replacing the old native prompt()/prompt()/prompt() chain used by
+     vgSetDecision() and cpSetTrainingDigestDecision() for Voice Guide
+     history and Training Digest decisions. Per direct feedback on a
+     screenshot of the old flow: a real stylized dialog centered on the
+     page, not the browser's own unstyled prompt boxes. */
+  .decision-modal-overlay{position:fixed;inset:0;background:rgba(29,29,31,0.55);display:flex;align-items:center;justify-content:center;z-index:5000;padding:20px;}
+  .decision-modal-card{background:var(--white);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:28px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;}
+  .decision-modal-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:1.0625rem;color:var(--ink);margin-bottom:18px;}
+  .decision-modal-rating{display:flex;gap:8px;margin-bottom:10px;}
+  .decision-modal-rating-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:'Inter';font-weight:700;font-size:0.9375rem;cursor:pointer;transition:border-color 0.15s ease,background 0.15s ease,color 0.15s ease;}
+  .decision-modal-rating-btn:hover{border-color:var(--cx);}
+  .decision-modal-rating-btn.active{background:var(--cx);border-color:var(--cx);color:#fff;}
   .tbl-input:focus,.tbl-select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .tbl-select{padding-right:32px;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235B5647' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;background-size:10px 6px;}
   .tbl-select:hover{border-color:var(--cx);}
@@ -4346,8 +4386,13 @@
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
   <div class="step" id="step-voiceContest">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / <a onclick="goToStep('voice')">Brand Book</a> / <a onclick="goToStep('brandWritingSamples')">Sample Writings &amp; Presentations</a> / Voice Contest</div>
-    <div class="eyebrow">Brand Groundwork · Sample Writings &amp; Presentations · Voice Contest</div>
+    <!-- 2026-09-14, per direct instruction ("Portal Breadcrumbs are: Brand >
+         Voice Contest") — simplified to match the new IA below: this page is
+         reached from the Brand page tile now, not a Next/Back step inside
+         Sample Writings & Presentations, so both the crumb trail and eyebrow
+         drop that intermediate hop. -->
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Voice Contest</div>
+    <div class="eyebrow">Brand · Voice Contest</div>
     <!-- 2026-08-27, per direct instruction — the weekly usage counter moves
          out of a sentence-style .hint line (still fetched by
          loadInterviewUsage(), see the JS) and into its own small stat tile,
@@ -4380,6 +4425,68 @@
          vendor and not one of the five integrated here). -->
     <p class="lede">Anthropic, OpenAI, Gemini, Perplexity &amp; xAI are competing for your copywriting business. Select the winner based on how well they understand your brand. Results are based on your brand guide, sample writings, website, and overall assessment.</p>
 
+    <!-- 2026-09-14, per direct instruction: "Voice Contest Page: 1. Show
+         current headline and paragraph." "Headline" = the approved Vision
+         Statement, "paragraph" = the approved Longform Example — the same
+         two fields voiceContestWinnerModule further down edits, just shown
+         read-only up top so what's currently live is visible before anyone
+         opens a tile below. Populated in renderVoiceContestStep(); falls
+         back to a plain empty-state when nothing's been approved yet. -->
+    <div class="section-card" id="voiceContestCurrentSummary" style="margin-bottom:16px;">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Your Current Voice</h3>
+      <div class="field" style="margin-bottom:8px;">
+        <label>Headline (Vision Statement)</label>
+        <p id="voiceContestCurrentHeadline" style="margin:2px 0 0;font-weight:600;"></p>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Paragraph (Longform Example)</label>
+        <p id="voiceContestCurrentParagraph" style="margin:2px 0 0;white-space:pre-wrap;color:var(--muted);"></p>
+      </div>
+    </div>
+
+    <!-- 2026-09-14, per direct instruction: "2. Tile to create new contest
+         with drop-down including contest options. Selecting opens template
+         used to run contest." This tile's own dropdown (#voiceContestNewTileType)
+         is a plain entry point — starting a contest sets the REAL
+         #voiceContestContentType select below to match, fires its existing
+         onVoiceContestContentTypeChange() unchanged, reveals voiceContestModule
+         (hidden by default now, see its style="display:none" below), and
+         scrolls to it. None of the run/rate/select logic inside that module
+         changed — only whether it's visible before a tile choice is made. -->
+    <div class="section-card" id="voiceContestNewTile" style="margin-bottom:16px;">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Create New Contest</h3>
+      <p class="lede" style="margin:2px 0 12px;">Pick what you want the models to compete on.</p>
+      <div class="field-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field" style="flex:1 1 320px;margin-bottom:0;">
+          <select id="voiceContestNewTileType">
+            <option value="voice_guide">Voice options (Vision Statement + Longform Example)</option>
+            <option value="video_script">Video script options (a full :30 beat-by-beat script)</option>
+            <option value="video_strategy">Brand Video Script Strategy (one strategy for the whole video collection)</option>
+          </select>
+        </div>
+        <button type="button" class="btn-primary" onclick="voiceContestOpenNewTile()">Start new contest →</button>
+      </div>
+    </div>
+
+    <!-- 2026-09-14, per direct instruction: "3. Tile to view previous
+         contests with drop-down with names of completed contests." Label
+         convention per direct answer: "Type + destination + date." Reuses
+         the same client-facing GET .../voice-contest history this page
+         already fetches for the reference-script picker — no new backend
+         endpoint needed, since it already returns blind-labeled candidates
+         with their 1-5 ratings (see redactBrandVoiceCandidatesForClient /
+         redactVideoScriptCandidatesForClient / redactVideoStrategyCandidatesForClient,
+         server.js — none of them ever include vendor/model). -->
+    <div class="section-card" id="voiceContestHistoryTile" style="margin-bottom:16px;">
+      <h3 style="text-transform:uppercase;letter-spacing:0.04em;">View Previous Contests</h3>
+      <div class="field" style="margin-bottom:10px;">
+        <select id="voiceContestHistorySelect" onchange="voiceContestOnHistorySelectChange()">
+          <option value="">Select a completed contest…</option>
+        </select>
+      </div>
+      <div id="voiceContestHistoryDetail"></div>
+    </div>
+
     <!-- 2026-08-27, per direct instruction — accent-cx (the teal-blue
          module accent) and the "1" modnum badge are dropped: this is the
          only module on this page, so a numbered, colored-accent header
@@ -4387,8 +4494,12 @@
          of, not a real second module. Plain, unaccented module border (our
          typical outline) instead. Copy changed from "Run the contest" to
          "Your Contestants Will Review" to match the contestant framing used
-         throughout this page. -->
-    <div class="module open" id="voiceContestModule">
+         throughout this page.
+         2026-09-14 — hidden by default (style="display:none") now that
+         "Create New Contest" above is the entry point into this module, per
+         direct instruction; voiceContestOpenNewTile() / voiceContestRerunFromHistory()
+         reveal it. Nothing inside changed. -->
+    <div class="module open" id="voiceContestModule" style="display:none;">
       <div class="module-head" onclick="toggleModule('voiceContestModule')">
         <div class="titles">
           <span class="tag">Multi-model</span>
@@ -4429,6 +4540,22 @@
           </select>
         </div>
         <div class="field" id="voiceContestProductGroupField" style="display:none;margin-bottom:10px;">
+          <!-- 2026-09-14, per direct instruction: "The strategies reference
+               the expedition product groups consistently... it makes sense
+               to give the client the option to select both a product group
+               and destination creative focus... The contest can just have
+               two drop-downs with an and statement." Product Group is
+               genuinely optional — "All product groups" leaves the
+               destination dropdown below unfiltered, same as before this
+               round. When a Product Group IS picked, onVoiceContestProductGroupFilterChange()
+               narrows the destination dropdown to only the Creative Focus
+               Group values the client has associated with it in Taxonomy
+               Manager (see account_taxonomy_mappings, server.js) — a
+               Product Group with no association defined leaves every
+               destination showing, since the association itself is
+               optional input. -->
+          <label>Product Group (optional — narrows the destination list below)</label>
+          <select id="voiceContestProductGroup" onchange="onVoiceContestProductGroupFilterChange()" style="margin-bottom:10px;"><option value="">All product groups</option></select>
           <label>Destination / Creative Focus Group</label>
           <select id="voiceContestCreativeMarket" onchange="onVoiceContestProductGroupChange()"></select>
           <div class="hint" id="voiceContestEvidenceHint" style="margin-top:4px;"></div>
@@ -5277,7 +5404,7 @@
     <div class="seq-nav">
       <a class="btn-ghost" onclick="goToStep('voice')">← Back: Brand Book</a>
       <span class="seq-spacer"></span>
-      <a class="btn-primary" onclick="goToStep('voiceContest')">Next: Voice Contest →</a>
+      <a class="btn-primary" onclick="goToStep('websiteExamples')">Next: Website Examples →</a>
     </div>
   </div>
 
@@ -5388,7 +5515,7 @@
     </div>
 
     <div class="seq-nav">
-      <a class="btn-ghost" onclick="goToStep('voiceContest')">← Back: Voice Contest</a>
+      <a class="btn-ghost" onclick="goToStep('brandWritingSamples')">← Back: Sample Writings</a>
       <span class="seq-spacer"></span>
       <a class="btn-primary" onclick="goToStep('competitivePositioning')">Next: Competitive Positioning →</a>
     </div>
@@ -9726,7 +9853,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-13-competitor-intel-theme-chips';
+const CXMEDIA_BUILD_STAMP = '2026-09-14-mbu-csv-export-filename-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -16327,11 +16454,11 @@ function renderBrandFoundationsModule(){
 // unlike these two it has to vary account to account and can't be
 // hand-picked once for everyone.
 const DAILY_NEWS_ITEMS = [
-  { id: 'n1', category: 'industry_news', title: 'The New Travel Loyalty Leaders Aren’t Hotels or Airlines — They’re Banks', meta: 'Skift · Sep 2026', url: 'https://skift.com/2026/09/04/the-new-travel-loyalty-leaders-arent-hotels-or-airlines-theyre-banks/' },
-  { id: 'n2', category: 'industry_news', title: 'Fake AI Hotel Videos Are Coming for Travel', meta: 'Skift · Sep 2026', url: 'https://skift.com/2026/09/04/fake-ai-hotel-videos-are-coming-for-travel/' },
-  { id: 'n3', category: 'industry_news', title: 'See the Confirmed Speakers for Skift Creator Summit 2026', meta: 'Skift · Sep 2026', url: 'https://skift.com/2026/09/11/skift-creator-summit-confirmed-speakers/' },
-  { id: 'n4', category: 'ai_marketing', title: '15,505 Martech Tools Later, the Fight Is Over Who Controls Orchestration', meta: 'MarketScale · Sep 2026', url: 'https://www.marketscale.com/industries/marketing-tech/15505-martech-tools-later-the-fight-is-over-who-controls-orchestration' },
-  { id: 'n5', category: 'ai_marketing', title: 'OpenAI and Meta Take Separate Paths to Automating Marketing', meta: 'MarketScale · Sep 2026', url: 'https://www.marketscale.com/industries/marketing-tech/chatgpt-ads-and-metas-goal-only-pitch-are-pushing-marketing-ops-into-ai-governance' }
+  { id: 'n1', category: 'industry_news', title: 'Minor Hotels Builds AI Stack From Scratch To Improve Personalization', meta: 'Skift · Apr 2026', url: 'https://skift.com/2026/04/09/minor-hotels-ai-stack-personalisation/' },
+  { id: 'n2', category: 'industry_news', title: 'Hotels Are Losing Travelers’ Discovery Window — And Scrambling to Get It Back', meta: 'Skift · Mar 2026', url: 'https://skift.com/2026/03/26/hilton-marriott-tui-minor-kempinski-ai-social-media-travelers/' },
+  { id: 'n3', category: 'ai_marketing', title: 'CMOs Face a “Reputation and Results” Reckoning According to NIQ’s 2026 Outlook', meta: 'NIQ / Businesswire · Nov 2025', url: 'https://www.businesswire.com/news/home/20251118947080/en/CMOs-Face-a-%E2%80%98Reputation-and-Results%E2%80%99-Reckoning-According-to-NIQ%E2%80%99s-2026-Outlook' },
+  { id: 'n4', category: 'ai_marketing', title: 'The Top Five Initiatives For B2C CMOs In 2026', meta: 'Forrester', url: 'https://www.forrester.com/blogs/the-top-5-initiatives-for-b2c-cmos-in-2026/' },
+  { id: 'n5', category: 'ai_marketing', title: 'The 2026 AEO / GEO Benchmarks Report', meta: 'Conductor', url: 'https://www.conductor.com/academy/aeo-geo-benchmarks-report/' }
 ];
 
 const CURATED_NEWS_CATEGORY_LABELS = { ai_marketing: 'AI & Marketing', industry_news: 'Industry News', client_competitors: 'Client Competitors' };
@@ -17246,8 +17373,25 @@ function renderTileShellGroups(groups, topNote, originTab){
             // renderPendingFeatureStep()'s own comment for the rest of the
             // fix.
             : `goToStep('pendingFeature','${jsStrEscape(item.label)}','${jsStrEscape(g.label)}','${jsStrEscape(originTab || '')}')`;
+          // 2026-09-15 — optional item.render(), for a tile whose whole body
+          // needs to look different from the standard label/status/desc
+          // stack (e.g. the Voice Contest report card below). Returns raw
+          // inner HTML for the .tile-card container; the caller builds its
+          // own markup and is responsible for escaping anything user-
+          // supplied, same convention item.status() already uses.
+          if (typeof item.render === 'function'){
+            return `<div class="tile-card${item.badge === 'pending' ? ' is-pending' : ''}" onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')${onclick}">${item.render()}</div>`;
+          }
+          // 2026-09-14 — optional item.status(), same {text, tone} contract as
+          // the AI_PARTNER_ONBOARDING_GROUPS card pattern (renderAiPartnerOnboardingHub()),
+          // for tiles here that need a real, dynamic status line rather than
+          // just a static desc. text may contain simple markup (e.g. <br>)
+          // since callers build it themselves, same as the aipo pattern —
+          // not run through escapeHtml.
+          const statusResult = typeof item.status === 'function' ? item.status() : null;
           return `<div class="tile-card${item.badge === 'pending' ? ' is-pending' : ''}" onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')${onclick}">
             <div class="tc-label">${escapeHtml(item.label)}${tileBadgeHtml(item.badge)}</div>
+            ${statusResult ? `<div class="tc-status ${statusResult.tone}">${statusResult.text}</div>` : ''}
             ${item.desc ? `<div class="tc-desc">${escapeHtml(item.desc)}</div>` : ''}
           </div>`;
         }).join('')}
@@ -17458,6 +17602,33 @@ function renderPartnersVendorsSection(){
 // Corporate Communications and Search Optimization are whole-section
 // Enterprise (a real production tier gate, distinct from "not built").
 const BRAND_SHELL_GROUPS = [
+  // 2026-09-14, per direct correction ("The ask was to move to brand was the
+  // brand portal page. The tile is supposed to include the last contest ran,
+  // # completed, #drafts and it is a link to the contest page that no longer
+  // lives in Account Management. It links to the activation page that we
+  // currently have in Account but now will be a page living off the Portal
+  // brand page.") — relocated from AI_PARTNER_ONBOARDING_GROUPS' "The Voice"
+  // group (Manage Account hub) to the real primary-nav Brand tab. Links to
+  // step-voiceContest, the client-facing activation page (view/select a
+  // winner) — the Ops Console Internal Testing section remains the only
+  // place to run/create new contests, unchanged by this move. Stats
+  // (# winners / # drafts per contest type, last run date) reuse
+  // aipoVoiceContestStats/aipoLoadVoiceContestStats(), the same client-side
+  // computation the old card used — see that function's own comment.
+  { label: 'Brand Voice', items: [
+    {
+      label: 'Voice Contest',
+      step: 'voiceContest',
+      // 2026-09-15, per direct instruction — restyled as a report card
+      // matching the look of the 3 KPI stat cards (STAT_CARD_META /
+      // .stat-card), with a progress bar per contest stage instead of the
+      // plain text list the old status() built. See voiceContestReportHtml()
+      // below for the render() function itself and its own comment for why
+      // there's no "same model / different models" fun stat, despite an
+      // earlier draft sketch including one.
+      render: voiceContestReportHtml
+    }
+  ]},
   { label: 'Creative Production', items: [
     { label: 'Experience Development' },
     { label: 'Omni-Channel Creative', step: 'omniCreative', desc: 'Cross-channel creative production' }
@@ -17479,6 +17650,11 @@ const BRAND_SHELL_GROUPS = [
   ]}
 ];
 function brandShellHtml(){
+  // Same lazy-load-then-rerender trigger renderAiPartnerOnboardingHub() used
+  // for this same stats object — safe to call from both places since it's a
+  // no-op once aipoVoiceContestStats is non-null, and aipoLoadVoiceContestStats()
+  // re-renders whichever of this tab / the old hub is currently on screen.
+  if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
   return renderTileShellGroups(BRAND_SHELL_GROUPS, null, 'brand');
 }
 // Marketer shell. "From AI Agent Training" group (Performance Marketing /
@@ -20098,14 +20274,13 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
           return { text: 'Not yet approved', tone: 'pending' };
         }
       },
-      {
-        title: 'Voice Contest',
-        category: 'manual',
-        source: 'Brand Groundwork',
-        route: 'voiceContest',
-        desc: 'Multi-model Vision Statement &amp; Longform Example — compare distinct AI-generated voice directions and pick one, or write your own.',
-        status(){ return (state.voice.visionStatement || state.voice.longformExample) ? { text: 'On file', tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
-      },
+      // 2026-09-14, per direct correction — the Voice Contest card that used
+      // to live here moved to the real primary-nav Brand tab
+      // (BRAND_SHELL_GROUPS, "Brand Voice" group): "it is a link to the
+      // contest page that no longer lives in Account Management." See that
+      // group's own comment for the full relocation. aipoVoiceContestStats/
+      // aipoLoadVoiceContestStats() (below) are unchanged and now feed that
+      // tile instead of this one.
       {
         title: 'Competitive Positioning',
         category: 'manual',
@@ -20473,10 +20648,110 @@ function renderAiPartnerOnboardingHub(skipMmmFetch){
       }).join('')}
     </div>`).join('');
   if (!skipMmmFetch && aipoMmmPeriodCount == null) aipoLoadMmmCount();
+  if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
 }
 function aipoOpenCard(route){
   if (route === '__accountHtml'){ window.location.href = 'account.html'; return; }
   goToStep(route);
+}
+// 2026-09-14 — Voice Contest tile stats ("# Winners"/"# Drafts" per contest
+// type, plus last run date), per direct instruction. Same lazy-load-then-
+// rerender pattern as aipoLoadMmmCount() above: reuses the client-facing GET
+// .../voice-contest history endpoint (already used by the Voice Contest page
+// itself for its own "View Previous Contests" tile — see
+// voiceContestLoadHistoryList()), computed client-side rather than adding a
+// dedicated stats endpoint. "Winner" = selectedCandidateKey set on the
+// interview; "Draft" = run but nothing selected yet.
+let aipoVoiceContestStats = null; // null = not checked yet this session
+async function aipoLoadVoiceContestStats(){
+  if (!state.companyId){
+    aipoVoiceContestStats = { byType: {}, totalWinners: 0, lastRunAt: null };
+  } else {
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`);
+      if (!resp.ok){
+        aipoVoiceContestStats = { byType: {}, totalWinners: 0, lastRunAt: null };
+      } else {
+        const data = await resp.json();
+        const interviews = data.interviews || [];
+        const byType = {};
+        let totalWinners = 0;
+        let lastRunAt = null;
+        interviews.forEach(iv => {
+          const t = iv.contentType || 'voice_guide';
+          if (!byType[t]) byType[t] = { total: 0, winners: 0, drafts: 0 };
+          byType[t].total++;
+          if (iv.selectedCandidateKey){ byType[t].winners++; totalWinners++; }
+          else byType[t].drafts++;
+          if (!lastRunAt || (iv.createdAt && iv.createdAt > lastRunAt)) lastRunAt = iv.createdAt;
+        });
+        aipoVoiceContestStats = { byType, totalWinners, lastRunAt };
+      }
+    } catch (e){
+      aipoVoiceContestStats = { byType: {}, totalWinners: 0, lastRunAt: null };
+    }
+  }
+  const stepEl = document.getElementById('step-manageAccount');
+  if (stepEl && stepEl.classList.contains('active')) renderAiPartnerOnboardingHub(true);
+  // 2026-09-14 — the Voice Contest tile also now lives on the real Brand tab
+  // (BRAND_SHELL_GROUPS); re-render it too if that's what's currently on
+  // screen, same lazy-load-then-rerender pattern as the hub above.
+  if (activePrimaryTab === 'brand') renderWorkstreams();
+}
+// 2026-09-15, per direct instruction ("look like one of our 3 KPI cards...
+// add a little progress bar representing the three stages with the metrics
+// included. Make it pretty") — the Voice Contest tile's render() (see
+// BRAND_SHELL_GROUPS). One progress-bar row per contest stage (order
+// matches Todd's own draft sketch: Brand Voice Guide, Video Strategy,
+// Video Script), each stage's real winner/draft counts from
+// aipoVoiceContestStats, styled to echo the 3 KPI stat cards' typography
+// (STAT_CARD_META/.stat-card's sc-label) inside this tile's own .tile-card
+// container. Bar fill is a 3-state read of real status, not a fabricated
+// percentage: 100%/teal once a winner is selected ("ok"), 50%/amber while
+// drafts exist but nothing's been picked yet ("pending" — there's no
+// natural "how much progress" number to show honestly, since there's no
+// fixed target draft count), 0%/gray if that stage hasn't been run at all.
+//
+// Deliberately does NOT include a "you picked the same model / different
+// models across contests" fun stat, even though Todd's draft sketch had
+// one. The client-facing app runs this as a blind test on purpose — see
+// redactBrandVoiceCandidatesForClient() on the backend, `label:
+// c.blindLabel || c.label` — so the client never learns which vendor/model
+// produced which draft. A "same model" stat would have to either fabricate
+// data this page doesn't have, or leak the blind test's own answer, so
+// it's left out rather than faked; flagging this rather than silently
+// dropping it.
+function voiceContestReportHtml(){
+  const lastRunText = aipoVoiceContestStats && aipoVoiceContestStats.lastRunAt
+    ? new Date(aipoVoiceContestStats.lastRunAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : null;
+  const typeOrder = ['voice_guide', 'video_strategy', 'video_script'];
+  const bodyHtml = aipoVoiceContestStats == null
+    ? `<div class="tc-status pending" style="margin-top:12px;">Checking…</div>`
+    : typeOrder.map(t => {
+        const s = aipoVoiceContestStats.byType[t] || { total: 0, winners: 0, drafts: 0 };
+        const tone = s.winners > 0 ? 'ok' : (s.total > 0 ? 'pending' : 'notbuilt');
+        const pct = tone === 'ok' ? 100 : (tone === 'pending' ? 50 : 0);
+        const metric = s.total === 0
+          ? 'Not started'
+          : s.winners > 0
+            ? `${s.winners} winner${s.winners === 1 ? '' : 's'} · ${s.drafts} draft${s.drafts === 1 ? '' : 's'}`
+            : `${s.drafts} draft${s.drafts === 1 ? '' : 's'} · evaluating`;
+        return `<div class="vc-stage-row">
+          <div class="vc-stage-top">
+            <span class="vc-stage-name">${escapeHtml(VOICE_CONTEST_TYPE_LABEL[t])}</span>
+            <span class="vc-stage-metric">${escapeHtml(metric)}</span>
+          </div>
+          <div class="vc-stage-track"><div class="vc-stage-fill ${tone}" style="width:${pct}%;"></div></div>
+        </div>`;
+      }).join('');
+  return `
+    <div class="vc-report-head">
+      <span class="vc-report-label">Voice Contest</span>
+      ${lastRunText ? `<span class="vc-report-lastrun">Last run ${escapeHtml(lastRunText)}</span>` : ''}
+    </div>
+    ${bodyHtml}
+    <div class="vc-report-footer">Manage Voice Contest →</div>`;
 }
 // Independent of loadMmmInputs() (which only runs when Analytics Setup's own
 // #mmmInputsRows table exists on the page) — same endpoint, no DOM
@@ -29467,6 +29742,18 @@ let mbuSelectedYear = new Date().getFullYear();
 // unless someone explicitly switches the toggle.
 let mbuSelectedScope = 'domestic';
 let mbuYearsData = [];
+// 2026-09-14, per direct report ("The budgets that I added ... are missing"
+// — checked every year/scope, all showed "no budget yet," even years that
+// had just shown a confirmed green checkmark) — root cause traced to
+// mbuLoadYearsList() below silently treating ANY fetch failure (a real
+// backend error, a misconfigured deployment, a dropped connection — not
+// just "this account genuinely has zero uploads") as an empty list. Every
+// year/scope combination then correctly shows "no budget yet" per the data
+// it was given, which is indistinguishable on screen from actual data loss.
+// This flag lets mbuRenderPlanSetup() below tell the two apart and show an
+// honest "couldn't load your budgets" error instead of implying the data
+// itself is gone.
+let mbuYearsLoadFailed = false;
 function mbuScopeLabel(s){ return s === 'international' ? 'International' : 'Domestic'; }
 function renderMbuScopeRow(){
   const row = document.getElementById('mbuScopeRow');
@@ -32234,7 +32521,18 @@ async function mbuExportMonthlyCsv(uploadId){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `verilume-budget-monthly-detail.csv`;
+    // 2026-09-14 fix, per direct bug report: this always downloaded as the
+    // same generic filename regardless of year/scope, so a client who
+    // exported more than one year's budget (e.g. 2025 and 2026) ended up
+    // with same-named files their OS auto-numbered ("(1)", "(2)..."),
+    // making it easy to mix them up later. The backend already generates a
+    // year/scope-specific name (verilume-budget-<year>-<scope>-monthly-
+    // detail.csv) in its Content-Disposition header — use that instead of
+    // the hardcoded generic name, falling back to the old name only if a
+    // proxy/CDN ever strips that header.
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const nameMatch = disposition.match(/filename="([^"]+)"/);
+    a.download = nameMatch ? nameMatch[1] : `verilume-budget-monthly-detail.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -32561,8 +32859,24 @@ async function mbuLoadYearsList(){
   if (!state.companyId) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads`);
-    mbuYearsData = resp.ok ? ((await resp.json()).uploads || []) : [];
-  } catch (e){ mbuYearsData = []; }
+    if (resp.ok){
+      mbuYearsData = (await resp.json()).uploads || [];
+      mbuYearsLoadFailed = false;
+    } else {
+      // 2026-09-14 fix — see mbuYearsLoadFailed's own comment above. A
+      // non-OK response (500/503/etc.) used to be treated identically to
+      // "this account has no uploads," which reads on screen as every
+      // budget having vanished. Keep whatever was last successfully loaded
+      // (don't wipe real, previously-shown data out from under someone just
+      // because one refresh failed) and flag it so the Plan Setup card can
+      // say so honestly instead of showing "no budget yet."
+      mbuYearsLoadFailed = true;
+      console.error('mbuLoadYearsList: GET marketing-budget-uploads failed', resp.status);
+    }
+  } catch (e){
+    mbuYearsLoadFailed = true;
+    console.error('mbuLoadYearsList: GET marketing-budget-uploads failed', e);
+  }
   renderMbuYearsList();
   if (typeof renderMbuScopeRow === 'function') renderMbuScopeRow();
   if (typeof renderMbuYearRow === 'function') renderMbuYearRow();
@@ -32684,6 +32998,19 @@ function mbuRenderPlanSetup(){
   const mount = document.getElementById('mbuPlanSetupStatus');
   if (!mount) return;
   mbuApplyPageMode();
+  // 2026-09-14 fix — see mbuYearsLoadFailed's own comment (mbuLoadYearsList
+  // above). Checked before the "no budget yet" Setup state below: a failed
+  // fetch is NOT the same thing as a genuinely empty account, and showing
+  // "no budget yet" for every year/scope when the real problem is a failed
+  // request reads exactly like every budget you ever added just vanished.
+  if (mbuYearsLoadFailed){
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);padding:12px 16px;">
+        <span><b style="color:#b91c1c;">Couldn't load your budgets.</b> This isn't necessarily "no budget yet" for ${mbuSelectedYear} — the request to check failed, so nothing could be confirmed either way. Your data is very likely still there; try again in a moment.</span>
+        <button type="button" class="btn-primary" onclick="mbuLoadYearsList()">↻ Try again →</button>
+      </div>`;
+    return;
+  }
   const active = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (active){
     // 2026-09-06 review: period-aware status. A year before the current
@@ -38479,6 +38806,7 @@ async function renderTaxonomyManager(){
     body.innerHTML = renderTaxonomyEditor();
     renderTaxonomyChipGroup('productGroup');
     renderTaxonomyChipGroup('creativeMarket');
+    renderTaxonomyMappingContainer();
     return;
   }
   const existingPG = cmpTaxonomyValues('productGroup') || [];
@@ -38496,15 +38824,36 @@ async function renderTaxonomyManager(){
 }
 
 function startBlankTaxonomy(){
-  taxonomyDraft = { productGroup: [], creativeMarket: [] };
+  taxonomyDraft = { productGroup: [], creativeMarket: [], mappings: {} };
   taxonomyDraftSource = 'blank';
   renderTaxonomyManager();
 }
 
-function editExistingTaxonomy(){
-  taxonomyDraft = { productGroup: [...(cmpTaxonomyValues('productGroup') || [])], creativeMarket: [...(cmpTaxonomyValues('creativeMarket') || [])] };
+// 2026-09-14 — now async: loads this account's existing Product Group ->
+// Creative Focus Group associations (see account_taxonomy_mappings,
+// server.js) into taxonomyDraft.mappings before rendering the editor, so
+// the mapping section below opens pre-checked with what's already on file
+// rather than blank every time.
+async function editExistingTaxonomy(){
+  taxonomyDraft = { productGroup: [...(cmpTaxonomyValues('productGroup') || [])], creativeMarket: [...(cmpTaxonomyValues('creativeMarket') || [])], mappings: {} };
   taxonomyDraftSource = 'existing';
+  await loadTaxonomyMappingsIntoDraft();
   renderTaxonomyManager();
+}
+
+// Shared by editExistingTaxonomy() above — a separate function since
+// startBlankTaxonomy()/startOverTaxonomy() deliberately start with empty
+// mappings (nothing to load: this account is starting its Product
+// Group/Creative Focus Group lists fresh, so no association can exist yet
+// either).
+async function loadTaxonomyMappingsIntoDraft(){
+  if (!taxonomyDraft || dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-mappings`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    taxonomyDraft.mappings = data.mappings || {};
+  } catch (e){ /* leave mappings empty — optional feature, non-fatal */ }
 }
 
 function cancelTaxonomyDraft(){
@@ -38522,9 +38871,9 @@ function cancelTaxonomyDraft(){
 function startOverTaxonomy(){
   const body = document.getElementById('taxonomyManagerBody');
   if (!body) return;
-  taxonomyDraft = { productGroup: [], creativeMarket: [] };
+  taxonomyDraft = { productGroup: [], creativeMarket: [], mappings: {} };
   taxonomyDraftSource = 'blank';
-  body.innerHTML = `<p class="hint" style="color:var(--advocacy);margin:0 0 10px;">Starting over replaces this account's current Product Group and Creative Focus Group values once you save — review before saving.</p>`
+  body.innerHTML = `<p class="hint" style="color:var(--advocacy);margin:0 0 10px;">Starting over replaces this account's current Product Group and Creative Focus Group values (and any Product Group/Creative Focus Group associations) once you save — review before saving.</p>`
     + renderTaxonomyEditor();
   renderTaxonomyChipGroup('productGroup');
   renderTaxonomyChipGroup('creativeMarket');
@@ -38578,11 +38927,69 @@ function renderTaxonomyEditor(){
         <button type="button" class="btn-ghost" onclick="addTaxonomyChip('creativeMarket')">Add</button>
       </div>
     </div>
+    <div id="taxonomyMappingSection"></div>
     <div class="btn-row">
       <button type="button" class="btn-primary" onclick="saveTaxonomyGroups()">Save →</button>
       <button type="button" class="btn-ghost" onclick="cancelTaxonomyDraft()">Cancel</button>
     </div>
     <div class="hint" id="taxonomySaveFlag" style="margin-top:8px;"></div>`;
+}
+// 2026-09-14, per direct instruction — Todd: "The strategies reference the
+// expedition product groups consistently... it makes sense to give the
+// client the option to select both a product group and destination
+// creative focus... Where should clients associate product groups with
+// creative focus as an optional input" — confirmed via clarifying question
+// to live here (Taxonomy Manager, same place the two lists themselves are
+// edited) and to actively narrow the Video Script contest's destination
+// dropdown once built (see onVoiceContestProductGroupFilterChange()).
+// Deliberately optional and per-Product-Group: a Product Group with
+// nothing checked simply leaves every Creative Focus Group value showing
+// for it on the contest — this section never blocks Save. Only renders
+// once both lists have at least one value (nothing to associate before
+// that).
+function renderTaxonomyMappingContainer(){
+  const el = document.getElementById('taxonomyMappingSection');
+  if (!el || !taxonomyDraft) return;
+  el.innerHTML = renderTaxonomyMappingSection();
+}
+function renderTaxonomyMappingSection(){
+  const pg = taxonomyDraft.productGroup || [];
+  const cm = taxonomyDraft.creativeMarket || [];
+  if (!pg.length || !cm.length){
+    return '';
+  }
+  const rows = pg.map((pgValue, pi) => {
+    const assoc = new Set((taxonomyDraft.mappings && taxonomyDraft.mappings[pgValue]) || []);
+    const chips = cm.map((cmValue, ci) => {
+      const on = assoc.has(cmValue);
+      return `<button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;margin:0 6px 6px 0;${on ? 'background:var(--cx);color:#fff;border-color:var(--cx);' : ''}" onclick="toggleTaxonomyMapping(${pi}, ${ci})">${escapeHtml(cmValue)}</button>`;
+    }).join('');
+    return `<div style="margin-bottom:10px;">
+      <div style="font-weight:700;font-size:0.8125rem;margin-bottom:4px;">${escapeHtml(pgValue)}</div>
+      <div style="display:flex;flex-wrap:wrap;">${chips}</div>
+    </div>`;
+  }).join('');
+  return `<div class="field" style="margin-bottom:16px;">
+    <label>Associate Product Groups with Creative Focus Groups (optional)</label>
+    <p class="hint" style="margin:0 0 10px;">Click a Creative Focus Group under a Product Group to associate them. On the Video Script contest, picking that Product Group will then narrow the destination list to only what's checked here — leave a Product Group with nothing checked and every destination still shows for it.</p>
+    ${rows}
+  </div>`;
+}
+// Index-based (pi/ci into taxonomyDraft.productGroup/creativeMarket)
+// rather than embedding the value strings directly in the onclick — avoids
+// any quoting/escaping issue with a Product Group or Creative Focus Group
+// value that itself contains a quote or apostrophe.
+function toggleTaxonomyMapping(pi, ci){
+  if (!taxonomyDraft) return;
+  const pgValue = taxonomyDraft.productGroup[pi];
+  const cmValue = taxonomyDraft.creativeMarket[ci];
+  if (pgValue === undefined || cmValue === undefined) return;
+  if (!taxonomyDraft.mappings) taxonomyDraft.mappings = {};
+  if (!taxonomyDraft.mappings[pgValue]) taxonomyDraft.mappings[pgValue] = [];
+  const idx = taxonomyDraft.mappings[pgValue].indexOf(cmValue);
+  if (idx >= 0) taxonomyDraft.mappings[pgValue].splice(idx, 1);
+  else taxonomyDraft.mappings[pgValue].push(cmValue);
+  renderTaxonomyMappingContainer();
 }
 
 function taxonomyChipElId(key){
@@ -38609,11 +39016,27 @@ function addTaxonomyChip(key){
   if (!list.some(v => v.toLowerCase() === value.toLowerCase())) list.push(value);
   input.value = '';
   renderTaxonomyChipGroup(key);
+  // 2026-09-14 — a new Product Group or Creative Focus Group value can now
+  // be associated, so the mapping section below needs to pick it up.
+  renderTaxonomyMappingContainer();
 }
 function removeTaxonomyChip(key, i){
   if (!taxonomyDraft) return;
+  const removedValue = taxonomyDraft[key][i];
   taxonomyDraft[key].splice(i, 1);
+  // 2026-09-14 — purge any association referencing the removed value, as
+  // either side of the pair, so taxonomyDraft.mappings never holds a
+  // dangling reference to a value that no longer exists in either list.
+  if (taxonomyDraft.mappings && removedValue !== undefined){
+    if (key === 'productGroup') delete taxonomyDraft.mappings[removedValue];
+    if (key === 'creativeMarket'){
+      Object.keys(taxonomyDraft.mappings).forEach(pgValue => {
+        taxonomyDraft.mappings[pgValue] = taxonomyDraft.mappings[pgValue].filter(v => v !== removedValue);
+      });
+    }
+  }
   renderTaxonomyChipGroup(key);
+  renderTaxonomyMappingContainer();
 }
 
 async function saveTaxonomyGroups(){
@@ -38639,6 +39062,20 @@ async function saveTaxonomyGroups(){
       if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't save — try again."; }
       return;
     }
+    // 2026-09-14 — whole-set replace of the Product Group/Creative Focus
+    // Group association, same convention as the two PUTs above and PUT
+    // .../taxonomies/:key generally. Sent AFTER the two lists above save
+    // successfully since the backend validates every mapping pair against
+    // this account's current (just-saved) Product Group/Creative Focus
+    // Group values. Non-fatal on failure — the association is optional
+    // input, so a failed save here shouldn't block the two lists (the part
+    // every downstream feature actually depends on) from being saved.
+    try {
+      await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-mappings`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings: taxonomyDraft.mappings || {} })
+      });
+    } catch (e){ /* the two lists above already saved — the association is optional, not blocking */ }
     taxonomyDraft = null;
     taxonomyDraftSource = null;
     await mktCalLoadTaxonomies(); // refreshes state.calendarTaxonomies + Campaign Creation's tiles + this page's own filters
@@ -49863,8 +50300,16 @@ function renderVoiceContestStep(){
   if (longformEl) longformEl.value = state.voice.longformExample || '';
   const flag = document.getElementById('voiceVisionLongformSaveFlag');
   if (flag) flag.textContent = '';
+  // 2026-09-14 — "Show current headline and paragraph" up top, per direct
+  // instruction. Same state.voice fields the winner module below edits;
+  // this is just a read-only echo of whatever's currently approved.
+  const headlineEl = document.getElementById('voiceContestCurrentHeadline');
+  const paragraphEl = document.getElementById('voiceContestCurrentParagraph');
+  if (headlineEl) headlineEl.textContent = state.voice.visionStatement || 'Nothing approved yet — run a contest below or write your own.';
+  if (paragraphEl) paragraphEl.textContent = state.voice.longformExample || '';
   renderVoiceContestInputsPanel();
   loadInterviewUsage();
+  voiceContestLoadHistoryList();
   // 2026-09-13, corrected same day (round "creative-focus-tagging") — the
   // Video Script option's destination select needs the real
   // account-configured Creative Focus Group taxonomy
@@ -49876,9 +50321,142 @@ function renderVoiceContestStep(){
     if (!state.calendarTaxonomies && typeof mktCalLoadTaxonomies === 'function'){
       try { await mktCalLoadTaxonomies(); } catch (e){ /* select just shows empty state below */ }
     }
+    voiceContestPopulateProductGroupFilterSelect();
+    await voiceContestLoadTaxonomyMappings();
     voiceContestPopulateProductGroupSelect();
   })();
   voiceContestPopulateReferenceScriptSelect();
+}
+// 2026-09-14 — "Create New Contest" tile, per direct instruction ("Tile to
+// create new contest with drop-down including contest options. Selecting
+// opens template used to run contest"). Deliberately thin: sets the REAL
+// #voiceContestContentType select (unchanged since before this round) to
+// match the tile's own dropdown, fires the existing
+// onVoiceContestContentTypeChange() so the Video Script destination field
+// shows/hides exactly as it always has, reveals voiceContestModule (hidden
+// by default now), and scrolls to it. No run/rate/select logic touched.
+// 2026-09-14 — reveals voiceContestModule (hidden by default now — see the
+// tile functions below). toggleModule()'s own max-height calc (module-body
+// starts at max-height:0 per the base .module-body CSS rule, only expanded
+// via inline style, not the .open class alone) assumes the module is already
+// visible when it measures scrollHeight, and accResyncAll()'s MutationObserver
+// only watches childList/subtree/characterData — not style/attribute changes
+// — so it won't pick up display:none -> '' on its own. This does the same
+// max-height calc toggleModule() does, but after making the module visible
+// first, so it isn't measuring a display:none box.
+function voiceContestRevealModule(){
+  const module = document.getElementById('voiceContestModule');
+  if (!module) return;
+  module.style.display = '';
+  module.classList.add('open');
+  const body = module.querySelector('.module-body');
+  if (body) body.style.maxHeight = body.scrollHeight + 'px';
+  module.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function voiceContestOpenNewTile(){
+  const tileType = document.getElementById('voiceContestNewTileType');
+  const realType = document.getElementById('voiceContestContentType');
+  if (tileType && realType) realType.value = tileType.value;
+  if (typeof onVoiceContestContentTypeChange === 'function') onVoiceContestContentTypeChange();
+  voiceContestRevealModule();
+}
+// 2026-09-14 — "View Previous Contests" tile, per direct instruction. Reuses
+// the same client-facing GET .../voice-contest this page already calls
+// elsewhere (voiceContestPopulateReferenceScriptSelect, recoverBrandVoiceContestAfterTimeout)
+// rather than adding a new endpoint — it already returns every interview for
+// this account with blind-labeled, redacted candidates (including each
+// one's 1-5 rating), newest first. Label convention per direct answer:
+// "Type + destination + date."
+const VOICE_CONTEST_TYPE_LABEL = { voice_guide: 'Brand Voice Guide', video_script: 'Video Script', video_strategy: 'Video Strategy' };
+let voiceContestHistoryList = [];
+async function voiceContestLoadHistoryList(){
+  const sel = document.getElementById('voiceContestHistorySelect');
+  if (!sel || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    voiceContestHistoryList = data.interviews || [];
+    const options = voiceContestHistoryList.map(iv => {
+      const typeLabel = VOICE_CONTEST_TYPE_LABEL[iv.contentType] || iv.contentType;
+      const dateLabel = iv.createdAt ? new Date(iv.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const label = [typeLabel, iv.creativeMarket || null, dateLabel].filter(Boolean).join(' — ');
+      return `<option value="${escapeHtml(iv.id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    sel.innerHTML = `<option value="">Select a completed contest…</option>${options}`;
+  } catch (e){ /* leave the dropdown showing just the placeholder */ }
+}
+function voiceContestOnHistorySelectChange(){
+  const sel = document.getElementById('voiceContestHistorySelect');
+  const detailEl = document.getElementById('voiceContestHistoryDetail');
+  if (!sel || !detailEl) return;
+  const iv = voiceContestHistoryList.find(x => x.id === sel.value);
+  if (!iv){ detailEl.innerHTML = ''; return; }
+  const typeLabel = VOICE_CONTEST_TYPE_LABEL[iv.contentType] || iv.contentType;
+  // 2026-09-14, per direct instruction: "1) 1-5 ratings per version (not
+  // showing model name)" and "3) table containing the 5 results not
+  // rerunning (static)!" — one static table, blind label + rating +
+  // selected/winner flag only. No vendor/model (candidates are already
+  // blind-labeled by the time they reach the client — see the redact*
+  // functions in server.js), no re-rating here (that already lives in the
+  // interactive run panel above for a freshly-run contest).
+  const rows = (iv.candidates || []).map(c => {
+    const isWinner = c.key === iv.selectedCandidateKey;
+    const ratingText = (typeof c.rating === 'number') ? `${c.rating} / 5` : '—';
+    return `<tr${isWinner ? ' style="background:rgba(26,122,76,0.08);"' : ''}>
+      <td style="padding:6px 8px;font-weight:600;">${escapeHtml(c.label || '?')}${isWinner ? ' <span class="badge" style="margin-left:4px;">Winner</span>' : ''}</td>
+      <td style="padding:6px 8px;">${ratingText}</td>
+      <td style="padding:6px 8px;color:var(--advocacy);">${c.error ? escapeHtml(c.error) : ''}</td>
+    </tr>`;
+  }).join('');
+  // 2026-09-14, per direct instruction: "2) saved or draft winner results
+  // for editing." Only the CURRENT account-level winner is actually stored
+  // for in-place editing (accounts.visionStatement/longformExample or
+  // accounts.videoStrategyText — same one-winner-at-a-time convention this
+  // whole page has always used, see voiceContestWinnerModule /
+  // videoStrategyWinnerModule further down). A historical contest whose
+  // winner is no longer the current one is shown as a static reference with
+  // a "Set as current winner" action (re-fires the same POST .../select
+  // this page already calls) rather than a separate parallel edit surface.
+  const editHtml = iv.selectedCandidateKey
+    ? `<p class="hint" style="margin:10px 0 0;">Selected winner: ${escapeHtml((iv.candidates.find(c => c.key === iv.selectedCandidateKey) || {}).label || '?')} — <a onclick="voiceContestScrollToWinnerModule('${escapeHtml(iv.contentType)}')">edit it below ↓</a></p>`
+    : `<p class="hint" style="margin:10px 0 0;">No winner selected for this contest yet.</p>`;
+  detailEl.innerHTML = `
+    <div style="border:1px solid var(--line-hairline);border-radius:8px;padding:10px;margin-top:4px;">
+      <div class="hint" style="margin-bottom:6px;">${escapeHtml(typeLabel)}${iv.creativeMarket ? ' — ' + escapeHtml(iv.creativeMarket) : ''} — ${iv.createdAt ? new Date(iv.createdAt).toLocaleString() : ''}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
+          <thead><tr style="border-bottom:1px solid var(--line);"><th style="padding:6px 8px;text-align:left;">Option</th><th style="padding:6px 8px;text-align:left;">Rating</th><th style="padding:6px 8px;text-align:left;">Notes</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${editHtml}
+      <div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="btn-ghost" onclick="voiceContestRerunFromHistory('${escapeHtml(iv.contentType)}', ${iv.creativeMarket ? `'${escapeHtml(iv.creativeMarket)}'` : 'null'})">Run this contest again →</button>
+      </div>
+      ${voiceContestExportRowHtml(iv.id, 'voiceContestHistoryExportNote')}
+    </div>`;
+}
+// 2026-09-14 — "4) Option to run the const again." Pre-fills the real run
+// controls (content type, and destination for Video Script) and opens the
+// same run module the "Create New Contest" tile opens, then scrolls there —
+// deliberately does NOT auto-click Begin the Interview Process, so a client
+// always makes that call themselves rather than accidentally spending AI
+// usage on page load.
+function voiceContestRerunFromHistory(contentType, creativeMarket){
+  const realType = document.getElementById('voiceContestContentType');
+  if (realType) realType.value = contentType;
+  if (typeof onVoiceContestContentTypeChange === 'function') onVoiceContestContentTypeChange();
+  if (creativeMarket){
+    const cmEl = document.getElementById('voiceContestCreativeMarket');
+    if (cmEl) cmEl.value = creativeMarket;
+  }
+  voiceContestRevealModule();
+}
+function voiceContestScrollToWinnerModule(contentType){
+  const id = contentType === 'video_strategy' ? 'videoStrategyWinnerModule' : 'voiceContestWinnerModule';
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // Fix 4 reworked 2026-09-13, per direct instruction ("Why don't we just
 // have a dropdown containing sample files?") — populates the reference
@@ -49913,6 +50491,48 @@ async function voiceContestPopulateReferenceScriptSelect(){
     if (samples.some(s => s.id === current)) el.value = current;
   } catch (e){ /* leave the default "write from scratch" option in place */ }
 }
+// 2026-09-14 — populates the NEW, genuinely optional Product Group filter
+// select. Separate from voiceContestPopulateProductGroupSelect() below
+// (which, despite its legacy name, populates the Creative Focus Group/
+// destination select) — see that function's own comment for why its name
+// wasn't changed.
+function voiceContestPopulateProductGroupFilterSelect(){
+  const el = document.getElementById('voiceContestProductGroup');
+  if (!el) return;
+  const values = cmpTaxonomyValues('productGroup') || [];
+  const current = el.value;
+  el.innerHTML = '<option value="">All product groups</option>' + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+  if (values.includes(current)) el.value = current;
+}
+// 2026-09-14 — loads this account's Product Group -> Creative Focus Group
+// associations (see account_taxonomy_mappings) into
+// voiceContestTaxonomyMappings, for onVoiceContestProductGroupFilterChange()
+// to narrow the destination dropdown by. Non-fatal on failure — the
+// association is optional input in the first place, so a fetch failure
+// just means every destination shows regardless of Product Group, same as
+// before this round.
+async function voiceContestLoadTaxonomyMappings(){
+  voiceContestTaxonomyMappings = {};
+  if (!state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomy-mappings`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    voiceContestTaxonomyMappings = data.mappings || {};
+  } catch (e){ /* leave empty — destination dropdown just stays unfiltered */ }
+}
+// 2026-09-14 — Todd: "The strategies reference the expedition product
+// groups consistently... it makes sense to give the client the option to
+// select both a product group and destination creative focus... The
+// contest can just have two drop-downs with an and statement." Picking a
+// Product Group re-populates the destination select down to only the
+// Creative Focus Group values associated with it in Taxonomy Manager; a
+// Product Group with no association on file (or "All product groups")
+// leaves every destination showing — the association is optional input,
+// never a hard gate.
+function onVoiceContestProductGroupFilterChange(){
+  voiceContestPopulateProductGroupSelect();
+}
 // Populates the Video Script option's required destination select — unlike
 // bwsPopulateCreativeMarketSelects() (Experience Evidence, where scoping is
 // optional), there is no "account-wide" choice here: a video script is
@@ -49920,13 +50540,27 @@ async function voiceContestPopulateReferenceScriptSelect(){
 // default rather than a placeholder. Name kept as
 // voiceContestPopulateProductGroupSelect (not renamed) only to avoid
 // touching every call site — it populates the creativeMarket select.
+// 2026-09-14 — now narrows to the selected Product Group's associated
+// values (voiceContestTaxonomyMappings) when one is picked in the new
+// #voiceContestProductGroup select above; unfiltered otherwise.
 function voiceContestPopulateProductGroupSelect(){
   const el = document.getElementById('voiceContestCreativeMarket');
   if (!el) return;
-  const values = cmpTaxonomyValues('creativeMarket') || [];
+  const allValues = cmpTaxonomyValues('creativeMarket') || [];
+  const pgEl = document.getElementById('voiceContestProductGroup');
+  const selectedPG = pgEl ? pgEl.value : '';
+  let values = allValues;
+  if (selectedPG && Array.isArray(voiceContestTaxonomyMappings[selectedPG]) && voiceContestTaxonomyMappings[selectedPG].length){
+    const assoc = new Set(voiceContestTaxonomyMappings[selectedPG]);
+    values = allValues.filter(v => assoc.has(v));
+  }
   const current = el.value;
-  if (!values.length){
+  if (!allValues.length){
     el.innerHTML = '<option value="">No Creative Focus Groups configured for this account yet — set them up under Marketing Calendar.</option>';
+    return;
+  }
+  if (!values.length){
+    el.innerHTML = `<option value="">No Creative Focus Groups associated with "${escapeHtml(selectedPG)}" yet — set that up in Taxonomy Manager, or clear the Product Group filter above.</option>`;
     return;
   }
   el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
@@ -50105,6 +50739,12 @@ const VOICE_CONTEST_STATUS_TIPS = [
   "If none of the options feel right, that's useful signal too — it usually means the account's Tone Anchors or Brand Keywords above (or the inputs checklist above the button) need a second look before trying again."
 ];
 let lastVoiceContestCache = null;
+// 2026-09-14 — this account's Product Group -> Creative Focus Group
+// associations (see account_taxonomy_mappings, server.js, and Taxonomy
+// Manager's own mapping editor below), loaded once per visit to this step
+// and used only client-side to narrow #voiceContestCreativeMarket when a
+// Product Group is picked. { [productGroupValue]: [creativeMarketValue, ...] }
+let voiceContestTaxonomyMappings = {};
 // 2026-08-27, per direct feedback that a bare 1-5 scale has "no science
 // behind it" — a number without a defined meaning isn't comparable across
 // options, across runs, or across different people rating them. Anchoring
@@ -50352,6 +50992,18 @@ function renderBrandVoiceContestPanel(result){
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
       </div>`;
     }
+    // 2026-09-15 — pending, per Todd's two-pass design: this candidate
+    // failed its first attempt but hasn't been given a final verdict yet —
+    // voiceContestAutoRetryPending() (see rerenderVoiceContestPanel) is
+    // about to fire a second, full-budget attempt as a separate request.
+    // Shown distinctly from a real failure so a client doesn't read "still
+    // working on it" as "broken."
+    if (c.pending){
+      return `<div style="display:flex;flex-direction:column;height:100%;border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
+      </div>`;
+    }
     if (!c.visionStatement || !c.longformExample){
       return `<div style="display:flex;flex-direction:column;height:100%;border:1px solid var(--line);border-radius:8px;padding:10px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
@@ -50475,18 +51127,96 @@ function rerenderVoiceContestPanel(result){
   // shapes.
   if (result.contentType === 'video_script'){
     holder.innerHTML = renderVideoScriptContestPanel(result);
-    return;
-  }
-  // 2026-09-14 — Brand Video Script Strategy (contest #1). Same "own render
-  // function, own card shape" reasoning as Video Script above — a strategy
-  // candidate is one long document (strategyText), not beats or
-  // visionStatement/longformExample.
-  if (result.contentType === 'video_strategy'){
+  } else if (result.contentType === 'video_strategy'){
+    // 2026-09-14 — Brand Video Script Strategy (contest #1). Same "own
+    // render function, own card shape" reasoning as Video Script above — a
+    // strategy candidate is one long document (strategyText), not beats or
+    // visionStatement/longformExample.
     holder.innerHTML = renderVideoStrategyContestPanel(result);
-    return;
+  } else {
+    holder.innerHTML = renderBrandVoiceContestPanel(result);
+    if (result.revealed) populateVoiceContestAlignment(result);
   }
-  holder.innerHTML = renderBrandVoiceContestPanel(result);
-  if (result.revealed) populateVoiceContestAlignment(result);
+  if (result.interviewId) holder.insertAdjacentHTML('beforeend', voiceContestExportRowHtml(result.interviewId, 'voiceContestExportNote'));
+  voiceContestAutoRetryPending(result);
+}
+// 2026-09-15, per direct instruction: "We need export functions for Excel
+// and Google Sheets" for Voice Contest results. Reused by both the live
+// run panel above and the "View Previous Contests" history detail below —
+// same two backend routes (.../voice-contest/:interviewId/export.xlsx and
+// export.csv), same "download, then tell the person what to do with it"
+// pattern as mediaPlanExport()/mktCalExport() elsewhere in this file
+// (there's no Google Sheets push API this app has credentials for — the
+// CSV download IS the Google Sheets integration point, see those
+// functions' own comments).
+function voiceContestExportRowHtml(interviewId, noteId){
+  return `<div class="btn-row" style="margin-top:10px;">
+    <button type="button" class="btn-ghost" onclick="voiceContestExport('${escapeHtml(interviewId)}', 'xlsx', '${noteId}')">Download Excel (.xlsx)</button>
+    <button type="button" class="btn-ghost" onclick="voiceContestExport('${escapeHtml(interviewId)}', 'csv', '${noteId}')">Open in Google Sheets</button>
+  </div>
+  <div id="${noteId}" class="hint" style="display:none;margin-top:4px;"></div>`;
+}
+async function voiceContestExport(interviewId, kind, noteId){
+  const note = document.getElementById(noteId);
+  if (note){ note.style.display = 'none'; note.textContent = ''; }
+  try {
+    const path = kind === 'xlsx' ? 'export.xlsx' : 'export.csv';
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(interviewId)}/${path}`);
+    if (!resp.ok){
+      if (note){ note.textContent = 'Could not build the export right now.'; note.style.display = ''; }
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `voice-contest-${interviewId}.${kind}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (note){
+      note.textContent = kind === 'csv'
+        ? 'CSV downloaded — go to sheets.new and use File > Import to open it.'
+        : 'Excel file downloaded — check your downloads.';
+      note.style.display = '';
+    }
+  } catch (e){
+    if (note){ note.textContent = 'Backend unreachable — could not export.'; note.style.display = ''; }
+  }
+}
+// 2026-09-15 — auto-fires the second pass of Todd's two-pass timeout
+// design the moment any candidate comes back pending:true ("message
+// clients when a particular model is still thinking and then run a second
+// pass... automatically" — his chosen option over a manual retry button).
+// Fires at most once per interview (voiceContestPendingRetried tracks which
+// interview ids have already been retried this session) — POST
+// .../retry-pending is itself the LAST attempt (see its own comment on the
+// backend), so there's never a reason to call it twice for the same run.
+const voiceContestPendingRetried = new Set();
+async function voiceContestAutoRetryPending(result){
+  if (!result || !result.interviewId || !Array.isArray(result.candidates)) return;
+  if (!result.candidates.some(c => c.pending)) return;
+  if (voiceContestPendingRetried.has(result.interviewId)) return;
+  voiceContestPendingRetried.add(result.interviewId);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-contest/${encodeURIComponent(result.interviewId)}/retry-pending`, { method: 'POST' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!Array.isArray(data.candidates)) return;
+    // Merge straight into whichever cache object this result came from —
+    // recoverBrandVoiceContestAfterTimeout()'s recovered object and
+    // lastVoiceContestCache (the normal run path) are the same shape, and
+    // history entries rendered via voiceContestOnHistorySelectChange() use
+    // a separate, simpler table (no live retry needed there — that's
+    // already a static, past-run view, not an in-progress one).
+    if (lastVoiceContestCache && lastVoiceContestCache.interviewId === result.interviewId){
+      lastVoiceContestCache.candidates = data.candidates;
+      lastVoiceContestCache.recommendedKey = data.recommendedKey;
+      lastVoiceContestCache.recommendedReason = data.recommendedReason;
+      rerenderVoiceContestPanel(lastVoiceContestCache);
+    }
+  } catch (e){ /* leave the "still thinking" cards as-is — a manual re-run is still available */ }
 }
 // Brand Video Script Strategy panel — one card per vendor, each showing that
 // candidate's full strategy document as prose. No beats table (this isn't a
@@ -50507,6 +51237,15 @@ function renderVideoStrategyContestPanel(result){
       return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
+      </div>`;
+    }
+    // 2026-09-15 — pending, per Todd's two-pass design (see
+    // renderBrandVoiceContestPanel's matching comment for the full
+    // reasoning) — this is the exact contest type that prompted it.
+    if (c.pending){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
       </div>`;
     }
     if (!c.strategyText){
@@ -50624,6 +51363,15 @@ function renderVideoScriptContestPanel(result){
       return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
+      </div>`;
+    }
+    // 2026-09-15 — pending, per Todd's two-pass design (see
+    // renderBrandVoiceContestPanel's matching comment for the full
+    // reasoning).
+    if (c.pending){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
       </div>`;
     }
     if (!Array.isArray(c.beats) || c.beats.length !== 8){
@@ -51126,6 +51874,89 @@ async function cpSetWebsiteContextDecision(contributionId, status){
   } catch (e){ if (flag) flag.textContent = 'Backend unreachable — could not save.'; }
 }
 
+// 2026-09-15 — "Record this decision" modal, per direct feedback on a
+// screenshot of the old native prompt()/prompt()/prompt() chain
+// (vgSetDecision()/cpSetTrainingDigestDecision() below used to ask, in
+// order: a free-text reason, "Your name (for the record)", then a free-
+// typed quality tag). Four changes, all per direct instruction:
+//   1. A real stylized dialog centered on the page, not native browser
+//      prompt() boxes.
+//   2/4. Quality tag is now a dropdown and comes first (was free-typed,
+//      asked last).
+//   3. The name question is gone entirely — decidedBy is now read straight
+//      from state.userName (the same "based on profile" field every other
+//      *By field in this file already uses: uploadedBy/createdBy/
+//      excludedBy), never re-asked.
+//   New: a simple 1-5 quality rating alongside the note, both grouped
+//      under one "help your Agentic Brain" section, last — the note field
+//      doubles as the old required-reason-for-removal field (its
+//      placeholder and validation flex on `noteRequired`) rather than
+//      adding a redundant second free-text box.
+// Scoped to the two AI Brain / content-quality decision flows this request
+// named (Voice Guide history, Training Digest) — MMM's five decision flows
+// and the website-scan/positioning siblings keep their existing
+// prompt()-based flow for now (they have no qualityTag field today and are
+// a different domain), per direct confirmation.
+//
+// Returns a Promise resolving to {qualityTag, qualityRating, note} or null
+// if the person cancels (X, Cancel, or clicking the backdrop).
+function openDecisionModal({ statusLabel, noteRequired }){
+  return new Promise(resolve => {
+    const prior = document.getElementById('decisionModalOverlay');
+    if (prior) prior.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'decisionModalOverlay';
+    overlay.className = 'decision-modal-overlay';
+    overlay.innerHTML = `
+      <div class="decision-modal-card" role="dialog" aria-modal="true" aria-label="Record this decision">
+        <div class="decision-modal-title">Record this decision <span class="badge" style="margin-left:6px;">${escapeHtml(statusLabel)}</span></div>
+        <div class="field">
+          <label>Quality tag</label>
+          <select id="decModQualityTag">
+            <option value="">— Not tagged —</option>
+            <option value="perfect">Perfect</option>
+            <option value="ok">OK</option>
+            <option value="needs_review">Needs review</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>Help your Agentic Brain understand this decision</label>
+          <div class="decision-modal-rating">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="decision-modal-rating-btn" data-n="${n}">${n}</button>`).join('')}</div>
+          <textarea id="decModNote" placeholder="${noteRequired ? 'Why should this be excluded? (required)' : 'Optional — add context that helps train the AI Brain'}"></textarea>
+          <div class="hint" id="decModError" style="display:none;color:var(--advocacy);margin-top:5px;"></div>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:14px;">
+          <button type="button" class="btn-ghost" id="decModCancel">Cancel</button>
+          <button type="button" class="btn-primary" id="decModSave">Save decision</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    let rating = null;
+    overlay.querySelectorAll('.decision-modal-rating-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const n = Number(btn.dataset.n);
+        rating = (rating === n) ? null : n;
+        overlay.querySelectorAll('.decision-modal-rating-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.n) === rating));
+      });
+    });
+    const close = (result) => { overlay.remove(); resolve(result); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    overlay.querySelector('#decModCancel').addEventListener('click', () => close(null));
+    overlay.querySelector('#decModSave').addEventListener('click', () => {
+      const qualityTag = overlay.querySelector('#decModQualityTag').value || null;
+      const note = overlay.querySelector('#decModNote').value.trim();
+      if (noteRequired && !note){
+        const err = overlay.querySelector('#decModError');
+        err.textContent = 'A reason is required — this stays in the account\'s history.';
+        err.style.display = '';
+        return;
+      }
+      close({ qualityTag, qualityRating: rating, note: note || null });
+    });
+    setTimeout(() => { const el = overlay.querySelector('#decModNote'); if (el) el.focus(); }, 20);
+  });
+}
+
 // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training digest
 // pooling). Exact mirror of cpLoadWebsiteScanHistory() above, hitting the
 // training-digest-decisions endpoints instead of website-context-decisions.
@@ -51186,26 +52017,24 @@ function cpRenderTrainingDigestHistory(contributions){
   }).join('');
 }
 
-// Exact mirror of cpSetWebsiteContextDecision() above, hitting
-// training-digest-decisions instead — same prompt()-based reason/name
-// capture, same state.mmmDecisionName reuse.
+// 2026-09-15 — now opens openDecisionModal() (see its own comment above)
+// instead of the old prompt()/prompt()/prompt() chain. Status label is
+// human-facing copy only; the endpoint still receives the same 'reference'/
+// 'applied'/'removed' values it always has. decidedBy comes straight from
+// state.userName (no more asking) — same field this file already uses for
+// uploadedBy/createdBy/excludedBy elsewhere, per direct instruction ("We
+// know the login information... It's based on profile").
 async function cpSetTrainingDigestDecision(contributionId, status){
   const flag = document.getElementById('cpTrainingDigestFlag');
-  let reason = null;
-  if (status === 'removed'){
-    reason = prompt('Why should this flagged campaign\'s style be excluded? (required — this stays in the account\'s history)');
-    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
-  } else {
-    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
-    reason = reason.trim() || null;
-  }
-  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
-  if (decidedBy) state.mmmDecisionName = decidedBy;
-  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
+  const statusLabel = status === 'reference' ? 'Reference' : status === 'applied' ? 'Apply' : 'Remove';
+  const result = await openDecisionModal({ statusLabel, noteRequired: status === 'removed' });
+  if (!result) return;
+  const { qualityTag, qualityRating, note: reason } = result;
+  const decidedBy = (state.userName || '').trim() || null;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/training-digest-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag, qualityRating })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -51268,32 +52097,28 @@ function vgRenderHistory(contributions){
   }).join('');
 }
 
-// Exact mirror of cpSetTrainingDigestDecision() above, hitting
-// voice-decisions instead — same prompt()-based reason/name capture, same
-// state.mmmDecisionName reuse. DIVERGES on a successful 'applied' decision:
-// the backend response includes `restored: {voiceGuideText, voiceVersion}`
-// (see POST .../voice-decisions's comment on the server for why Apply
-// means restore here, unlike the training-digest/website-scan siblings) —
-// so this updates state.voice and re-renders the Voice step, same
-// state-then-render convention saveVoiceDraft() above uses, instead of
+// 2026-09-15 — now opens openDecisionModal() (see its own comment above
+// cpSetTrainingDigestDecision's caller) instead of the old prompt()/
+// prompt()/prompt() chain; decidedBy comes from state.userName, no longer
+// asked. Otherwise an exact mirror of cpSetTrainingDigestDecision() above,
+// hitting voice-decisions instead. DIVERGES on a successful 'applied'
+// decision: the backend response includes `restored: {voiceGuideText,
+// voiceVersion}` (see POST .../voice-decisions's comment on the server for
+// why Apply means restore here, unlike the training-digest/website-scan
+// siblings) — so this updates state.voice and re-renders the Voice step,
+// same state-then-render convention saveVoiceDraft() above uses, instead of
 // just refreshing the history list.
 async function vgSetDecision(contributionId, status){
   const flag = document.getElementById('voiceHistoryFlag');
-  let reason = null;
-  if (status === 'removed'){
-    reason = prompt('Why should this version be excluded? (required — this stays in the account\'s history)');
-    if (!reason || !reason.trim()){ if (flag) flag.textContent = 'Removal needs a reason — not saved.'; return; }
-  } else {
-    reason = prompt(`Optional note for marking this "${status}" (leave blank to skip):`, '') || '';
-    reason = reason.trim() || null;
-  }
-  const decidedBy = (prompt('Your name (for the record):', state.mmmDecisionName || '') || '').trim();
-  if (decidedBy) state.mmmDecisionName = decidedBy;
-  const qualityTag = (() => { const q = (prompt('Quality tag for this contribution — perfect / ok / needs_review (optional, leave blank to skip):', '') || '').trim().toLowerCase(); return ['perfect','ok','needs_review'].includes(q) ? q : null; })();
+  const statusLabel = status === 'reference' ? 'Reference' : status === 'applied' ? 'Apply' : 'Remove';
+  const result = await openDecisionModal({ statusLabel, noteRequired: status === 'removed' });
+  if (!result) return;
+  const { qualityTag, qualityRating, note: reason } = result;
+  const decidedBy = (state.userName || '').trim() || null;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-decisions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag })
+      body: JSON.stringify({ contributionId, status, reason, decidedBy, qualityTag, qualityRating })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
