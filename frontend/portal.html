@@ -7507,9 +7507,13 @@
          (GET pitch-summary + recommendation-comments, POST cmo-narrative,
          the PPT export, and the client-approve/approve-budget-overall
          actions). Left = budget/dashboards/narrative/export, per Todd's
-         "presented budget to the left"; right = the conversation, same
-         avatar-chip visual language as Team Collaboration above but its
-         own persisted thread. -->
+         "presented budget to the left"; right = the AI Brain dialogue —
+         2026-09-15 follow-on, per direct correction: "Comments are not
+         comments. They are the AI Brain dialogue with the user reviewing
+         the plan and making live changes" — a real two-way conversation
+         with its own persisted thread, not a passive comment log; see
+         cmpRenderPitchRight()'s own comment for how a reply can carry a
+         live, applicable budget suggestion. -->
     <div class="cmp-pitch-overlay" id="cmpPitchOverlay" onclick="cmpCloseRecommendationPitch()"></div>
     <div class="cmp-pitch-panel" id="cmpPitchPanel">
       <div class="cmp-pitch-head">
@@ -7522,11 +7526,12 @@
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
         <div class="cmp-pitch-right">
+          <div style="padding:14px 22px 0;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);">AI Brain Dialogue</div>
           <div class="cmp-pitch-right-body" id="cmpPitchRightBody"></div>
           <div class="cmp-pitch-right-input">
             <div class="cmp-team-chat-input-row">
               <div class="cmp-team-chat-avatar" style="background:#2F0D4D;">✦</div>
-              <textarea id="cmpRecoCommentText" rows="1" placeholder="Comment on this budget…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpRecoSendComment();}"></textarea>
+              <textarea id="cmpRecoCommentText" rows="1" placeholder="Tell the AI Brain what to review or change…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpRecoSendComment();}"></textarea>
             </div>
             <div class="cmp-team-chat-toolbar">
               <div class="cmp-template-search-row" id="cmpRecoActorRoleRow" style="margin:0;"></div>
@@ -7699,39 +7704,23 @@
           <div class="module-body">
             <p class="cmp-stage-note" id="cmpPickupLockNote" style="padding:0 0 14px;">Unlocks once this campaign is created above — real data, not a placeholder screen, the moment there's a campaign to show it for.</p>
             <div id="cmpPickupFields" style="display:none;">
-              <!-- 2026-09-15, per direct instruction: "add the free form
-                   text or voice option for users to tell us what they want
-                   to accomplish in plain text with a back and forth
-                   questions with our AI brain instead of asking user to
-                   select a campaign w/o understanding what exists in the
-                   platform and what performed well... recommend similar
-                   campaigns based on the dialogue and overall corporate
-                   goals driving KPI recommendations... Lifecycle Stage and
-                   Goals will generate a draft brief and pre-select details."
-                   Text-first build (voice is a deliberate, separate
-                   follow-on — see cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md).
-                   Sits above the existing search/recommendation row, which
-                   stays as a manual fallback rather than being replaced —
-                   see cmpIntakeSendMessage()/cmpRenderIntakeChat() below. -->
-              <div class="cmp-intake" id="cmpIntake">
-                <p class="lede" style="margin-bottom:12px;">Tell the AI Brain what you want this campaign to accomplish — in your own words. It knows this account's real campaign history, real performance, and your Corporate Goals, and will ask what it needs to recommend the right starting point.</p>
-                <div class="cmp-intake-body" id="cmpIntakeBody"></div>
-                <div class="cmp-intake-input-row">
-                  <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
-                  <!-- 2026-09-15 — voice, wired to a real ElevenLabs Conversational
-                       AI agent (Verilume, agent_1901m2jpy694em5v6nkc249vs0ec) via
-                       cmpIntakeStartVoice()/cmpIntakeStopVoice(). Toggle button:
-                       click to start, click again to end. -->
-                  <button type="button" class="cmp-intake-mic-btn" id="cmpIntakeMicBtn" data-state="idle" onclick="cmpIntakeToggleVoice()" title="Talk to the AI Brain" aria-label="Start voice conversation">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
-                  </button>
-                  <button type="button" class="btn-primary" id="cmpIntakeSendBtn" onclick="cmpIntakeSendMessage()">Send</button>
-                </div>
-                <p class="cmp-intake-voice-status" id="cmpIntakeVoiceStatus" style="display:none;"></p>
-                <div id="cmpIntakeRecommendations"></div>
-              </div>
-              <p class="lede" style="margin:22px 0 14px;border-top:1px solid var(--line);padding-top:18px;">Prefer to just pick one yourself? Search or browse below — funding isn't copied (it's tied to a specific budget allocation), and everything copied in stays fully editable in the stages ahead.</p>
-              <div class="template-rec-row" id="cmpTemplateRecRow"></div>
+              <!-- 2026-09-15 reorder, per direct instruction: "Move Search
+                   for campaign to the top under campaign objectives title.
+                   Output should be the original copy from the campaign to
+                   begin the dialogue. It will be the user output after
+                   selecting. Follow by AI brain follow-up questions." Search
+                   + the suggested-campaign cards now sit first, right under
+                   this stage's own "Campaign Objectives" h2 — picking either
+                   one no longer silently copies fields (that used to jump
+                   straight to Lifecycle Stage & Goals); it seeds the AI
+                   Brain dialogue below with that campaign's real field
+                   summary as the opening line, and the AI Brain asks its
+                   own follow-up questions from there. See
+                   cmpStartDialogueFromCampaign()/cmpCampaignOriginalCopy()
+                   below. Round 132e's search-ranking logic itself
+                   (cmpTemplateSearchRank() etc.) is unchanged — only where
+                   this block sits and what selecting a result does. -->
+              <p class="lede" style="margin-bottom:12px;">Already have a campaign in mind to build from? Search for it below — picking one starts the conversation with that campaign's real setup already on the table, and the AI Brain takes it from there.</p>
               <!-- Round 132e (2026-08-09), per direct correction: "Make sure
                    that search is as easy as possible and intent is used vs
                    exact — similar to writing prompts. Apple Maps address
@@ -7758,8 +7747,55 @@
                   <div class="cmp-search-results" id="cmpTemplateSearchResults" role="listbox" style="display:none;"></div>
                 </div>
               </div>
-              <div class="btn-row" style="margin-top:16px;">
-                <button type="button" class="btn-primary" onclick="cmpSkipPickupAndContinue()">Skip — start from scratch →</button>
+              <div class="template-rec-row" id="cmpTemplateRecRow" style="margin-top:14px;"></div>
+
+              <!-- 2026-09-15, per direct instruction: "add the free form
+                   text or voice option for users to tell us what they want
+                   to accomplish in plain text with a back and forth
+                   questions with our AI brain instead of asking user to
+                   select a campaign w/o understanding what exists in the
+                   platform and what performed well... recommend similar
+                   campaigns based on the dialogue and overall corporate
+                   goals driving KPI recommendations... Lifecycle Stage and
+                   Goals will generate a draft brief and pre-select details."
+                   Title/copy replaced 2026-09-15 follow-on, per direct
+                   instruction (verbatim, not paraphrased). See
+                   cmpIntakeSendMessage()/cmpRenderIntakeChat() below. -->
+              <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;">
+                <h3 style="margin:0 0 6px;">Create Your New Program</h3>
+                <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
+                <div class="cmp-intake-body" id="cmpIntakeBody"></div>
+                <div class="cmp-intake-input-row">
+                  <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
+                  <!-- 2026-09-15 — voice, wired to a real ElevenLabs Conversational
+                       AI agent (Verilume, agent_1901m2jpy694em5v6nkc249vs0ec) via
+                       cmpIntakeStartVoice()/cmpIntakeStopVoice(). Toggle button:
+                       click to start, click again to end. -->
+                  <button type="button" class="cmp-intake-mic-btn" id="cmpIntakeMicBtn" data-state="idle" onclick="cmpIntakeToggleVoice()" title="Talk to the AI Brain" aria-label="Start voice conversation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                  </button>
+                  <button type="button" class="btn-primary" id="cmpIntakeSendBtn" onclick="cmpIntakeSendMessage()">Send</button>
+                </div>
+                <p class="cmp-intake-voice-status" id="cmpIntakeVoiceStatus" style="display:none;"></p>
+                <div id="cmpIntakeRecommendations"></div>
+              </div>
+
+              <!-- 2026-09-15 rename, per direct instruction: "Alternatively
+                   users can just say link me to the campaign creation form
+                   (equivalent of Skip - Start From Scratch). Go To Campaign
+                   Creation (Shows full lifecycle marketing view before the
+                   pitch view when taking this path)." Same
+                   cmpSkipPickupAndContinue() target as before (opens
+                   Lifecycle Stage & Goals directly — that already IS "the
+                   full lifecycle marketing view before the pitch view", the
+                   AI Brain Recommendation screen is never auto-opened on
+                   this path) — only the label changed. The typed-phrase
+                   equivalent ("link me to the campaign creation form") is
+                   handled inside cmpIntakeSendMessage() via
+                   cmpIntakeDetectSkipIntent() below, so saying it in the
+                   dialogue does the same thing as clicking this button. -->
+              <div class="btn-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px;">
+                <button type="button" class="btn-ghost" onclick="cmpSkipPickupAndContinue()">Go To Campaign Creation →</button>
               </div>
             </div>
           </div>
@@ -7801,12 +7837,19 @@
             </div>
             <span class="chevron" style="transform:none;">↗</span>
           </div>
-          <div class="module-body" style="max-height:none !important;padding-bottom:28px;">
-            <p class="cmp-stage-note" id="cmpRecommendationLockNote" style="padding:0 0 14px;">Unlocks once this campaign is created above — the strategy pitch, dashboards, and budget approval build from this campaign's real data.</p>
-            <div id="cmpRecommendationFields" style="display:none;">
-              <p class="lede" style="margin:0 0 14px;">The full strategy pitch — dashboards, the AI Brain's CMO narrative, PowerPoint export, and client budget approval — opens as its own screen.</p>
-              <div class="btn-row"><button type="button" class="btn-primary" onclick="cmpOpenRecommendationPitch()">Open AI Brain Recommendation →</button></div>
-            </div>
+          <!-- 2026-09-15 follow-on, per direct correction: "You don't need
+               a second click. Just show the page." Clicking the header
+               above already opens the full pitch presentation directly
+               (cmpOpenRecommendationPitch()) — this body used to also show
+               a teaser paragraph plus its own "Open AI Brain
+               Recommendation →" button, a second, redundant click target
+               doing the exact same thing. Removed; the body is now just
+               the locked-state note (before a campaign exists) with
+               nothing to click once unlocked — the header is the only
+               interaction this card needs. -->
+          <div class="module-body" style="max-height:none !important;padding-bottom:14px;">
+            <p class="cmp-stage-note" id="cmpRecommendationLockNote" style="padding:0;">Unlocks once this campaign is created above — the strategy pitch, dashboards, and budget approval build from this campaign's real data.</p>
+            <div id="cmpRecommendationFields" style="display:none;"></div>
           </div>
         </div>
 
@@ -35619,13 +35662,17 @@ function renderCmpPickupStage(){
   // .template-rec-actions wrapper, pinned to the bottom of the card
   // (margin-top:auto, relying on .template-rec-card already being a
   // column flexbox) and centered — see the matching CSS rescope.
+  // 2026-09-15, per direct instruction: selecting a campaign here now
+  // starts the AI Brain dialogue with that campaign's real setup as the
+  // opening line (cmpStartDialogueFromCampaign()), same as the search box
+  // right above it — it no longer silently copies fields and jumps ahead.
   row.innerHTML = recs.length ? recs.map(c => `
     <div class="template-rec-card">
       <div class="template-rec-name">${escapeHtml(c.name || c.objective || '(untitled campaign)')}</div>
       <div class="template-rec-id">${escapeHtml(c.id)}</div>
       <div class="template-rec-actions">
         <div class="template-rec-match">${escapeHtml(cmpTemplateMatchLabel(c))}</div>
-        <button type="button" class="btn-ghost" onclick="cmpApplyTemplate('${c.id}')">Use as template →</button>
+        <button type="button" class="btn-ghost" onclick="cmpStartDialogueFromCampaign('${c.id}')">Start from this campaign →</button>
       </div>
     </div>
   `).join('') : '<div class="hint">No other campaigns exist yet to recommend.</div>';
@@ -35647,14 +35694,47 @@ let cmpIntakeHistory = [];
 let cmpIntakeCampaignId = null;
 let cmpIntakeBusy = false;
 let cmpIntakeLastExtracted = null;
+// 2026-09-15 follow-on, per direct instruction: "Maintain the original
+// dialogue when someone navigates back and maintain the thread as they move
+// forward from page to page for continuity." The conversation already
+// survives in-app stage navigation (this module-level array only resets
+// below when the loaded campaign itself changes) — but a real browser
+// reload or a "navigate back" that leaves and returns to the portal used to
+// lose it outright, since nothing ever persisted it. Best-effort
+// localStorage persistence closes that gap without a backend/DB change:
+// keyed per campaign, capped, and wrapped in try/catch (same
+// graceful-degrade posture as every other localStorage use in this file —
+// see sessionStorageKey()/cwLastUsedStorageKey() above). If storage is
+// unavailable (private window, quota, etc.) the conversation still works
+// for the current page session, it just won't survive a reload.
+function cmpIntakeStorageKey(campaignId){
+  return `cmpIntakeHistory:${campaignId}`;
+}
+function cmpSaveIntakeHistory(){
+  if (!cmpIntakeCampaignId) return;
+  try {
+    // Capped at the last 40 turns — plenty for continuity, bounded so a
+    // very long-lived campaign conversation can't grow this unboundedly.
+    localStorage.setItem(cmpIntakeStorageKey(cmpIntakeCampaignId), JSON.stringify(cmpIntakeHistory.slice(-40)));
+  } catch (e) { /* localStorage unavailable — conversation still works this page session */ }
+}
+function cmpLoadIntakeHistory(campaignId){
+  try {
+    const raw = localStorage.getItem(cmpIntakeStorageKey(campaignId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) { return []; }
+}
 // The stage's own render (renderCmpPickupStage(), called any time the
-// loaded campaign changes) calls this — a fresh campaign should start a
-// fresh conversation, not carry over context from whatever was discussed
-// for a previous one.
+// loaded campaign changes) calls this — switching to a genuinely different
+// campaign restores THAT campaign's own saved thread (if any) rather than
+// always starting blank, so re-opening a campaign you were mid-conversation
+// on continues where it left off.
 function cmpMaybeResetIntake(campaignId){
   if (cmpIntakeCampaignId === campaignId) return;
   cmpIntakeCampaignId = campaignId;
-  cmpIntakeHistory = [];
+  cmpIntakeHistory = cmpLoadIntakeHistory(campaignId);
   cmpIntakeLastExtracted = null;
   cmpRenderIntakeChat();
   const recEl = document.getElementById('cmpIntakeRecommendations');
@@ -35676,6 +35756,7 @@ function cmpRenderIntakeChat(){
     </div>`;
   }).join('') : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>';
   body.scrollTop = body.scrollHeight;
+  cmpSaveIntakeHistory();
 }
 // 2026-09-15 (direct instruction, after a real production-shaped failure
 // mid-conversation during Todd's own test: "we can't have that in a
@@ -35704,17 +35785,28 @@ async function cmpFetchJsonWithRetry(url, options, maxAttempts = 3, baseDelayMs 
   }
   throw lastErr;
 }
-async function cmpIntakeSendMessage(){
-  if (cmpIntakeBusy) return;
-  const campaign = cmpRailLoadedCampaign();
-  if (!campaign) return;
-  const textEl = document.getElementById('cmpIntakeText');
-  const message = textEl ? textEl.value.trim() : '';
-  if (!message) return;
-  cmpIntakeHistory.push({ role: 'user', text: message });
-  cmpRenderIntakeChat();
-  textEl.value = '';
-  textEl.style.height = '';
+// 2026-09-15, per direct instruction: "Alternatively users can just say
+// link me to the campaign creation form (equivalent of Skip - Start From
+// Scratch)." A lightweight client-side phrase check — not a model call —
+// since this is a literal shortcut, not something that needs the AI
+// Brain's judgment. Deliberately conservative (a handful of explicit
+// phrasings) so it never intercepts a genuine campaign-goal message that
+// happens to mention "campaign" or "start"; a false negative just means the
+// AI Brain answers normally (harmless), while a false positive would skip
+// the dialogue the user was actually trying to have.
+function cmpIntakeDetectSkipIntent(message){
+  const m = message.toLowerCase().trim();
+  return /^(link me to|take me to|go to|open)\s+(the\s+)?campaign creation( form)?\.?$/.test(m)
+    || /^skip\b.*(start from scratch|scratch)/.test(m)
+    || /^start (from )?scratch\.?$/.test(m);
+}
+// Shared exchange logic — one real AI Brain turn, given the user-facing
+// message already pushed onto cmpIntakeHistory by the caller (either a
+// typed message via cmpIntakeSendMessage(), or a selected campaign's real
+// field summary via cmpStartDialogueFromCampaign()). Pulled out so both
+// paths share one retry/error/render behavior rather than two copies that
+// could drift.
+async function cmpIntakeExchange(message){
   cmpIntakeBusy = true;
   const sendBtn = document.getElementById('cmpIntakeSendBtn');
   if (sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Thinking…'; }
@@ -35730,13 +35822,59 @@ async function cmpIntakeSendMessage(){
       cmpRenderIntakeRecommendations(data.extracted, data.recommendedCampaigns || []);
     }
   } catch (e){
-    cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search below to pick an existing campaign instead.' });
-    console.warn('cmpIntakeSendMessage failed after retries:', e);
+    cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search above to pick a different starting campaign.' });
+    console.warn('cmpIntakeExchange failed after retries:', e);
   } finally {
     cmpIntakeBusy = false;
     if (sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
     cmpRenderIntakeChat();
   }
+}
+async function cmpIntakeSendMessage(){
+  if (cmpIntakeBusy) return;
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  const textEl = document.getElementById('cmpIntakeText');
+  const message = textEl ? textEl.value.trim() : '';
+  if (!message) return;
+  if (cmpIntakeDetectSkipIntent(message)){
+    textEl.value = '';
+    textEl.style.height = '';
+    cmpSkipPickupAndContinue();
+    return;
+  }
+  cmpIntakeHistory.push({ role: 'user', text: message });
+  cmpRenderIntakeChat();
+  textEl.value = '';
+  textEl.style.height = '';
+  await cmpIntakeExchange(message);
+}
+// 2026-09-15, per direct instruction: "Output should be the original copy
+// from the campaign to begin the dialogue. It will be the user output
+// after selecting. Follow by AI brain follow-up questions." Builds a real,
+// field-derived summary of the SOURCE campaign (never fabricated prose —
+// same "compute it from real fields" convention as generateCampaignBrief()
+// for the campaign actually being built) and feeds it into the dialogue as
+// the opening line, exactly as if the user had typed it — the AI Brain then
+// asks its own follow-up questions from there, same code path as any other
+// turn (cmpIntakeExchange()).
+function cmpCampaignOriginalCopy(c){
+  const audience = (c.segment || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
+  const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
+  const pg = (c.productGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
+  const cfg = (c.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
+  return `I'd like to build a new campaign starting from "${c.name || c.id}" (${c.id}). That campaign: Lifecycle Stage ${c.stage || 'TBD'}, Objective ${c.objective || 'TBD'}, Audience ${audience}, Channels ${channels}, Product Group ${pg}, Creative Focus Group ${cfg}.`;
+}
+async function cmpStartDialogueFromCampaign(campaignId){
+  if (cmpIntakeBusy) return;
+  const source = state.campaigns.find(x => x.id === campaignId);
+  const campaign = cmpRailLoadedCampaign();
+  if (!source || !campaign) return;
+  cmpCloseTemplateSearchDropdown();
+  const message = cmpCampaignOriginalCopy(source);
+  cmpIntakeHistory.push({ role: 'user', text: message, sourceCampaignId: source.id });
+  cmpRenderIntakeChat();
+  await cmpIntakeExchange(message);
 }
 // 2026-09-15 — voice, the "logical next step" after the text-first build
 // (see the block comment above cmpIntake's own <div>). Talks to the same
@@ -35865,8 +36003,20 @@ async function cmpIntakeStopVoice(){
 // page" as real fields, not a summary of one AI conversation. See
 // cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md.
 // ---------------------------------------------------------------------
-let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], actorRole: 'client', actorName: '' };
+let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: 'client', actorName: '' };
 
+// 2026-09-15 follow-on, per Todd's real report of "Recommendations did not
+// load" against a real campaign — two fixes here, on top of the backend
+// hardening (try/catch + logging) added to both endpoints:
+// 1) Promise.all() meant ONE endpoint failing blanked the whole screen even
+//    if the other succeeded — switched to Promise.allSettled() so the
+//    dashboards can still render off a good pitch-summary even if the
+//    dialogue thread failed to load, and vice versa.
+// 2) The error text is now the real one from the failed request(s)
+//    (cmpFetchJsonWithRetry throws `HTTP ${status}` on a non-2xx response,
+//    or the network error's own message) instead of one generic sentence
+//    — and a Retry button re-runs this function for the same campaign
+//    instead of requiring a full close/reopen.
 async function cmpOpenRecommendationPitch(){
   const campaign = cmpRailLoadedCampaign();
   const overlay = document.getElementById('cmpPitchOverlay');
@@ -35877,20 +36027,26 @@ async function cmpOpenRecommendationPitch(){
   document.body.style.overflow = 'hidden';
   const subhead = document.getElementById('cmpPitchSubhead');
   if (subhead) subhead.textContent = campaign.name || campaign.id || '';
-  if (cmpRecoState.campaignId !== campaign.id){
-    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], actorRole: 'client', actorName: cmpRecoState.actorName || '' };
+  const isRetry = cmpRecoState.campaignId === campaign.id && (cmpRecoState.error || cmpRecoState.commentsError);
+  if (cmpRecoState.campaignId !== campaign.id || isRetry){
+    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '' };
     cmpRenderPitchLeft(campaign);
     cmpRenderPitchRight(campaign);
-    try {
-      const [summary, commentsResp] = await Promise.all([
-        cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {}),
-        cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {})
-      ]);
-      cmpRecoState.summary = summary;
-      cmpRecoState.comments = commentsResp.comments || [];
-    } catch (e){
-      console.warn('cmpOpenRecommendationPitch: load failed', e);
-      cmpRecoState.error = 'Could not load this campaign\'s recommendation data. Close and reopen to retry.';
+    const [summaryResult, commentsResult] = await Promise.allSettled([
+      cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {}),
+      cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {})
+    ]);
+    if (summaryResult.status === 'fulfilled'){
+      cmpRecoState.summary = summaryResult.value;
+    } else {
+      console.warn('cmpOpenRecommendationPitch: pitch-summary load failed', summaryResult.reason);
+      cmpRecoState.error = `Could not load this campaign's recommendation data (${(summaryResult.reason && summaryResult.reason.message) || 'unknown error'}).`;
+    }
+    if (commentsResult.status === 'fulfilled'){
+      cmpRecoState.comments = commentsResult.value.comments || [];
+    } else {
+      console.warn('cmpOpenRecommendationPitch: recommendation-comments load failed', commentsResult.reason);
+      cmpRecoState.commentsError = `Could not load the AI Brain dialogue (${(commentsResult.reason && commentsResult.reason.message) || 'unknown error'}).`;
     }
     cmpRecoState.loading = false;
   }
@@ -35999,21 +36155,56 @@ async function cmpRecoApproveOverall(){
   cmpOpenRecommendationPitch();
 }
 
+// 2026-09-15 follow-on, per direct correction: "Comments are not comments.
+// They are the AI Brain dialogue with the user reviewing the plan and
+// making live changes." Every send now gets a real AI Brain reply from the
+// backend (same request, one round trip — see the POST endpoint's own
+// comment for what it does), which may include a concrete budget
+// suggestion the user can apply — see cmpRecoApplySuggestion() below. The
+// response already includes the full updated thread (`comments`), so this
+// no longer needs a second GET just to refresh it.
+let cmpRecoDialogueBusy = false;
 async function cmpRecoSendComment(){
+  if (cmpRecoDialogueBusy) return;
   const campaign = cmpRailLoadedCampaign();
   const input = document.getElementById('cmpRecoCommentText');
   const text = input ? input.value.trim() : '';
   if (!campaign || !text) return;
   input.value = '';
+  cmpRecoDialogueBusy = true;
+  cmpRecoState.commentsError = null;
+  cmpRenderPitchRight(campaign);
   try {
-    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {
+    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, authorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'), authorRole: cmpRecoState.actorRole })
     });
-    const commentsResp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {});
-    cmpRecoState.comments = commentsResp.comments || [];
-  } catch (e){ console.warn('cmpRecoSendComment failed:', e); }
+    cmpRecoState.comments = resp.comments || cmpRecoState.comments;
+  } catch (e){
+    console.warn('cmpRecoSendComment failed:', e);
+    cmpRecoState.commentsError = `Could not send that to the AI Brain dialogue (${(e && e.message) || 'unknown error'}).`;
+  }
+  cmpRecoDialogueBusy = false;
   cmpRenderPitchRight(campaign);
+}
+// Applies an AI Brain-proposed budget change via the existing, human-
+// triggered PATCH endpoint — the AI never writes the real budget itself
+// (see the backend endpoint's own comment); this is the one explicit click
+// that turns a proposal into a real change, same approval-gated posture as
+// line/overall budget approval elsewhere on this screen.
+async function cmpRecoApplySuggestion(entryId, newBudget){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  try {
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ budget: newBudget })
+    });
+  } catch (e){ console.warn('cmpRecoApplySuggestion failed:', e); }
+  // Refresh from the server — a real applied change, worth confirming it
+  // stuck, same convention as cmpRecoApproveLine()/cmpRecoApproveOverall().
+  cmpRecoState.campaignId = null;
+  cmpOpenRecommendationPitch();
 }
 
 // PowerPoint export — pptxgenjs loaded lazily from CDN, same "not fully
@@ -36097,7 +36288,10 @@ function cmpRenderPitchLeft(campaign){
   if (!mount) return;
   const s = cmpRecoState;
   if (s.loading){ mount.innerHTML = `<p class="lede">Loading this campaign's recommendation…</p>`; return; }
-  if (s.error && !s.summary){ mount.innerHTML = `<p class="lede">${escapeHtml(s.error)}</p>`; return; }
+  if (s.error && !s.summary){
+    mount.innerHTML = `<p class="lede">${escapeHtml(s.error)}</p><div class="btn-row"><button type="button" class="btn-primary" onclick="cmpOpenRecommendationPitch()">Retry →</button></div>`;
+    return;
+  }
   const summary = s.summary || {};
   const loopRows = cmpRecoLoopStageRows(summary);
   const mixRows = cmpRecoChannelMixRows(summary);
@@ -36160,9 +36354,17 @@ function cmpRenderPitchLeft(campaign){
   `;
 }
 
-// Right panel — the conversation. Same avatar-chip visual language as Team
-// Collaboration, its own persisted thread. Only fills the body + the
-// actor-role toggle; the input row itself is static HTML (#cmpPitchPanel).
+// Right panel — the AI Brain dialogue. 2026-09-15 follow-on, per direct
+// correction: "Comments are not comments. They are the AI Brain dialogue
+// with the user reviewing the plan and making live changes." Renamed
+// throughout (was "comments"/"conversation"); AI Brain turns render with
+// the same purple ✦ avatar the Campaign Objectives dialogue uses, and a
+// turn carrying a suggestionJson renders an inline proposal card with a
+// real "Apply" action (cmpRecoApplySuggestion()) — see the POST endpoint's
+// own comment for how that suggestion gets generated and validated. Same
+// avatar-chip visual language as Team Collaboration; only fills the body +
+// the actor-role toggle, the input row itself is static HTML
+// (#cmpPitchPanel).
 function cmpRenderPitchRight(campaign){
   const bodyMount = document.getElementById('cmpPitchRightBody');
   const roleMount = document.getElementById('cmpRecoActorRoleRow');
@@ -36172,12 +36374,36 @@ function cmpRenderPitchRight(campaign){
       .map(([key, label]) => `<button type="button" class="stage-tile${s.actorRole === key ? ' selected' : ''}" onclick="cmpRecoSetActorRole('${key}')">${label}</button>`).join('');
   }
   if (!bodyMount) return;
-  if (s.loading){ bodyMount.innerHTML = `<p class="lede">Loading…</p>`; return; }
-  bodyMount.innerHTML = s.comments.length ? s.comments.map(c => `
-    <div style="display:flex;gap:10px;align-items:flex-start;">
-      <div class="cmp-team-chat-avatar" style="background:${cmpAvatarColor(c.authorName || c.authorRole)};">${escapeHtml(cmpInitials(c.authorName || (c.authorRole === 'cx_ops' ? 'CX' : 'AT')))}</div>
-      <div><div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(c.authorName || (c.authorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'))}</div><div>${escapeHtml(c.text)}</div></div>
-    </div>`).join('') : '<p class="lede">No comments yet — start the conversation below.</p>';
+  if (s.loading){ bodyMount.innerHTML = `<p class="lede">Loading the AI Brain dialogue…</p>`; return; }
+  if (s.commentsError && !s.comments.length){
+    bodyMount.innerHTML = `<p class="lede">${escapeHtml(s.commentsError)}</p><div class="btn-row"><button type="button" class="btn-primary" onclick="cmpOpenRecommendationPitch()">Retry →</button></div>`;
+    return;
+  }
+  const rows = s.comments.map(c => {
+    const isAi = c.authorRole === 'ai_brain';
+    const author = isAi ? 'AI Brain' : (c.authorName || (c.authorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'));
+    let suggestionHtml = '';
+    if (c.suggestionJson){
+      let sug = null;
+      try { sug = JSON.parse(c.suggestionJson); } catch (e) { sug = null; }
+      if (sug && sug.entryId){
+        suggestionHtml = `
+          <div class="cmp-intake-summary" style="margin-top:8px;">
+            <b>Proposed change:</b> ${escapeHtml(sug.channel || 'this line')} → ${fmtMoney(Number(sug.newBudget) || 0)}
+            ${sug.rationale ? `<br><span style="color:var(--muted);">${escapeHtml(sug.rationale)}</span>` : ''}
+            <div class="btn-row" style="margin-top:8px;">
+              <button type="button" class="btn-ghost" onclick="cmpRecoApplySuggestion('${sug.entryId}', ${Number(sug.newBudget) || 0})">Apply this change →</button>
+            </div>
+          </div>`;
+      }
+    }
+    return `<div style="display:flex;gap:10px;align-items:flex-start;">
+      <div class="cmp-team-chat-avatar" style="background:${isAi ? '#2F0D4D' : cmpAvatarColor(c.authorName || c.authorRole)};">${escapeHtml(isAi ? '✦' : cmpInitials(c.authorName || (c.authorRole === 'cx_ops' ? 'CX' : 'AT')))}</div>
+      <div><div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(author)}</div><div>${escapeHtml(c.text)}</div>${suggestionHtml}</div>
+    </div>`;
+  });
+  if (cmpRecoDialogueBusy) rows.push(`<div style="display:flex;gap:10px;align-items:flex-start;"><div class="cmp-team-chat-avatar" style="background:#2F0D4D;">✦</div><div class="lede">Reviewing…</div></div>`);
+  bodyMount.innerHTML = rows.length ? rows.join('') : '<p class="lede">No dialogue yet — tell the AI Brain what you\'re reviewing or changing below.</p>';
   bodyMount.scrollTop = bodyMount.scrollHeight;
 }
 
@@ -36471,12 +36697,16 @@ function cmpCloseTemplateSearchDropdown(){
 function cmpHandleTemplateSearchBlur(){
   setTimeout(cmpCloseTemplateSearchDropdown, 150);
 }
+// 2026-09-15, per direct instruction: selecting a search result no longer
+// silently copies fields and jumps ahead — it starts the AI Brain dialogue
+// with this campaign's real setup as the opening line. See
+// cmpStartDialogueFromCampaign()/cmpCampaignOriginalCopy().
 function cmpSelectTemplateSearchResult(campaignId){
   const c = state.campaigns.find(x => x.id === campaignId);
   cmpCloseTemplateSearchDropdown();
   const field = document.getElementById('cmpTemplateSearch');
   if (field && c) field.value = c.name || c.objective || c.id;
-  if (c) cmpApplyTemplate(c.id);
+  if (c) cmpStartDialogueFromCampaign(c.id);
 }
 
 function resetCampaignForm(){
