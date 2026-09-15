@@ -1643,10 +1643,25 @@ createTableIfNeeded(`
     authorName TEXT,
     authorRole TEXT,
     text TEXT NOT NULL,
+    suggestionJson TEXT,
     createdAt TEXT NOT NULL,
     FOREIGN KEY (campaignId) REFERENCES campaigns(id)
   );
 `);
+// 2026-09-15 follow-on, per direct correction: "Comments are not comments.
+// They are the AI Brain dialogue with the user reviewing the plan and
+// making live changes." suggestionJson holds an optional structured
+// proposal the AI Brain makes in its reply (e.g. a channel budget
+// reallocation) — {channel, entryId, newBudget, rationale} — that the
+// frontend renders as an "Apply" action against the real, already-existing
+// PATCH /api/campaigns/:id/channel-planning/:entryId endpoint. authorRole
+// gains a third value here, 'ai_brain', alongside the existing 'client'/
+// 'cx_ops' — no schema change needed for that, it's just a string. New
+// installs get this column from CREATE TABLE above; already-deployed ones
+// get it from ensureColumn() below — both required, same "deploy BOTH
+// files together" schema-identifiers.json convention as everywhere else in
+// this file (suggestionJson registered there and in LEGACY_CASING_COLUMNS).
+ensureColumn('campaign_recommendation_comments', 'suggestionJson', 'TEXT');
 
 // channel_planning_upload_batches — 2026-09-11, the Marketing Calendar
 // "create campaigns from a file" bulk uploader (per direct instruction:
@@ -10591,6 +10606,7 @@ const LEGACY_CASING_COLUMNS = [
   ['campaign_recommendation_comments', 'campaignId'],
   ['campaign_recommendation_comments', 'createdAt'],
   ['campaign_recommendation_comments', 'text'],
+  ['campaign_recommendation_comments', 'suggestionJson'],
   ['campaigns', 'accountId'],
   ['campaigns', 'actualConversions'],
   ['campaigns', 'actualImpressions'],
@@ -21499,31 +21515,151 @@ Submit your response via the campaign_intake_turn tool.`;
     // Recommendation screen. Persisted (unlike Team Collaboration's
     // session-only chat) since this is a real client-facing budget
     // conversation, not ephemeral chatter.
+    //
+    // 2026-09-15 follow-on hardening, per Todd's real (not fabricated-demo)
+    // report of "Recommendations did not load" against a real campaign
+    // ("TEST - ANTARCTICA LAUNCH CAMPAIGN"): handleRequest()'s own top-level
+    // try/catch already turns any thrown error here into a real 500 with
+    // e.message, so this was never a silent hang — but neither this
+    // endpoint nor pitch-summary below said anything about WHICH row or
+    // query failed, so there was nothing to go on from the generic "Could
+    // not load" text the frontend showed. Added an explicit try/catch here
+    // that logs the campaignId and the real error before falling through to
+    // the same 500 shape, so the next occurrence is diagnosable from server
+    // logs instead of guessed at. Table/column casing was checked directly
+    // as part of this fix (campaign_recommendation_comments and its columns
+    // are all present in schema-identifiers.json and LEGACY_CASING_COLUMNS
+    // already — see those arrays) and was NOT the cause; this endpoint's
+    // own query is otherwise unchanged.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'recommendation-comments'){
       const campaignId = decodeURIComponent(parts[2]);
-      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
-      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
-      if (!requireAccount(req, res, campaign.accountId)) return;
-      const rows = db.prepare('SELECT * FROM campaign_recommendation_comments WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
-      return sendJson(res, 200, { comments: rows });
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        const rows = db.prepare('SELECT * FROM campaign_recommendation_comments WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        return sendJson(res, 200, { comments: rows });
+      } catch (e){
+        console.error(`[GET /api/campaigns/:id/recommendation-comments] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not load this campaign\'s AI Brain dialogue.', detail: e.message });
+      }
     }
 
-    // POST /api/campaigns/:id/recommendation-comments
+    // POST /api/campaigns/:id/recommendation-comments — 2026-09-15 follow-on,
+    // per direct correction: "Comments are not comments. They are the AI
+    // Brain dialogue with the user reviewing the plan and making live
+    // changes." A human turn now gets a real AI Brain reply, not just a
+    // passive log entry — same callClaudeForJSON()/silent-one-retry
+    // convention as cmo-narrative and campaign-intake above. The AI Brain
+    // reads the actual plan (loop stage, channels, real budget lines) and
+    // this thread's own recent history, and may propose ONE concrete
+    // change — reusing the master-budget-consistency principle (campaigns
+    // draw from the real allocations, never an invented number) — as
+    // suggestionJson: {channel, entryId, newBudget, rationale}. It never
+    // applies that change itself; the frontend renders an explicit "Apply"
+    // action against the existing, human-triggered PATCH
+    // /api/campaigns/:id/channel-planning/:entryId endpoint (same approval-
+    // gated pattern as line/overall budget approval elsewhere on this
+    // screen) — the AI proposes, a person applies.
+    const RECO_DIALOGUE_REPLY_SCHEMA = {
+      type: 'object',
+      properties: {
+        reply: { type: 'string', description: 'Your reply reviewing the plan or answering the question just asked — specific to this campaign\'s real numbers, never generic filler.' },
+        suggestion: {
+          type: ['object', 'null'],
+          description: 'A concrete budget reallocation you are proposing, or null if you are not proposing one right now.',
+          properties: {
+            entryId: { type: 'string', description: 'The id of the existing channel_planning_details line item to change — must be one of the real line item ids given below, never invented.' },
+            channel: { type: 'string' },
+            newBudget: { type: 'number' },
+            rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
+          }
+        }
+      },
+      required: ['reply']
+    };
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'recommendation-comments'){
       const campaignId = decodeURIComponent(parts[2]);
-      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
-      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
-      if (!requireAccount(req, res, campaign.accountId)) return;
-      const body = await readBody(req);
-      const text = typeof body.text === 'string' ? body.text.trim() : '';
-      if (!text) return sendJson(res, 400, { error: 'text is required' });
-      const authorName = typeof body.authorName === 'string' ? body.authorName : '';
-      const authorRole = body.authorRole === 'cx_ops' ? 'cx_ops' : 'client';
-      const id = 'cmt_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      const now = new Date().toISOString();
-      db.prepare('INSERT INTO campaign_recommendation_comments (id, campaignId, authorName, authorRole, text, createdAt) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(id, campaignId, authorName, authorRole, text, now);
-      return sendJson(res, 200, { id, campaignId, authorName, authorRole, text, createdAt: now });
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        const body = await readBody(req);
+        const text = typeof body.text === 'string' ? body.text.trim() : '';
+        if (!text) return sendJson(res, 400, { error: 'text is required' });
+        const authorName = typeof body.authorName === 'string' ? body.authorName : '';
+        const authorRole = body.authorRole === 'cx_ops' ? 'cx_ops' : 'client';
+        const id = 'cmt_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        const now = new Date().toISOString();
+        db.prepare('INSERT INTO campaign_recommendation_comments (id, campaignId, authorName, authorRole, text, createdAt) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(id, campaignId, authorName, authorRole, text, now);
+
+        // AI Brain reply — best-effort. A failure here still leaves the
+        // human message saved above; it just doesn't get an AI reply this
+        // turn (same "the human action already succeeded" posture as every
+        // other AI-augmented write in this file).
+        if (process.env.ANTHROPIC_API_KEY){
+          try {
+            const lines = db.prepare('SELECT id, channel, budget, impressions, status FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+            const lineText = lines.length
+              ? lines.map(l => `- id=${l.id} | ${l.channel || '(no channel)'} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}`).join('\n')
+              : '(no channel plan lines entered yet)';
+            const priorRows = db.prepare('SELECT authorName, authorRole, text FROM campaign_recommendation_comments WHERE campaignId = ? ORDER BY createdAt DESC LIMIT 10').all(campaignId);
+            const priorText = priorRows.reverse().map(c => `${c.authorRole === 'ai_brain' ? 'AI Brain' : (c.authorName || (c.authorRole === 'cx_ops' ? 'Account Team' : 'Client'))}: ${c.text}`).join('\n');
+            const prompt = `You are the AI Brain reviewing a real campaign's budget plan with the team, inside a live conversation on the AI Brain Recommendation screen. This is a real back-and-forth, not a one-shot report — respond directly to what was just said.
+
+CAMPAIGN: ${campaign.name || campaignId}
+Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}
+Objective: ${campaign.objective || '(not set)'}
+
+REAL CHANNEL PLAN LINES (the only ids you may reference in a suggestion — never invent one):
+${lineText}
+
+CONVERSATION SO FAR:
+${priorText || '(nothing yet)'}
+
+The ${authorRole === 'cx_ops' ? 'account team' : 'client'} just said: "${text}"
+
+Reply directly to this, grounded only in the real numbers above. If — and only if — they're asking for or clearly implying a specific budget change to one existing line, propose it via the suggestion field with a real entryId from the list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above.
+
+Submit your response via the recommendation_dialogue_reply tool.`;
+            let parsed;
+            try {
+              parsed = await callClaudeForJSON({
+                model: 'claude-sonnet-4-5', maxTokens: 500, content: prompt,
+                toolName: 'recommendation_dialogue_reply', toolDescription: 'Submit this turn of the AI Brain plan-review dialogue.',
+                schema: RECO_DIALOGUE_REPLY_SCHEMA, timeoutMs: 20000
+              });
+            } catch (firstErr){
+              console.warn('[POST /api/campaigns/:id/recommendation-comments] AI reply first attempt failed, retrying once:', firstErr.message);
+              await new Promise(r => setTimeout(r, 800));
+              parsed = await callClaudeForJSON({
+                model: 'claude-sonnet-4-5', maxTokens: 500, content: prompt,
+                toolName: 'recommendation_dialogue_reply', toolDescription: 'Submit this turn of the AI Brain plan-review dialogue.',
+                schema: RECO_DIALOGUE_REPLY_SCHEMA, timeoutMs: 20000
+              });
+            }
+            // Validate the suggestion's entryId is a real line before
+            // persisting it — the model is instructed not to invent one,
+            // but this is the actual enforcement.
+            let suggestion = parsed.suggestion || null;
+            if (suggestion && !lines.some(l => l.id === suggestion.entryId)) suggestion = null;
+            const aiId = 'cmt_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+            const aiNow = new Date().toISOString();
+            db.prepare('INSERT INTO campaign_recommendation_comments (id, campaignId, authorName, authorRole, text, suggestionJson, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
+              .run(aiId, campaignId, 'AI Brain', 'ai_brain', parsed.reply || '', suggestion ? JSON.stringify(suggestion) : null, aiNow);
+          } catch (aiErr){
+            console.error('[POST /api/campaigns/:id/recommendation-comments] AI reply failed after retry:', aiErr.message);
+          }
+        }
+
+        const rows = db.prepare('SELECT * FROM campaign_recommendation_comments WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        return sendJson(res, 200, { id, campaignId, authorName, authorRole, text, createdAt: now, comments: rows });
+      } catch (e){
+        console.error(`[POST /api/campaigns/:id/recommendation-comments] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not save this message to the AI Brain dialogue.', detail: e.message });
+      }
     }
 
     // GET /api/campaigns/:id/pitch-summary — 2026-09-15, the AI Brain
@@ -21537,34 +21673,49 @@ Submit your response via the campaign_intake_turn tool.`;
     // constant so there's one definition of the grouping, not two.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'pitch-summary'){
       const campaignId = decodeURIComponent(parts[2]);
-      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
-      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
-      if (!requireAccount(req, res, campaign.accountId)) return;
-      const lines = db.prepare('SELECT channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
-      const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
-      const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
-      const audienceTotals = {};
-      lines.forEach(l => {
-        const key = l.audience || campaign.segment || 'Unspecified';
-        audienceTotals[key] = (audienceTotals[key] || 0) + (Number(l.budget) || 0);
-      });
-      // 2026-09-15, per direct correction: "You don't need to show the
-      // similar campaign" — the similar-campaign lookup (Stage match +
-      // conversion efficiency, same scoring as campaign-intake) was
-      // removed from this response entirely, not just hidden client-side.
-      return sendJson(res, 200, {
-        campaignId,
-        loopStage: campaign.stage || null,
-        audience: campaign.segment || null,
-        channels: (campaign.channels || '').split(',').map(s => s.trim()).filter(Boolean),
-        objective: campaign.objective || null,
-        totalSpend,
-        totalImpressions,
-        lineItems: lines,
-        audienceTotals,
-        budgetApprovedAt: campaign.budgetApprovedAt || null,
-        budgetApprovedBy: campaign.budgetApprovedBy || null
-      });
+      // 2026-09-15 hardening, per Todd's real report of "Recommendations
+      // did not load" — same explicit try/catch + logging added to
+      // recommendation-comments above, so a real failure here is
+      // diagnosable from server logs instead of a generic client message.
+      // Also fixed a real bug found while adding this: the SELECT below
+      // never included the line item's own `id`, so every "Approve line"
+      // button on the pitch screen (cmpRecoApproveLine('${l.id}')) was
+      // calling the approve endpoint with the literal string "undefined"
+      // — it would 404 silently client-side, never actually approving
+      // anything. Added `id` to the column list; nothing else changed.
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+        const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
+        const audienceTotals = {};
+        lines.forEach(l => {
+          const key = l.audience || campaign.segment || 'Unspecified';
+          audienceTotals[key] = (audienceTotals[key] || 0) + (Number(l.budget) || 0);
+        });
+        // 2026-09-15, per direct correction: "You don't need to show the
+        // similar campaign" — the similar-campaign lookup (Stage match +
+        // conversion efficiency, same scoring as campaign-intake) was
+        // removed from this response entirely, not just hidden client-side.
+        return sendJson(res, 200, {
+          campaignId,
+          loopStage: campaign.stage || null,
+          audience: campaign.segment || null,
+          channels: (campaign.channels || '').split(',').map(s => s.trim()).filter(Boolean),
+          objective: campaign.objective || null,
+          totalSpend,
+          totalImpressions,
+          lineItems: lines,
+          audienceTotals,
+          budgetApprovedAt: campaign.budgetApprovedAt || null,
+          budgetApprovedBy: campaign.budgetApprovedBy || null
+        });
+      } catch (e){
+        console.error(`[GET /api/campaigns/:id/pitch-summary] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not load this campaign\'s recommendation data.', detail: e.message });
+      }
     }
 
     // POST /api/campaigns/:id/cmo-narrative — 2026-09-15, generates the
@@ -27927,5 +28078,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
