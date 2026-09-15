@@ -1365,9 +1365,19 @@
   .cch-top{display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between;}
   .cch-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:flex-start;margin-top:10px;}
   .cch-identity{min-width:0;}
-  .cch-name{font-family:'Newsreader', Georgia, serif;font-size:1.125rem;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;}
-  .cch-code{font-family:'IBM Plex Mono', monospace;font-size:0.75rem;color:var(--muted);margin-top:2px;}
-  .cch-status-pill{display:inline-flex;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:4px 11px;border-radius:var(--radius-pill);}
+  /* 2026-09-15, per direct instruction — identity block reordered to lead
+     with the campaign ID (small, secondary) above the name, with the status
+     chip moved onto the name's own row instead of the meta row below, and
+     the start date promoted out of the small muted meta line into its own
+     larger "In Market: <date>" line (see .cch-inmarket) so it reads as a
+     real header fact, not a footnote. */
+  .cch-code{font-family:'IBM Plex Mono', monospace;font-size:0.75rem;color:var(--muted);margin:0 0 4px;}
+  .cch-name-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .cch-name{font-family:'Newsreader', Georgia, serif;font-size:1.25rem;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;}
+  .cch-status-pill{display:inline-flex;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:4px 11px;border-radius:var(--radius-pill);flex-shrink:0;}
+  /* Matches the page's own h3 rule (same family/weight/size) so "In Market:
+     <date>" reads at real H3 prominence, not as small meta text. */
+  .cch-inmarket{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:1.0312rem;color:var(--ink);margin-top:6px;}
   /* Muted navy/graphite/gold instead of the app's usual bright SaaS
      teal/blue tints — reads closer to a status label on a consulting
      deliverable than a product badge. */
@@ -1377,7 +1387,6 @@
   .cch-status-pill.cancelled{background:#F5F5F7;color:var(--muted);text-decoration:line-through;}
   .cch-cancel-link{font-size:0.75rem;color:var(--muted);cursor:pointer;text-decoration:underline;}
   .cch-cancel-link:hover{color:var(--advocacy);}
-  .cch-start-date{font-size:0.8125rem;color:var(--muted);}
   .cch-step{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.8125rem;color:var(--ink);user-select:none;}
   .cch-step:hover{color:var(--cx);}
   .cch-step .chevron{font-size:0.7em;transition:transform 0.15s;display:inline-block;}
@@ -1446,6 +1455,58 @@
   .cch-confirm{margin-top:14px;padding:12px 14px;border-radius:10px;background:#FFF4DE;border:1px solid #F0D89B;font-size:0.8125rem;display:none;}
   .cch-confirm.open{display:block;}
   .cch-confirm button{margin-right:10px;margin-top:8px;}
+  /* 2026-09-15, per direct instruction — color-coded completion bar for the
+     5 workstream categories, always visible in the header (not only inside
+     the expand panel). Same three-status palette as .cmp-module-status
+     elsewhere (var(--line)/var(--muted) not-started, var(--media)
+     in-progress, var(--cx) complete) so it reads consistently with every
+     other status indicator in the app rather than inventing new colors. */
+  .cch-progress{display:flex;gap:4px;margin-top:14px;cursor:pointer;}
+  .cch-progress-seg{flex:1;min-width:0;border-radius:8px;padding:6px 10px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.02em;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid transparent;transition:transform 0.1s;}
+  .cch-progress-seg:hover{transform:translateY(-1px);}
+  .cch-progress-seg.not-started{background:var(--white);border-color:var(--line);color:var(--muted);}
+  .cch-progress-seg.in-progress{background:#FBF6EA;border-color:var(--media);color:var(--media);}
+  .cch-progress-seg.complete{background:#EAF3EF;border-color:var(--cx);color:var(--cx);}
+  @media (max-width:700px){
+    .cch-progress{flex-wrap:wrap;}
+    .cch-progress-seg{flex:1 1 calc(33% - 4px);}
+  }
+  /* Briefly highlights a steps-panel column when a progress-bar segment is
+     clicked — see cmpJumpToCategoryColumn(). */
+  .cch-step-col.cch-col-flash{animation:cchColFlash 1.1s ease;}
+  @keyframes cchColFlash{
+    0%{background:#FBF6EA;border-radius:8px;}
+    100%{background:transparent;}
+  }
+  /* 2026-09-15, per direct instruction — "Link to View Comments... opening
+     a chat looking type interface." */
+  .cch-comments-link{font-size:0.75rem;color:var(--muted);cursor:pointer;text-decoration:underline;}
+  .cch-comments-link:hover{color:var(--advocacy);}
+  .cmp-team-chat-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.28);z-index:60;}
+  .cmp-team-chat-overlay.open{display:block;}
+  /* Slide-in panel (not a centered modal) so it sits beside the page like
+     the reference interface, with a small default footprint that grows
+     with the thread — the body scrolls internally, the input row's
+     textarea grows with cmpAutoGrowTeamChatInput() as a message gets
+     longer, and the panel's own max-height caps it well short of the
+     viewport rather than ever taking over the screen. */
+  .cmp-team-chat{display:none;flex-direction:column;position:fixed;top:0;right:0;bottom:0;width:400px;max-width:92vw;background:var(--white);box-shadow:-16px 0 40px -12px rgba(15,23,42,0.28);z-index:61;}
+  .cmp-team-chat.open{display:flex;}
+  .cmp-team-chat-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line);font-family:'Newsreader', Georgia, serif;font-size:1rem;font-weight:600;color:var(--ink);}
+  .cmp-team-chat-head a{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:400;color:var(--muted);cursor:pointer;text-decoration:underline;}
+  .cmp-team-chat-body{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px;}
+  .cmp-chat-msg{display:flex;gap:10px;align-items:flex-start;}
+  .cmp-chat-msg-body{min-width:0;flex:1;}
+  .cmp-chat-msg-meta{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--ink);margin-bottom:2px;}
+  .cmp-chat-msg-meta .ts{color:var(--muted);font-weight:400;margin-left:6px;}
+  .cmp-chat-msg-text{font-size:0.8125rem;color:var(--ink);white-space:pre-line;line-height:1.45;}
+  .cmp-team-chat-avatar{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;color:#FFFFFF;}
+  .cmp-team-chat-input{border-top:1px solid var(--line);padding:12px 18px 16px;}
+  .cmp-team-chat-input-row{display:flex;gap:10px;align-items:flex-start;}
+  .cmp-team-chat-input textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;max-height:160px;overflow-y:auto;}
+  .cmp-team-chat-toolbar{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
+  .cmp-team-chat-icons{font-size:0.8125rem;color:var(--muted);letter-spacing:0.15em;}
+  .cmp-team-chat-toolbar button{padding:6px 16px;font-size:0.75rem;}
   /* Round 132bx follow-up, per direct instruction: "rail completely goes
      away and content working area expands into that space to give it a
      cleaner apple look" — then, per the next round's direct correction,
@@ -7287,18 +7348,38 @@
     <div class="cmp-campaign-header" id="cmpCampaignHeader">
       <div class="cch-top">
         <div class="cch-identity">
-          <div class="cch-name" id="cchName">—</div>
           <div class="cch-code" id="cchCode">—</div>
+          <div class="cch-name-row">
+            <div class="cch-name" id="cchName">—</div>
+            <span class="cch-status-pill" id="cchStatusPill">—</span>
+          </div>
+          <div class="cch-inmarket" id="cchStartDate">—</div>
         </div>
         <div class="cch-score">
           <div class="cch-score-circle" id="cchScoreCircle" title="Campaign Relevance Score">—</div>
           <span class="ai-thought-mount" data-topic="N"></span>
         </div>
       </div>
+      <!-- 2026-09-15, per direct instruction: "Campaign Creation, Media
+           Planning, Experience, Ops, Analysis statuses should be in the
+           header area color coded for completion status. Option to expand
+           to skip to a specific step should be available." Five segments,
+           one per CMP_STAGE_CATEGORY_ORDER group (display-relabeled per
+           CMP_STAGE_CATEGORY_DISPLAY_LABEL), color-coded via the same
+           not-started/in-progress/complete convention as
+           .cmp-module-status elsewhere in this app. Clicking anywhere opens
+           the existing expandable steps panel (cmpToggleHeaderStepsPanel,
+           unchanged); clicking one segment also scrolls/highlights that
+           category's own column once open, per cmpJumpToCategoryColumn(). -->
+      <div class="cch-progress" id="cchProgress"></div>
       <div class="cch-meta">
-        <span class="cch-status-pill" id="cchStatusPill">—</span>
         <a class="cch-cancel-link" id="cchCancelLink" onclick="cmpToggleCancelConfirm()" style="display:none;">Cancel campaign</a>
-        <span class="cch-start-date" id="cchStartDate">—</span>
+        <!-- 2026-09-15, per direct instruction: "Team Collaboration: Link
+             to View Comments should be available opening a chat looking
+             type interface." Campaign-wide (not per-stage) comment thread —
+             see .cmp-team-chat / cmpToggleTeamChat() / campaign.teamComments
+             below. -->
+        <a class="cch-comments-link" id="cchCommentsLink" onclick="cmpToggleTeamChat()">💬 View Comments<span id="cchCommentsCount"></span></a>
         <div class="cch-step" id="cchStepToggle" onclick="cmpToggleHeaderStepsPanel()">
           <span id="cchLastStep">—</span>
           <span class="chevron">▸</span>
@@ -7312,6 +7393,41 @@
         <div>Cancel this campaign? Its budget will come out of the Media Plan's committed total and Budget Mix — no cancellation fee is applied. This can't be undone from here.</div>
         <button type="button" class="btn-primary" onclick="cmpConfirmCancelCampaign()">Yes, cancel campaign</button>
         <button type="button" class="btn-ghost" onclick="cmpToggleCancelConfirm()">Never mind</button>
+      </div>
+    </div>
+    <!-- 2026-09-15, per direct instruction — "Team Collaboration: Link to
+         View Comments should be available opening a chat looking type
+         interface," modeled on the reference screenshot (avatar-tagged
+         message rows, small footprint, an input row with attach/mention/
+         emoji/format icons and Send, growing vertically as the thread
+         grows). Campaign-wide, not per-stage — separate from the existing
+         per-stage "Notes on <stage>" panels (.cmp-notes-head/.cmp-notes-body
+         above), which stay as-is; this is the unified thread the header
+         link opens. Fixed-position slide-in panel, not a full-screen modal,
+         so it can sit open beside the page the way the reference does.
+         Author is always state.userName (the logged-in user) — no "Your
+         name" field, per the separate direct instruction that login
+         already identifies who's typing (see cmpAddTeamComment()). -->
+    <div class="cmp-team-chat-overlay" id="cmpTeamChatOverlay" onclick="cmpToggleTeamChat()"></div>
+    <div class="cmp-team-chat" id="cmpTeamChat">
+      <div class="cmp-team-chat-head">
+        <span>Comments — <span id="cmpTeamChatCampaignName">—</span></span>
+        <a onclick="cmpToggleTeamChat()">Close ✕</a>
+      </div>
+      <div class="cmp-team-chat-body" id="cmpTeamChatBody"></div>
+      <div class="cmp-team-chat-input">
+        <div class="cmp-team-chat-input-row">
+          <div class="cmp-team-chat-avatar" id="cmpTeamChatMyAvatar">—</div>
+          <textarea id="cmpTeamChatText" rows="1" placeholder="Add a comment…" oninput="cmpAutoGrowTeamChatInput(this)"></textarea>
+        </div>
+        <div class="cmp-team-chat-toolbar">
+          <!-- Visual only, matching the reference interface — attach/mention/
+               emoji/format aren't wired to anything yet; only the textarea
+               and Send button are real. Flagging honestly rather than
+               shipping dead buttons that look functional. -->
+          <span class="cmp-team-chat-icons" title="Attach, mention, emoji, and formatting aren't wired up yet">📎 @ 🙂 Aa</span>
+          <button type="button" class="btn-primary" onclick="cmpAddTeamComment()">Send</button>
+        </div>
       </div>
     </div>
     <div class="cmp-layout" id="cmpLayout">
@@ -11084,6 +11200,38 @@ const CMP_STAGE_CATEGORY = {
   analysis: 'Analysis'
 };
 const CMP_STAGE_CATEGORY_ORDER = ['Campaign Creation', 'Media Science', 'CX', 'Ops', 'Analysis'];
+// 2026-09-15, per direct instruction — the header progress bar and steps
+// panel now show these renamed labels ("Media Planning", "Experience")
+// instead of the internal category keys. The internal keys themselves
+// (CMP_STAGE_CATEGORY / CMP_STAGE_CATEGORY_ORDER) are left unchanged since
+// they're used as object keys/lookups in several places below — this is a
+// display-only rename, applied wherever a category name reaches the screen.
+const CMP_STAGE_CATEGORY_DISPLAY_LABEL = {
+  'Campaign Creation': 'Campaign Creation',
+  'Media Science': 'Media Planning',
+  'CX': 'Experience',
+  'Ops': 'Ops',
+  'Analysis': 'Analysis'
+};
+// Returns every CMP_STAGE_RAIL key bucketed under a given category, e.g.
+// cmpCategoryKeys('CX') -> ['messaging','copyVersions','creative'].
+function cmpCategoryKeys(cat){
+  return Object.keys(CMP_STAGE_CATEGORY).filter(k => CMP_STAGE_CATEGORY[k] === cat);
+}
+// 2026-09-15, per direct instruction — a color-coded progress bar in the
+// header needs one status per category, not per individual stage. Same
+// three-bucket convention as bucketStageStatus()/cmpModuleStatus(): complete
+// only when every stage in the category is complete, in-progress the moment
+// any stage has started, not-started only when nothing in the category has
+// been touched yet.
+function cmpCategoryStatus(cat){
+  const keys = cmpCategoryKeys(cat);
+  if (!keys.length) return 'not-started';
+  const statuses = keys.map(k => cmpModuleStatus(k));
+  if (statuses.every(s => s === 'complete')) return 'complete';
+  if (statuses.some(s => s !== 'not-started')) return 'in-progress';
+  return 'not-started';
+}
 // Builds the grouped-column markup for the campaign header's expanded steps
 // panel by cloning each real rail item's outerHTML (same single-source-of-
 // truth convention as before — onclick/locked/active/done state all come
@@ -11099,8 +11247,8 @@ function cmpBuildStepsPanelColumns(){
     if (!byCategory[cat]) byCategory[cat] = [];
     byCategory[cat].push(item.outerHTML);
   });
-  return CMP_STAGE_CATEGORY_ORDER.map(cat => `<div class="cch-step-col">
-      <div class="cch-step-col-title">${cat}</div>
+  return CMP_STAGE_CATEGORY_ORDER.map(cat => `<div class="cch-step-col" id="cchStepCol-${cat.replace(/\s+/g, '')}">
+      <div class="cch-step-col-title">${CMP_STAGE_CATEGORY_DISPLAY_LABEL[cat] || cat}</div>
       ${byCategory[cat].join('')}
     </div>`).join('');
 }
@@ -11349,13 +11497,14 @@ function cmpRenderCampaignHeader(campaign){
   const cancelLink = document.getElementById('cchCancelLink');
   cancelLink.style.display = (status === 'Pending') ? '' : 'none';
   document.getElementById('cchLastStep').textContent = `Last completed: ${cmgmtLastCompletedStep(campaign)}`;
-  // Round 132bx (2026-08-15), per direct instruction: "start date" joins
-  // the left-justified meta row under the campaign name.
+  // 2026-09-15, per direct instruction — relabeled from "Starts <date>" to
+  // "In Market: <date>" and promoted to its own larger H3-style line (see
+  // .cch-inmarket) instead of sitting in the small muted meta row.
   const startDateEl = document.getElementById('cchStartDate');
   // fmtDate() isn't a global here (it's a locally-scoped const in a few
   // other render functions) — inline the same "raw ISO string or em dash"
   // fallback rather than calling something undefined.
-  if (startDateEl) startDateEl.textContent = campaign.startDate ? `Starts ${campaign.startDate}` : 'Start date not set';
+  if (startDateEl) startDateEl.textContent = campaign.startDate ? `In Market: ${campaign.startDate}` : 'In Market date not set';
   const score = computeCampaignRelevanceScore(campaign);
   // Round 132bx follow-up, per direct instruction: "the score in a circle
   // filled with client brand color." Falls back to the app's own teal
@@ -11365,7 +11514,27 @@ function cmpRenderCampaignHeader(campaign){
   const brandColor = (state.styleAssets && state.styleAssets.primaryColorHex) || '#0891B2';
   circle.style.background = brandColor;
   circle.style.color = cmpContrastTextColor(brandColor);
-  circle.textContent = score.overall !== null ? `${score.overall}%` : '—';
+  // 2026-09-15, per direct instruction ("we'll hold off on a relevance
+  // score until the CX steps begin") — a brand-new campaign has no
+  // channel/creative/budget/URL signal yet, so an unweighted average was
+  // effectively just showing the account-wide Brand Groundwork component
+  // alone, dressed up as a campaign-specific score. Gate the badge itself
+  // on the CX workstream (Brand Messaging, the first CX-category stage —
+  // see CMP_STAGE_CATEGORY) having actually started, rather than letting
+  // computeCampaignRelevanceScore()'s null-averaging quietly produce a
+  // number from minute one. Below that gate the circle shows "—" with a
+  // title explaining why, instead of a real-looking percentage; the
+  // underlying weighting/threshold math itself is still open (see
+  // cxmedia-campaign-creation-live-walkthrough-findings-2026-09-15.md) —
+  // this is a display-level hold, not the full fix.
+  const cxStarted = cmpModuleStatus('messaging') !== 'not-started';
+  if (cxStarted && score.overall !== null){
+    circle.textContent = `${score.overall}%`;
+    circle.title = 'Campaign Relevance Score';
+  } else {
+    circle.textContent = '—';
+    circle.title = 'Not yet scored — relevance scoring begins once Brand Messaging (CX) starts';
+  }
   // Keep the expandable steps panel in sync if it's currently open (a
   // stage change while it's open shouldn't require closing/reopening to
   // see the update).
@@ -11373,6 +11542,129 @@ function cmpRenderCampaignHeader(campaign){
   if (document.getElementById('cchStepsPanel').classList.contains('open')){
     panelList.innerHTML = cmpBuildStepsPanelColumns();
   }
+  cmpRenderProgressBar(campaign);
+  const commentsCount = (campaign.teamComments || []).length;
+  const commentsCountEl = document.getElementById('cchCommentsCount');
+  if (commentsCountEl) commentsCountEl.textContent = commentsCount ? ` (${commentsCount})` : '';
+  const chatNameEl = document.getElementById('cmpTeamChatCampaignName');
+  if (chatNameEl) chatNameEl.textContent = campaign.name || 'Untitled campaign';
+  if (document.getElementById('cmpTeamChat').classList.contains('open')) cmpRenderTeamChat();
+}
+// 2026-09-15, per direct instruction — builds the 5-segment color-coded
+// completion bar (see .cch-progress CSS comment for the palette
+// convention). Each segment's status comes from cmpCategoryStatus(), which
+// re-derives from the exact same cmpModuleStatus() calls already driving
+// the rail/steps-panel/module tags, so this can never disagree with them.
+function cmpRenderProgressBar(campaign){
+  const mount = document.getElementById('cchProgress');
+  if (!mount) return;
+  mount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(cat => {
+    const status = cmpCategoryStatus(cat);
+    const label = CMP_STAGE_CATEGORY_DISPLAY_LABEL[cat] || cat;
+    return `<div class="cch-progress-seg ${status}" title="${escapeHtml(label)}: ${escapeHtml(STAGE_STATUS_LABEL[status] || status)} — click to jump to a step" onclick="event.stopPropagation();cmpJumpToCategoryColumn('${cat}')">${escapeHtml(label)}</div>`;
+  }).join('');
+}
+// Opens the steps panel (if not already open) and scrolls/flashes the
+// clicked category's own column, so "expand to skip to a specific step" (the
+// direct instruction) lands the user looking at the right group instead of
+// just the panel in general.
+function cmpJumpToCategoryColumn(cat){
+  const panel = document.getElementById('cchStepsPanel');
+  if (!panel.classList.contains('open')) cmpToggleHeaderStepsPanel();
+  const colId = `cchStepCol-${cat.replace(/\s+/g, '')}`;
+  // Panel innerHTML is rebuilt on open, so the target column may not exist
+  // in the DOM yet on the same tick that just opened it.
+  setTimeout(() => {
+    const col = document.getElementById(colId);
+    if (!col) return;
+    col.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    col.classList.remove('cch-col-flash');
+    void col.offsetWidth; // restart the CSS animation if clicked again quickly
+    col.classList.add('cch-col-flash');
+  }, 0);
+}
+// 2026-09-15, per direct instruction: "Team Collaboration: Link to View
+// Comments should be available opening a chat looking type interface."
+// Campaign-wide unified thread (campaign.teamComments), separate from the
+// existing per-stage "Notes on <stage>" panels above — those stay as-is.
+// Small fixed palette, hashed from the name, so the same person always gets
+// the same color across a session (matches the reference screenshot's
+// distinct per-person avatar colors) without needing a real user-color
+// system that doesn't exist in this app yet.
+const CMP_CHAT_AVATAR_COLORS = ['#0891B2', '#B45309', '#7C3AED', '#B23A48', '#2C5F2D', '#1B2A4A'];
+function cmpAvatarColor(name){
+  const s = String(name || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return CMP_CHAT_AVATAR_COLORS[hash % CMP_CHAT_AVATAR_COLORS.length];
+}
+function cmpInitials(name){
+  const s = String(name || '').trim();
+  if (!s) return '—';
+  return s.split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+}
+function cmpToggleTeamChat(){
+  const panel = document.getElementById('cmpTeamChat');
+  const overlay = document.getElementById('cmpTeamChatOverlay');
+  const isOpen = panel.classList.toggle('open');
+  overlay.classList.toggle('open', isOpen);
+  if (isOpen) cmpRenderTeamChat();
+}
+function cmpRenderTeamChat(){
+  const c = cmpRailLoadedCampaign();
+  const body = document.getElementById('cmpTeamChatBody');
+  const myAvatar = document.getElementById('cmpTeamChatMyAvatar');
+  const myName = (state.userName || '').trim();
+  if (myAvatar){
+    myAvatar.textContent = cmpInitials(myName) || '—';
+    myAvatar.style.background = cmpAvatarColor(myName || 'me');
+  }
+  if (!body) return;
+  if (!c){ body.innerHTML = '<p class="hint" style="margin:0;">No campaign loaded.</p>'; return; }
+  const comments = c.teamComments || [];
+  body.innerHTML = comments.length ? comments.map(m => `
+    <div class="cmp-chat-msg">
+      <div class="cmp-team-chat-avatar" style="background:${cmpAvatarColor(m.author)};">${escapeHtml(cmpInitials(m.author))}</div>
+      <div class="cmp-chat-msg-body">
+        <div class="cmp-chat-msg-meta"><b>${escapeHtml(m.author || 'Team member')}</b><span class="ts">${escapeHtml(new Date(m.ts).toLocaleString())}</span></div>
+        <div class="cmp-chat-msg-text">${escapeHtml(m.text)}</div>
+      </div>
+    </div>`).join('') : '<p class="hint" style="margin:0;">No comments yet on this campaign — start the thread below.</p>';
+  body.scrollTop = body.scrollHeight;
+}
+// Same "kept locally only" fallback as cmpPersistActivityNotesToCampaign()
+// above — the backend has no teamCommentsJson column yet either, so this
+// write fails gracefully and the thread stays in front-end session state
+// until that's added server-side. Flagging honestly rather than implying
+// this survives a reload today.
+function cmpPersistTeamCommentsToCampaign(c){
+  if (!c || c.localOnly || dataSourceLabel !== 'backend') return;
+  authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamCommentsJson: JSON.stringify(c.teamComments || []) })
+  }).catch(e => console.warn('cmpPersistTeamCommentsToCampaign: backend write failed, kept locally only.', e));
+}
+// Author is always state.userName — the logged-in user's own name — never
+// a typed-in field, per the separate direct instruction that login already
+// identifies who's commenting.
+function cmpAddTeamComment(){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  const textEl = document.getElementById('cmpTeamChatText');
+  const text = textEl ? textEl.value.trim() : '';
+  if (!text) return;
+  if (!c.teamComments) c.teamComments = [];
+  c.teamComments.push({ id: `tc_${Math.round(performance.now())}`, author: (state.userName || '').trim() || 'Team member', text, ts: Date.now() });
+  cmpPersistTeamCommentsToCampaign(c);
+  textEl.value = '';
+  textEl.style.height = '';
+  cmpRenderTeamChat();
+  const commentsCountEl = document.getElementById('cchCommentsCount');
+  if (commentsCountEl) commentsCountEl.textContent = ` (${c.teamComments.length})`;
+}
+function cmpAutoGrowTeamChatInput(el){
+  el.style.height = '';
+  el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
 }
 
 // "Click to open all with status is fine" — expands into exactly the same
@@ -11676,7 +11968,6 @@ function cmpRenderActivityNotesPanel(key){
           <p class="cmp-note-text">${escapeHtml(n.text)}</p>
         </div>`).join('') : `<p class="hint" style="margin:0 0 4px;">No notes yet on this stage — add context for teammates, or ask the AI assistant for a quick read on where things stand.</p>`}
       <div class="cmp-note-add">
-        <input type="text" id="cmpNoteAuthor_${key}" placeholder="Your name" value="${escapeHtml(cmpNoteAuthorName)}">
         <textarea id="cmpNoteText_${key}" rows="2" placeholder="Add context for the team..."></textarea>
         <div class="btn-row" style="margin:2px 0 0;">
           <button type="button" class="btn-ghost" onclick="cmpAddActivityNote('${key}')">+ Add note</button>
@@ -11699,11 +11990,15 @@ function cmpPersistActivityNotesToCampaign(c){
 function cmpAddActivityNote(key){
   const c = cmpRailLoadedCampaign();
   if (!c) return;
-  const authorEl = document.getElementById(`cmpNoteAuthor_${key}`);
   const textEl = document.getElementById(`cmpNoteText_${key}`);
   const text = textEl ? textEl.value.trim() : '';
   if (!text) return;
-  cmpNoteAuthorName = authorEl ? authorEl.value.trim() : '';
+  // 2026-09-15, per direct instruction ("Name is not needed. We have the
+  // login.") — author is always the logged-in user (state.userName), not a
+  // typed-in field. cmpNoteAuthorName is kept as a variable (unused now)
+  // only because other code may still reference it; the "Your name" input
+  // itself is gone.
+  cmpNoteAuthorName = (state.userName || '').trim();
   if (!c.activityNotes) c.activityNotes = {};
   if (!c.activityNotes[key]) c.activityNotes[key] = [];
   c.activityNotes[key].push({ id: `note_${Math.round(performance.now())}`, author: cmpNoteAuthorName || 'Team member', text, isAi: false, ts: Date.now() });
