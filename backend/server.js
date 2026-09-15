@@ -511,6 +511,14 @@ ensureColumn('campaigns', 'functions', 'TEXT');
 ensureColumn('campaigns', 'campaignUrl', 'TEXT');
 ensureColumn('campaigns', 'conversionType', 'TEXT');
 
+// 2026-09-15 — the AI Brain Recommendation screen's overall budget
+// approval (distinct from any single line item's clientApprovedAt/By on
+// channel_planning_details above — this is the "line by line, then
+// overall" second step Todd asked for). Same *At/*By stamp-pair
+// convention as every other approval in this codebase.
+ensureColumn('campaigns', 'budgetApprovedAt', 'TEXT');
+ensureColumn('campaigns', 'budgetApprovedBy', 'TEXT');
+
 // Added 2026-07-24 (round 36) — the 7-stage campaign progress bar. Most
 // stages auto-derive from existing signals (project approval/QA, `status`,
 // the actual*/analysisNotes columns above), but Brand and QA & Approval each
@@ -1617,6 +1625,29 @@ createTableIfNeeded(`
   );
 `);
 
+// campaign_recommendation_comments — 2026-09-15, the AI Brain Recommendation
+// screen's comment thread (per direct instruction: "the presentation should
+// be the agency strategy team lead presenting to the [client] team from a UI
+// and some type of comment or edit function... replicating our Team
+// Collaboration UI"). Deliberately PERSISTED, unlike the existing Team
+// Collaboration chat (campaign.teamComments — session-only today, never
+// saved server-side): this is a real client-facing budget-approval
+// conversation, not a throwaway internal note. Built reusable across
+// Screen 3 and every stage after it ("a standard conversational UI should
+// exist pages 3 forward" — see the scoping doc), so this table isn't named
+// after Recommendation specifically even though that's its first use.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS campaign_recommendation_comments (
+    id TEXT PRIMARY KEY,
+    campaignId TEXT NOT NULL,
+    authorName TEXT,
+    authorRole TEXT,
+    text TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (campaignId) REFERENCES campaigns(id)
+  );
+`);
+
 // channel_planning_upload_batches — 2026-09-11, the Marketing Calendar
 // "create campaigns from a file" bulk uploader (per direct instruction:
 // a client-onboarding tool, "get a client up and running faster," not an
@@ -1681,6 +1712,16 @@ ensureColumn('channel_planning_details', 'actualsUpdatedAt', 'TEXT');
 // path); the PATCH endpoint deliberately never accepts or updates it, so
 // it stays read-only after creation regardless of actorRole.
 ensureColumn('channel_planning_details', 'projectNumber', 'TEXT');
+
+// 2026-09-15 — AI Brain Recommendation screen's client budget approval, per
+// cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md.
+// Deliberately NOT a change to `status`/the existing cx_ops-only "approved"
+// rule above (insertChannelPlanningRow) — that rule stays exactly as other
+// features already rely on it. This is a separate, independent sign-off:
+// the CLIENT approving a specific line item's budget on the Recommendation
+// screen. Two different approvals, two different fields, on purpose.
+ensureColumn('channel_planning_details', 'clientApprovedAt', 'TEXT');
+ensureColumn('channel_planning_details', 'clientApprovedBy', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -10545,6 +10586,11 @@ const LEGACY_CASING_COLUMNS = [
   ['campaign_allocation_draws', 'campaignId'],
   ['campaign_mmm_line_items', 'campaignId'],
   ['campaign_mmm_line_items', 'updatedAt'],
+  ['campaign_recommendation_comments', 'authorName'],
+  ['campaign_recommendation_comments', 'authorRole'],
+  ['campaign_recommendation_comments', 'campaignId'],
+  ['campaign_recommendation_comments', 'createdAt'],
+  ['campaign_recommendation_comments', 'text'],
   ['campaigns', 'accountId'],
   ['campaigns', 'actualConversions'],
   ['campaigns', 'actualImpressions'],
@@ -10558,6 +10604,8 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'brandGuidelines'],
   ['campaigns', 'brandStage'],
   ['campaigns', 'brandToneNotes'],
+  ['campaigns', 'budgetApprovedAt'],
+  ['campaigns', 'budgetApprovedBy'],
   ['campaigns', 'campaignCode'],
   ['campaigns', 'campaignUrl'],
   ['campaigns', 'cancelledAt'],
@@ -10604,6 +10652,8 @@ const LEGACY_CASING_COLUMNS = [
   ['channel_planning_details', 'allocationId'],
   ['channel_planning_details', 'buyType'],
   ['channel_planning_details', 'campaignId'],
+  ['channel_planning_details', 'clientApprovedAt'],
+  ['channel_planning_details', 'clientApprovedBy'],
   ['channel_planning_details', 'createdAt'],
   ['channel_planning_details', 'creativeMarket'],
   ['channel_planning_details', 'detailsJson'],
@@ -21397,6 +21447,85 @@ Submit your response via the campaign_intake_turn tool.`;
       return sendJson(res, 200, { updatedAt: now });
     }
 
+    // POST /api/campaigns/:id/channel-planning/:entryId/client-approve —
+    // 2026-09-15, the AI Brain Recommendation screen's line-item budget
+    // approval (see cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md).
+    // Deliberately separate from `status`/the existing cx_ops-only
+    // "approved" transition above (PATCH .../channel-planning/:entryId) —
+    // that field and its rule are untouched. This is the CLIENT'S sign-off
+    // on this specific budget line, tracked in its own clientApprovedAt/By
+    // columns. Gated the other direction from the existing rule: only a
+    // non-cx_ops (client) actor may approve — the agency can't sign off on
+    // its own recommendation on the client's behalf, or the approval
+    // wouldn't mean anything as real oversight.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'channel-planning' && parts[5] === 'client-approve'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const entryId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const existing = db.prepare('SELECT id FROM channel_planning_details WHERE id = ? AND campaignId = ?').get(entryId, campaignId);
+      if (!existing) return sendJson(res, 404, { error: 'channel planning entry not found' });
+      const body = await readBody(req);
+      const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
+      if (actorRole === 'cx_ops') return sendJson(res, 403, { error: 'Only the client may approve this budget line — agency users can present a recommendation but cannot approve it on the client\'s behalf.' });
+      const actorName = typeof body.actorName === 'string' ? body.actorName : '';
+      const now = new Date().toISOString();
+      db.prepare('UPDATE channel_planning_details SET clientApprovedAt = ?, clientApprovedBy = ? WHERE id = ?').run(now, actorName, entryId);
+      return sendJson(res, 200, { clientApprovedAt: now, clientApprovedBy: actorName });
+    }
+
+    // POST /api/campaigns/:id/approve-budget-overall — 2026-09-15, the AI
+    // Brain Recommendation screen's second/overall approval step (Todd:
+    // "line by line and then overall as the next step"), distinct from any
+    // single line's clientApprovedAt/By above. Same cx_ops-excluded gate —
+    // only the client can give the overall sign-off.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'approve-budget-overall'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const body = await readBody(req);
+      const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
+      if (actorRole === 'cx_ops') return sendJson(res, 403, { error: 'Only the client may give overall budget approval — agency users can present a recommendation but cannot approve it on the client\'s behalf.' });
+      const actorName = typeof body.actorName === 'string' ? body.actorName : '';
+      const now = new Date().toISOString();
+      db.prepare('UPDATE campaigns SET budgetApprovedAt = ?, budgetApprovedBy = ? WHERE id = ?').run(now, actorName, campaignId);
+      return sendJson(res, 200, { budgetApprovedAt: now, budgetApprovedBy: actorName });
+    }
+
+    // GET /api/campaigns/:id/recommendation-comments — 2026-09-15. Built
+    // reusable for "pages 3 forward" per Todd, not scoped only to the
+    // Recommendation screen. Persisted (unlike Team Collaboration's
+    // session-only chat) since this is a real client-facing budget
+    // conversation, not ephemeral chatter.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'recommendation-comments'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const rows = db.prepare('SELECT * FROM campaign_recommendation_comments WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+      return sendJson(res, 200, { comments: rows });
+    }
+
+    // POST /api/campaigns/:id/recommendation-comments
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'recommendation-comments'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const body = await readBody(req);
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) return sendJson(res, 400, { error: 'text is required' });
+      const authorName = typeof body.authorName === 'string' ? body.authorName : '';
+      const authorRole = body.authorRole === 'cx_ops' ? 'cx_ops' : 'client';
+      const id = 'cmt_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO campaign_recommendation_comments (id, campaignId, authorName, authorRole, text, createdAt) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(id, campaignId, authorName, authorRole, text, now);
+      return sendJson(res, 200, { id, campaignId, authorName, authorRole, text, createdAt: now });
+    }
+
     // DELETE /api/campaigns/:id/channel-planning/:entryId
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'channel-planning'){
       const campaignId = decodeURIComponent(parts[2]);
@@ -27700,5 +27829,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
