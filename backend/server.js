@@ -21548,33 +21548,10 @@ Submit your response via the campaign_intake_turn tool.`;
         const key = l.audience || campaign.segment || 'Unspecified';
         audienceTotals[key] = (audienceTotals[key] || 0) + (Number(l.budget) || 0);
       });
-      // Similar-campaign reference reuses the exact same scoring as the
-      // campaign-intake conversation (Stage match + conversion efficiency,
-      // see POST .../campaign-intake above) — not a new comparison engine,
-      // per the scoping doc. Inlined rather than shared via a helper since
-      // the intake handler's version is itself inline, scoped to that
-      // request's own `campaigns` list.
-      let similar = null;
-      try {
-        const otherCampaigns = db.prepare('SELECT * FROM campaigns WHERE accountId = ? AND id != ?').all(campaign.accountId, campaignId);
-        const scored = otherCampaigns.map(c => {
-          const stageMatch = !!(campaign.stage && c.stage === campaign.stage);
-          const perfScore = (c.actualConversions != null && c.actualSpend) ? (c.actualConversions / (c.actualSpend / 1000)) : null;
-          return { c, stageMatch, perfScore };
-        }).filter(x => x.stageMatch || x.perfScore !== null)
-          .sort((a, b) => (a.stageMatch !== b.stageMatch) ? (a.stageMatch ? -1 : 1) : ((b.perfScore || 0) - (a.perfScore || 0)));
-        if (scored.length){
-          const top = scored[0];
-          similar = {
-            id: top.c.id,
-            name: top.c.name || '(untitled campaign)',
-            why: [
-              top.stageMatch ? `Same Lifecycle Stage (${top.c.stage})` : null,
-              top.perfScore !== null ? `${top.perfScore.toFixed(2)} conversions per $1k spend` : null
-            ].filter(Boolean).join(' · ') || 'Recently created'
-          };
-        }
-      } catch (e){ console.warn('[pitch-summary] similar-campaign lookup failed:', e.message); }
+      // 2026-09-15, per direct correction: "You don't need to show the
+      // similar campaign" — the similar-campaign lookup (Stage match +
+      // conversion efficiency, same scoring as campaign-intake) was
+      // removed from this response entirely, not just hidden client-side.
       return sendJson(res, 200, {
         campaignId,
         loopStage: campaign.stage || null,
@@ -21585,7 +21562,6 @@ Submit your response via the campaign_intake_turn tool.`;
         totalImpressions,
         lineItems: lines,
         audienceTotals,
-        similarCampaign: similar,
         budgetApprovedAt: campaign.budgetApprovedAt || null,
         budgetApprovedBy: campaign.budgetApprovedBy || null
       });
@@ -27951,6 +27927,5 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
