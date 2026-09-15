@@ -69,14 +69,23 @@ export const config = {
 //     breaks that verification outright — this caused a real outage
 //     earlier the same day (see RUNBOOK / project docs: "Twilio domain
 //     verification failing (401)").
+//   - /api/ops/docs-search: already requires its own ADMIN_API_TOKEN sent
+//     as X-Admin-Token (see backend/server.js) — that's real auth on its
+//     own, not an open door. It also needs to be reachable by non-browser
+//     callers (the ElevenLabs Conversational AI webhook tool, confirmed
+//     2026-09-15) that can't complete an HTTP Basic Auth prompt or hold
+//     this site's session cookie, so it's exempted from the shared site
+//     password here, same reasoning as the Twilio verification file above.
 // Nothing else is exempted: every real page (marketing, login, portal,
-// account, everything) and every /api/* route requires the shared site
-// password (or the session cookie it mints). robots.txt is deliberately
-// NOT exempted either — the site already ships a disallow-all robots.txt
-// and noindex headers regardless, and per "not public at all" there's no
-// reason a crawler should be able to fetch even that file unauthenticated.
+// account, everything) and every other /api/* route requires the shared
+// site password (or the session cookie it mints). robots.txt is
+// deliberately NOT exempted either — the site already ships a
+// disallow-all robots.txt and noindex headers regardless, and per "not
+// public at all" there's no reason a crawler should be able to fetch even
+// that file unauthenticated.
 const PUBLIC_PATHS = [
   /^\/twiliodomainverification183151a4\.txt$/,
+  /^\/api\/ops\/docs-search$/,
 ];
 
 // Session cookie the gate mints once Basic Auth succeeds. HttpOnly (no
@@ -267,3 +276,4 @@ export default async function middleware(request) {
     },
   });
 }
+
