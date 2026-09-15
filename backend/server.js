@@ -21526,6 +21526,128 @@ Submit your response via the campaign_intake_turn tool.`;
       return sendJson(res, 200, { id, campaignId, authorName, authorRole, text, createdAt: now });
     }
 
+    // GET /api/campaigns/:id/pitch-summary — 2026-09-15, the AI Brain
+    // Recommendation ("campaign pitch") screen's data source for its
+    // campaign-level dashboards (Loop Stage, Channel Mix, Audience,
+    // Impressions, Spend). Deliberately reads from real, already-persisted
+    // data only — campaigns.stage/segment/channels plus this campaign's own
+    // channel_planning_details rows — no new schema, per Todd's "Edit
+    // leverages our existing tables." Channel-group bucketing (Video/
+    // Digital/etc.) is left to the frontend's existing CHANNEL_MIX_GROUPS
+    // constant so there's one definition of the grouping, not two.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'pitch-summary'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const lines = db.prepare('SELECT channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+      const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+      const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
+      const audienceTotals = {};
+      lines.forEach(l => {
+        const key = l.audience || campaign.segment || 'Unspecified';
+        audienceTotals[key] = (audienceTotals[key] || 0) + (Number(l.budget) || 0);
+      });
+      // Similar-campaign reference reuses the exact same scoring as the
+      // campaign-intake conversation (Stage match + conversion efficiency,
+      // see POST .../campaign-intake above) — not a new comparison engine,
+      // per the scoping doc. Inlined rather than shared via a helper since
+      // the intake handler's version is itself inline, scoped to that
+      // request's own `campaigns` list.
+      let similar = null;
+      try {
+        const otherCampaigns = db.prepare('SELECT * FROM campaigns WHERE accountId = ? AND id != ?').all(campaign.accountId, campaignId);
+        const scored = otherCampaigns.map(c => {
+          const stageMatch = !!(campaign.stage && c.stage === campaign.stage);
+          const perfScore = (c.actualConversions != null && c.actualSpend) ? (c.actualConversions / (c.actualSpend / 1000)) : null;
+          return { c, stageMatch, perfScore };
+        }).filter(x => x.stageMatch || x.perfScore !== null)
+          .sort((a, b) => (a.stageMatch !== b.stageMatch) ? (a.stageMatch ? -1 : 1) : ((b.perfScore || 0) - (a.perfScore || 0)));
+        if (scored.length){
+          const top = scored[0];
+          similar = {
+            id: top.c.id,
+            name: top.c.name || '(untitled campaign)',
+            why: [
+              top.stageMatch ? `Same Lifecycle Stage (${top.c.stage})` : null,
+              top.perfScore !== null ? `${top.perfScore.toFixed(2)} conversions per $1k spend` : null
+            ].filter(Boolean).join(' · ') || 'Recently created'
+          };
+        }
+      } catch (e){ console.warn('[pitch-summary] similar-campaign lookup failed:', e.message); }
+      return sendJson(res, 200, {
+        campaignId,
+        loopStage: campaign.stage || null,
+        audience: campaign.segment || null,
+        channels: (campaign.channels || '').split(',').map(s => s.trim()).filter(Boolean),
+        objective: campaign.objective || null,
+        totalSpend,
+        totalImpressions,
+        lineItems: lines,
+        audienceTotals,
+        similarCampaign: similar,
+        budgetApprovedAt: campaign.budgetApprovedAt || null,
+        budgetApprovedBy: campaign.budgetApprovedBy || null
+      });
+    }
+
+    // POST /api/campaigns/:id/cmo-narrative — 2026-09-15, generates the
+    // short AI Brain-written executive summary paragraph for the campaign
+    // pitch screen (Todd: "a generative descriptor written for the CMO"),
+    // via the same callClaudeForJSON() pattern and silent-retry convention
+    // as the campaign-intake conversation. Generated on demand, not
+    // persisted — a fresh read of the campaign's real current numbers each
+    // time, never a stale cached paragraph.
+    const CMO_NARRATIVE_SCHEMA = {
+      type: 'object',
+      properties: {
+        narrative: { type: 'string', description: '2-4 sentence executive-level paragraph, plain language, no jargon, written for a CMO deciding whether to approve this budget.' }
+      },
+      required: ['narrative']
+    };
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'cmo-narrative'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const lines = db.prepare('SELECT channel, budget, impressions FROM channel_planning_details WHERE campaignId = ?').all(campaignId);
+      const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+      const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
+      const channelList = lines.map(l => l.channel).filter(Boolean).join(', ') || '(none entered yet)';
+      const prompt = `Write a short executive narrative for a CMO about this marketing campaign, based only on the real data below. Do not invent numbers not given here.
+
+Campaign objective: ${campaign.objective || '(not set)'}
+Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}
+Channels: ${channelList}
+Total planned spend: $${Math.round(totalSpend).toLocaleString()}
+Total planned impressions: ${Math.round(totalImpressions).toLocaleString()}
+
+Write 2-4 sentences a CMO would read before approving this budget: what this campaign is for, who it reaches, how the money is being spent, and what it's expected to accomplish. Plain, confident, executive language — no marketing jargon, no bullet points.`;
+      let parsed;
+      try {
+        parsed = await callClaudeForJSON({
+          model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+          toolName: 'cmo_narrative', toolDescription: 'Submit the CMO-facing narrative paragraph.',
+          schema: CMO_NARRATIVE_SCHEMA, timeoutMs: 20000
+        });
+      } catch (firstErr){
+        console.warn('[POST /api/campaigns/:id/cmo-narrative] first attempt failed, retrying once:', firstErr.message);
+        await new Promise(r => setTimeout(r, 800));
+        try {
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            toolName: 'cmo_narrative', toolDescription: 'Submit the CMO-facing narrative paragraph.',
+            schema: CMO_NARRATIVE_SCHEMA, timeoutMs: 20000
+          });
+        } catch (secondErr){
+          console.error('[POST /api/campaigns/:id/cmo-narrative] failed after retry:', secondErr.message);
+          return sendJson(res, 200, { narrative: null, error: 'The AI Brain could not generate a summary right now. Try again in a moment.' });
+        }
+      }
+      return sendJson(res, 200, { narrative: parsed.narrative || null });
+    }
+
     // DELETE /api/campaigns/:id/channel-planning/:entryId
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'channel-planning'){
       const campaignId = decodeURIComponent(parts[2]);
@@ -27829,6 +27951,8 @@ try {
 }
 
 module.exports = handleRequest;
+
+
 
 
 
