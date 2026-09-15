@@ -9324,6 +9324,7 @@
         <div class="stage-row" style="margin-bottom:12px;">
           <button type="button" class="stage-tile selected" id="mpBudgetModeDirectBtn" onclick="mpSetBudgetMode('direct')">Type an amount</button>
           <button type="button" class="stage-tile" id="mpBudgetModeCalcBtn" onclick="mpSetBudgetMode('calc')">Calculate from revenue</button>
+          <button type="button" class="stage-tile" id="mpBudgetModeGoalBtn" onclick="mpSetBudgetMode('goal')">Backward-solve from a goal</button>
         </div>
         <div id="mpBudgetCalcFields" style="display:none;">
           <div class="field" id="mpGrossRevenueField">
@@ -9340,6 +9341,38 @@
             <button type="button" class="btn-ghost" onclick="mpApplyBudgetCalc()">Use this as the Working Marketing Budget →</button>
             <span class="hint" id="mpBudgetCalcPreview" style="margin:0;"></span>
           </div>
+        </div>
+        <!-- 2026-09-15 — goal-oriented budget (cxmedia-media-plan-budget-scope.md
+             Round 3, Section 2: "the master budget and monthly distribution
+             is created manually or backwards from revenue or transaction
+             goals"). Same funnel walk Campaign Creation's own Recommend
+             Budget already runs per campaign (computeRequiredImpressions()),
+             run here at the whole-plan scale via mpComputeRequiredBudgetFromGoal() -
+             a Revenue or Transaction target for the year, walked backward
+             through Visits/Leads/Bookings to a required Impressions total,
+             then priced at this account's blended CPM. -->
+        <div id="mpBudgetGoalFields" style="display:none;">
+          <div class="field" style="max-width:420px;">
+            <label>Goal type</label>
+            <select id="mpGoalKpiSelect" onchange="mpToggleGoalAovField(); mpUpdateBudgetGoalPreview();">
+              <option value="transactions">Transactions / bookings</option>
+              <option value="revenue">Revenue</option>
+            </select>
+          </div>
+          <div class="field" style="max-width:420px;">
+            <label id="mpGoalValueLabel">Annual transaction goal</label>
+            <input type="number" id="mpGoalValue" min="0" step="1" placeholder="e.g. 2000" oninput="mpUpdateBudgetGoalPreview();">
+          </div>
+          <div class="field" id="mpGoalAovField" style="max-width:420px;display:none;">
+            <label>Average revenue per transaction (USD)</label>
+            <input type="number" id="mpGoalAov" min="0" step="1" placeholder="e.g. 850" oninput="mpUpdateBudgetGoalPreview();">
+            <div class="hint" style="margin-top:4px;">Genuinely account-specific — no industry default to seed this from. Required to convert a Revenue goal into a transaction count.</div>
+          </div>
+          <div class="hint" style="margin-top:4px;">Walks this goal backward through this account's own funnel assumptions (Industry-seeded, blended across all five Media Loop stages) to a required Impressions total, then prices that at this account's blended CPM across its Active Channels. <span class="illustrative-tag">same rule-based funnel/CPM logic Campaign Creation's own Recommend Budget uses, run at the plan level — not a statistical or predictive model</span></div>
+          <div class="btn-row" style="margin-top:4px;align-items:center;">
+            <button type="button" class="btn-ghost" onclick="mpApplyBudgetGoal()">Use this as the Working Marketing Budget →</button>
+          </div>
+          <p class="hint" id="mpBudgetGoalPreview" style="margin:6px 0 0;"></p>
         </div>
         <div class="field">
           <label>Working Marketing Budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="B"></span></label>
@@ -24149,14 +24182,19 @@ function mpPopulateTargetPctSelect(savedPct){
   sel.innerHTML = opts.map(p => `<option value="${p}" ${p === current ? 'selected' : ''}>${p}%${p === MP_TARGET_PCT_DEFAULT ? ' (typical starting point)' : ''}</option>`).join('');
 }
 function mpSetBudgetMode(mode){
-  mpBudgetMode = mode === 'calc' ? 'calc' : 'direct';
+  mpBudgetMode = (mode === 'calc' || mode === 'goal') ? mode : 'direct';
   const calc = document.getElementById('mpBudgetCalcFields');
   if (calc) calc.style.display = mpBudgetMode === 'calc' ? '' : 'none';
+  const goal = document.getElementById('mpBudgetGoalFields');
+  if (goal) goal.style.display = mpBudgetMode === 'goal' ? '' : 'none';
   const dBtn = document.getElementById('mpBudgetModeDirectBtn');
   const cBtn = document.getElementById('mpBudgetModeCalcBtn');
+  const gBtn = document.getElementById('mpBudgetModeGoalBtn');
   if (dBtn) dBtn.classList.toggle('selected', mpBudgetMode === 'direct');
   if (cBtn) cBtn.classList.toggle('selected', mpBudgetMode === 'calc');
+  if (gBtn) gBtn.classList.toggle('selected', mpBudgetMode === 'goal');
   if (mpBudgetMode === 'calc'){ mpRenderRevenueFraming(); mpUpdateBudgetCalcPreview(); }
+  if (mpBudgetMode === 'goal'){ mpToggleGoalAovField(); mpUpdateBudgetGoalPreview(); }
 }
 function mpBudgetCalcAmount(){
   const revenue = Number((document.getElementById('mpGrossRevenue') || {}).value) || 0;
@@ -24181,6 +24219,134 @@ function mpApplyBudgetCalc(){
   input.value = amount;
   if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: 0, allocations: [] };
   state.mediaPlan.marketingBudgetPct = Number((document.getElementById('mpTargetPctSelect') || {}).value) || null;
+  input.dispatchEvent(new Event('input'));
+}
+
+// ============ 2026-09-15 — goal-oriented budget ============
+// cxmedia-media-plan-budget-scope.md Round 3, Section 2, per direct
+// instruction: "the master budget and monthly distribution is created
+// manually or backwards from revenue or transaction goals." The manual path
+// (direct entry, and the % of revenue calculator above) was already built;
+// this is the genuinely new piece — a plan-level version of the backward
+// solve Campaign Creation's own computeRequiredImpressions()/
+// computeSuggestedBudget() already run per campaign (goal -> required
+// impressions -> required budget). Real, buildable extension of existing
+// math, not new math: same funnel-rate chain and blended-CPM logic, just run
+// once for the whole account/year instead of one campaign's own Stage.
+//
+// mpBlendedFunnelSeed() stands in for getFunnelRates() at this level: that
+// function reads campaign-wizard DOM fields and a single inferred Stage,
+// neither of which exist on the Media Plan page (a plan spans all five Media
+// Loop stages, not one). This unweighted-average-across-all-five-stages
+// approach is the honest, buildable starting point named in the scoping
+// doc's own follow-on (cxmedia-channel-allocation-loop-stage-budget-recommendations-2026-08-12.md) -
+// a real, later refinement would weight each stage by its own share of the
+// plan's recommended mix (or the two-entry-lane New-to-Brand/Reactivated
+// split that doc also scopes), not an equal blend. Flagging here rather than
+// quietly building the more sophisticated version unasked.
+function mpBlendedFunnelSeed(){
+  const seeds = MEDIA_LOOP_STAGES.map(cmpStageIndustryFunnelSeed);
+  const avg = key => seeds.reduce((s, x) => s + (x[key] || 0), 0) / seeds.length;
+  return {
+    visitRate: avg('visitRate'),
+    leadRate: avg('leadRate'),
+    bookingRate: avg('bookingRate'),
+    directPurchaseRate: avg('directPurchaseRate'),
+    ecommerceMix: getIndustryEcommerceMix()
+  };
+}
+
+// Same filtering discipline as computeBlendedCpm() (real paid channels
+// first, demand-fulfillment triad excluded unless nothing else is selected,
+// DEFAULT_BLENDED_CPM as the last resort) but sourced from this account's
+// Active Channels (Company Profile) rather than one campaign's own
+// selectedChannels/selectedRecommendedChannels — neither of those exist yet
+// at the point a whole-plan budget is being set.
+function mpBlendedCpmForGoal(){
+  const source = state.activeChannels;
+  if (!source || !source.size) return DEFAULT_BLENDED_CPM;
+  const isRealPaidChannel = ch => isImpressionChannel(ch) && !RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT.includes(ch);
+  let rates = [...source].filter(isRealPaidChannel).map(ch => ILLUSTRATIVE_CHANNEL_CPM[ch]).filter(r => typeof r === 'number');
+  if (!rates.length){
+    rates = [...source].filter(isImpressionChannel).map(ch => ILLUSTRATIVE_CHANNEL_CPM[ch]).filter(r => typeof r === 'number');
+  }
+  if (!rates.length) return DEFAULT_BLENDED_CPM;
+  return rates.reduce((s, r) => s + r, 0) / rates.length;
+}
+
+// Mirrors computeRequiredImpressions()'s 'Transactions' branch exactly
+// (same eCommerce-mix blend of a direct-purchase share and a Lead-path
+// share), generalized to take a plan-level blended funnel seed instead of
+// one campaign's own getFunnelRates(). A Revenue goal is converted to a
+// transaction count via avgOrderValue first (same "Bookings x
+// avgOrderValue -> Revenue" relationship named in
+// cxmedia-round132q-funnel-hierarchy-model.md) since avgOrderValue has no
+// industry seed anywhere in this app — genuinely account-specific, so it's
+// a required input only when the goal type is Revenue.
+function mpBudgetGoalResult(){
+  const kpiKind = document.getElementById('mpGoalKpiSelect') ? document.getElementById('mpGoalKpiSelect').value : 'transactions';
+  const goalRaw = Number((document.getElementById('mpGoalValue') || {}).value) || 0;
+  if (!(goalRaw > 0)) return null;
+  let bookings;
+  if (kpiKind === 'revenue'){
+    const aov = Number((document.getElementById('mpGoalAov') || {}).value) || 0;
+    if (!(aov > 0)) return null;
+    bookings = goalRaw / aov;
+  } else {
+    bookings = goalRaw;
+  }
+  const rates = mpBlendedFunnelSeed();
+  if (!rates.visitRate || !rates.leadRate || !rates.bookingRate) return null;
+  const mix = rates.ecommerceMix || 0;
+  const bookingsDirect = bookings * mix;
+  const bookingsViaLead = bookings * (1 - mix);
+  const leads = rates.bookingRate ? (bookingsViaLead / rates.bookingRate) : 0;
+  const visitsViaLead = rates.leadRate ? (leads / rates.leadRate) : 0;
+  const visitsDirect = rates.directPurchaseRate ? (bookingsDirect / rates.directPurchaseRate) : 0;
+  const visits = visitsViaLead + visitsDirect;
+  const impressions = rates.visitRate ? (visits / rates.visitRate) : 0;
+  const cpm = mpBlendedCpmForGoal();
+  const budget = Math.round((impressions / 1000) * cpm);
+  return { kpiKind, goalValue: goalRaw, bookings, leads, visits: Math.round(visits), impressions: Math.round(impressions), cpm, budget };
+}
+
+function mpToggleGoalAovField(){
+  const kpiKind = document.getElementById('mpGoalKpiSelect') ? document.getElementById('mpGoalKpiSelect').value : 'transactions';
+  const aovField = document.getElementById('mpGoalAovField');
+  const valueLabel = document.getElementById('mpGoalValueLabel');
+  if (aovField) aovField.style.display = kpiKind === 'revenue' ? '' : 'none';
+  if (valueLabel) valueLabel.textContent = kpiKind === 'revenue' ? 'Annual revenue goal (USD)' : 'Annual transaction goal';
+}
+
+function mpUpdateBudgetGoalPreview(){
+  const el = document.getElementById('mpBudgetGoalPreview');
+  if (!el) return;
+  const result = mpBudgetGoalResult();
+  if (!result){
+    const kpiKind = document.getElementById('mpGoalKpiSelect') ? document.getElementById('mpGoalKpiSelect').value : 'transactions';
+    el.textContent = kpiKind === 'revenue' ? 'Enter a revenue goal and average revenue per transaction to see the result.' : 'Enter a transaction goal to see the result.';
+    return;
+  }
+  el.textContent = `~${result.impressions.toLocaleString()} impressions → ~${result.visits.toLocaleString()} visits → ~${Math.round(result.leads).toLocaleString()} leads → ~${Math.round(result.bookings).toLocaleString()} transactions, at a blended ~$${result.cpm.toFixed(2)} CPM = ${fmtMoney(result.budget)} required Working Marketing Budget.`;
+}
+
+// Same one-time, explicit-apply convention as mpApplyBudgetCalc() above —
+// this sets #mpTotalBudget, it never becomes a live formula the field keeps
+// recomputing from. The inputs used are remembered on the plan
+// (goalBackwardSolveJson) purely so reopening this plan/year shows what was
+// last used, same "remembered, not re-applied" property as marketingBudgetPct.
+function mpApplyBudgetGoal(){
+  const result = mpBudgetGoalResult();
+  if (!result || !(result.budget > 0)){ mpUpdateBudgetGoalPreview(); return; }
+  const input = document.getElementById('mpTotalBudget');
+  if (!input) return;
+  input.value = result.budget;
+  if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: 0, allocations: [] };
+  state.mediaPlan.goalBackwardSolve = {
+    kpiKind: result.kpiKind,
+    goalValue: result.goalValue,
+    avgOrderValue: result.kpiKind === 'revenue' ? (Number((document.getElementById('mpGoalAov') || {}).value) || null) : null
+  };
   input.dispatchEvent(new Event('input'));
 }
 // Progressive reveal for the Media Plan steps (Round 7): Step 2 appears once
@@ -26579,7 +26745,7 @@ async function saveMediaPlan(){
         // never actually sent here, so the plan-wide Flat/Manual curve reset
         // to Flat on every reload even after "Saved". Backend now has real
         // columns for these — see the media-plan POST handler's own comment.
-        body: JSON.stringify({ year: plan.year, totalBudget: plan.totalBudget, grossRevenue: plan.grossRevenue || 0, marketingBudgetPct: plan.marketingBudgetPct || null, tradeMarketingPct: plan.tradeMarketingPct || null, tradeMarketingBudget: plan.tradeMarketingBudget || 0, allocations: plan.allocations || [], nonWorkingMedia: plan.nonWorkingMedia || [], monthlyMode: plan.monthlyMode || 'flat', monthlyPct: plan.monthlyPct || null })
+        body: JSON.stringify({ year: plan.year, totalBudget: plan.totalBudget, grossRevenue: plan.grossRevenue || 0, marketingBudgetPct: plan.marketingBudgetPct || null, tradeMarketingPct: plan.tradeMarketingPct || null, tradeMarketingBudget: plan.tradeMarketingBudget || 0, allocations: plan.allocations || [], nonWorkingMedia: plan.nonWorkingMedia || [], monthlyMode: plan.monthlyMode || 'flat', monthlyPct: plan.monthlyPct || null, goalBackwardSolve: plan.goalBackwardSolve || null })
       });
       if (resp.ok){
         const data = await resp.json();
@@ -27177,7 +27343,20 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
   // from revenue. Open on Calculate when this plan already carries a gross
   // revenue figure, otherwise Type.
   mpPopulateTargetPctSelect(plan && plan.marketingBudgetPct);
-  mpSetBudgetMode(plan && plan.grossRevenue ? 'calc' : 'direct');
+  // 2026-09-15 — pre-fill the goal-backward-solve fields from whatever this
+  // plan/year last had on file (goalBackwardSolveJson), same "remembered,
+  // not re-applied" property as marketingBudgetPct just above — reopening
+  // this plan shows what was used, but #mpTotalBudget itself is never
+  // silently recomputed on load.
+  const goalSaved = plan && plan.goalBackwardSolve;
+  const goalKpiSelect = document.getElementById('mpGoalKpiSelect');
+  const goalValueField = document.getElementById('mpGoalValue');
+  const goalAovField = document.getElementById('mpGoalAov');
+  if (goalKpiSelect) goalKpiSelect.value = (goalSaved && goalSaved.kpiKind === 'revenue') ? 'revenue' : 'transactions';
+  if (goalValueField) goalValueField.value = goalSaved ? (goalSaved.goalValue || '') : '';
+  if (goalAovField) goalAovField.value = goalSaved ? (goalSaved.avgOrderValue || '') : '';
+  mpToggleGoalAovField();
+  mpSetBudgetMode(goalSaved ? 'goal' : (plan && plan.grossRevenue ? 'calc' : 'direct'));
   const yearLabel = document.getElementById('mpBudgetYearLabel');
   if (yearLabel) yearLabel.textContent = mpSelectedYear;
   clearMediaPlanBudgetError();
