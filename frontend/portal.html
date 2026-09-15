@@ -812,6 +812,9 @@
   .derivative-block{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:12px;}
   .derivative-block h4{margin:0 0 8px;font-size:0.8438rem;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);}
   .derivative-block textarea{width:100%;min-height:90px;font-family:'Inter';font-size:0.875rem;line-height:1.55;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);background:var(--paper-dim);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+  /* 2026-09-15 — Corporate Goals field, Company Profile. Same treatment as
+     .derivative-block textarea above. */
+  #cpCorporateGoalsCard textarea{width:100%;min-height:90px;box-sizing:border-box;font-family:'Inter';font-size:0.875rem;line-height:1.55;border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);background:var(--paper-dim);}
   .derivative-block textarea:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .cascade-note{background:var(--white);border:1px dashed var(--line);border-radius:16px;padding:14px 16px;margin:14px 0;font-size:0.7812rem;color:var(--muted);max-width:760px;}
 
@@ -1909,6 +1912,19 @@
   .cmp-template-search-row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:6px;}
   .cmp-template-search-row input{flex:1;min-width:220px;}
   @media (max-width:900px){ .template-rec-row{grid-template-columns:1fr;} }
+  /* 2026-09-15 — Campaign Creation AI Brain conversational intake. Reuses
+     the exact same .cmp-chat-msg / avatar-chip visual language as the
+     header's Team Collaboration chat (see .cmp-chat-msg rules above) for
+     consistency — one chat visual system in this app, not two. Inline in
+     the stage (not a slide-in panel like the header one), small default
+     footprint, grows as the conversation grows. */
+  .cmp-intake{border:1px solid var(--line);border-radius:10px;background:var(--paper-dim);padding:14px 16px 16px;}
+  .cmp-intake-body{display:flex;flex-direction:column;gap:12px;max-height:340px;overflow-y:auto;margin-bottom:10px;}
+  .cmp-intake-input-row{display:flex;gap:10px;align-items:flex-end;}
+  .cmp-intake-input-row textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;max-height:160px;overflow-y:auto;background:var(--white);}
+  .cmp-intake-input-row button{flex-shrink:0;}
+  .cmp-intake-summary{border:1px solid var(--cx);background:#EAF3EF;border-radius:10px;padding:12px 14px;font-size:0.8125rem;margin-top:4px;}
+  .cmp-intake-summary b{color:var(--ink);}
   /* Round 132e (2026-08-09) — intent-based search combobox for Pick Up
      Existing Campaign, replacing the old browser-native <datalist> (exact
      substring only). Ranks on name/ID/audience/channel/product group/
@@ -5126,6 +5142,23 @@
       <div id="cpTrainingDigestHistory"></div>
     </div>
 
+    <!-- 2026-09-15, per direct instruction — new account-level field, the
+         source of truth the Campaign Creation AI Brain conversation and its
+         campaign recommendations read for "overall corporate goals driving
+         KPI recommendations" (see cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md).
+         Free text, not a curated list — a business's real goals ("grow
+         repeat-booking rate among Loyalty-tier guests," "shift Awareness
+         spend toward the two lowest-performing itineraries") don't fit a
+         fixed taxonomy, and forcing one here would just get worked around
+         with an "Other" field. Plain textarea, same save button as the
+         rest of this page, persisted via POST /api/accounts/:id/profile
+         alongside the other profile fields. -->
+    <div id="cpCorporateGoalsCard" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:0 0 20px;">
+      <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Corporate goals</p>
+      <div class="hint" style="margin-bottom:12px;">What is this business trying to achieve overall — not any one campaign. This grounds the Campaign Creation AI Brain conversation and its campaign recommendations, so they can weigh a new campaign against what actually matters to the business, not just what's similar on paper.</div>
+      <textarea id="cpCorporateGoals" rows="4" placeholder="e.g. Grow repeat-booking rate among Loyalty-tier guests; shift spend toward the itineraries with the strongest margin; build Awareness in three new feeder markets this year."></textarea>
+    </div>
+
     <div class="btn-row">
       <button class="btn-primary" onclick="saveCompanyProfile()">Save →</button>
     </div>
@@ -7593,7 +7626,30 @@
           <div class="module-body">
             <p class="cmp-stage-note" id="cmpPickupLockNote" style="padding:0 0 14px;">Unlocks once this campaign is created above — real data, not a placeholder screen, the moment there's a campaign to show it for.</p>
             <div id="cmpPickupFields" style="display:none;">
-              <p class="lede" style="margin-bottom:14px;">Want to start this campaign from one that's similar? Pick one of the recommendations below to copy its setup in, or skip and build this one from scratch. Funding isn't copied (it's tied to a specific budget allocation), and everything copied in stays fully editable in the stages ahead.</p>
+              <!-- 2026-09-15, per direct instruction: "add the free form
+                   text or voice option for users to tell us what they want
+                   to accomplish in plain text with a back and forth
+                   questions with our AI brain instead of asking user to
+                   select a campaign w/o understanding what exists in the
+                   platform and what performed well... recommend similar
+                   campaigns based on the dialogue and overall corporate
+                   goals driving KPI recommendations... Lifecycle Stage and
+                   Goals will generate a draft brief and pre-select details."
+                   Text-first build (voice is a deliberate, separate
+                   follow-on — see cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md).
+                   Sits above the existing search/recommendation row, which
+                   stays as a manual fallback rather than being replaced —
+                   see cmpIntakeSendMessage()/cmpRenderIntakeChat() below. -->
+              <div class="cmp-intake" id="cmpIntake">
+                <p class="lede" style="margin-bottom:12px;">Tell the AI Brain what you want this campaign to accomplish — in your own words. It knows this account's real campaign history, real performance, and your Corporate Goals, and will ask what it needs to recommend the right starting point.</p>
+                <div class="cmp-intake-body" id="cmpIntakeBody"></div>
+                <div class="cmp-intake-input-row">
+                  <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
+                  <button type="button" class="btn-primary" id="cmpIntakeSendBtn" onclick="cmpIntakeSendMessage()">Send</button>
+                </div>
+                <div id="cmpIntakeRecommendations"></div>
+              </div>
+              <p class="lede" style="margin:22px 0 14px;border-top:1px solid var(--line);padding-top:18px;">Prefer to just pick one yourself? Search or browse below — funding isn't copied (it's tied to a specific budget allocation), and everything copied in stays fully editable in the stages ahead.</p>
               <div class="template-rec-row" id="cmpTemplateRecRow"></div>
               <!-- Round 132e (2026-08-09), per direct correction: "Make sure
                    that search is as easy as possible and intent is used vs
@@ -10029,6 +10085,10 @@ const state = {
   company: (HANDOFF && HANDOFF.company) || 'Acme Hospitality Group',
   industry: (HANDOFF && HANDOFF.industry) || 'Hotels & Resorts',
   footprint: (HANDOFF && HANDOFF.footprint) || 'National',
+  // 2026-09-15 — Corporate Goals (see cpCorporateGoalsCard in
+  // step-companyProfile / loadAccountData()'s own comment). Free text, no
+  // HANDOFF default — blank until the account actually sets one.
+  corporateGoals: '',
   // Round 32, follow-on (2026-08-05) — Products & Services, per direct
   // instruction: short free text naming what this brand actually sells
   // (e.g. "7-night Mediterranean cruises, private balcony suites, onboard
@@ -15905,6 +15965,10 @@ async function loadAccountData(){
       state.company = record.account.company || state.company;
       state.industry = record.account.industry || state.industry;
       state.footprint = record.account.footprint || state.footprint;
+      // 2026-09-15 — Corporate Goals (see cpCorporateGoalsCard in
+      // step-companyProfile), the source of truth the Campaign Creation AI
+      // Brain conversation reads for KPI recommendations.
+      state.corporateGoals = record.account.corporateGoals || state.corporateGoals || '';
       // Round 132c17 (2026-08-17) — 3-letter Partner Code, set once on
       // Company Profile, feeds Campaign Code generation (createCampaign()).
       state.partnerCode = record.account.partnerCode || state.partnerCode || '';
@@ -35185,6 +35249,132 @@ function renderCmpPickupStage(){
       </div>
     </div>
   `).join('') : '<div class="hint">No other campaigns exist yet to recommend.</div>';
+  cmpMaybeResetIntake(campaign.id);
+}
+
+// ---------------------------------------------------------------------
+// 2026-09-15 — Campaign Creation AI Brain conversational intake (Step 1/2
+// of Campaign Creation). Text-first, per direct instruction and the
+// separate scoping doc's recommended sequencing (voice is a follow-on, not
+// built here — see cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md).
+// Stateless server, client holds the running transcript — same shape as
+// POST /api/accounts/:id/campaign-intake on the backend. Reuses
+// cmpAvatarColor()/cmpInitials()/cmpAutoGrowTeamChatInput() built for the
+// header's Team Collaboration chat, and the existing cmpApplyTemplate(id)
+// used by the manual recommendation row below, rather than inventing
+// parallel versions of either.
+let cmpIntakeHistory = [];
+let cmpIntakeCampaignId = null;
+let cmpIntakeBusy = false;
+let cmpIntakeLastExtracted = null;
+// The stage's own render (renderCmpPickupStage(), called any time the
+// loaded campaign changes) calls this — a fresh campaign should start a
+// fresh conversation, not carry over context from whatever was discussed
+// for a previous one.
+function cmpMaybeResetIntake(campaignId){
+  if (cmpIntakeCampaignId === campaignId) return;
+  cmpIntakeCampaignId = campaignId;
+  cmpIntakeHistory = [];
+  cmpIntakeLastExtracted = null;
+  cmpRenderIntakeChat();
+  const recEl = document.getElementById('cmpIntakeRecommendations');
+  if (recEl) recEl.innerHTML = '';
+}
+function cmpRenderIntakeChat(){
+  const body = document.getElementById('cmpIntakeBody');
+  if (!body) return;
+  const myName = (state.userName || '').trim();
+  body.innerHTML = cmpIntakeHistory.length ? cmpIntakeHistory.map(h => {
+    const isAi = h.role === 'assistant';
+    const author = isAi ? 'AI Brain' : (myName || 'You');
+    return `<div class="cmp-chat-msg">
+      <div class="cmp-team-chat-avatar" style="background:${isAi ? '#2F0D4D' : cmpAvatarColor(myName || 'me')};">${escapeHtml(isAi ? '✦' : cmpInitials(myName))}</div>
+      <div class="cmp-chat-msg-body">
+        <div class="cmp-chat-msg-meta"><b>${escapeHtml(author)}</b></div>
+        <div class="cmp-chat-msg-text">${escapeHtml(h.text)}</div>
+      </div>
+    </div>`;
+  }).join('') : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>';
+  body.scrollTop = body.scrollHeight;
+}
+async function cmpIntakeSendMessage(){
+  if (cmpIntakeBusy) return;
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  const textEl = document.getElementById('cmpIntakeText');
+  const message = textEl ? textEl.value.trim() : '';
+  if (!message) return;
+  cmpIntakeHistory.push({ role: 'user', text: message });
+  cmpRenderIntakeChat();
+  textEl.value = '';
+  textEl.style.height = '';
+  cmpIntakeBusy = true;
+  const sendBtn = document.getElementById('cmpIntakeSendBtn');
+  if (sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Thinking…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1) })
+    });
+    const data = await resp.json();
+    cmpIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
+    if (data.readyToRecommend && data.extracted){
+      cmpIntakeLastExtracted = data.extracted;
+      cmpRenderIntakeRecommendations(data.extracted, data.recommendedCampaigns || []);
+    }
+  } catch (e){
+    cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search below to pick an existing campaign instead.' });
+    console.warn('cmpIntakeSendMessage failed:', e);
+  } finally {
+    cmpIntakeBusy = false;
+    if (sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    cmpRenderIntakeChat();
+  }
+}
+// Real code does the recommending — the model only extracted intent (see
+// the backend endpoint's own comment for why). This just renders what the
+// server already computed, reusing the same .template-rec-card markup the
+// manual recommendation row below uses, plus the extracted-goal summary
+// and a real "apply" action for the Lifecycle Stage guess (via the
+// existing toggleStage(), the exact function a manual tile click already
+// calls — not a parallel, unverified path).
+function cmpRenderIntakeRecommendations(extracted, recs){
+  const mount = document.getElementById('cmpIntakeRecommendations');
+  if (!mount) return;
+  const stageBtn = extracted.stageRecommendation
+    ? `<button type="button" class="btn-ghost" onclick="cmpApplyIntakeStage('${extracted.stageRecommendation}')">Apply Stage: ${escapeHtml(extracted.stageRecommendation)} →</button>`
+    : '';
+  mount.innerHTML = `
+    <div class="cmp-intake-summary">
+      <b>What the AI Brain heard:</b> ${escapeHtml(extracted.goalSummary || '(no summary)')}
+      ${extracted.stageRecommendation ? `<br><b>Suggested Lifecycle Stage:</b> ${escapeHtml(extracted.stageRecommendation)}` : ''}
+      ${extracted.primaryKpiRecommendation ? `<br><b>Suggested Primary KPI:</b> ${escapeHtml(extracted.primaryKpiRecommendation)}` : ''}
+      <div class="btn-row" style="margin-top:10px;">${stageBtn}</div>
+    </div>
+    ${recs.length ? `<div class="template-rec-row" style="margin-top:14px;">${recs.map(c => `
+      <div class="template-rec-card">
+        <div class="template-rec-name">${escapeHtml(c.name)}</div>
+        <div class="template-rec-id">${escapeHtml(c.id)}</div>
+        <div class="template-rec-actions">
+          <div class="template-rec-match">${escapeHtml(c.why)}</div>
+          <button type="button" class="btn-ghost" onclick="cmpApplyTemplate('${c.id}')">Use as template →</button>
+        </div>
+      </div>`).join('')}</div>` : ''}
+  `;
+}
+// Applies only the Lifecycle Stage — via toggleStage(), the same function a
+// manual tile click calls, so every downstream cascade (Objective
+// derivation, Primary KPI options, segment rules) runs exactly as it does
+// for a human pick. Deliberately does NOT try to write into the Brief
+// Builder text (#cmpBriefBuilderText) — that field is a live-recomputed
+// summary owned by generateCampaignBrief(), not a human-editable draft (see
+// that stage's own comment), and overwriting it here would fight that
+// recompute rather than cooperate with it. The goal summary/KPI stay
+// visible in the conversation itself as the real context instead.
+function cmpApplyIntakeStage(stage){
+  if (typeof toggleStage !== 'function') return;
+  if (selectedStage !== stage) toggleStage(stage);
+  openCmpStage('lifecycle');
 }
 
 // ---------------------------------------------------------------------
@@ -52028,6 +52218,9 @@ function renderCompanyProfileStep(){
   }
   if (footprintSelect) footprintSelect.value = state.footprint || '';
 
+  const corporateGoalsEl = document.getElementById('cpCorporateGoals');
+  if (corporateGoalsEl) corporateGoalsEl.value = state.corporateGoals || '';
+
   const audienceEl = document.getElementById('cpAudienceTiles');
   if (audienceEl){
     audienceEl.innerHTML = GENERATIONS.map(g => `
@@ -53052,12 +53245,18 @@ async function saveCompanyProfile(){
   // renderCompanyProfileStep()'s comment); they're still sent here unchanged
   // from state, straight through from whatever the assessment/account record
   // last set, so a Save here never overwrites them with something stale.
+  // 2026-09-15 — Corporate Goals is a real editable field on this page (see
+  // cpCorporateGoalsCard), unlike industry/footprint/etc. above — read it
+  // from the textarea into state before sending, same as any other real
+  // input on this step.
+  const corporateGoalsEl = document.getElementById('cpCorporateGoals');
+  if (corporateGoalsEl) state.corporateGoals = corporateGoalsEl.value;
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], wealthIndexTargetIncome: state.wealthIndexTargetIncome, activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '' })
+        body: JSON.stringify({ industry: state.industry, footprint: state.footprint, productsServices: state.productsServices, audience: [...state.audience], wealth: [...state.wealth], wealthIndexTargetIncome: state.wealthIndexTargetIncome, activeChannels: [...state.activeChannels], partners: state.partners, partnerCode: state.partnerCode || '', corporateGoals: state.corporateGoals || '' })
       });
       if (resp.ok) persisted = true;
     } catch (e){ console.warn('saveCompanyProfile: backend write failed, saved locally only.', e); }
