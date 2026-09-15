@@ -2440,6 +2440,21 @@ const COPY_SOURCES_SCHEMA = {
   },
   required: ['copy', 'sourcesUsed']
 };
+// POST /api/accounts/:id/campaign-intake's per-turn schema — pulled out to a
+// constant (2026-09-15) so the one-retry-on-transient-failure wrapper in
+// that handler can reuse it verbatim on both attempts instead of a second
+// hand-copied literal drifting from the first.
+const CAMPAIGN_INTAKE_TURN_SCHEMA = {
+  type: 'object',
+  properties: {
+    reply: { type: 'string', description: 'Your next message to the user.' },
+    readyToRecommend: { type: 'boolean', description: 'True once you understand the goal well enough to recommend real existing campaigns and a Lifecycle Stage.' },
+    stageRecommendation: { type: ['string', 'null'], description: 'One of Awareness, Consideration, Purchase, Loyalty, Advocacy, or null if genuinely unclear.' },
+    primaryKpiRecommendation: { type: ['string', 'null'], description: 'Plain words, or null if no KPI came up yet.' },
+    goalSummary: { type: ['string', 'null'], description: 'A 1-2 sentence plain-English summary of what the user wants to accomplish, in your own words. Null until readyToRecommend is true.' }
+  },
+  required: ['reply', 'readyToRecommend']
+};
 // 2026-09-11/12, POST /api/accounts/:id/voice-draft (see
 // generateVoiceGuideDraftViaAI() below) — the Human Agentic Model shape:
 // `draft` is the actual guide, `gaps` is what's missing that would make a
@@ -19554,24 +19569,41 @@ Respond with your next message (specific and real, never generic filler), and, o
 
 Submit your response via the campaign_intake_turn tool.`;
       try {
-        const parsed = await callClaudeForJSON({
-          model: 'claude-sonnet-4-5',
-          maxTokens: 700,
-          content: prompt,
-          toolName: 'campaign_intake_turn',
-          toolDescription: 'Submit this turn of the campaign-intake conversation.',
-          schema: {
-            type: 'object',
-            properties: {
-              reply: { type: 'string', description: 'Your next message to the user.' },
-              readyToRecommend: { type: 'boolean', description: 'True once you understand the goal well enough to recommend real existing campaigns and a Lifecycle Stage.' },
-              stageRecommendation: { type: ['string', 'null'], description: 'One of Awareness, Consideration, Purchase, Loyalty, Advocacy, or null if genuinely unclear.' },
-              primaryKpiRecommendation: { type: ['string', 'null'], description: 'Plain words, or null if no KPI came up yet.' },
-              goalSummary: { type: ['string', 'null'], description: 'A 1-2 sentence plain-English summary of what the user wants to accomplish, in your own words. Null until readyToRecommend is true.' }
-            },
-            required: ['reply', 'readyToRecommend']
-          }
-        });
+        // 2026-09-15 (direct instruction, after a real failure mid-
+        // conversation during Todd's own live test: "we can't have that in
+        // a production environment with 100 clients. The business will
+        // fail.") — one server-side retry on a genuinely transient
+        // Anthropic-side failure (timeout, rate limit, 5xx/529 overloaded),
+        // before falling back to the soft-fail reply below. This is
+        // separate from, and in addition to, the frontend's own silent
+        // retry (cmpFetchJsonWithRetry in portal.html) — that one covers a
+        // client-side network blip or the request being aborted too early;
+        // this one covers Anthropic itself having a bad moment. A genuine
+        // non-retryable failure (e.g. a malformed schema — a code bug, not
+        // a transient condition) still fails fast on the second attempt
+        // rather than looping.
+        let parsed;
+        try {
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5',
+            maxTokens: 700,
+            content: prompt,
+            toolName: 'campaign_intake_turn',
+            toolDescription: 'Submit this turn of the campaign-intake conversation.',
+            schema: CAMPAIGN_INTAKE_TURN_SCHEMA
+          });
+        } catch (firstErr){
+          console.warn('[POST /api/accounts/:id/campaign-intake] first attempt failed, retrying once:', firstErr.message);
+          await new Promise(r => setTimeout(r, 800));
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5',
+            maxTokens: 700,
+            content: prompt,
+            toolName: 'campaign_intake_turn',
+            toolDescription: 'Submit this turn of the campaign-intake conversation.',
+            schema: CAMPAIGN_INTAKE_TURN_SCHEMA
+          });
+        }
         const VALID_STAGES = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
         const stage = VALID_STAGES.includes(parsed.stageRecommendation) ? parsed.stageRecommendation : null;
         let recommendedCampaigns = [];
@@ -27668,6 +27700,5 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
