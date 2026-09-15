@@ -865,6 +865,31 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS trusted_devices (
   lastUsedAt TEXT
 )`);
 
+// 2026-09-15 — voice_tokens, ElevenLabs Phase 2 groundwork (see
+// cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md, Phase 2
+// item 1: "the real blocker"). ElevenLabs' Conversational AI agent calls one
+// fixed webhook URL with no browser cookie/session of its own, so
+// requireAccount()'s normal Bearer-session check has nothing to check when
+// the caller is a voice agent, not the portal itself. A voice_tokens row is
+// the bridge: short-lived (see VOICE_TOKEN_LIFETIME_MS below — long enough
+// for one real voice session, short enough that a leaked value isn't a
+// standing credential), single-account-scoped, and only ever minted for a
+// caller who ALREADY holds a real portal session for that account (see
+// POST /api/accounts/:id/voice-token below, which is requireAccount()-gated
+// itself) — so this never becomes a second, independent way to authenticate
+// as an account, only a short-lived derivative of an existing real login.
+// Deliberately reusable within its window (checkVoiceToken does not delete
+// on first use, only on expiry) rather than one-shot: a single ElevenLabs
+// conversation legitimately calls its backend tool more than once per call.
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS voice_tokens (
+  token TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL,
+  lastUsedAt TEXT,
+  FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+)`);
+
 // Added 2026-07-25 (round 46) — HEO function 1 of 3, self-rating. One row
 // per skill per rating event (not one row per member) so a trend over time
 // is just "every row for this memberId+skill, ordered by ratedAt" — same
@@ -934,6 +959,11 @@ ensureColumn('accounts', 'competitivePositioningApproved', 'INTEGER DEFAULT 0');
 ensureColumn('accounts', 'competitivePositioningApprovedAt', 'TEXT');
 ensureColumn('accounts', 'industryTrendsText', 'TEXT');
 ensureColumn('accounts', 'competitorsJson', 'TEXT');
+// 2026-09-15 — Corporate Goals, per direct instruction. Free text, not a
+// curated list (see cpCorporateGoalsCard in portal.html for why). Read by
+// buildCampaignIntakePrompt() below as the account-wide grounding context
+// for the Campaign Creation AI Brain conversation's KPI recommendations.
+ensureColumn('accounts', 'corporateGoals', 'TEXT');
 
 // Added 2026-07-23 (round 32) — Search Everywhere (SEO/AEO/GEO) keyword
 // recommendations, per direct instruction. A single JSON array, same
@@ -11505,6 +11535,37 @@ function checkTrustedDevice(memberId, token){
   return true;
 }
 
+// 20 minutes — a real voice conversation (a few back-and-forth turns, plus
+// the time to actually decide on a stage/campaign) comfortably fits; short
+// enough that a token sitting in ElevenLabs' dynamic-variable payload past
+// the call it was minted for isn't a meaningful standing credential.
+const VOICE_TOKEN_LIFETIME_MS = 20 * 60 * 1000;
+
+function createVoiceToken(accountId){
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + VOICE_TOKEN_LIFETIME_MS).toISOString();
+  db.prepare('INSERT INTO voice_tokens (token, accountId, createdAt, expiresAt, lastUsedAt) VALUES (?,?,?,?,?)')
+    .run(token, accountId, now.toISOString(), expiresAt, now.toISOString());
+  return { token, expiresAt };
+}
+
+// Same shape as checkTrustedDevice() above: true (and refreshes
+// lastUsedAt) only for a token that exists, hasn't expired, and belongs to
+// THIS account — a voice token minted for one account's session can never
+// authenticate a call scoped to a different account.
+function checkVoiceToken(accountId, token){
+  if (!token) return false;
+  const row = db.prepare('SELECT * FROM voice_tokens WHERE token = ? AND accountId = ?').get(token, accountId);
+  if (!row) return false;
+  if (new Date(row.expiresAt).getTime() < Date.now()){
+    db.prepare('DELETE FROM voice_tokens WHERE token = ?').run(token);
+    return false;
+  }
+  db.prepare('UPDATE voice_tokens SET lastUsedAt = ? WHERE token = ?').run(new Date().toISOString(), token);
+  return true;
+}
+
 // Added 2026-08-18 — a system-issued temporary password for a freshly
 // registered admin/CMO user, per direct instruction: real, memorable
 // username+password rather than the access-code model, with a temp
@@ -11636,6 +11697,20 @@ function requireAccount(req, res, accountId){
 // send-the-401-itself convention as requireAccount() above.
 function requireAccountOrAdmin(req, res, accountId){
   if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  return requireAccount(req, res, accountId);
+}
+
+// 2026-09-15 — the voice-token counterpart to requireAccountOrAdmin() above,
+// same shape: checks the new, narrower credential first (X-Voice-Token,
+// scoped to exactly one account, expires in 20 minutes — see voice_tokens'
+// own comment), falls back to the normal Bearer-session check otherwise.
+// This is what lets POST /api/accounts/:id/campaign-intake stay a single
+// endpoint for both the portal's own text chat (real session) and a future
+// ElevenLabs voice-agent tool call (voice token, no session) — see Phase 2
+// item 2 in cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md.
+function requireAccountOrVoiceToken(req, res, accountId){
+  const voiceToken = req.headers['x-voice-token'];
+  if (voiceToken && checkVoiceToken(accountId, voiceToken)) return true;
   return requireAccount(req, res, accountId);
 }
 
@@ -19356,11 +19431,172 @@ async function handleRequest(req, res) {
         // of every Campaign Code generated for this account.
         partnerCode: body.partnerCode !== undefined
           ? String(body.partnerCode || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3)
-          : existing.partnerCode
+          : existing.partnerCode,
+        // 2026-09-15 — Corporate Goals, same merge-update convention as
+        // productsServices above: free text, only overwritten when this
+        // call actually sent a value.
+        corporateGoals: body.corporateGoals !== undefined ? body.corporateGoals : existing.corporateGoals
       };
-      db.prepare('UPDATE accounts SET company = ?, industry = ?, footprint = ?, productsServices = ?, audience = ?, wealth = ?, wealthIndexTargetIncome = ?, activeChannels = ?, partnerCode = ? WHERE accountId = ?')
-        .run(merged.company, merged.industry, merged.footprint, merged.productsServices, merged.audience, merged.wealth, merged.wealthIndexTargetIncome, merged.activeChannels, merged.partnerCode, accountId);
+      db.prepare('UPDATE accounts SET company = ?, industry = ?, footprint = ?, productsServices = ?, audience = ?, wealth = ?, wealthIndexTargetIncome = ?, activeChannels = ?, partnerCode = ?, corporateGoals = ? WHERE accountId = ?')
+        .run(merged.company, merged.industry, merged.footprint, merged.productsServices, merged.audience, merged.wealth, merged.wealthIndexTargetIncome, merged.activeChannels, merged.partnerCode, merged.corporateGoals, accountId);
       return sendJson(res, 200, { updatedAt: new Date().toISOString(), company: merged.company });
+    }
+
+    // POST /api/accounts/:id/voice-token — 2026-09-15, ElevenLabs Phase 2
+    // groundwork (see voice_tokens' own comment and Phase 2 item 1 in
+    // cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md).
+    // requireAccount()-gated on purpose (the strict, session-only check —
+    // never requireAccountOrVoiceToken, which would let a voice token mint
+    // another voice token): only a caller who already holds a real portal
+    // session for this account can mint one of these. The intended caller
+    // is the portal itself, right when a signed-in user opens the mic on
+    // the AI Brain intake chat — the frontend calls this first, then passes
+    // the returned token to ElevenLabs as a custom dynamic variable when it
+    // starts that conversation session, so the agent's later tool call back
+    // to campaign-intake can send it as X-Voice-Token. Nothing ElevenLabs-
+    // side is configured yet (that's Phase 2 items 2-4, console work, not
+    // this) — this endpoint is real and callable today regardless, and is
+    // exactly what that configuration will call once it exists.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-token'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const { token, expiresAt } = createVoiceToken(accountId);
+      return sendJson(res, 200, { token, expiresAt });
+    }
+
+    // POST /api/accounts/:id/campaign-intake — 2026-09-15, per direct
+    // instruction: "Step 1 is a good place for us to add the free form
+    // text or voice option for users to tell us what they want to
+    // accomplish... instead of asking user to select a campaign w/o
+    // understanding what exists in the platform and what performed well."
+    // Text-first build — see cxmedia-campaign-intake-conversational-ai-scoping-2026-09-15.md
+    // for why voice is a deliberate, separate follow-on rather than built
+    // alongside this. Stateless per call, same shape as every other
+    // multi-turn surface in this app: the client holds the running
+    // transcript (`history`) and resends it each time — there is no
+    // persisted conversation row server-side.
+    //
+    // Deliberate split of responsibility: the model's ONLY job is to hold
+    // the conversation and extract structured intent (a Lifecycle Stage
+    // guess, a Primary KPI if one came up, a plain-English goal summary).
+    // It never picks the recommended campaigns itself — that ranking is
+    // real code below, run over this account's actual campaign performance
+    // data (the same actualSpend/actualImpressions/actualConversions
+    // fields the Analysis view already uses), so "recommend similar
+    // campaigns based on... what performed well" stays an inspectable,
+    // two-factor read (stage match + real performance), never a single
+    // model-invented score — same convention as the Campaign Relevance
+    // Score rebuild (round 132cc).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-intake'){
+      const accountId = decodeURIComponent(parts[2]);
+      // requireAccountOrVoiceToken(), not requireAccount(): lets this same
+      // endpoint serve both the portal's own text chat (real session) and,
+      // once ElevenLabs is wired up, a voice-agent tool call carrying a
+      // short-lived X-Voice-Token instead — see voice_tokens' own comment.
+      if (!requireAccountOrVoiceToken(req, res, accountId)) return;
+      if (!process.env.ANTHROPIC_API_KEY){
+        return sendJson(res, 200, {
+          reply: 'AI Brain conversation requires ANTHROPIC_API_KEY to be configured on this deployment — nothing was generated. Use the search below to pick an existing campaign instead.',
+          readyToRecommend: false, extracted: null, recommendedCampaigns: []
+        });
+      }
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const message = typeof body.message === 'string' ? body.message.trim() : '';
+      if (!message) return sendJson(res, 400, { error: 'message is required' });
+      // Cap what's sent back to us — a per-request token cost, and a
+      // runaway client bug (or someone pasting a huge amount of text)
+      // shouldn't be able to blow up a single call.
+      const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
+      const campaigns = db.prepare(
+        'SELECT id, name, stage, objective, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt FROM campaigns WHERE accountId = ? AND isAdHoc = 0 ORDER BY createdAt DESC LIMIT 40'
+      ).all(accountId);
+      const campaignSummaries = campaigns.map(c => {
+        const perfBits = [];
+        if (c.actualConversions != null && c.actualSpend){
+          perfBits.push(`${(c.actualConversions / (c.actualSpend / 1000)).toFixed(2)} conversions/$1k spend`);
+        }
+        if (c.plannedImpressions && c.actualImpressions != null){
+          perfBits.push(`delivered ${Math.round((c.actualImpressions / c.plannedImpressions) * 100)}% of planned impressions`);
+        }
+        return `- ${c.id} "${c.name || '(untitled)'}" — Stage: ${c.stage || '(not set)'}, Objective: ${c.objective || '(not set)'}, Primary KPI: ${c.primaryKpi || '(not set)'}${perfBits.length ? `, real performance: ${perfBits.join('; ')}` : ', no actuals recorded yet'}`;
+      }).join('\n');
+      const conversationText = history.map(h => `${h.role === 'assistant' ? 'AI Brain' : 'User'}: ${h.text}`).join('\n');
+      const prompt = `You are the AI Brain inside a marketing platform, helping a real marketer start a new campaign by understanding what they want to accomplish — through real conversation, not a form. Ask one focused follow-up at a time; don't interrogate. Once you genuinely understand the goal well enough to be useful (usually 2-4 exchanges), say so and set readyToRecommend to true — don't drag the conversation out past that point.
+
+THIS ACCOUNT'S CORPORATE GOALS (real, on file — weigh these whenever the conversation touches strategy or KPI choice):
+${(account.corporateGoals || '').trim() || '(none on file for this account yet)'}
+
+THIS ACCOUNT'S EXISTING CAMPAIGNS (real data — refer to these by name/ID when relevant; never invent a campaign that isn't listed here):
+${campaignSummaries || '(no other real campaigns exist yet for this account)'}
+
+CONVERSATION SO FAR:
+${conversationText || '(nothing yet — this is the first message)'}
+
+The user just said: "${message}"
+
+Respond with your next message (specific and real, never generic filler), and, once you have enough to be useful: your best-guess Lifecycle-Loop Stage (exactly one of Awareness, Consideration, Purchase, Loyalty, Advocacy — or null if genuinely unclear), a Primary KPI in plain words if one came up in conversation, and a 1-2 sentence goal summary in your own words. Never fabricate a specific the user didn't actually say.
+
+Submit your response via the campaign_intake_turn tool.`;
+      try {
+        const parsed = await callClaudeForJSON({
+          model: 'claude-sonnet-4-5',
+          maxTokens: 700,
+          content: prompt,
+          toolName: 'campaign_intake_turn',
+          toolDescription: 'Submit this turn of the campaign-intake conversation.',
+          schema: {
+            type: 'object',
+            properties: {
+              reply: { type: 'string', description: 'Your next message to the user.' },
+              readyToRecommend: { type: 'boolean', description: 'True once you understand the goal well enough to recommend real existing campaigns and a Lifecycle Stage.' },
+              stageRecommendation: { type: ['string', 'null'], description: 'One of Awareness, Consideration, Purchase, Loyalty, Advocacy, or null if genuinely unclear.' },
+              primaryKpiRecommendation: { type: ['string', 'null'], description: 'Plain words, or null if no KPI came up yet.' },
+              goalSummary: { type: ['string', 'null'], description: 'A 1-2 sentence plain-English summary of what the user wants to accomplish, in your own words. Null until readyToRecommend is true.' }
+            },
+            required: ['reply', 'readyToRecommend']
+          }
+        });
+        const VALID_STAGES = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
+        const stage = VALID_STAGES.includes(parsed.stageRecommendation) ? parsed.stageRecommendation : null;
+        let recommendedCampaigns = [];
+        if (parsed.readyToRecommend){
+          const scored = campaigns.map(c => {
+            const stageMatch = !!(stage && c.stage === stage);
+            const perfScore = (c.actualConversions != null && c.actualSpend) ? (c.actualConversions / (c.actualSpend / 1000)) : null;
+            return { c, stageMatch, perfScore };
+          }).filter(x => x.stageMatch || x.perfScore !== null)
+            .sort((a, b) => (a.stageMatch !== b.stageMatch) ? (a.stageMatch ? -1 : 1) : ((b.perfScore || 0) - (a.perfScore || 0)))
+            .slice(0, 3);
+          recommendedCampaigns = scored.map(x => ({
+            id: x.c.id,
+            name: x.c.name || '(untitled campaign)',
+            why: [
+              x.stageMatch ? `Same Lifecycle Stage (${x.c.stage})` : null,
+              x.perfScore !== null ? `${x.perfScore.toFixed(2)} conversions per $1k spend` : null
+            ].filter(Boolean).join(' · ') || 'Recently created'
+          }));
+        }
+        return sendJson(res, 200, {
+          reply: parsed.reply,
+          readyToRecommend: !!parsed.readyToRecommend,
+          extracted: parsed.readyToRecommend ? {
+            stageRecommendation: stage,
+            primaryKpiRecommendation: parsed.primaryKpiRecommendation || null,
+            goalSummary: parsed.goalSummary || null
+          } : null,
+          recommendedCampaigns
+        });
+      } catch (e){
+        console.error('[POST /api/accounts/:id/campaign-intake] generation failed:', e.message);
+        return sendJson(res, 200, {
+          reply: 'Something went wrong generating a response — try rephrasing, or use the search below to pick an existing campaign instead.',
+          readyToRecommend: false, extracted: null, recommendedCampaigns: []
+        });
+      }
     }
 
     // POST /api/accounts/:id/analytics-integration — round 70, Analytics
@@ -27412,4 +27648,5 @@ try {
 }
 
 module.exports = handleRequest;
+
 
