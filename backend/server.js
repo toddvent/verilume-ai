@@ -1118,6 +1118,17 @@ ensureColumn('media_plans', 'monthlyPctJson', 'TEXT');
 ensureColumn('media_plans', 'marketingBudgetPct', 'REAL');
 ensureColumn('media_plans', 'tradeMarketingPct', 'REAL');
 ensureColumn('media_plans', 'tradeMarketingBudget', 'REAL');
+// 2026-09-15 — goal-oriented budget (cxmedia-media-plan-budget-scope.md
+// Round 3, Section 2: "the master budget and monthly distribution is
+// created manually OR backwards from revenue or transaction goals" — the
+// backward-solve half of that ask, not yet built as of that scoping doc).
+// Same JSON-column convention as nonWorkingMediaJson/monthlyPctJson just
+// above: {kpiKind: 'transactions'|'revenue', goalValue, avgOrderValue}, kept
+// only so re-opening this plan/year shows what was last used to derive the
+// Working Marketing Budget — same "remembered, not re-applied automatically"
+// property as marketingBudgetPct. mpTotalBudget itself is still the one
+// real, editable field; this is provenance, not a second source of truth.
+ensureColumn('media_plans', 'goalBackwardSolveJson', 'TEXT');
 // Added 2026-08-05 — per-allocation estimated CPM (round 32C follow-on).
 // Editable per stage+channel row rather than one rate per channel account-
 // wide, since the same channel can realistically cost differently by
@@ -10720,6 +10731,7 @@ const LEGACY_CASING_COLUMNS = [
   ['account_stores', 'geocodeSource'],
   ['account_stores', 'updatedAt'],
   ['market_customer_uploads', 'geoLevel'],
+  ['media_plans', 'goalBackwardSolveJson'],
   ['media_plans', 'marketingBudgetPct'],
   ['media_plans', 'monthlyMode'],
   ['media_plans', 'monthlyPctJson'],
@@ -22047,7 +22059,8 @@ Submit your response via the campaign_intake_turn tool.`;
       // an empty array/default rather than a 500 on a corrupted/legacy row.
       try { plan.nonWorkingMedia = plan.nonWorkingMediaJson ? JSON.parse(plan.nonWorkingMediaJson) : []; } catch (e) { plan.nonWorkingMedia = []; }
       try { plan.monthlyPct = plan.monthlyPctJson ? JSON.parse(plan.monthlyPctJson) : null; } catch (e) { plan.monthlyPct = null; }
-      delete plan.nonWorkingMediaJson; delete plan.monthlyPctJson;
+      try { plan.goalBackwardSolve = plan.goalBackwardSolveJson ? JSON.parse(plan.goalBackwardSolveJson) : null; } catch (e) { plan.goalBackwardSolve = null; }
+      delete plan.nonWorkingMediaJson; delete plan.monthlyPctJson; delete plan.goalBackwardSolveJson;
       return sendJson(res, 200, { plan, allocations });
     }
 
@@ -22083,18 +22096,25 @@ Submit your response via the campaign_intake_turn tool.`;
       // can re-select the right tile on reload; both use monthlyPctJson.
       const monthlyMode = body.monthlyMode === 'manual' ? 'manual' : (body.monthlyMode === 'curve' ? 'curve' : 'flat');
       const monthlyPctJson = body.monthlyPct && typeof body.monthlyPct === 'object' ? JSON.stringify(body.monthlyPct) : null;
+      // 2026-09-15 — goal-oriented budget provenance, same
+      // send-nothing-means-keep-what-was-there convention as every other
+      // optional field on this save: only overwrite when the frontend
+      // actually sent a goalBackwardSolve object this save.
+      const goalBackwardSolveJson = body.goalBackwardSolve && typeof body.goalBackwardSolve === 'object'
+        ? JSON.stringify(body.goalBackwardSolve)
+        : (plan ? plan.goalBackwardSolveJson : null);
       // Round 132c13 — marketingBudgetPct/tradeMarketingPct/
       // tradeMarketingBudget, same fall-back-to-existing-value pattern as
       // grossRevenue just above (a field the frontend didn't send this
       // save shouldn't silently null out what was there).
       if (plan){
         planId = plan.id;
-        db.prepare('UPDATE media_plans SET year = ?, totalBudget = ?, usesTranches = ?, trancheGranularity = ?, grossRevenue = ?, nonWorkingMediaJson = ?, monthlyMode = ?, monthlyPctJson = ?, marketingBudgetPct = ?, tradeMarketingPct = ?, tradeMarketingBudget = ?, updatedAt = ? WHERE id = ?')
-          .run(body.year || plan.year, typeof body.totalBudget === 'number' ? body.totalBudget : plan.totalBudget, body.usesTranches ? 1 : 0, granularity, typeof body.grossRevenue === 'number' ? body.grossRevenue : plan.grossRevenue, nonWorkingMediaJson, monthlyMode, monthlyPctJson, typeof body.marketingBudgetPct === 'number' ? body.marketingBudgetPct : plan.marketingBudgetPct, typeof body.tradeMarketingPct === 'number' ? body.tradeMarketingPct : plan.tradeMarketingPct, typeof body.tradeMarketingBudget === 'number' ? body.tradeMarketingBudget : plan.tradeMarketingBudget, now, planId);
+        db.prepare('UPDATE media_plans SET year = ?, totalBudget = ?, usesTranches = ?, trancheGranularity = ?, grossRevenue = ?, nonWorkingMediaJson = ?, monthlyMode = ?, monthlyPctJson = ?, marketingBudgetPct = ?, tradeMarketingPct = ?, tradeMarketingBudget = ?, goalBackwardSolveJson = ?, updatedAt = ? WHERE id = ?')
+          .run(body.year || plan.year, typeof body.totalBudget === 'number' ? body.totalBudget : plan.totalBudget, body.usesTranches ? 1 : 0, granularity, typeof body.grossRevenue === 'number' ? body.grossRevenue : plan.grossRevenue, nonWorkingMediaJson, monthlyMode, monthlyPctJson, typeof body.marketingBudgetPct === 'number' ? body.marketingBudgetPct : plan.marketingBudgetPct, typeof body.tradeMarketingPct === 'number' ? body.tradeMarketingPct : plan.tradeMarketingPct, typeof body.tradeMarketingBudget === 'number' ? body.tradeMarketingBudget : plan.tradeMarketingBudget, goalBackwardSolveJson, now, planId);
       } else {
         planId = generateId('PLAN');
-        db.prepare('INSERT INTO media_plans (id, accountId, year, totalBudget, usesTranches, trancheGranularity, grossRevenue, nonWorkingMediaJson, monthlyMode, monthlyPctJson, marketingBudgetPct, tradeMarketingPct, tradeMarketingBudget, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(planId, accountId, body.year || new Date().getFullYear(), typeof body.totalBudget === 'number' ? body.totalBudget : null, body.usesTranches ? 1 : 0, granularity, typeof body.grossRevenue === 'number' ? body.grossRevenue : null, nonWorkingMediaJson, monthlyMode, monthlyPctJson, typeof body.marketingBudgetPct === 'number' ? body.marketingBudgetPct : null, typeof body.tradeMarketingPct === 'number' ? body.tradeMarketingPct : null, typeof body.tradeMarketingBudget === 'number' ? body.tradeMarketingBudget : null, now, now);
+        db.prepare('INSERT INTO media_plans (id, accountId, year, totalBudget, usesTranches, trancheGranularity, grossRevenue, nonWorkingMediaJson, monthlyMode, monthlyPctJson, marketingBudgetPct, tradeMarketingPct, tradeMarketingBudget, goalBackwardSolveJson, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(planId, accountId, body.year || new Date().getFullYear(), typeof body.totalBudget === 'number' ? body.totalBudget : null, body.usesTranches ? 1 : 0, granularity, typeof body.grossRevenue === 'number' ? body.grossRevenue : null, nonWorkingMediaJson, monthlyMode, monthlyPctJson, typeof body.marketingBudgetPct === 'number' ? body.marketingBudgetPct : null, typeof body.tradeMarketingPct === 'number' ? body.tradeMarketingPct : null, typeof body.tradeMarketingBudget === 'number' ? body.tradeMarketingBudget : null, goalBackwardSolveJson, now, now);
       }
       // Round 54 — delete this plan's existing period rows before its
       // allocations (periods reference allocationId, and allocation ids are
@@ -27648,5 +27668,6 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
