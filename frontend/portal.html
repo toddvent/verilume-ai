@@ -1925,6 +1925,17 @@
   .cmp-intake-input-row button{flex-shrink:0;}
   .cmp-intake-summary{border:1px solid var(--cx);background:#EAF3EF;border-radius:10px;padding:12px 14px;font-size:0.8125rem;margin-top:4px;}
   .cmp-intake-summary b{color:var(--ink);}
+  /* 2026-09-15 — voice wiring for the campaign-intake conversation. See
+     cmpIntakeStartVoice() (JS) — real ElevenLabs Conversational AI session,
+     not a shell. Mic sits beside Send, same input row, same visual system;
+     three states via data-state so the one button covers idle/connecting/live
+     without swapping DOM nodes. */
+  .cmp-intake-mic-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);flex-shrink:0;}
+  .cmp-intake-mic-btn svg{width:18px;height:18px;}
+  .cmp-intake-mic-btn[data-state="connecting"]{opacity:0.6;cursor:wait;}
+  .cmp-intake-mic-btn[data-state="live"]{background:#C0273C;border-color:#C0273C;color:#fff;animation:cmpIntakeMicPulse 1.6s ease-in-out infinite;}
+  @keyframes cmpIntakeMicPulse{0%,100%{box-shadow:0 0 0 0 rgba(192,39,60,0.35);}50%{box-shadow:0 0 0 6px rgba(192,39,60,0);}}
+  .cmp-intake-voice-status{font-size:0.75rem;color:var(--muted);margin:6px 0 0;}
   /* Round 132e (2026-08-09) — intent-based search combobox for Pick Up
      Existing Campaign, replacing the old browser-native <datalist> (exact
      substring only). Ranks on name/ID/audience/channel/product group/
@@ -7645,8 +7656,16 @@
                 <div class="cmp-intake-body" id="cmpIntakeBody"></div>
                 <div class="cmp-intake-input-row">
                   <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
+                  <!-- 2026-09-15 — voice, wired to a real ElevenLabs Conversational
+                       AI agent (Verilume, agent_1901m2jpy694em5v6nkc249vs0ec) via
+                       cmpIntakeStartVoice()/cmpIntakeStopVoice(). Toggle button:
+                       click to start, click again to end. -->
+                  <button type="button" class="cmp-intake-mic-btn" id="cmpIntakeMicBtn" data-state="idle" onclick="cmpIntakeToggleVoice()" title="Talk to the AI Brain" aria-label="Start voice conversation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                  </button>
                   <button type="button" class="btn-primary" id="cmpIntakeSendBtn" onclick="cmpIntakeSendMessage()">Send</button>
                 </div>
+                <p class="cmp-intake-voice-status" id="cmpIntakeVoiceStatus" style="display:none;"></p>
                 <div id="cmpIntakeRecommendations"></div>
               </div>
               <p class="lede" style="margin:22px 0 14px;border-top:1px solid var(--line);padding-top:18px;">Prefer to just pick one yourself? Search or browse below — funding isn't copied (it's tied to a specific budget allocation), and everything copied in stays fully editable in the stages ahead.</p>
@@ -35476,6 +35495,33 @@ function cmpRenderIntakeChat(){
   }).join('') : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>';
   body.scrollTop = body.scrollHeight;
 }
+// 2026-09-15 (direct instruction, after a real production-shaped failure
+// mid-conversation during Todd's own test: "we can't have that in a
+// production environment with 100 clients. The business will fail.") —
+// silent auto-retry before anything reaches the user, per his explicit
+// choice ("Auto-retry silently, then show error only if that also fails").
+// Not a retry-button UX (he explicitly did NOT pick that option) — a
+// transient blip (timeout, momentary rate limit) should just resolve
+// itself without the user ever seeing it. Also treats a non-2xx response
+// as a failure worth retrying (the old code only caught network-level
+// throws — a 500 with a parseable JSON body used to fall through to the
+// "Sorry, I didn't get a response" fallback text silently, never retried).
+// Used by both campaign-intake sends and voice-token minting — the two
+// network calls this feature depends on.
+async function cmpFetchJsonWithRetry(url, options, maxAttempts = 3, baseDelayMs = 700){
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++){
+    try {
+      const resp = await authedFetch(url, options);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    } catch (e){
+      lastErr = e;
+      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, baseDelayMs * attempt));
+    }
+  }
+  throw lastErr;
+}
 async function cmpIntakeSendMessage(){
   if (cmpIntakeBusy) return;
   const campaign = cmpRailLoadedCampaign();
@@ -35491,11 +35537,11 @@ async function cmpIntakeSendMessage(){
   const sendBtn = document.getElementById('cmpIntakeSendBtn');
   if (sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Thinking…'; }
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
+    const data = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1) })
-    });
-    const data = await resp.json();
+      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1) }),
+      timeoutMs: 20000
+    }, 3, 700);
     cmpIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
     if (data.readyToRecommend && data.extracted){
       cmpIntakeLastExtracted = data.extracted;
@@ -35503,12 +35549,127 @@ async function cmpIntakeSendMessage(){
     }
   } catch (e){
     cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search below to pick an existing campaign instead.' });
-    console.warn('cmpIntakeSendMessage failed:', e);
+    console.warn('cmpIntakeSendMessage failed after retries:', e);
   } finally {
     cmpIntakeBusy = false;
     if (sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
     cmpRenderIntakeChat();
   }
+}
+// 2026-09-15 — voice, the "logical next step" after the text-first build
+// (see the block comment above cmpIntake's own <div>). Talks to the same
+// backend the text box does: the ElevenLabs agent (Verilume,
+// agent_1901m2jpy694em5v6nkc249vs0ec) calls the *same*
+// POST /api/accounts/:id/campaign-intake endpoint server-side via its
+// campaign_intake webhook tool, authenticated with a short-lived voice
+// token (POST /api/accounts/:id/voice-token, requireAccount()-gated — see
+// createVoiceToken()/checkVoiceToken() in server.js) rather than the
+// portal's own session token, since that token can never leave this
+// authenticated session. No parallel intake logic here — this only starts/
+// stops the mic and mirrors the spoken transcript into the same
+// cmpIntakeHistory feed cmpRenderIntakeChat() already renders, so voice and
+// text turns interleave in one conversation.
+//
+// KNOWN GAP, not silently dropped: when a voice turn crosses
+// readyToRecommend, the backend still returns the extracted goal summary +
+// recommended campaigns to the *agent* (which reads them aloud per its
+// system prompt), but this browser tab has no channel back from the
+// ElevenLabs session carrying that structured data, so the
+// cmpRenderIntakeRecommendations() cards (the "Apply Stage" button, "Use as
+// template" cards) do NOT appear after a voice-only exchange the way they
+// do after a typed one. The user hears the recommendation but has to
+// finish picking a template via the manual search row below, or switch to
+// typing. Fixing this needs either a client_tool the agent calls to push
+// that data into the page, or having the browser poll
+// GET /api/accounts/:id/campaign-intake state after each agent turn —
+// neither is built. Flag this to Todd rather than treating it as done.
+const ELEVENLABS_AGENT_ID = 'agent_1901m2jpy694em5v6nkc249vs0ec';
+let cmpIntakeVoiceConversation = null;
+let cmpIntakeVoiceState = 'idle'; // 'idle' | 'connecting' | 'live'
+function cmpSetIntakeVoiceStatus(text){
+  const el = document.getElementById('cmpIntakeVoiceStatus');
+  if (!el) return;
+  if (text){ el.textContent = text; el.style.display = ''; }
+  else { el.style.display = 'none'; el.textContent = ''; }
+}
+function cmpSetIntakeMicState(newState){
+  cmpIntakeVoiceState = newState;
+  const btn = document.getElementById('cmpIntakeMicBtn');
+  if (btn){
+    btn.dataset.state = newState;
+    btn.setAttribute('aria-label', newState === 'live' ? 'End voice conversation' : 'Start voice conversation');
+    btn.title = newState === 'live' ? 'End voice conversation' : (newState === 'connecting' ? 'Connecting…' : 'Talk to the AI Brain');
+  }
+}
+async function cmpIntakeToggleVoice(){
+  if (cmpIntakeVoiceState === 'live' || cmpIntakeVoiceState === 'connecting'){
+    await cmpIntakeStopVoice();
+  } else {
+    await cmpIntakeStartVoice();
+  }
+}
+async function cmpIntakeStartVoice(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  if (cmpIntakeVoiceState !== 'idle') return;
+  cmpSetIntakeMicState('connecting');
+  cmpSetIntakeVoiceStatus('Connecting…');
+  try {
+    // Mic permission first — startSession expects it already granted.
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Same silent-retry treatment as cmpIntakeSendMessage — a momentary
+    // blip minting the token shouldn't make voice unusable.
+    const { token } = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-token`, { method: 'POST' }, 3, 700);
+    if (!token) throw new Error('voice-token response had no token');
+    // Loaded from ElevenLabs' own npm package via jsdelivr's ESM build —
+    // this codebase has no bundler/CDN dependency today, so this is the
+    // first one; loaded lazily (only once voice is actually started), not
+    // on every page load.
+    const { Conversation } = await import('https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm');
+    cmpIntakeVoiceConversation = await Conversation.startSession({
+      agentId: ELEVENLABS_AGENT_ID,
+      dynamicVariables: {
+        account_id: state.companyId,
+        secret__voice_token: token
+      },
+      onConnect: () => {
+        cmpSetIntakeMicState('live');
+        cmpSetIntakeVoiceStatus('Listening — talk to the AI Brain, click the mic to stop.');
+      },
+      onDisconnect: () => {
+        cmpSetIntakeMicState('idle');
+        cmpSetIntakeVoiceStatus('');
+        cmpIntakeVoiceConversation = null;
+      },
+      onMessage: (msg) => {
+        // Observed shape per ElevenLabs' client SDK: {message, source}
+        // where source is 'user' or 'ai'. Mirrored into the same history
+        // array/renderer the typed flow uses — see the block comment above
+        // this section for what this does NOT cover (recommendation cards).
+        const role = msg && msg.source === 'user' ? 'user' : 'assistant';
+        const text = (msg && msg.message) || '';
+        if (!text) return;
+        cmpIntakeHistory.push({ role, text });
+        cmpRenderIntakeChat();
+      },
+      onError: (err) => {
+        console.warn('ElevenLabs voice session error:', err);
+        cmpSetIntakeVoiceStatus('Voice connection had a problem — try again, or switch to typing below.');
+      }
+    });
+  } catch (e){
+    console.warn('cmpIntakeStartVoice failed:', e);
+    cmpSetIntakeMicState('idle');
+    cmpSetIntakeVoiceStatus('Could not start voice — check your microphone permission and try again, or use text below.');
+  }
+}
+async function cmpIntakeStopVoice(){
+  if (cmpIntakeVoiceConversation){
+    try { await cmpIntakeVoiceConversation.endSession(); } catch (e){ console.warn('endSession failed:', e); }
+  }
+  cmpIntakeVoiceConversation = null;
+  cmpSetIntakeMicState('idle');
+  cmpSetIntakeVoiceStatus('');
 }
 // Real code does the recommending — the model only extracted intent (see
 // the backend endpoint's own comment for why). This just renders what the
