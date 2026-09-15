@@ -7630,7 +7630,7 @@
             <span class="modnum">2</span>
             <div class="titles">
               <span class="tag" id="cmpTag-pickup">Campaign Creation</span>
-              <h2>Campaign Objectives</h2>
+              <h2>Pick Up Existing Campaign</h2>
             </div>
             <span class="chevron">▸</span>
           </div>
@@ -7703,37 +7703,6 @@
           </div>
         </div>
 
-        <!-- 2026-09-15 — "AI Brain Recommendation" screen (rail key
-             'recommendation'), per Todd: "The first three screens are 1)
-             Create Campaign 2) Campaign Objectives with AI Brain 3) AI
-             Brain Recommendation... Recommendation should include the key
-             elements on the lifecycle page. Loop stage, Audiences,
-             Channels, Spend Amount, Impressions Expected Results, Edit
-             Function... A standard conversational UI should exist pages 3
-             forward" — plus the same-day follow-on: "the campaign pitch...
-             should incorporate some of our standard dashboards but at the
-             campaign level. It should have a generative descriptor written
-             for the CMO. A power point export with client logo." Unlocked
-             the same way every other downstream stage is (any real
-             campaign loaded — see cmpUpdateRecommendationLockUI()), not a
-             separate readiness gate, matching this rail's existing
-             convention. Rendered by cmpRenderRecommendationStage(); see
-             cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md. -->
-        <div class="module cmp-stage" id="cmpStage-recommendation">
-          <div class="module-head" onclick="openCmpStage('recommendation')">
-            <span class="modnum">3</span>
-            <div class="titles">
-              <span class="tag" id="cmpTag-recommendation">Campaign Creation</span>
-              <h2>AI Brain Recommendation</h2>
-            </div>
-            <span class="chevron">▸</span>
-          </div>
-          <div class="module-body">
-            <p class="cmp-stage-note" id="cmpRecommendationLockNote" style="padding:0 0 14px;">Unlocks once this campaign is created above — the strategy pitch, dashboards, and budget approval build from this campaign's real data.</p>
-            <div id="cmpRecommendationFields" style="display:none;"></div>
-          </div>
-        </div>
-
         <!-- Round 132d (2026-08-09), per direct correction: "Life cycle
              stages and goals is a separate step that should be identified
              via our navigation flow... Card should be collapsed until after
@@ -7756,7 +7725,7 @@
              Campaign moved into stage 2. -->
         <div class="module cmp-stage" id="cmpStage-lifecycle">
           <div class="module-head" onclick="openCmpStage('lifecycle')">
-            <span class="modnum">4</span>
+            <span class="modnum">3</span>
             <div class="titles">
               <span class="tag" id="cmpTag-lifecycle">Campaign Creation</span>
               <h2>Lifecycle Stage &amp; Goals</h2>
@@ -8201,7 +8170,7 @@
              allocated in this build. -->
         <div class="module cmp-stage" id="cmpStage-perfMarketing">
           <div class="module-head" onclick="openCmpStage('perfMarketing')">
-            <span class="modnum">5</span>
+            <span class="modnum">4</span>
             <div class="titles">
               <span class="tag" id="cmpTag-perfMarketing">Campaign Creation</span>
               <h2>Performance Marketing</h2>
@@ -8383,7 +8352,7 @@
 
         <div class="module cmp-stage" id="cmpStage-messaging">
           <div class="module-head" onclick="openCmpStage('messaging')">
-            <span class="modnum">6</span>
+            <span class="modnum">5</span>
             <div class="titles">
               <span class="tag" id="cmpTag-messaging">Campaign Creation</span>
               <h2>Brand Messaging</h2>
@@ -8787,7 +8756,7 @@
              cmpRenderCopyVersionsStage() and its helpers. -->
         <div class="module cmp-stage" id="cmpStage-copyVersions">
           <div class="module-head" onclick="openCmpStage('copyVersions')">
-            <span class="modnum">7</span>
+            <span class="modnum">6</span>
             <div class="titles">
               <span class="tag" id="cmpTag-copyVersions">Campaign Creation</span>
               <h2>Copy Versions</h2>
@@ -11402,19 +11371,7 @@ const CMP_STAGE_RAIL = [
   // it simple and flow" — Pick Up Existing Campaign moved here from a
   // pre-creation prompt into its own locked-until-created stage, same
   // convention as Lifecycle Stage & Goals right below it.
-  // 2026-09-15, per direct instruction: "We need to rename step 2 to
-  // Campaign Objectives" — label only; rail key 'pickup' and #cmpStage-pickup
-  // are unchanged so every existing reference (cmpIntake*, recommendation
-  // cards, cmpRailLoadedCampaign, etc.) keeps working untouched. See
-  // cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md.
-  { key: 'pickup', label: 'Campaign Objectives' },
-  // 2026-09-15 — new "AI Brain Recommendation" stage (screen 3): presents
-  // Loop Stage, Audiences, Channels, Spend, Impressions, Expected Results,
-  // a similar-campaign reference, campaign-level dashboards, an AI-written
-  // CMO narrative, a PPT export, and the client budget-approval chat. Locked
-  // until the Campaign Objectives (pickup) conversation reaches
-  // readyToRecommend — see cmpModuleStatus()/openCmpStage() gating below.
-  { key: 'recommendation', label: 'AI Brain Recommendation' },
+  { key: 'pickup', label: 'Pick Up Existing Campaign' },
   // Round 132d (2026-08-09) — Lifecycle Stage & Goals is its own stage now,
   // locked (like the 6 downstream stages below) until a real campaign
   // exists — its editable:false is what makes openCmpStage() and
@@ -11502,14 +11459,6 @@ function cmpModuleStatus(key){
       if (!assets.length) return 'not-started';
       return assets.every(a => a.status === 'Approved') ? 'complete' : 'in-progress';
     }
-    // 2026-09-15 — AI Brain Recommendation. Complete once the client has
-    // given overall budget sign-off (campaign.budgetApprovedAt, the same
-    // field POST .../approve-budget-overall stamps); in-progress once
-    // there's a channel plan to review at all.
-    case 'recommendation':
-      if (!campaign) return 'not-started';
-      if (campaign.budgetApprovedAt) return 'complete';
-      return (campaign.stage || campaign.channels) ? 'in-progress' : 'not-started';
     default:
       return 'not-started';
   }
@@ -12243,13 +12192,11 @@ function renderCmpDownstreamStages(){
   const campaign = cmpRailLoadedCampaign();
   cmpUpdatePickupLockUI(campaign);
   cmpUpdateLifecycleLockUI(campaign);
-  cmpUpdateRecommendationLockUI(campaign);
   renderCmpPickupStage();
-  if (campaign && typeof cmpRenderRecommendationStage === 'function') cmpRenderRecommendationStage(campaign);
   if (!campaign){
     el.innerHTML = [
-      [8, 'QR Code & UTM'], [9, 'Creative'], [10, 'QA Rating'],
-      [11, 'Trafficking'], [12, 'In Market'], [13, 'Analysis']
+      [7, 'QR Code & UTM'], [8, 'Creative'], [9, 'QA Rating'],
+      [10, 'Trafficking'], [11, 'In Market'], [12, 'Analysis']
     ].map(([n, t]) => cmpLockedShell(n, t)).join('');
     return;
   }
@@ -12584,23 +12531,6 @@ function cmpUpdatePickupLockUI(campaign){
   const fields = document.getElementById('cmpPickupFields');
   if (fields) fields.style.display = unlocked ? '' : 'none';
   if (!unlocked) pickupEl.classList.remove('open');
-}
-// 2026-09-15 — same unlock convention as cmpUpdatePickupLockUI/
-// cmpUpdateLifecycleLockUI above (any real campaign loaded), for the new
-// AI Brain Recommendation stage. See its own comment in the HTML above for
-// why this isn't gated on a separate "readyToRecommend" signal.
-function cmpUpdateRecommendationLockUI(campaign){
-  const el = document.getElementById('cmpStage-recommendation');
-  if (!el) return;
-  const unlocked = !!campaign;
-  el.style.opacity = unlocked ? '' : '0.6';
-  const head = el.querySelector('.module-head');
-  if (head) head.style.cursor = unlocked ? '' : 'default';
-  const note = document.getElementById('cmpRecommendationLockNote');
-  if (note) note.style.display = unlocked ? 'none' : 'block';
-  const fields = document.getElementById('cmpRecommendationFields');
-  if (fields) fields.style.display = unlocked ? '' : 'none';
-  if (!unlocked) el.classList.remove('open');
 }
 // Small badge for "CMO view" surfaces — Active Campaigns table, campaign
 // list cards — so progress is visible at a glance without opening a
@@ -35565,33 +35495,6 @@ function cmpRenderIntakeChat(){
   }).join('') : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>';
   body.scrollTop = body.scrollHeight;
 }
-// 2026-09-15 (direct instruction, after a real production-shaped failure
-// mid-conversation during Todd's own test: "we can't have that in a
-// production environment with 100 clients. The business will fail.") —
-// silent auto-retry before anything reaches the user, per his explicit
-// choice ("Auto-retry silently, then show error only if that also fails").
-// Not a retry-button UX (he explicitly did NOT pick that option) — a
-// transient blip (timeout, momentary rate limit) should just resolve
-// itself without the user ever seeing it. Also treats a non-2xx response
-// as a failure worth retrying (the old code only caught network-level
-// throws — a 500 with a parseable JSON body used to fall through to the
-// "Sorry, I didn't get a response" fallback text silently, never retried).
-// Used by both campaign-intake sends and voice-token minting — the two
-// network calls this feature depends on.
-async function cmpFetchJsonWithRetry(url, options, maxAttempts = 3, baseDelayMs = 700){
-  let lastErr;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++){
-    try {
-      const resp = await authedFetch(url, options);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.json();
-    } catch (e){
-      lastErr = e;
-      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, baseDelayMs * attempt));
-    }
-  }
-  throw lastErr;
-}
 async function cmpIntakeSendMessage(){
   if (cmpIntakeBusy) return;
   const campaign = cmpRailLoadedCampaign();
@@ -35607,11 +35510,11 @@ async function cmpIntakeSendMessage(){
   const sendBtn = document.getElementById('cmpIntakeSendBtn');
   if (sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Thinking…'; }
   try {
-    const data = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1) }),
-      timeoutMs: 20000
-    }, 3, 700);
+      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1) })
+    });
+    const data = await resp.json();
     cmpIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
     if (data.readyToRecommend && data.extracted){
       cmpIntakeLastExtracted = data.extracted;
@@ -35619,7 +35522,7 @@ async function cmpIntakeSendMessage(){
     }
   } catch (e){
     cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search below to pick an existing campaign instead.' });
-    console.warn('cmpIntakeSendMessage failed after retries:', e);
+    console.warn('cmpIntakeSendMessage failed:', e);
   } finally {
     cmpIntakeBusy = false;
     if (sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
@@ -35687,9 +35590,9 @@ async function cmpIntakeStartVoice(){
   try {
     // Mic permission first — startSession expects it already granted.
     await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Same silent-retry treatment as cmpIntakeSendMessage — a momentary
-    // blip minting the token shouldn't make voice unusable.
-    const { token } = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-token`, { method: 'POST' }, 3, 700);
+    const tokenResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-token`, { method: 'POST' });
+    if (!tokenResp.ok) throw new Error('voice-token request failed: ' + tokenResp.status);
+    const { token } = await tokenResp.json();
     if (!token) throw new Error('voice-token response had no token');
     // Loaded from ElevenLabs' own npm package via jsdelivr's ESM build —
     // this codebase has no bundler/CDN dependency today, so this is the
@@ -35741,321 +35644,6 @@ async function cmpIntakeStopVoice(){
   cmpSetIntakeMicState('idle');
   cmpSetIntakeVoiceStatus('');
 }
-
-// ---------------------------------------------------------------------
-// 2026-09-15 — AI Brain Recommendation ("campaign pitch") screen. Reads
-// real, already-persisted data only (GET .../pitch-summary — campaign
-// stage/segment/channels + this campaign's own channel_planning_details
-// rows), not the transient campaign-intake extraction, since Todd asked
-// for "the key elements on the lifecycle page" as real fields, not a
-// summary of one AI conversation. See
-// cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md.
-// ---------------------------------------------------------------------
-let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], actorRole: 'client', actorName: '' };
-
-async function cmpRenderRecommendationStage(campaign){
-  const mount = document.getElementById('cmpRecommendationFields');
-  if (!mount || !campaign) return;
-  if (cmpRecoState.campaignId !== campaign.id){
-    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], actorRole: 'client', actorName: cmpRecoState.actorName || '' };
-    cmpRecoRender(mount, campaign);
-    try {
-      const [summary, commentsResp] = await Promise.all([
-        cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {}),
-        cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {})
-      ]);
-      cmpRecoState.summary = summary;
-      cmpRecoState.comments = commentsResp.comments || [];
-    } catch (e){
-      console.warn('cmpRenderRecommendationStage: load failed', e);
-      cmpRecoState.error = 'Could not load this campaign\'s recommendation data. Try reopening this stage.';
-    }
-    cmpRecoState.loading = false;
-  }
-  cmpRecoRender(mount, campaign);
-}
-
-function cmpRecoSetActorRole(role){
-  cmpRecoState.actorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
-  const campaign = cmpRailLoadedCampaign();
-  if (campaign) cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
-}
-
-// Loop Stage distribution: a single campaign belongs to one Loop Stage, so
-// its "distribution" is its own spend attributed 100% to that stage among
-// the other 4 — same 5-stage set, same STAGE_LOOP_COLORS, same .eff-meter
-// markup the account-level Marketing Loop Spend Distribution card uses
-// (renderMarketingLoopChart() above), just scoped to this one campaign
-// instead of the whole account.
-function cmpRecoLoopStageRows(summary){
-  return MEDIA_LOOP_STAGES.map(st => ({
-    label: st,
-    value: (st === summary.loopStage) ? summary.totalSpend : 0,
-    color: STAGE_LOOP_COLORS[st]
-  }));
-}
-// Channel Mix: same CHANNEL_MIX_GROUPS bucketing the account-level Channel
-// Media Mix card uses (renderChannelMixChart() above) — one definition of
-// the grouping, reused here rather than duplicated.
-function cmpRecoChannelMixRows(summary){
-  const totals = {};
-  CHANNEL_MIX_GROUPS.forEach(g => { totals[g.key] = 0; });
-  (summary.lineItems || []).forEach(l => {
-    const group = CHANNEL_MIX_GROUPS.find(g => g.categories.includes(l.channel));
-    if (group) totals[group.key] += (Number(l.budget) || 0);
-    else if (l.channel) totals.digital = (totals.digital || 0) + (Number(l.budget) || 0); // unmapped channel string — fold into Digital rather than silently drop the spend
-  });
-  return CHANNEL_MIX_GROUPS.map(g => ({ label: g.label, value: totals[g.key] || 0 })).filter(r => r.value > 0).sort((a, b) => b.value - a.value);
-}
-function cmpRecoAudienceRows(summary){
-  return Object.entries(summary.audienceTotals || {}).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-}
-function cmpRecoMeterRows(rows){
-  const total = rows.reduce((s, r) => s + r.value, 0);
-  const max = Math.max(...rows.map(r => r.value), 1);
-  if (!total) return '<p class="lede">No budget entered on this campaign\'s channel plan yet.</p>';
-  return rows.map(r => `
-    <div class="eff-meter">
-      <div class="eff-meter-head"><span class="lbl">${escapeHtml(r.label)}</span><span><span class="val">${fmtMoney(r.value)}</span><span class="delta" style="color:var(--muted);">${Math.round((r.value / total) * 100)}%</span></span></div>
-      <div class="eff-meter-bar"><div style="width:${Math.round((r.value / max) * 100)}%;background:${r.color || 'var(--media)'};"></div></div>
-    </div>`).join('');
-}
-
-async function cmpRecoGenerateNarrative(){
-  const campaign = cmpRailLoadedCampaign();
-  if (!campaign) return;
-  cmpRecoState.narrativeLoading = true;
-  cmpRecoState.narrativeError = null;
-  cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
-  try {
-    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/cmo-narrative`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-    if (resp.narrative) cmpRecoState.narrative = resp.narrative;
-    else cmpRecoState.narrativeError = resp.error || 'The AI Brain could not generate a summary right now.';
-  } catch (e){
-    console.warn('cmpRecoGenerateNarrative failed:', e);
-    cmpRecoState.narrativeError = 'The AI Brain could not generate a summary right now. Try again in a moment.';
-  }
-  cmpRecoState.narrativeLoading = false;
-  cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
-}
-
-async function cmpRecoApproveLine(entryId){
-  const campaign = cmpRailLoadedCampaign();
-  if (!campaign) return;
-  if (cmpRecoState.actorRole !== 'client'){ alert('Switch to "Account Team" above — only the client\'s own team can approve a budget line.'); return; }
-  try {
-    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}/client-approve`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || 'Account Team' })
-    });
-  } catch (e){ console.warn('cmpRecoApproveLine failed:', e); }
-  // Refresh from the server rather than optimistically patching local
-  // state — this is a real approval record, worth confirming it stuck.
-  cmpRecoState.campaignId = null;
-  cmpRenderRecommendationStage(campaign);
-}
-
-async function cmpRecoApproveOverall(){
-  const campaign = cmpRailLoadedCampaign();
-  if (!campaign) return;
-  if (cmpRecoState.actorRole !== 'client'){ alert('Switch to "Account Team" above — only the client\'s own team can give overall budget approval.'); return; }
-  try {
-    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/approve-budget-overall`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || 'Account Team' })
-    });
-  } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
-  cmpRecoState.campaignId = null;
-  cmpRenderRecommendationStage(campaign);
-}
-
-async function cmpRecoSendComment(){
-  const campaign = cmpRailLoadedCampaign();
-  const input = document.getElementById('cmpRecoCommentText');
-  const text = input ? input.value.trim() : '';
-  if (!campaign || !text) return;
-  input.value = '';
-  try {
-    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, authorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'), authorRole: cmpRecoState.actorRole })
-    });
-    const commentsResp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {});
-    cmpRecoState.comments = commentsResp.comments || [];
-  } catch (e){ console.warn('cmpRecoSendComment failed:', e); }
-  cmpRecoRender(document.getElementById('cmpRecommendationFields'), campaign);
-}
-
-// PowerPoint export — pptxgenjs loaded lazily from CDN, same "not fully
-// offline until first use" convention as cfiLoadSheetJs()'s SheetJS load
-// above. Pulls the campaign pitch data already on screen plus the
-// account's own logo (accounts.logoDataUrl/logoUrl, the same field Company
-// Profile already populates) — no new asset upload for this.
-let cmpPptxJsPromise = null;
-function cmpLoadPptxJs(){
-  if (window.PptxGenJS) return Promise.resolve(window.PptxGenJS);
-  if (cmpPptxJsPromise) return cmpPptxJsPromise;
-  cmpPptxJsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js';
-    script.onload = () => window.PptxGenJS ? resolve(window.PptxGenJS) : reject(new Error('The PowerPoint export library failed to load.'));
-    script.onerror = () => reject(new Error('Could not load the PowerPoint export library — this needs an internet connection the first time it\'s used.'));
-    document.head.appendChild(script);
-  });
-  return cmpPptxJsPromise;
-}
-async function cmpRecoExportPpt(){
-  const campaign = cmpRailLoadedCampaign();
-  const summary = cmpRecoState.summary;
-  if (!campaign || !summary) return;
-  const btn = document.getElementById('cmpRecoPptBtn');
-  if (btn){ btn.disabled = true; btn.textContent = 'Building PowerPoint…'; }
-  try {
-    const PptxGenJS = await cmpLoadPptxJs();
-    const pptx = new PptxGenJS();
-    pptx.defineLayout({ name: 'CX_WIDE', width: 13.333, height: 7.5 });
-    pptx.layout = 'CX_WIDE';
-    // Company Profile's own logo fields (state.styleAssets.logoDataUrl/
-    // logoUrl — see saveStyleAssets()/loadStyleAssets() and the account
-    // record's own logoUrl/logoDataUrl columns), not a new upload for this
-    // export.
-    const styleAssets = (typeof state !== 'undefined' && state.styleAssets) ? state.styleAssets : {};
-    const logo = styleAssets.logoDataUrl || styleAssets.logoUrl || null;
-
-    // Slide 1 — title + CMO narrative
-    const s1 = pptx.addSlide();
-    s1.background = { color: '1E2761' };
-    if (logo){
-      try {
-        const logoOpts = { x: 11.3, y: 0.4, w: 1.6, h: 1.6, sizing: { type: 'contain', w: 1.6, h: 1.6 } };
-        if (logo.startsWith('data:')) logoOpts.data = logo; else logoOpts.path = logo; // data URI vs. a plain hosted logoUrl
-        s1.addImage(logoOpts);
-      } catch (e){ console.warn('logo embed failed:', e); }
-    }
-    s1.addText(campaign.name || 'Campaign Pitch', { x: 0.6, y: 0.7, w: 10, h: 1, fontSize: 32, bold: true, color: 'FFFFFF', fontFace: 'Arial' });
-    s1.addText(`${summary.loopStage || 'Loop Stage TBD'} · ${summary.audience || 'Audience TBD'}`, { x: 0.6, y: 1.5, w: 10, h: 0.5, fontSize: 16, color: 'CADCFC', fontFace: 'Arial' });
-    if (cmpRecoState.narrative){
-      s1.addText(cmpRecoState.narrative, { x: 0.6, y: 2.4, w: 11.5, h: 3.5, fontSize: 16, color: 'FFFFFF', fontFace: 'Arial', valign: 'top', lineSpacingMultiple: 1.3 });
-    }
-
-    // Slide 2 — budget & dashboards summary
-    const s2 = pptx.addSlide();
-    s2.addText('Budget & Reach', { x: 0.6, y: 0.4, w: 10, h: 0.6, fontSize: 24, bold: true, color: '1E2761', fontFace: 'Arial' });
-    s2.addText(`Total Spend: ${fmtMoney(summary.totalSpend)}     Total Impressions: ${Math.round(summary.totalImpressions).toLocaleString()}`, { x: 0.6, y: 1.1, w: 11.5, h: 0.5, fontSize: 16, color: '333333', fontFace: 'Arial' });
-    const mixRows = cmpRecoChannelMixRows(summary);
-    if (mixRows.length){
-      s2.addTable(
-        [[{ text: 'Channel Group', options: { bold: true } }, { text: 'Spend', options: { bold: true } }], ...mixRows.map(r => [r.label, fmtMoney(r.value)])],
-        { x: 0.6, y: 1.8, w: 6, colW: [4, 2], fontSize: 13, fontFace: 'Arial', border: { type: 'solid', color: 'DDDDDD', pt: 0.5 } }
-      );
-    }
-    if (summary.similarCampaign){
-      s2.addText(`Reference campaign: ${summary.similarCampaign.name} — ${summary.similarCampaign.why}`, { x: 7.0, y: 1.8, w: 5.5, h: 1.5, fontSize: 13, italic: true, color: '555555', fontFace: 'Arial' });
-    }
-
-    await pptx.writeFile({ fileName: `${(campaign.name || campaign.id || 'campaign').replace(/[^a-z0-9]+/gi, '-')}-pitch.pptx` });
-  } catch (e){
-    console.error('cmpRecoExportPpt failed:', e);
-    alert('The PowerPoint export failed to build. ' + (e && e.message ? e.message : 'Try again in a moment.'));
-  } finally {
-    if (btn){ btn.disabled = false; btn.textContent = 'Export PowerPoint'; }
-  }
-}
-
-function cmpRecoRender(mount, campaign){
-  if (!mount) return;
-  const s = cmpRecoState;
-  if (s.loading){ mount.innerHTML = `<p class="lede">Loading this campaign's recommendation…</p>`; return; }
-  if (s.error && !s.summary){ mount.innerHTML = `<p class="lede">${escapeHtml(s.error)}</p>`; return; }
-  const summary = s.summary || {};
-  const loopRows = cmpRecoLoopStageRows(summary);
-  const mixRows = cmpRecoChannelMixRows(summary);
-  const audienceRows = cmpRecoAudienceRows(summary);
-
-  mount.innerHTML = `
-    <div class="cmp-intake-summary" style="margin-bottom:18px;">
-      <b>Loop Stage:</b> ${escapeHtml(summary.loopStage || '(not set)')}
-      <br><b>Audience:</b> ${escapeHtml(summary.audience || '(not set)')}
-      <br><b>Channels:</b> ${(summary.channels || []).length ? escapeHtml(summary.channels.join(', ')) : '(none selected yet)'}
-      <br><b>Total Spend:</b> ${fmtMoney(summary.totalSpend)} &nbsp; <b>Total Impressions:</b> ${Math.round(summary.totalImpressions || 0).toLocaleString()}
-      <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn-ghost" onclick="openCmpStage('perfMarketing')">Edit channels, CPM &amp; impressions →</button>
-      </div>
-    </div>
-
-    ${summary.similarCampaign ? `
-    <div class="template-rec-row" style="margin-bottom:18px;">
-      <div class="template-rec-card">
-        <div class="template-rec-name">Similar campaign: ${escapeHtml(summary.similarCampaign.name)}</div>
-        <div class="template-rec-id">${escapeHtml(summary.similarCampaign.id)}</div>
-        <div class="template-rec-actions"><div class="template-rec-match">${escapeHtml(summary.similarCampaign.why)}</div></div>
-      </div>
-    </div>` : ''}
-
-    <div class="stage-row" style="margin-bottom:8px;">
-      <h3 style="margin:0;font-size:1rem;">Campaign Dashboards</h3>
-    </div>
-    <div class="exec-chart-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:22px;">
-      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Loop Stage Distribution</h4>${cmpRecoMeterRows(loopRows)}</div>
-      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Channel Mix</h4>${cmpRecoMeterRows(mixRows)}</div>
-      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Audience Mix</h4>${cmpRecoMeterRows(audienceRows)}</div>
-    </div>
-
-    <div class="cmp-intake-summary" style="margin-bottom:22px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <b>Generative Descriptor for the CMO</b>
-        <button type="button" class="btn-ghost" ${s.narrativeLoading ? 'disabled' : ''} onclick="cmpRecoGenerateNarrative()">${s.narrativeLoading ? 'Writing…' : (s.narrative ? 'Regenerate' : 'Generate with AI Brain')}</button>
-      </div>
-      ${s.narrative ? `<p class="lede" style="margin-top:10px;">${escapeHtml(s.narrative)}</p>` : ''}
-      ${s.narrativeError ? `<p class="lede" style="margin-top:10px;color:#B3261E;">${escapeHtml(s.narrativeError)}</p>` : ''}
-    </div>
-
-    <div class="btn-row" style="margin-bottom:22px;">
-      <button type="button" class="btn-primary" id="cmpRecoPptBtn" onclick="cmpRecoExportPpt()">Export PowerPoint</button>
-    </div>
-
-    <div class="stage-row" style="margin-bottom:8px;">
-      <h3 style="margin:0;font-size:1rem;">Budget Line-Item Approval</h3>
-    </div>
-    <div class="cmp-template-search-row" style="margin-bottom:12px;">
-      ${[['client', 'Account Team'], ['cx_ops', 'CX Experiences Media Ops']].map(([key, label]) => `<button type="button" class="stage-tile${s.actorRole === key ? ' selected' : ''}" onclick="cmpRecoSetActorRole('${key}')">${label}</button>`).join('')}
-    </div>
-    ${(summary.lineItems || []).length ? `
-    <div class="table-scroll"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
-      <thead><tr><th>Channel</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
-      <tbody>
-        ${summary.lineItems.map(l => `
-          <tr>
-            <td>${escapeHtml(l.channel || '')}</td>
-            <td>${fmtMoney(Number(l.budget) || 0)}</td>
-            <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
-            <td>${l.clientApprovedAt ? `✓ Approved${l.clientApprovedBy ? ' by ' + escapeHtml(l.clientApprovedBy) : ''}` : `<button type="button" class="btn-ghost" onclick="cmpRecoApproveLine('${l.id}')">Approve line →</button>`}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table></div>` : `<p class="lede">No channel plan lines entered for this campaign yet.</p>`}
-    <div class="btn-row" style="margin-bottom:26px;">
-      ${summary.budgetApprovedAt
-        ? `<span class="lede">✓ Overall budget approved${summary.budgetApprovedBy ? ' by ' + escapeHtml(summary.budgetApprovedBy) : ''}</span>`
-        : `<button type="button" class="btn-primary" onclick="cmpRecoApproveOverall()">Approve Overall Budget →</button>`}
-    </div>
-
-    <div class="stage-row" style="margin-bottom:8px;">
-      <h3 style="margin:0;font-size:1rem;">Conversation</h3>
-    </div>
-    <div class="cmp-team-chat-body" style="max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px;">
-      ${s.comments.length ? s.comments.map(c => `
-        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;">
-          <div class="cmp-team-chat-avatar" style="background:${cmpAvatarColor(c.authorName || c.authorRole)};">${escapeHtml(cmpInitials(c.authorName || (c.authorRole === 'cx_ops' ? 'CX' : 'AT')))}</div>
-          <div><div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(c.authorName || (c.authorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'))}</div><div>${escapeHtml(c.text)}</div></div>
-        </div>`).join('') : '<p class="lede">No comments yet — start the conversation below.</p>'}
-    </div>
-    <div class="cmp-team-chat-input-row">
-      <textarea id="cmpRecoCommentText" rows="1" placeholder="Comment on this budget…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpRecoSendComment();}"></textarea>
-      <button type="button" class="btn-primary" onclick="cmpRecoSendComment()">Send</button>
-    </div>
-  `;
-}
-
 // Real code does the recommending — the model only extracted intent (see
 // the backend endpoint's own comment for why). This just renders what the
 // server already computed, reusing the same .template-rec-card markup the
