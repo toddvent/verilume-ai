@@ -141,6 +141,7 @@
   "firstName",
   "functionGroup",
   "fundingSource",
+  "goalBackwardSolveJson",
   "gridJson",
   "grossRevenue",
   "headingFontName",
