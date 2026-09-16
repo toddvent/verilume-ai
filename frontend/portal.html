@@ -10433,7 +10433,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-mobile-account-header-overflow-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-campaign-status-derived-from-dates';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11453,11 +11453,37 @@ function composeMasterFromFields(projectType, fields){
 
 // Round 16, point 1 — the underlying "which phase of the market/analysis
 // cycle is this campaign in" field, still literally named `status` on the
-// campaign record (and the backend column's DEFAULT). Kept as-is: a campaign
-// is created directly at 'In Market' (see createCampaign()), so these two
-// later values are the only ones ever actually stored — 'Objective &
-// Details' only ever shows as a pre-creation preview default.
+// campaign record.
+// 2026-09-16, per direct correction — Todd: "why did you create a move to
+// in market option? campaigns have start and end dates to establish when a
+// campaign is in market." status used to be hand-set via two manual
+// buttons (cmpSetStatus()/setCampaignStatus(), both now removed) — a real
+// design bug, since it meant status and the campaign's own real
+// startDate/endDate could silently disagree. status is now always derived
+// from those dates (see deriveCampaignStatusFromDates() right below) —
+// never manually set, on the frontend or the backend (server.js now
+// derives and write-through-persists it the same way; see that file's own
+// deriveCampaignStatusFromDates() comment for the QA-gate history this
+// intentionally does NOT carry forward, per Todd's direct answer).
 const CAMPAIGN_LIFECYCLE_STEPS = ['Objective & Details', 'In Market', 'Analysis'];
+// Same three-way logic as the backend's deriveCampaignStatusFromDates() —
+// kept in sync deliberately so a freshly-created or freshly-edited
+// campaign shows the right status on THIS screen immediately, without
+// waiting for the next round-trip to the backend (which also recomputes
+// and persists it, so the two never actually disagree for long even if
+// this one were skipped somewhere).
+function deriveCampaignStatusFromDates(c){
+  const start = c && c.startDate;
+  const end = c && c.endDate;
+  if (!start || !end) return 'Objective & Details';
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 'Objective & Details';
+  const now = Date.now();
+  if (now < startMs) return 'Objective & Details';
+  if (now > endMs) return 'Analysis';
+  return 'In Market';
+}
 
 // Round 36 — the 7-stage campaign progress bar, replacing the old 3-step
 // linear lifecycle bar. Per direct instruction: Campaign Creation, Brand
@@ -12831,9 +12857,10 @@ function openCmpStage(key){
 // audit] is required") — these 6 stages now render real, live content
 // instead of a locked pointer note, reusing the exact same state and action
 // functions the campaign detail page (step-campaign) already uses
-// (approveCampaignQa(), setCampaignStatus(), cycleBrandStage(),
-// computeFunctionCompletion()) rather than re-implementing any of that
-// logic. Every `.step` in this file stays in the DOM at once (only
+// (approveCampaignQa(), cycleBrandStage(), computeFunctionCompletion())
+// rather than re-implementing any of that logic. (setCampaignStatus(),
+// named here originally, was removed 2026-09-16 — status is date-derived
+// now, see deriveCampaignStatusFromDates().) Every `.step` in this file stays in the DOM at once (only
 // display:none-toggled — see .step/.step.active CSS), so calling those
 // functions from here is safe: they read/write the same `state.campaigns`
 // record and refresh the same (currently hidden) step-campaign elements
@@ -12851,14 +12878,10 @@ async function cmpApproveQa(campaignId){
   renderCmpStageRail();
   renderCmpDownstreamStages();
 }
-async function cmpSetStatus(campaignId, status){
-  const prev = currentCampaignId;
-  currentCampaignId = campaignId;
-  await setCampaignStatus(status);
-  currentCampaignId = prev;
-  renderCmpStageRail();
-  renderCmpDownstreamStages();
-}
+// cmpSetStatus() removed 2026-09-16 — status is no longer manually
+// settable (see deriveCampaignStatusFromDates()'s comment near
+// CAMPAIGN_LIFECYCLE_STEPS); this was its Workspace Hub wrapper around the
+// now-also-removed setCampaignStatus().
 async function cmpCycleBrandStage(campaignId){
   const prev = currentCampaignId;
   currentCampaignId = campaignId;
@@ -13099,13 +13122,19 @@ function renderCmpDownstreamStages(){
     <p class="lede" style="margin-bottom:12px;">${jobsWithTracking.length ? `${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} built and ready to traffic.` : 'Nothing built to traffic yet — build tracking links first.'}</p>
     <a class="flink" onclick="openExperienceSubWorkstream('marketingOps')">Open the trafficking queue →</a>`;
 
-  // 8 — In Market: real status + the real transition gesture.
+  // 8 — In Market: real status, read-only — derived automatically from the
+  // campaign's own start/end dates (see deriveCampaignStatusFromDates()).
+  // 2026-09-16, per direct correction — this used to be a manual "Move to
+  // In Market →" button; status is never hand-set anymore.
   const marketBody = isAdHoc ? `<p class="cmp-stage-note" style="padding:0;">Ad Hoc projects don't move through an In Market stage.</p>` : `
     <p class="lede" style="margin-bottom:12px;">Status: <strong>${c.status || 'Not Started'}</strong></p>
-    ${(c.status === 'In Market' || c.status === 'Analysis')
-      ? `<p class="cmp-stage-note" style="padding:0;">This campaign is In Market.</p>`
-      : `<button type="button" class="btn-primary" onclick="cmpSetStatus('${c.id}','In Market')">Move to In Market →</button>
-         <p class="cmp-stage-note" style="padding:8px 0 0;">Requires QA &amp; Approval Complete first.</p>`}`;
+    ${c.status === 'In Market'
+      ? `<p class="cmp-stage-note" style="padding:0;">This campaign is In Market — today falls within its ${c.startDate || '?'} – ${c.endDate || '?'} run.</p>`
+      : c.status === 'Analysis'
+        ? `<p class="cmp-stage-note" style="padding:0;">This campaign's run ended ${c.endDate || 'on its end date'} and has moved to Analysis.</p>`
+        : c.startDate
+          ? `<p class="cmp-stage-note" style="padding:0;">Enters market automatically on ${c.startDate}.</p>`
+          : `<p class="cmp-stage-note" style="padding:0;">Enters market automatically once a start date is set.</p>`}`;
 
   // 9 — Analysis: real actuals if logged, otherwise an honest "not yet".
   const hasActuals = [c.actualSpend, c.actualImpressions, c.actualConversions].some(v => v !== undefined && v !== null && v !== '');
@@ -23324,6 +23353,13 @@ async function loadCampaigns(){
           try { c.activityNotes = JSON.parse(c.activityNotesJson); }
           catch (e){ console.warn('loadCampaigns: could not parse activityNotesJson for', c.id, e); }
         }
+        // 2026-09-16 — status is date-derived now (see
+        // deriveCampaignStatusFromDates()'s comment), and the backend
+        // already write-through-persists it on every list read — this
+        // client-side recompute just means the value is correct the
+        // instant this response is in memory, not only after the backend's
+        // own write-through catches up on some later read.
+        c.status = deriveCampaignStatusFromDates(c);
       });
       state.campaigns = campaigns;
     }
@@ -40353,6 +40389,11 @@ async function createCampaign(){
       // form right now, not sent through cmpBuildFormPayload()'s plain
       // scalar fields.
       existing.channelCopyVersions = computeChannelCopyVersions();
+      // 2026-09-16 — payload can include an edited startDate/endDate;
+      // status is date-derived (see deriveCampaignStatusFromDates()'s
+      // comment), so a date edit here needs to recompute it immediately,
+      // same as the backend's merge-update endpoint now does.
+      existing.status = deriveCampaignStatusFromDates(existing);
     }
     // Round 132ao (2026-08-12) fix, per direct bug report: "Save Changes in
     // Campaign Creation resets campaign when scrolling from steps below back
@@ -40406,13 +40447,15 @@ async function createCampaign(){
   // only two states after creation. Round 36's 7-stage bar added Brand,
   // Marketing Functions, Creative, and QA & Approval as real stages *before*
   // In Market — auto-advancing past all of them left the "In Market" pill
-  // reading In Progress before any of that work existed, and made the
-  // "Mark In Market" button (see setCampaignStatus()) unreachable dead
-  // code. Round 64 fix: leave status at its real starting point
-  // ('Objective & Details', the backend column's own default) so a
-  // step-by-step user has an actual, working path to each stage in order —
-  // Mark In Market only fires once QA & Approval is genuinely complete.
-  const newCampaign = { id: campaignId, accountId: state.companyId, ...payload, campaignCode, status: CAMPAIGN_LIFECYCLE_STEPS[0], brandStage: 'Not Started', qaApproved: false, createdAt: new Date().toISOString(), projects: [], localOnly };
+  // reading In Progress before any of that work existed. Round 64 then
+  // gated a manual "Mark In Market" button on QA & Approval being complete.
+  // 2026-09-16 — both the manual button and its QA gate are gone now (see
+  // deriveCampaignStatusFromDates()'s comment): status is set here from the
+  // campaign's own real startDate/endDate the moment it's created, same as
+  // the backend now does at creation too — a campaign backfilled with dates
+  // already in the past reads as In Market/Analysis immediately, not stuck
+  // at "Objective & Details" until someone clicks a button.
+  const newCampaign = { id: campaignId, accountId: state.companyId, ...payload, campaignCode, status: deriveCampaignStatusFromDates(payload), brandStage: 'Not Started', qaApproved: false, createdAt: new Date().toISOString(), projects: [], localOnly };
   // Round 32, part D, per direct instruction: "Upon [submission] we should
   // recommend the mix of available channels, audience mix recommendations
   // and channel spend allocation" — computed immediately at creation so
@@ -40778,54 +40821,22 @@ function renderCampaignComparisonTable(){
     <p class="hint" style="margin-top:8px;">Normalized "conversions per $1,000 spent" is the fairest single number across campaigns of different sizes — the raw conversion count always favors the bigger budget.</p>`;
 }
 
-// Round 16, point 1 — advance a campaign to the next lifecycle step (or
-// jump straight to a given one) via the backend's merge-update endpoint;
-// falls back to a local-only update (same honesty convention as elsewhere)
-// if there's no backend record for this account.
-// Round 64 — gate "Mark In Market" on QA & Approval actually being
-// complete, same click-time-validation convention as approveCampaignQa()'s
-// Functions/Creative check just above it (a plain alert() naming exactly
-// what's missing, not a disabled button or a silent no-op). Before this
-// fix, campaigns were created with status already set to 'In Market' (see
-// createCampaign()'s prior behavior), which meant the 7-stage bar's "In
-// Market" pill showed In Progress from the moment a campaign existed —
-// before Brand, Marketing Functions, Creative, or QA & Approval had been
-// touched at all, and this button was consequently dead code (it can only
-// ever render once status isn't already 'In Market'/'Analysis'). Fixed by
-// (1) no longer pre-setting status at creation (see createCampaign()) and
-// (2) gating the actual transition here, so a user progressing stage by
-// stage — not skipping ahead — has a real, working path to the In Market
-// stage instead of the system silently completing it for them.
-async function setCampaignStatus(status){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  if (status === 'In Market'){
-    const stages = computeStageStatuses(c);
-    if (stages.find(s => s.key === 'qa').status !== 'complete'){
-      alert('QA & Approval must be marked complete before this campaign can be moved to In Market.');
-      return;
-    }
-  }
-  c.status = status;
-  let persisted = false;
-  if (dataSourceLabel === 'backend' && !c.localOnly){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
-      });
-      if (resp.ok) persisted = true;
-    } catch (e){ console.warn('setCampaignStatus: backend write failed, saved locally only.', e); }
-  }
-  renderCampaignDetail();
-  renderActiveCampaigns();
-  renderCampaignsList();
-  const flag = document.getElementById('lifecycleSaveFlag');
-  if (flag){
-    flag.textContent = persisted
-      ? `Status updated ${new Date().toLocaleTimeString()} — saved to the backend.`
-      : `Status updated ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-  }
-}
+// setCampaignStatus() removed 2026-09-16, per Todd's direct correction:
+// "why did you create a move to in market option? campaigns have start and
+// end dates to establish when a campaign is in market." This used to
+// advance a campaign to the next lifecycle step by hand (gated, as of
+// Round 64, on QA & Approval being complete first — an alert() naming
+// exactly what's missing). Status is now always derived from the
+// campaign's own startDate/endDate (deriveCampaignStatusFromDates(), near
+// CAMPAIGN_LIFECYCLE_STEPS) and recomputed both here on the frontend and
+// on the backend (server.js's own deriveCampaignStatusFromDates(), applied
+// at creation, on every date edit, and write-through on every list read)
+// — there's no longer a manual gesture for it to advance on. The QA gate
+// this function used to enforce is intentionally not carried forward:
+// Todd's direct answer was "No, Approval will be added before creative
+// begins," i.e. QA & Approval happens well before a campaign's real
+// in-market date in the actual workflow, so gating the derived status on
+// it here would be redundant, not a real safety check.
 
 // Round 36 — Brand stage's manual cycle button. No live per-campaign
 // brand-asset signal exists yet (the campaign-level Brand work — creative
@@ -41400,11 +41411,17 @@ function renderCampaignDetail(focusCardId){
       qaControl = `<div class="btn-row" style="margin-top:8px;"><button class="btn-primary" onclick="approveCampaignQa()">Mark QA & Approval complete →</button></div>`;
     }
 
+    // 2026-09-16, per direct correction — "campaigns have start and end
+    // dates to establish when a campaign is in market," not a manual
+    // button. The two "Mark In Market →"/"Move to Analysis →" buttons that
+    // used to live here (setCampaignStatus(), now removed) are replaced
+    // with a read-only line — status is derived from the campaign's own
+    // dates (deriveCampaignStatusFromDates()) and can't disagree with them.
     let marketAnalysisControl = '';
     if (c.status !== 'In Market' && c.status !== 'Analysis'){
-      marketAnalysisControl = `<div class="btn-row" style="margin-top:8px;"><button class="btn-primary" onclick="setCampaignStatus('In Market')">Mark In Market →</button></div>`;
+      marketAnalysisControl = `<p class="hint" style="margin:8px 0 0;">${c.startDate ? `Enters market automatically on ${c.startDate}.` : 'Enters market automatically once a start date is set.'}</p>`;
     } else if (c.status === 'In Market'){
-      marketAnalysisControl = `<div class="btn-row" style="margin-top:8px;"><button class="btn-primary" onclick="setCampaignStatus('Analysis')">Move to Analysis →</button></div>`;
+      marketAnalysisControl = `<p class="hint" style="margin:8px 0 0;">In Market — today falls within its ${c.startDate || '?'} – ${c.endDate || '?'} run. Moves to Analysis automatically on ${c.endDate || 'its end date'}.</p>`;
     } else {
       const fmtMoney = n => (typeof n === 'number' && n !== null) ? n : '';
       // Round 89 — replaces the old manually-typed "Actual spend"/"Actual
