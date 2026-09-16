@@ -883,11 +883,29 @@
      Per direct instruction, no per-card assignee ("You can't assign cards
      to individuals — too difficult to manage over dozens of different
      organizational structures") — status only. */
+  /* Round 132zzz follow-up (2026-09-16), per direct feedback: "The campaign
+     header and navigation is the old version... The drop-down navigation
+     feels redundant." The header's "Last completed step ▸" expandable
+     panel (cmpBuildStepsPanelColumns(), grouped by the old
+     CMP_STAGE_CATEGORY) is now fully superseded by the five workspace
+     cards below — leaving both live read as two different, disagreeing
+     navigation surfaces stacked on the same page. Hidden outright rather
+     than removed from the DOM (its JS stays intact and harmless) so this
+     is a one-line revert if that turns out wrong. The rest of the header
+     (name, code, status pill, cancel link, start date, relevance score)
+     stays — that's real identity/status info the hub doesn't duplicate. */
+  #cchStepToggle, #cchStepsPanel{display:none !important;}
   .cmp-workspace-hub{display:none;gap:24px;align-items:flex-start;margin:0 0 28px;}
   .cmp-workspace-main{flex:1;min-width:0;}
-  .cmp-workspace-switcher{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
-  .cmp-workspace-switcher label{font-size:0.6875rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:var(--muted);}
-  .cmp-workspace-switcher select{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:0.875rem;padding:7px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--white);color:var(--ink);}
+  /* Round 132zzz follow-up, per direct feedback: "we're duplicating the
+     existing campaign and then have new campaign next to it... the
+     drop-down navigation feels redundant." The header directly above
+     already shows this campaign's name/code — a second control repeating
+     "which campaign is this" right underneath it (a <select> defaulted to
+     the current campaign) read as a duplicate. Replaced with a plain link
+     back to the real cross-campaign list (Campaign Management) plus
+     New Campaign — one real way to see/switch among campaigns, not two. */
+  .cmp-workspace-switcher{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:14px;}
   .cmp-workspace-grid{margin-bottom:0;}
   .cmp-workspace-card .workstream-alert{border:none;background:none;padding:0;margin-top:auto;margin-left:0;margin-right:0;justify-content:flex-end;}
   .cmp-workspace-collab{width:340px;flex-shrink:0;}
@@ -8560,7 +8578,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-campaign-workspace-hub-slice1';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-campaign-workspace-hub-slice1-fixes';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -9997,22 +10015,19 @@ function renderCmpWorkspaceHub(campaign){
   cmpRenderWorkspaceSwitcher(campaign);
   cmpRenderCollabCenter(campaign);
 }
-// Campaign switcher — reuses cmpManageExistingCampaign(), the exact same
-// "load a different campaign into the accordion" path Campaign
-// Management's own "Manage Campaign →" button already uses, so there is
-// one real load path, not two to keep in sync. state.campaigns is already
-// account-scoped (loadCampaigns() fetches
-// /api/accounts/:accountId/campaigns), so no extra filtering is needed
-// here.
+// Round 132zzz follow-up (2026-09-16), per direct feedback — the original
+// <select> switcher (defaulted to the currently-loaded campaign) sat
+// directly under the header's own name/code display, repeating "which
+// campaign is this" a second time right next to "+ New Campaign". Campaign
+// Management (step-campaignMgmt) is already the one real cross-campaign
+// list/switcher in this app; this is now just a plain link back to it,
+// plus New Campaign (startNewCampaign() — same entry point used
+// everywhere else), rather than a second, competing switcher.
 function cmpRenderWorkspaceSwitcher(campaign){
   const el = document.getElementById('cmpWorkspaceSwitcher');
   if (!el) return;
-  const mine = (state.campaigns || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   el.innerHTML = `
-    <label for="cmpWorkspaceSwitcherSelect">Campaign</label>
-    <select id="cmpWorkspaceSwitcherSelect" onchange="if(this.value) cmpManageExistingCampaign(this.value);">
-      ${mine.map(c => `<option value="${c.id}" ${c.id === campaign.id ? 'selected' : ''}>${escapeHtml(c.name || 'Untitled campaign')}</option>`).join('')}
-    </select>
+    <a class="flink" onclick="goToStep('campaignMgmt')">‹ All Campaigns</a>
     <button type="button" class="btn-ghost" onclick="startNewCampaign()">+ New Campaign</button>
   `;
 }
@@ -10069,30 +10084,88 @@ function cmpSwitchCollabTab(key){
   if (tabsEl) tabsEl.querySelectorAll('.cmp-collab-tab').forEach((btn, i) => btn.classList.toggle('active', CMP_COLLAB_TABS[i].key === key));
   cmpRenderCollabBody(cmpRailLoadedCampaign());
 }
-// AI Brain tab: a real note computed from this campaign's own card
-// statuses (cmpWorkspaceCardStatus()) — never a fabricated chat transcript.
-// This hub isn't a dialogue surface; the real AI Brain conversation lives
-// inside Objectives (Slice 2) and Budget & Recommendation (Slice 3).
-function cmpCollabAiBrainNote(campaign){
-  if (!campaign) return 'Load a campaign to see what the AI Brain is watching.';
-  const needsReview = CMP_WORKSPACE_CARDS.filter(c => cmpWorkspaceCardStatus(c) !== 'complete');
-  if (!needsReview.length) return 'Every workstream on this campaign is complete — nothing needs a decision right now.';
-  const names = needsReview.map(c => c.label);
-  const last = names.pop();
-  const list = names.length ? `${names.join(', ')} and ${last}` : last;
-  return `I'm watching every workstream on this campaign at once — right now, ${list} still ${needsReview.length === 1 ? 'needs' : 'need'} work.`;
+// Round 132zzz follow-up (2026-09-16), per direct correction: "You can't
+// engage with the AI Brain or Team or Provide Feedback. It's just static
+// copy." Rewired onto the SAME real, already-shipped, already-persisted
+// note system the per-stage accordion cards use
+// (cmpAddActivityNote()/cmpPersistActivityNotesToCampaign(), see round 30
+// above) — a 'workspace' key in that same c.activityNotes object, tagged
+// per note with which Collaboration Center tab it belongs to, rather than
+// inventing a second, parallel, fake notes mechanism. Typing into any tab's
+// composer and sending genuinely saves (backend PATCH, same as every other
+// note in this app) and re-renders immediately.
+function cmpCollabNotesFor(campaign, tab){
+  if (!campaign || !campaign.activityNotes) return [];
+  return (campaign.activityNotes.workspace || []).filter(n => (n.tab || 'ai') === tab);
+}
+function cmpCollabAddNote(tab, text, isAi){
+  const c = cmpRailLoadedCampaign();
+  if (!c || !text) return;
+  if (!c.activityNotes) c.activityNotes = {};
+  if (!c.activityNotes.workspace) c.activityNotes.workspace = [];
+  c.activityNotes.workspace.push({
+    id: `wsnote_${Math.round(performance.now())}`,
+    author: isAi ? 'AI Assistant' : (cmpNoteAuthorName || 'Team member'),
+    text, isAi: !!isAi, tab, ts: Date.now()
+  });
+  cmpPersistActivityNotesToCampaign(c);
+  cmpRenderCollabBody(c);
+}
+function cmpCollabSend(tab){
+  const input = document.getElementById(`cmpCollabInput_${tab}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  cmpCollabAddNote(tab, text, false);
+}
+// The AI Brain's own reply is a real, inspectable read of this campaign's
+// card statuses (cmpWorkspaceCardStatus()) — same "honest heuristic, not
+// fabricated model call" convention as cmpGenerateAiActivityCommentary()
+// above — never a fabricated conversational transcript.
+function cmpCollabAskAiBrain(){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  const needsReview = CMP_WORKSPACE_CARDS.filter(card => cmpWorkspaceCardStatus(card) !== 'complete');
+  let note;
+  if (!needsReview.length){
+    note = 'Every workstream on this campaign is complete — nothing needs a decision right now.';
+  } else {
+    const names = needsReview.map(card => card.label);
+    const last = names.pop();
+    const list = names.length ? `${names.join(', ')} and ${last}` : last;
+    note = `I'm watching every workstream on this campaign at once — right now, ${list} still ${needsReview.length === 1 ? 'needs' : 'need'} work.`;
+  }
+  cmpCollabAddNote('ai', note, true);
+}
+function cmpCollabNoteRowHtml(n){
+  return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
+    <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
+    <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+  </div>`;
+}
+function cmpCollabComposerHtml(tab, placeholder, askAi){
+  return `<div class="cmp-note-add">
+    <textarea id="cmpCollabInput_${tab}" rows="2" placeholder="${escapeHtml(placeholder)}"></textarea>
+    <div class="btn-row" style="margin:2px 0 0;">
+      <button type="button" class="btn-ghost" onclick="cmpCollabSend('${tab}')">Send</button>
+      ${askAi ? `<button type="button" class="btn-ghost" onclick="cmpCollabAskAiBrain()">Ask AI Brain →</button>` : ''}
+    </div>
+  </div>`;
 }
 function cmpRenderCollabBody(campaign){
   const body = document.getElementById('cmpCollabBody');
   if (!body) return;
+  if (!campaign){ body.innerHTML = `<div class="cmp-collab-empty">Load a campaign to use the Collaboration Center.</div>`; return; }
   if (cmpCollabActiveTab === 'ai'){
-    body.innerHTML = `<div class="cmp-collab-note">${escapeHtml(cmpCollabAiBrainNote(campaign))}</div>`;
+    const notes = cmpCollabNotesFor(campaign, 'ai');
+    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — ask it for a read on where this campaign stands, or send it a question.</div>`)
+      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…', true);
     return;
   }
   if (cmpCollabActiveTab === 'team'){
     const team = state.team || [];
-    if (!team.length){ body.innerHTML = `<div class="cmp-collab-empty">No team members on file for this account yet — add them under Company Profile &amp; Team.</div>`; return; }
-    body.innerHTML = team.map(m => {
+    const teamHtml = team.length ? team.map(m => {
       const initials = (m.name || '?').split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
       return `<div class="cmp-collab-team-row">
         <div class="cmp-collab-team-avatar">${escapeHtml(initials || '?')}</div>
@@ -10101,15 +10174,18 @@ function cmpRenderCollabBody(campaign){
           <div class="cmp-collab-team-role">${escapeHtml(m.functionGroup || 'No function group set')}</div>
         </div>
       </div>`;
-    }).join('');
+    }).join('') : `<div class="cmp-collab-empty">No team members on file for this account yet — add them under Company Profile &amp; Team.</div>`;
+    const notes = cmpCollabNotesFor(campaign, 'team');
+    body.innerHTML = teamHtml + (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : '')
+      + cmpCollabComposerHtml('team', 'Add a note for the team…', false);
     return;
   }
-  // Feedback tab: no per-hub feedback data source exists yet — the real
-  // AI Brain comment/suggestion thread (recommendation-comments,
-  // suggestionJson) lives inside Budget & Recommendation specifically, not
-  // at this cross-workstream level. Honest empty state rather than
-  // fabricating hub-level feedback content.
-  body.innerHTML = `<div class="cmp-collab-empty">Nothing flagged at the workspace level yet — feedback lives inside each workstream once its AI Brain dialogue starts.</div>`;
+  // Feedback tab — its own composer/thread, same real persisted mechanism,
+  // just filtered to tab:'feedback'. Starts empty on every campaign, same
+  // as every other new thread here; not pre-seeded with fabricated content.
+  const notes = cmpCollabNotesFor(campaign, 'feedback');
+  body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">Nothing flagged yet.</div>`)
+    + cmpCollabComposerHtml('feedback', 'Flag something for the team…', false);
 }
 
 // Round 132bx (2026-08-13), per direct instruction: "Active is any start
@@ -28123,7 +28199,14 @@ function loadExistingCampaignIntoForm(campaignId){
   // Market, Analysis) have a real campaign to compute status from and unlock.
   renderCmpStageRail();
   renderCmpDownstreamStages();
-  document.getElementById('newCampaignForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Round 132zzz follow-up (2026-09-16) — renderCmpStageRail() above just
+  // rendered the Workspace hub for this campaign (renderCmpWorkspaceHub());
+  // scroll there instead of straight into the accordion so the hub is
+  // actually the first thing seen, not skipped past. Falls back to the
+  // accordion itself for the rare case the hub isn't in the DOM.
+  const cmpScrollTarget = document.getElementById('cmpWorkspaceHub');
+  const cmpScrollVisible = cmpScrollTarget && cmpScrollTarget.style.display !== 'none';
+  (cmpScrollVisible ? cmpScrollTarget : document.getElementById('newCampaignForm')).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Round 132kk (2026-08-10), per direct correction: "Selecting Manage
@@ -28168,7 +28251,28 @@ function cmpManageExistingCampaign(campaignId){
   // openAllCmpStages()'s own comment.
   const c = state.campaigns.find(x => x.id === campaignId);
   if (cmpIsCampaignHistorical(c)) openAllCmpStages();
-  else openCmpStage(cmpNextIncompleteStageKey());
+  // Round 132zzz follow-up (2026-09-16), per direct correction: "Lifecycle
+  // does not belong on the first page." Now that the Workspace hub is the
+  // real landing view for a loaded campaign, auto-jumping into whichever
+  // stage was next incomplete (often Lifecycle Stage & Goals, since
+  // Creation/Pickup read complete the instant a campaign exists) fought
+  // with it — the page looked like it landed mid-accordion instead of on
+  // the hub. Collapses every stage instead; a hub card's "Open →" is what
+  // opens a specific stage now, same as everywhere else on the hub.
+  else cmpCloseAllStages();
+}
+// Mirrors openAllCmpStages() exactly, inverted — same element query, same
+// renderCmpStageRail() refresh at the end, so rail/header/hub state never
+// drifts from what the accordion actually shows.
+function cmpCloseAllStages(){
+  cmpOpenStage = null;
+  document.querySelectorAll('#newCampaignForm .cmp-stage').forEach(el => {
+    el.classList.remove('open');
+    el.style.overflow = 'hidden';
+    const body = el.querySelector('.module-body');
+    if (body){ body.style.maxHeight = '0px'; body.style.overflow = 'hidden'; }
+  });
+  renderCmpStageRail();
 }
 
 // Round 132d follow-on (2026-08-09), per direct correction: "the pick up
