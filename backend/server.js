@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-14-coldstart-ensurecolumn-casefold-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-16-recommendation-spend-region (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1737,6 +1737,20 @@ ensureColumn('channel_planning_details', 'projectNumber', 'TEXT');
 // screen. Two different approvals, two different fields, on purpose.
 ensureColumn('channel_planning_details', 'clientApprovedAt', 'TEXT');
 ensureColumn('channel_planning_details', 'clientApprovedBy', 'TEXT');
+
+// 2026-09-16 — Campaign spend region (US / Canada / International), per
+// Todd's direct instruction: the AI Brain needs to be able to discuss
+// campaign spend by region, and the Recommendation & Budget pitch screen
+// needs a region toggle "similar to the account management overall budget
+// that includes domestic and international tabs" (the Marketing Budget
+// Upload scope split — see ensureColumn('marketing_budget_uploads',
+// 'scope', ...) above). Region lives on the CHANNEL LINE ITEM, not the
+// campaign as a whole, so one campaign can show a real US/Canada/
+// International breakdown rather than forcing a single region per
+// campaign. Defaults to 'US' — every pre-existing row (created before this
+// column existed) reads back as US via COALESCE at the query sites below,
+// never a blank/unknown region.
+ensureColumn('channel_planning_details', 'region', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -16015,7 +16029,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-14-coldstart-ensurecolumn-casefold-fix',
+        buildStamp: '2026-09-16-recommendation-spend-region',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21149,7 +21163,25 @@ Submit your response via the campaign_intake_turn tool.`;
         campaignType: body.campaignType !== undefined ? body.campaignType : existing.campaignType,
         campaignTypeDetailsJson: body.campaignTypeDetails !== undefined
           ? (() => { try { return typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : existing.campaignTypeDetailsJson; } catch (e){ return existing.campaignTypeDetailsJson; } })()
-          : existing.campaignTypeDetailsJson
+          : existing.campaignTypeDetailsJson,
+        // 2026-09-16 — Loop Stage previously had NO update path after
+        // creation at all (set once at creation only, same original gap
+        // keyMessage/startDate/endDate had before their own rounds closed
+        // it — see those comments above). Closing the same gap the same
+        // way, so the AI Brain Recommendation pitch screen's Loop Stage
+        // summary can actually be edited and saved in place, not just
+        // displayed read-only.
+        stage: body.stage !== undefined ? body.stage : existing.stage,
+        // 2026-09-16 follow-on — same gap, same fix, for Audience
+        // (campaign.segment): also creation-only until now. Per direct
+        // instruction, the Recommendation pitch screen's top summary
+        // (Loop Stage / Audience / Channels / Spend / Impressions) needs a
+        // real edit view for Audience, not just Loop Stage. Stored as the
+        // same comma-joined segment-tag string the campaign creation
+        // form's own multi-select writes (`[...selectedSegments].join(', ')`
+        // — see cmpBuildFormPayload()), so this accepts exactly that shape
+        // back.
+        segment: body.segment !== undefined ? body.segment : existing.segment
       };
       if (!existing.campaignCode){
         const account = db.prepare('SELECT partnerCode FROM accounts WHERE accountId = ?').get(existing.accountId);
@@ -21159,8 +21191,8 @@ Submit your response via the campaign_intake_turn tool.`;
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, stage = ?, segment = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.stage, merged.segment, campaignId);
       // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
       // digest pooling, build-order item 2). messagingStyleDigestJson has
       // been stored on the campaign row since round 132be but read by
@@ -21219,6 +21251,15 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!detailsJson || typeof detailsJson !== 'object') return [];
       return CHANNEL_PLANNING_COST_SUBFIELDS.filter(k => detailsJson[k] !== undefined && detailsJson[k] !== null && detailsJson[k] !== '');
     }
+    // normalizeChannelPlanningRegion: the fixed region set the toggle and
+    // the AI Brain both key off — 'US' | 'Canada' | 'International'.
+    // Anything else (missing, null, a typo, a pre-2026-09-16 row) reads
+    // back as 'US', which is also the sole default for new rows below.
+    const CHANNEL_PLANNING_REGIONS = ['US', 'Canada', 'International'];
+    function normalizeChannelPlanningRegion(value){
+      return CHANNEL_PLANNING_REGIONS.includes(value) ? value : 'US';
+    }
+
     function serializeChannelPlanningRow(row){
       const actualCalls = row.actualCalls === null || row.actualCalls === undefined ? null : Number(row.actualCalls);
       const actualQrScans = row.actualQrScans === null || row.actualQrScans === undefined ? null : Number(row.actualQrScans);
@@ -21237,7 +21278,13 @@ Submit your response via the campaign_intake_turn tool.`;
         totalEngagement,
         // 2026-09-13 — Project # (client reference). Read-only pass-through,
         // string or null — see the projectNumber ensureColumn comment.
-        projectNumber: row.projectNumber === undefined ? null : row.projectNumber
+        projectNumber: row.projectNumber === undefined ? null : row.projectNumber,
+        // 2026-09-16 — campaign spend region (US/Canada/International, see
+        // the ensureColumn comment). Every row created before this column
+        // existed reads back null from the DB — normalized to 'US' here so
+        // no caller (the pitch screen's region toggle, the AI Brain prompt,
+        // CSV export) ever has to special-case a blank region.
+        region: normalizeChannelPlanningRegion(row.region)
       };
     }
 
@@ -21286,11 +21333,12 @@ Submit your response via the campaign_intake_turn tool.`;
       }
       const entryId = generateId('CPD');
       const now = new Date().toISOString();
+      const region = normalizeChannelPlanningRegion(body.region);
       db.prepare(`INSERT INTO channel_planning_details
         (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
          dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
-         status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, projectNumber, createdAt, updatedAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, projectNumber, region, createdAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         entryId, campaignId, body.allocationId || null, body.channel,
         body.partner || null, body.audience || null, body.buyType || null, body.mediaType || null,
@@ -21301,7 +21349,7 @@ Submit your response via the campaign_intake_turn tool.`;
         JSON.stringify(detailsJson), status,
         actorRole, actorName, actorRole, actorName,
         typeof body.projectNumber === 'string' ? body.projectNumber : (body.projectNumber || null),
-        now, now
+        region, now, now
       );
       return { entryId, campaignId };
     }
@@ -21423,6 +21471,7 @@ Submit your response via the campaign_intake_turn tool.`;
         productGroup: body.productGroup !== undefined ? body.productGroup : existing.productGroup,
         creativeMarket: body.creativeMarket !== undefined ? body.creativeMarket : existing.creativeMarket,
         budget: body.budget !== undefined ? body.budget : existing.budget,
+        region: body.region !== undefined ? normalizeChannelPlanningRegion(body.region) : normalizeChannelPlanningRegion(existing.region),
         status,
         // 2026-09-13 — Publisher/Vendor Performance actuals (see the
         // ensureColumn block above for the "why this table" reasoning).
@@ -21436,7 +21485,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const now = new Date().toISOString();
       db.prepare(`UPDATE channel_planning_details SET
           allocationId = ?, channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?,
-          dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?,
+          dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, region = ?,
           detailsJson = ?, status = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ?,
           actualCalls = ?, actualQrScans = ?, actualUrlVisits = ?, actualLeads = ?,
           actualsEnteredByRole = CASE WHEN ? THEN ? ELSE actualsEnteredByRole END,
@@ -21445,7 +21494,7 @@ Submit your response via the campaign_intake_turn tool.`;
         WHERE id = ?`
       ).run(
         merged.allocationId, merged.channel, merged.partner, merged.audience, merged.buyType, merged.mediaType, merged.impressions,
-        merged.dropDate, merged.hitDate, merged.endDate, merged.productYear, merged.productGroup, merged.creativeMarket, merged.budget,
+        merged.dropDate, merged.hitDate, merged.endDate, merged.productYear, merged.productGroup, merged.creativeMarket, merged.budget, merged.region,
         JSON.stringify(mergedDetails), merged.status, actorRole, actorName, now,
         typeof merged.actualCalls === 'number' ? merged.actualCalls : null,
         typeof merged.actualQrScans === 'number' ? merged.actualQrScans : null,
@@ -21662,6 +21711,114 @@ Submit your response via the recommendation_dialogue_reply tool.`;
       }
     }
 
+    // POST /api/campaigns/:id/ai-brain-reply — 2026-09-16, per direct
+    // correction on the Campaign Workspace Hub's Collaboration Center:
+    // "I don't understand the purpose. Collaboration is the purpose so
+    // there needs to be back and forth. It's not a note taking area."
+    // The AI Brain tab previously only logged the human's own text (Send)
+    // or posted the same canned, computed status string every time ("Ask
+    // AI Brain →") — no reply, no memory of what was actually asked. This
+    // gives it a real reply, grounded in this campaign's actual current
+    // fields and channel plan (same callClaudeForJSON()/one-retry
+    // convention as recommendation-comments above), given the message just
+    // sent and the recent thread for context. Deliberately does NOT persist
+    // its own copy of the thread — the frontend still owns and persists the
+    // Collaboration Center's notes via the existing
+    // activityNotesJson/cmpPersistActivityNotesToCampaign() mechanism (see
+    // that endpoint's own comment); this endpoint is stateless, called once
+    // per turn with whatever recent history the frontend already has,
+    // exactly like campaign-intake above. Unlike the Recommendation
+    // screen's dialogue, this one never proposes a budget change of its own
+    // (that stays specific to the Recommendation pitch, where the line
+    // items are directly in view) — general campaign Q&A and status only.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'ai-brain-reply'){
+      const campaignId = decodeURIComponent(parts[2]);
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        const body = await readBody(req);
+        const message = typeof body.message === 'string' ? body.message.trim() : '';
+        if (!message) return sendJson(res, 400, { error: 'message is required' });
+        if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 503, { error: 'AI Brain is not configured on this environment.' });
+        const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
+        const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
+        const lines = db.prepare('SELECT channel, budget, impressions, status, region FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        const lineText = lines.length
+          ? lines.map(l => `- ${l.channel || '(no channel)'} | ${normalizeChannelPlanningRegion(l.region)} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}`).join('\n')
+          : '(no channel plan lines entered yet)';
+        // 2026-09-16 — per Todd's direct instruction, the AI Brain needs to
+        // be able to ask about and react to campaign spend BY REGION (US /
+        // Canada / International) and how it's distributed, the same three
+        // regions the Recommendation & Budget pitch screen's new region
+        // toggle filters by (see channel-planning region ensureColumn
+        // comment above). Precomputed here rather than left for the model
+        // to add up itself, so the totals it states are always exactly
+        // right, never an LLM arithmetic guess.
+        const regionTotals = CHANNEL_PLANNING_REGIONS.map(region => {
+          const regionLines = lines.filter(l => normalizeChannelPlanningRegion(l.region) === region);
+          const total = regionLines.reduce((sum, l) => sum + (Number(l.budget) || 0), 0);
+          return { region, total, count: regionLines.length };
+        });
+        const grandTotal = regionTotals.reduce((sum, r) => sum + r.total, 0);
+        const regionText = lines.length
+          ? regionTotals.map(r => `- ${r.region}: $${Math.round(r.total).toLocaleString()} across ${r.count} line item${r.count === 1 ? '' : 's'}${grandTotal ? ` (${Math.round((r.total / grandTotal) * 100)}% of total spend)` : ''}`).join('\n')
+          : '(no channel plan lines entered yet, so no regional distribution to report)';
+        const prompt = `You are the AI Brain, a marketing operations assistant embedded in this real campaign's Workspace hub, having a real back-and-forth conversation with the team — not writing a one-shot report.
+
+CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
+Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
+Objective: ${campaign.objective || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}
+Channels selected: ${campaign.channels || '(none yet)'}
+Status: ${campaign.status || '(not set)'}
+Budget overall approved: ${campaign.budgetApprovedAt ? 'yes' : 'no'}
+Creative complete: ${campaign.creativeComplete ? 'yes' : 'no'}
+QA approved: ${campaign.qaApproved ? 'yes' : 'no'}
+Cancelled: ${campaign.cancelled ? 'yes' : 'no'}
+
+REAL CHANNEL PLAN LINES (channel | region | budget | impressions | status):
+${lineText}
+
+SPEND BY REGION (US / Canada / International — precomputed, use these numbers exactly, do not recompute):
+${regionText}
+
+CONVERSATION SO FAR:
+${priorText || '(nothing yet)'}
+
+The team just said: "${message}"
+
+Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about something this data doesn't cover, say so plainly rather than guessing. Keep it conversational, not a report.
+
+Submit your response via the ai_brain_reply tool.`;
+        const AI_BRAIN_REPLY_SCHEMA = {
+          type: 'object',
+          properties: { reply: { type: 'string', description: 'Your reply — specific to this campaign\'s real fields, never generic filler.' } },
+          required: ['reply']
+        };
+        let parsed;
+        try {
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
+            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
+          });
+        } catch (firstErr){
+          console.warn('[POST /api/campaigns/:id/ai-brain-reply] first attempt failed, retrying once:', firstErr.message);
+          await new Promise(r => setTimeout(r, 800));
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
+            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
+          });
+        }
+        return sendJson(res, 200, { reply: parsed.reply || "Sorry, I didn't get a response — try again." });
+      } catch (e){
+        console.error(`[POST /api/campaigns/:id/ai-brain-reply] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message });
+      }
+    }
+
     // GET /api/campaigns/:id/pitch-summary — 2026-09-15, the AI Brain
     // Recommendation ("campaign pitch") screen's data source for its
     // campaign-level dashboards (Loop Stage, Channel Mix, Audience,
@@ -21687,7 +21844,8 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
         if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
         if (!requireAccount(req, res, campaign.accountId)) return;
-        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy, region FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId)
+          .map(l => ({ ...l, region: normalizeChannelPlanningRegion(l.region) }));
         const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
         const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
         const audienceTotals = {};
@@ -21695,6 +21853,12 @@ Submit your response via the recommendation_dialogue_reply tool.`;
           const key = l.audience || campaign.segment || 'Unspecified';
           audienceTotals[key] = (audienceTotals[key] || 0) + (Number(l.budget) || 0);
         });
+        // 2026-09-16 — spend-by-region rollup (US/Canada/International) for
+        // the pitch screen's new region toggle, same precomputed-not-
+        // recomputed-by-the-frontend approach as audienceTotals above.
+        const regionTotals = {};
+        CHANNEL_PLANNING_REGIONS.forEach(r => { regionTotals[r] = 0; });
+        lines.forEach(l => { regionTotals[l.region] = (regionTotals[l.region] || 0) + (Number(l.budget) || 0); });
         // 2026-09-15, per direct correction: "You don't need to show the
         // similar campaign" — the similar-campaign lookup (Stage match +
         // conversion efficiency, same scoring as campaign-intake) was
@@ -21709,6 +21873,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
           totalImpressions,
           lineItems: lines,
           audienceTotals,
+          regionTotals,
           budgetApprovedAt: campaign.budgetApprovedAt || null,
           budgetApprovedBy: campaign.budgetApprovedBy || null
         });
@@ -28078,6 +28243,8 @@ try {
 }
 
 module.exports = handleRequest;
+
+
 
 
 
