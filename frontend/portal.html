@@ -7844,7 +7844,16 @@
                    instruction (verbatim, not paraphrased). See
                    cmpIntakeSendMessage()/cmpRenderIntakeChat() below. -->
               <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;">
-                <h3 style="margin:0 0 6px;">Create Your New Program</h3>
+                <!-- 2026-09-16, per wireframe spec (Objectives-Desktop.dc.html):
+                     "Skip to Manual Campaign Creation" sits upper-right, tied
+                     to the dialogue — moved here from the bottom btn-row
+                     below (cmpSkipPickupAndContinue() unchanged, same
+                     target/typed-phrase handling in
+                     cmpIntakeDetectSkipIntent()). -->
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+                  <h3 style="margin:0 0 6px;">Create Your New Program</h3>
+                  <button type="button" class="btn-ghost" style="flex:none;white-space:nowrap;" onclick="cmpSkipPickupAndContinue()">Skip to Manual Campaign Creation →</button>
+                </div>
                 <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
                 <div class="cmp-intake-body" id="cmpIntakeBody"></div>
                 <div class="cmp-intake-input-row">
@@ -7862,23 +7871,6 @@
                 <div id="cmpIntakeRecommendations"></div>
               </div>
 
-              <!-- 2026-09-15 rename, per direct instruction: "Alternatively
-                   users can just say link me to the campaign creation form
-                   (equivalent of Skip - Start From Scratch). Go To Campaign
-                   Creation (Shows full lifecycle marketing view before the
-                   pitch view when taking this path)." Same
-                   cmpSkipPickupAndContinue() target as before (opens
-                   Lifecycle Stage & Goals directly — that already IS "the
-                   full lifecycle marketing view before the pitch view", the
-                   AI Brain Recommendation screen is never auto-opened on
-                   this path) — only the label changed. The typed-phrase
-                   equivalent ("link me to the campaign creation form") is
-                   handled inside cmpIntakeSendMessage() via
-                   cmpIntakeDetectSkipIntent() below, so saying it in the
-                   dialogue does the same thing as clicking this button. -->
-              <div class="btn-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px;">
-                <button type="button" class="btn-ghost" onclick="cmpSkipPickupAndContinue()">Go To Campaign Creation →</button>
-              </div>
             </div>
           </div>
         </div>
@@ -9944,251 +9936,10 @@
         <div class="htext"><div class="kicker">Recommended Mix</div><h3>Channel &amp; audience mix, spend allocation <span class="ai-thought-mount" data-topic="B"></span></h3></div>
         <div class="hicon">◈</div>
       </div>
-  renderCmpWorkspaceHub(campaign);
-}
-
-// ============================================================
-// Round 132zzz (2026-09-16) — Campaign Workspace hub, Slice 1 of the
-// campaign-creation-flow wireframe build. See
-// cxmedia-campaign-workspace-hub-build-scoping-2026-09-15.md for the full
-// decision record. Three confirmed decisions this implements exactly:
-//   1. Card grouping matches the wireframe's five named cards, not the
-//      app's existing CMP_STAGE_CATEGORY labels — 'market' moves from
-//      Media Science to the Analysis card.
-//   2. No per-card assignee — status only, per direct instruction.
-//   3. Full Collaboration Center now (mic shell + 3 tabs), not deferred.
-// Every status value below is read from cmpModuleStatus() — the same
-// single source of truth already driving the rail sub-labels and the
-// header's steps panel — never recomputed independently, so this hub can
-// never disagree with the accordion underneath it.
-// ============================================================
-const CMP_WORKSPACE_CARDS = [
-  { key: 'objectives', label: 'Objectives', railKeys: ['creation', 'pickup', 'lifecycle'],
-    desc: 'Conversational intake with the AI Brain — defining Loop Stage, audience, and program goals.' },
-  { key: 'budget', label: 'Budget & Recommendation', railKeys: ['perfMarketing'],
-    desc: "AI Brain's channel mix, spend plan, and line-item approvals — yours to review and approve." },
-  { key: 'creative', label: 'Creative', railKeys: ['messaging', 'copyVersions', 'creative'],
-    desc: 'Creative layers, brand alignment, and asset production for the approved channel mix.' },
-  { key: 'trafficking', label: 'Trafficking', railKeys: ['qrutm', 'qa', 'trafficking'],
-    desc: 'Launch scheduling, tagging, QR/UTM, and QA rating before this campaign goes live.' },
-  { key: 'analysis', label: 'Analysis', railKeys: ['market', 'analysis'],
-    desc: "Performance read-outs and the AI Brain's learnings, feeding back into the next campaign's plan." }
-];
-function cmpWorkspaceCardStatus(card){
-  const statuses = card.railKeys.map(k => cmpModuleStatus(k));
-  if (statuses.every(s => s === 'complete')) return 'complete';
-  if (statuses.every(s => s === 'not-started')) return 'not-started';
-  return 'in-progress';
-}
-// Opens on the first not-yet-complete stage inside this card's group (same
-// "land on what still needs work" convention as cmpNextIncompleteStageKey()
-// for the whole rail); falls back to the group's last stage once every
-// stage in it is complete, so "Open" always lands somewhere real to review.
-function cmpWorkspaceCardOpenKey(card){
-  const next = card.railKeys.find(k => cmpModuleStatus(k) !== 'complete');
-  return next || card.railKeys[card.railKeys.length - 1];
-}
-function renderCmpWorkspaceHub(campaign){
-  const hub = document.getElementById('cmpWorkspaceHub');
-  if (!hub) return;
-  if (!campaign){ hub.style.display = 'none'; hub.innerHTML = ''; return; }
-  hub.style.display = 'flex';
-  const cardsHtml = CMP_WORKSPACE_CARDS.map(card => {
-    const status = cmpWorkspaceCardStatus(card);
-    const openKey = cmpWorkspaceCardOpenKey(card);
-    return `<div class="group-card workstream-card cmp-workspace-card" onclick="openCmpStage('${openKey}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')openCmpStage('${openKey}')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-        <div style="font-weight:700;font-size:0.9375rem;">${card.label}</div>
-        <span class="stage-status ${status}">${STAGE_STATUS_LABEL[status]}</span>
-      </div>
-      <div class="count" style="white-space:normal;line-height:1.45;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;letter-spacing:0;text-transform:none;font-weight:400;">${card.desc}</div>
-      <div class="workstream-alert"><span class="label" style="color:var(--advocacy);font-weight:700;">Open →</span></div>
-    </div>`;
-  }).join('');
-  hub.innerHTML = `
-    <div class="cmp-workspace-main">
-      <div class="cmp-workspace-switcher" id="cmpWorkspaceSwitcher"></div>
-      <div class="group-grid cmp-workspace-grid">${cardsHtml}</div>
-    </div>
-    <div class="cmp-workspace-collab" id="cmpWorkspaceCollab"></div>
-  `;
-  cmpRenderWorkspaceSwitcher(campaign);
-  cmpRenderCollabCenter(campaign);
-}
-// Round 132zzz follow-up (2026-09-16), per direct feedback — the original
-// <select> switcher (defaulted to the currently-loaded campaign) sat
-// directly under the header's own name/code display, repeating "which
-// campaign is this" a second time right next to "+ New Campaign". Campaign
-// Management (step-campaignMgmt) is already the one real cross-campaign
-// list/switcher in this app; this is now just a plain link back to it,
-// plus New Campaign (startNewCampaign() — same entry point used
-// everywhere else), rather than a second, competing switcher.
-function cmpRenderWorkspaceSwitcher(campaign){
-  const el = document.getElementById('cmpWorkspaceSwitcher');
-  if (!el) return;
-  el.innerHTML = `
-    <a class="flink" onclick="goToStep('campaignMgmt')">‹ All Campaigns</a>
-    <button type="button" class="btn-ghost" onclick="startNewCampaign()">+ New Campaign</button>
-  `;
-}
-
-// ---------- Collaboration Center (shared component, Slice 1 build) ----------
-// AI Brain / Team Collaboration / Feedback Loop tabs, per the wireframe
-// standard ("I like the dialogue area... AI Brain is a piece of this" —
-// see cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md).
-// Built once here so Slices 2-6 import this same render path rather than
-// forking their own panel, same lesson as the wireframe round's
-// AICompanion.dc.html fix. The mic is a UI shell only in this slice — not
-// wired to any speech API or ElevenLabs (that's Slice 7, deliberately
-// last per the sequencing decision) — using the exact same
-// "shell now, real note explaining why" convention as .ask-mic/
-// toggleAskVerilumeVoiceNote() elsewhere in this file, not a silent
-// no-op button.
-let cmpCollabActiveTab = 'ai';
-const CMP_COLLAB_TABS = [
-  { key: 'ai', label: 'AI Brain' },
-  { key: 'team', label: 'Team' },
-  { key: 'feedback', label: 'Feedback' }
-];
-function cmpRenderCollabCenter(campaign){
-  const el = document.getElementById('cmpWorkspaceCollab');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="cmp-collab">
-      <div class="cmp-collab-head">
-        <div class="cmp-collab-avatar">✦</div>
-        <div class="cmp-collab-titles">
-          <div class="cmp-collab-title">Collaboration Center</div>
-          <div class="cmp-collab-status"><span class="dot"></span>AI Brain live — watching this campaign</div>
-        </div>
-        <button type="button" class="cmp-collab-mic" aria-label="Voice input (coming soon)" title="Voice input (coming soon)" onclick="cmpToggleCollabVoiceNote()">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
-        </button>
-      </div>
-      <div class="cmp-collab-voice-note" id="cmpCollabVoiceNote">Voice input isn't wired up yet — it's coming in a later round.</div>
-      <div class="cmp-collab-tabs" id="cmpCollabTabs">
-        ${CMP_COLLAB_TABS.map(t => `<button type="button" class="cmp-collab-tab${cmpCollabActiveTab === t.key ? ' active' : ''}" onclick="cmpSwitchCollabTab('${t.key}')">${t.label}</button>`).join('')}
-      </div>
-      <div class="cmp-collab-body" id="cmpCollabBody"></div>
-    </div>
-  `;
-  cmpRenderCollabBody(campaign);
-}
-function cmpToggleCollabVoiceNote(){
-  const note = document.getElementById('cmpCollabVoiceNote');
-  if (note) note.style.display = note.style.display === 'block' ? 'none' : 'block';
-}
-function cmpSwitchCollabTab(key){
-  cmpCollabActiveTab = key;
-  const tabsEl = document.getElementById('cmpCollabTabs');
-  if (tabsEl) tabsEl.querySelectorAll('.cmp-collab-tab').forEach((btn, i) => btn.classList.toggle('active', CMP_COLLAB_TABS[i].key === key));
-  cmpRenderCollabBody(cmpRailLoadedCampaign());
-}
-// Round 132zzz follow-up (2026-09-16), per direct correction: "You can't
-// engage with the AI Brain or Team or Provide Feedback. It's just static
-// copy." Rewired onto the SAME real, already-shipped, already-persisted
-// note system the per-stage accordion cards use
-// (cmpAddActivityNote()/cmpPersistActivityNotesToCampaign(), see round 30
-// above) — a 'workspace' key in that same c.activityNotes object, tagged
-// per note with which Collaboration Center tab it belongs to, rather than
-// inventing a second, parallel, fake notes mechanism. Typing into any tab's
-// composer and sending genuinely saves (backend PATCH, same as every other
-// note in this app) and re-renders immediately.
-function cmpCollabNotesFor(campaign, tab){
-  if (!campaign || !campaign.activityNotes) return [];
-  return (campaign.activityNotes.workspace || []).filter(n => (n.tab || 'ai') === tab);
-}
-function cmpCollabAddNote(tab, text, isAi){
-  const c = cmpRailLoadedCampaign();
-  if (!c || !text) return;
-  if (!c.activityNotes) c.activityNotes = {};
-  if (!c.activityNotes.workspace) c.activityNotes.workspace = [];
-  c.activityNotes.workspace.push({
-    id: `wsnote_${Math.round(performance.now())}`,
-    author: isAi ? 'AI Assistant' : (cmpNoteAuthorName || 'Team member'),
-    text, isAi: !!isAi, tab, ts: Date.now()
-  });
-  cmpPersistActivityNotesToCampaign(c);
-  cmpRenderCollabBody(c);
-}
-function cmpCollabSend(tab){
-  const input = document.getElementById(`cmpCollabInput_${tab}`);
-  if (!input) return;
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
-  cmpCollabAddNote(tab, text, false);
-}
-// The AI Brain's own reply is a real, inspectable read of this campaign's
-// card statuses (cmpWorkspaceCardStatus()) — same "honest heuristic, not
-// fabricated model call" convention as cmpGenerateAiActivityCommentary()
-// above — never a fabricated conversational transcript.
-function cmpCollabAskAiBrain(){
-  const c = cmpRailLoadedCampaign();
-  if (!c) return;
-  const needsReview = CMP_WORKSPACE_CARDS.filter(card => cmpWorkspaceCardStatus(card) !== 'complete');
-  let note;
-  if (!needsReview.length){
-    note = 'Every workstream on this campaign is complete — nothing needs a decision right now.';
-  } else {
-    const names = needsReview.map(card => card.label);
-    const last = names.pop();
-    const list = names.length ? `${names.join(', ')} and ${last}` : last;
-    note = `I'm watching every workstream on this campaign at once — right now, ${list} still ${needsReview.length === 1 ? 'needs' : 'need'} work.`;
-  }
-  cmpCollabAddNote('ai', note, true);
-}
-function cmpCollabNoteRowHtml(n){
-  return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
-    <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
-    <p class="cmp-note-text">${escapeHtml(n.text)}</p>
-  </div>`;
-}
-function cmpCollabComposerHtml(tab, placeholder, askAi){
-  return `<div class="cmp-note-add">
-    <textarea id="cmpCollabInput_${tab}" rows="2" placeholder="${escapeHtml(placeholder)}"></textarea>
-    <div class="btn-row" style="margin:2px 0 0;">
-      <button type="button" class="btn-ghost" onclick="cmpCollabSend('${tab}')">Send</button>
-      ${askAi ? `<button type="button" class="btn-ghost" onclick="cmpCollabAskAiBrain()">Ask AI Brain →</button>` : ''}
-    </div>
-  </div>`;
-}
-function cmpRenderCollabBody(campaign){
-  const body = document.getElementById('cmpCollabBody');
-  if (!body) return;
-  if (!campaign){ body.innerHTML = `<div class="cmp-collab-empty">Load a campaign to use the Collaboration Center.</div>`; return; }
-  if (cmpCollabActiveTab === 'ai'){
-    const notes = cmpCollabNotesFor(campaign, 'ai');
-    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — ask it for a read on where this campaign stands, or send it a question.</div>`)
-      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…', true);
-    return;
-  }
-  if (cmpCollabActiveTab === 'team'){
-    const team = state.team || [];
-    const teamHtml = team.length ? team.map(m => {
-      const initials = (m.name || '?').split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
-      return `<div class="cmp-collab-team-row">
-        <div class="cmp-collab-team-avatar">${escapeHtml(initials || '?')}</div>
-        <div>
-          <div class="cmp-collab-team-name">${escapeHtml(m.name || 'Unnamed')}</div>
-          <div class="cmp-collab-team-role">${escapeHtml(m.functionGroup || 'No function group set')}</div>
-        </div>
-      </div>`;
-    }).join('') : `<div class="cmp-collab-empty">No team members on file for this account yet — add them under Company Profile &amp; Team.</div>`;
-    const notes = cmpCollabNotesFor(campaign, 'team');
-    body.innerHTML = teamHtml + (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : '')
-      + cmpCollabComposerHtml('team', 'Add a note for the team…', false);
-    return;
-  }
-  // Feedback tab — its own composer/thread, same real persisted mechanism,
-  // just filtered to tab:'feedback'. Starts empty on every campaign, same
-  // as every other new thread here; not pre-seeded with fabricated content.
-  const notes = cmpCollabNotesFor(campaign, 'feedback');
-  body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">Nothing flagged yet.</div>`)
-    + cmpCollabComposerHtml('feedback', 'Flag something for the team…', false);
       <div class="sk-card-body" id="campaignMediaMixBody"></div>
       <div class="sk-card-footer">Illustrative recommendation — a starting point, not a constraint. Every number here is human-editable.</div>
     </div>
+
 
     <!-- Round 99 (2026-08-06) — Performance Marketing card, per direct
          instruction: "Performance Marketing reviews our recommend channel
@@ -10551,7 +10302,7 @@ function cmpRenderCollabBody(campaign){
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-campaign-workspace-hub-slice1-restore';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-recommendation-spend-region';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11960,6 +11711,291 @@ function cmpModuleStatus(key){
 function cmpModuleTag(key){
   return `<span class="tag cmp-module-status ${cmpModuleStatus(key)}">${CMP_MODULE_TAG_LABEL[cmpModuleStatus(key)]}</span>`;
 }
+// ============================================================
+// Round 132zzz (2026-09-16) — Campaign Workspace hub, Slice 1 of the
+// campaign-creation-flow wireframe build. See
+// cxmedia-campaign-workspace-hub-build-scoping-2026-09-15.md for the full
+// decision record. Three confirmed decisions this implements exactly:
+//   1. Card grouping matches the wireframe's five named cards, not the
+//      app's existing CMP_STAGE_CATEGORY labels — 'market' moves from
+//      Media Science to the Analysis card.
+//   2. No per-card assignee — status only, per direct instruction.
+//   3. Full Collaboration Center now (mic shell + 3 tabs), not deferred.
+// Every status value below is read from cmpModuleStatus() — the same
+// single source of truth already driving the rail sub-labels and the
+// header's steps panel — never recomputed independently, so this hub can
+// never disagree with the accordion underneath it.
+// ============================================================
+const CMP_WORKSPACE_CARDS = [
+  { key: 'objectives', label: 'Objectives', railKeys: ['creation', 'pickup', 'lifecycle'],
+    desc: 'Conversational intake with the AI Brain — defining Loop Stage, audience, and program goals.' },
+  // 2026-09-16 fix — 'recommendation' added: the actual AI Brain
+  // Recommendation pitch screen (cmpOpenRecommendationPitch()) wasn't in
+  // any card's railKeys, so this card's status never reflected it and
+  // "Open →" landed on Performance Marketing (channel-planning line-item
+  // entry) instead — the pitch screen was unreachable from the hub
+  // entirely. See cmpWorkspaceCardOpen() below for the actual routing fix.
+  { key: 'budget', label: 'Budget & Recommendation', railKeys: ['recommendation', 'perfMarketing'],
+    desc: "AI Brain's channel mix, spend plan, and line-item approvals — yours to review and approve." },
+  { key: 'creative', label: 'Creative', railKeys: ['messaging', 'copyVersions', 'creative'],
+    desc: 'Creative layers, brand alignment, and asset production for the approved channel mix.' },
+  { key: 'trafficking', label: 'Trafficking', railKeys: ['qrutm', 'qa', 'trafficking'],
+    desc: 'Launch scheduling, tagging, QR/UTM, and QA rating before this campaign goes live.' },
+  { key: 'analysis', label: 'Analysis', railKeys: ['market', 'analysis'],
+    desc: "Performance read-outs and the AI Brain's learnings, feeding back into the next campaign's plan." }
+];
+function cmpWorkspaceCardStatus(card){
+  const statuses = card.railKeys.map(k => cmpModuleStatus(k));
+  if (statuses.every(s => s === 'complete')) return 'complete';
+  if (statuses.every(s => s === 'not-started')) return 'not-started';
+  return 'in-progress';
+}
+// Opens on the first not-yet-complete stage inside this card's group (same
+// "land on what still needs work" convention as cmpNextIncompleteStageKey()
+// for the whole rail); falls back to the group's last stage once every
+// stage in it is complete, so "Open" always lands somewhere real to review.
+function cmpWorkspaceCardOpenKey(card){
+  const next = card.railKeys.find(k => cmpModuleStatus(k) !== 'complete');
+  return next || card.railKeys[card.railKeys.length - 1];
+}
+// 2026-09-16 fix — a card's "Open →" used to always call openCmpStage(),
+// which just scrolls to and expands the matching accordion module. That's
+// right for every card except Budget & Recommendation: its real screen
+// (the full-screen AI Brain Recommendation pitch, cmpOpenRecommendationPitch())
+// is deliberately NOT an accordion module — see #cmpStage-recommendation's
+// own comment, "you don't need a second click, just show the page." Without
+// this, the hub's Budget & Recommendation card landed on the accordion's
+// bare locked-note stub, and reaching the actual pitch screen needed a
+// second, separate click on the accordion header below. Every other card
+// is unaffected — same openCmpStage() behavior as before.
+function cmpWorkspaceCardOpen(cardKey){
+  const card = CMP_WORKSPACE_CARDS.find(c => c.key === cardKey);
+  if (!card) return;
+  if (cardKey === 'budget' && cmpRailLoadedCampaign() && typeof cmpOpenRecommendationPitch === 'function'){
+    cmpOpenRecommendationPitch();
+    return;
+  }
+  openCmpStage(cmpWorkspaceCardOpenKey(card));
+}
+function renderCmpWorkspaceHub(campaign){
+  const hub = document.getElementById('cmpWorkspaceHub');
+  if (!hub) return;
+  if (!campaign){ hub.style.display = 'none'; hub.innerHTML = ''; return; }
+  hub.style.display = 'flex';
+  const cardsHtml = CMP_WORKSPACE_CARDS.map(card => {
+    const status = cmpWorkspaceCardStatus(card);
+    return `<div class="group-card workstream-card cmp-workspace-card" onclick="cmpWorkspaceCardOpen('${card.key}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')cmpWorkspaceCardOpen('${card.key}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="font-weight:700;font-size:0.9375rem;">${card.label}</div>
+        <span class="stage-status ${status}">${STAGE_STATUS_LABEL[status]}</span>
+      </div>
+      <div class="count" style="white-space:normal;line-height:1.45;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;letter-spacing:0;text-transform:none;font-weight:400;">${card.desc}</div>
+      <div class="workstream-alert"><span class="label" style="color:var(--advocacy);font-weight:700;">Open →</span></div>
+    </div>`;
+  }).join('');
+  hub.innerHTML = `
+    <div class="cmp-workspace-main">
+      <div class="cmp-workspace-switcher" id="cmpWorkspaceSwitcher"></div>
+      <div class="group-grid cmp-workspace-grid">${cardsHtml}</div>
+    </div>
+    <div class="cmp-workspace-collab" id="cmpWorkspaceCollab"></div>
+  `;
+  cmpRenderWorkspaceSwitcher(campaign);
+  cmpRenderCollabCenter(campaign);
+}
+// Round 132zzz follow-up (2026-09-16), per direct feedback — the original
+// <select> switcher (defaulted to the currently-loaded campaign) sat
+// directly under the header's own name/code display, repeating "which
+// campaign is this" a second time right next to "+ New Campaign". Campaign
+// Management (step-campaignMgmt) is already the one real cross-campaign
+// list/switcher in this app; this is now just a plain link back to it,
+// plus New Campaign (startNewCampaign() — same entry point used
+// everywhere else), rather than a second, competing switcher.
+function cmpRenderWorkspaceSwitcher(campaign){
+  const el = document.getElementById('cmpWorkspaceSwitcher');
+  if (!el) return;
+  el.innerHTML = `
+    <a class="flink" onclick="goToStep('campaignMgmt')">‹ All Campaigns</a>
+    <button type="button" class="btn-ghost" onclick="startNewCampaign()">+ New Campaign</button>
+  `;
+}
+
+// ---------- Collaboration Center (shared component, Slice 1 build) ----------
+// AI Brain / Team Collaboration / Feedback Loop tabs, per the wireframe
+// standard ("I like the dialogue area... AI Brain is a piece of this" —
+// see cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md).
+// Built once here so Slices 2-6 import this same render path rather than
+// forking their own panel, same lesson as the wireframe round's
+// AICompanion.dc.html fix. The mic is a UI shell only in this slice — not
+// wired to any speech API or ElevenLabs (that's Slice 7, deliberately
+// last per the sequencing decision) — using the exact same
+// "shell now, real note explaining why" convention as .ask-mic/
+// toggleAskVerilumeVoiceNote() elsewhere in this file, not a silent
+// no-op button.
+let cmpCollabActiveTab = 'ai';
+const CMP_COLLAB_TABS = [
+  { key: 'ai', label: 'AI Brain' },
+  { key: 'team', label: 'Team' },
+  { key: 'feedback', label: 'Feedback' }
+];
+function cmpRenderCollabCenter(campaign){
+  const el = document.getElementById('cmpWorkspaceCollab');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="cmp-collab">
+      <div class="cmp-collab-head">
+        <div class="cmp-collab-avatar">✦</div>
+        <div class="cmp-collab-titles">
+          <div class="cmp-collab-title">Collaboration Center</div>
+          <div class="cmp-collab-status"><span class="dot"></span>AI Brain live — watching this campaign</div>
+        </div>
+        <button type="button" class="cmp-collab-mic" aria-label="Voice input (coming soon)" title="Voice input (coming soon)" onclick="cmpToggleCollabVoiceNote()">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        </button>
+      </div>
+      <div class="cmp-collab-voice-note" id="cmpCollabVoiceNote">Voice input isn't wired up yet — it's coming in a later round.</div>
+      <div class="cmp-collab-tabs" id="cmpCollabTabs">
+        ${CMP_COLLAB_TABS.map(t => `<button type="button" class="cmp-collab-tab${cmpCollabActiveTab === t.key ? ' active' : ''}" onclick="cmpSwitchCollabTab('${t.key}')">${t.label}</button>`).join('')}
+      </div>
+      <div class="cmp-collab-body" id="cmpCollabBody"></div>
+    </div>
+  `;
+  cmpRenderCollabBody(campaign);
+}
+function cmpToggleCollabVoiceNote(){
+  const note = document.getElementById('cmpCollabVoiceNote');
+  if (note) note.style.display = note.style.display === 'block' ? 'none' : 'block';
+}
+function cmpSwitchCollabTab(key){
+  cmpCollabActiveTab = key;
+  const tabsEl = document.getElementById('cmpCollabTabs');
+  if (tabsEl) tabsEl.querySelectorAll('.cmp-collab-tab').forEach((btn, i) => btn.classList.toggle('active', CMP_COLLAB_TABS[i].key === key));
+  cmpRenderCollabBody(cmpRailLoadedCampaign());
+}
+// Round 132zzz follow-up (2026-09-16), per direct correction: "You can't
+// engage with the AI Brain or Team or Provide Feedback. It's just static
+// copy." Rewired onto the SAME real, already-shipped, already-persisted
+// note system the per-stage accordion cards use
+// (cmpAddActivityNote()/cmpPersistActivityNotesToCampaign(), see round 30
+// above) — a 'workspace' key in that same c.activityNotes object, tagged
+// per note with which Collaboration Center tab it belongs to, rather than
+// inventing a second, parallel, fake notes mechanism. Typing into any tab's
+// composer and sending genuinely saves (backend PATCH, same as every other
+// note in this app) and re-renders immediately.
+function cmpCollabNotesFor(campaign, tab){
+  if (!campaign || !campaign.activityNotes) return [];
+  return (campaign.activityNotes.workspace || []).filter(n => (n.tab || 'ai') === tab);
+}
+function cmpCollabAddNote(tab, text, isAi){
+  const c = cmpRailLoadedCampaign();
+  if (!c || !text) return;
+  if (!c.activityNotes) c.activityNotes = {};
+  if (!c.activityNotes.workspace) c.activityNotes.workspace = [];
+  c.activityNotes.workspace.push({
+    id: `wsnote_${Math.round(performance.now())}`,
+    author: isAi ? 'AI Assistant' : (cmpNoteAuthorName || 'Team member'),
+    text, isAi: !!isAi, tab, ts: Date.now()
+  });
+  cmpPersistActivityNotesToCampaign(c);
+  cmpRenderCollabBody(c);
+}
+// 2026-09-16 fix, per direct correction: "I don't understand the purpose.
+// Collaboration is the purpose so there needs to be back and forth. It's
+// not a note taking area." Send on the 'ai' tab now gets a REAL reply from
+// the backend (POST /api/campaigns/:id/ai-brain-reply — see that
+// endpoint's own comment), grounded in this campaign's actual fields and
+// channel plan, not a static echo. Every other tab (team/feedback) stays a
+// plain persisted note, same as before — there's no AI party in those
+// conversations to reply.
+let cmpCollabAiBusy = false;
+async function cmpCollabSend(tab){
+  const input = document.getElementById(`cmpCollabInput_${tab}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  cmpCollabAddNote(tab, text, false);
+  if (tab !== 'ai') return;
+  await cmpCollabRequestAiReply(text);
+}
+async function cmpCollabRequestAiReply(message){
+  if (cmpCollabAiBusy) return;
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  cmpCollabAiBusy = true;
+  cmpRenderCollabBody(c);
+  try {
+    const priorNotes = cmpCollabNotesFor(c, 'ai').slice(-10).map(n => ({ author: n.author, text: n.text, isAi: n.isAi }));
+    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/ai-brain-reply`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, priorNotes }), timeoutMs: 20000
+    }, 3, 700);
+    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true);
+  } catch (e){
+    console.warn('cmpCollabRequestAiReply failed:', e);
+    cmpCollabAddNote('ai', 'Something went wrong reaching the AI Brain — try again in a moment.', true);
+  } finally {
+    cmpCollabAiBusy = false;
+    cmpRenderCollabBody(c);
+  }
+}
+// "Ask AI Brain →" is now the same real conversation, just started with a
+// default status question instead of requiring the user to type one —
+// no separate canned-status code path anymore.
+function cmpCollabAskAiBrain(){
+  cmpCollabRequestAiReply("What's the current status of this campaign, and what still needs a decision from us?");
+}
+function cmpCollabNoteRowHtml(n){
+  return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
+    <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
+    <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+  </div>`;
+}
+function cmpCollabComposerHtml(tab, placeholder, askAi){
+  const thinking = askAi && cmpCollabAiBusy;
+  return `<div class="cmp-note-add">
+    <textarea id="cmpCollabInput_${tab}" rows="2" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
+    <div class="btn-row" style="margin:2px 0 0;">
+      <button type="button" class="btn-ghost" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')">${thinking ? 'AI Brain is thinking…' : 'Send'}</button>
+      ${askAi ? `<button type="button" class="btn-ghost" ${thinking ? 'disabled' : ''} onclick="cmpCollabAskAiBrain()">Ask AI Brain →</button>` : ''}
+    </div>
+  </div>`;
+}
+function cmpRenderCollabBody(campaign){
+  const body = document.getElementById('cmpCollabBody');
+  if (!body) return;
+  if (!campaign){ body.innerHTML = `<div class="cmp-collab-empty">Load a campaign to use the Collaboration Center.</div>`; return; }
+  if (cmpCollabActiveTab === 'ai'){
+    const notes = cmpCollabNotesFor(campaign, 'ai');
+    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — ask it for a read on where this campaign stands, or send it a question.</div>`)
+      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…', true);
+    return;
+  }
+  if (cmpCollabActiveTab === 'team'){
+    const team = state.team || [];
+    const teamHtml = team.length ? team.map(m => {
+      const initials = (m.name || '?').split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+      return `<div class="cmp-collab-team-row">
+        <div class="cmp-collab-team-avatar">${escapeHtml(initials || '?')}</div>
+        <div>
+          <div class="cmp-collab-team-name">${escapeHtml(m.name || 'Unnamed')}</div>
+          <div class="cmp-collab-team-role">${escapeHtml(m.functionGroup || 'No function group set')}</div>
+        </div>
+      </div>`;
+    }).join('') : `<div class="cmp-collab-empty">No team members on file for this account yet — add them under Company Profile &amp; Team.</div>`;
+    const notes = cmpCollabNotesFor(campaign, 'team');
+    body.innerHTML = teamHtml + (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : '')
+      + cmpCollabComposerHtml('team', 'Add a note for the team…', false);
+    return;
+  }
+  // Feedback tab — its own composer/thread, same real persisted mechanism,
+  // just filtered to tab:'feedback'. Starts empty on every campaign, same
+  // as every other new thread here; not pre-seeded with fabricated content.
+  const notes = cmpCollabNotesFor(campaign, 'feedback');
+  body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">Nothing flagged yet.</div>`)
+    + cmpCollabComposerHtml('feedback', 'Flag something for the team…', false);
+}
+
 function renderCmpStageRail(){
   const rail = document.getElementById('cmpStageRail');
   if (!rail) return;
@@ -11990,6 +12026,16 @@ function renderCmpStageRail(){
   });
   cmpEnsureActivityNotesMounts();
   cmpRenderCampaignHeader(campaign);
+  // 2026-09-16 fix — this hook was supposed to land here from the very
+  // first Campaign Workspace Hub delivery, but a bad edit anchor spliced
+  // renderCmpWorkspaceHub() and the entire Collaboration Center's function
+  // definitions into the middle of the static campaignMediaMixCard markup
+  // instead (outside any <script> tag — never real, callable JS). Found
+  // and fixed 2026-09-16 while wiring the AI Brain conversational reply;
+  // relocated the whole block into this real <script> tag, restored the
+  // markup it had overwritten, and added the one call that was actually
+  // missing this whole time.
+  renderCmpWorkspaceHub(campaign);
 }
 
 // Round 132bx (2026-08-13), per direct instruction: "Active is any start
@@ -23771,9 +23817,20 @@ function renderCmpLifecyclePreview(){
 // aimed at people who haven't converted yet, so every other segment is
 // genuinely off-mission at that stage, not just discouraged.
 function cmpSegmentDisabledSet(){
+  return cmpSegmentDisabledSetForStage(selectedStage);
+}
+// 2026-09-16 — same eligibility rule as cmpSegmentDisabledSet() above,
+// parameterized by stage rather than reading the global `selectedStage` —
+// the campaign creation form's own in-progress editing state. Needed so
+// the AI Brain Recommendation pitch screen's Audience edit (a different
+// campaign, already created, not the form currently open) can apply the
+// exact same rule without touching or depending on that global. See
+// cmpSegmentDisabledSet()'s own comment for the underlying media-science
+// reasoning; unchanged here, just re-parameterized.
+function cmpSegmentDisabledSetForStage(stage){
   const disabled = new Set();
-  if (selectedStage === 'Awareness') disabled.add('Past Customers');
-  if (selectedStage === 'Loyalty'){
+  if (stage === 'Awareness') disabled.add('Past Customers');
+  if (stage === 'Loyalty'){
     ACCOUNT_SEGMENTS.forEach(s => { if (s !== 'Past Customers') disabled.add(s); });
   }
   return disabled;
@@ -27583,6 +27640,34 @@ const CHANNEL_MIX_GROUPS = [
   { key: 'ooh', label: 'OOH', categories: ['Out-of-Home'] },
   { key: 'field', label: 'Field / Trade / ABM', categories: ['Field / ABM'] }
 ];
+// 2026-09-16 — flattened channel option list (every real channel string
+// across every CHANNEL_MIX_GROUPS category, in the same group order) for
+// the AI Brain Recommendation pitch's Add Channel / edit-row dropdown —
+// one real list, not a second hand-typed one that could drift from the
+// grouping above.
+const CHANNEL_OPTIONS = CHANNEL_MIX_GROUPS.flatMap(g => g.categories);
+// 2026-09-16 — Creative Assets Needed, per wireframe spec. Deliberately a
+// disclosed, computed-from-real-selected-channels lookup (same "compute
+// it from real fields, never fabricate" convention as
+// generateCampaignBrief()) rather than an AI guess — each CHANNEL_MIX_GROUPS
+// bucket maps to the concrete asset types production actually needs for
+// that media type.
+const CMP_CHANNEL_CREATIVE_ASSETS = {
+  video: ['15s/30s video cut(s)', 'Closed captions/SRT'],
+  print: ['Print-ready ad (CMYK, bleed)'],
+  directmail: ['Mail piece design (front/back)', 'Mailing list/data file'],
+  digital: ['Static display set (standard IAB sizes)', 'Paid social creative (image + copy variants)'],
+  radio: [':15/:30 radio script + produced spot'],
+  ooh: ['OOH board/bulletin art'],
+  field: ['One-pager / leave-behind', 'Booth/table signage']
+};
+function cmpRecoCreativeAssetsNeeded(summary){
+  const channels = (summary.channels || []);
+  const groups = CHANNEL_MIX_GROUPS.filter(g => g.categories.some(c => channels.includes(c)));
+  const assets = [];
+  groups.forEach(g => (CMP_CHANNEL_CREATIVE_ASSETS[g.key] || []).forEach(a => { if (!assets.includes(a)) assets.push(a); }));
+  return assets;
+}
 function budgetMixRangeStart(rangeKey, today){
   const y = today.getFullYear(), m = today.getMonth();
   if (rangeKey === 'mtd') return new Date(y, m, 1);
@@ -36355,7 +36440,13 @@ async function cmpIntakeStopVoice(){
 // page" as real fields, not a summary of one AI conversation. See
 // cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md.
 // ---------------------------------------------------------------------
-let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: 'client', actorName: '' };
+// 2026-09-16 additions to state (pitchViewMode/stageDraft/stageSaving/
+// stageSaveBanner/editingLineItemId/addingLine) — Channel/Audience toggle,
+// the editable Loop Stage summary, and inline channel row edit/add, all
+// per cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md's
+// Budget & Recommendation spec. None of these persist anywhere themselves
+// (pure view/draft state) except via the explicit Save actions below.
+let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: 'client', actorName: '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
 
 // 2026-09-15 follow-on, per Todd's real report of "Recommendations did not
 // load" against a real campaign — two fixes here, on top of the backend
@@ -36381,7 +36472,7 @@ async function cmpOpenRecommendationPitch(){
   if (subhead) subhead.textContent = campaign.name || campaign.id || '';
   const isRetry = cmpRecoState.campaignId === campaign.id && (cmpRecoState.error || cmpRecoState.commentsError);
   if (cmpRecoState.campaignId !== campaign.id || isRetry){
-    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '' };
+    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
     cmpRenderPitchLeft(campaign);
     cmpRenderPitchRight(campaign);
     const [summaryResult, commentsResult] = await Promise.allSettled([
@@ -36447,6 +36538,20 @@ function cmpRecoChannelMixRows(summary){
 }
 function cmpRecoAudienceRows(summary){
   return Object.entries(summary.audienceTotals || {}).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+// 2026-09-16 — Spend by Region (US / Canada / International), per Todd's
+// direct instruction: the pitch screen needs a toggle between budget
+// allocations "similar to the account management overall budget that
+// includes domestic and international tabs" (the Marketing Budget
+// Upload's Domestic/International scope — see mbuSelectedScope/
+// renderMbuScopeRow()). Reads summary.regionTotals, the precomputed rollup
+// GET /api/campaigns/:id/pitch-summary now returns (see that endpoint's
+// own comment in server.js) — never recomputed client-side, so this chart
+// and the region-filtered table below it can never disagree.
+const CMP_SPEND_REGIONS = ['US', 'Canada', 'International'];
+function cmpRecoRegionRows(summary){
+  const totals = summary.regionTotals || {};
+  return CMP_SPEND_REGIONS.map(r => ({ label: r, value: totals[r] || 0 })).filter(r => r.value > 0);
 }
 function cmpRecoMeterRows(rows){
   const total = rows.reduce((s, r) => s + r.value, 0);
@@ -36648,25 +36753,105 @@ function cmpRenderPitchLeft(campaign){
   const loopRows = cmpRecoLoopStageRows(summary);
   const mixRows = cmpRecoChannelMixRows(summary);
   const audienceRows = cmpRecoAudienceRows(summary);
+  const regionRows = cmpRecoRegionRows(summary);
+  const creativeAssets = cmpRecoCreativeAssetsNeeded(summary);
+  const viewingChannel = s.pitchViewMode !== 'audience';
+  // 2026-09-16 — region filter for the Budget Line-Item table, per Todd's
+  // "toggle between budget allocations" instruction. 'all' shows every
+  // line item (today's default behavior, unchanged for anyone who never
+  // touches this control); US/Canada/International filter the table to
+  // just that region's lines, same tab-pill convention as the account
+  // management Domestic/International scope toggle.
+  const regionFilter = s.regionFilter || 'all';
+
+  // 2026-09-16 — Loop Stage is now editable in place, per wireframe spec
+  // ("an editable Loop Stage summary with save-confirmation banners").
+  // stageDraft is null until the user opens the dropdown; while null the
+  // select just starts on the real saved value. Persists via the generic
+  // POST /api/campaigns/:id merge-update endpoint's new `stage` field
+  // (2026-09-16 — see that endpoint's own comment; every other field on
+  // this screen already reads/writes through campaign-scoped endpoints,
+  // Loop Stage previously had no update path after creation at all).
+  const stageValue = s.stageDraft !== null ? s.stageDraft : (campaign.stage || '');
+  const stageOptionsHtml = MEDIA_LOOP_STAGES.map(st => `<option value="${escapeHtml(st)}" ${st === stageValue ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('');
+  const stageChanged = s.stageDraft !== null && s.stageDraft !== (campaign.stage || '');
+
+  // 2026-09-16 follow-on, per direct instruction: the Audience change
+  // belongs in this same top summary block (Loop Stage / Audience /
+  // Channels / Spend / Impressions), not the Channel/Audience dashboard
+  // toggle below (that toggle only ever switches which chart/table is
+  // shown — it was never meant to be the edit surface). Audience is a
+  // multi-select (ACCOUNT_SEGMENTS), same tiles and same stage-dependent
+  // eligibility rule as the campaign creation form's own Audience row
+  // (cmpSegmentDisabledSetForStage() — Past Customers excluded at
+  // Awareness, everything but Past Customers excluded at Loyalty), applied
+  // against the EFFECTIVE stage (the just-edited stageValue above if
+  // Loop Stage is mid-edit, else the saved one) so the two edits in this
+  // block can never disagree with each other. Persists via the same
+  // generic POST /api/campaigns/:id merge-update endpoint's new `segment`
+  // field (2026-09-16 — see that endpoint's own comment).
+  const audienceSaved = (summary.audience || '').split(',').map(x => x.trim()).filter(Boolean);
+  const audienceDraftList = s.audienceDraft !== null ? s.audienceDraft : audienceSaved;
+  const audienceDisabled = cmpSegmentDisabledSetForStage(stageValue);
+  const audienceChanged = s.audienceDraft !== null && s.audienceDraft.slice().sort().join('|') !== audienceSaved.slice().sort().join('|');
 
   mount.innerHTML = `
     <div class="cmp-intake-summary" style="margin-bottom:18px;">
-      <b>Loop Stage:</b> ${escapeHtml(summary.loopStage || '(not set)')}
-      <br><b>Audience:</b> ${escapeHtml(summary.audience || '(not set)')}
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <b>Loop Stage:</b>
+        <select id="cmpRecoStageSelect" class="field" style="width:auto;min-width:160px;" onchange="cmpRecoStageDraftChanged(this.value)" ${s.stageSaving ? 'disabled' : ''}>${stageOptionsHtml}</select>
+        ${stageChanged ? `<button type="button" class="btn-primary" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoSaveLoopStage()">${s.stageSaving ? 'Saving…' : 'Save →'}</button>` : ''}
+      </div>
+      ${s.stageSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.stageSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.stageSaveBanner.text)}</div>` : ''}
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <b>Audience:</b>
+        ${s.editingAudience
+          ? ''
+          : `<span>${escapeHtml(audienceSaved.length ? audienceSaved.join(', ') : '(not set)')}</span><button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditAudience()">Edit</button>`}
+      </div>
+      ${s.editingAudience ? `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+          ${ACCOUNT_SEGMENTS.map(seg => `<button type="button" class="select-tile${audienceDraftList.includes(seg) ? ' selected' : ''}${audienceDisabled.has(seg) ? ' select-tile-disabled' : ''}" ${audienceDisabled.has(seg) ? 'disabled aria-disabled="true"' : ''} title="${audienceDisabled.has(seg) ? cmpSegmentDisabledReason(seg) : ''}" onclick="cmpRecoToggleAudienceDraft('${seg}')"><span class="indicator">✓</span><span class="label">${escapeHtml(seg)}</span></button>`).join('')}
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          ${audienceChanged ? `<button type="button" class="btn-primary" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoSaveAudience()">${s.audienceSaving ? 'Saving…' : 'Save →'}</button>` : ''}
+          <button type="button" class="btn-ghost" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditAudience()">Cancel</button>
+        </div>` : ''}
+      ${s.audienceSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.audienceSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.audienceSaveBanner.text)}</div>` : ''}
       <br><b>Channels:</b> ${(summary.channels || []).length ? escapeHtml(summary.channels.join(', ')) : '(none selected yet)'}
       <br><b>Total Spend:</b> ${fmtMoney(summary.totalSpend)} &nbsp; <b>Total Impressions:</b> ${Math.round(summary.totalImpressions || 0).toLocaleString()}
       <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit channels, CPM &amp; impressions →</button>
+        <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit CPM &amp; impressions defaults →</button>
       </div>
     </div>
 
-    <div class="stage-row" style="margin-bottom:8px;">
+    <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Campaign Dashboards</h3>
+      <!-- 2026-09-16 — Channel/Audience toggle, per wireframe spec. Same
+           .stage-tile toggle-pair convention cmpRecoSetActorRole()'s Account
+           Team / CX Experiences Media Ops row already uses on this same
+           screen (right panel), reused here rather than inventing a second
+           toggle visual language. -->
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="stage-tile${viewingChannel ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetViewMode('channel')">Channel</button>
+        <button type="button" class="stage-tile${!viewingChannel ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetViewMode('audience')">Audience</button>
+      </div>
     </div>
     <div class="exec-chart-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:22px;">
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Loop Stage Distribution</h4>${cmpRecoMeterRows(loopRows)}</div>
-      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Channel Mix</h4>${cmpRecoMeterRows(mixRows)}</div>
-      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Audience Mix</h4>${cmpRecoMeterRows(audienceRows)}</div>
+      ${viewingChannel
+        ? `<div class="exec-chart-card"><h4 style="margin:0 0 10px;">Channel Mix</h4>${cmpRecoMeterRows(mixRows)}</div>`
+        : `<div class="exec-chart-card"><h4 style="margin:0 0 10px;">Audience Mix</h4>${cmpRecoMeterRows(audienceRows)}</div>`}
+      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Spend by Region</h4>${cmpRecoMeterRows(regionRows)}</div>
+    </div>
+
+    <div class="stage-row" style="margin-bottom:8px;">
+      <h3 style="margin:0;font-size:1rem;">Creative Assets Needed</h3>
+    </div>
+    <div class="cmp-intake-summary" style="margin-bottom:22px;">
+      ${creativeAssets.length
+        ? `<ul style="margin:0;padding-left:18px;">${creativeAssets.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>`
+        : `<p class="lede" style="margin:0;">No channels selected yet — asset needs are derived from the channels approved below.</p>`}
     </div>
 
     <div class="cmp-intake-summary" style="margin-bottom:22px;">
@@ -36680,30 +36865,319 @@ function cmpRenderPitchLeft(campaign){
 
     <div class="btn-row" style="margin-bottom:22px;">
       <button type="button" class="btn-primary" id="cmpRecoPptBtn" onclick="cmpRecoExportPpt()">Export PowerPoint</button>
+      <!-- 2026-09-16 — CSV added alongside PPT per "level-appropriate
+           exports" in the wireframe spec. NOT tier-gated: PAID_TIERS
+           (server.js) is an explicit, undecided placeholder ("final scope
+           and pricing not yet decided") — gating exports against tiers
+           that don't exist yet would be inventing a rule, not building
+           one. Flagged to Todd as deferred until tiers are real. -->
+      <button type="button" class="btn-ghost" onclick="cmpRecoExportCsv()">Export CSV</button>
     </div>
 
-    <div class="stage-row" style="margin-bottom:8px;">
+    <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Budget Line-Item Approval</h3>
+      ${viewingChannel ? `
+      <!-- 2026-09-16 — region toggle for budget allocations, per Todd's
+           direct instruction: "similar to the account management overall
+           budget that includes domestic and international tabs." Same
+           .stage-tile tab-pill convention as the MBU scope toggle
+           (renderMbuScopeRow()) and the Channel/Audience toggle above —
+           filters the table below to one region, or 'All' for every line
+           item (today's unfiltered behavior). Only shown in Channel mode —
+           the Audience table has no per-line region to filter by. -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="stage-tile${regionFilter === 'all' ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetRegionFilter('all')">All Regions</button>
+        ${CMP_SPEND_REGIONS.map(r => `<button type="button" class="stage-tile${regionFilter === r ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetRegionFilter('${r}')">${escapeHtml(r)}</button>`).join('')}
+      </div>` : ''}
     </div>
-    ${(summary.lineItems || []).length ? `
-    <div class="table-scroll"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
-      <thead><tr><th>Channel</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
-      <tbody>
-        ${summary.lineItems.map(l => `
-          <tr>
-            <td>${escapeHtml(l.channel || '')}</td>
-            <td>${fmtMoney(Number(l.budget) || 0)}</td>
-            <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
-            <td>${l.clientApprovedAt ? `✓ Approved${l.clientApprovedBy ? ' by ' + escapeHtml(l.clientApprovedBy) : ''}` : `<button type="button" class="btn-ghost" onclick="cmpRecoApproveLine('${l.id}')">Approve line →</button>`}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table></div>` : `<p class="lede">No channel plan lines entered for this campaign yet.</p>`}
+    ${viewingChannel ? cmpRecoChannelTableHtml(summary, regionFilter) : cmpRecoAudienceTableHtml(audienceRows)}
     <div class="btn-row">
       ${summary.budgetApprovedAt
         ? `<span class="lede">✓ Overall budget approved${summary.budgetApprovedBy ? ' by ' + escapeHtml(summary.budgetApprovedBy) : ''}</span>`
         : `<button type="button" class="btn-primary" onclick="cmpRecoApproveOverall()">Approve Overall Budget →</button>`}
     </div>
   `;
+}
+// 2026-09-16 — the Channel-mode table, per wireframe spec: "a scroll-capped
+// 8-channel table with edit/delete and Add Channel." Capped via CSS
+// max-height on the scroll wrapper (roughly 8 real .active-camp-table rows
+// at this row height) rather than slicing the data — every line item is
+// still there, just scrollable past the 8th, so nothing is silently
+// hidden. Edit turns one row into inputs in place (channel/budget/
+// impressions — the three fields both client and cx_ops actors may write,
+// see channelPlanningCostFieldsPresent() in server.js); Delete and Add
+// Channel are real DELETE/POST calls against the existing channel-planning
+// endpoints (server.js round 102), same "refresh from server after a real
+// write" convention cmpRecoApproveLine()/cmpRecoApplySuggestion() already
+// use on this screen.
+function cmpRecoChannelTableHtml(summary, regionFilter){
+  const allItems = summary.lineItems || [];
+  // 2026-09-16 — region filter, per Todd's "toggle between budget
+  // allocations" instruction. 'all'/undefined shows every line item
+  // (unchanged default); a specific region hides everything else. A
+  // line item with no region on record reads as 'US' (see the backend's
+  // normalizeChannelPlanningRegion — every pre-existing row defaults
+  // there), so filtering never silently drops old data into limbo.
+  const items = (!regionFilter || regionFilter === 'all') ? allItems : allItems.filter(l => (l.region || 'US') === regionFilter);
+  const s = cmpRecoState;
+  const regionOptionsHtml = (selected) => CMP_SPEND_REGIONS.map(r => `<option value="${escapeHtml(r)}" ${r === selected ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('');
+  const rowHtml = (l) => {
+    if (s.editingLineItemId === l.id){
+      return `
+        <tr>
+          <td><select id="cmpRecoEditChannel_${l.id}" class="field">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}" ${c === l.channel ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></td>
+          <td><select id="cmpRecoEditRegion_${l.id}" class="field">${regionOptionsHtml(l.region || 'US')}</select></td>
+          <td><input type="number" id="cmpRecoEditBudget_${l.id}" class="field" value="${Number(l.budget) || 0}" min="0" step="1"></td>
+          <td><input type="number" id="cmpRecoEditImpressions_${l.id}" class="field" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1"></td>
+          <td>
+            <button type="button" class="btn-primary" onclick="cmpRecoSaveLineEdit('${l.id}')">Save</button>
+            <button type="button" class="btn-ghost" onclick="cmpRecoCancelEditLine()">Cancel</button>
+          </td>
+        </tr>`;
+    }
+    return `
+      <tr>
+        <td>${escapeHtml(l.channel || '')}</td>
+        <td>${escapeHtml(l.region || 'US')}</td>
+        <td>${fmtMoney(Number(l.budget) || 0)}</td>
+        <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
+        <td style="white-space:nowrap;">
+          ${l.clientApprovedAt ? `✓ Approved${l.clientApprovedBy ? ' by ' + escapeHtml(l.clientApprovedBy) : ''}` : `<button type="button" class="btn-ghost" onclick="cmpRecoApproveLine('${l.id}')">Approve →</button>`}
+          <button type="button" class="btn-ghost" onclick="cmpRecoStartEditLine('${l.id}')">Edit</button>
+          <button type="button" class="btn-ghost" onclick="cmpRecoDeleteLine('${l.id}')">Delete</button>
+        </td>
+      </tr>`;
+  };
+  const addRowHtml = s.addingLine ? `
+    <tr>
+      <td><select id="cmpRecoNewChannel" class="field">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></td>
+      <td><select id="cmpRecoNewRegion" class="field">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></td>
+      <td><input type="number" id="cmpRecoNewBudget" class="field" value="0" min="0" step="1"></td>
+      <td><input type="number" id="cmpRecoNewImpressions" class="field" value="0" min="0" step="1"></td>
+      <td>
+        <button type="button" class="btn-primary" onclick="cmpRecoSaveNewChannel()">Save</button>
+        <button type="button" class="btn-ghost" onclick="cmpRecoCancelAddChannel()">Cancel</button>
+      </td>
+    </tr>` : '';
+  const emptyMessage = allItems.length && !items.length
+    ? `<p class="lede">No channel plan lines for ${escapeHtml(regionFilter)} — try "All Regions" or add one below.</p>`
+    : `<p class="lede">No channel plan lines entered for this campaign yet.</p>`;
+  const table = items.length || s.addingLine ? `
+    <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
+      <thead><tr><th>Channel</th><th>Region</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
+      <tbody>${items.map(rowHtml).join('')}${addRowHtml}</tbody>
+    </table></div>` : emptyMessage;
+  const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
+  return table + addBtn;
+}
+// Audience mode — read-only, per wireframe spec (edit/delete/Add Channel
+// is specifically for the channel table; there's no per-audience
+// channel-planning record to edit against). Same audienceRows
+// cmpRecoAudienceRows()/the Audience Mix chart above already use, so this
+// table can never disagree with that chart.
+function cmpRecoAudienceTableHtml(audienceRows){
+  if (!audienceRows.length) return `<p class="lede">No audience spend breakdown available for this campaign yet.</p>`;
+  const total = audienceRows.reduce((sum, r) => sum + r.value, 0);
+  return `
+    <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
+      <thead><tr><th>Audience</th><th>Spend</th><th>% of Total</th></tr></thead>
+      <tbody>
+        ${audienceRows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.label)}</td>
+            <td>${fmtMoney(r.value)}</td>
+            <td>${total ? Math.round((r.value / total) * 100) : 0}%</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+function cmpRecoSetViewMode(mode){
+  cmpRecoState.pitchViewMode = mode === 'audience' ? 'audience' : 'channel';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoStageDraftChanged(value){
+  cmpRecoState.stageDraft = value;
+  cmpRecoState.stageSaveBanner = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+async function cmpRecoSaveLoopStage(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign || cmpRecoState.stageDraft === null) return;
+  cmpRecoState.stageSaving = true;
+  cmpRenderPitchLeft(campaign);
+  let ok = false;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: cmpRecoState.stageDraft })
+    });
+    ok = resp.ok;
+    if (ok) campaign.stage = cmpRecoState.stageDraft; // keep this session's copy in sync without a full reload
+  } catch (e){ console.warn('cmpRecoSaveLoopStage failed:', e); }
+  cmpRecoState.stageSaving = false;
+  cmpRecoState.stageDraft = null;
+  cmpRecoState.stageSaveBanner = { ok, text: ok ? `Saved ${new Date().toLocaleTimeString()} — Loop Stage updated.` : 'Could not save — try again.' };
+  cmpRenderPitchLeft(campaign);
+}
+function cmpRecoStartEditAudience(){
+  cmpRecoState.editingAudience = true;
+  cmpRecoState.audienceSaveBanner = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoToggleAudienceDraft(seg){
+  if (cmpRecoState.audienceDraft === null){
+    const summary = cmpRecoState.summary || {};
+    cmpRecoState.audienceDraft = (summary.audience || '').split(',').map(x => x.trim()).filter(Boolean);
+  }
+  const idx = cmpRecoState.audienceDraft.indexOf(seg);
+  if (idx >= 0) cmpRecoState.audienceDraft.splice(idx, 1);
+  else cmpRecoState.audienceDraft.push(seg);
+  cmpRecoState.audienceSaveBanner = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoCancelEditAudience(){
+  cmpRecoState.editingAudience = false;
+  cmpRecoState.audienceDraft = null;
+  cmpRecoState.audienceSaveBanner = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+async function cmpRecoSaveAudience(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign || cmpRecoState.audienceDraft === null) return;
+  cmpRecoState.audienceSaving = true;
+  cmpRenderPitchLeft(campaign);
+  let ok = false;
+  const segmentStr = cmpRecoState.audienceDraft.join(', ');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ segment: segmentStr })
+    });
+    ok = resp.ok;
+    if (ok) campaign.segment = segmentStr; // keep this session's copy in sync without a full reload
+  } catch (e){ console.warn('cmpRecoSaveAudience failed:', e); }
+  cmpRecoState.audienceSaving = false;
+  cmpRecoState.audienceDraft = null;
+  cmpRecoState.editingAudience = false;
+  cmpRecoState.audienceSaveBanner = { ok, text: ok ? `Saved ${new Date().toLocaleTimeString()} — Audience updated.` : 'Could not save — try again.' };
+  cmpRenderPitchLeft(campaign);
+}
+function cmpRecoStartEditLine(entryId){
+  cmpRecoState.editingLineItemId = entryId;
+  cmpRecoState.addingLine = false;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoCancelEditLine(){
+  cmpRecoState.editingLineItemId = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+async function cmpRecoSaveLineEdit(entryId){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  const channelEl = document.getElementById(`cmpRecoEditChannel_${entryId}`);
+  const regionEl = document.getElementById(`cmpRecoEditRegion_${entryId}`);
+  const budgetEl = document.getElementById(`cmpRecoEditBudget_${entryId}`);
+  const impressionsEl = document.getElementById(`cmpRecoEditImpressions_${entryId}`);
+  const payload = {
+    channel: channelEl ? channelEl.value : undefined,
+    region: regionEl ? regionEl.value : undefined,
+    budget: budgetEl ? Number(budgetEl.value) || 0 : undefined,
+    impressions: impressionsEl ? Number(impressionsEl.value) || 0 : undefined,
+    actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team')
+  };
+  try {
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+  } catch (e){ console.warn('cmpRecoSaveLineEdit failed:', e); }
+  cmpRecoState.editingLineItemId = null;
+  cmpRecoState.campaignId = null; // refresh from the server, same convention as every other real write on this screen
+  cmpOpenRecommendationPitch();
+}
+async function cmpRecoDeleteLine(entryId){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  if (!confirm('Remove this channel from the plan? This deletes the line item.')) return;
+  try {
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}`, { method: 'DELETE' });
+  } catch (e){ console.warn('cmpRecoDeleteLine failed:', e); }
+  cmpRecoState.campaignId = null;
+  cmpOpenRecommendationPitch();
+}
+function cmpRecoStartAddChannel(){
+  cmpRecoState.addingLine = true;
+  cmpRecoState.editingLineItemId = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoCancelAddChannel(){
+  cmpRecoState.addingLine = false;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+// 2026-09-16 — region filter, per Todd's "toggle between budget
+// allocations" instruction. Also seeds the Add Channel row's default
+// region (cmpRecoChannelTableHtml above), so adding a line while a
+// specific region tab is active defaults to that region instead of
+// silently reverting to US.
+function cmpRecoSetRegionFilter(region){
+  cmpRecoState.regionFilter = CMP_SPEND_REGIONS.includes(region) ? region : 'all';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+async function cmpRecoSaveNewChannel(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  const channelEl = document.getElementById('cmpRecoNewChannel');
+  const regionEl = document.getElementById('cmpRecoNewRegion');
+  const budgetEl = document.getElementById('cmpRecoNewBudget');
+  const impressionsEl = document.getElementById('cmpRecoNewImpressions');
+  const payload = {
+    channel: channelEl ? channelEl.value : '',
+    region: regionEl ? regionEl.value : 'US',
+    budget: budgetEl ? Number(budgetEl.value) || 0 : 0,
+    impressions: impressionsEl ? Number(impressionsEl.value) || 0 : 0,
+    actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team')
+  };
+  try {
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+  } catch (e){ console.warn('cmpRecoSaveNewChannel failed:', e); }
+  cmpRecoState.addingLine = false;
+  cmpRecoState.campaignId = null;
+  cmpOpenRecommendationPitch();
+}
+// CSV export — "level-appropriate exports" per wireframe spec, alongside
+// the existing PPT. Real data, built client-side from the same summary
+// object the table/charts render from (no extra request), same
+// escapeCsvCell-in-quotes convention every other CSV export in this file
+// uses (see e.g. mouExportXlsx/exportBudgetMonthlyCsv-style builders).
+function cmpRecoExportCsv(){
+  const campaign = cmpRailLoadedCampaign();
+  const summary = cmpRecoState.summary || {};
+  if (!campaign) return;
+  const rows = [['Channel', 'Region', 'Budget', 'Impressions', 'Client Approval']];
+  (summary.lineItems || []).forEach(l => {
+    rows.push([l.channel || '', l.region || 'US', Number(l.budget) || 0, Math.round(Number(l.impressions) || 0), l.clientApprovedAt ? 'Approved' : 'Pending']);
+  });
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(campaign.campaignCode || campaign.id)}-budget-recommendation.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Right panel — the AI Brain dialogue. 2026-09-15 follow-on, per direct
@@ -36788,7 +37262,24 @@ function cmpRenderIntakeRecommendations(extracted, recs){
           <button type="button" class="btn-ghost" onclick="cmpApplyTemplate('${c.id}')">Use as template →</button>
         </div>
       </div>`).join('')}</div>` : ''}
+    <!-- 2026-09-16, per wireframe spec: "The thread ends with the AI
+         Brain's summary and the user's explicit agreement to proceed."
+         Apply Stage / Use as template above are optional refinements;
+         this is the one deliberate, required confirm step that actually
+         ends the dialogue and advances — nothing auto-advances on its
+         own once the AI Brain is ready. -->
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;display:flex;justify-content:flex-end;">
+      <button type="button" class="btn-primary" onclick="cmpConfirmIntakeAndContinue()">Looks good — Continue to Recommendation →</button>
+    </div>
   `;
+}
+// Ends the Objectives dialogue and advances to the AI Brain Recommendation
+// pitch — the explicit "agreement to proceed" step above. Mirrors the same
+// #cmpStage-recommendation header behavior ("you don't need a second
+// click, just show the page") rather than routing back through the
+// accordion, since the user just explicitly asked to move on.
+function cmpConfirmIntakeAndContinue(){
+  if (typeof cmpOpenRecommendationPitch === 'function') cmpOpenRecommendationPitch();
 }
 // Applies only the Lifecycle Stage — via toggleStage(), the same function a
 // manual tile click calls, so every downstream cascade (Objective
