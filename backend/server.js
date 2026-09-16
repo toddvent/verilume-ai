@@ -11804,6 +11804,41 @@ function authenticate(req){
 // them). One shared formatter so all four say the same thing the same
 // way, computing the actual campaign length in days rather than leaving
 // the model to do that arithmetic itself.
+// 2026-09-16, per direct correction — Todd: "why did you create a move to
+// in market option? campaigns have start and end dates to establish when a
+// campaign is in market." The manual "Move to In Market →"/"Mark In
+// Market →"/"Move to Analysis →" buttons (portal.html's cmpSetStatus()/
+// setCampaignStatus()) let a person hand-set campaign.status independently
+// of the campaign's own real startDate/endDate — the two could (and in
+// practice, given the QA-gate history below, often did) disagree. Per
+// Todd's direct decision, status is now always derived from dates, never
+// manually set: before startDate (or no dates yet) = 'Objective & Details',
+// startDate..endDate inclusive = 'In Market', after endDate = 'Analysis'.
+// The one exception the old manual button enforced — QA & Approval must be
+// complete before a campaign can show as In Market (Round 64) — is
+// deliberately NOT carried into this derivation, per Todd's explicit
+// answer: "No, Approval will be added before creative begins," i.e. QA is
+// meant to already be done well before a campaign's in-market date in the
+// real workflow, so gating on it here would just be redundant, not a real
+// safety check.
+// Same three-way logic as formatCampaignDatesForPrompt()'s inline
+// running/not-started/ended computation just below — kept as a named,
+// reusable function here (rather than duplicated inline like that one)
+// since this one's return value is actually stored back onto the row, not
+// just interpolated into a prompt string.
+function deriveCampaignStatusFromDates(campaign){
+  const start = campaign.startDate || null;
+  const end = campaign.endDate || null;
+  if (!start || !end) return 'Objective & Details';
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 'Objective & Details';
+  const now = Date.now();
+  if (now < startMs) return 'Objective & Details';
+  if (now > endMs) return 'Analysis';
+  return 'In Market';
+}
+
 function formatCampaignDatesForPrompt(campaign){
   const start = campaign.startDate || null;
   const end = campaign.endDate || null;
@@ -12895,10 +12930,26 @@ async function syncSnowflakeAccount(account){
 
 // Returns every campaign for an account, each with its projects nested —
 // the exact shape portal.html's Campaigns view renders directly.
+const updateCampaignStatusStmt = db.prepare('UPDATE campaigns SET status = ? WHERE id = ?');
+
 function getCampaignsForAccount(accountId){
   const campaigns = db.prepare(
     'SELECT * FROM campaigns WHERE accountId = ? ORDER BY createdAt ASC'
   ).all(accountId);
+  // 2026-09-16 — write-through status derivation (see
+  // deriveCampaignStatusFromDates()'s own comment for why). Every list read
+  // re-derives status from the row's own dates and, if it disagrees with
+  // what's stored, corrects the stored value too — so a campaign crossing
+  // its start/end date shows the right status the next time anyone opens
+  // the list, not only after some other edit happens to touch the row.
+  campaigns.forEach(c => {
+    const derived = deriveCampaignStatusFromDates(c);
+    if (derived !== c.status){
+      c.status = derived;
+      try { updateCampaignStatusStmt.run(derived, c.id); }
+      catch (e){ console.warn('getCampaignsForAccount: status write-through failed for', c.id, e); }
+    }
+  });
   const getDraws = db.prepare('SELECT id, allocationId, amount FROM campaign_allocation_draws WHERE campaignId = ?');
   return campaigns.map(c => {
     const projects = db.prepare(
@@ -20989,9 +21040,17 @@ Submit your response via the campaign_intake_turn tool.`;
       const productName = body.productName || '';
       const productCode = threeLetterCode(body.productCode || productName);
       const campaignCode = generateCampaignCode(accountId, account.partnerCode, productCode, body.startDate || null);
+      // 2026-09-16 — status set for real at creation now, derived from
+      // whatever dates were sent (see deriveCampaignStatusFromDates()'s
+      // comment above), instead of relying on the column's static
+      // 'Objective & Details' DEFAULT — a campaign created with dates
+      // already in the past (a backfilled or ad-hoc campaign) should read
+      // as 'In Market'/'Analysis' immediately, not wait for the next
+      // write-through read to correct it.
+      const initialStatus = deriveCampaignStatusFromDates({ startDate: body.startDate || null, endDate: body.endDate || null });
       db.prepare(
-        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, campaignType, campaignTypeDetailsJson, createdAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, campaignType, campaignTypeDetailsJson, status, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         campaignId, accountId, body.objective || '', body.segment || '', body.stage || '', body.keyMessage || '',
         body.name || body.objective || 'Untitled Campaign',
@@ -21034,6 +21093,7 @@ Submit your response via the campaign_intake_turn tool.`;
         // trusted verbatim, since it's a client-supplied blob.
         body.campaignType || '',
         (() => { try { return body.campaignTypeDetails && typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : ''; } catch (e){ return ''; } })(),
+        initialStatus,
         now
       );
       // Round 55 — insert one row per {allocationId, amount} draw when the
@@ -21131,7 +21191,12 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!requireAccount(req, res, existing.accountId)) return;
       const body = await readBody(req);
       const merged = {
-        status: body.status !== undefined ? body.status : existing.status,
+        // 2026-09-16 — status is no longer a client-settable field (see
+        // deriveCampaignStatusFromDates()'s comment above); it's always
+        // recomputed below from whatever startDate/endDate this save ends
+        // up with, once those are known. Any body.status a caller still
+        // sends (an old client build, or a stray request) is ignored.
+        status: existing.status,
         actualSpend: body.actualSpend !== undefined ? body.actualSpend : existing.actualSpend,
         actualImpressions: body.actualImpressions !== undefined ? body.actualImpressions : existing.actualImpressions,
         actualConversions: body.actualConversions !== undefined ? body.actualConversions : existing.actualConversions,
@@ -21246,6 +21311,11 @@ Submit your response via the campaign_intake_turn tool.`;
         // survives a reload, a different device, or a different teammate.
         activityNotesJson: body.activityNotesJson !== undefined ? body.activityNotesJson : existing.activityNotesJson
       };
+      // 2026-09-16 — status derived from the dates this save ends up with
+      // (see deriveCampaignStatusFromDates()'s comment above), computed
+      // after merged.startDate/endDate are final so an edit to either one
+      // takes effect on status immediately, not just on the next list read.
+      merged.status = deriveCampaignStatusFromDates(merged);
       if (!existing.campaignCode){
         const account = db.prepare('SELECT partnerCode FROM accounts WHERE accountId = ?').get(existing.accountId);
         const startDate = body.startDate !== undefined ? body.startDate : existing.startDate;
@@ -21850,7 +21920,7 @@ Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Objective: ${campaign.objective || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
 Channels selected: ${campaign.channels || '(none yet)'}
-Status: ${campaign.status || '(not set)'}
+Status: ${deriveCampaignStatusFromDates(campaign)}
 ${formatCampaignDatesForPrompt(campaign)}
 Budget overall approved: ${campaign.budgetApprovedAt ? 'yes' : 'no'}
 Creative complete: ${campaign.creativeComplete ? 'yes' : 'no'}
@@ -22474,10 +22544,14 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
         } else {
           campaignId = generateId('CMP');
           const campaignCode = generateCampaignCode(accountId, account.partnerCode, threeLetterCode(partner || channel), hitDate || null);
+          // 2026-09-16 — status derived from this row's own dates, same as
+          // the main creation endpoint above (see
+          // deriveCampaignStatusFromDates()'s comment).
+          const initialStatus = deriveCampaignStatusFromDates({ startDate: hitDate || null, endDate: endDate || null });
           db.prepare(
-            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, createdAt)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, now);
+            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, status, createdAt)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, initialStatus, now);
           campaignIdsCreated.push(campaignId);
           // So a later group in THIS SAME batch with an identical key
           // (shouldn't happen since groups are already deduped by key, but
@@ -28389,6 +28463,7 @@ try {
 }
 
 module.exports = handleRequest;
+
 
 
 
