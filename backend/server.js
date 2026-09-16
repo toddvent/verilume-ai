@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-16-objectives-collab-center-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-16-collab-center-brain-training-persistence-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1751,6 +1751,28 @@ ensureColumn('channel_planning_details', 'clientApprovedBy', 'TEXT');
 // column existed) reads back as US via COALESCE at the query sites below,
 // never a blank/unknown region.
 ensureColumn('channel_planning_details', 'region', 'TEXT');
+
+// 2026-09-16 — REAL BUG FOUND while building "retain existing work" per
+// Todd's direct instruction: campaigns.activityNotesJson was referenced by
+// cmpPersistActivityNotesToCampaign() (frontend) and multiple prior round
+// comments describing the Collaboration Center as "already-shipped,
+// already-persisted" — but the column never existed, and POST
+// /api/campaigns/:id's merge-update endpoint never accepted or stored an
+// activityNotesJson field at all. Every activity note across the ENTIRE
+// app — every accordion stage's per-stage Notes panel, plus the newer
+// Workspace Hub Collaboration Center's AI Brain/Team/Feedback threads —
+// has been living only in the in-memory campaign object in that one
+// browser tab: a reload, a different device, or a teammate opening the
+// same campaign elsewhere has always shown a blank thread, silently. This
+// was never caught by node --check (valid JS calling a real-looking
+// endpoint that just silently dropped the field) or by function-diff
+// verification (no function was missing — the bug was a field never
+// wired end-to-end). Closing it here: real column, real merge-update
+// field (see POST /api/campaigns/:id below), real hydration on load
+// (loadCampaigns() in portal.html now parses this back into
+// campaign.activityNotes, the same pattern already used for mediaMixJson/
+// channelCopyVersionsJson on that same endpoint).
+ensureColumn('campaigns', 'activityNotesJson', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -16029,7 +16051,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-16-objectives-collab-center-fix',
+        buildStamp: '2026-09-16-collab-center-brain-training-persistence-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21181,7 +21203,15 @@ Submit your response via the campaign_intake_turn tool.`;
         // form's own multi-select writes (`[...selectedSegments].join(', ')`
         // — see cmpBuildFormPayload()), so this accepts exactly that shape
         // back.
-        segment: body.segment !== undefined ? body.segment : existing.segment
+        segment: body.segment !== undefined ? body.segment : existing.segment,
+        // 2026-09-16 — real bug fix, see ensureColumn('campaigns',
+        // 'activityNotesJson', ...)'s own comment above: this field was
+        // never actually part of this merge-update endpoint despite the
+        // frontend having sent it for multiple rounds already. Closing the
+        // gap so every activity-notes thread in the app (accordion Notes
+        // panels + the Workspace Hub Collaboration Center) genuinely
+        // survives a reload, a different device, or a different teammate.
+        activityNotesJson: body.activityNotesJson !== undefined ? body.activityNotesJson : existing.activityNotesJson
       };
       if (!existing.campaignCode){
         const account = db.prepare('SELECT partnerCode FROM accounts WHERE accountId = ?').get(existing.accountId);
@@ -21191,8 +21221,8 @@ Submit your response via the campaign_intake_turn tool.`;
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, stage = ?, segment = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.stage, merged.segment, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, stage = ?, segment = ?, activityNotesJson = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.stage, merged.segment, merged.activityNotesJson, campaignId);
       // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
       // digest pooling, build-order item 2). messagingStyleDigestJson has
       // been stored on the campaign row since round 132be but read by
@@ -21816,6 +21846,53 @@ Submit your response via the ai_brain_reply tool.`;
       } catch (e){
         console.error(`[POST /api/campaigns/:id/ai-brain-reply] campaignId=${campaignId}:`, e);
         return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message });
+      }
+    }
+
+    // POST /api/campaigns/:id/ai-brain-reply-feedback — 2026-09-16, "Brain
+    // Training": a quick, inline thumbs-up/down + optional note on one
+    // specific AI Brain reply in the Collaboration Center, replacing the
+    // generic "Feedback" tab (which was mechanically identical to Team —
+    // no scoring, nothing fed back anywhere). Rather than invent a new
+    // storage mechanism, this reuses the real, already-proven AI Brain
+    // Contribution Ledger (ai_brain_contributions/ai_brain_contribution_log
+    // — see cxmedia-ai-brain-contribution-ledger-design-2026-08-13.md) with
+    // a new sourceType, 'campaign_workspace_ai_reply'. Unlike every other
+    // sourceType in that ledger (which start 'reference' and need a
+    // separate human Apply/Remove decision later), a rating here IS the
+    // decision in the same motion — there's no meaningful "captured but
+    // not yet reviewed" state for a thumbs-up on a specific chat reply — so
+    // this writes straight to status 'applied' and logs it once, same
+    // two-write (INSERT + log INSERT) pattern every other ledger decision
+    // uses. qualityRating is required (1-5, thumbs mapped to 1 or 5 by the
+    // frontend); reason is the optional free-text note, never required
+    // here (unlike a Remove decision elsewhere in the ledger, this is
+    // never a removal).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'ai-brain-reply-feedback'){
+      const campaignId = decodeURIComponent(parts[2]);
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        const body = await readBody(req);
+        const qualityRating = Number.isInteger(body.qualityRating) ? body.qualityRating : null;
+        if (qualityRating === null || qualityRating < 1 || qualityRating > 5) return sendJson(res, 400, { error: 'qualityRating must be an integer 1-5' });
+        const replyText = typeof body.replyText === 'string' ? body.replyText.trim() : '';
+        if (!replyText) return sendJson(res, 400, { error: 'replyText is required' });
+        const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null;
+        const decidedBy = typeof body.decidedBy === 'string' ? body.decidedBy : '';
+        const id = generateId('ABC');
+        const now = new Date().toISOString();
+        db.prepare(`INSERT INTO ai_brain_contributions
+          (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt, qualityRating)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(id, campaign.accountId, 'campaign_workspace_ai_reply', campaignId, null, null, JSON.stringify({ replyText, tab: 'ai' }), 'applied', reason, decidedBy, now, now, qualityRating);
+        db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityRating) VALUES (?,?,?,?,?,?,?,?)`)
+          .run(generateId('ABCDEC'), id, campaign.accountId, 'applied', reason, decidedBy, now, qualityRating);
+        return sendJson(res, 200, { id, createdAt: now });
+      } catch (e){
+        console.error(`[POST /api/campaigns/:id/ai-brain-reply-feedback] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not save that rating right now.', detail: e.message });
       }
     }
 
@@ -28243,6 +28320,8 @@ try {
 }
 
 module.exports = handleRequest;
+
+
 
 
 
