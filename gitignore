@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Local database files (dev/test data, never shipped)
+backend/*.db
+backend/*.db-journal
+
+# Stray editor/session backups — not source
+backend/server.js.txt
+
+# Working drafts that don't belong in the app repo
+snowflake-access-request-email.md
