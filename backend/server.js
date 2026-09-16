@@ -1585,15 +1585,15 @@ const TAXONOMY_TEMPLATES = [
 // seed-atlas-channel-plans.js for the same caution applied on import.
 //
 // status (draft|submitted|approved) is the doc's Section 2 per-entry
-// approval gate — a client can save partial detail as Draft; it isn't
-// treated as confirmed until a CX Experiences Media Ops user marks it
-// Approved. enteredBy*/lastEditedBy* are the field-level provenance stamps
-// Section 2 asks for instead of a separate client portal — both sides edit
-// the same row, this just records who touched it last. The cost sub-fields
-// living inside detailsJson (unitCost, postageCost, paperMfgCost,
-// insertionCost) are the "sensitive vendor economics" Section 2 restricts to
-// CX Experiences Media Ops only — enforced in the POST/PATCH routes below,
-// not just left to the front end to hide.
+// approval gate — a row can be saved partial as Draft; Approved is a
+// deliberate step, not automatic. enteredBy*/lastEditedBy* are the
+// field-level provenance stamps Section 2 asks for instead of a separate
+// client portal — both sides edit the same row, this just records who
+// touched it last. 2026-09-16 — the "only a CX Experiences Media Ops actor
+// may set vendor cost fields" restriction on the sub-fields living inside
+// detailsJson (unitCost, postageCost, paperMfgCost, insertionCost) was
+// removed per Todd's direct instruction; that role concept doesn't exist
+// in this business.
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS channel_planning_details (
     id TEXT PRIMARY KEY,
@@ -21371,14 +21371,13 @@ Submit your response via the campaign_intake_turn tool.`;
       return sendJson(res, 200, { updatedAt: new Date().toISOString() });
     }
 
-    // Round 102 — Channel Planning Detail routes. COST_SUBFIELDS is the
-    // "sensitive vendor economics" set from the scoping doc's Section 2 —
-    // Unit Cost/Postage/Paper & Manufacturing/Insertion — that only a CX
-    // Experiences Media Ops actor (actorRole === 'cx_ops') may set or change,
-    // checked here on the server rather than trusted to the front end hiding
-    // the fields. These live inside detailsJson (channel-specific sub-fields,
-    // e.g. only Direct Mail rows carry them), so the guard below inspects
-    // whatever detailsJson keys the caller actually sent.
+    // Round 102 — Channel Planning Detail routes.
+    // 2026-09-16 — the "only a CX Experiences Media Ops actor may set vendor
+    // cost fields" restriction (and the actorRole concept behind it) was
+    // removed per Todd's direct instruction: that role distinction doesn't
+    // exist in this business. Any caller may set vendor cost subfields
+    // (Unit Cost/Postage/Paper & Manufacturing/Insertion, inside
+    // detailsJson) or mark a row approved.
     const CHANNEL_PLANNING_COST_SUBFIELDS = ['unitCost', 'postageCost', 'paperMfgCost', 'insertionCost'];
     function channelPlanningCostFieldsPresent(detailsJson){
       if (!detailsJson || typeof detailsJson !== 'object') return [];
@@ -21456,14 +21455,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
       if (!body.channel) throw { status: 400, error: 'channel is required' };
       const detailsJson = (body.detailsJson && typeof body.detailsJson === 'object') ? body.detailsJson : {};
-      const presentCostFields = channelPlanningCostFieldsPresent(detailsJson);
-      if (actorRole !== 'cx_ops' && presentCostFields.length){
-        throw { status: 403, error: `Only CX Experiences Media Ops may set vendor cost fields (${presentCostFields.join(', ')}) — clients can view but not edit vendor rate/cost economics.` };
-      }
       let status = body.status === 'submitted' || body.status === 'approved' ? body.status : 'draft';
-      if (status === 'approved' && actorRole !== 'cx_ops'){
-        throw { status: 403, error: 'Only CX Experiences Media Ops may set status to approved.' };
-      }
       const entryId = generateId('CPD');
       const now = new Date().toISOString();
       const region = normalizeChannelPlanningRegion(body.region);
@@ -21560,12 +21552,8 @@ Submit your response via the campaign_intake_turn tool.`;
     }
 
     // PATCH /api/campaigns/:id/channel-planning/:entryId — update one entry.
-    // Same cost-subfield role guard as POST (checked against the MERGED
-    // detailsJson, so a client can't smuggle a cost value through by only
-    // sending it once and leaving it out of later merge-updates — every
-    // detailsJson value present in the final row, sent or carried over, is
-    // checked). Same status-transition guard: only actorRole === 'cx_ops'
-    // may move a row to 'approved'.
+    // 2026-09-16 — no role-based cost-subfield or approved-status gate
+    // anymore (removed per Todd's direct instruction).
     if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'channel-planning'){
       const campaignId = decodeURIComponent(parts[2]);
       const entryId = decodeURIComponent(parts[4]);
@@ -21580,15 +21568,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const existingDetails = existing.detailsJson ? JSON.parse(existing.detailsJson) : {};
       const incomingDetails = (body.detailsJson && typeof body.detailsJson === 'object') ? body.detailsJson : {};
       const mergedDetails = { ...existingDetails, ...incomingDetails };
-      const presentCostFields = channelPlanningCostFieldsPresent(mergedDetails);
-      const changedCostFields = presentCostFields.filter(k => JSON.stringify(existingDetails[k]) !== JSON.stringify(mergedDetails[k]));
-      if (actorRole !== 'cx_ops' && changedCostFields.length){
-        return sendJson(res, 403, { error: `Only CX Experiences Media Ops may edit vendor cost fields (${changedCostFields.join(', ')}) — clients can view but not edit vendor rate/cost economics.` });
-      }
       let status = body.status !== undefined ? body.status : existing.status;
-      if (status === 'approved' && existing.status !== 'approved' && actorRole !== 'cx_ops'){
-        return sendJson(res, 403, { error: 'Only CX Experiences Media Ops may set status to approved.' });
-      }
       const merged = {
         allocationId: body.allocationId !== undefined ? body.allocationId : existing.allocationId,
         channel: body.channel !== undefined ? body.channel : existing.channel,
@@ -21665,8 +21645,6 @@ Submit your response via the campaign_intake_turn tool.`;
       const existing = db.prepare('SELECT id FROM channel_planning_details WHERE id = ? AND campaignId = ?').get(entryId, campaignId);
       if (!existing) return sendJson(res, 404, { error: 'channel planning entry not found' });
       const body = await readBody(req);
-      const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
-      if (actorRole === 'cx_ops') return sendJson(res, 403, { error: 'Only the client may approve this budget line — agency users can present a recommendation but cannot approve it on the client\'s behalf.' });
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
       const now = new Date().toISOString();
       db.prepare('UPDATE channel_planning_details SET clientApprovedAt = ?, clientApprovedBy = ? WHERE id = ?').run(now, actorName, entryId);
@@ -21684,8 +21662,6 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
       if (!requireAccount(req, res, campaign.accountId)) return;
       const body = await readBody(req);
-      const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
-      if (actorRole === 'cx_ops') return sendJson(res, 403, { error: 'Only the client may give overall budget approval — agency users can present a recommendation but cannot approve it on the client\'s behalf.' });
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
       const now = new Date().toISOString();
       db.prepare('UPDATE campaigns SET budgetApprovedAt = ?, budgetApprovedBy = ? WHERE id = ?').run(now, actorName, campaignId);
@@ -21787,7 +21763,7 @@ Submit your response via the campaign_intake_turn tool.`;
               ? lines.map(l => `- id=${l.id} | ${l.channel || '(no channel)'} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}`).join('\n')
               : '(no channel plan lines entered yet)';
             const priorRows = db.prepare('SELECT authorName, authorRole, text FROM campaign_recommendation_comments WHERE campaignId = ? ORDER BY createdAt DESC LIMIT 10').all(campaignId);
-            const priorText = priorRows.reverse().map(c => `${c.authorRole === 'ai_brain' ? 'AI Brain' : (c.authorName || (c.authorRole === 'cx_ops' ? 'Account Team' : 'Client'))}: ${c.text}`).join('\n');
+            const priorText = priorRows.reverse().map(c => `${c.authorRole === 'ai_brain' ? 'AI Brain' : (c.authorName || 'Team')}: ${c.text}`).join('\n');
             const prompt = `You are the AI Brain reviewing a real campaign's budget plan with the team, inside a live conversation on the AI Brain Recommendation screen. This is a real back-and-forth, not a one-shot report — respond directly to what was just said.
 
 CAMPAIGN: ${campaign.name || campaignId}
@@ -21802,7 +21778,7 @@ ${lineText}
 CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
-The ${authorRole === 'cx_ops' ? 'account team' : 'client'} just said: "${text}"
+The team just said: "${text}"
 
 Reply directly to this, grounded only in the real numbers above. Weigh the campaign dates and total length shown above wherever they're relevant to the budget plan — pacing, whether spend should front-load or spread evenly, and how much runway is left. If — and only if — they're asking for or clearly implying a specific budget change to one existing line, propose it via the suggestion field with a real entryId from the list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above.
 
@@ -28463,7 +28439,6 @@ try {
 }
 
 module.exports = handleRequest;
-
 
 
 
