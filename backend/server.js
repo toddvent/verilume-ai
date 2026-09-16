@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-16-aibrain-dates-context-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-16-recommendation-collab-center-wireframe-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -16084,7 +16084,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-16-aibrain-dates-context-fix',
+        buildStamp: '2026-09-16-recommendation-collab-center-wireframe-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21791,10 +21791,18 @@ Submit your response via the recommendation_dialogue_reply tool.`;
     // activityNotesJson/cmpPersistActivityNotesToCampaign() mechanism (see
     // that endpoint's own comment); this endpoint is stateless, called once
     // per turn with whatever recent history the frontend already has,
-    // exactly like campaign-intake above. Unlike the Recommendation
-    // screen's dialogue, this one never proposes a budget change of its own
-    // (that stays specific to the Recommendation pitch, where the line
-    // items are directly in view) — general campaign Q&A and status only.
+    // exactly like campaign-intake above.
+    //
+    // 2026-09-16 UPDATE — this endpoint now also carries the Recommendation
+    // screen's AI Brain conversation, verified against the real
+    // Recommendation-Desktop.dc.html wireframe: that screen's right panel
+    // is this same shared Collaboration Center, not a separate bespoke
+    // dialogue with its own backend (POST .../recommendation-comments,
+    // still present but no longer called from the frontend). So the real,
+    // working budget-suggestion/Apply capability that lived only in that
+    // separate endpoint moved here too — see the `suggestion` field on
+    // AI_BRAIN_REPLY_SCHEMA below, same shape RECO_DIALOGUE_REPLY_SCHEMA
+    // above already used and validated the same way (real entryId or null).
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'ai-brain-reply'){
       const campaignId = decodeURIComponent(parts[2]);
       try {
@@ -21807,9 +21815,16 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 503, { error: 'AI Brain is not configured on this environment.' });
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
         const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
-        const lines = db.prepare('SELECT channel, budget, impressions, status, region FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        // 2026-09-16 — `id` added to this SELECT: per the real
+        // Recommendation-Desktop.dc.html wireframe (extracted and read, not
+        // assumed), the Recommendation screen's right panel is this same
+        // Collaboration Center, not a separate bespoke dialogue — so the
+        // real, working budget-suggestion/Apply capability that used to
+        // live only in POST .../recommendation-comments now needs to live
+        // here too, and applying a suggestion needs a real line item id.
+        const lines = db.prepare('SELECT id, channel, budget, impressions, status, region FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
         const lineText = lines.length
-          ? lines.map(l => `- ${l.channel || '(no channel)'} | ${normalizeChannelPlanningRegion(l.region)} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}`).join('\n')
+          ? lines.map(l => `- id=${l.id} | ${l.channel || '(no channel)'} | ${normalizeChannelPlanningRegion(l.region)} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}`).join('\n')
           : '(no channel plan lines entered yet)';
         // 2026-09-16 — per Todd's direct instruction, the AI Brain needs to
         // be able to ask about and react to campaign spend BY REGION (US /
@@ -21853,12 +21868,24 @@ ${priorText || '(nothing yet)'}
 
 The team just said: "${message}"
 
-Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). Keep it conversational, not a report.
+Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
         const AI_BRAIN_REPLY_SCHEMA = {
           type: 'object',
-          properties: { reply: { type: 'string', description: 'Your reply — specific to this campaign\'s real fields, never generic filler.' } },
+          properties: {
+            reply: { type: 'string', description: 'Your reply — specific to this campaign\'s real fields, never generic filler.' },
+            suggestion: {
+              type: ['object', 'null'],
+              description: 'A concrete budget reallocation you are proposing, or null if you are not proposing one right now.',
+              properties: {
+                entryId: { type: 'string', description: 'The id of the existing channel_planning_details line item to change — must be one of the real ids given above, never invented.' },
+                channel: { type: 'string' },
+                newBudget: { type: 'number' },
+                rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
+              }
+            }
+          },
           required: ['reply']
         };
         let parsed;
@@ -21877,7 +21904,13 @@ Submit your response via the ai_brain_reply tool.`;
             schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
           });
         }
-        return sendJson(res, 200, { reply: parsed.reply || "Sorry, I didn't get a response — try again." });
+        // Validate the suggestion's entryId is a real line before returning
+        // it — the model is instructed not to invent one, but this is the
+        // actual enforcement (same pattern as recommendation-comments' own
+        // suggestion validation).
+        let suggestion = parsed.suggestion || null;
+        if (suggestion && !lines.some(l => l.id === suggestion.entryId)) suggestion = null;
+        return sendJson(res, 200, { reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion });
       } catch (e){
         console.error(`[POST /api/campaigns/:id/ai-brain-reply] campaignId=${campaignId}:`, e);
         return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message });
@@ -28356,6 +28389,9 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
 
 
 
