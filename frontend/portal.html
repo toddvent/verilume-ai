@@ -1674,7 +1674,7 @@
   .cmp-breadcrumb-step.active{background:#1E2761;color:#FFFFFF;}
   .cmp-breadcrumb-step.disabled{color:var(--line);cursor:default;}
   .cmp-breadcrumb-sep{color:var(--line);font-size:0.75rem;}
-  .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);}
+  .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;}
   @media (max-width:1000px){ .cmp-pitch-body{grid-template-columns:1fr;overflow-y:auto;} }
   .cmp-pitch-left{overflow-y:auto;padding:24px 28px;border-right:1px solid var(--line);}
   .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
@@ -4128,9 +4128,7 @@
 
           <div class="field" id="bccActorWrap" style="display:none;">
             <label>Uploading as</label>
-            <div class="stage-row" id="bccActorRoleRow"></div>
-            <input type="text" id="bccActorName" placeholder="Your name" style="margin-top:8px;max-width:320px;" oninput="renderBulkCreateCampaignsPreview()">
-            <div class="hint">CX Experiences Media Ops can set vendor cost fields and mark rows Approved; an upload from your own team can leave both as drafts for review.</div>
+            <input type="text" id="bccActorName" placeholder="Your name" style="max-width:320px;" oninput="renderBulkCreateCampaignsPreview()">
           </div>
 
           <div class="field-divider" id="bccPreviewDivider" style="display:none;">Review &amp; upload</div>
@@ -7736,8 +7734,8 @@
            re-rendered into whichever of the two mount points is current
            (cmpCollabMountId, see cmpRenderCollabCenter()) — never a second,
            disconnected copy. -->
-      <div class="cmp-pitch-body" style="display:flex;gap:24px;overflow-y:auto;padding:22px 28px;align-items:flex-start;">
-        <div style="flex:1;min-width:0;">
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left">
           <div class="cmp-template-search-row">
             <div class="cmp-search-combo">
               <input type="text" id="cmpTemplateSearch"
@@ -7771,7 +7769,7 @@
             <div id="cmpIntakeRecommendations"></div>
           </div>
         </div>
-        <div class="cmp-workspace-collab" id="cmpObjectivesCollabMount" style="width:340px;flex-shrink:0;position:static;max-height:none;"></div>
+        <div class="cmp-workspace-collab" id="cmpObjectivesCollabMount"></div>
       </div>
     </div>
 
@@ -7787,7 +7785,7 @@
       <div id="cmpPitchBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
-        <div class="cmp-workspace-collab" id="cmpPitchCollabMount" style="width:400px;flex-shrink:0;position:static;max-height:none;"></div>
+        <div class="cmp-workspace-collab" id="cmpPitchCollabMount"></div>
       </div>
     </div>
     <div class="cmp-layout" id="cmpLayout">
@@ -10433,7 +10431,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-campaign-status-derived-from-dates';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-workspace-hub-shell-consistency-round17';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13952,11 +13950,9 @@ const BULK_UPLOAD_DATE_FIELDS = ['dropDate', 'hitDate', 'endDate'];
 const BULK_UPLOAD_TAXONOMY_FIELD_KEYS = { audience: 'audience', buyType: 'buyType', mediaType: 'mediaType', productGroup: 'productGroup', creativeMarket: 'creativeMarket', partner: 'partner' };
 
 let bulkUploadRows = []; // [{ index, raw: {...}, errors: [str], warnings: [str] }]
-let bulkUploadActorRole = 'client';
 
 function resetBulkUploadState(){
   bulkUploadRows = [];
-  bulkUploadActorRole = 'client';
   const fileInput = document.getElementById('bulkUploadFileInput');
   if (fileInput) fileInput.value = '';
   const nameInput = document.getElementById('bulkUploadActorName');
@@ -13967,22 +13963,11 @@ function resetBulkUploadState(){
   document.getElementById('bulkUploadResult').textContent = '';
   document.getElementById('bulkUploadFileHint').textContent = 'Parsed entirely in your browser — nothing is sent until you click Upload below.';
 }
-
-function renderBulkUploadActorRoleRow(){
-  const row = document.getElementById('bulkUploadActorRoleRow');
-  if (!row) return;
-  const options = [
-    { key: 'client', label: 'Account Team' },
-    { key: 'cx_ops', label: 'CX Experiences Media Ops' }
-  ];
-  row.innerHTML = options.map(o => `
-    <button type="button" class="stage-tile${bulkUploadActorRole === o.key ? ' selected' : ''}" onclick="setBulkUploadActorRole('${o.key}')">${o.label}</button>`).join('');
-}
-function setBulkUploadActorRole(role){
-  bulkUploadActorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
-  renderBulkUploadActorRoleRow();
-  renderBulkUploadPreview(); // cost-field/approved-status errors depend on the role
-}
+// 2026-09-16 — renderBulkUploadActorRoleRow()/setBulkUploadActorRole() and
+// the "Account Team"/"CX Experiences Media Ops" role toggle removed per
+// Todd's direct instruction: that role distinction doesn't exist in this
+// business. Cost fields and Approved status are no longer role-gated —
+// see validateBulkUploadRow() below.
 
 // Small, dependency-free CSV parser — this build stays single-file with no
 // external scripts (see every other feature in this file), so no CDN
@@ -14094,16 +14079,10 @@ function validateBulkUploadRow(raw){
     errors.push('endDate is before hitDate');
   }
 
-  // Client-role uploads can't carry cost subfields or an approved status —
-  // same guard the backend enforces (channelPlanningCostFieldsPresent()/
-  // the status-transition check in insertChannelPlanningRow()) — flagged
-  // here too so a client sees exactly why before ever submitting, not
-  // after a 403 comes back.
-  if (bulkUploadActorRole !== 'cx_ops'){
-    const costCols = Object.keys(raw).filter(k => ['unitCost', 'postageCost', 'paperMfgCost', 'insertionCost'].includes(k) && raw[k]);
-    if (costCols.length) errors.push(`only CX Experiences Media Ops may set vendor cost fields (${costCols.join(', ')})`);
-    if ((raw.status || '').toLowerCase() === 'approved') errors.push('only CX Experiences Media Ops may set status to approved');
-  }
+  // 2026-09-16 — cost-subfield/approved-status role gating removed per
+  // Todd's direct instruction (no more Account Team / CX Experiences Media
+  // Ops distinction). Anyone uploading may set vendor cost fields or an
+  // approved status.
 
   return { errors, warnings };
 }
@@ -14134,9 +14113,6 @@ function handleBulkUploadFileChange(event){
 }
 
 function renderBulkUploadPreview(){
-  // Actor role can flip cost-field/approved errors after the initial
-  // parse (see setBulkUploadActorRole()) — re-validate live rather than
-  // caching the first pass.
   bulkUploadRows = bulkUploadRows.map(r => {
     const { errors, warnings } = validateBulkUploadRow(r.raw);
     return { ...r, errors, warnings };
@@ -14195,7 +14171,7 @@ async function submitBulkUpload(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorRole: bulkUploadActorRole, actorName, rows })
+      body: JSON.stringify({ actorName, rows })
     });
     if (!resp.ok){
       resultEl.textContent = `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`;
@@ -14233,7 +14209,6 @@ const BULK_CREATE_CAMPAIGNS_LINE_FIELDS = ['channel', 'partner', 'audience', 'bu
 const BULK_CREATE_CAMPAIGNS_ALL_FIELDS = [...BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS, ...BULK_CREATE_CAMPAIGNS_LINE_FIELDS];
 
 let bccRows = []; // [{ index, raw, errors, warnings }]
-let bccActorRole = 'client';
 
 function bulkUploadTaxonomyGateOk(){
   const pg = cmpTaxonomyValues('productGroup');
@@ -14258,7 +14233,6 @@ function renderBulkUploadTaxonomyGate(){
 
 function resetBulkCreateCampaignsState(){
   bccRows = [];
-  bccActorRole = 'client';
   const fileInput = document.getElementById('bccFileInput');
   if (fileInput) fileInput.value = '';
   const nameInput = document.getElementById('bccActorName');
@@ -14270,21 +14244,10 @@ function resetBulkCreateCampaignsState(){
   const hint = document.getElementById('bccFileHint'); if (hint) hint.textContent = 'Parsed entirely in your browser — nothing is sent until you click Upload below.';
 }
 
-function renderBccActorRoleRow(){
-  const row = document.getElementById('bccActorRoleRow');
-  if (!row) return;
-  const options = [
-    { key: 'client', label: 'Account Team' },
-    { key: 'cx_ops', label: 'CX Experiences Media Ops' }
-  ];
-  row.innerHTML = options.map(o => `
-    <button type="button" class="stage-tile${bccActorRole === o.key ? ' selected' : ''}" onclick="setBccActorRole('${o.key}')">${o.label}</button>`).join('');
-}
-function setBccActorRole(role){
-  bccActorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
-  renderBccActorRoleRow();
-  renderBulkCreateCampaignsPreview();
-}
+// 2026-09-16 — renderBccActorRoleRow()/setBccActorRole() and the "Account
+// Team"/"CX Experiences Media Ops" role toggle removed per Todd's direct
+// instruction. Vendor cost fields are no longer role-gated — see
+// validateBccRow() below.
 
 function downloadBulkCreateCampaignsTemplate(){
   const exampleChannel = MMM_CATEGORIES[0];
@@ -14325,10 +14288,6 @@ function validateBccRow(raw){
     if (raw[f] && !/^\d{4}-\d{2}-\d{2}$/.test(raw[f])) errors.push(`${f} must be yyyy-mm-dd, got "${raw[f]}"`);
   });
 
-  if (bccActorRole !== 'cx_ops'){
-    const costCols = Object.keys(raw).filter(k => ['unitCost', 'postageCost', 'paperMfgCost', 'insertionCost'].includes(k) && raw[k]);
-    if (costCols.length) errors.push(`only CX Experiences Media Ops may set vendor cost fields (${costCols.join(', ')})`);
-  }
   return { errors, warnings };
 }
 
@@ -14351,7 +14310,6 @@ function handleBulkCreateCampaignsFile(event){
     document.getElementById('bccPreviewDivider').style.display = '';
     document.getElementById('bccPreviewWrap').style.display = '';
     document.getElementById('bccResult').textContent = '';
-    renderBccActorRoleRow();
     renderBulkCreateCampaignsPreview();
   };
   reader.onerror = () => { document.getElementById('bccFileHint').textContent = 'Could not read that file — try again.'; };
@@ -14429,7 +14387,7 @@ async function submitBulkCreateCampaigns(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-create-campaigns`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorRole: bccActorRole, actorName, fileName: fileNameMatch ? fileNameMatch[1] : '', dateRangeStart, dateRangeEnd, rows })
+      body: JSON.stringify({ actorName, fileName: fileNameMatch ? fileNameMatch[1] : '', dateRangeStart, dateRangeEnd, rows })
     });
     if (!resp.ok){
       resultEl.textContent = `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`;
@@ -36980,7 +36938,7 @@ async function cmpIntakeStopVoice(){
 // per cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md's
 // Budget & Recommendation spec. None of these persist anywhere themselves
 // (pure view/draft state) except via the explicit Save actions below.
-let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, actorRole: 'client', actorName: '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
+let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLoopStage: false, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
 
 // 2026-09-15 follow-on, per Todd's real report of "Recommendations did not
 // load" against a real campaign — two fixes here, on top of the backend
@@ -37031,7 +36989,7 @@ async function cmpOpenRecommendationPitch(){
   cmpRenderCollabCenter(campaign);
   const isRetry = cmpRecoState.campaignId === campaign.id && cmpRecoState.error;
   if (cmpRecoState.campaignId !== campaign.id || isRetry){
-    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
+    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLoopStage: false, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
     cmpRenderPitchLeft(campaign);
     try {
       cmpRecoState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
@@ -37133,11 +37091,10 @@ async function cmpRecoGenerateNarrative(){
 async function cmpRecoApproveLine(entryId){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
-  if (cmpRecoState.actorRole !== 'client'){ alert('Switch to "Account Team" above — only the client\'s own team can approve a budget line.'); return; }
   try {
     await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}/client-approve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || 'Account Team' })
+      body: JSON.stringify({})
     });
   } catch (e){ console.warn('cmpRecoApproveLine failed:', e); }
   // Refresh from the server rather than optimistically patching local
@@ -37149,11 +37106,10 @@ async function cmpRecoApproveLine(entryId){
 async function cmpRecoApproveOverall(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
-  if (cmpRecoState.actorRole !== 'client'){ alert('Switch to "Account Team" above — only the client\'s own team can give overall budget approval.'); return; }
   try {
     await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/approve-budget-overall`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || 'Account Team' })
+      body: JSON.stringify({})
     });
   } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
   cmpRecoState.campaignId = null;
@@ -37167,13 +37123,14 @@ async function cmpRecoApproveOverall(){
 // (see cmpOpenRecommendationPitch()'s own comment), not a second bespoke
 // dialogue. Its "AI Brain" tab (cmpCollabSend/cmpCollabRequestAiReply,
 // defined earlier in this file) now carries the real conversation here too.
-// cmpRecoSetActorRole() itself stayed — it's unrelated to that dialogue
-// (see the "Acting as" row in cmpRenderPitchLeft(), where it moved).
-function cmpRecoSetActorRole(role){
-  cmpRecoState.actorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
-  const campaign = cmpRailLoadedCampaign();
-  if (campaign) cmpRenderPitchLeft(campaign);
-}
+// 2026-09-16 — cmpRecoSetActorRole() and the whole "Account Team / CX
+// Experiences Media Ops" actor-role concept were removed per Todd's direct
+// instruction: that distinction doesn't exist in this business and should
+// never have been invented. Approval and cost-field editing are no longer
+// gated by a role toggle — any authenticated user can approve a budget line
+// or the overall budget, and edit vendor cost fields. See this same round's
+// project doc for the backend-side removal (approve routes, cost-field
+// gating, bulk-upload/BCC actor fields).
 // Applies an AI Brain-proposed budget change via the existing, human-
 // triggered PATCH endpoint — the AI never writes the real budget itself
 // (see the backend endpoint's own comment); this is the one explicit click
@@ -37328,27 +37285,34 @@ function cmpRenderPitchLeft(campaign){
   const audienceChanged = s.audienceDraft !== null && s.audienceDraft.slice().sort().join('|') !== audienceSaved.slice().sort().join('|');
 
   mount.innerHTML = `
-    <!-- 2026-09-16 — moved here from the old bespoke right-panel dialogue
-         (removed — see cmpOpenRecommendationPitch()'s own comment) when that
-         panel was replaced with the shared Collaboration Center, which has
-         no concept of "acting as." This toggle is unrelated to that
-         dialogue — it's the real control cmpRecoApproveLine()/
-         cmpRecoApproveOverall() gate on ("only the client's own team can
-         approve"), and every line edit/add still records who made it — so
-         it has to live somewhere on this screen regardless of which
-         component renders the conversation. -->
-    <div class="stage-row" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span style="font-size:0.8125rem;font-weight:700;color:var(--muted);">Acting as:</span>
-      <div style="display:flex;gap:6px;">
-        <button type="button" class="stage-tile${s.actorRole === 'client' ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetActorRole('client')">Account Team</button>
-        <button type="button" class="stage-tile${s.actorRole === 'cx_ops' ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetActorRole('cx_ops')">CX Experiences Media Ops</button>
-      </div>
+    <!-- 2026-09-16 — the "Acting as" (Account Team / CX Experiences Media
+         Ops) toggle that used to render here was removed entirely per
+         Todd's direct instruction: that role distinction doesn't exist in
+         this business. cmpRecoApproveLine()/cmpRecoApproveOverall() no
+         longer gate approval on it — any user may approve a budget line or
+         the overall budget, and vendor cost fields are no longer
+         role-restricted either. -->
+    <!-- 2026-09-16 — moved to the top of the workspace body per Todd: this
+         export supports the entire campaign proposal, not one section of
+         it, so it belongs above everything it summarizes rather than
+         buried at the bottom. CSV added alongside PPT per "level-
+         appropriate exports" in the wireframe spec. NOT tier-gated:
+         PAID_TIERS (server.js) is an explicit, undecided placeholder
+         ("final scope and pricing not yet decided") — gating exports
+         against tiers that don't exist yet would be inventing a rule, not
+         building one. Flagged to Todd as deferred until tiers are real. -->
+    <div class="btn-row" style="margin-bottom:22px;">
+      <button type="button" class="btn-primary" id="cmpRecoPptBtn" onclick="cmpRecoExportPpt()">Export PowerPoint</button>
+      <button type="button" class="btn-ghost" onclick="cmpRecoExportCsv()">Export CSV</button>
     </div>
     <div class="cmp-intake-summary" style="margin-bottom:18px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <b>Loop Stage:</b>
-        <select id="cmpRecoStageSelect" class="field" style="width:auto;min-width:160px;" onchange="cmpRecoStageDraftChanged(this.value)" ${s.stageSaving ? 'disabled' : ''}>${stageOptionsHtml}</select>
-        ${stageChanged ? `<button type="button" class="btn-primary" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoSaveLoopStage()">${s.stageSaving ? 'Saving…' : 'Save →'}</button>` : ''}
+        ${s.editingLoopStage
+          ? `<div class="field" style="width:auto;min-width:160px;margin:0;"><select id="cmpRecoStageSelect" onchange="cmpRecoStageDraftChanged(this.value)" ${s.stageSaving ? 'disabled' : ''}>${stageOptionsHtml}</select></div>
+             ${stageChanged ? `<button type="button" class="btn-primary" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoSaveLoopStage()">${s.stageSaving ? 'Saving…' : 'Save →'}</button>` : ''}
+             <button type="button" class="btn-ghost" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditLoopStage()">Cancel</button>`
+          : `<span>${escapeHtml(campaign.stage || '(not set)')}</span><button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditLoopStage()">Edit</button>`}
       </div>
       ${s.stageSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.stageSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.stageSaveBanner.text)}</div>` : ''}
       <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -37410,17 +37374,6 @@ function cmpRenderPitchLeft(campaign){
       ${s.narrativeError ? `<p class="lede" style="margin-top:10px;color:#B3261E;">${escapeHtml(s.narrativeError)}</p>` : ''}
     </div>
 
-    <div class="btn-row" style="margin-bottom:22px;">
-      <button type="button" class="btn-primary" id="cmpRecoPptBtn" onclick="cmpRecoExportPpt()">Export PowerPoint</button>
-      <!-- 2026-09-16 — CSV added alongside PPT per "level-appropriate
-           exports" in the wireframe spec. NOT tier-gated: PAID_TIERS
-           (server.js) is an explicit, undecided placeholder ("final scope
-           and pricing not yet decided") — gating exports against tiers
-           that don't exist yet would be inventing a rule, not building
-           one. Flagged to Todd as deferred until tiers are real. -->
-      <button type="button" class="btn-ghost" onclick="cmpRecoExportCsv()">Export CSV</button>
-    </div>
-
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Budget Line-Item Approval</h3>
       ${viewingChannel ? `
@@ -37451,8 +37404,7 @@ function cmpRenderPitchLeft(campaign){
 // at this row height) rather than slicing the data — every line item is
 // still there, just scrollable past the 8th, so nothing is silently
 // hidden. Edit turns one row into inputs in place (channel/budget/
-// impressions — the three fields both client and cx_ops actors may write,
-// see channelPlanningCostFieldsPresent() in server.js); Delete and Add
+// impressions); Delete and Add
 // Channel are real DELETE/POST calls against the existing channel-planning
 // endpoints (server.js round 102), same "refresh from server after a real
 // write" convention cmpRecoApproveLine()/cmpRecoApplySuggestion() already
@@ -37472,10 +37424,10 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
     if (s.editingLineItemId === l.id){
       return `
         <tr>
-          <td><select id="cmpRecoEditChannel_${l.id}" class="field">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}" ${c === l.channel ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></td>
-          <td><select id="cmpRecoEditRegion_${l.id}" class="field">${regionOptionsHtml(l.region || 'US')}</select></td>
-          <td><input type="number" id="cmpRecoEditBudget_${l.id}" class="field" value="${Number(l.budget) || 0}" min="0" step="1"></td>
-          <td><input type="number" id="cmpRecoEditImpressions_${l.id}" class="field" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1"></td>
+          <td><div class="field" style="margin:0;"><select id="cmpRecoEditChannel_${l.id}">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}" ${c === l.channel ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></div></td>
+          <td><div class="field" style="margin:0;"><select id="cmpRecoEditRegion_${l.id}">${regionOptionsHtml(l.region || 'US')}</select></div></td>
+          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditBudget_${l.id}" value="${Number(l.budget) || 0}" min="0" step="1"></div></td>
+          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditImpressions_${l.id}" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1"></div></td>
           <td>
             <button type="button" class="btn-primary" onclick="cmpRecoSaveLineEdit('${l.id}')">Save</button>
             <button type="button" class="btn-ghost" onclick="cmpRecoCancelEditLine()">Cancel</button>
@@ -37497,10 +37449,10 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   };
   const addRowHtml = s.addingLine ? `
     <tr>
-      <td><select id="cmpRecoNewChannel" class="field">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></td>
-      <td><select id="cmpRecoNewRegion" class="field">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></td>
-      <td><input type="number" id="cmpRecoNewBudget" class="field" value="0" min="0" step="1"></td>
-      <td><input type="number" id="cmpRecoNewImpressions" class="field" value="0" min="0" step="1"></td>
+      <td><div class="field" style="margin:0;"><select id="cmpRecoNewChannel">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></div></td>
+      <td><div class="field" style="margin:0;"><select id="cmpRecoNewRegion">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></div></td>
+      <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewBudget" value="0" min="0" step="1"></div></td>
+      <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewImpressions" value="0" min="0" step="1"></div></td>
       <td>
         <button type="button" class="btn-primary" onclick="cmpRecoSaveNewChannel()">Save</button>
         <button type="button" class="btn-ghost" onclick="cmpRecoCancelAddChannel()">Cancel</button>
@@ -37543,6 +37495,24 @@ function cmpRecoSetViewMode(mode){
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderPitchLeft(campaign);
 }
+// 2026-09-16 — per the real Recommendation-Desktop.dc.html wireframe
+// (extracted and read, not assumed) and Todd's direct instruction "every
+// field only become editable after selecting": Loop Stage now starts as
+// static display text, same select-then-edit pattern cmpRecoStartEditAudience()/
+// cmpRecoCancelEditAudience() already use below, instead of an always-live
+// dropdown.
+function cmpRecoStartEditLoopStage(){
+  cmpRecoState.editingLoopStage = true;
+  cmpRecoState.stageSaveBanner = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoCancelEditLoopStage(){
+  cmpRecoState.editingLoopStage = false;
+  cmpRecoState.stageDraft = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
 function cmpRecoStageDraftChanged(value){
   cmpRecoState.stageDraft = value;
   cmpRecoState.stageSaveBanner = null;
@@ -37567,6 +37537,7 @@ async function cmpRecoSaveLoopStage(){
   } catch (e){ console.warn('cmpRecoSaveLoopStage failed:', e); }
   cmpRecoState.stageSaving = false;
   cmpRecoState.stageDraft = null;
+  cmpRecoState.editingLoopStage = false;
   cmpRecoState.stageSaveBanner = { ok, text: ok ? `Saved ${new Date().toLocaleTimeString()} — Loop Stage updated.` : 'Could not save — try again.' };
   cmpRenderPitchLeft(campaign);
   // 2026-09-17 — Loop Stage auto-refresh, per direct instruction ("move
@@ -37635,13 +37606,11 @@ async function cmpRecoRegenerateForStageChange(campaign, oldStage, newStage){
     try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(e.id)}`, { method: 'DELETE' }); }
     catch (err){ console.warn('cmpRecoRegenerateForStageChange: delete failed', e.id, err); }
   }
-  const actorRole = 'client';
-  const actorName = (typeof cmpRecoState !== 'undefined' && cmpRecoState && cmpRecoState.actorName) || 'Account Team';
   for (const row of newPaidRows){
     try {
       await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, actorRole, actorName, status: 'draft' })
+        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, status: 'draft' })
       });
     } catch (err){ console.warn('cmpRecoRegenerateForStageChange: save failed', row.channel, err); }
   }
@@ -37769,8 +37738,7 @@ async function cmpRecoSaveLineEdit(entryId){
     channel: channelEl ? channelEl.value : undefined,
     region: regionEl ? regionEl.value : undefined,
     budget: budgetEl ? Number(budgetEl.value) || 0 : undefined,
-    impressions: impressionsEl ? Number(impressionsEl.value) || 0 : undefined,
-    actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team')
+    impressions: impressionsEl ? Number(impressionsEl.value) || 0 : undefined
   };
   try {
     await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}`, {
@@ -37823,8 +37791,7 @@ async function cmpRecoSaveNewChannel(){
     channel: channelEl ? channelEl.value : '',
     region: regionEl ? regionEl.value : 'US',
     budget: budgetEl ? Number(budgetEl.value) || 0 : 0,
-    impressions: impressionsEl ? Number(impressionsEl.value) || 0 : 0,
-    actorRole: cmpRecoState.actorRole, actorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team')
+    impressions: impressionsEl ? Number(impressionsEl.value) || 0 : 0
   };
   try {
     await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
@@ -37965,14 +37932,12 @@ async function cmpGenerateAndPersistRecommendation(campaign){
     : { channels: [] };
   const paidRows = (mix.channels || []).filter(r => !r.owned);
   if (!paidRows.length) return false;
-  const actorRole = 'client';
-  const actorName = (typeof cmpRecoState !== 'undefined' && cmpRecoState && cmpRecoState.actorName) || 'Account Team';
   let anySaved = false;
   for (const row of paidRows){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, actorRole, actorName, status: 'draft' })
+        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, status: 'draft' })
       });
       if (resp.ok) anySaved = true;
     } catch (e){ console.warn('cmpGenerateAndPersistRecommendation: channel save failed', row.channel, e); }
@@ -42708,13 +42673,6 @@ async function mktCalSaveActuals(campaignId, entryId){
     return Number.isFinite(n) ? n : null;
   };
   const payload = {
-    // Response actuals aren't one of the cost-guarded fields
-    // (CHANNEL_PLANNING_COST_SUBFIELDS) the backend restricts to
-    // actorRole:'cx_ops', so 'client' is a safe, always-accepted default
-    // here — there's no per-session actor identity captured elsewhere in
-    // this file to draw from for the calendar's read-mostly detail view.
-    actorRole: 'client',
-    actorName: 'Marketing Calendar',
     actualCalls: readNum('mktCalActualCalls'),
     actualQrScans: readNum('mktCalActualQrScans'),
     actualUrlVisits: readNum('mktCalActualUrlVisits'),
@@ -52384,7 +52342,7 @@ async function cmpDeleteChannelPlanCategory(channel){
   selectedChannels.delete(channel);
   if (campaign && row.entryId && !campaign.isAdHoc && !campaign.localOnly){
     try {
-      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(row.entryId)}?actorRole=cx_ops`, { method: 'DELETE' });
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(row.entryId)}`, { method: 'DELETE' });
     } catch (e){ /* best-effort */ }
   }
   cmpRenderChannelPlanList();
@@ -52398,10 +52356,8 @@ async function cmpDeleteChannelPlanCategory(channel){
 // Round 132gg (2026-08-10), per direct instruction: "Approve Allocation
 // should then bring in the creative asset selection card." Creates or
 // updates the real Channel Planning Detail record for every category on
-// the plan (actorRole 'cx_ops' — per direct instruction "Marketing Ops
-// will not be part of this," PM's approval here is final and doesn't wait
-// on a separate Media Ops sign-off, same as this build's other
-// cx_ops-stamped system actions), then reveals Step 2 (Creative Asset
+// the plan — PM's approval here is final and doesn't wait on any separate
+// sign-off — then reveals Step 2 (Creative Asset
 // Selection) instead of moving straight to Brand Messaging — that hand-off
 // now happens at cmpSubmitCreativeRequestToBrand() once every asset is
 // added. Local-only/Ad Hoc campaigns skip the network writes (no backend
@@ -52476,14 +52432,11 @@ async function cmpApproveChannelPlan(){
   if (campaign && !campaign.isAdHoc && !campaign.localOnly){
     for (const r of rows){
       const cpdBody = {
-        actorRole: 'cx_ops', actorName: 'Performance Marketing',
         channel: r.channel, budget: typeof r.budget === 'number' ? r.budget : null,
         impressions: typeof r.impressions === 'number' ? r.impressions : null,
         productYear: String(new Date().getFullYear()), status: 'approved',
         // Round 132c17 — Mail Class + Postage, Direct Mail rows only (see
-        // cmpRenderChannelPlanList()'s own comment). actorRole is already
-        // 'cx_ops' above, satisfying insertChannelPlanningRow()'s cost-field
-        // gate for postageCost.
+        // cmpRenderChannelPlanList()'s own comment).
         detailsJson: r.channel.startsWith('Direct Mail') ? { mailClass: r.mailClass || null, postageCost: typeof r.postageCost === 'number' ? r.postageCost : null } : {}
       };
       try {
