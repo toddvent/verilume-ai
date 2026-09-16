@@ -7643,39 +7643,52 @@
         </div>
         <a onclick="cmpCloseObjectivesIntake()">Close ✕</a>
       </div>
-      <div class="cmp-pitch-body" style="display:block;overflow-y:auto;padding:22px 28px;">
-        <div class="cmp-template-search-row">
-          <div class="cmp-search-combo">
-            <input type="text" id="cmpTemplateSearch"
-              placeholder="Search by campaign name, ID, audience, or channel…"
-              autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
-              aria-controls="cmpTemplateSearchResults"
-              oninput="cmpHandleTemplateSearchInput(this.value)"
-              onfocus="cmpHandleTemplateSearchFocus(this.value)"
-              onkeydown="cmpHandleTemplateSearchKeydown(event)"
-              onblur="cmpHandleTemplateSearchBlur()">
-            <div class="cmp-search-results" id="cmpTemplateSearchResults" role="listbox" style="display:none;"></div>
+      <!-- 2026-09-16, per Objectives-Desktop.dc.html read directly (not
+           guessed at): the wireframe is two columns — the dialogue on the
+           left, the Collaboration Center on the right, same width (340px)
+           and same real component the Workspace Hub uses behind this
+           overlay ("not a duplicate transcript: the dialogue on the left
+           IS the AI Brain surface for this workstream" — the wireframe's
+           own words). This is the SAME live #cmpWorkspaceCollab instance,
+           re-rendered into whichever of the two mount points is current
+           (cmpCollabMountId, see cmpRenderCollabCenter()) — never a second,
+           disconnected copy. -->
+      <div class="cmp-pitch-body" style="display:flex;gap:24px;overflow-y:auto;padding:22px 28px;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div class="cmp-template-search-row">
+            <div class="cmp-search-combo">
+              <input type="text" id="cmpTemplateSearch"
+                placeholder="Search by campaign name, ID, audience, or channel…"
+                autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                aria-controls="cmpTemplateSearchResults"
+                oninput="cmpHandleTemplateSearchInput(this.value)"
+                onfocus="cmpHandleTemplateSearchFocus(this.value)"
+                onkeydown="cmpHandleTemplateSearchKeydown(event)"
+                onblur="cmpHandleTemplateSearchBlur()">
+              <div class="cmp-search-results" id="cmpTemplateSearchResults" role="listbox" style="display:none;"></div>
+            </div>
+          </div>
+          <p class="lede" style="margin:10px 0 0;">Already have a campaign in mind to build from? Search for it above — picking one starts the conversation with that campaign's real setup already on the table, and the AI Brain takes it from there.</p>
+          <div class="template-rec-row" id="cmpTemplateRecRow" style="margin-top:14px;"></div>
+          <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+              <h3 style="margin:0 0 6px;">Create Your New Program</h3>
+              <button type="button" class="btn-ghost" style="flex:none;white-space:nowrap;" onclick="cmpSkipPickupAndContinue()">Skip to Manual Campaign Creation →</button>
+            </div>
+            <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
+            <div class="cmp-intake-body" id="cmpIntakeBody"></div>
+            <div class="cmp-intake-input-row">
+              <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
+              <button type="button" class="cmp-intake-mic-btn" id="cmpIntakeMicBtn" data-state="idle" onclick="cmpIntakeToggleVoice()" title="Talk to the AI Brain" aria-label="Start voice conversation">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+              </button>
+              <button type="button" class="btn-primary" id="cmpIntakeSendBtn" onclick="cmpIntakeSendMessage()">Send</button>
+            </div>
+            <p class="cmp-intake-voice-status" id="cmpIntakeVoiceStatus" style="display:none;"></p>
+            <div id="cmpIntakeRecommendations"></div>
           </div>
         </div>
-        <p class="lede" style="margin:10px 0 0;">Already have a campaign in mind to build from? Search for it above — picking one starts the conversation with that campaign's real setup already on the table, and the AI Brain takes it from there.</p>
-        <div class="template-rec-row" id="cmpTemplateRecRow" style="margin-top:14px;"></div>
-        <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
-            <h3 style="margin:0 0 6px;">Create Your New Program</h3>
-            <button type="button" class="btn-ghost" style="flex:none;white-space:nowrap;" onclick="cmpSkipPickupAndContinue()">Skip to Manual Campaign Creation →</button>
-          </div>
-          <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
-          <div class="cmp-intake-body" id="cmpIntakeBody"></div>
-          <div class="cmp-intake-input-row">
-            <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
-            <button type="button" class="cmp-intake-mic-btn" id="cmpIntakeMicBtn" data-state="idle" onclick="cmpIntakeToggleVoice()" title="Talk to the AI Brain" aria-label="Start voice conversation">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
-            </button>
-            <button type="button" class="btn-primary" id="cmpIntakeSendBtn" onclick="cmpIntakeSendMessage()">Send</button>
-          </div>
-          <p class="cmp-intake-voice-status" id="cmpIntakeVoiceStatus" style="display:none;"></p>
-          <div id="cmpIntakeRecommendations"></div>
-        </div>
+        <div class="cmp-workspace-collab" id="cmpObjectivesCollabMount" style="width:340px;flex-shrink:0;position:static;max-height:none;"></div>
       </div>
     </div>
 
@@ -10349,7 +10362,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-create-campaign-standalone-template-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-objectives-collab-center-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11902,8 +11915,20 @@ const CMP_COLLAB_TABS = [
   { key: 'team', label: 'Team' },
   { key: 'feedback', label: 'Feedback' }
 ];
+// 2026-09-16 — the Objectives overlay (Objectives-Desktop.dc.html) also
+// shows this exact same Collaboration Center, per direct correction after
+// the first Objectives-standalone-template fix shipped without it. Rather
+// than build a second, disconnected copy (two components drifting out of
+// sync, or double-rendering the same tab state), this one real component
+// re-renders into whichever mount is current — the Workspace Hub's
+// #cmpWorkspaceCollab normally, or the Objectives overlay's
+// #cmpObjectivesCollabMount while that overlay is open. Only one mount is
+// ever populated at a time, so the fixed child ids inside the rendered
+// markup (#cmpCollabTabs, #cmpCollabBody, #cmpCollabInput_<tab>, etc.)
+// stay unique in the live DOM even though two possible parents exist.
+let cmpCollabMountId = 'cmpWorkspaceCollab';
 function cmpRenderCollabCenter(campaign){
-  const el = document.getElementById('cmpWorkspaceCollab');
+  const el = document.getElementById(cmpCollabMountId);
   if (!el) return;
   el.innerHTML = `
     <div class="cmp-collab">
@@ -36134,6 +36159,13 @@ function cmpOpenObjectivesIntake(){
   if (subhead) subhead.textContent = campaign.name || campaign.id || '';
   renderCmpPickupStage();
   renderCmpStageRail();
+  // 2026-09-16 — Collaboration Center moves into this overlay while it's
+  // open (see cmpRenderCollabCenter()'s own comment); clear the Hub's mount
+  // first so nothing stale flashes there when the overlay closes.
+  cmpCollabMountId = 'cmpObjectivesCollabMount';
+  const hubMount = document.getElementById('cmpWorkspaceCollab');
+  if (hubMount) hubMount.innerHTML = '';
+  cmpRenderCollabCenter(campaign);
 }
 function cmpCloseObjectivesIntake(){
   const overlay = document.getElementById('cmpObjectivesOverlay');
@@ -36141,6 +36173,12 @@ function cmpCloseObjectivesIntake(){
   if (overlay) overlay.classList.remove('open');
   if (panel) panel.classList.remove('open');
   document.body.style.overflow = '';
+  // 2026-09-16 — hand the Collaboration Center back to the Workspace Hub.
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const objMount = document.getElementById('cmpObjectivesCollabMount');
+  if (objMount) objMount.innerHTML = '';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderCollabCenter(campaign);
 }
 // Real campaigns only (never the synthetic Ad Hoc Projects bucket, and
 // never the campaign currently being built — recommending it to itself
