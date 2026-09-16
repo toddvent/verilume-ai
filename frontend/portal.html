@@ -908,8 +908,18 @@
   .cmp-workspace-switcher{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:14px;}
   .cmp-workspace-grid{margin-bottom:0;}
   .cmp-workspace-card .workstream-alert{border:none;background:none;padding:0;margin-top:auto;margin-left:0;margin-right:0;justify-content:flex-end;}
-  .cmp-workspace-collab{width:340px;flex-shrink:0;}
-  @media (max-width:900px){ .cmp-workspace-hub{flex-direction:column;} .cmp-workspace-collab{width:100%;} }
+  /* 2026-09-16 — Collaboration Center must stay pinned to the right side
+     of the viewport per the wireframe, not scroll away with the stage
+     content beneath it. .cmp-workspace-hub and #cmpLayout are normal-flow
+     siblings, so once a stage's content grows tall the whole page scrolls
+     and the collab panel scrolled off along with it. Reuses the
+     --sticky-scroll-margin custom property that cmpUpdateStickyOffsets()
+     already computes (account-summary height + campaign header height +
+     gaps) so this panel docks just below both existing sticky headers
+     instead of guessing an offset. Bounded height + internal scroll so a
+     long collab thread scrolls itself, not the page. */
+  .cmp-workspace-collab{width:340px;flex-shrink:0;position:sticky;top:var(--sticky-scroll-margin, 100px);align-self:flex-start;max-height:calc(100vh - var(--sticky-scroll-margin, 100px) - 20px);overflow-y:auto;}
+  @media (max-width:900px){ .cmp-workspace-hub{flex-direction:column;} .cmp-workspace-collab{width:100%;position:static;max-height:none;overflow-y:visible;} }
 
   /* Collaboration Center — shared component per the wireframe standard
      ("one shared component, never a per-screen fork"); this is Slice 1's
@@ -10309,7 +10319,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-workspace-hub-mount-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-objectives-intake-and-collab-sticky-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11780,6 +11790,20 @@ function cmpWorkspaceCardOpen(cardKey){
   if (!card) return;
   if (cardKey === 'budget' && cmpRailLoadedCampaign() && typeof cmpOpenRecommendationPitch === 'function'){
     cmpOpenRecommendationPitch();
+    return;
+  }
+  // 2026-09-16 — Objectives must always open the conversational AI Brain
+  // intake (#cmpIntake, inside #cmpStage-pickup), never the old manual
+  // accordion directly. cmpModuleStatus('pickup') reads 'complete' the
+  // instant a campaign exists (it's a "used once" flag, not a completion
+  // signal), so the generic first-incomplete-key scan below was skipping
+  // straight past it to 'lifecycle' for every existing campaign. The
+  // manual flow stays reachable only via "Skip to Manual Campaign
+  // Creation" (cmpSkipPickupAndContinue()) inside that dialogue, per
+  // direct instruction that the manual flow should only appear when
+  // selected from the conversational brief.
+  if (cardKey === 'objectives' && cmpRailLoadedCampaign()){
+    openCmpStage('pickup');
     return;
   }
   openCmpStage(cmpWorkspaceCardOpenKey(card));
