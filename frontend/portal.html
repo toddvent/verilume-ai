@@ -164,8 +164,31 @@
      no longer fits without horizontal scrolling (which read as broken,
      not just cramped), so it's replaced with a native select styled to
      match the navy header. Hidden above the breakpoint; .primary-nav
-     itself hides below it — see the media query further down. */
-  .primary-nav-mobile-select{display:none;width:100%;margin:0 -32px;padding:12px 32px;background:var(--hdr-navy);color:var(--hdr-ink-on-navy);border:none;border-radius:0;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;font-weight:700;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ffffff' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 40px center;background-size:16px;}
+     itself hides below it — see the media query further down.
+     2026-09-16 fix — this used width:100% alongside margin:0 -32px to
+     bleed full-width the same way .account-summary and .ask-bar do, but
+     that combination doesn't actually full-bleed: width:100% fixes the
+     box to 100% of .wrap's already-padding-inset content area FIRST,
+     then the negative margin just shifts that fixed-width box left
+     without growing it, so the box fell ~64px short on the right —
+     visible as a bare sliver of page background at the row's right edge
+     on a real phone (found while fixing the account-summary header bug
+     right above it, which had been masking this one). .account-summary
+     and .ask-bar never set an explicit width for the same bleed trick —
+     block-level width:auto solves for the full available width given
+     the margins, which is what a full bleed actually needs. Dropped
+     width:100% here to match; display:block (set below) is enough to
+     make this <select> a block box and get the same auto-width bleed.
+     Correction, same pass — that assumption was wrong for a <select>
+     specifically: unlike a div, a form control's width:auto sizes to
+     its own content (the longest option text), not to the available
+     width, even once display:block makes it a block box. Plain
+     width:auto rendered it barely wider than "01 · Daily Brief" —
+     narrower than before, not full-bleed. The fix that actually matches
+     .account-summary/.ask-bar's bleed here is an explicit width sized
+     to the bleed itself: 100% of .wrap's content box plus the 32px
+     taken back on each side by the negative margin. */
+  .primary-nav-mobile-select{display:none;width:calc(100% + 64px);margin:0 -32px;padding:12px 32px;background:var(--hdr-navy);color:var(--hdr-ink-on-navy);border:none;border-radius:0;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;font-weight:700;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ffffff' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 40px center;background-size:16px;}
   .primary-nav-mobile-select:focus{outline:2px solid var(--hdr-amber);outline-offset:-2px;}
   @media (max-width:760px){
     .primary-nav{display:none;}
@@ -405,6 +428,31 @@
   .acct-header-subtitle{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);margin-top:1px;}
   .acct-header-user-avatar{width:30px;height:30px;border-radius:50%;background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);color:var(--hdr-ink-on-navy);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .app-header-hidden-meta{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
+  /* 2026-09-16, per direct bug report ("fix our mobile portal header") —
+     .account-summary's height was a hard 88px (box-sizing:border-box),
+     fine on desktop where the logo cluster and the Client ID/avatar/gear
+     cluster share one row. Below the 760px breakpoint they don't fit on
+     one row and wrap (the container already has flex-wrap:wrap), but the
+     fixed height didn't grow to fit the second row — the wrapped Client
+     ID/avatar/gear row rendered as visual overflow BELOW the 88px box,
+     landing in the same space as .primary-nav-mobile-select right after
+     it in the DOM ("01 · Daily Brief" text overlapping "Client ID · ..."
+     text, and the account-summary's navy background — clipped to 88px
+     tall — leaving bare page background to the right of the overflowed
+     icons, seen as a light box poking out past the header's real edge).
+     Fix: let the bar grow to fit both rows instead of clipping the
+     second one, and give that second row its own full line, right-
+     aligned, with breathing room above it. Placed here (after every base
+     .account-summary rule above) rather than in the earlier @media block
+     near .primary-nav-mobile-select — a rule inside @media does not sort
+     by its media block, it sorts by its position in the file, so an
+     override placed before the base rule it targets loses the cascade
+     even when its condition matches; confirmed by rendering both
+     orderings before shipping this one. */
+  @media (max-width:760px){
+    .account-summary{height:auto;min-height:88px;padding:10px 32px;row-gap:6px;}
+    .acct-header-right{flex-basis:100%;justify-content:flex-end;margin-top:2px;}
+  }
   /* Round 132bb — settings gear pinned to the card's upper-right corner,
      independent of the wrapping tag/org-model row beside it (see markup
      comment below for why the account ID moved out of this bar entirely). */
@@ -1888,6 +1936,17 @@
      page, not the browser's own unstyled prompt boxes. */
   .decision-modal-overlay{position:fixed;inset:0;background:rgba(29,29,31,0.55);display:flex;align-items:center;justify-content:center;z-index:5000;padding:20px;}
   .decision-modal-card{background:var(--white);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:28px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;}
+  /* 2026-09-17 — generic "see full details" popup, per direct instruction:
+     the Collaboration Center's AI Brain notes should stay brief (abstracts),
+     with long explanations (e.g. a full before/after budget breakdown)
+     behind a link that opens this scrollable modal instead. Reuses the
+     existing .decision-modal-overlay backdrop; wider and its own
+     header/scrolling-body split since this content (tables) needs more
+     room than the narrow decision-modal-card. */
+  .cmp-detail-modal-card{background:var(--white);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;}
+  .cmp-detail-modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line);flex-shrink:0;}
+  .cmp-detail-modal-title{font-weight:700;font-size:1rem;}
+  .cmp-detail-modal-body{padding:18px 24px;overflow-y:auto;}
   .decision-modal-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:1.0625rem;color:var(--ink);margin-bottom:18px;}
   .decision-modal-rating{display:flex;gap:8px;margin-bottom:10px;}
   .decision-modal-rating-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:'Inter';font-weight:700;font-size:0.9375rem;cursor:pointer;transition:border-color 0.15s ease,background 0.15s ease,color 0.15s ease;}
@@ -3054,7 +3113,7 @@
          logo is back in this row's normal flex flow (see .account-summary
          above), so .account-summary's own justify-content:space-between
          handles keeping this cluster pinned right again, same as always. -->
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div class="acct-header-right" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
       <!-- #orgModelRow / #acctTag stay in the DOM (JS at loadAccountData()'s
            completion still writes acctTag's text, and switchPrimaryTab()
            etc. don't touch either) but the comps show neither in the header
@@ -10374,7 +10433,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-objectives-to-recommendation-generation-pipeline';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-mobile-account-header-overflow-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12034,7 +12093,15 @@ function cmpCollabNotesFor(campaign, tab){
 // shape the old bespoke recommendation-comments dialogue used to produce.
 // Stored on the note so cmpCollabNoteRowHtml can render the "Proposed
 // change" card + Apply button per Recommendation-Desktop.dc.html's wireframe.
-function cmpCollabAddNote(tab, text, isAi, suggestion){
+// 2026-09-17 — `detail` param added, per direct instruction: "The AI Brain
+// Collaboration Center is meant for brief text like abstracts. We should
+// provide links to long explanations via a pop-up window with scroll
+// options." `text` stays the short abstract rendered inline; `detail`
+// (raw HTML — built deterministically by the caller, e.g. a real
+// before/after budget table, never model-generated) is stashed on the note
+// and only shown via cmpShowNoteDetail()'s modal, behind a "See full
+// details →" link. A note with no detail renders exactly as before.
+function cmpCollabAddNote(tab, text, isAi, suggestion, detail){
   const c = cmpRailLoadedCampaign();
   if (!c || !text) return;
   if (!c.activityNotes) c.activityNotes = {};
@@ -12043,10 +12110,43 @@ function cmpCollabAddNote(tab, text, isAi, suggestion){
     id: `wsnote_${Math.round(performance.now())}`,
     author: isAi ? 'AI Assistant' : (cmpNoteAuthorName || 'Team member'),
     text, isAi: !!isAi, tab, ts: Date.now(),
-    suggestion: (suggestion && suggestion.entryId) ? suggestion : null
+    suggestion: (suggestion && suggestion.entryId) ? suggestion : null,
+    detail: detail || null
   });
   cmpPersistActivityNotesToCampaign(c);
   cmpRenderCollabBody(c);
+}
+// Generic "see full details" popup — a scrollable modal over whatever HTML
+// the caller built (deterministic content only; never used to render raw
+// user/model text unescaped beyond what the caller already escaped). Not
+// specific to Collaboration Center notes; kept general so any future
+// "brief text, detail behind a link" surface can reuse it.
+function cmpShowDetailModal(title, bodyHtml){
+  const prior = document.getElementById('cmpDetailModalOverlay');
+  if (prior) prior.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'cmpDetailModalOverlay';
+  overlay.className = 'decision-modal-overlay';
+  overlay.innerHTML = `
+    <div class="cmp-detail-modal-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="cmp-detail-modal-header">
+        <div class="cmp-detail-modal-title">${escapeHtml(title)}</div>
+        <button type="button" class="btn-ghost" id="cmpDetailModalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="cmp-detail-modal-body">${bodyHtml}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#cmpDetailModalClose').addEventListener('click', close);
+}
+// Looks up a Collaboration Center note's stashed `detail` HTML on the
+// currently loaded campaign and shows it in the modal above.
+function cmpShowNoteDetail(noteId){
+  const c = cmpRailLoadedCampaign();
+  const note = c && c.activityNotes && (c.activityNotes.workspace || []).find(n => n.id === noteId);
+  if (!note || !note.detail) return;
+  cmpShowDetailModal('AI Brain — full details', note.detail);
 }
 // 2026-09-16 fix, per direct correction: "I don't understand the purpose.
 // Collaboration is the purpose so there needs to be back and forth. It's
@@ -12130,9 +12230,13 @@ function cmpCollabNoteRowHtml(n){
       </div>
     </div>`;
   }
+  const detailHtml = n.detail
+    ? `<div class="btn-row" style="margin:2px 0 6px;"><button type="button" class="btn-ghost" onclick="cmpShowNoteDetail('${n.id}')">See full details →</button></div>`
+    : '';
   return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
     <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
     <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+    ${detailHtml}
     ${suggestionHtml}
     ${ratingHtml}
   </div>`;
@@ -37412,21 +37516,154 @@ function cmpRecoStageDraftChanged(value){
 async function cmpRecoSaveLoopStage(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign || cmpRecoState.stageDraft === null) return;
+  const oldStage = campaign.stage || null;
+  const newStage = cmpRecoState.stageDraft;
   cmpRecoState.stageSaving = true;
   cmpRenderPitchLeft(campaign);
   let ok = false;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage: cmpRecoState.stageDraft })
+      body: JSON.stringify({ stage: newStage })
     });
     ok = resp.ok;
-    if (ok) campaign.stage = cmpRecoState.stageDraft; // keep this session's copy in sync without a full reload
+    if (ok) campaign.stage = newStage; // keep this session's copy in sync without a full reload
   } catch (e){ console.warn('cmpRecoSaveLoopStage failed:', e); }
   cmpRecoState.stageSaving = false;
   cmpRecoState.stageDraft = null;
   cmpRecoState.stageSaveBanner = { ok, text: ok ? `Saved ${new Date().toLocaleTimeString()} — Loop Stage updated.` : 'Could not save — try again.' };
   cmpRenderPitchLeft(campaign);
+  // 2026-09-17 — Loop Stage auto-refresh, per direct instruction ("move
+  // forward with the loop stage auto-refresh change"). Round 15 had
+  // deliberately left this unbuilt over the risk of silently overwriting a
+  // human-edited/approved plan; cmpRecoRegenerateForStageChange() resolves
+  // that by only ever touching draft (non-submitted, non-approved) lines —
+  // see its own comment.
+  if (ok && oldStage !== newStage){
+    try {
+      await cmpRecoRegenerateForStageChange(campaign, oldStage, newStage);
+      cmpRecoState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
+    } catch (e){ console.warn('cmpRecoSaveLoopStage: post-stage-change refresh failed', e); }
+    cmpRenderPitchLeft(campaign);
+  }
+}
+// 2026-09-17 — the actual "regenerate on Loop Stage change" logic, per
+// direct instruction. Deliberately narrow, matching the decision flagged
+// (not built) in Round 15: only DRAFT lines (status !== 'submitted' &&
+// status !== 'approved') are ever deleted/replaced. Submitted/approved
+// lines are real commitments a human already signed off on and are never
+// silently rewritten by a stage change — this function reads them only to
+// know how much of the campaign's budget they've already claimed, so the
+// fresh draft mix is computed against real remaining headroom, never
+// double-counting committed spend. If every existing line is already
+// submitted/approved, nothing is touched automatically — the AI Brain
+// posts a note explaining why, so a human isn't left wondering why the
+// stage change didn't seem to do anything.
+async function cmpRecoRegenerateForStageChange(campaign, oldStage, newStage){
+  if (!campaign || !campaign.id || oldStage === newStage) return;
+  let entries = [];
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`);
+    if (resp.ok){ const data = await resp.json(); entries = data.entries || []; }
+  } catch (e){ console.warn('cmpRecoRegenerateForStageChange: could not load existing plan', e); return; }
+
+  const locked = entries.filter(e => e.status === 'submitted' || e.status === 'approved');
+  const draft = entries.filter(e => e.status !== 'submitted' && e.status !== 'approved');
+
+  if (entries.length && !draft.length){
+    cmpCollabAddNote('ai',
+      `Loop Stage changed to ${newStage} — I didn't refresh the budget mix because every current line is already submitted or approved. Add a new line manually if this stage change should change spend.`,
+      true);
+    return;
+  }
+
+  const beforeTotal = entries.reduce((s, e) => s + (Number(e.budget) || 0), 0);
+  const beforeByChannel = {};
+  entries.forEach(e => { beforeByChannel[e.channel] = (beforeByChannel[e.channel] || 0) + (Number(e.budget) || 0); });
+
+  const lockedTotal = locked.reduce((s, e) => s + (Number(e.budget) || 0), 0);
+  const remainingBudget = Math.max(0, (Number(campaign.budget) || 0) - lockedTotal);
+  const lockedChannels = new Set(locked.map(e => e.channel));
+  const suggested = new Set([...computeSuggestedChannelsForCampaign(campaign), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT]);
+  // Never re-suggest a channel a locked line already covers — that spend is
+  // already accounted for under its own committed line.
+  const suggestedNew = [...suggested].filter(ch => !lockedChannels.has(ch));
+  const mix = (typeof computeRecommendedMediaMix === 'function')
+    ? computeRecommendedMediaMix({ stage: newStage, segment: campaign.segment, budget: remainingBudget, channels: suggestedNew.join(', ') })
+    : { channels: [] };
+  const newPaidRows = (mix.channels || []).filter(r => !r.owned);
+
+  // Draft lines are, by definition, not yet committed to anything, so this
+  // is a clean replace, not a merge.
+  for (const e of draft){
+    try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(e.id)}`, { method: 'DELETE' }); }
+    catch (err){ console.warn('cmpRecoRegenerateForStageChange: delete failed', e.id, err); }
+  }
+  const actorRole = 'client';
+  const actorName = (typeof cmpRecoState !== 'undefined' && cmpRecoState && cmpRecoState.actorName) || 'Account Team';
+  for (const row of newPaidRows){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, actorRole, actorName, status: 'draft' })
+      });
+    } catch (err){ console.warn('cmpRecoRegenerateForStageChange: save failed', row.channel, err); }
+  }
+
+  const afterEntries = [
+    ...locked.map(e => ({ channel: e.channel, budget: Number(e.budget) || 0 })),
+    ...newPaidRows.map(r => ({ channel: r.channel, budget: r.amount || 0 }))
+  ];
+  const afterTotal = afterEntries.reduce((s, e) => s + e.budget, 0);
+  const afterByChannel = {};
+  afterEntries.forEach(e => { afterByChannel[e.channel] = (afterByChannel[e.channel] || 0) + e.budget; });
+
+  cmpRecoAnnounceMixChange(oldStage, newStage, beforeTotal, afterTotal, beforeByChannel, afterByChannel, locked.length > 0);
+}
+// 2026-09-17 — per direct instruction: "The AI brain in our collaboration
+// center should inform the user if there is a meaningful change to the
+// budgets and media mix... The AI Brain Collaboration Center is meant for
+// brief text like abstracts. We should provide links to long explanations
+// via a pop-up window with scroll options." Posts a short abstract note
+// (via cmpCollabAddNote) plus a full before/after-by-channel table stashed
+// as that note's `detail`, shown only behind "See full details →"
+// (cmpShowNoteDetail/cmpShowDetailModal). "Meaningful" is defined
+// narrowly and disclosed in the note itself, not left implicit: the
+// channel SET changing (anything added or dropped) is always meaningful,
+// since that's a different media plan, not just a rebalance; short of
+// that, at least a 5% total-budget move. A token dollar shuffle below that
+// doesn't post a note — not every stage change is worth an interruption.
+function cmpRecoAnnounceMixChange(oldStage, newStage, beforeTotal, afterTotal, beforeByChannel, afterByChannel, hadLockedLines){
+  const beforeChannels = new Set(Object.keys(beforeByChannel));
+  const afterChannels = new Set(Object.keys(afterByChannel));
+  const added = [...afterChannels].filter(ch => !beforeChannels.has(ch));
+  const removed = [...beforeChannels].filter(ch => !afterChannels.has(ch));
+  const pctChange = beforeTotal > 0 ? Math.abs(afterTotal - beforeTotal) / beforeTotal : (afterTotal > 0 ? 1 : 0);
+  const meaningful = added.length > 0 || removed.length > 0 || pctChange >= 0.05;
+  if (!meaningful) return;
+
+  const dir = afterTotal >= beforeTotal ? 'up' : 'down';
+  const deltaAbs = Math.abs(afterTotal - beforeTotal);
+  const abstract = `Loop Stage changed to ${newStage} — I refreshed the recommended mix${hadLockedLines ? ' (submitted/approved lines were left as-is)' : ''}. Budget moved ${dir} ${fmtMoney(deltaAbs)} to ${fmtMoney(afterTotal)}${added.length ? `, added ${added.join(', ')}` : ''}${removed.length ? `, dropped ${removed.join(', ')}` : ''}.`;
+
+  const rows = [...new Set([...beforeChannels, ...afterChannels])].sort((a, b) => (afterByChannel[b] || 0) - (afterByChannel[a] || 0));
+  const detail = `
+    <p class="hint" style="margin-top:0;">Loop Stage changed from ${escapeHtml(oldStage || '(none)')} to ${escapeHtml(newStage)} on ${escapeHtml(new Date().toLocaleString())}.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
+      <thead><tr style="text-align:left;border-bottom:1px solid var(--line);">
+        <th style="padding:6px 8px;">Channel</th><th style="padding:6px 8px;">Before</th><th style="padding:6px 8px;">After</th><th style="padding:6px 8px;">Change</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(ch => {
+          const b = beforeByChannel[ch] || 0, a = afterByChannel[ch] || 0;
+          const tag = !beforeChannels.has(ch) ? ' <span class="camp-tag">added</span>' : (!afterChannels.has(ch) ? ' <span class="camp-tag">removed</span>' : '');
+          return `<tr style="border-bottom:1px solid var(--line-hairline);"><td style="padding:6px 8px;">${escapeHtml(ch)}${tag}</td><td style="padding:6px 8px;">${fmtMoney(b)}</td><td style="padding:6px 8px;">${fmtMoney(a)}</td><td style="padding:6px 8px;">${fmtMoney(a - b)}</td></tr>`;
+        }).join('')}
+        <tr style="font-weight:700;"><td style="padding:6px 8px;">Total</td><td style="padding:6px 8px;">${fmtMoney(beforeTotal)}</td><td style="padding:6px 8px;">${fmtMoney(afterTotal)}</td><td style="padding:6px 8px;">${fmtMoney(afterTotal - beforeTotal)}</td></tr>
+      </tbody>
+    </table>`;
+
+  cmpCollabAddNote('ai', abstract, true, null, detail);
 }
 function cmpRecoStartEditAudience(){
   cmpRecoState.editingAudience = true;
