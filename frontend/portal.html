@@ -10374,7 +10374,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-recommendation-collab-center-wireframe-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-objectives-to-recommendation-generation-pipeline';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14881,6 +14881,73 @@ function computeSuggestedRecommendedChannels(){
       });
       if (evictIdx >= 0) result[evictIdx] = ch;
       else result.push(ch); // every current slot is itself protecting some other selected audience — grow by one rather than drop one
+    });
+    result = result.slice().sort((a, b) => weights[b] - weights[a]);
+  }
+  return result;
+}
+
+// 2026-09-16 — campaign-object twin of computeSuggestedRecommendedChannels()
+// above, built for the AI Brain Recommendation-generation pipeline
+// (cmpGenerateAndPersistRecommendation()). Same ranking/budget-viability/
+// audience-protection logic, but reads every signal off a campaign RECORD
+// (c.stage, c.startDate/c.endDate, c.budget, c.segment as a comma string)
+// instead of the Create Campaign form's DOM inputs and selectedSegments/
+// selectedStage globals — this is called from the Objectives/Recommendation
+// overlay, which is not necessarily backed by an open Create Campaign form,
+// so it cannot assume those globals reflect this campaign. Deliberately a
+// parallel function rather than a DOM/global shim over the original: the
+// original stays exactly as-is for Campaign Creation (no regression risk),
+// and this one is easy to reason about/test in isolation. Keep the ranking
+// logic in sync by hand if one changes — same convention this file already
+// uses for other intentional duplicates (see INDUSTRY_WEAK_STAGE's own
+// comment re: assessment.html).
+function computeSuggestedChannelsForCampaign(c){
+  if (!c || !c.stage) return [];
+  const weights = masterBudgetStageChannelWeights(c.stage) || effectiveStageChannelWeights(c.stage);
+  if (!weights || !Object.keys(weights).length) return [];
+  let count = 5; // default mid-length list when dates aren't set yet
+  if (c.startDate && c.endDate){
+    const days = (new Date(`${c.endDate}T00:00:00`) - new Date(`${c.startDate}T00:00:00`)) / 86400000;
+    if (days > 0) count = days <= 14 ? 3 : (days <= 45 ? 5 : 7);
+  }
+  const budget = Number(c.budget) || 0;
+  let eligibleChannels = Object.keys(weights).filter(ch => !RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT.includes(ch));
+  const segments = new Set((c.segment || '').split(',').map(s => s.trim()).filter(Boolean));
+  if (segments.size){
+    const segEligible = new Set();
+    segments.forEach(seg => (SEGMENT_CHANNEL_ELIGIBILITY[seg] || []).forEach(ch => segEligible.add(ch)));
+    if (segEligible.size){
+      const audienceFiltered = eligibleChannels.filter(ch => segEligible.has(ch));
+      eligibleChannels = audienceFiltered.length ? audienceFiltered : eligibleChannels;
+    }
+  }
+  if (budget > 0 && typeof channelMinViableSpend === 'function'){
+    const weightSum = eligibleChannels.reduce((s, ch) => s + weights[ch], 0) || 1;
+    const viable = eligibleChannels.filter(ch => (budget * (weights[ch] / weightSum)) >= channelMinViableSpend(ch));
+    eligibleChannels = viable.length ? viable : eligibleChannels
+      .slice()
+      .sort((a, b) => channelMinViableSpend(a) - channelMinViableSpend(b))
+      .slice(0, 1);
+  }
+  let result = eligibleChannels.slice().sort((a, b) => weights[b] - weights[a]).slice(0, Math.min(count, eligibleChannels.length));
+  if (segments.size){
+    const protectedChannels = new Set();
+    segments.forEach(seg => {
+      const segChannels = (SEGMENT_CHANNEL_ELIGIBILITY[seg] || []).filter(ch => weights[ch] != null && eligibleChannels.includes(ch));
+      if (!segChannels.length) return;
+      const primary = segChannels.slice().sort((a, b) => weights[b] - weights[a])[0];
+      if (primary) protectedChannels.add(primary);
+    });
+    protectedChannels.forEach(ch => {
+      if (result.includes(ch)) return;
+      let evictIdx = -1, evictWeight = Infinity;
+      result.forEach((c2, i) => {
+        if (protectedChannels.has(c2)) return;
+        if (weights[c2] < evictWeight) { evictWeight = weights[c2]; evictIdx = i; }
+      });
+      if (evictIdx >= 0) result[evictIdx] = ch;
+      else result.push(ch);
     });
     result = result.slice().sort((a, b) => weights[b] - weights[a]);
   }
@@ -37576,9 +37643,68 @@ function cmpRenderIntakeRecommendations(extracted, recs){
 // #cmpStage-recommendation header behavior ("you don't need a second
 // click, just show the page") rather than routing back through the
 // accordion, since the user just explicitly asked to move on.
-function cmpConfirmIntakeAndContinue(){
+async function cmpConfirmIntakeAndContinue(){
+  const campaign = cmpRailLoadedCampaign();
   cmpCloseObjectivesIntake(); // 2026-09-16 — close this overlay before the Recommendation pitch overlay opens; both use the same fixed-position panel classes
+  // 2026-09-16, per Todd's direct correction ("No it wasn't. You produced
+  // the outputs based on the campaign objectives with detail.") — this is
+  // the step that was missing entirely: nothing ever turned a completed
+  // Objectives conversation into a real, persisted channel/budget
+  // recommendation, so the Recommendation screen had nothing of its own to
+  // show even after a real, detailed conversation. See
+  // cmpGenerateAndPersistRecommendation()'s own comment for what it does
+  // and doesn't do.
+  if (campaign) { try { await cmpGenerateAndPersistRecommendation(campaign); } catch (e) { console.warn('cmpGenerateAndPersistRecommendation failed:', e); } }
   if (typeof cmpOpenRecommendationPitch === 'function') cmpOpenRecommendationPitch();
+}
+// Builds a real channel/budget recommendation from this campaign's own
+// SAVED record (stage, segment, budget, dates — whatever's already
+// persisted, not whatever the Create Campaign form's globals currently
+// hold, since this overlay isn't necessarily backed by that form) and
+// persists it as real channel_planning_details rows via the same
+// insertChannelPlanningRow()/POST endpoint every other channel-planning
+// entry point uses (manual Add Channel, MBU bulk upload). Never overwrites
+// an existing plan — checked first, and a no-op if this campaign already
+// has any line items, so a human who already edited/approved a plan can
+// never have it silently clobbered by a later Objectives conversation.
+// Also a no-op (returns false, nothing saved) if the campaign has no
+// Lifecycle Stage yet — computeSuggestedChannelsForCampaign() has nothing
+// to weight channels against without one. That's a real, separate gap
+// (the AI Brain conversation only ever suggests a stage via the existing
+// "Apply Stage →" button; it doesn't auto-apply one) — flagged to Todd
+// rather than silently auto-applied here, since auto-toggling Lifecycle
+// Stage reaches into the Create Campaign form's own selectedStage/
+// selectedSegments globals and this overlay has no guarantee that form is
+// even open for this campaign right now.
+async function cmpGenerateAndPersistRecommendation(campaign){
+  if (!campaign || !campaign.id) return false;
+  try {
+    const existingResp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`);
+    if (existingResp.ok){
+      const existingData = await existingResp.json();
+      if (existingData.entries && existingData.entries.length) return false; // already has a real plan — never overwrite
+    }
+  } catch (e){ console.warn('cmpGenerateAndPersistRecommendation: could not check existing plan', e); return false; }
+  const suggested = new Set([...computeSuggestedChannelsForCampaign(campaign), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT]);
+  if (!suggested.size) return false;
+  const mix = (typeof computeRecommendedMediaMix === 'function')
+    ? computeRecommendedMediaMix(Object.assign({}, campaign, { channels: [...suggested].join(', ') }))
+    : { channels: [] };
+  const paidRows = (mix.channels || []).filter(r => !r.owned);
+  if (!paidRows.length) return false;
+  const actorRole = 'client';
+  const actorName = (typeof cmpRecoState !== 'undefined' && cmpRecoState && cmpRecoState.actorName) || 'Account Team';
+  let anySaved = false;
+  for (const row of paidRows){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, actorRole, actorName, status: 'draft' })
+      });
+      if (resp.ok) anySaved = true;
+    } catch (e){ console.warn('cmpGenerateAndPersistRecommendation: channel save failed', row.channel, e); }
+  }
+  return anySaved;
 }
 // Applies only the Lifecycle Stage — via toggleStage(), the same function a
 // manual tile click calls, so every downstream cascade (Objective
