@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-16-collab-center-brain-training-persistence-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-16-aibrain-dates-context-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -11791,6 +11791,39 @@ function authenticate(req){
   return session;
 }
 
+// 2026-09-16 — per Todd's direct instruction: "the campaign brain outputs
+// and recommendations [must] consider the campaign dates and length of
+// campaign in addition to all of the other details provided." Found while
+// investigating: none of the four AI Brain prompts that talk about a
+// specific campaign (campaign-intake's existing-campaign list,
+// ai-brain-reply, recommendation-comments, cmo-narrative) ever mentioned
+// campaign.startDate/endDate at all — confirmed live on the Test
+// Antarctica campaign, where the AI Brain told Todd outright "I don't have
+// visibility into the start and end dates," even though both are real,
+// populated columns on the campaigns table (SELECT * already returns
+// them). One shared formatter so all four say the same thing the same
+// way, computing the actual campaign length in days rather than leaving
+// the model to do that arithmetic itself.
+function formatCampaignDatesForPrompt(campaign){
+  const start = campaign.startDate || null;
+  const end = campaign.endDate || null;
+  if (!start && !end) return 'Campaign dates: not set yet.';
+  if (start && end){
+    const startMs = Date.parse(start);
+    const endMs = Date.parse(end);
+    const lengthDays = (Number.isFinite(startMs) && Number.isFinite(endMs)) ? Math.max(0, Math.round((endMs - startMs) / 86400000)) + 1 : null;
+    const now = Date.now();
+    let statusBit = '';
+    if (Number.isFinite(startMs) && Number.isFinite(endMs)){
+      if (now < startMs) statusBit = ' — has not started yet';
+      else if (now > endMs) statusBit = ' — has already ended';
+      else statusBit = ' — currently running';
+    }
+    return `Campaign dates: ${start} to ${end}${lengthDays != null ? ` (${lengthDays} day${lengthDays === 1 ? '' : 's'} total)` : ''}${statusBit}.`;
+  }
+  return `Campaign dates: ${start ? `starts ${start}` : `ends ${end}`} (the other end of the range is not set yet).`;
+}
+
 // The one check every account-scoped route makes before touching the
 // database. Sends the 401 itself (matching this file's existing
 // return-false-and-the-caller-returns convention) so every call site is
@@ -16051,7 +16084,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-16-collab-center-brain-training-persistence-fix',
+        buildStamp: '2026-09-16-aibrain-dates-context-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -19641,7 +19674,7 @@ async function handleRequest(req, res) {
       // shouldn't be able to blow up a single call.
       const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
       const campaigns = db.prepare(
-        'SELECT id, name, stage, objective, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt FROM campaigns WHERE accountId = ? AND isAdHoc = 0 ORDER BY createdAt DESC LIMIT 40'
+        'SELECT id, name, stage, objective, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt, startDate, endDate FROM campaigns WHERE accountId = ? AND isAdHoc = 0 ORDER BY createdAt DESC LIMIT 40'
       ).all(accountId);
       const campaignSummaries = campaigns.map(c => {
         const perfBits = [];
@@ -19651,7 +19684,7 @@ async function handleRequest(req, res) {
         if (c.plannedImpressions && c.actualImpressions != null){
           perfBits.push(`delivered ${Math.round((c.actualImpressions / c.plannedImpressions) * 100)}% of planned impressions`);
         }
-        return `- ${c.id} "${c.name || '(untitled)'}" — Stage: ${c.stage || '(not set)'}, Objective: ${c.objective || '(not set)'}, Primary KPI: ${c.primaryKpi || '(not set)'}${perfBits.length ? `, real performance: ${perfBits.join('; ')}` : ', no actuals recorded yet'}`;
+        return `- ${c.id} "${c.name || '(untitled)'}" — Stage: ${c.stage || '(not set)'}, Objective: ${c.objective || '(not set)'}, Primary KPI: ${c.primaryKpi || '(not set)'}${perfBits.length ? `, real performance: ${perfBits.join('; ')}` : ', no actuals recorded yet'}. ${formatCampaignDatesForPrompt(c)}`;
       }).join('\n');
       const conversationText = history.map(h => `${h.role === 'assistant' ? 'AI Brain' : 'User'}: ${h.text}`).join('\n');
       const prompt = `You are the AI Brain inside a marketing platform, helping a real marketer start a new campaign by understanding what they want to accomplish — through real conversation, not a form. Ask one focused follow-up at a time; don't interrogate. Once you genuinely understand the goal well enough to be useful (usually 2-4 exchanges), say so and set readyToRecommend to true — don't drag the conversation out past that point.
@@ -21691,6 +21724,7 @@ CAMPAIGN: ${campaign.name || campaignId}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
 Objective: ${campaign.objective || '(not set)'}
+${formatCampaignDatesForPrompt(campaign)}
 
 REAL CHANNEL PLAN LINES (the only ids you may reference in a suggestion — never invent one):
 ${lineText}
@@ -21700,7 +21734,7 @@ ${priorText || '(nothing yet)'}
 
 The ${authorRole === 'cx_ops' ? 'account team' : 'client'} just said: "${text}"
 
-Reply directly to this, grounded only in the real numbers above. If — and only if — they're asking for or clearly implying a specific budget change to one existing line, propose it via the suggestion field with a real entryId from the list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above.
+Reply directly to this, grounded only in the real numbers above. Weigh the campaign dates and total length shown above wherever they're relevant to the budget plan — pacing, whether spend should front-load or spread evenly, and how much runway is left. If — and only if — they're asking for or clearly implying a specific budget change to one existing line, propose it via the suggestion field with a real entryId from the list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above.
 
 Submit your response via the recommendation_dialogue_reply tool.`;
             let parsed;
@@ -21802,6 +21836,7 @@ Objective: ${campaign.objective || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
 Channels selected: ${campaign.channels || '(none yet)'}
 Status: ${campaign.status || '(not set)'}
+${formatCampaignDatesForPrompt(campaign)}
 Budget overall approved: ${campaign.budgetApprovedAt ? 'yes' : 'no'}
 Creative complete: ${campaign.creativeComplete ? 'yes' : 'no'}
 QA approved: ${campaign.qaApproved ? 'yes' : 'no'}
@@ -21818,7 +21853,7 @@ ${priorText || '(nothing yet)'}
 
 The team just said: "${message}"
 
-Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about something this data doesn't cover, say so plainly rather than guessing. Keep it conversational, not a report.
+Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
         const AI_BRAIN_REPLY_SCHEMA = {
@@ -21989,10 +22024,11 @@ Campaign objective: ${campaign.objective || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
 Channels: ${channelList}
+${formatCampaignDatesForPrompt(campaign)}
 Total planned spend: $${Math.round(totalSpend).toLocaleString()}
 Total planned impressions: ${Math.round(totalImpressions).toLocaleString()}
 
-Write 2-4 sentences a CMO would read before approving this budget: what this campaign is for, who it reaches, how the money is being spent, and what it's expected to accomplish. Plain, confident, executive language — no marketing jargon, no bullet points.`;
+Write 2-4 sentences a CMO would read before approving this budget: what this campaign is for, who it reaches, when it runs and for how long, how the money is being spent, and what it's expected to accomplish. Plain, confident, executive language — no marketing jargon, no bullet points.`;
       let parsed;
       try {
         parsed = await callClaudeForJSON({
@@ -28320,6 +28356,8 @@ try {
 }
 
 module.exports = handleRequest;
+
+
 
 
 
