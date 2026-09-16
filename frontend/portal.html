@@ -7619,18 +7619,23 @@
 
     <!-- 2026-09-15 — AI Brain Recommendation ("campaign pitch") full-screen
          presentation. Opened by cmpOpenRecommendationPitch(), closed by
-         cmpCloseRecommendationPitch(). Rendered by cmpRenderPitchLeft()/
-         cmpRenderPitchRight() — see those functions for the data flow
-         (GET pitch-summary + recommendation-comments, POST cmo-narrative,
-         the PPT export, and the client-approve/approve-budget-overall
-         actions). Left = budget/dashboards/narrative/export, per Todd's
-         "presented budget to the left"; right = the AI Brain dialogue —
-         2026-09-15 follow-on, per direct correction: "Comments are not
-         comments. They are the AI Brain dialogue with the user reviewing
-         the plan and making live changes" — a real two-way conversation
-         with its own persisted thread, not a passive comment log; see
-         cmpRenderPitchRight()'s own comment for how a reply can carry a
-         live, applicable budget suggestion. -->
+         cmpCloseRecommendationPitch(). Rendered by cmpRenderPitchLeft() —
+         see that function for the data flow (GET pitch-summary, POST
+         cmo-narrative, the PPT export, and the client-approve/approve-
+         budget-overall actions). Left = budget/dashboards/narrative/export,
+         per Todd's "presented budget to the left"; right = the same shared
+         Collaboration Center component every other workspace screen uses
+         (#cmpPitchCollabMount, mounted by cmpOpenRecommendationPitch() —
+         see that function's own comment). 2026-09-16 fix, verified against
+         the real Recommendation-Desktop.dc.html wireframe: the right panel
+         used to be a separate bespoke dialogue panel that never matched the
+         wireframe at all (own actor-role toggle, own
+         recommendation-comments backend) — this screen is only special in
+         the wireframe in that it's "the only screen where [the
+         Collaboration Center] is also the primary place to talk to the AI
+         Brain," not in having a different component. The real, working
+         budget-suggestion/Apply capability moved with it — see POST
+         /api/campaigns/:id/ai-brain-reply's own comment. -->
     <!-- 2026-09-16 — Objectives conversational AI Brain intake, pulled out
          of the old accordion into its own full-screen presentation, per
          direct correction: "Selecting Campaign Brief takes me to Life
@@ -7723,20 +7728,7 @@
       <div id="cmpPitchBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
-        <div class="cmp-pitch-right">
-          <div style="padding:14px 22px 0;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);">AI Brain Dialogue</div>
-          <div class="cmp-pitch-right-body" id="cmpPitchRightBody"></div>
-          <div class="cmp-pitch-right-input">
-            <div class="cmp-team-chat-input-row">
-              <div class="cmp-team-chat-avatar" style="background:#2F0D4D;">✦</div>
-              <textarea id="cmpRecoCommentText" rows="1" placeholder="Tell the AI Brain what to review or change…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpRecoSendComment();}"></textarea>
-            </div>
-            <div class="cmp-team-chat-toolbar">
-              <div class="cmp-template-search-row" id="cmpRecoActorRoleRow" style="margin:0;"></div>
-              <button type="button" class="btn-primary" onclick="cmpRecoSendComment()">Send</button>
-            </div>
-          </div>
-        </div>
+        <div class="cmp-workspace-collab" id="cmpPitchCollabMount" style="width:400px;flex-shrink:0;position:static;max-height:none;"></div>
       </div>
     </div>
     <div class="cmp-layout" id="cmpLayout">
@@ -10382,7 +10374,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-collab-center-brain-training-persistence-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-recommendation-collab-center-wireframe-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12035,7 +12027,14 @@ function cmpCollabNotesFor(campaign, tab){
   if (!campaign || !campaign.activityNotes) return [];
   return (campaign.activityNotes.workspace || []).filter(n => (n.tab || 'ai') === tab);
 }
-function cmpCollabAddNote(tab, text, isAi){
+// 2026-09-16 — `suggestion` param added: when the AI Brain tab is the
+// Recommendation screen's primary conversation (see
+// cmpOpenRecommendationPitch()'s own comment), a reply can carry a real,
+// applicable budget-line suggestion from POST .../ai-brain-reply, same
+// shape the old bespoke recommendation-comments dialogue used to produce.
+// Stored on the note so cmpCollabNoteRowHtml can render the "Proposed
+// change" card + Apply button per Recommendation-Desktop.dc.html's wireframe.
+function cmpCollabAddNote(tab, text, isAi, suggestion){
   const c = cmpRailLoadedCampaign();
   if (!c || !text) return;
   if (!c.activityNotes) c.activityNotes = {};
@@ -12043,7 +12042,8 @@ function cmpCollabAddNote(tab, text, isAi){
   c.activityNotes.workspace.push({
     id: `wsnote_${Math.round(performance.now())}`,
     author: isAi ? 'AI Assistant' : (cmpNoteAuthorName || 'Team member'),
-    text, isAi: !!isAi, tab, ts: Date.now()
+    text, isAi: !!isAi, tab, ts: Date.now(),
+    suggestion: (suggestion && suggestion.entryId) ? suggestion : null
   });
   cmpPersistActivityNotesToCampaign(c);
   cmpRenderCollabBody(c);
@@ -12079,7 +12079,7 @@ async function cmpCollabRequestAiReply(message){
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, priorNotes }), timeoutMs: 20000
     }, 3, 700);
-    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true);
+    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null);
   } catch (e){
     console.warn('cmpCollabRequestAiReply failed:', e);
     cmpCollabAddNote('ai', 'Something went wrong reaching the AI Brain — try again in a moment.', true);
@@ -12103,6 +12103,12 @@ async function cmpCollabRequestAiReply(message){
 // gets one at creation in cmpCollabAddNote/cmpAddAiActivityCommentary);
 // already-rated notes show what was captured instead of the buttons, so a
 // reply can't be rated twice.
+// 2026-09-16 — suggestion card added, matching Recommendation-Desktop.dc.html's
+// "Proposed change:" block exactly (channel/rationale + one Apply button),
+// now that the Recommendation screen's AI Brain conversation lives in this
+// same shared component (see cmpOpenRecommendationPitch()'s own comment).
+// Real apply, not cosmetic — calls the same cmpRecoApplySuggestion() the old
+// bespoke dialogue used, which PATCHes the real channel-planning line.
 function cmpCollabNoteRowHtml(n){
   const rateable = n.isAi && n.id;
   let ratingHtml = '';
@@ -12113,9 +12119,21 @@ function cmpCollabNoteRowHtml(n){
            <button type="button" class="btn-ghost" onclick="cmpCollabRateAiReply('${n.id}', 5)" title="This reply was helpful">👍 Helpful</button>
            <button type="button" class="btn-ghost" onclick="cmpCollabRateAiReply('${n.id}', 1)" title="This reply was not helpful">👎 Not helpful</button></div>`;
   }
+  let suggestionHtml = '';
+  if (n.suggestion && n.suggestion.entryId){
+    const sug = n.suggestion;
+    suggestionHtml = `<div class="cmp-intake-summary" style="margin-top:8px;">
+      <b>Proposed change:</b> ${escapeHtml(sug.channel || 'this line')} → ${fmtMoney(Number(sug.newBudget) || 0)}
+      ${sug.rationale ? `<br><span style="color:var(--muted);">${escapeHtml(sug.rationale)}</span>` : ''}
+      <div class="btn-row" style="margin-top:8px;">
+        <button type="button" class="btn-ghost" onclick="cmpRecoApplySuggestion('${sug.entryId}', ${Number(sug.newBudget) || 0})">Apply this change →</button>
+      </div>
+    </div>`;
+  }
   return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
     <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
     <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+    ${suggestionHtml}
     ${ratingHtml}
   </div>`;
 }
@@ -36503,7 +36521,26 @@ async function cmpFetchJsonWithRetry(url, options, maxAttempts = 3, baseDelayMs 
   for (let attempt = 1; attempt <= maxAttempts; attempt++){
     try {
       const resp = await authedFetch(url, options);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok){
+        // 2026-09-16 fix — every server.js error response on this codebase's
+        // convention already carries a real, specific message (`error`,
+        // sometimes also `detail` with the raw exception text — see e.g.
+        // GET /api/campaigns/:id/pitch-summary's catch block). This used to
+        // throw a bare `Error('HTTP 500')` and discard that body entirely,
+        // so a real, diagnosable backend error (e.g. a Postgres column
+        // mismatch) always surfaced to the user as the meaningless "HTTP
+        // 500" — exactly what happened on Todd's real "Could not load this
+        // campaign's recommendation data (HTTP 500)" report, with nothing
+        // to go on from the screen itself. Now reads the JSON body first
+        // and uses its error/detail text when present; falls back to the
+        // bare status only if the body isn't JSON or has neither field.
+        let detail = '';
+        try {
+          const body = await resp.clone().json();
+          detail = [body.error, body.detail].filter(Boolean).join(' — ');
+        } catch (parseErr) { /* body wasn't JSON — fall through to bare status below */ }
+        throw new Error(detail || `HTTP ${resp.status}`);
+      }
       return await resp.json();
     } catch (e){
       lastErr = e;
@@ -36736,7 +36773,7 @@ async function cmpIntakeStopVoice(){
 // per cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md's
 // Budget & Recommendation spec. None of these persist anywhere themselves
 // (pure view/draft state) except via the explicit Save actions below.
-let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: 'client', actorName: '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
+let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, actorRole: 'client', actorName: '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
 
 // 2026-09-15 follow-on, per Todd's real report of "Recommendations did not
 // load" against a real campaign — two fixes here, on top of the backend
@@ -36750,6 +36787,23 @@ let cmpRecoState = { campaignId: null, summary: null, loading: false, error: nul
 //    or the network error's own message) instead of one generic sentence
 //    — and a Retry button re-runs this function for the same campaign
 //    instead of requiring a full close/reopen.
+// 2026-09-16 — per direct correction against Recommendation-Desktop.dc.html
+// (the actual wireframe, extracted and read, not assumed from a sibling
+// screen): the right panel on this screen is the SAME shared Collaboration
+// Center component every other workspace screen uses (AICompanion.dc.html),
+// not a separate bespoke "AI Brain Dialogue" panel with its own
+// Account-Team/CX-Ops actor toggle — that legacy panel never matched the
+// wireframe at all. This screen is called out in the wireframe as special
+// only in that it's "the only screen where [the Collaboration Center] is
+// also the primary place to talk to the AI Brain" — a framing difference,
+// not a different component. Swaps the mount exactly the way
+// cmpOpenObjectivesIntake()/cmpCloseObjectivesIntake() already do for the
+// Objectives overlay (see cmpRenderCollabCenter()'s own comment) rather
+// than building a second copy. The real, working budget-suggestion/Apply
+// capability that used to live only in the old panel's separate
+// recommendation-comments backend now travels through the same AI Brain tab
+// — see POST /api/campaigns/:id/ai-brain-reply's own comment for how the
+// suggestion field was folded in there instead of being dropped.
 async function cmpOpenRecommendationPitch(){
   const campaign = cmpRailLoadedCampaign();
   const overlay = document.getElementById('cmpPitchOverlay');
@@ -36762,31 +36816,25 @@ async function cmpOpenRecommendationPitch(){
   if (subhead) subhead.textContent = campaign.name || campaign.id || '';
   const breadcrumb = document.getElementById('cmpPitchBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('budget');
-  const isRetry = cmpRecoState.campaignId === campaign.id && (cmpRecoState.error || cmpRecoState.commentsError);
+  cmpCollabMountId = 'cmpPitchCollabMount';
+  const hubMount = document.getElementById('cmpWorkspaceCollab');
+  if (hubMount) hubMount.innerHTML = '';
+  const objMount = document.getElementById('cmpObjectivesCollabMount');
+  if (objMount) objMount.innerHTML = '';
+  cmpRenderCollabCenter(campaign);
+  const isRetry = cmpRecoState.campaignId === campaign.id && cmpRecoState.error;
   if (cmpRecoState.campaignId !== campaign.id || isRetry){
-    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
+    cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
     cmpRenderPitchLeft(campaign);
-    cmpRenderPitchRight(campaign);
-    const [summaryResult, commentsResult] = await Promise.allSettled([
-      cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {}),
-      cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {})
-    ]);
-    if (summaryResult.status === 'fulfilled'){
-      cmpRecoState.summary = summaryResult.value;
-    } else {
-      console.warn('cmpOpenRecommendationPitch: pitch-summary load failed', summaryResult.reason);
-      cmpRecoState.error = `Could not load this campaign's recommendation data (${(summaryResult.reason && summaryResult.reason.message) || 'unknown error'}).`;
-    }
-    if (commentsResult.status === 'fulfilled'){
-      cmpRecoState.comments = commentsResult.value.comments || [];
-    } else {
-      console.warn('cmpOpenRecommendationPitch: recommendation-comments load failed', commentsResult.reason);
-      cmpRecoState.commentsError = `Could not load the AI Brain dialogue (${(commentsResult.reason && commentsResult.reason.message) || 'unknown error'}).`;
+    try {
+      cmpRecoState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
+    } catch (e){
+      console.warn('cmpOpenRecommendationPitch: pitch-summary load failed', e);
+      cmpRecoState.error = `Could not load this campaign's recommendation data (${e.message || 'unknown error'}).`;
     }
     cmpRecoState.loading = false;
   }
   cmpRenderPitchLeft(campaign);
-  cmpRenderPitchRight(campaign);
 }
 function cmpCloseRecommendationPitch(){
   const overlay = document.getElementById('cmpPitchOverlay');
@@ -36794,12 +36842,13 @@ function cmpCloseRecommendationPitch(){
   if (overlay) overlay.classList.remove('open');
   if (panel) panel.classList.remove('open');
   document.body.style.overflow = '';
-}
-
-function cmpRecoSetActorRole(role){
-  cmpRecoState.actorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
+  // 2026-09-16 — hand the Collaboration Center back to the Workspace Hub,
+  // same handoff cmpCloseObjectivesIntake() already does.
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const pitchMount = document.getElementById('cmpPitchCollabMount');
+  if (pitchMount) pitchMount.innerHTML = '';
   const campaign = cmpRailLoadedCampaign();
-  if (campaign) cmpRenderPitchRight(campaign);
+  if (campaign) cmpRenderCollabCenter(campaign);
 }
 
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
@@ -36904,43 +36953,27 @@ async function cmpRecoApproveOverall(){
   cmpOpenRecommendationPitch();
 }
 
-// 2026-09-15 follow-on, per direct correction: "Comments are not comments.
-// They are the AI Brain dialogue with the user reviewing the plan and
-// making live changes." Every send now gets a real AI Brain reply from the
-// backend (same request, one round trip — see the POST endpoint's own
-// comment for what it does), which may include a concrete budget
-// suggestion the user can apply — see cmpRecoApplySuggestion() below. The
-// response already includes the full updated thread (`comments`), so this
-// no longer needs a second GET just to refresh it.
-let cmpRecoDialogueBusy = false;
-async function cmpRecoSendComment(){
-  if (cmpRecoDialogueBusy) return;
+// 2026-09-16 — the bespoke recommendation-comments dialogue (cmpRecoSendComment/
+// cmpRecoDialogueBusy/cmpRenderPitchRight) was removed here: verified against
+// the real Recommendation-Desktop.dc.html wireframe, this screen's right
+// panel is the same shared Collaboration Center every other screen uses
+// (see cmpOpenRecommendationPitch()'s own comment), not a second bespoke
+// dialogue. Its "AI Brain" tab (cmpCollabSend/cmpCollabRequestAiReply,
+// defined earlier in this file) now carries the real conversation here too.
+// cmpRecoSetActorRole() itself stayed — it's unrelated to that dialogue
+// (see the "Acting as" row in cmpRenderPitchLeft(), where it moved).
+function cmpRecoSetActorRole(role){
+  cmpRecoState.actorRole = role === 'cx_ops' ? 'cx_ops' : 'client';
   const campaign = cmpRailLoadedCampaign();
-  const input = document.getElementById('cmpRecoCommentText');
-  const text = input ? input.value.trim() : '';
-  if (!campaign || !text) return;
-  input.value = '';
-  cmpRecoDialogueBusy = true;
-  cmpRecoState.commentsError = null;
-  cmpRenderPitchRight(campaign);
-  try {
-    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/recommendation-comments`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, authorName: cmpRecoState.actorName || (cmpRecoState.actorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'), authorRole: cmpRecoState.actorRole })
-    });
-    cmpRecoState.comments = resp.comments || cmpRecoState.comments;
-  } catch (e){
-    console.warn('cmpRecoSendComment failed:', e);
-    cmpRecoState.commentsError = `Could not send that to the AI Brain dialogue (${(e && e.message) || 'unknown error'}).`;
-  }
-  cmpRecoDialogueBusy = false;
-  cmpRenderPitchRight(campaign);
+  if (campaign) cmpRenderPitchLeft(campaign);
 }
 // Applies an AI Brain-proposed budget change via the existing, human-
 // triggered PATCH endpoint — the AI never writes the real budget itself
 // (see the backend endpoint's own comment); this is the one explicit click
 // that turns a proposal into a real change, same approval-gated posture as
-// line/overall budget approval elsewhere on this screen.
+// line/overall budget approval elsewhere on this screen. Now called from
+// the Collaboration Center's AI Brain tab (cmpCollabNoteRowHtml) instead of
+// the removed bespoke dialogue panel.
 async function cmpRecoApplySuggestion(entryId, newBudget){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
@@ -37088,6 +37121,22 @@ function cmpRenderPitchLeft(campaign){
   const audienceChanged = s.audienceDraft !== null && s.audienceDraft.slice().sort().join('|') !== audienceSaved.slice().sort().join('|');
 
   mount.innerHTML = `
+    <!-- 2026-09-16 — moved here from the old bespoke right-panel dialogue
+         (removed — see cmpOpenRecommendationPitch()'s own comment) when that
+         panel was replaced with the shared Collaboration Center, which has
+         no concept of "acting as." This toggle is unrelated to that
+         dialogue — it's the real control cmpRecoApproveLine()/
+         cmpRecoApproveOverall() gate on ("only the client's own team can
+         approve"), and every line edit/add still records who made it — so
+         it has to live somewhere on this screen regardless of which
+         component renders the conversation. -->
+    <div class="stage-row" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:0.8125rem;font-weight:700;color:var(--muted);">Acting as:</span>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="stage-tile${s.actorRole === 'client' ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetActorRole('client')">Account Team</button>
+        <button type="button" class="stage-tile${s.actorRole === 'cx_ops' ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetActorRole('cx_ops')">CX Experiences Media Ops</button>
+      </div>
+    </div>
     <div class="cmp-intake-summary" style="margin-bottom:18px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <b>Loop Stage:</b>
@@ -37120,10 +37169,9 @@ function cmpRenderPitchLeft(campaign){
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Campaign Dashboards</h3>
       <!-- 2026-09-16 — Channel/Audience toggle, per wireframe spec. Same
-           .stage-tile toggle-pair convention cmpRecoSetActorRole()'s Account
-           Team / CX Experiences Media Ops row already uses on this same
-           screen (right panel), reused here rather than inventing a second
-           toggle visual language. -->
+           .stage-tile toggle-pair convention the "Acting as" row above uses,
+           reused here rather than inventing a second toggle visual
+           language. -->
       <div style="display:flex;gap:6px;">
         <button type="button" class="stage-tile${viewingChannel ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetViewMode('channel')">Channel</button>
         <button type="button" class="stage-tile${!viewingChannel ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetViewMode('audience')">Audience</button>
@@ -37483,48 +37531,6 @@ function cmpRecoExportCsv(){
 // avatar-chip visual language as Team Collaboration; only fills the body +
 // the actor-role toggle, the input row itself is static HTML
 // (#cmpPitchPanel).
-function cmpRenderPitchRight(campaign){
-  const bodyMount = document.getElementById('cmpPitchRightBody');
-  const roleMount = document.getElementById('cmpRecoActorRoleRow');
-  const s = cmpRecoState;
-  if (roleMount){
-    roleMount.innerHTML = [['client', 'Account Team'], ['cx_ops', 'CX Experiences Media Ops']]
-      .map(([key, label]) => `<button type="button" class="stage-tile${s.actorRole === key ? ' selected' : ''}" onclick="cmpRecoSetActorRole('${key}')">${label}</button>`).join('');
-  }
-  if (!bodyMount) return;
-  if (s.loading){ bodyMount.innerHTML = `<p class="lede">Loading the AI Brain dialogue…</p>`; return; }
-  if (s.commentsError && !s.comments.length){
-    bodyMount.innerHTML = `<p class="lede">${escapeHtml(s.commentsError)}</p><div class="btn-row"><button type="button" class="btn-primary" onclick="cmpOpenRecommendationPitch()">Retry →</button></div>`;
-    return;
-  }
-  const rows = s.comments.map(c => {
-    const isAi = c.authorRole === 'ai_brain';
-    const author = isAi ? 'AI Brain' : (c.authorName || (c.authorRole === 'cx_ops' ? 'CX Experiences Media Ops' : 'Account Team'));
-    let suggestionHtml = '';
-    if (c.suggestionJson){
-      let sug = null;
-      try { sug = JSON.parse(c.suggestionJson); } catch (e) { sug = null; }
-      if (sug && sug.entryId){
-        suggestionHtml = `
-          <div class="cmp-intake-summary" style="margin-top:8px;">
-            <b>Proposed change:</b> ${escapeHtml(sug.channel || 'this line')} → ${fmtMoney(Number(sug.newBudget) || 0)}
-            ${sug.rationale ? `<br><span style="color:var(--muted);">${escapeHtml(sug.rationale)}</span>` : ''}
-            <div class="btn-row" style="margin-top:8px;">
-              <button type="button" class="btn-ghost" onclick="cmpRecoApplySuggestion('${sug.entryId}', ${Number(sug.newBudget) || 0})">Apply this change →</button>
-            </div>
-          </div>`;
-      }
-    }
-    return `<div style="display:flex;gap:10px;align-items:flex-start;">
-      <div class="cmp-team-chat-avatar" style="background:${isAi ? '#2F0D4D' : cmpAvatarColor(c.authorName || c.authorRole)};">${escapeHtml(isAi ? '✦' : cmpInitials(c.authorName || (c.authorRole === 'cx_ops' ? 'CX' : 'AT')))}</div>
-      <div><div style="font-size:0.75rem;color:var(--muted);">${escapeHtml(author)}</div><div>${escapeHtml(c.text)}</div>${suggestionHtml}</div>
-    </div>`;
-  });
-  if (cmpRecoDialogueBusy) rows.push(`<div style="display:flex;gap:10px;align-items:flex-start;"><div class="cmp-team-chat-avatar" style="background:#2F0D4D;">✦</div><div class="lede">Reviewing…</div></div>`);
-  bodyMount.innerHTML = rows.length ? rows.join('') : '<p class="lede">No dialogue yet — tell the AI Brain what you\'re reviewing or changing below.</p>';
-  bodyMount.scrollTop = bodyMount.scrollHeight;
-}
-
 // Real code does the recommending — the model only extracted intent (see
 // the backend endpoint's own comment for why). This just renders what the
 // server already computed, reusing the same .template-rec-card markup the
