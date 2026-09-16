@@ -1376,6 +1376,10 @@
   .cmp-note-meta{font-size:0.75rem;color:var(--muted);margin-bottom:2px;}
   .cmp-note-ai-badge{display:inline-block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--media);background:var(--white);border-radius:var(--radius-pill);padding:1px 7px;margin-left:4px;}
   .cmp-note-text{margin:0;font-size:0.8438rem;color:var(--ink);white-space:pre-line;}
+  .cmp-note-brain-training{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .cmp-note-brain-training-label{font-size:0.6875rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.02em;}
+  .cmp-note-brain-training-done{font-size:0.75rem;color:var(--muted);}
+  .cmp-note-brain-training button.btn-ghost{padding:2px 9px;font-size:0.75rem;}
   .cmp-note-add{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line-hairline);}
   .cmp-note-add input, .cmp-note-add textarea{font:inherit;font-size:0.8125rem;border:1px solid var(--line);border-radius:6px;padding:6px 8px;box-sizing:border-box;width:100%;resize:vertical;}
   @media (max-width:860px){
@@ -1608,6 +1612,20 @@
   .cmp-pitch-head .sub{font-size:0.8125rem;color:#CADCFC;margin-top:2px;}
   .cmp-pitch-head a{color:#FFFFFF;cursor:pointer;text-decoration:underline;font-size:0.8125rem;opacity:0.85;}
   .cmp-pitch-head a:hover{opacity:1;}
+  /* 2026-09-16 — Workspace breadcrumb, per direct instruction: a way to
+     move between steps without closing out back to the Hub first, since
+     "the cards are not separate stage experiences. They jump to a single
+     campaign experience workflow including all steps once you are in."
+     Sits as its own light bar directly under the dark .cmp-pitch-head, so
+     it reads as wayfinding for the one campaign experience rather than
+     part of either dark header. See cmpRenderWorkspaceBreadcrumb(). */
+  .cmp-breadcrumb{display:flex;align-items:center;gap:8px;padding:10px 28px;background:var(--paper-dim);border-bottom:1px solid var(--line);flex-shrink:0;flex-wrap:wrap;}
+  .cmp-breadcrumb-step{font-size:0.75rem;font-weight:600;color:var(--muted);padding:3px 10px;border-radius:var(--radius-pill);}
+  .cmp-breadcrumb-step:not(.disabled){cursor:pointer;color:var(--ink);}
+  .cmp-breadcrumb-step:not(.disabled):hover{background:var(--white);}
+  .cmp-breadcrumb-step.active{background:#1E2761;color:#FFFFFF;}
+  .cmp-breadcrumb-step.disabled{color:var(--line);cursor:default;}
+  .cmp-breadcrumb-sep{color:var(--line);font-size:0.75rem;}
   .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);}
   @media (max-width:1000px){ .cmp-pitch-body{grid-template-columns:1fr;overflow-y:auto;} }
   .cmp-pitch-left{overflow-y:auto;padding:24px 28px;border-right:1px solid var(--line);}
@@ -7643,6 +7661,7 @@
         </div>
         <a onclick="cmpCloseObjectivesIntake()">Close ✕</a>
       </div>
+      <div id="cmpObjectivesBreadcrumb"></div>
       <!-- 2026-09-16, per Objectives-Desktop.dc.html read directly (not
            guessed at): the wireframe is two columns — the dialogue on the
            left, the Collaboration Center on the right, same width (340px)
@@ -7701,6 +7720,7 @@
         </div>
         <a onclick="cmpCloseRecommendationPitch()">Close ✕</a>
       </div>
+      <div id="cmpPitchBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
         <div class="cmp-pitch-right">
@@ -10362,7 +10382,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-objectives-collab-center-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-16-collab-center-brain-training-persistence-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -11854,6 +11874,34 @@ function cmpWorkspaceCardOpen(cardKey){
   }
   openCmpStage(cmpWorkspaceCardOpenKey(card));
 }
+// 2026-09-16 — Workspace breadcrumb, per direct instruction: "Breadcrumb
+// or alternative way to get to / from steps make sense... the cards are
+// not separate stage experiences. They jump to a single campaign
+// experience workflow including all steps once you are in." Shows all 5
+// workstream cards, not just the two that exist as real standalone
+// screens yet — Creative/Trafficking/Analysis render as not-yet-available
+// rather than disappearing, since those sections are still explicitly
+// paused, not cancelled. A built step's pill routes through the exact
+// same cmpWorkspaceCardOpen() router the Workspace Hub cards already use,
+// so this is never a second, diverging navigation path.
+const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget']);
+function cmpRenderWorkspaceBreadcrumb(activeKey){
+  return `<div class="cmp-breadcrumb">${CMP_WORKSPACE_CARDS.map(card => {
+    const built = CMP_BREADCRUMB_BUILT_CARDS.has(card.key);
+    const active = card.key === activeKey;
+    if (!built) return `<span class="cmp-breadcrumb-step disabled" title="Not built yet">${escapeHtml(card.label)}</span>`;
+    return `<span class="cmp-breadcrumb-step${active ? ' active' : ''}" ${active ? '' : `onclick="cmpBreadcrumbGoTo('${card.key}')"`}>${escapeHtml(card.label)}</span>`;
+  }).join('<span class="cmp-breadcrumb-sep">›</span>')}</div>`;
+}
+// Closes whichever full-screen overlay is currently open before routing to
+// the target — two of these overlays are never meant to stack (same rule
+// cmpConfirmIntakeAndContinue() already follows). Both close functions are
+// safe no-ops when their overlay isn't the one currently open.
+function cmpBreadcrumbGoTo(cardKey){
+  cmpCloseObjectivesIntake();
+  cmpCloseRecommendationPitch();
+  cmpWorkspaceCardOpen(cardKey);
+}
 function renderCmpWorkspaceHub(campaign){
   const hub = document.getElementById('cmpWorkspaceHub');
   if (!hub) return;
@@ -11910,10 +11958,22 @@ function cmpRenderWorkspaceSwitcher(campaign){
 // toggleAskVerilumeVoiceNote() elsewhere in this file, not a silent
 // no-op button.
 let cmpCollabActiveTab = 'ai';
+// 2026-09-16 — Feedback tab removed, per direct instruction after review:
+// today's "Feedback" was mechanically identical to Team (a generic
+// persisted note, no AI party, nothing scored or fed back anywhere) —
+// exactly Todd's own diagnosis: "Figure out if Feedback should be in the
+// collaboration center or just part of the normal approval/rejecting/why
+// process already built into a variety of sections." Rather than keep a
+// tab that does nothing a rating can't do better, feedback on the AI
+// Brain's own replies now lives inline on each reply (see
+// cmpCollabRateAiReply() below), reusing this app's real, already-proven
+// AI Brain Contribution Ledger (ai_brain_contributions —
+// cxmedia-ai-brain-contribution-ledger-design-2026-08-13.md) instead of
+// inventing a parallel mechanism — labeled "Brain Training" for
+// transparency about what's captured and why.
 const CMP_COLLAB_TABS = [
   { key: 'ai', label: 'AI Brain' },
-  { key: 'team', label: 'Team' },
-  { key: 'feedback', label: 'Feedback' }
+  { key: 'team', label: 'Team' }
 ];
 // 2026-09-16 — the Objectives overlay (Objectives-Desktop.dc.html) also
 // shows this exact same Collaboration Center, per direct correction after
@@ -12028,25 +12088,70 @@ async function cmpCollabRequestAiReply(message){
     cmpRenderCollabBody(c);
   }
 }
-// "Ask AI Brain →" is now the same real conversation, just started with a
-// default status question instead of requiring the user to type one —
-// no separate canned-status code path anymore.
-function cmpCollabAskAiBrain(){
-  cmpCollabRequestAiReply("What's the current status of this campaign, and what still needs a decision from us?");
-}
+// 2026-09-16 — "Ask AI Brain →" removed. It was a second, redundant path
+// to the exact same thing Send already does on this tab (typing anything
+// and hitting Send already gets a real AI Brain reply) — the confusion
+// Todd reported directly: "The Collaboration center still shows Send and
+// Ask Ai Brain. I still don't understand SEND at this point." One path
+// now: Send.
+//
+// 2026-09-16 — "Brain Training" inline rating on AI Brain replies,
+// replacing the removed generic Feedback tab. Reuses the real AI Brain
+// Contribution Ledger (see POST /api/campaigns/:id/ai-brain-reply-feedback
+// in server.js for the full reasoning) rather than a parallel mechanism.
+// A note is rateable once it has both isAi and a stable id (every note
+// gets one at creation in cmpCollabAddNote/cmpAddAiActivityCommentary);
+// already-rated notes show what was captured instead of the buttons, so a
+// reply can't be rated twice.
 function cmpCollabNoteRowHtml(n){
+  const rateable = n.isAi && n.id;
+  let ratingHtml = '';
+  if (rateable){
+    ratingHtml = n.brainTrainingRating
+      ? `<div class="cmp-note-brain-training"><span class="cmp-note-brain-training-done">Brain Training: ${n.brainTrainingRating >= 3 ? 'Helpful 👍' : 'Not helpful 👎'}${n.brainTrainingNote ? ` — "${escapeHtml(n.brainTrainingNote)}"` : ''}</span></div>`
+      : `<div class="cmp-note-brain-training"><span class="cmp-note-brain-training-label">Brain Training —</span>
+           <button type="button" class="btn-ghost" onclick="cmpCollabRateAiReply('${n.id}', 5)" title="This reply was helpful">👍 Helpful</button>
+           <button type="button" class="btn-ghost" onclick="cmpCollabRateAiReply('${n.id}', 1)" title="This reply was not helpful">👎 Not helpful</button></div>`;
+  }
   return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
     <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
     <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+    ${ratingHtml}
   </div>`;
 }
-function cmpCollabComposerHtml(tab, placeholder, askAi){
-  const thinking = askAi && cmpCollabAiBusy;
+// 2026-09-16 — thumbs-up submits immediately (no friction on positive
+// reinforcement); thumbs-down asks for an optional one-line reason first,
+// same "reason wanted on the negative case, optional on the positive one"
+// convention the ledger's existing Remove-requires-a-reason rule already
+// established elsewhere in this app. Marks the note rated locally (and
+// persists that back onto the campaign, same real activityNotesJson
+// mechanism as everything else here) so it can't be rated twice.
+async function cmpCollabRateAiReply(noteId, rating){
+  const c = cmpRailLoadedCampaign();
+  if (!c || !c.activityNotes) return;
+  const note = (c.activityNotes.workspace || []).find(n => n.id === noteId);
+  if (!note || note.brainTrainingRating) return;
+  let reason = null;
+  if (rating < 3) reason = window.prompt('What was wrong with this reply? (optional — helps Brain Training)') || null;
+  try {
+    await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/ai-brain-reply-feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qualityRating: rating, replyText: note.text, reason, decidedBy: state.userName || '' })
+    }, 2, 500);
+    note.brainTrainingRating = rating;
+    if (reason) note.brainTrainingNote = reason;
+    cmpPersistActivityNotesToCampaign(c);
+    cmpRenderCollabBody(c);
+  } catch (e){
+    console.warn('cmpCollabRateAiReply failed — rating not saved:', e);
+  }
+}
+function cmpCollabComposerHtml(tab, placeholder){
+  const thinking = tab === 'ai' && cmpCollabAiBusy;
   return `<div class="cmp-note-add">
     <textarea id="cmpCollabInput_${tab}" rows="2" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
     <div class="btn-row" style="margin:2px 0 0;">
       <button type="button" class="btn-ghost" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')">${thinking ? 'AI Brain is thinking…' : 'Send'}</button>
-      ${askAi ? `<button type="button" class="btn-ghost" ${thinking ? 'disabled' : ''} onclick="cmpCollabAskAiBrain()">Ask AI Brain →</button>` : ''}
     </div>
   </div>`;
 }
@@ -12056,33 +12161,26 @@ function cmpRenderCollabBody(campaign){
   if (!campaign){ body.innerHTML = `<div class="cmp-collab-empty">Load a campaign to use the Collaboration Center.</div>`; return; }
   if (cmpCollabActiveTab === 'ai'){
     const notes = cmpCollabNotesFor(campaign, 'ai');
-    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — ask it for a read on where this campaign stands, or send it a question.</div>`)
-      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…', true);
+    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — send it a question about this campaign to start.</div>`)
+      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…');
     return;
   }
-  if (cmpCollabActiveTab === 'team'){
-    const team = state.team || [];
-    const teamHtml = team.length ? team.map(m => {
-      const initials = (m.name || '?').split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
-      return `<div class="cmp-collab-team-row">
-        <div class="cmp-collab-team-avatar">${escapeHtml(initials || '?')}</div>
-        <div>
-          <div class="cmp-collab-team-name">${escapeHtml(m.name || 'Unnamed')}</div>
-          <div class="cmp-collab-team-role">${escapeHtml(m.functionGroup || 'No function group set')}</div>
-        </div>
-      </div>`;
-    }).join('') : `<div class="cmp-collab-empty">No team members on file for this account yet — add them under Company Profile &amp; Team.</div>`;
-    const notes = cmpCollabNotesFor(campaign, 'team');
-    body.innerHTML = teamHtml + (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : '')
-      + cmpCollabComposerHtml('team', 'Add a note for the team…', false);
-    return;
-  }
-  // Feedback tab — its own composer/thread, same real persisted mechanism,
-  // just filtered to tab:'feedback'. Starts empty on every campaign, same
-  // as every other new thread here; not pre-seeded with fabricated content.
-  const notes = cmpCollabNotesFor(campaign, 'feedback');
-  body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">Nothing flagged yet.</div>`)
-    + cmpCollabComposerHtml('feedback', 'Flag something for the team…', false);
+  // Team tab — Feedback tab removed 2026-09-16 (see cmpCollabNoteRowHtml's
+  // comment above); this is now the only other tab besides AI Brain.
+  const team = state.team || [];
+  const teamHtml = team.length ? team.map(m => {
+    const initials = (m.name || '?').split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+    return `<div class="cmp-collab-team-row">
+      <div class="cmp-collab-team-avatar">${escapeHtml(initials || '?')}</div>
+      <div>
+        <div class="cmp-collab-team-name">${escapeHtml(m.name || 'Unnamed')}</div>
+        <div class="cmp-collab-team-role">${escapeHtml(m.functionGroup || 'No function group set')}</div>
+      </div>
+    </div>`;
+  }).join('') : `<div class="cmp-collab-empty">No team members on file for this account yet — add them under Company Profile &amp; Team.</div>`;
+  const notes = cmpCollabNotesFor(campaign, 'team');
+  body.innerHTML = teamHtml + (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : '')
+    + cmpCollabComposerHtml('team', 'Add a note for the team…');
 }
 
 function renderCmpStageRail(){
@@ -23024,6 +23122,18 @@ async function loadCampaigns(){
         if (c.channelCopyVersionsJson){
           try { c.channelCopyVersions = JSON.parse(c.channelCopyVersionsJson); }
           catch (e){ console.warn('loadCampaigns: could not parse channelCopyVersionsJson for', c.id, e); }
+        }
+        // 2026-09-16 — real bug fix: activityNotesJson (every accordion
+        // stage's Notes panel, plus the Workspace Hub Collaboration
+        // Center's AI Brain/Team/Feedback threads) was never actually
+        // persisted server-side — see ensureColumn('campaigns',
+        // 'activityNotesJson', ...)'s comment in server.js. Now that the
+        // column and the merge-update endpoint field both exist for real,
+        // hydrate it back into c.activityNotes here, same raw-string-column
+        // pattern as mediaMixJson/channelCopyVersionsJson just above.
+        if (c.activityNotesJson){
+          try { c.activityNotes = JSON.parse(c.activityNotesJson); }
+          catch (e){ console.warn('loadCampaigns: could not parse activityNotesJson for', c.id, e); }
         }
       });
       state.campaigns = campaigns;
@@ -36157,6 +36267,8 @@ function cmpOpenObjectivesIntake(){
   document.body.style.overflow = 'hidden';
   const subhead = document.getElementById('cmpObjectivesSubhead');
   if (subhead) subhead.textContent = campaign.name || campaign.id || '';
+  const breadcrumb = document.getElementById('cmpObjectivesBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('objectives');
   renderCmpPickupStage();
   renderCmpStageRail();
   // 2026-09-16 — Collaboration Center moves into this overlay while it's
@@ -36292,25 +36404,48 @@ let cmpIntakeLastExtracted = null;
 // survives in-app stage navigation (this module-level array only resets
 // below when the loaded campaign itself changes) — but a real browser
 // reload or a "navigate back" that leaves and returns to the portal used to
-// lose it outright, since nothing ever persisted it. Best-effort
-// localStorage persistence closes that gap without a backend/DB change:
-// keyed per campaign, capped, and wrapped in try/catch (same
-// graceful-degrade posture as every other localStorage use in this file —
-// see sessionStorageKey()/cwLastUsedStorageKey() above). If storage is
-// unavailable (private window, quota, etc.) the conversation still works
-// for the current page session, it just won't survive a reload.
+// lose it outright.
+//
+// 2026-09-16 REWRITE, per Todd's direct instruction ("Set it up to retain
+// existing work so users have context always"): this used to be
+// localStorage-only, which meant the conversation never survived a
+// different device, a cleared browser, or a teammate opening the same
+// campaign elsewhere — exactly the gap Todd flagged. Now mirrors into the
+// same real, backend-persisted c.activityNotes mechanism the Collaboration
+// Center uses (cmpPersistActivityNotesToCampaign() — see that function's
+// own comment for the real activityNotesJson bug this round also fixed;
+// without that fix, this would have been persisting to a field the
+// backend silently dropped). Stored under its own 'objectivesIntake' key,
+// separate from the Collaboration Center's 'workspace' key and every
+// per-stage accordion key, since this is a distinct transcript with its
+// own {role, text} shape. localStorage stays as a same-page-session
+// fallback only, in case the backend write is in flight or unreachable —
+// it is no longer the primary store.
 function cmpIntakeStorageKey(campaignId){
   return `cmpIntakeHistory:${campaignId}`;
 }
 function cmpSaveIntakeHistory(){
   if (!cmpIntakeCampaignId) return;
-  try {
-    // Capped at the last 40 turns — plenty for continuity, bounded so a
-    // very long-lived campaign conversation can't grow this unboundedly.
-    localStorage.setItem(cmpIntakeStorageKey(cmpIntakeCampaignId), JSON.stringify(cmpIntakeHistory.slice(-40)));
-  } catch (e) { /* localStorage unavailable — conversation still works this page session */ }
+  // Capped at the last 40 turns — plenty for continuity, bounded so a very
+  // long-lived campaign conversation can't grow this unboundedly.
+  const capped = cmpIntakeHistory.slice(-40);
+  try { localStorage.setItem(cmpIntakeStorageKey(cmpIntakeCampaignId), JSON.stringify(capped)); }
+  catch (e) { /* localStorage unavailable — conversation still works this page session */ }
+  const c = state.campaigns.find(x => x.id === cmpIntakeCampaignId);
+  if (!c) return; // nothing loaded yet to attach this to (e.g. very first render before campaigns finish loading)
+  if (!c.activityNotes) c.activityNotes = {};
+  c.activityNotes.objectivesIntake = capped;
+  cmpPersistActivityNotesToCampaign(c);
 }
 function cmpLoadIntakeHistory(campaignId){
+  // Backend-hydrated copy (real persistence, survives across devices/
+  // teammates) takes priority whenever it has anything; localStorage is
+  // only the fallback for a turn that hasn't round-tripped to the backend
+  // yet (or never will, e.g. private browsing).
+  const c = state.campaigns.find(x => x.id === campaignId);
+  if (c && c.activityNotes && Array.isArray(c.activityNotes.objectivesIntake) && c.activityNotes.objectivesIntake.length){
+    return c.activityNotes.objectivesIntake;
+  }
   try {
     const raw = localStorage.getItem(cmpIntakeStorageKey(campaignId));
     if (!raw) return [];
@@ -36625,6 +36760,8 @@ async function cmpOpenRecommendationPitch(){
   document.body.style.overflow = 'hidden';
   const subhead = document.getElementById('cmpPitchSubhead');
   if (subhead) subhead.textContent = campaign.name || campaign.id || '';
+  const breadcrumb = document.getElementById('cmpPitchBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('budget');
   const isRetry = cmpRecoState.campaignId === campaign.id && (cmpRecoState.error || cmpRecoState.commentsError);
   if (cmpRecoState.campaignId !== campaign.id || isRetry){
     cmpRecoState = { campaignId: campaign.id, summary: null, loading: true, error: null, narrative: null, narrativeLoading: false, narrativeError: null, comments: [], commentsError: null, actorRole: cmpRecoState.actorRole || 'client', actorName: cmpRecoState.actorName || '', pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
