@@ -10431,7 +10431,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-16-workspace-hub-shell-consistency-round17';
+const CXMEDIA_BUILD_STAMP = '2026-09-17-apply-stage-actually-persists';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -36581,6 +36581,9 @@ let cmpIntakeHistory = [];
 let cmpIntakeCampaignId = null;
 let cmpIntakeBusy = false;
 let cmpIntakeLastExtracted = null;
+let cmpIntakeLastRecs = []; // 2026-09-17 — kept alongside cmpIntakeLastExtracted so cmpApplyIntakeStage() can re-render the recommendations block (button → confirmation) without losing the "Use as template" cards
+let cmpIntakeStageApplying = false;
+let cmpIntakeStageApplied = null; // the stage value that was actually persisted, once cmpApplyIntakeStage() succeeds — drives the confirmation state in cmpRenderIntakeRecommendations()
 // 2026-09-15 follow-on, per direct instruction: "Maintain the original
 // dialogue when someone navigates back and maintain the thread as they move
 // forward from page to page for continuity." The conversation already
@@ -36646,6 +36649,8 @@ function cmpMaybeResetIntake(campaignId){
   cmpIntakeCampaignId = campaignId;
   cmpIntakeHistory = cmpLoadIntakeHistory(campaignId);
   cmpIntakeLastExtracted = null;
+  cmpIntakeLastRecs = [];
+  cmpIntakeStageApplied = null;
   cmpRenderIntakeChat();
   const recEl = document.getElementById('cmpIntakeRecommendations');
   if (recEl) recEl.innerHTML = '';
@@ -36748,7 +36753,9 @@ async function cmpIntakeExchange(message){
     cmpIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
     if (data.readyToRecommend && data.extracted){
       cmpIntakeLastExtracted = data.extracted;
-      cmpRenderIntakeRecommendations(data.extracted, data.recommendedCampaigns || []);
+      cmpIntakeLastRecs = data.recommendedCampaigns || [];
+      cmpIntakeStageApplied = null; // a fresh extraction this turn — any earlier "Applied" confirmation no longer describes the current suggestion
+      cmpRenderIntakeRecommendations(data.extracted, cmpIntakeLastRecs);
     }
   } catch (e){
     cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search above to pick a different starting campaign.' });
@@ -37842,15 +37849,27 @@ function cmpRecoExportCsv(){
 // the backend endpoint's own comment for why). This just renders what the
 // server already computed, reusing the same .template-rec-card markup the
 // manual recommendation row below uses, plus the extracted-goal summary
-// and a real "apply" action for the Lifecycle Stage guess (via the
-// existing toggleStage(), the exact function a manual tile click already
-// calls — not a parallel, unverified path).
+// and a real "apply" action for the Lifecycle Stage guess.
+// 2026-09-17 fix, per Todd's direct report ("Apply Stage was clicked
+// multiple times. We need to check to make sure that it works") — it
+// didn't. cmpApplyIntakeStage() used to call toggleStage(), which only
+// mutates the CREATE CAMPAIGN FORM's own in-memory selectedStage global
+// and never makes a network call — it only ever persists if that same
+// form happens to be open for this exact campaign and its own Save button
+// is clicked later. From this overlay (opened against
+// cmpRailLoadedCampaign(), not necessarily that form), it silently did
+// nothing durable, which is exactly what the Antarctica campaign's `stage`
+// staying blank after repeated clicks confirmed in the database. Fixed
+// below to persist directly via the same POST merge-update endpoint
+// cmpRecoSaveLoopStage() already uses, independent of whatever form state
+// happens to exist, and to show a real confirmation (or error) instead of
+// silently doing nothing visible either way.
 function cmpRenderIntakeRecommendations(extracted, recs){
   const mount = document.getElementById('cmpIntakeRecommendations');
   if (!mount) return;
-  const stageBtn = extracted.stageRecommendation
-    ? `<button type="button" class="btn-ghost" onclick="cmpApplyIntakeStage('${extracted.stageRecommendation}')">Apply Stage: ${escapeHtml(extracted.stageRecommendation)} →</button>`
-    : '';
+  const stageBtn = !extracted.stageRecommendation ? '' : (cmpIntakeStageApplied === extracted.stageRecommendation
+    ? `<span class="hint" style="color:var(--advocacy);">✓ Applied — this campaign's Loop Stage is now ${escapeHtml(extracted.stageRecommendation)}</span>`
+    : `<button type="button" class="btn-ghost" ${cmpIntakeStageApplying ? 'disabled' : ''} onclick="cmpApplyIntakeStage('${extracted.stageRecommendation}')">${cmpIntakeStageApplying ? 'Applying…' : `Apply Stage: ${escapeHtml(extracted.stageRecommendation)} →`}</button>`);
   mount.innerHTML = `
     <div class="cmp-intake-summary">
       <b>What the AI Brain heard:</b> ${escapeHtml(extracted.goalSummary || '(no summary)')}
@@ -37891,10 +37910,32 @@ async function cmpConfirmIntakeAndContinue(){
   // the step that was missing entirely: nothing ever turned a completed
   // Objectives conversation into a real, persisted channel/budget
   // recommendation, so the Recommendation screen had nothing of its own to
-  // show even after a real, detailed conversation. See
-  // cmpGenerateAndPersistRecommendation()'s own comment for what it does
-  // and doesn't do.
-  if (campaign) { try { await cmpGenerateAndPersistRecommendation(campaign); } catch (e) { console.warn('cmpGenerateAndPersistRecommendation failed:', e); } }
+  // show even after a real, detailed conversation.
+  // 2026-09-17, per Todd's follow-up correction on the real Antarctica test
+  // (the fallback below only ever produced a generic 2-channel placeholder,
+  // and "You recommended Consideration in the approved summary" — clicking
+  // "Looks good" IS the approval, not a separate "Apply Stage" click):
+  // try the real, conversation-grounded backend generator FIRST — it reads
+  // this campaign's actual saved Objectives transcript and extracts the
+  // specific plan that conversation worked out, and applies the AI Brain's
+  // suggested Lifecycle Stage as part of that same step. Only falls back to
+  // the old generic stage-weighted guess (cmpGenerateAndPersistRecommendation)
+  // when the backend reports there's no real conversation to extract from
+  // (e.g. a campaign whose recommendation was requested some other way).
+  if (campaign){
+    let handled = false;
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/generate-recommendation-from-intake`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      if (resp.ok){
+        const data = await resp.json();
+        if (data.generated) handled = true; // real plan saved from the conversation — never also run the generic fallback
+        else if (data.reason && data.reason.indexOf('already has a channel plan') !== -1) handled = true; // existing plan — don't touch it
+      }
+    } catch (e){ console.warn('generate-recommendation-from-intake failed:', e); }
+    if (!handled){
+      try { await cmpGenerateAndPersistRecommendation(campaign); } catch (e) { console.warn('cmpGenerateAndPersistRecommendation failed:', e); }
+    }
+  }
   if (typeof cmpOpenRecommendationPitch === 'function') cmpOpenRecommendationPitch();
 }
 // Builds a real channel/budget recommendation from this campaign's own
@@ -37953,10 +37994,27 @@ async function cmpGenerateAndPersistRecommendation(campaign){
 // that stage's own comment), and overwriting it here would fight that
 // recompute rather than cooperate with it. The goal summary/KPI stay
 // visible in the conversation itself as the real context instead.
-function cmpApplyIntakeStage(stage){
-  if (typeof toggleStage !== 'function') return;
-  if (selectedStage !== stage) toggleStage(stage);
-  openCmpStage('lifecycle');
+async function cmpApplyIntakeStage(stage){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  cmpIntakeStageApplying = true;
+  cmpRenderIntakeRecommendations(cmpIntakeLastExtracted || { stageRecommendation: stage }, cmpIntakeLastRecs);
+  let ok = false;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage })
+    });
+    ok = resp.ok;
+    if (ok) campaign.stage = stage; // keep this session's copy in sync without a full reload
+  } catch (e){ console.warn('cmpApplyIntakeStage failed:', e); }
+  cmpIntakeStageApplying = false;
+  if (ok){
+    cmpIntakeStageApplied = stage;
+  } else {
+    alert('Could not save the Lifecycle Stage — check your connection and try again.');
+  }
+  cmpRenderIntakeRecommendations(cmpIntakeLastExtracted || { stageRecommendation: stage }, cmpIntakeLastRecs);
 }
 
 // ---------------------------------------------------------------------
