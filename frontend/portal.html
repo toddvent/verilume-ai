@@ -10431,7 +10431,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-17-apply-stage-actually-persists';
+const CXMEDIA_BUILD_STAMP = '2026-09-17-multistage-account-media-mix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -37029,10 +37029,22 @@ function cmpCloseRecommendationPitch(){
 // markup the account-level Marketing Loop Spend Distribution card uses
 // (renderMarketingLoopChart() above), just scoped to this one campaign
 // instead of the whole account.
+// 2026-09-17 — real per-line rollup, per Todd's direct correction: "it
+// shouldn't be limited to funnel stage. The recommendation is based on
+// the entire account media mix needed to achieve the goals. This
+// campaign has a loyalty spend allocation and consideration." Before
+// this, the chart dumped 100% of spend into whichever single
+// summary.loopStage the CAMPAIGN carried — a campaign genuinely running
+// both a Loyalty reactivation push and a Consideration acquisition push
+// at once could never show that split. summary.stageTotals (GET
+// pitch-summary, server.js) is the real rollup across each line item's
+// OWN stage (falling back to the campaign-level stage only for lines
+// that never got one), so this now reflects the actual mix.
 function cmpRecoLoopStageRows(summary){
+  const totals = summary.stageTotals || {};
   return MEDIA_LOOP_STAGES.map(st => ({
     label: st,
-    value: (st === summary.loopStage) ? summary.totalSpend : 0,
+    value: Math.round(totals[st] || 0),
     color: STAGE_LOOP_COLORS[st]
   }));
 }
@@ -37322,6 +37334,20 @@ function cmpRenderPitchLeft(campaign){
           : `<span>${escapeHtml(campaign.stage || '(not set)')}</span><button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditLoopStage()">Edit</button>`}
       </div>
       ${s.stageSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.stageSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.stageSaveBanner.text)}</div>` : ''}
+      <!-- 2026-09-17 — per Todd's direct correction: this campaign's real
+           media mix can span more than one Lifecycle Stage at once (his
+           example: a Loyalty allocation AND a Consideration allocation in
+           the same campaign). The single "Loop Stage" field above stays as
+           the campaign-level rollup label, but whenever more than one
+           stage actually carries budget (summary.stageTotals, computed
+           per line item server-side), show the real breakdown here rather
+           than letting the single label imply the whole campaign is one
+           stage. -->
+      ${(() => {
+        const stEntries = Object.entries(summary.stageTotals || {}).filter(([, v]) => v > 0);
+        if (stEntries.length < 2) return '';
+        return `<div class="hint" style="margin-top:6px;">Media mix spans ${stEntries.length} stages: ${stEntries.map(([st, v]) => `${escapeHtml(st)} (${fmtMoney(v)})`).join(', ')}</div>`;
+      })()}
       <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <b>Audience:</b>
         ${s.editingAudience
@@ -37427,11 +37453,20 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   const items = (!regionFilter || regionFilter === 'all') ? allItems : allItems.filter(l => (l.region || 'US') === regionFilter);
   const s = cmpRecoState;
   const regionOptionsHtml = (selected) => CMP_SPEND_REGIONS.map(r => `<option value="${escapeHtml(r)}" ${r === selected ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('');
+  // 2026-09-17 — per-line Lifecycle Stage picker, per Todd's direct
+  // correction that the recommendation reflects the whole account media
+  // mix, not one funnel stage per campaign. Same pattern as the Region
+  // column beside it: '(unset)' falls back to the campaign's own Loop
+  // Stage everywhere this line's stage is read (see server.js's
+  // stageTotals rollup), so leaving it unset on an older or manually-added
+  // line never drops it out of the Loop Stage Distribution chart.
+  const stageOptionsForRow = (selected) => `<option value="" ${!selected ? 'selected' : ''}>(unset — uses campaign default)</option>` + MEDIA_LOOP_STAGES.map(st => `<option value="${escapeHtml(st)}" ${st === selected ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('');
   const rowHtml = (l) => {
     if (s.editingLineItemId === l.id){
       return `
         <tr>
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditChannel_${l.id}">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}" ${c === l.channel ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></div></td>
+          <td><div class="field" style="margin:0;"><select id="cmpRecoEditStage_${l.id}">${stageOptionsForRow(l.stage || '')}</select></div></td>
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditRegion_${l.id}">${regionOptionsHtml(l.region || 'US')}</select></div></td>
           <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditBudget_${l.id}" value="${Number(l.budget) || 0}" min="0" step="1"></div></td>
           <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditImpressions_${l.id}" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1"></div></td>
@@ -37444,6 +37479,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
     return `
       <tr>
         <td>${escapeHtml(l.channel || '')}</td>
+        <td>${escapeHtml(l.stage || '(campaign default)')}</td>
         <td>${escapeHtml(l.region || 'US')}</td>
         <td>${fmtMoney(Number(l.budget) || 0)}</td>
         <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
@@ -37457,6 +37493,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   const addRowHtml = s.addingLine ? `
     <tr>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewChannel">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></div></td>
+      <td><div class="field" style="margin:0;"><select id="cmpRecoNewStage">${stageOptionsForRow('')}</select></div></td>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewRegion">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></div></td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewBudget" value="0" min="0" step="1"></div></td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewImpressions" value="0" min="0" step="1"></div></td>
@@ -37470,7 +37507,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
     : `<p class="lede">No channel plan lines entered for this campaign yet.</p>`;
   const table = items.length || s.addingLine ? `
     <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
-      <thead><tr><th>Channel</th><th>Region</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
+      <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
       <tbody>${items.map(rowHtml).join('')}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
@@ -37738,11 +37775,13 @@ async function cmpRecoSaveLineEdit(entryId){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
   const channelEl = document.getElementById(`cmpRecoEditChannel_${entryId}`);
+  const stageEl = document.getElementById(`cmpRecoEditStage_${entryId}`);
   const regionEl = document.getElementById(`cmpRecoEditRegion_${entryId}`);
   const budgetEl = document.getElementById(`cmpRecoEditBudget_${entryId}`);
   const impressionsEl = document.getElementById(`cmpRecoEditImpressions_${entryId}`);
   const payload = {
     channel: channelEl ? channelEl.value : undefined,
+    stage: stageEl ? (stageEl.value || null) : undefined,
     region: regionEl ? regionEl.value : undefined,
     budget: budgetEl ? Number(budgetEl.value) || 0 : undefined,
     impressions: impressionsEl ? Number(impressionsEl.value) || 0 : undefined
@@ -37791,11 +37830,13 @@ async function cmpRecoSaveNewChannel(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
   const channelEl = document.getElementById('cmpRecoNewChannel');
+  const stageEl = document.getElementById('cmpRecoNewStage');
   const regionEl = document.getElementById('cmpRecoNewRegion');
   const budgetEl = document.getElementById('cmpRecoNewBudget');
   const impressionsEl = document.getElementById('cmpRecoNewImpressions');
   const payload = {
     channel: channelEl ? channelEl.value : '',
+    stage: stageEl ? (stageEl.value || null) : null,
     region: regionEl ? regionEl.value : 'US',
     budget: budgetEl ? Number(budgetEl.value) || 0 : 0,
     impressions: impressionsEl ? Number(impressionsEl.value) || 0 : 0
