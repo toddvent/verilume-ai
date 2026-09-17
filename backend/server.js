@@ -1751,6 +1751,10 @@ ensureColumn('channel_planning_details', 'clientApprovedBy', 'TEXT');
 // column existed) reads back as US via COALESCE at the query sites below,
 // never a blank/unknown region.
 ensureColumn('channel_planning_details', 'region', 'TEXT');
+// 2026-09-17 — per-line-item Lifecycle Stage (see normalizeChannelPlanningStage
+// in the request-handling closure for why this exists: one campaign's media
+// mix can span more than one stage at once).
+ensureColumn('channel_planning_details', 'stage', 'TEXT');
 
 // 2026-09-16 — REAL BUG FOUND while building "retain existing work" per
 // Todd's direct instruction: campaigns.activityNotesJson was referenced by
@@ -21391,6 +21395,26 @@ Submit your response via the campaign_intake_turn tool.`;
     function normalizeChannelPlanningRegion(value){
       return CHANNEL_PLANNING_REGIONS.includes(value) ? value : 'US';
     }
+    // normalizeChannelPlanningStage: 2026-09-17, per Todd's direct
+    // correction that the recommendation "shouldn't be limited to funnel
+    // stage" — a campaign is one account-level media mix, and a single
+    // campaign can legitimately carry spend at more than one Lifecycle
+    // Stage at once (his example: this same campaign has both a Loyalty
+    // allocation and a Consideration allocation). Before this, the ONLY
+    // place a stage lived was campaigns.stage — one value for the whole
+    // campaign — so a two-stage plan had nowhere real to record its split
+    // and every chart that broke spend out "by stage" (cmpRecoLoopStageRows)
+    // could only ever show 100% in one bucket. This column puts the stage
+    // on the LINE ITEM instead, so each channel/budget row can carry its
+    // own stage. Unlike region (which always normalizes to a real value,
+    // defaulting to 'US'), a line with no stage set returns null here and
+    // callers fall back to the campaign's own `stage` field — so every
+    // pre-2026-09-17 row (and any manually-added row where nobody picked a
+    // stage) keeps behaving exactly as it did before this column existed.
+    const CHANNEL_PLANNING_STAGES = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
+    function normalizeChannelPlanningStage(value){
+      return CHANNEL_PLANNING_STAGES.includes(value) ? value : null;
+    }
 
     function serializeChannelPlanningRow(row){
       const actualCalls = row.actualCalls === null || row.actualCalls === undefined ? null : Number(row.actualCalls);
@@ -21416,7 +21440,14 @@ Submit your response via the campaign_intake_turn tool.`;
         // existed reads back null from the DB — normalized to 'US' here so
         // no caller (the pitch screen's region toggle, the AI Brain prompt,
         // CSV export) ever has to special-case a blank region.
-        region: normalizeChannelPlanningRegion(row.region)
+        region: normalizeChannelPlanningRegion(row.region),
+        // 2026-09-17 — per-line Lifecycle Stage (see normalizeChannelPlanningStage).
+        // Unlike region, left as real null when unset rather than forced to
+        // a default — an unstamped line has no stage opinion yet, and
+        // callers (cmpRecoLoopStageRows, the Add/Edit Channel row) fall
+        // back to the campaign-level stage themselves where that's the
+        // right behavior.
+        stage: normalizeChannelPlanningStage(row.stage)
       };
     }
 
@@ -21459,11 +21490,12 @@ Submit your response via the campaign_intake_turn tool.`;
       const entryId = generateId('CPD');
       const now = new Date().toISOString();
       const region = normalizeChannelPlanningRegion(body.region);
+      const stage = normalizeChannelPlanningStage(body.stage);
       db.prepare(`INSERT INTO channel_planning_details
         (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
          dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
-         status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, projectNumber, region, createdAt, updatedAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, projectNumber, region, stage, createdAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         entryId, campaignId, body.allocationId || null, body.channel,
         body.partner || null, body.audience || null, body.buyType || null, body.mediaType || null,
@@ -21474,7 +21506,7 @@ Submit your response via the campaign_intake_turn tool.`;
         JSON.stringify(detailsJson), status,
         actorRole, actorName, actorRole, actorName,
         typeof body.projectNumber === 'string' ? body.projectNumber : (body.projectNumber || null),
-        region, now, now
+        region, stage, now, now
       );
       return { entryId, campaignId };
     }
@@ -21585,6 +21617,11 @@ Submit your response via the campaign_intake_turn tool.`;
         creativeMarket: body.creativeMarket !== undefined ? body.creativeMarket : existing.creativeMarket,
         budget: body.budget !== undefined ? body.budget : existing.budget,
         region: body.region !== undefined ? normalizeChannelPlanningRegion(body.region) : normalizeChannelPlanningRegion(existing.region),
+        // 2026-09-17 — per-line Lifecycle Stage (see normalizeChannelPlanningStage).
+        // Unlike region, a cleared/invalid value is allowed to fall back to
+        // null (not forced to a default) so a line can be explicitly
+        // "unspecified stage" rather than always landing on one real value.
+        stage: body.stage !== undefined ? normalizeChannelPlanningStage(body.stage) : normalizeChannelPlanningStage(existing.stage),
         status,
         // 2026-09-13 — Publisher/Vendor Performance actuals (see the
         // ensureColumn block above for the "why this table" reasoning).
@@ -21598,7 +21635,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const now = new Date().toISOString();
       db.prepare(`UPDATE channel_planning_details SET
           allocationId = ?, channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?,
-          dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, region = ?,
+          dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, region = ?, stage = ?,
           detailsJson = ?, status = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ?,
           actualCalls = ?, actualQrScans = ?, actualUrlVisits = ?, actualLeads = ?,
           actualsEnteredByRole = CASE WHEN ? THEN ? ELSE actualsEnteredByRole END,
@@ -21607,7 +21644,7 @@ Submit your response via the campaign_intake_turn tool.`;
         WHERE id = ?`
       ).run(
         merged.allocationId, merged.channel, merged.partner, merged.audience, merged.buyType, merged.mediaType, merged.impressions,
-        merged.dropDate, merged.hitDate, merged.endDate, merged.productYear, merged.productGroup, merged.creativeMarket, merged.budget, merged.region,
+        merged.dropDate, merged.hitDate, merged.endDate, merged.productYear, merged.productGroup, merged.creativeMarket, merged.budget, merged.region, merged.stage,
         JSON.stringify(mergedDetails), merged.status, actorRole, actorName, now,
         typeof merged.actualCalls === 'number' ? merged.actualCalls : null,
         typeof merged.actualQrScans === 'number' ? merged.actualQrScans : null,
@@ -21623,6 +21660,155 @@ Submit your response via the campaign_intake_turn tool.`;
       // needs the same resync a fresh insert gets.
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
       return sendJson(res, 200, { updatedAt: now });
+    }
+
+    // POST /api/campaigns/:id/generate-recommendation-from-intake —
+    // 2026-09-17, per Todd's direct correction on the Antarctica test
+    // campaign: the old fallback (cmpGenerateAndPersistRecommendation() on
+    // the frontend) only ever produced a generic 2-channel placeholder
+    // (Brand Search + Remarketing, budget split evenly) because it depends
+    // entirely on campaign.stage/segment being set, and reads nothing from
+    // the actual Objectives conversation the user had. This is the real
+    // fix: read this campaign's saved activitynotesjson.objectivesIntake
+    // transcript and have the AI Brain extract the SPECIFIC channel/budget
+    // plan that conversation already worked out (channel names, drop
+    // counts, $0 owned channels, etc.) rather than falling back to a
+    // stage-weighted guess. Same "never overwrite an existing plan" safety
+    // rule as the old path — a no-op if this campaign already has any
+    // channel_planning_details rows.
+    //
+    // 2026-09-17, SAME-DAY follow-up per Todd's further correction: "you
+    // shouldn't need two steps to clarify the direction and it shouldn't
+    // be limited to funnel stage. The recommendation is based on the
+    // entire account media mix needed to achieve the goals. This campaign
+    // has a loyalty spend allocation and consideration." The first version
+    // of this endpoint still asked the model for ONE top-level `stage` for
+    // the whole campaign — exactly the same one-value-per-campaign limit
+    // that made "Apply Stage" a broken, easy-to-skip second step. A real
+    // account media mix is not one funnel stage; this campaign genuinely
+    // needs BOTH a Loyalty line (past-guest reactivation) and a
+    // Consideration line (new-prospect acquisition) at once. So the stage
+    // now lives on each CHANNEL LINE (channel_planning_details.stage — see
+    // normalizeChannelPlanningStage), not once on the campaign. Every line
+    // the model extracts carries its own Lifecycle Stage, so a single
+    // campaign's plan can legitimately span the whole account funnel.
+    // campaigns.stage is still set, but only as a rollup label (the most
+    // heavily-funded stage across the extracted lines) for the places that
+    // still expect one value (list views, filters) — it is no longer what
+    // drives generation and no longer the only place a stage is recorded.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'generate-recommendation-from-intake'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const existingRows = db.prepare('SELECT id FROM channel_planning_details WHERE campaignId = ?').all(campaignId);
+      if (existingRows.length) return sendJson(res, 200, { generated: false, reason: 'campaign already has a channel plan' });
+      let intake = [];
+      try {
+        const notes = campaign.activitynotesjson ? JSON.parse(campaign.activitynotesjson) : null;
+        intake = (notes && Array.isArray(notes.objectivesIntake)) ? notes.objectivesIntake : [];
+      } catch (e){ intake = []; }
+      if (!intake.length) return sendJson(res, 200, { generated: false, reason: 'no Objectives conversation saved for this campaign yet' });
+      if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 200, { generated: false, reason: 'AI Brain not configured' });
+      const transcript = intake.map(m => `${m.role === 'user' ? 'User' : 'AI Brain'}: ${m.text}`).join('\n');
+      // Union of the Recommendation screen's own Add/Edit Channel dropdown
+      // list (CHANNEL_OPTIONS, portal.html) plus 'Internal Email' — the
+      // channel this exact conversation calls "first-party email" and the
+      // one $0/owned channel name already used elsewhere in this file
+      // (RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT, mediaMixJson). Kept as
+      // its own list here (not imported — this is the backend, portal.html
+      // is the frontend) so it's obvious this must be kept in sync with
+      // CHANNEL_MIX_GROUPS if that ever changes.
+      const RECO_GENERATION_CHANNELS = ['Linear TV', 'OTV', 'CTV', 'Newspapers', 'Magazines', 'Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries', 'Programmatic Display', 'Brand Search', 'Non-Brand Search', 'Paid Social', 'Partner Media', 'Podcasts', 'Retail Media', 'Radio', 'Out-of-Home', 'Field / ABM', 'Internal Email'];
+      const RECO_GENERATION_SCHEMA = {
+        type: 'object',
+        properties: {
+          channels: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                channel: { type: 'string', enum: RECO_GENERATION_CHANNELS, description: 'The closest real channel name from the allowed list — e.g. map "first-party email" to Internal Email, "ID resolution DM" to Direct Mail — Prospects, "past guest mailing" to Direct Mail — Past Guests.' },
+                stage: { type: ['string', 'null'], enum: ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy', null], description: 'The Lifecycle Stage THIS SPECIFIC LINE serves — e.g. a past-guest reactivation mailing is Loyalty, a new-prospect acquisition channel is Consideration or Awareness. Different lines in the same campaign can and often should have different stages — this is a whole-account media mix, not a single-stage campaign. Use null only if genuinely unclear for this line.' },
+                budget: { type: 'number', description: 'Real dollar amount for this line, in USD. 0 for an owned/no-cost channel the user described as free (e.g. their own email list). Estimate a reasonable amount from the total campaign budget and what the conversation described when no exact number was given, and say how in assumptionNote.' },
+                impressions: { type: ['number', 'null'], description: 'Estimated impressions/reach for this line if inferable (e.g. drop count × list size for direct mail), else null.' },
+                assumptionNote: { type: ['string', 'null'], description: 'One short sentence on any estimate made for this line (e.g. "assumed $0.85/piece for direct mail"), or null if the number came straight from the conversation.' }
+              },
+              required: ['channel', 'budget']
+            }
+          }
+        },
+        required: ['channels']
+      };
+      const prompt = `You are the AI Brain, extracting a REAL channel/budget recommendation from a completed Objectives conversation that already happened on the Campaign Objectives screen. Do not invent a generic plan — use exactly what this conversation already worked out: the specific channels named, the drop counts and list sizes mentioned, and which channels the user said were free/owned vs paid.
+
+This recommendation reflects the WHOLE ACCOUNT media mix needed to achieve this campaign's goals — it is not limited to a single funnel stage. A campaign can and often does need spend at more than one Lifecycle Stage at once (for example: a past-guest loyalty/reactivation push AND a new-prospect consideration push running together). Tag EACH channel line with the specific Lifecycle Stage that line itself serves, not one stage for the whole campaign.
+
+CAMPAIGN: ${campaign.name || campaignId}
+Total campaign budget on file: $${Number(campaign.budget) || 0}
+${formatCampaignDatesForPrompt(campaign)}
+
+FULL OBJECTIVES CONVERSATION:
+${transcript}
+
+Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above.
+
+Submit via the recommendation_from_intake tool.`;
+      let parsed;
+      try {
+        parsed = await callClaudeForJSON({
+          model: 'claude-sonnet-4-5', maxTokens: 1200, content: prompt,
+          toolName: 'recommendation_from_intake', toolDescription: 'Submit the extracted channel/budget recommendation for this campaign.',
+          schema: RECO_GENERATION_SCHEMA, timeoutMs: 25000
+        });
+      } catch (e){
+        console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] AI extraction failed:', e.message);
+        return sendJson(res, 200, { generated: false, reason: 'AI Brain could not extract a recommendation right now — try again' });
+      }
+      let channels = Array.isArray(parsed.channels) ? parsed.channels.filter(c => c && RECO_GENERATION_CHANNELS.includes(c.channel)) : [];
+      // Safety clamp — never trust the model's arithmetic outright: if the
+      // extracted lines sum to more than the campaign's real budget, scale
+      // every paid line down proportionally rather than rejecting the
+      // whole recommendation.
+      const totalBudget = Number(campaign.budget) || 0;
+      const rawSum = channels.reduce((s, c) => s + (Number(c.budget) || 0), 0);
+      if (totalBudget > 0 && rawSum > totalBudget){
+        const scale = totalBudget / rawSum;
+        channels = channels.map(c => ({ ...c, budget: Math.round((Number(c.budget) || 0) * scale) }));
+      }
+      let savedCount = 0;
+      const stageBudgets = {};
+      for (const c of channels){
+        const lineStage = normalizeChannelPlanningStage(c.stage);
+        try {
+          insertChannelPlanningRow({
+            campaignId, channel: c.channel,
+            budget: Number(c.budget) || 0,
+            impressions: typeof c.impressions === 'number' ? c.impressions : null,
+            status: 'draft',
+            stage: lineStage,
+            detailsJson: c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}
+          });
+          savedCount++;
+          if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + (Number(c.budget) || 0);
+        } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] channel save failed', c.channel, e); }
+      }
+      // campaigns.stage stays a single rollup label for the views that
+      // still key off one value (list filters, the Objectives screen's
+      // "Loop Stage" summary before line items exist) — set to whichever
+      // stage carries the most budget across the extracted lines, not
+      // asked of the model directly, since the real, authoritative answer
+      // now lives per-line above.
+      let stage = null;
+      let topBudget = -1;
+      for (const [st, amt] of Object.entries(stageBudgets)){
+        if (amt > topBudget){ topBudget = amt; stage = st; }
+      }
+      if (stage && stage !== campaign.stage){
+        db.prepare('UPDATE campaigns SET stage = ? WHERE id = ?').run(stage, campaignId);
+      }
+      syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
+      return sendJson(res, 200, { generated: savedCount > 0, savedCount, stageApplied: stage, stagesUsed: Object.keys(stageBudgets) });
     }
 
     // POST /api/campaigns/:id/channel-planning/:entryId/client-approve —
@@ -22035,8 +22221,8 @@ Submit your response via the ai_brain_reply tool.`;
         const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
         if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
         if (!requireAccount(req, res, campaign.accountId)) return;
-        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy, region FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId)
-          .map(l => ({ ...l, region: normalizeChannelPlanningRegion(l.region) }));
+        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy, region, stage FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId)
+          .map(l => ({ ...l, region: normalizeChannelPlanningRegion(l.region), stage: normalizeChannelPlanningStage(l.stage) }));
         const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
         const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
         const audienceTotals = {};
@@ -22050,6 +22236,22 @@ Submit your response via the ai_brain_reply tool.`;
         const regionTotals = {};
         CHANNEL_PLANNING_REGIONS.forEach(r => { regionTotals[r] = 0; });
         lines.forEach(l => { regionTotals[l.region] = (regionTotals[l.region] || 0) + (Number(l.budget) || 0); });
+        // 2026-09-17 — real per-stage spend rollup, per Todd's direct
+        // correction that a campaign's recommendation reflects the whole
+        // account media mix, not one funnel stage: "This campaign has a
+        // loyalty spend allocation and consideration." Before this, the
+        // Loop Stage Distribution chart (cmpRecoLoopStageRows, frontend)
+        // could only ever show 100% of spend in campaign.stage's single
+        // bucket. This sums each LINE's own stage (falling back to the
+        // campaign-level stage only for older/unset lines, so nothing
+        // already saved silently drops out of the chart), so a campaign
+        // that genuinely spans e.g. Loyalty + Consideration shows both.
+        const stageTotals = {};
+        CHANNEL_PLANNING_STAGES.forEach(st => { stageTotals[st] = 0; });
+        lines.forEach(l => {
+          const effectiveStage = l.stage || normalizeChannelPlanningStage(campaign.stage);
+          if (effectiveStage) stageTotals[effectiveStage] = (stageTotals[effectiveStage] || 0) + (Number(l.budget) || 0);
+        });
         // 2026-09-15, per direct correction: "You don't need to show the
         // similar campaign" — the similar-campaign lookup (Stage match +
         // conversion efficiency, same scoring as campaign-intake) was
@@ -22065,6 +22267,7 @@ Submit your response via the ai_brain_reply tool.`;
           lineItems: lines,
           audienceTotals,
           regionTotals,
+          stageTotals,
           budgetApprovedAt: campaign.budgetApprovedAt || null,
           budgetApprovedBy: campaign.budgetApprovedBy || null
         });
