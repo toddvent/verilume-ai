@@ -662,6 +662,39 @@
   .eff-meter-bar{background:var(--paper-dim);border-radius:5px;height:8px;overflow:hidden;}
   .eff-meter-bar > div{height:100%;}
   @media (max-width:900px){ .exec-chart-grid.three-up{grid-template-columns:1fr;} }
+
+  /* 2026-09-18 — Campaign Brief & Analytics Requirements stage, per the
+     approved CampaignBrief-Desktop/Mobile.dc.html wireframe. This is a
+     genuinely new page (no production version existed before this round),
+     so these are new classes rather than a styling port of an existing
+     component — built from the same CSS variables/radii every other stage
+     already uses, not new ad-hoc colors. */
+  .cmp-brief-recap-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;}
+  .cmp-brief-recap-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 20px;margin-top:12px;}
+  @media (max-width:900px){ .cmp-brief-recap-grid{grid-template-columns:1fr 1fr;} }
+  .cmp-brief-recap-item{display:flex;flex-direction:column;gap:3px;}
+  .cmp-brief-recap-label{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;}
+  .cmp-brief-recap-val{font-size:0.8125rem;color:var(--ink);font-weight:600;}
+  .cmp-brief-cmo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
+  @media (max-width:900px){ .cmp-brief-cmo-grid{grid-template-columns:1fr;} }
+  .cmp-brief-cmo-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;position:relative;}
+  .cmp-brief-cmo-label{font-size:0.75rem;font-weight:700;color:var(--advocacy);text-transform:uppercase;letter-spacing:0.03em;display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .cmp-brief-cmo-avatar{width:26px;height:26px;border-radius:50%;background:var(--advocacy);color:var(--white);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
+  .cmp-brief-cmo-body{font-size:0.8125rem;color:var(--ink);line-height:1.6;min-height:60px;outline:none;}
+  .cmp-brief-cmo-body:focus{background:var(--paper-dim);border-radius:8px;}
+  .cmp-brief-cmo-body.placeholder{color:var(--muted);font-style:italic;}
+  .cmp-brief-edit-tag{position:absolute;top:18px;right:18px;font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
+  /* Mobile "To Copywriter / To Analytics" tab bar — hidden ≥900px, where
+     both cards show side by side per the desktop wireframe instead. No
+     existing tab-bar component fit this exact underline-tab shape, so this
+     is new, scoped only to this stage. */
+  .cmp-brief-tabs{display:none;border-bottom:1px solid var(--line);margin-top:16px;}
+  .cmp-brief-tab{flex:1;text-align:center;font-size:0.8125rem;font-weight:700;padding:10px 0;border:none;background:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;}
+  .cmp-brief-tab.active{color:var(--advocacy);border-bottom-color:var(--advocacy);}
+  @media (max-width:900px){
+    .cmp-brief-tabs{display:flex;}
+    .cmp-brief-cmo-card.cmp-brief-tab-hidden{display:none;}
+  }
   /* Round 133 — Budget charts row grew from 3 cards to 5 (Marketing Loop
      Spend Distribution, ROAS added per direct instruction) and needed to
      become horizontally scrollable rather than wrapping to a 4th/5th row.
@@ -1085,7 +1118,12 @@
   .ai-partner-tile .ap-go{font-size:0.75rem;font-weight:700;color:var(--hdr-navy);flex-shrink:0;}
 
   /* Function group nav */
-  .group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:36px;}
+  /* 2026-09-18, per wireframe round (CampaignHub-Desktop.dc.html) — min
+     column width bumped 200px -> 228px so the Workspace Hub's 5 workstream
+     cards get enough room for their status pill + title without crowding;
+     applies to every .group-grid user (Dashboard nav, Experience
+     Management sub-grid, Workspace Hub) since they all share this rule. */
+  .group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:14px;margin-bottom:36px;}
   .group-card{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:20px;cursor:pointer;transition:border-color 0.15s ease,background 0.15s ease;}
   .group-card:hover{border-color:var(--cx);}
   .group-card.highlighted{border-color:var(--media);background:#FBF6EA;}
@@ -1545,14 +1583,32 @@
      this flex column, with the aiThoughtIconHtml('N') speech bubble
      (mounted via .ai-thought-mount, see markup above) sitting directly
      below it instead of the old label — same footprint, real content. */
-  .cch-score{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;}
+  /* 2026-09-18, per Todd's direct design-review instruction in the wireframe
+     round: the relevance score no longer sits in .cch-top above the
+     progress bar — it now sits pinned to the right edge of the progress-bar
+     pill row itself, vertically centered ON that row (like a marker pinned
+     to the end of a horizontal progress bar), not floating above it.
+     .cch-score-marker (absolutely positioned against the new
+     .cch-progress-row wrapper below) replaces the old .cch-score
+     flex-column wrapper, which held both the circle and the
+     aiThoughtIconHtml('N') speech bubble together. The speech bubble stays
+     behind in .cch-top next to the identity block on its own now — it no
+     longer needs to be paired with the circle, and .cch-top still reads as
+     "top right of the header" for it. The pill row itself (labels, colors,
+     click behavior — cmpRenderProgressBar()/.cch-progress-seg below) is
+     untouched; only the circle's position changed. */
+  .cch-score-marker{position:absolute;right:0;top:50%;transform:translateY(-50%);flex-shrink:0;}
   /* Round 132bx follow-up — a thin white ring plus a deeper, more diffused
      shadow (in place of the flatter var(--shadow-lg)) so the circle reads
      as a deliberate, polished badge floating above the card, not a flat
-     shape clipped where it overflows the header's edge. */
-  .cch-score-circle{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.375rem;font-weight:700;margin:-30px 0 0;border:3px solid var(--white);box-shadow:0 12px 28px -8px rgba(15,23,42,0.35), 0 2px 6px rgba(15,23,42,0.14);flex-shrink:0;}
+     shape clipped where it overflows the header's edge.
+     2026-09-18 — the old `margin:-30px 0 0` negative-margin overlap hack is
+     gone: that was for peeking above .cch-top's own row edge when the
+     circle lived there as a flex item. Now positioned via .cch-score-marker
+     (absolute + translateY), so plain margin:0; size/shadow/border unchanged. */
+  .cch-score-circle{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.375rem;font-weight:700;margin:0;border:3px solid var(--white);box-shadow:0 12px 28px -8px rgba(15,23,42,0.35), 0 2px 6px rgba(15,23,42,0.14);flex-shrink:0;}
   @media (max-width:600px){
-    .cch-score-circle{width:60px;height:60px;font-size:1rem;margin:-14px 0 0;}
+    .cch-score-circle{width:60px;height:60px;font-size:1rem;}
   }
   /* Round 132bx follow-up — "we need an option to close and validate we
      auto close when selection is made." #cchStepsCloseLink is the explicit
@@ -1595,7 +1651,15 @@
      elsewhere (var(--line)/var(--muted) not-started, var(--media)
      in-progress, var(--cx) complete) so it reads consistently with every
      other status indicator in the app rather than inventing new colors. */
-  .cch-progress{display:flex;gap:4px;margin-top:14px;cursor:pointer;}
+  /* 2026-09-18 — wraps #cchProgress so the relocated score circle
+     (.cch-score-marker, see above) can be absolutely positioned against
+     this row's own box. The margin that used to live on .cch-progress
+     moved here and grew, giving the 92px circle room to overlap the row
+     top/bottom without colliding with .cch-top above or .cch-meta below;
+     .cch-progress itself gets padding-right so its pills stop short of
+     the circle instead of running underneath its label text. */
+  .cch-progress-row{position:relative;margin:36px 0;}
+  .cch-progress{display:flex;gap:4px;cursor:pointer;padding-right:106px;}
   .cch-progress-seg{flex:1;min-width:0;border-radius:8px;padding:6px 10px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.02em;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid transparent;transition:transform 0.1s;}
   .cch-progress-seg:hover{transform:translateY(-1px);}
   .cch-progress-seg.not-started{background:var(--white);border-color:var(--line);color:var(--muted);}
@@ -1604,6 +1668,13 @@
   @media (max-width:700px){
     .cch-progress{flex-wrap:wrap;}
     .cch-progress-seg{flex:1 1 calc(33% - 4px);}
+  }
+  @media (max-width:600px){
+    /* Matches the 60px score circle at this breakpoint (see
+       .cch-score-circle's own max-width:600px override above) — smaller
+       clearance margin, smaller reserved strip for the circle. */
+    .cch-progress-row{margin:22px 0;}
+    .cch-progress{padding-right:72px;}
   }
   /* Briefly highlights a steps-panel column when a progress-bar segment is
      clicked — see cmpJumpToCategoryColumn(). */
@@ -2243,6 +2314,44 @@
   #cmpStage-copyVersions .copyver-asset-row{border-top:1px solid var(--line);padding:12px 0;}
   #cmpStage-copyVersions .copyver-asset-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;}
   #cmpStage-copyVersions .copyver-asset-body{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--paper-dim);}
+
+  /* 2026-09-18 — port of CopyVersions-Desktop/Mobile.dc.html's header row,
+     "View Campaign Copy" drawer, and mobile pending banner/sticky asset
+     picker. See the HTML comment above #copyverCopyDrawer for what's real
+     vs. relabeled from the wireframe's copy. */
+  #cmpStage-copyVersions .copyver-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  #cmpStage-copyVersions .copyver-header-row:empty{display:none;}
+  #cmpStage-copyVersions .copyver-header-badge{display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:var(--radius-pill);background:#FFF6E5;color:#9A6A0E;}
+  #cmpStage-copyVersions .copyver-header-badge.complete{background:var(--cx-tint);color:var(--cx);}
+  #cmpStage-copyVersions .copyver-view-copy-btn{background:var(--media-tint);color:var(--media);border-color:#CFE0F5;}
+  /* Fixed slide-in panel — same z-index tier and overlay/scrim pattern as
+     .faq-drawer*/.faq-drawer-overlay above, kept as its own class family
+     (.copyver-copy-drawer*) since it opens over the Copy Versions stage
+     specifically and its content differs entirely. */
+  .copyver-copy-drawer-overlay{display:none;position:fixed;inset:0;background:rgba(29,29,31,0.35);z-index:60;}
+  .copyver-copy-drawer-overlay.open{display:block;}
+  .copyver-copy-drawer{position:fixed;top:0;right:-460px;width:440px;max-width:92vw;height:100%;background:var(--white);box-shadow:-8px 0 24px rgba(0,0,0,0.12);z-index:61;transition:right 0.25s ease;display:flex;flex-direction:column;}
+  .copyver-copy-drawer.open{right:0;}
+  .copyver-copy-drawer-head{height:64px;flex-shrink:0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 22px;}
+  .copyver-copy-drawer-body{flex-grow:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:18px;}
+  .copyver-copy-drawer-status{border-radius:9px;padding:9px 12px;font-size:0.75rem;}
+  .copyver-copy-drawer-status.ready{background:#E7F5EC;border:1px solid #BEE6CB;color:#1E7A45;}
+  .copyver-copy-drawer-status.pending{background:#FFF6E5;border:1px solid #F0DBA8;color:#7A5300;}
+  .copyver-copy-drawer-section-label{font-size:0.75rem;font-weight:700;color:var(--advocacy);text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;}
+  .copyver-copy-drawer-text{font-size:0.8125rem;color:var(--ink);margin:0;line-height:1.6;white-space:pre-line;}
+  /* Mobile artboard: pending banner (hidden on desktop, shown only while no
+     campaign copy exists yet) and a sticky asset picker so switching
+     between the 20+ approved assets never means re-finding your scroll
+     position — same position:sticky pattern #cmpStage-messaging
+     .msg-col-preview already uses inside this same .module-body collapse
+     mechanism above. */
+  #cmpStage-copyVersions .copyver-pending-banner{display:none;}
+  @media (max-width:700px){
+    #cmpStage-copyVersions .copyver-pending-banner.visible{display:flex;align-items:center;gap:8px;padding:10px 12px;margin:0 0 14px;background:#FFF6E5;border:1px solid #F0DBA8;border-radius:9px;font-size:0.75rem;color:#7A5300;}
+    #cmpStage-copyVersions .copyver-pending-spinner{width:14px;height:14px;border:2px solid #9A6A0E;border-top-color:transparent;border-radius:50%;flex-shrink:0;animation:copyverSpin 0.8s linear infinite;}
+    #cmpStage-copyVersions .copyver-asset-picker-field{position:sticky;top:0;z-index:3;background:var(--paper-dim);margin:0 -18px 14px;padding:14px 18px;}
+  }
+  @keyframes copyverSpin{to{transform:rotate(360deg);}}
   /* Round 132n (2026-08-09), per direct feedback: "the final copy should be
      shown inside the wire frame, not adjacent — maybe that is the
      disconnect." Widened from a 220px thumbnail to a 320px direct-editing
@@ -2652,7 +2761,10 @@
   .stage-pill.in-progress{border-color:var(--media);}
   .stage-pill.complete{border-color:var(--cx);}
   .stage-pill .stage-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;font-weight:700;color:var(--ink);}
-  .stage-status{display:inline-block;width:fit-content;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:2px 7px;border-radius:3px;}
+  /* 2026-09-18, per wireframe round — white-space:nowrap + flex-shrink:0
+     added so the status pill never wraps or gets squeezed when it sits
+     next to other flex siblings (e.g. the Workspace Hub card header). */
+  .stage-status{display:inline-block;width:fit-content;white-space:nowrap;flex-shrink:0;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:2px 7px;border-radius:3px;}
   .stage-status.not-started{background:var(--white);border:1px solid var(--line);color:var(--muted);}
   .stage-status.in-progress{background:#FBF6EA;border:1px solid var(--media);color:var(--media);}
   .stage-status.complete{background:#EAF3EF;border:1px solid var(--cx);color:var(--cx);}
@@ -7570,6 +7682,16 @@
          deep-linked to a topic that reads this exact campaign's live score
          breakdown (see renderFaqN()). -->
     <div class="cmp-campaign-header" id="cmpCampaignHeader">
+      <!-- 2026-09-18, per Todd's direct design-review instruction in the
+           wireframe round (this is the one real, approved change to port
+           from that round — everything else about this header stays as
+           designed in production): the relevance score circle moved out of
+           .cch-top and down onto the right edge of the progress-bar pill
+           row (.cch-progress-row/.cch-score-marker below), vertically
+           centered on that row rather than floating above it. The
+           ai-thought-mount speech bubble that used to sit next to the
+           circle stays here in .cch-top, next to identity, on its own —
+           it still reads as "top right of the header." -->
       <div class="cch-top">
         <div class="cch-identity">
           <div class="cch-code" id="cchCode">—</div>
@@ -7579,10 +7701,7 @@
           </div>
           <div class="cch-inmarket" id="cchStartDate">—</div>
         </div>
-        <div class="cch-score">
-          <div class="cch-score-circle" id="cchScoreCircle" title="Campaign Relevance Score">—</div>
-          <span class="ai-thought-mount" data-topic="N"></span>
-        </div>
+        <span class="ai-thought-mount" data-topic="N"></span>
       </div>
       <!-- 2026-09-15, per direct instruction: "Campaign Creation, Media
            Planning, Experience, Ops, Analysis statuses should be in the
@@ -7594,8 +7713,16 @@
            .cmp-module-status elsewhere in this app. Clicking anywhere opens
            the existing expandable steps panel (cmpToggleHeaderStepsPanel,
            unchanged); clicking one segment also scrolls/highlights that
-           category's own column once open, per cmpJumpToCategoryColumn(). -->
-      <div class="cch-progress" id="cchProgress"></div>
+           category's own column once open, per cmpJumpToCategoryColumn().
+           2026-09-18 — wrapped in .cch-progress-row so the relocated score
+           circle can be pinned to this row's right edge (see CSS above);
+           the pill row itself is otherwise unchanged. -->
+      <div class="cch-progress-row">
+        <div class="cch-progress" id="cchProgress"></div>
+        <div class="cch-score-marker">
+          <div class="cch-score-circle" id="cchScoreCircle" title="Campaign Relevance Score">—</div>
+        </div>
+      </div>
       <div class="cch-meta">
         <a class="cch-cancel-link" id="cchCancelLink" onclick="cmpToggleCancelConfirm()" style="display:none;">Cancel campaign</a>
         <!-- 2026-09-15, per direct instruction: "Team Collaboration: Link
@@ -8621,6 +8748,38 @@
             <div class="field" id="cmpPerfMarketingAssetsWrap">
               <div style="font-weight:700;font-size:1.0625rem;color:var(--ink);margin-bottom:8px;">Channel plan</div>
               <p class="hint" style="margin:0 0 10px;">One row per category approved in Step 1. Edit spend and CPM directly — Impressions is a computed readout (Budget ÷ CPM). Add another category or delete one that doesn't belong.</p>
+              <!-- 2026-09-18, per PerfMarketing-Desktop.dc.html/-Mobile.dc.html
+                   (approved wireframe, read directly): a "Why this channel
+                   plan? →" disclosure above the grid, same collapsed-by-
+                   default "Reasoning" toggle convention this build already
+                   uses for Brand Messaging's "Why this copy?" panel
+                   (cmpLongFormRationaleLink/cmpToggleLongFormRationale,
+                   ~line 9064) rather than inventing a new disclosure
+                   pattern. cmpChannelPlanReasoningText() explains this
+                   campaign's real Stage/Campaign Type/Audience/Primary KPI
+                   and the channels + spend already on this grid — it never
+                   re-derives a plan of its own, only narrates the one above
+                   it, so it can't drift out of sync with real approval data. -->
+              <a href="javascript:void(0)" id="cmpChannelPlanRationaleLink" onclick="cmpToggleChannelPlanRationale();" class="hint" style="display:inline-block;text-decoration:underline;cursor:pointer;margin-bottom:10px;">💭 Why this channel plan? →</a>
+              <div id="cmpChannelPlanRationalePanel" style="display:none;margin:0 0 12px;padding:10px 12px;background:var(--media-tint);border-radius:8px;"></div>
+              <!-- 2026-09-18, per Todd's direct clarification on the
+                   Goals/Audience-recap question flagged this round: "We're
+                   not going to add specific goals until we have enough
+                   client data — just thoughts as it relates to how to
+                   measure. Target impressions for the campaign is fine.
+                   This is purely based on approved CPM." So: no goals/
+                   audience recap comes back (that stays removed per Round
+                   132oo, see the comment above the "Step 1 — Channel Plan"
+                   divider) — instead, a real derived stat, same "explain,
+                   don't re-derive" convention as the Reasoning panel above:
+                   never a manually-entered goal field, just Sum(approved
+                   Spend ÷ CPM × 1000) across this campaign's real
+                   cmpChannelPlanRows, computed alongside the existing
+                   Budget/Impressions totals line — see
+                   cmpRenderChannelPlanTargetImpressions(), called from
+                   cmpRenderChannelPlanTotals() so it stays live on every
+                   edit the same way the totals line already does. -->
+              <div id="cmpChannelPlanTargetImpressions" class="hint" style="display:none;margin:0 0 12px;padding:10px 12px;background:var(--paper-dim);border:1px solid var(--line);border-radius:8px;"></div>
               <div id="cmpPerfMarketingAssetsList"><p class="hint">Loading this campaign's channel plan…</p></div>
               <div class="hint" id="cmpPerfMarketingChannelPlanTotals" style="margin-top:10px;font-weight:600;"></div>
               <!-- Round 132ao (2026-08-12), per direct request: "an Alert
@@ -8788,6 +8947,44 @@
 
             <div class="msg-split">
               <div class="msg-col msg-col-draft">
+                <!-- 2026-09-17, per direct instruction: "the relevance score
+                     is going to start in this section so we need to make
+                     sure the key campaign type (e.g. launch) and business
+                     initiative is clear and passed to the AI Brain for
+                     analysis before we recommend campaign copy." This card
+                     sets campaign.campaignType (CAMPAIGN_TYPE_REGISTRY —
+                     already existed, previously only editable on the
+                     separate legacy Campaign Detail page) and the new
+                     campaign.businessInitiative (BUSINESS_INITIATIVE_REGISTRY)
+                     right here, first, before Key Message — both are now
+                     REQUIRED (server-enforced, not just a suggestion) before
+                     "Generate with AI" or the campaign copy contest below
+                     will run; see cmpRequiredForGenerationGate(). Selecting a
+                     value here updates the same campaign.campaignType field
+                     the legacy Campaign Detail page's Campaign Type card
+                     reads/writes — one campaign, one value, two surfaces. -->
+                <div class="msg-card" id="cmpGenerationRequirementsCard">
+                  <div class="msg-card-head">
+                    <span class="msg-card-title">Campaign Type &amp; Business Initiative</span>
+                    <span class="msg-card-sub">Required — the AI Brain reads both before drafting or contesting any campaign copy below</span>
+                  </div>
+                  <p class="hint" style="margin:0 0 8px;">Relevance scoring for this campaign starts here. Campaign Type is the scenario mechanic (Offer, Launch, Loyalty…); Business Initiative is the underlying business reason this campaign exists — both shape the AI Copywriter's brief.</p>
+                  <div class="msg-subfield">
+                    <label for="cmpCampaignTypeSelect">Campaign type</label>
+                    <select id="cmpCampaignTypeSelect" onchange="cmpOnGenerationTypeChanged();">
+                      <option value="">— Select a campaign type —</option>
+                    </select>
+                  </div>
+                  <div id="cmpCampaignTypeDetailFields"></div>
+                  <div class="msg-subfield">
+                    <label for="cmpBusinessInitiativeSelect">Business initiative</label>
+                    <select id="cmpBusinessInitiativeSelect" onchange="cmpOnGenerationTypeChanged();">
+                      <option value="">— Select a business initiative —</option>
+                    </select>
+                  </div>
+                  <div id="cmpGenerationRequirementsStatus" style="margin-top:8px;"></div>
+                </div>
+
                 <div class="msg-card">
                   <div class="msg-card-head">
                     <span class="msg-card-title">Key Message</span>
@@ -8931,8 +9128,22 @@
                        silently overwriting it — a human chooses. -->
                   <div class="btn-row" style="margin-top:8px;">
                     <button type="button" class="btn-ghost" id="cmpAiDraftBtn" onclick="cmpGenerateAiDraft();">✦ Generate with AI (real model call) →</button>
+                    <!-- 2026-09-17, per direct instruction: "A campaign level
+                         contest should be available." The campaign-level
+                         copy contest already existed on the backend
+                         (POST /api/campaigns/:id/copy-interview,
+                         campaign_copy_interviews, runCandidateInterview()) —
+                         previously only reachable from inside a Marketing
+                         Function Project's own detail view (runMfpInterview()),
+                         with no entry point on Brand Messaging itself. This
+                         button is that entry point, right beside the
+                         single-draft AI button, using its own sourceKey
+                         ('brand-messaging-longform') so its history stays
+                         distinct from any MFP project's contest history. -->
+                    <button type="button" class="btn-ghost" id="cmpCopyContestBtn" onclick="cmpRunCampaignCopyContest();">✦ Run copy contest (multi-model) →</button>
                   </div>
                   <div id="cmpAiDraftPanel" style="display:none;margin-top:8px;padding:10px 12px;background:var(--paper-dim);border-radius:6px;"></div>
+                  <div id="cmpCopyContestPanel" style="display:none;margin-top:8px;padding:10px 12px;background:var(--paper-dim);border-radius:6px;"></div>
                   <!-- Round 132ao (2026-08-12) — live alert when Long Form
                        Copy/Key Message drift from this campaign's Objective
                        or Primary KPI; see cmpRenderMessagingConsistencyAlert(). -->
@@ -9118,6 +9329,15 @@
           </div>
           <div class="module-body">
             <p class="msg-lede">Build recommended copy for each selected channel, sized to a real ad unit, and save each version for the Creative team. Draft, don't finalize — Creative builds the actual assets from here.</p>
+            <!-- 2026-09-18 — port of CopyVersions-Desktop/Mobile.dc.html's
+                 header row: an "X of Y assets have copy" badge plus a "View
+                 Campaign Copy" button that opens the slide-in drawer below.
+                 On narrow widths this collapses per CSS (.copyver-header-row
+                 wraps); the mobile artboard's own pending-state banner is
+                 #cmpCopyVersionsPendingBanner just under it, hidden on
+                 desktop widths — see cmpRenderCopyVersionsHeaderRow(). -->
+            <div id="cmpCopyVersionsHeaderRow" class="copyver-header-row"></div>
+            <div id="cmpCopyVersionsPendingBanner" class="copyver-pending-banner"></div>
             <div id="cmpCopyVersionsBulkCta" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsQaBadge" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsBuilder"></div>
@@ -9126,6 +9346,46 @@
               <button type="button" class="btn-primary" onclick="openCmpStage('qrutm')">Continue to QR Code &amp; UTM →</button>
             </div>
           </div>
+        </div>
+
+        <!-- 2026-09-18 — "View Campaign Copy" slide-in drawer, per the
+             approved CopyVersions-Desktop.dc.html wireframe. Shows this
+             campaign's real Key Message / Long Form Copy (c.keyMessage /
+             c.longformCopy, written and approved on the Brand Messaging
+             stage) rather than duplicating or re-generating anything here.
+             The wireframe's own copy describes the abstract/long-form text
+             as generated automatically in the background — that isn't how
+             this product actually works today (it's written/approved by a
+             human on Brand Messaging, stage 5); the drawer's copy below is
+             worded honestly instead of carrying that claim over. The
+             wireframe's "Run copy contest (multi-model)" button originally
+             just navigated over to Brand Messaging's existing
+             cmpRunCampaignCopyContest() — flagged as an open decision. A
+             same-day follow-up briefly built this drawer a separate, "own"
+             Campaign-Level Copy Contest (its own endpoint/table/registry
+             entry), reading Todd's clarification about campaign-level vs.
+             brand-voice contests as a request for a parallel duplicate.
+             Todd corrected that reading the same day: the campaign-level
+             contest he described (brand voice foundation + real per-
+             campaign loop stage/audience/campaign type) already IS
+             cmpRunCampaignCopyContest() — he wants ONE shared contest here
+             and on Brand Messaging, with one shared history, not two. The
+             drawer's button below now calls that same real function inline
+             — cmpRunCampaignCopyContest(), parameterized with this
+             drawer's own panel/button/flag element ids so it can mount into
+             either surface without a duplicated render function — posting
+             to the same POST /api/campaigns/:id/copy-interview and
+             campaign_copy_interviews history Brand Messaging already uses.
+             See cmpRenderCampaignCopyDrawer()/cmpOpenCampaignCopyDrawer()
+             below and cmpRunCampaignCopyContest() itself, near Brand
+             Messaging's own contest button. -->
+        <div class="copyver-copy-drawer-overlay" id="copyverCopyDrawerOverlay" onclick="cmpCloseCampaignCopyDrawer()"></div>
+        <div class="copyver-copy-drawer" id="copyverCopyDrawer">
+          <div class="copyver-copy-drawer-head">
+            <div style="font-size:1rem;font-weight:700;color:var(--ink);">Campaign Copy</div>
+            <button type="button" class="faq-drawer-close" style="position:static;" onclick="cmpCloseCampaignCopyDrawer()" aria-label="Close">✕</button>
+          </div>
+          <div class="copyver-copy-drawer-body" id="copyverCopyDrawerBody"></div>
         </div>
 
         <div id="cmpDownstreamStages"></div>
@@ -11786,6 +12046,17 @@ const CMP_STAGE_RAIL = [
   // after Brand Messaging (needs approved themes) and before QR Code & UTM.
   { key: 'copyVersions', label: 'Copy Versions', editable: true },
   { key: 'qrutm', label: 'QR Code & UTM', cs: 'functions' },
+  // 2026-09-18 — new stage, per the approved CampaignBrief-Desktop/
+  // Mobile.dc.html wireframe (this screen didn't exist in production at
+  // all before this round — genuinely new, not a styling port). Sits after
+  // QR Code & UTM (the wireframe's Analytics message references its real
+  // Master UTM Configuration as already set) and before Creative — the
+  // wireframe's own copy: "it becomes the full Campaign Brief once assets
+  // are selected in Creative Execution." No `cs` entry: like
+  // perfMarketing/messaging/copyVersions above, this has its own
+  // cmpModuleStatus() case rather than mapping onto the unrelated
+  // computeStageStatuses() lifecycle model.
+  { key: 'briefAnalytics', label: 'Campaign Brief & Analytics Requirements', editable: true },
   { key: 'creative', label: 'Creative', cs: 'creative' },
   { key: 'qa', label: 'QA Rating', cs: 'qa' },
   { key: 'trafficking', label: 'Trafficking', cs: 'functions' },
@@ -11859,6 +12130,14 @@ function cmpModuleStatus(key){
       if (!campaign) return 'not-started';
       if (campaign.budgetApprovedAt) return 'complete';
       return (campaign.stage || campaign.channels) ? 'in-progress' : 'not-started';
+    // 2026-09-18 — Campaign Brief & Analytics Requirements. Complete once
+    // this campaign has explicitly continued to Creative Execution from
+    // here (campaign.briefAnalyticsContinuedAt); in-progress once either
+    // real CMO message has been drafted/edited and saved.
+    case 'briefAnalytics':
+      if (!campaign) return 'not-started';
+      if (campaign.briefAnalyticsContinuedAt) return 'complete';
+      return (campaign.cmoCopywriterBrief || campaign.cmoAnalyticsBrief) ? 'in-progress' : 'not-started';
     default:
       return 'not-started';
   }
@@ -11985,9 +12264,13 @@ function renderCmpWorkspaceHub(campaign){
   const cardsHtml = CMP_WORKSPACE_CARDS.map(card => {
     const status = cmpWorkspaceCardStatus(card);
     return `<div class="group-card workstream-card cmp-workspace-card" onclick="cmpWorkspaceCardOpen('${card.key}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')cmpWorkspaceCardOpen('${card.key}')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-        <div style="font-weight:700;font-size:0.9375rem;">${card.label}</div>
+      <!-- 2026-09-18, per wireframe round (CampaignHub-Desktop.dc.html) —
+           header switched from status-beside-title (space-between) to
+           status-above-title (column), matching the approved wireframe's
+           consistent badge-above-title layout across all 5 cards. -->
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
         <span class="stage-status ${status}">${STAGE_STATUS_LABEL[status]}</span>
+        <div style="font-weight:700;font-size:0.9375rem;">${card.label}</div>
       </div>
       <div class="count" style="white-space:normal;line-height:1.45;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;letter-spacing:0;text-transform:none;font-weight:400;">${card.desc}</div>
       <div class="workstream-alert"><span class="label" style="color:var(--advocacy);font-weight:700;">Open →</span></div>
@@ -12779,6 +13062,7 @@ function openCmpStage(key){
   if (key === 'messaging'){ generateCampaignBriefExpanded(); cmpAutoDraftMessaging(); }
   if (key === 'copyVersions') cmpRenderCopyVersionsStage();
   if (key === 'perfMarketing'){ renderCmpPerfMarketingStage(); cmpLoadPerfMarketingChannelPlan(); }
+  if (key === 'briefAnalytics') cmpOpenBriefAnalyticsStage();
   cmpRenderActivityNotesPanel(key);
   document.querySelectorAll('.cmp-stage').forEach(el => {
     const isTarget = el.id === `cmpStage-${key}`;
@@ -13047,7 +13331,13 @@ function cmpStageShell(num, key, title, bodyHtml){
   </div>`;
 }
 function cmpLockedShell(num, title){
-  const key = ['','','','','','','','qrutm','creative','qa','trafficking','market','analysis'][num];
+  // 2026-09-18 — 'briefAnalytics' inserted at 9 (per the approved
+  // CampaignBrief wireframe's position between QR Code & UTM and Creative
+  // Execution, matching this locked-list branch's own 8-13 numbering, one
+  // higher than the loaded branch below since the two already disagreed
+  // with each other before this change); creative/qa/trafficking/market/
+  // analysis each shifted one slot further to 10-14.
+  const key = ['','','','','','','','','qrutm','briefAnalytics','creative','qa','trafficking','market','analysis'][num];
   return `<div class="module cmp-stage" id="cmpStage-${key}" style="opacity:0.6;">
     <div class="module-head" style="cursor:default;">
       <span class="modnum">${num}</span>
@@ -13070,8 +13360,8 @@ function renderCmpDownstreamStages(){
   // here — this inline card is just the teaser/entry point.
   if (!campaign){
     el.innerHTML = [
-      [8, 'QR Code & UTM'], [9, 'Creative'], [10, 'QA Rating'],
-      [11, 'Trafficking'], [12, 'In Market'], [13, 'Analysis']
+      [8, 'QR Code & UTM'], [9, 'Campaign Brief & Analytics Requirements'], [10, 'Creative'], [11, 'QA Rating'],
+      [12, 'Trafficking'], [13, 'In Market'], [14, 'Analysis']
     ].map(([n, t]) => cmpLockedShell(n, t)).join('');
     return;
   }
@@ -13142,13 +13432,19 @@ function renderCmpDownstreamStages(){
       : `<p class="cmp-stage-note" style="padding:0 0 10px;">No actuals logged yet.</p>`}
     <a class="flink" onclick="goToStep('campaign','${c.id}','campaignAnalyticsCard')">${hasActuals ? 'Edit actuals' : 'Log actuals'} on this campaign's detail page →</a>`;
 
+  // 8 — Campaign Brief & Analytics Requirements: see cmpBriefAnalyticsBody()
+  // and the block of functions above cmpRecoApproveLine() for the real
+  // AI-generated/editable messages, recap, and dashboards this renders.
+  const briefBody = cmpBriefAnalyticsBody(c);
+
   el.innerHTML = [
     cmpStageShell(7, 'qrutm', 'QR Code & UTM', qrBody),
-    cmpStageShell(8, 'creative', 'Creative', creativeBody),
-    cmpStageShell(9, 'qa', 'QA Rating', qaBody),
-    cmpStageShell(10, 'trafficking', 'Trafficking', traffickingBody),
-    cmpStageShell(11, 'market', 'In Market', marketBody),
-    cmpStageShell(12, 'analysis', 'Analysis', analysisBody)
+    cmpStageShell(8, 'briefAnalytics', 'Campaign Brief & Analytics Requirements', briefBody),
+    cmpStageShell(9, 'creative', 'Creative', creativeBody),
+    cmpStageShell(10, 'qa', 'QA Rating', qaBody),
+    cmpStageShell(11, 'trafficking', 'Trafficking', traffickingBody),
+    cmpStageShell(12, 'market', 'In Market', marketBody),
+    cmpStageShell(13, 'analysis', 'Analysis', analysisBody)
   ].join('');
   // These 6 shells are rebuilt from scratch on every call, which wipes any
   // previously-inserted notes mount — re-ensure them every time, same reason
@@ -36225,6 +36521,9 @@ function cmpPopulateFormFields(c, opts){
   if (msgTypeEl) msgTypeEl.value = c.messageType || '';
   const mandatoryEl = document.getElementById('cmpMandatoryPhrase');
   if (mandatoryEl) mandatoryEl.value = c.mandatoryPhrase || '';
+  // 2026-09-17 — Campaign Type & Business Initiative, required before
+  // generation (see cmpGenerationRequirementsCard's own comment).
+  cmpRenderGenerationRequirementsCard(c);
   const styleEl = document.getElementById('cmpLongformStyle');
   // 2026-08-22 — c.roleStyle is the real, backend-persisted value (see
   // server.js); c.longformStyle is the older local-session-only field this
@@ -37107,6 +37406,172 @@ async function cmpRecoGenerateNarrative(){
   cmpRenderPitchLeft(campaign);
 }
 
+// ============================================================
+// 2026-09-18 — Campaign Brief & Analytics Requirements. New accordion
+// stage (screen didn't exist in production before this round) per the
+// approved CampaignBrief-Desktop/Mobile.dc.html wireframe: the same
+// carried-forward campaign brief recap pattern as Performance Marketing's
+// Step 1 (built as an honest new mini-recap here, sourced only from this
+// campaign's real fields — Performance Marketing's own recap paragraph was
+// deliberately removed per direct instruction, see renderCmpChannelRow()'s
+// comment, so there's no existing multi-field recap component to port;
+// this stage's "Edit" instead routes to the one real place these fields
+// are actually editable, Lifecycle Stage & Goals), plus two real,
+// AI Brain-generated, inline-editable messages (POST .../cmo-team-message,
+// same mechanism/model as the AI Brain Recommendation screen's real
+// "Generative Descriptor for the CMO," composed only from this campaign's
+// real stored fields), plus the same three real campaign dashboards the
+// Recommendation screen shows (GET .../pitch-summary, reusing
+// cmpRecoMeterRows/cmpRecoLoopStageRows/cmpRecoChannelMixRows/
+// cmpRecoRegionRows rather than duplicating that math).
+//
+// Judgment call flagged rather than guessed at: the wireframe's own
+// premise is "no manual regeneration required" — read here as "generated
+// once automatically the first time this stage is opened for a campaign
+// that has neither message yet," not as "silently regenerated every time
+// the stage reopens" (which would blow away a human's inline edit on every
+// visit, the opposite of the wireframe's "edit either message directly to
+// override for this campaign"). A manual "Try again" is offered only when
+// generation itself fails — never a general Regenerate control, matching
+// the wireframe exactly.
+let cmpBriefState = { campaignId: null, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter' };
+async function cmpOpenBriefAnalyticsStage(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  if (cmpBriefState.campaignId !== campaign.id){
+    cmpBriefState = { campaignId: campaign.id, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter' };
+  }
+  renderCmpDownstreamStages();
+  if (!cmpBriefState.summary){
+    try {
+      cmpBriefState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
+    } catch (e){
+      console.warn('cmpOpenBriefAnalyticsStage: pitch-summary load failed', e);
+    }
+    renderCmpDownstreamStages();
+  }
+  // Auto-draft each message exactly once per campaign — only when neither
+  // a prior AI draft nor a human edit is on file yet (see comment above).
+  if (!campaign.cmoCopywriterBrief && !cmpBriefState.copyLoading) cmpBriefGenerate('copywriter');
+  if (!campaign.cmoAnalyticsBrief && !cmpBriefState.analyticsLoading) cmpBriefGenerate('analytics');
+}
+async function cmpBriefGenerate(audience){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  const isAnalytics = audience === 'analytics';
+  if (isAnalytics) { cmpBriefState.analyticsLoading = true; cmpBriefState.analyticsError = null; }
+  else { cmpBriefState.copyLoading = true; cmpBriefState.copyError = null; }
+  renderCmpDownstreamStages();
+  try {
+    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/cmo-team-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audience }) });
+    if (resp.message) await cmpBriefSaveField(isAnalytics ? 'cmoAnalyticsBrief' : 'cmoCopywriterBrief', resp.message);
+    else {
+      const msg = resp.error || 'The AI Brain could not draft this message right now.';
+      if (isAnalytics) cmpBriefState.analyticsError = msg; else cmpBriefState.copyError = msg;
+    }
+  } catch (e){
+    console.warn('cmpBriefGenerate failed:', audience, e);
+    const msg = 'The AI Brain could not draft this message right now. Try again in a moment.';
+    if (isAnalytics) cmpBriefState.analyticsError = msg; else cmpBriefState.copyError = msg;
+  }
+  if (isAnalytics) cmpBriefState.analyticsLoading = false; else cmpBriefState.copyLoading = false;
+  renderCmpDownstreamStages();
+}
+// Persists an inline edit (or a fresh AI draft) straight to the campaign
+// row, same merge-update POST /api/campaigns/:id every other editable
+// campaign field on this rail already uses — real save, not local-only
+// state, so an edit made here survives a reload or a different teammate
+// opening the same campaign.
+async function cmpBriefSaveField(field, value){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  campaign[field] = value; // optimistic — avoids the contenteditable div flickering/losing cursor position on its own save
+  try {
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+  } catch (e){
+    console.warn('cmpBriefSaveField failed:', field, e);
+  }
+}
+// Fires on blur of either contenteditable message body — the wireframe's
+// own "click into the body text directly" edit gesture, saved once editing
+// ends rather than on every keystroke.
+function cmpBriefOnBlur(audience, el){
+  cmpBriefSaveField(audience === 'analytics' ? 'cmoAnalyticsBrief' : 'cmoCopywriterBrief', el.innerText.trim());
+}
+function cmpBriefSetMobileTab(tab){
+  cmpBriefState.mobileTab = tab;
+  renderCmpDownstreamStages();
+}
+async function cmpBriefContinueToCreative(campaignId){
+  await cmpBriefSaveField('briefAnalyticsContinuedAt', new Date().toISOString());
+  openCmpStage('creative');
+}
+// One CMO-message card's inner HTML — loading / error+retry / real
+// AI-generated-or-edited text (contenteditable). Never a hardcoded
+// placeholder presented as if it were live generation: while nothing has
+// come back yet and nothing failed, this reads "Drafting…", not filler
+// copy.
+function cmpBriefCmoCardBody(audience, campaign){
+  const isAnalytics = audience === 'analytics';
+  const loading = isAnalytics ? cmpBriefState.analyticsLoading : cmpBriefState.copyLoading;
+  const error = isAnalytics ? cmpBriefState.analyticsError : cmpBriefState.copyError;
+  const value = isAnalytics ? campaign.cmoAnalyticsBrief : campaign.cmoCopywriterBrief;
+  const bodyId = isAnalytics ? 'cmpBriefAnalyticsBody' : 'cmpBriefCopyBody';
+  if (loading) return `<p class="cmp-stage-note" style="padding:0;">Drafting…</p>`;
+  if (error) return `<p class="lede" style="margin:0 0 8px;color:#B3261E;">${escapeHtml(error)}</p><button type="button" class="btn-ghost" onclick="cmpBriefGenerate('${audience}')">Try again →</button>`;
+  if (value) return `<div class="cmp-brief-cmo-body" id="${bodyId}" contenteditable="true" onblur="cmpBriefOnBlur('${audience}', this)">${escapeHtml(value)}</div>`;
+  return `<button type="button" class="btn-ghost" onclick="cmpBriefGenerate('${audience}')">Draft this message →</button>`;
+}
+function cmpBriefAnalyticsBody(c){
+  const s = cmpBriefState;
+  const goalParts = [c.kpiGoal ? Number(c.kpiGoal).toLocaleString() : null, c.primaryKpi].filter(Boolean);
+  const dashboardsHtml = s.summary ? `
+    <div class="exec-chart-grid three-up" style="margin-top:16px;">
+      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Loop Stage Distribution</h4>${cmpRecoMeterRows(cmpRecoLoopStageRows(s.summary))}</div>
+      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Channel Mix</h4>${cmpRecoMeterRows(cmpRecoChannelMixRows(s.summary))}</div>
+      <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Spend by Region</h4>${cmpRecoMeterRows(cmpRecoRegionRows(s.summary))}</div>
+    </div>` : `<p class="cmp-stage-note" style="padding:0;margin-top:16px;">Loading campaign dashboards…</p>`;
+  return `
+    <p class="msg-lede">Carries the campaign brief forward for Copywriter and Analytics to check their own work against, and briefs each team on what this campaign needs from them.</p>
+    <div class="cmp-brief-recap-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:1rem;font-weight:700;color:var(--ink);">Campaign brief recap</div>
+        <button type="button" class="btn-ghost" onclick="openCmpStage('lifecycle')">Edit →</button>
+      </div>
+      <p class="cmp-stage-note" style="padding:6px 0 0;">Carried forward from Lifecycle Stage &amp; Goals so the messages below can be checked against it at a glance — edited there, not here.</p>
+      <div class="cmp-brief-recap-grid">
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Loop Stage</span><span class="cmp-brief-recap-val">${escapeHtml(c.stage || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Audience</span><span class="cmp-brief-recap-val">${escapeHtml(c.segment || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Type</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Start Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.startDate || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Goal</span><span class="cmp-brief-recap-val">${goalParts.length ? escapeHtml(goalParts.join(' ')) : '(not set)'}</span></div>
+      </div>
+    </div>
+    <div class="cmp-brief-tabs">
+      <button type="button" class="cmp-brief-tab${s.mobileTab === 'copywriter' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('copywriter')">To Copywriter</button>
+      <button type="button" class="cmp-brief-tab${s.mobileTab === 'analytics' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('analytics')">To Analytics</button>
+    </div>
+    <div class="cmp-brief-cmo-grid">
+      <div class="cmp-brief-cmo-card${s.mobileTab !== 'copywriter' ? ' cmp-brief-tab-hidden' : ''}">
+        <span class="cmp-brief-edit-tag">✎ Editable</span>
+        <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>From the CMO — to Brand Copywriter</div>
+        ${cmpBriefCmoCardBody('copywriter', c)}
+      </div>
+      <div class="cmp-brief-cmo-card${s.mobileTab !== 'analytics' ? ' cmp-brief-tab-hidden' : ''}">
+        <span class="cmp-brief-edit-tag">✎ Editable</span>
+        <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>From the CMO — to the Analytics Team</div>
+        ${cmpBriefCmoCardBody('analytics', c)}
+      </div>
+    </div>
+    <p class="cmp-stage-note" style="padding:8px 0 0;">Drafted once automatically from this campaign's real objective, stage, audience, channels and KPI goal — edit either message directly to override for this campaign.</p>
+    <div style="font-size:0.9375rem;font-weight:700;color:var(--ink);margin-top:18px;">Campaign Dashboards</div>
+    ${dashboardsHtml}
+    <div class="btn-row" style="margin-top:18px;justify-content:flex-end;">
+      <button type="button" class="btn-primary" onclick="cmpBriefContinueToCreative('${c.id}')">Continue to Creative Execution →</button>
+    </div>`;
+}
+
 async function cmpRecoApproveLine(entryId){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
@@ -37381,7 +37846,15 @@ function cmpRenderPitchLeft(campaign){
         <button type="button" class="stage-tile${!viewingChannel ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetViewMode('audience')">Audience</button>
       </div>
     </div>
-    <div class="exec-chart-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:22px;">
+    <!-- 2026-09-18 — three equal columns (Loop Stage Distribution / Channel
+         or Audience Mix / Spend by Region), per the real Recommendation-
+         Desktop.dc.html wireframe (extracted and read, not assumed):
+         "repeat(3,minmax(0,1fr))". Uses the existing real .three-up
+         modifier (defined above, with its own 900px mobile fallback)
+         instead of the ad-hoc auto-fit this previously carried, so this
+         grid matches the same fixed 3-up convention already used
+         elsewhere on the platform rather than reinventing one inline. -->
+    <div class="exec-chart-grid three-up" style="gap:16px;margin-bottom:22px;">
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Loop Stage Distribution</h4>${cmpRecoMeterRows(loopRows)}</div>
       ${viewingChannel
         ? `<div class="exec-chart-card"><h4 style="margin:0 0 10px;">Channel Mix</h4>${cmpRecoMeterRows(mixRows)}</div>`
@@ -41169,6 +41642,15 @@ const CAMPAIGN_TYPE_REGISTRY_CLIENT = {
       { key: 'rewardDetail', label: 'The specific reward/benefit being offered to returning customers', required: true }
     ]
   },
+  // 2026-09-17 — added to match backend's CAMPAIGN_TYPE_REGISTRY (see that
+  // registry's own comment): unifies with the messageType selector's
+  // 'Brand Campaign' value and CONTEST_TYPE_REGISTRY.Campaign's subtypes.
+  brand_campaign: {
+    label: 'Brand Campaign',
+    coreFields: [],
+    coreFieldLabels: {},
+    detailFields: []
+  },
   trade_incentive: {
     label: 'Trade Incentive',
     coreFields: [],
@@ -41179,6 +41661,117 @@ const CAMPAIGN_TYPE_REGISTRY_CLIENT = {
     ]
   }
 };
+// 2026-09-17 — hand-mirrored copy of backend's BUSINESS_INITIATIVE_REGISTRY,
+// same convention as CAMPAIGN_TYPE_REGISTRY_CLIENT above.
+const BUSINESS_INITIATIVE_REGISTRY_CLIENT = {
+  new_customer_acquisition: { label: 'New Customer Acquisition' },
+  loyalty_retention: { label: 'Loyalty & Retention' },
+  product_or_service_launch: { label: 'Product or Service Launch' },
+  seasonal_demand: { label: 'Seasonal / Off-Peak Demand Generation' },
+  competitive_defense: { label: 'Competitive Defense / Market Share' },
+  cross_sell_share_of_wallet: { label: 'Cross-Sell / Share of Wallet' },
+  brand_awareness_new_market: { label: 'Brand Awareness in a New or Underdeveloped Market' },
+  trade_partner_network: { label: 'Trade / Dealer Partner Network Growth' }
+};
+// 2026-09-17 — populates and renders the Brand Messaging module's Campaign
+// Type & Business Initiative card (#cmpGenerationRequirementsCard). Distinct
+// from renderCampaignTypeCard() (the legacy Campaign Detail page's own
+// Campaign Type UI) — both read/write the same campaign.campaignType
+// column, this is just a second, workspace-scoped surface for it, plus the
+// new businessInitiative field this legacy card doesn't have.
+function cmpRenderGenerationRequirementsCard(c){
+  const typeSelect = document.getElementById('cmpCampaignTypeSelect');
+  const initiativeSelect = document.getElementById('cmpBusinessInitiativeSelect');
+  if (!typeSelect || !initiativeSelect) return;
+  if (typeSelect.options.length <= 1){
+    Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = CAMPAIGN_TYPE_REGISTRY_CLIENT[key].label;
+      typeSelect.appendChild(opt);
+    });
+  }
+  if (initiativeSelect.options.length <= 1){
+    Object.keys(BUSINESS_INITIATIVE_REGISTRY_CLIENT).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = BUSINESS_INITIATIVE_REGISTRY_CLIENT[key].label;
+      initiativeSelect.appendChild(opt);
+    });
+  }
+  typeSelect.value = c.campaignType || '';
+  initiativeSelect.value = c.businessInitiative || '';
+  renderCampaignTypeDetailFields(c.campaignType || '', campaignTypeDetailsClient(c), 'cmpCampaignTypeDetailFields');
+  cmpRenderGenerationRequirementsStatus(c);
+}
+// Called on either select's onchange — persists immediately (this card has
+// no separate Save button; both fields are small, single-value selects, and
+// generation is gated live off the campaign object, so a silent "picked but
+// not saved" state would defeat the point of the gate).
+async function cmpOnGenerationTypeChanged(){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const typeKey = document.getElementById('cmpCampaignTypeSelect').value;
+  const initiativeKey = document.getElementById('cmpBusinessInitiativeSelect').value;
+  // Switching Campaign Type: same "start the detail fields blank" rule
+  // onCampaignTypeSelectChanged() already uses for the legacy card.
+  renderCampaignTypeDetailFields(typeKey, {}, 'cmpCampaignTypeDetailFields');
+  c.campaignType = typeKey;
+  c.businessInitiative = initiativeKey;
+  cmpRenderGenerationRequirementsStatus(c);
+  if (!c.localOnly && dataSourceLabel === 'backend'){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignType: typeKey, businessInitiative: initiativeKey })
+      });
+    } catch (e){ console.warn('cmpOnGenerationTypeChanged: backend write failed, saved locally only.', e); }
+  }
+}
+// Live status line + the actual gate check every generation entry point in
+// this module calls before firing a request. Returns {ok, missing[]} rather
+// than just true/false so callers can show the same missing-field wording
+// the server itself would return.
+function cmpRequiredForGenerationGate(){
+  const c = findCampaign(currentCampaignId);
+  const missing = [];
+  if (!c || !c.campaignType || !CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) missing.push('Campaign Type');
+  if (!c || !c.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative]) missing.push('Business Initiative');
+  return { ok: missing.length === 0, missing };
+}
+function cmpRenderGenerationRequirementsStatus(c){
+  const statusEl = document.getElementById('cmpGenerationRequirementsStatus');
+  if (!statusEl) return;
+  const gate = cmpRequiredForGenerationGate();
+  statusEl.innerHTML = gate.ok
+    ? `<span class="hint" style="color:var(--cx);">✓ Both set — the AI Brain will use this Campaign Type and Business Initiative when drafting or contesting copy below.</span>`
+    : `<span class="hint" style="color:var(--advocacy);font-weight:600;">⚠ Set ${gate.missing.join(' and ')} before generating or contesting campaign copy below — required as of this round.</span>`;
+}
+// Saves the new Brand Messaging card's Campaign Type detail-field inputs
+// (offer details, launch highlights, etc. — same fields the legacy Campaign
+// Detail page's Campaign Type card has, mirrored here since this card is
+// where Campaign Type now gets set for most people). Reads every
+// [data-detail-key] input under #cmpCampaignTypeDetailFields, same shape
+// saveCampaignTypeFields() already sends for the legacy card.
+async function cmpSaveGenerationTypeDetails(){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const holder = document.getElementById('cmpCampaignTypeDetailFields');
+  if (!holder) return;
+  const details = {};
+  holder.querySelectorAll('[data-detail-key]').forEach(el => {
+    if (el.value && el.value.trim()) details[el.getAttribute('data-detail-key')] = el.value.trim();
+  });
+  c.campaignTypeDetailsJson = Object.keys(details).length ? JSON.stringify(details) : '';
+  if (!c.localOnly && dataSourceLabel === 'backend'){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignTypeDetails: details })
+      });
+    } catch (e){ console.warn('cmpSaveGenerationTypeDetails: backend write failed, saved locally only.', e); }
+  }
+}
 // Parses c.campaignTypeDetailsJson the same defensively-empty way the
 // backend's campaignTypeDetails() does — a malformed/missing blob is just
 // "no details yet," never an error surfaced to the person editing.
@@ -41211,19 +41804,31 @@ function renderCampaignTypeCard(c){
 // left blank (not passed) when the type selection itself just changed, since
 // switching types mid-edit shouldn't leave the old type's stale values
 // sitting in fields that no longer apply.
-function renderCampaignTypeDetailFields(typeKey, savedValues){
-  const holder = document.getElementById('campaignTypeDetailFields');
+// 2026-09-17 — holderId param added (defaults to the legacy Campaign Detail
+// card's holder, so every pre-existing call site is unchanged) so this can
+// also render into the new Brand Messaging card (#cmpCampaignTypeDetailFields)
+// without colliding on input ids if both were ever in the DOM at once —
+// idPrefix namespaces the generated input ids per holder.
+function renderCampaignTypeDetailFields(typeKey, savedValues, holderId){
+  const holder = document.getElementById(holderId || 'campaignTypeDetailFields');
   if (!holder) return;
+  const idPrefix = (holderId && holderId !== 'campaignTypeDetailFields') ? `${holderId}_` : '';
   const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
   if (!def || !def.detailFields.length){
     holder.innerHTML = '';
     return;
   }
   const values = savedValues || {};
+  // 2026-09-17 — the new Brand Messaging card (idPrefix set) has no separate
+  // Save button (see cmpGenerationRequirementsCard's comment: it saves on
+  // change), so its detail inputs save on blur via cmpSaveGenerationTypeDetails();
+  // the legacy card's inputs (idPrefix '') are unchanged — still only read at
+  // Save-button time by saveCampaignTypeFields().
+  const onchangeAttr = idPrefix ? ` onchange="cmpSaveGenerationTypeDetails();"` : '';
   holder.innerHTML = def.detailFields.map(f => `
     <div class="field campaign-type-detail-field">
-      <label for="cmpTypeDetail_${f.key}">${f.label}${f.required ? ' (required for this type)' : ''}</label>
-      <input type="text" id="cmpTypeDetail_${f.key}" data-detail-key="${f.key}" value="${(values[f.key] || '').replace(/"/g, '&quot;')}">
+      <label for="cmpTypeDetail_${idPrefix}${f.key}">${f.label}${f.required ? ' (required for this type)' : ''}</label>
+      <input type="text" id="cmpTypeDetail_${idPrefix}${f.key}" data-detail-key="${f.key}" value="${(values[f.key] || '').replace(/"/g, '&quot;')}"${onchangeAttr}>
     </div>
   `).join('');
 }
@@ -49399,6 +50004,15 @@ async function cmpGenerateAiDraft(){
   const btn = document.getElementById('cmpAiDraftBtn');
   if (!campaign || !panel) return;
   panel.style.display = '';
+  // 2026-09-17 — client-side pre-check ahead of the network call, same gate
+  // the server enforces (see messaging-ai-draft's own comment) — catches
+  // the missing-fields case instantly instead of waiting on a round trip,
+  // while the server-side check stays the real, unbypassable gate.
+  const gate = cmpRequiredForGenerationGate();
+  if (!gate.ok){
+    panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;">Set ${gate.missing.join(' and ')} above before generating AI copy — the AI Brain needs both to write on-strategy copy.</p>`;
+    return;
+  }
   panel.innerHTML = '<p class="hint">Calling the model…</p>';
   if (btn) btn.disabled = true;
   try {
@@ -49443,12 +50057,159 @@ async function cmpGenerateAiDraft(){
         { listId: 'cmpTransparencyList', flagId: 'cmpTransparencyFlag' }
       );
     } else {
-      panel.innerHTML = `<p class="hint">${escapeHtml(data.note || 'AI draft unavailable.')}</p>`;
+      // 2026-09-17 — the required-fields gate (see its own comment) returns
+      // 400 with `error`, not `note`; the client-side pre-check above should
+      // normally catch this first, but this covers the server as the real,
+      // unbypassable source of truth (e.g. a stale local campaign object).
+      panel.innerHTML = `<p class="hint">${escapeHtml(data.error || data.note || 'AI draft unavailable.')}</p>`;
     }
   } catch (e){
     panel.innerHTML = `<p class="hint">AI draft request failed: ${escapeHtml(e.message || 'network error')}.</p>`;
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// 2026-09-17 — sourceKey for the campaign-level copy contest, distinct from
+// any Marketing Function Project's own sourceKey (see mfpSourceKey()) so
+// their history lists (GET .../copy-interviews) never mix. One shared
+// thread per campaign — the contest is against this campaign's Long Form
+// Copy itself, not a per-channel derivative. 2026-09-18, per Todd's direct
+// correction (see the Copy Versions drawer's own HTML comment): this is now
+// also the sourceKey the Copy Versions drawer's contest button uses, since
+// it's the SAME contest reached from a second surface, not a separate one —
+// keeping one sourceKey is what keeps GET .../copy-interviews returning one
+// shared history regardless of which surface ran it.
+const CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY = 'brand-messaging-longform';
+// Runs the campaign-level copy contest (POST .../copy-interview) against
+// this campaign's Long Form Copy brief — same 3-Anthropic-angle +
+// configured-vendor panel runMfpInterview() already uses for Marketing
+// Function Projects. Gated by the same Campaign Type/Business Initiative
+// requirement as the single-draft AI button above (client pre-check here,
+// server enforces it either way).
+// 2026-09-18, per Todd's direct correction: this is now the ONE shared
+// campaign-level contest, reachable from both Brand Messaging and the Copy
+// Versions drawer (see that drawer's own HTML comment for the "was briefly
+// built as a separate duplicate, then corrected" history) — a panel/button/
+// flag-id triple was added so both surfaces can mount the same real
+// function/render/select pipeline into their own DOM elements instead of a
+// second copy-pasted implementation existing anywhere. Brand Messaging's
+// own call sites (button below and any other caller) are unchanged in
+// behavior — the defaults are exactly Brand Messaging's original element
+// ids, so an argument-less call still targets Brand Messaging's own panel.
+async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
+  panelId = panelId || 'cmpCopyContestPanel';
+  btnId = btnId || 'cmpCopyContestBtn';
+  flagId = flagId || 'cmpCopyContestSelectFlag';
+  const campaign = findCampaign(currentCampaignId);
+  const panel = document.getElementById(panelId);
+  const btn = document.getElementById(btnId);
+  if (!campaign || !panel) return;
+  panel.style.display = '';
+  const gate = cmpRequiredForGenerationGate();
+  if (!gate.ok){
+    panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;">Set ${gate.missing.join(' and ')} on Brand Messaging before running the copy contest — the AI Brain needs both to write on-strategy candidates.</p>`;
+    return;
+  }
+  panel.innerHTML = renderAiStatusBubble("Drafting three independent takes on this campaign's Long Form Copy — direct-response, brand-story, and proof-and-trust — plus every configured vendor, then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY })
+    });
+    const result = await resp.json();
+    if (!resp.ok){
+      panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">${escapeHtml(result.error || "Couldn't run the copy contest — try again.")}</div>`;
+      return;
+    }
+    if (!result.available){
+      panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
+      return;
+    }
+    panel.innerHTML = renderCmpCopyContestPanel(result, flagId);
+  } catch (e){
+    panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run the copy contest.</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+// Same card layout as renderMfpInterviewPanel() (Marketing Function
+// Projects' own contest panel) — kept as a separate function rather than
+// reused directly because "Use this draft →" here applies straight into
+// #cmpLongFormCopy (a single, well-known field), not an MFP project's
+// variable structured-field shape. `flagId` (2026-09-18) lets this same
+// render function mount into either Brand Messaging's own panel or the Copy
+// Versions drawer's panel without two DOM elements sharing one id — see
+// cmpRunCampaignCopyContest()'s own comment.
+function renderCmpCopyContestPanel(result, flagId){
+  flagId = flagId || 'cmpCopyContestSelectFlag';
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.copy){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+      </div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+    <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+// Applies the winning candidate straight into #cmpLongFormCopy — same
+// explicit-click-only discipline as runMfpInterviewSelect()/runInterviewSelect().
+// Also records the contest result (recordContestResult() server-side, via
+// the /select endpoint), subtyped by this campaign's real Campaign Type —
+// see that endpoint's 2026-09-17 comment for the unification. `flagId`
+// (2026-09-18) targets whichever surface's status flag element actually
+// triggered this — Brand Messaging's own panel or the Copy Versions
+// drawer's — since #cmpLongFormCopy itself is a single shared element
+// present in the DOM either way, so a winner picked from EITHER surface
+// applies to the same field and the same campaign_copy_interviews history.
+async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
+  flagId = flagId || 'cmpCopyContestSelectFlag';
+  const campaign = findCampaign(currentCampaignId);
+  const flag = document.getElementById(flagId);
+  if (!campaign) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this draft — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    const longformEl = document.getElementById('cmpLongFormCopy');
+    if (longformEl && result.copy){
+      longformEl.value = result.copy;
+      cmpUnapproveMsgField('longform');
+      cmpRenderAllMsgGates();
+    }
+    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to Long Form Copy above.'; }
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
   }
 }
 
@@ -50725,10 +51486,99 @@ function cmpAlignRowMarkup(current, setterCall){
 
 function cmpRenderCopyVersionsStage(){
   if (!document.getElementById('cmpCopyVersionsBuilder')) return;
+  cmpRenderCopyVersionsHeaderRow();
   cmpRenderCopyVersionsBulkCta();
   cmpRenderCopyVersionsQaBadge();
   cmpRenderCopyVersionBuilder();
   cmpRenderCopyVersionsSavedList();
+}
+
+// 2026-09-18 — true when this campaign's real campaign-level copy (Key
+// Message + Long Form Copy, written/approved on Brand Messaging) exists yet.
+// Shared by the header badge, the pending banner, and the drawer body so
+// all three always agree.
+function cmpCampaignCopyIsReady(){
+  const c = cmpRailLoadedCampaign();
+  return !!(c && (c.keyMessage || '').trim() && (c.longformCopy || '').trim());
+}
+
+// Header row port of CopyVersions-Desktop.dc.html: "X of Y assets have
+// copy" badge (Y = Performance Marketing-approved assets, X = assets with a
+// saved copy version) + the "View Campaign Copy" button. Also drives the
+// mobile-only pending banner underneath, since both read the same
+// cmpCampaignCopyIsReady() state.
+function cmpRenderCopyVersionsHeaderRow(){
+  const row = document.getElementById('cmpCopyVersionsHeaderRow');
+  const banner = document.getElementById('cmpCopyVersionsPendingBanner');
+  if (!row) return;
+  const approved = cmpApprovedCreativeAssetsForCampaign();
+  const c = cmpRailLoadedCampaign();
+  const withCopy = Math.min((c && c.copyVersionAssets && c.copyVersionAssets.length) || 0, approved.length);
+  const ready = cmpCampaignCopyIsReady();
+  if (!approved.length){ row.innerHTML = ''; if (banner) banner.innerHTML = ''; return; }
+  row.innerHTML = `
+    <span class="copyver-header-badge${withCopy === approved.length ? ' complete' : ''}">${withCopy} of ${approved.length} assets have copy</span>
+    <button type="button" class="btn-ghost copyver-view-copy-btn" onclick="cmpOpenCampaignCopyDrawer()">${ready ? '✓' : ''} View Campaign Copy</button>`;
+  if (!banner) return;
+  if (ready){
+    banner.className = 'copyver-pending-banner';
+    banner.innerHTML = '';
+  } else {
+    banner.className = 'copyver-pending-banner visible';
+    banner.innerHTML = `<span class="copyver-pending-spinner"></span><span>Campaign copy isn't written yet — add Key Message and Long Form Copy on Brand Messaging. Pick and position assets meanwhile.</span>`;
+  }
+}
+
+// "View Campaign Copy" drawer — see the HTML comment above #copyverCopyDrawer
+// for what's real (Key Message/Long Form Copy, the contest link) vs.
+// relabeled from the wireframe's "generated automatically" framing.
+function cmpOpenCampaignCopyDrawer(){
+  cmpRenderCampaignCopyDrawer();
+  const overlay = document.getElementById('copyverCopyDrawerOverlay');
+  const drawer = document.getElementById('copyverCopyDrawer');
+  if (overlay) overlay.classList.add('open');
+  if (drawer) drawer.classList.add('open');
+}
+function cmpCloseCampaignCopyDrawer(){
+  const overlay = document.getElementById('copyverCopyDrawerOverlay');
+  const drawer = document.getElementById('copyverCopyDrawer');
+  if (overlay) overlay.classList.remove('open');
+  if (drawer) drawer.classList.remove('open');
+}
+function cmpRenderCampaignCopyDrawer(){
+  const body = document.getElementById('copyverCopyDrawerBody');
+  if (!body) return;
+  const c = cmpRailLoadedCampaign();
+  const ready = cmpCampaignCopyIsReady();
+  if (!ready){
+    body.innerHTML = `
+      <div class="copyver-copy-drawer-status pending">Not written yet — Key Message and Long Form Copy are added and approved on the Brand Messaging stage, right before this one.</div>
+      <div class="hint">Once approved there, this panel shows the campaign's Key Message and Long Form Copy alongside whichever asset you're working on here.</div>
+      <button type="button" class="btn-primary" style="width:100%;justify-content:center;" onclick="cmpCloseCampaignCopyDrawer();openCmpStage('messaging');">Go to Brand Messaging →</button>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="copyver-copy-drawer-status ready">✓ From this campaign's approved Brand Messaging — Key Message and Long Form Copy. Edit either on that stage; changes show here right away.</div>
+    <div>
+      <div class="copyver-copy-drawer-section-label">Key Message</div>
+      <p class="copyver-copy-drawer-text">${escapeHtml(c.keyMessage || '')}</p>
+    </div>
+    <div>
+      <div class="copyver-copy-drawer-section-label">Long-Form Copy</div>
+      <p class="copyver-copy-drawer-text">${escapeHtml(c.longformCopy || '')}</p>
+    </div>
+    <div style="border-top:1px solid var(--line-hairline);padding-top:16px;">
+      <!-- 2026-09-18, per Todd's direct correction: this is the SAME
+           campaign-level contest Brand Messaging runs
+           (cmpRunCampaignCopyContest(), POST .../copy-interview,
+           campaign_copy_interviews history) — one shared contest reachable
+           from both surfaces, not a separate one. Passes this drawer's own
+           panel/button/flag element ids so the shared function/render/
+           select functions mount here instead of Brand Messaging's DOM. -->
+      <button type="button" class="btn-primary" id="copyverCopyContestBtn" style="width:100%;justify-content:center;" onclick="cmpRunCampaignCopyContest('copyverCopyContestPanel','copyverCopyContestBtn','copyverCopyContestSelectFlag');">✦ Run Campaign Copy Contest (multi-model) →</button>
+      <p class="hint" style="text-align:center;margin:8px 0 0;">Drafts alternative campaign copy grounded in this account's Brand Voice plus this campaign's real Loop Stage, Audience, and Campaign Type — the same contest and history as the Brand Messaging stage's copy contest.</p>
+      <div id="copyverCopyContestPanel" style="margin-top:12px;"></div>
+    </div>`;
 }
 
 // Round 132au (2026-08-12), per direct feedback: "a CTA after Brand
@@ -50813,7 +51663,7 @@ function cmpRenderCopyVersionBuilder(){
         <span class="msg-card-title">Create a copy version</span>
         <span class="msg-card-sub">Pick an asset Performance Marketing already approved, then write copy against it.</span>
       </div>
-      <div class="field" style="margin-bottom:14px;">
+      <div class="field copyver-asset-picker-field" style="margin-bottom:14px;">
         <label for="cvApprovedAsset">Approved creative asset</label>
         <select id="cvApprovedAsset" onchange="cmpCopyVersionAssetChanged(this.value)">
           <option value="">Select…</option>
@@ -52262,6 +53112,44 @@ function cmpRenderAddCategorySelect(){
 // the space) plus matching input-box padding — so the channel name now
 // lines up with the actual input row every time, regardless of what
 // prints below it in a neighboring column.
+// 2026-09-18, per PerfMarketing-Desktop.dc.html (approved wireframe) — the
+// "Why this channel plan?" reasoning panel above the grid (see the markup
+// comment at #cmpChannelPlanRationaleLink). Narrates this campaign's real
+// Stage/Campaign Type/Audience/Primary KPI and the channels + $ already on
+// cmpChannelPlanRows, same "explain, don't re-derive" convention
+// cmpLongFormRationale() uses for Brand Messaging's "Why this copy?" panel —
+// never invents a plan of its own, so it can't say something the grid above
+// it doesn't already show.
+function cmpChannelPlanReasoningText(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return 'No campaign loaded yet.';
+  const rows = Object.entries(cmpChannelPlanRows || {});
+  if (!rows.length) return 'Pick at least one channel above to see the reasoning behind its plan.';
+  const totalBudget = rows.reduce((s, [, r]) => s + (Number(r.budget) || 0), 0);
+  const parts = [];
+  parts.push(`Recommended from the brief above: this campaign's <b>${escapeHtml(campaign.stage || 'selected')}</b> Lifecycle-Loop stage${campaign.campaignType ? ` and <b>${escapeHtml(campaign.campaignType)}</b> campaign type` : ''} shaped which channels made the cut here.`);
+  if (campaign.audienceTargets) parts.push(`<b>Audience</b> — sized against ${escapeHtml(campaign.audienceTargets)}.`);
+  if (campaign.primaryKpi) parts.push(`<b>Goal</b> — spend is weighted toward this campaign's Primary KPI ("${escapeHtml(campaign.primaryKpi)}")${totalBudget ? `, sized to stay within the $${totalBudget.toLocaleString()} planned below` : ''}.`);
+  parts.push(`Channels: ${rows.map(([ch]) => escapeHtml(ch)).join(', ')}. Edit Spend or CPM directly above if this mix needs adjusting — nothing here locks in until you approve.`);
+  return parts.join(' ');
+}
+function cmpRenderChannelPlanRationale(){
+  const panel = document.getElementById('cmpChannelPlanRationalePanel');
+  if (!panel) return;
+  panel.innerHTML = `
+    <div style="font-size:0.6875rem;font-weight:700;color:var(--media);text-transform:uppercase;letter-spacing:0.02em;margin-bottom:6px;">Reasoning</div>
+    <div style="font-size:0.8125rem;color:var(--ink);line-height:1.55;">${cmpChannelPlanReasoningText()}</div>
+  `;
+}
+function cmpToggleChannelPlanRationale(){
+  const panel = document.getElementById('cmpChannelPlanRationalePanel');
+  const link = document.getElementById('cmpChannelPlanRationaleLink');
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  if (opening) cmpRenderChannelPlanRationale();
+  panel.style.display = opening ? '' : 'none';
+  if (link) link.textContent = opening ? '💭 Why this channel plan? ↓ (hide)' : '💭 Why this channel plan? →';
+}
 function cmpRenderChannelPlanList(){
   const listEl = document.getElementById('cmpPerfMarketingAssetsList');
   if (!listEl) return;
@@ -52362,9 +53250,31 @@ function cmpChannelPlanBudgetDelta(){
   const material = delta !== null && Math.abs(delta) > 1 && Math.abs(delta) > campaignBudget * 0.01;
   return { rows, totalBudget, totalImpr, campaignBudget, delta, material };
 }
+// 2026-09-18, per Todd's direct clarification: "Target impressions for the
+// campaign is fine. This is purely based on approved CPM." — a derived
+// readout, never a manual goal field. cmpChannelPlanRows is this campaign's
+// real, currently-planned $ channels (the exact set cmpApproveChannelPlan()
+// persists with status:'approved' as one unit — this build has no
+// per-channel pending/rejected state to filter against, so "approved
+// channels" here means the $ rows actually on this grid, same set the
+// existing totals line already sums; demand-fulfillment channels are
+// already excluded since they carry no Spend/CPM row to derive impressions
+// from). Each row's own r.impressions is already the real Budget ÷ CPM × 1000
+// readout cmpUpdateChannelPlanField() keeps current — this just totals what's
+// already on screen rather than recomputing the math a second way.
+function cmpRenderChannelPlanTargetImpressions(){
+  const el = document.getElementById('cmpChannelPlanTargetImpressions');
+  if (!el) return;
+  const rows = Object.entries(cmpChannelPlanRows || {});
+  if (!rows.length){ el.style.display = 'none'; el.textContent = ''; return; }
+  const totalImpr = rows.reduce((s, [, r]) => s + (Number(r.impressions) || 0), 0);
+  el.style.display = '';
+  el.innerHTML = `<span style="font-weight:700;color:var(--ink);">🎯 Target Impressions: ${totalImpr.toLocaleString()}</span><br><span style="font-weight:400;">Derived from this plan's approved Spend ÷ CPM (×1,000) across every channel above — not a manually set goal, and it updates as Spend or CPM changes.</span>`;
+}
 function cmpRenderChannelPlanTotals(){
   const el = document.getElementById('cmpPerfMarketingChannelPlanTotals');
   const alertEl = document.getElementById('cmpChannelPlanBudgetAlert');
+  cmpRenderChannelPlanTargetImpressions();
   if (!el) return;
   const { rows, totalBudget, totalImpr, campaignBudget, delta, material } = cmpChannelPlanBudgetDelta();
   let note = `Channel plan total: $${totalBudget.toLocaleString()} · ${totalImpr.toLocaleString()} est. impressions across ${rows.length} categor${rows.length === 1 ? 'y' : 'ies'}.`;
