@@ -22007,7 +22007,22 @@ Submit your response via the campaign_intake_turn tool.`;
       if (existingRows.length) return sendJson(res, 200, { generated: false, reason: 'campaign already has a channel plan' });
       let intake = [];
       try {
-        const notes = campaign.activitynotesjson ? JSON.parse(campaign.activitynotesjson) : null;
+        // 2026-09-19 fix, per Todd's direct report ("Objective conversation
+        // is not saving which is impacting the Budget & Recommendation
+        // screen"): this read used `campaign.activitynotesjson` (all
+        // lowercase) while every other place in this file — the merge-
+        // update endpoint above, the column's own ensureColumn() call —
+        // reads/writes it as `campaign.activityNotesJson`. Row objects here
+        // preserve the declared column case, so the lowercase spelling was
+        // always undefined, and this endpoint silently returned "no
+        // Objectives conversation saved for this campaign yet" on EVERY
+        // call, even when a real transcript was sitting in the column. That
+        // sent every campaign down the generic stage-weighted fallback
+        // (cmpGenerateAndPersistRecommendation on the frontend), which
+        // needs campaign.stage to already be set and produces nothing (or a
+        // generic placeholder) otherwise — exactly the "Budget &
+        // Recommendation screen has no data" symptom reported.
+        const notes = campaign.activityNotesJson ? JSON.parse(campaign.activityNotesJson) : null;
         intake = (notes && Array.isArray(notes.objectivesIntake)) ? notes.objectivesIntake : [];
       } catch (e){ intake = []; }
       if (!intake.length) return sendJson(res, 200, { generated: false, reason: 'no Objectives conversation saved for this campaign yet' });
@@ -29122,13 +29137,3 @@ try {
 }
 
 module.exports = handleRequest;
-
-
-
-
-
-
-
-
-
-
