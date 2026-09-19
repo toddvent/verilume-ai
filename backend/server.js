@@ -571,6 +571,41 @@ ensureColumn('campaigns', 'transactionWindowDays', 'INTEGER');
 ensureColumn('campaigns', 'cmoCopywriterBrief', 'TEXT');
 ensureColumn('campaigns', 'cmoAnalyticsBrief', 'TEXT');
 ensureColumn('campaigns', 'briefAnalyticsContinuedAt', 'TEXT');
+// 2026-09-19 — real auto-refresh behavior for the two messages above, per
+// the wireframe's own footnote: "Refines automatically as Objectives, the
+// approved Channel Plan, and Copy evolve — edit either message directly to
+// override for this campaign." The earlier build (f5b12f9, comment still
+// above on cmpOpenBriefAnalyticsStage()) read "no manual regeneration
+// required" as "generate once, never again," which is a real gap against
+// that literal sentence — Todd has been explicit the wireframe's stated
+// behavior is the spec, not a discussion point, so this closes it for
+// real:
+//   - cmoCopywriterBriefEditedByHuman / cmoAnalyticsBriefEditedByHuman
+//     (0/1): set the moment a person's edit is what's on file for that
+//     message (see cmpBriefOnBlur/cmpBriefSaveField in portal.html),
+//     cleared back to 0 whenever a fresh AI draft is what's on file
+//     instead. No existing "AI-original vs. human-edited" flag exists
+//     anywhere else in this codebase to reuse (the Recommendation screen's
+//     cmo-narrative paragraph is generate-on-demand/never stored, so it
+//     never needed one) — this is the real precedent going forward if a
+//     similar distinction is needed elsewhere.
+//   - cmoCopywriterBriefUpstreamHash / cmoAnalyticsBriefUpstreamHash: a
+//     sha256 of the exact real upstream fields ("Objectives" = objective/
+//     stage/segment/campaignType/dates/primaryKpi/kpiGoal; "approved
+//     Channel Plan" = this campaign's channel_planning_details rows plus
+//     pmValidatedAt, i.e. the plan as of its last real approval; "Copy" =
+//     Brand Messaging's Key Message/Long-Form Copy fields, keyMessage/
+//     longformCopy — the only real "Copy" that exists on a campaign by the
+//     time this stage is reached; Copy Versions/contests are a later,
+//     Creative Execution-stage concept and aren't inputs here) — see
+//     buildCmoBriefUpstreamSignature() below. Recorded at the moment each
+//     message is (re)generated so a later read can tell, without
+//     re-fetching an AI response, whether the real inputs that message was
+//     grounded in have since moved.
+ensureColumn('campaigns', 'cmoCopywriterBriefEditedByHuman', 'INTEGER');
+ensureColumn('campaigns', 'cmoAnalyticsBriefEditedByHuman', 'INTEGER');
+ensureColumn('campaigns', 'cmoCopywriterBriefUpstreamHash', 'TEXT');
+ensureColumn('campaigns', 'cmoAnalyticsBriefUpstreamHash', 'TEXT');
 // Added 2026-08-05 (round 32, part D) — recommended channel mix, audience
 // mix, and channel spend allocation, stored as one JSON blob (same
 // convention as trafficPackageJson above): { channels, audience, source,
@@ -21568,7 +21603,19 @@ Submit your response via the campaign_intake_turn tool.`;
         // every field above.
         cmoCopywriterBrief: body.cmoCopywriterBrief !== undefined ? body.cmoCopywriterBrief : existing.cmoCopywriterBrief,
         cmoAnalyticsBrief: body.cmoAnalyticsBrief !== undefined ? body.cmoAnalyticsBrief : existing.cmoAnalyticsBrief,
-        briefAnalyticsContinuedAt: body.briefAnalyticsContinuedAt !== undefined ? body.briefAnalyticsContinuedAt : existing.briefAnalyticsContinuedAt
+        briefAnalyticsContinuedAt: body.briefAnalyticsContinuedAt !== undefined ? body.briefAnalyticsContinuedAt : existing.briefAnalyticsContinuedAt,
+        // 2026-09-19 — the real auto-refresh-vs-human-override bookkeeping
+        // for the two messages above (see ensureColumn(...EditedByHuman)/
+        // ensureColumn(...UpstreamHash) comments up top for the full
+        // reasoning). The frontend always sends the EditedByHuman flag and
+        // UpstreamHash together with whichever message text it's saving —
+        // 1/fresh-hash for a genuine human edit, 0/fresh-hash for a new AI
+        // draft — so this is a plain merge like every other field here, not
+        // logic this endpoint has to infer.
+        cmoCopywriterBriefEditedByHuman: body.cmoCopywriterBriefEditedByHuman !== undefined ? (body.cmoCopywriterBriefEditedByHuman ? 1 : 0) : existing.cmoCopywriterBriefEditedByHuman,
+        cmoAnalyticsBriefEditedByHuman: body.cmoAnalyticsBriefEditedByHuman !== undefined ? (body.cmoAnalyticsBriefEditedByHuman ? 1 : 0) : existing.cmoAnalyticsBriefEditedByHuman,
+        cmoCopywriterBriefUpstreamHash: body.cmoCopywriterBriefUpstreamHash !== undefined ? body.cmoCopywriterBriefUpstreamHash : existing.cmoCopywriterBriefUpstreamHash,
+        cmoAnalyticsBriefUpstreamHash: body.cmoAnalyticsBriefUpstreamHash !== undefined ? body.cmoAnalyticsBriefUpstreamHash : existing.cmoAnalyticsBriefUpstreamHash
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -21583,8 +21630,8 @@ Submit your response via the campaign_intake_turn tool.`;
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, businessInitiative = ?, stage = ?, segment = ?, activityNotesJson = ?, cmoCopywriterBrief = ?, cmoAnalyticsBrief = ?, briefAnalyticsContinuedAt = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.businessInitiative, merged.stage, merged.segment, merged.activityNotesJson, merged.cmoCopywriterBrief, merged.cmoAnalyticsBrief, merged.briefAnalyticsContinuedAt, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, businessInitiative = ?, stage = ?, segment = ?, activityNotesJson = ?, cmoCopywriterBrief = ?, cmoAnalyticsBrief = ?, briefAnalyticsContinuedAt = ?, cmoCopywriterBriefEditedByHuman = ?, cmoAnalyticsBriefEditedByHuman = ?, cmoCopywriterBriefUpstreamHash = ?, cmoAnalyticsBriefUpstreamHash = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.businessInitiative, merged.stage, merged.segment, merged.activityNotesJson, merged.cmoCopywriterBrief, merged.cmoAnalyticsBrief, merged.briefAnalyticsContinuedAt, merged.cmoCopywriterBriefEditedByHuman, merged.cmoAnalyticsBriefEditedByHuman, merged.cmoCopywriterBriefUpstreamHash, merged.cmoAnalyticsBriefUpstreamHash, campaignId);
       // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
       // digest pooling, build-order item 2). messagingStyleDigestJson has
       // been stored on the campaign row since round 132be but read by
@@ -22590,6 +22637,39 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       return sendJson(res, 200, { narrative: parsed.narrative || null });
     }
 
+    // 2026-09-19 — real upstream-change detection for the two CMO team
+    // messages below, per the wireframe's literal footnote ("Refines
+    // automatically as Objectives, the approved Channel Plan, and Copy
+    // evolve"). Hashes exactly the real fields that make up those three
+    // named inputs at this point in the campaign flow — nothing else, so a
+    // change to some unrelated field (e.g. actualSpend, a note) never
+    // falsely marks a message stale. "Approved Channel Plan" folds in
+    // pmValidatedAt (not just the line items) so a fresh approval of an
+    // otherwise-unchanged plan still counts as the plan having "evolved."
+    // "Copy" is Brand Messaging's Key Message/Long-Form Copy fields
+    // (keyMessage/longformCopy) — the only real Copy that exists on a
+    // campaign by the time this stage is reached; Copy Versions/contests
+    // are a Creative Execution-stage concept that comes after this screen,
+    // not an input to it. Shared by both messages since the wireframe's
+    // footnote names the same three inputs for each.
+    function buildCmoBriefUpstreamSignature(campaign, channelLines){
+      const payload = {
+        objective: campaign.objective || null,
+        stage: campaign.stage || null,
+        segment: campaign.segment || null,
+        campaignType: campaign.campaignType || null,
+        startDate: campaign.startDate || null,
+        endDate: campaign.endDate || null,
+        primaryKpi: campaign.primaryKpi || null,
+        kpiGoal: campaign.kpiGoal != null ? campaign.kpiGoal : null,
+        pmValidatedAt: campaign.pmValidatedAt || null,
+        channels: (channelLines || []).map(l => ({ channel: l.channel || null, budget: Number(l.budget) || 0 })),
+        keyMessage: campaign.keyMessage || null,
+        longformCopy: campaign.longformCopy || null
+      };
+      return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+    }
+
     // POST /api/campaigns/:id/cmo-team-message — 2026-09-18, Campaign Brief
     // & Analytics Requirements stage (new build, per the approved
     // CampaignBrief-Desktop/Mobile.dc.html wireframe: two auto-generated,
@@ -22597,15 +22677,19 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
     // Analytics). Same real callClaudeForJSON()/silent-retry mechanism as
     // POST .../cmo-narrative just above, reading only this campaign's real
     // stored fields (objective/stage/segment/campaignType/dates/primaryKpi/
-    // kpiGoal, plus its real channel_planning_details rows) and this
-    // account's real Master UTM Configuration element count — never
-    // inventing a number (e.g. "7 UTM parameters," "$299 CPA ceiling") the
-    // wireframe's own copy shows as an illustrative example but that isn't
-    // a real field on this campaign. `audience` picks which of the two
+    // kpiGoal/keyMessage/longformCopy, plus its real channel_planning_details
+    // rows) and this account's real Master UTM Configuration element count —
+    // never inventing a number (e.g. "7 UTM parameters," "$299 CPA ceiling")
+    // the wireframe's own copy shows as an illustrative example but that
+    // isn't a real field on this campaign. `audience` picks which of the two
     // team-facing prompts to write; the frontend persists whichever comes
     // back (and any later edit) onto the campaign row via the existing
     // POST /api/campaigns/:id merge-update endpoint, under
-    // cmoCopywriterBrief/cmoAnalyticsBrief.
+    // cmoCopywriterBrief/cmoAnalyticsBrief. Also returns `upstreamHash` —
+    // buildCmoBriefUpstreamSignature() above, computed from the exact real
+    // inputs this draft was grounded in — so the frontend can stamp it onto
+    // the campaign row and later tell whether those inputs have moved (see
+    // cmpBriefCheckStale() in portal.html).
     const CMO_TEAM_MESSAGE_SCHEMA = {
       type: 'object',
       properties: {
@@ -22626,6 +22710,7 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       const account = db.prepare('SELECT utmMasterElementsJson FROM accounts WHERE accountId = ?').get(campaign.accountId);
       let utmElementCount = 0;
       try { const parsedUtm = account && account.utmMasterElementsJson ? JSON.parse(account.utmMasterElementsJson) : []; utmElementCount = Array.isArray(parsedUtm) ? parsedUtm.length : 0; } catch (e){ utmElementCount = 0; }
+      const upstreamHash = buildCmoBriefUpstreamSignature(campaign, lines);
       const sharedFacts = `Campaign objective: ${campaign.objective || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Campaign Type: ${campaign.campaignType || 'General'}
@@ -22633,7 +22718,8 @@ Audience: ${campaign.segment || '(not set)'}
 Channels: ${channelList}
 ${formatCampaignDatesForPrompt(campaign)}
 Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — goal of ${campaign.kpiGoal}` : ''}
-Total planned spend: $${Math.round(totalSpend).toLocaleString()}`;
+Total planned spend: $${Math.round(totalSpend).toLocaleString()}
+Key Message: ${campaign.keyMessage || '(not set)'}${campaign.longformCopy ? `\nLong-Form Copy: ${campaign.longformCopy}` : ''}`;
       const prompt = audience === 'analytics'
         ? `Write a short message, in the voice of a CMO briefing the Analytics team on one specific campaign, based only on the real data below. Do not invent numbers, UTM parameter counts, or cost ceilings not given here.
 
@@ -22667,7 +22753,34 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
           return sendJson(res, 200, { message: null, error: 'The AI Brain could not draft this message right now. Try again in a moment.' });
         }
       }
-      return sendJson(res, 200, { message: parsed.message || null });
+      return sendJson(res, 200, { message: parsed.message || null, upstreamHash });
+    }
+
+    // GET /api/campaigns/:id/cmo-brief-staleness — 2026-09-19, the real
+    // trigger check for the auto-refresh behavior above. Computed
+    // server-side (rather than duplicating buildCmoBriefUpstreamSignature's
+    // exact field list/ordering in the frontend too, which would drift the
+    // moment either copy changed) by recomputing today's real upstream
+    // signature from this campaign's current row + current
+    // channel_planning_details rows and comparing it to whatever hash was
+    // stamped on the campaign the last time each message was (re)generated.
+    // A message with no stored hash yet (never generated) reads as not
+    // stale — cmpOpenBriefAnalyticsStage()'s existing "draft once" path
+    // already covers that case. The frontend calls this once when the
+    // stage opens (the same real entry point the auto-draft-once logic
+    // already used) rather than polling continuously — matching how this
+    // app checks other derived state (e.g. messagingRelevanceJson) on
+    // demand at the point of use, not via a background watcher.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'cmo-brief-staleness'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const lines = db.prepare('SELECT channel, budget, impressions FROM channel_planning_details WHERE campaignId = ?').all(campaignId);
+      const currentHash = buildCmoBriefUpstreamSignature(campaign, lines);
+      const copywriterStale = !!campaign.cmoCopywriterBrief && !!campaign.cmoCopywriterBriefUpstreamHash && campaign.cmoCopywriterBriefUpstreamHash !== currentHash;
+      const analyticsStale = !!campaign.cmoAnalyticsBrief && !!campaign.cmoAnalyticsBriefUpstreamHash && campaign.cmoAnalyticsBriefUpstreamHash !== currentHash;
+      return sendJson(res, 200, { copywriterStale, analyticsStale, upstreamHash: currentHash });
     }
 
     // DELETE /api/campaigns/:id/channel-planning/:entryId
@@ -29009,4 +29122,13 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
+
+
+
+
+
+
 
