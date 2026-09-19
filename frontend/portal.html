@@ -13377,12 +13377,35 @@ function cmpToggleActivityNotes(key){
   cmpOpenActivityNotesKey = cmpOpenActivityNotesKey === key ? null : key;
   cmpRenderActivityNotesPanel(key);
 }
+// 2026-09-19 fix, per Todd's direct report ("The Objective conversation is
+// not saving which is impacting the Budget & Recommendation screen"). This
+// used to fire an un-awaited POST on every call with no ordering guarantee
+// at all — cmpRenderIntakeChat() (which calls this via cmpSaveIntakeHistory)
+// runs once right after the user's turn is pushed and again, moments later,
+// after the AI Brain's reply is pushed, so two of these requests are
+// routinely in flight for the same campaign within a second of each other.
+// Both carry the FULL current activityNotes snapshot (not a diff), so
+// whichever one's response reaches the server LAST wins — normally the
+// second (newer) call, but nothing guaranteed that ordering, and a slower
+// first request completing after a faster second one would silently
+// overwrite the newer, more-complete transcript with the older, shorter
+// one. That's a real lost-update path, not a hypothetical: it would show up
+// exactly as "the Objectives conversation isn't saving" even though every
+// individual call succeeded. Fixed by chaining writes per campaign so only
+// one is ever in flight at a time and they always reach the server in the
+// order they were made.
+const cmpActivityNotesSaveChains = {};
 function cmpPersistActivityNotesToCampaign(c){
   if (!c || c.localOnly || dataSourceLabel !== 'backend') return;
-  authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+  const id = c.id;
+  const payload = JSON.stringify(c.activityNotes || {});
+  const prior = cmpActivityNotesSaveChains[id] || Promise.resolve();
+  const next = prior.then(() => authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(id)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ activityNotesJson: JSON.stringify(c.activityNotes || {}) })
-  }).catch(e => console.warn('cmpPersistActivityNotesToCampaign: backend write failed, kept locally only.', e));
+    body: JSON.stringify({ activityNotesJson: payload })
+  })).catch(e => console.warn('cmpPersistActivityNotesToCampaign: backend write failed, kept locally only.', e));
+  cmpActivityNotesSaveChains[id] = next;
+  return next;
 }
 function cmpAddActivityNote(key){
   const c = cmpRailLoadedCampaign();
@@ -38246,9 +38269,24 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
         <button type="button" class="btn-ghost" onclick="cmpRecoCancelAddChannel()">Cancel</button>
       </td>
     </tr>` : '';
+  // 2026-09-19, per Todd's direct report ("Budget and Recommendation does
+  // not have data"): a real bug (server.js reading
+  // campaign.activitynotesjson instead of campaign.activityNotesJson) made
+  // POST .../generate-recommendation-from-intake silently fail to find any
+  // saved Objectives conversation on every call, so campaigns that
+  // genuinely had one still ended up with zero channel_planning_details
+  // rows and no way to recover short of re-running the whole Objectives
+  // dialogue. That read is fixed now, but campaigns already stuck in this
+  // empty state before the fix have no other path to a plan — this button
+  // lets them retry generation directly from here rather than requiring a
+  // fresh trip through the Objectives screen. Safe to offer unconditionally
+  // when there are no line items yet: the endpoint itself no-ops (and says
+  // why) if there's no saved conversation to extract from, or if a plan
+  // somehow already exists.
+  const generateFromIntakeBtn = allItems.length ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" id="cmpRecoGenFromIntakeBtn" ${s.genFromIntakeBusy ? 'disabled' : ''} onclick="cmpRecoGenerateFromIntake()">${s.genFromIntakeBusy ? 'Generating…' : 'Generate from Objectives conversation →'}</button></div>`;
   const emptyMessage = allItems.length && !items.length
     ? `<p class="lede">No channel plan lines for ${escapeHtml(regionFilter)} — try "All Regions" or add one below.</p>`
-    : `<p class="lede">No channel plan lines entered for this campaign yet.</p>`;
+    : `<p class="lede">No channel plan lines entered for this campaign yet.</p>${generateFromIntakeBtn}`;
   const table = items.length || s.addingLine ? `
     <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
       <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
@@ -38559,6 +38597,40 @@ function cmpRecoCancelAddChannel(){
   cmpRecoState.addingLine = false;
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderPitchLeft(campaign);
+}
+// 2026-09-19 — manual retry for the empty-plan state, per Todd's direct
+// report. Calls the same POST .../generate-recommendation-from-intake
+// endpoint cmpConfirmIntakeAndContinue() calls when the Objectives dialogue
+// first finishes; here it's reachable directly from the Recommendation
+// screen's own empty state so a campaign whose transcript was saved but
+// never turned into a plan (the activitynotesjson/activityNotesJson casing
+// bug fixed the same day) can recover without re-running the conversation.
+// Reloads pitch-summary afterward regardless of outcome so the screen
+// reflects whatever really is (or still isn't) saved — never assumes
+// success from a 200 response alone.
+async function cmpRecoGenerateFromIntake(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign || cmpRecoState.genFromIntakeBusy) return;
+  cmpRecoState.genFromIntakeBusy = true;
+  cmpRenderPitchLeft(campaign);
+  let message = null;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/generate-recommendation-from-intake`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    if (resp.ok){
+      const data = await resp.json();
+      if (!data.generated) message = data.reason || 'Nothing to generate yet.';
+    } else {
+      message = `Could not generate a recommendation (HTTP ${resp.status}).`;
+    }
+  } catch (e){
+    message = 'Could not reach the AI Brain — check your connection and try again.';
+  }
+  try {
+    cmpRecoState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
+  } catch (e){ console.warn('cmpRecoGenerateFromIntake: pitch-summary reload failed', e); }
+  cmpRecoState.genFromIntakeBusy = false;
+  cmpRenderPitchLeft(campaign);
+  if (message) alert(message);
 }
 // 2026-09-16 — region filter, per Todd's "toggle between budget
 // allocations" instruction. Also seeds the Add Channel row's default
