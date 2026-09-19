@@ -1590,7 +1590,11 @@
      one line — see the "give the name room" instruction on the markup
      above. */
   .cch-top{display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between;}
-  .cch-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:flex-start;margin-top:10px;}
+  /* 2026-09-19 — hairline divider + top padding added above the meta row,
+     per the updated CampaignHeader.dc.html wireframe, so "View Comments /
+     Last completed" reads as its own row separated from the progress bar
+     above it rather than floating right underneath it. */
+  .cch-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:flex-start;margin-top:12px;border-top:1px solid var(--line-hairline);padding-top:12px;}
   .cch-identity{min-width:0;}
   /* 2026-09-15, per direct instruction — identity block reordered to lead
      with the campaign ID (small, secondary) above the name, with the status
@@ -1652,7 +1656,15 @@
      "top right of the header" for it. The pill row itself (labels, colors,
      click behavior — cmpRenderProgressBar()/.cch-progress-seg below) is
      untouched; only the circle's position changed. */
-  .cch-score-marker{position:absolute;right:0;top:50%;transform:translateY(-50%);flex-shrink:0;}
+  .cch-score-marker{position:absolute;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;z-index:2;}
+  /* 2026-09-19, per the updated CampaignHeader.dc.html wireframe (Todd's
+     latest design-review round — the "RELEVANCE by itself does not add
+     value" removal from 2026-08-15 is explicitly reversed here, per the
+     approved artboard) — a small caption sits below the circle again,
+     naming what the number is without the circle needing its own text
+     label. Kept short and muted so it doesn't compete with the circle
+     itself. */
+  .cch-score-caption{font-size:0.6875rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;text-align:center;white-space:nowrap;background:var(--paper);padding:1px 6px;border-radius:6px;}
   /* Round 132bx follow-up — a thin white ring plus a deeper, more diffused
      shadow (in place of the flatter var(--shadow-lg)) so the circle reads
      as a deliberate, polished badge floating above the card, not a flat
@@ -1661,9 +1673,14 @@
      gone: that was for peeking above .cch-top's own row edge when the
      circle lived there as a flex item. Now positioned via .cch-score-marker
      (absolute + translateY), so plain margin:0; size/shadow/border unchanged. */
-  .cch-score-circle{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.375rem;font-weight:700;margin:0;border:3px solid var(--white);box-shadow:0 12px 28px -8px rgba(15,23,42,0.35), 0 2px 6px rgba(15,23,42,0.14);flex-shrink:0;}
+  /* 2026-09-19 — resized 92px→64px (and the caption above added) to match
+     the updated CampaignHeader.dc.html wireframe exactly, rather than the
+     larger circle from the prior round's "larger than the header height"
+     instruction — Todd's latest approved artboard supersedes that sizing. */
+  .cch-score-circle{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.0625rem;font-weight:700;margin:0;border:3px solid var(--white);box-shadow:0 12px 28px -8px rgba(15,23,42,0.35), 0 2px 6px rgba(15,23,42,0.14);flex-shrink:0;color:#FFFFFF;}
   @media (max-width:600px){
-    .cch-score-circle{width:60px;height:60px;font-size:1rem;}
+    .cch-score-circle{width:44px;height:44px;font-size:0.75rem;}
+    .cch-score-caption{font-size:0.5625rem;}
   }
   /* Round 132bx follow-up — "we need an option to close and validate we
      auto close when selection is made." #cchStepsCloseLink is the explicit
@@ -1713,22 +1730,26 @@
      top/bottom without colliding with .cch-top above or .cch-meta below;
      .cch-progress itself gets padding-right so its pills stop short of
      the circle instead of running underneath its label text. */
-  .cch-progress-row{position:relative;margin:36px 0;}
+  .cch-progress-row{position:relative;margin:34px 0;}
+  /* 2026-09-19 — restyled from labeled pill buttons to a thin, unlabeled
+     multi-segment track per the updated CampaignHeader.dc.html wireframe
+     (Todd's latest design-review round). The underlying data/behavior is
+     unchanged: still one segment per CMP_STAGE_CATEGORY_ORDER group, still
+     status-driven (not-started/in-progress/complete via cmpCategoryStatus()
+     — see cmpRenderProgressBar()), still clickable to jump to that
+     category's column in the steps panel. Only the visual — no more
+     visible text label, no border/padding/hover-lift, just a slim colored
+     bar — and the tooltip (title attribute, still set in JS) is what now
+     carries the category name instead of on-bar text. */
   .cch-progress{display:flex;gap:4px;cursor:pointer;padding-right:106px;}
-  .cch-progress-seg{flex:1;min-width:0;border-radius:8px;padding:6px 10px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.02em;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid transparent;transition:transform 0.1s;}
-  .cch-progress-seg:hover{transform:translateY(-1px);}
-  .cch-progress-seg.not-started{background:var(--white);border-color:var(--line);color:var(--muted);}
-  .cch-progress-seg.in-progress{background:#FBF6EA;border-color:var(--media);color:var(--media);}
-  .cch-progress-seg.complete{background:#EAF3EF;border-color:var(--cx);color:var(--cx);}
-  @media (max-width:700px){
-    .cch-progress{flex-wrap:wrap;}
-    .cch-progress-seg{flex:1 1 calc(33% - 4px);}
-  }
+  .cch-progress-seg{flex:1;min-width:0;height:4px;border-radius:3px;background:var(--line-hairline);}
+  .cch-progress-seg.in-progress{background:var(--media);}
+  .cch-progress-seg.complete{background:var(--cx);}
   @media (max-width:600px){
-    /* Matches the 60px score circle at this breakpoint (see
+    /* Matches the 44px score circle at this breakpoint (see
        .cch-score-circle's own max-width:600px override above) — smaller
        clearance margin, smaller reserved strip for the circle. */
-    .cch-progress-row{margin:22px 0;}
+    .cch-progress-row{margin:26px 0;}
     .cch-progress{padding-right:72px;}
   }
   /* Briefly highlights a steps-panel column when a progress-bar segment is
@@ -7782,6 +7803,7 @@
         <div class="cch-progress" id="cchProgress"></div>
         <div class="cch-score-marker">
           <div class="cch-score-circle" id="cchScoreCircle" title="Campaign Relevance Score">—</div>
+          <div class="cch-score-caption">Campaign Relevance Score</div>
         </div>
       </div>
       <div class="cch-meta">
@@ -12927,13 +12949,21 @@ function cmpRenderCampaignHeader(campaign){
 // convention). Each segment's status comes from cmpCategoryStatus(), which
 // re-derives from the exact same cmpModuleStatus() calls already driving
 // the rail/steps-panel/module tags, so this can never disagree with them.
+// 2026-09-19 — restyled per the updated CampaignHeader.dc.html wireframe:
+// each segment is now a thin unlabeled bar (see .cch-progress-seg CSS
+// comment), not a labeled pill. Status source and click behavior are
+// unchanged — 'not-started' still renders with no extra class (the CSS
+// default), so only 'in-progress'/'complete' need a class here; the
+// category name/status that used to be visible ON the bar is still
+// available via the same title tooltip.
 function cmpRenderProgressBar(campaign){
   const mount = document.getElementById('cchProgress');
   if (!mount) return;
   mount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(cat => {
     const status = cmpCategoryStatus(cat);
     const label = CMP_STAGE_CATEGORY_DISPLAY_LABEL[cat] || cat;
-    return `<div class="cch-progress-seg ${status}" title="${escapeHtml(label)}: ${escapeHtml(STAGE_STATUS_LABEL[status] || status)} — click to jump to a step" onclick="event.stopPropagation();cmpJumpToCategoryColumn('${cat}')">${escapeHtml(label)}</div>`;
+    const cls = status === 'not-started' ? '' : ` ${status}`;
+    return `<div class="cch-progress-seg${cls}" title="${escapeHtml(label)}: ${escapeHtml(STAGE_STATUS_LABEL[status] || status)} — click to jump to a step" onclick="event.stopPropagation();cmpJumpToCategoryColumn('${cat}')"></div>`;
   }).join('');
 }
 // Opens the steps panel (if not already open) and scrolls/flashes the
