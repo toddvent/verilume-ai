@@ -1009,19 +1009,46 @@
      "intelligence" color — same token driving the has-count badge above)
      rather than inventing a new brand-purple token. */
   .cmp-collab{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--shadow-sm);}
-  .cmp-collab-head{background:var(--advocacy);color:var(--white);padding:14px 16px;display:flex;align-items:center;gap:10px;}
-  .cmp-collab-avatar{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;}
+  /* 2026-09-19 — Todd flagged a real mismatch from a live-app-vs-wireframe
+     screenshot: this shared head had drifted to a solid --advocacy fill with
+     white text/icons. Per CollabCenter.dc.html the head sits on the card's
+     plain white background with a hairline bottom border — no colored fill —
+     so it reads as part of the same card as the tabs/body below it, not a
+     separate banner. Brought back in line with the artboard. */
+  .cmp-collab-head{background:var(--white);color:var(--ink);padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .cmp-collab-avatar{width:34px;height:34px;border-radius:50%;background:var(--advocacy);color:var(--white);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:800;flex-shrink:0;}
   .cmp-collab-titles{min-width:0;}
-  .cmp-collab-title{font-weight:700;font-size:0.875rem;}
-  .cmp-collab-status{font-size:0.6875rem;color:rgba(255,255,255,0.78);display:flex;align-items:center;gap:5px;margin-top:2px;}
-  .cmp-collab-status .dot{width:6px;height:6px;border-radius:50%;background:#34D399;display:inline-block;flex-shrink:0;}
-  .cmp-collab-mic{margin-left:auto;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.14);border:none;color:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
-  .cmp-collab-mic:hover{background:rgba(255,255,255,0.24);}
-  .cmp-collab-voice-note{display:none;background:rgba(0,0,0,0.18);color:var(--white);font-size:0.6875rem;padding:6px 16px;}
+  .cmp-collab-title{font-weight:700;font-size:0.875rem;color:var(--ink);}
+  .cmp-collab-status{font-size:0.6875rem;color:var(--muted);display:flex;align-items:center;gap:5px;margin-top:2px;}
+  .cmp-collab-status .dot{width:6px;height:6px;border-radius:50%;background:#1E9E5A;display:inline-block;flex-shrink:0;}
+  .cmp-collab-mic{margin-left:auto;width:30px;height:30px;border-radius:8px;background:var(--paper-dim);border:none;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+  .cmp-collab-mic:hover{background:var(--line-hairline);}
+  /* Banner used to sit on the colored head and read white-on-dark-overlay;
+     the head is plain white now, so give it its own light muted background
+     rather than leaving a dark overlay that no longer matches its context. */
+  .cmp-collab-voice-note{display:none;background:var(--paper-dim);color:var(--ink);font-size:0.6875rem;padding:6px 16px;}
   .cmp-collab-tabs{display:flex;border-bottom:1px solid var(--line);}
   .cmp-collab-tab{flex:1;text-align:center;padding:10px 6px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;background:none;border-left:none;border-right:none;border-top:none;font-family:inherit;}
   .cmp-collab-tab.active{color:var(--advocacy);border-bottom-color:var(--advocacy);}
   .cmp-collab-body{padding:14px 16px;max-height:420px;overflow-y:auto;}
+  /* 2026-09-19 — Todd flagged the Collaboration Center reading as a
+     small floating card instead of a full-height sidebar when it's
+     mounted inside the fixed Objectives/Recommendation modal panels
+     (.cmp-pitch-body). The width:340px;align-self:flex-start;
+     position:sticky treatment right above was built for the
+     Workspace Hub's own #cmpWorkspaceCollab, a normal column on a
+     page that scrolls — sticky/flex-start is what keeps it docked
+     while the left column scrolls past it. Inside a position:fixed
+     modal nothing scrolls the page, so that same treatment just left
+     the card shrink-wrapped to its own short content, floating near
+     the top of a much taller empty pane instead of filling it. Per
+     CollabCenter.dc.html the card fills the full artboard height,
+     header+tabs pinned, only the body scrolling internally. Scoped to
+     .cmp-pitch-body so #cmpWorkspaceCollab's own correct sticky
+     behavior on the Hub is untouched. */
+  .cmp-pitch-body .cmp-workspace-collab{position:static;align-self:stretch;max-height:none;height:100%;overflow-y:visible;}
+  .cmp-pitch-body .cmp-collab{height:100%;display:flex;flex-direction:column;}
+  .cmp-pitch-body .cmp-collab-body{flex:1;min-height:0;max-height:none;}
   .cmp-collab-note{background:var(--advocacy-tint);border-radius:var(--radius-sm);padding:12px 14px;font-size:0.8125rem;line-height:1.5;color:var(--ink);}
   .cmp-collab-team-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-hairline);}
   .cmp-collab-team-row:last-child{border-bottom:none;}
@@ -2346,10 +2373,16 @@
      .msg-col-preview already uses inside this same .module-body collapse
      mechanism above. */
   #cmpStage-copyVersions .copyver-pending-banner{display:none;}
+  #cmpStage-copyVersions .copyver-asset-count-mobile{display:none;}
   @media (max-width:700px){
     #cmpStage-copyVersions .copyver-pending-banner.visible{display:flex;align-items:center;gap:8px;padding:10px 12px;margin:0 0 14px;background:#FFF6E5;border:1px solid #F0DBA8;border-radius:9px;font-size:0.75rem;color:#7A5300;}
     #cmpStage-copyVersions .copyver-pending-spinner{width:14px;height:14px;border:2px solid #9A6A0E;border-top-color:transparent;border-radius:50%;flex-shrink:0;animation:copyverSpin 0.8s linear infinite;}
     #cmpStage-copyVersions .copyver-asset-picker-field{position:sticky;top:0;z-index:3;background:var(--paper-dim);margin:0 -18px 14px;padding:14px 18px;}
+    /* 2026-09-19 — CopyVersions-Mobile.dc.html labels the sticky picker
+       "Approved creative asset (22 eligible)"; the desktop artboard omits
+       the count. Kept as a mobile-only suffix rather than always-on, to
+       literally match both artboards instead of picking one. */
+    #cmpStage-copyVersions .copyver-asset-count-mobile{display:inline;font-weight:400;text-transform:none;}
   }
   @keyframes copyverSpin{to{transform:rotate(360deg);}}
   /* Round 132n (2026-08-09), per direct feedback: "the final copy should be
@@ -7878,7 +7911,16 @@
           </div>
           <p class="lede" style="margin:10px 0 0;">Already have a campaign in mind to build from? Search for it above — picking one starts the conversation with that campaign's real setup already on the table, and the AI Brain takes it from there.</p>
           <div class="template-rec-row" id="cmpTemplateRecRow" style="margin-top:14px;"></div>
-          <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;">
+          <!-- 2026-09-19 — literal parity fix per Todd's direct instruction
+               ("every page ... needs to match the artifact document...
+               not one piece"): Objectives-Desktop.dc.html zeroes the top
+               corners of this box (border-top-left-radius/border-top-right-
+               radius:0) since it sits directly under the search/lede
+               section with its own border-top divider — this file had
+               dropped that half of the inline style, leaving the top
+               corners rounded like a standalone card instead of a
+               continuation of the section above it. -->
+          <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;border-top-left-radius:0;border-top-right-radius:0;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
               <h3 style="margin:0 0 6px;">Create Your New Program</h3>
               <button type="button" class="btn-ghost" style="flex:none;white-space:nowrap;" onclick="cmpSkipPickupAndContinue()">Skip to Manual Campaign Creation →</button>
@@ -8810,7 +8852,13 @@
             </div>
             <div class="field" id="cmpPerfMarketingApproveRow" style="margin-top:4px;">
               <div class="btn-row">
-                <button type="button" class="btn-primary" id="cmpPerfMarketingApproveBtn" onclick="cmpApproveChannelPlan();">Approve Channel Plan →</button>
+                <!-- 2026-09-19, per PerfMarketing-Desktop.dc.html/-Mobile.dc.html
+                     (approved wireframe, read directly) and Todd's direct,
+                     repeated instruction that every page match the wireframe
+                     literally, "not one piece" excluded: the button read
+                     "Approve Channel Plan →" — the wireframe's real label on
+                     both artboards is "Approve Channel Plan & Continue →". -->
+                <button type="button" class="btn-primary" id="cmpPerfMarketingApproveBtn" onclick="cmpApproveChannelPlan();">Approve Channel Plan &amp; Continue →</button>
               </div>
               <!-- Round 132ag (2026-08-11) fix — cmpApproveChannelPlan() had
                    no guard requiring at least one channel plan row, so it
@@ -12351,7 +12399,7 @@ function cmpRenderCollabCenter(campaign){
   el.innerHTML = `
     <div class="cmp-collab">
       <div class="cmp-collab-head">
-        <div class="cmp-collab-avatar">✦</div>
+        <div class="cmp-collab-avatar">AI</div>
         <div class="cmp-collab-titles">
           <div class="cmp-collab-title">Collaboration Center</div>
           <div class="cmp-collab-status"><span class="dot"></span>AI Brain live — watching this campaign</div>
@@ -37532,7 +37580,6 @@ function cmpBriefAnalyticsBody(c){
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Spend by Region</h4>${cmpRecoMeterRows(cmpRecoRegionRows(s.summary))}</div>
     </div>` : `<p class="cmp-stage-note" style="padding:0;margin-top:16px;">Loading campaign dashboards…</p>`;
   return `
-    <p class="msg-lede">Carries the campaign brief forward for Copywriter and Analytics to check their own work against, and briefs each team on what this campaign needs from them.</p>
     <div class="cmp-brief-recap-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="font-size:1rem;font-weight:700;color:var(--ink);">Campaign brief recap</div>
@@ -37547,6 +37594,20 @@ function cmpBriefAnalyticsBody(c){
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Goal</span><span class="cmp-brief-recap-val">${goalParts.length ? escapeHtml(goalParts.join(' ')) : '(not set)'}</span></div>
       </div>
+    </div>
+    <!-- 2026-09-19 — restored per the CampaignBrief-Desktop/Mobile.dc.html
+         wireframe, which was missed on the original 2026-09-18 build: this
+         "Maximize Your Campaign Relevance" heading + lede sat between the
+         recap card and the two CMO cards on both artboards. Todd has been
+         direct, twice, that every field/heading in the artifact wireframes
+         needs to be reproduced literally — the earlier "Carries the
+         campaign brief forward..." line here wasn't in either artboard and
+         also used the .msg-lede class, which is scoped to
+         #cmpStage-messaging only (see its CSS rule ~line 2252) and so
+         rendered unstyled on this stage. -->
+    <div style="margin-top:16px;">
+      <div style="font-size:1.1875rem;font-weight:700;color:var(--ink);margin-bottom:6px;">Maximize Your Campaign Relevance</div>
+      <p class="cmp-stage-note" style="padding:0;">A copy relevance score will appear in the header helping you align your creative and media plans. Use the summary below as you plan asset selections and copy.</p>
     </div>
     <div class="cmp-brief-tabs">
       <button type="button" class="cmp-brief-tab${s.mobileTab === 'copywriter' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('copywriter')">To Copywriter</button>
@@ -51574,8 +51635,17 @@ function cmpRenderCampaignCopyDrawer(){
            campaign_copy_interviews history) — one shared contest reachable
            from both surfaces, not a separate one. Passes this drawer's own
            panel/button/flag element ids so the shared function/render/
-           select functions mount here instead of Brand Messaging's DOM. -->
-      <button type="button" class="btn-primary" id="copyverCopyContestBtn" style="width:100%;justify-content:center;" onclick="cmpRunCampaignCopyContest('copyverCopyContestPanel','copyverCopyContestBtn','copyverCopyContestSelectFlag');">✦ Run Campaign Copy Contest (multi-model) →</button>
+           select functions mount here instead of Brand Messaging's DOM.
+           2026-09-19 — literal wireframe-parity pass, per Todd's repeated
+           direct instruction that every piece of every artifact-document
+           page must match, including buttons: this button's own label had
+           drifted to "Run Campaign Copy Contest" during the same-day
+           consolidation above, while both CopyVersions-Desktop.dc.html and
+           Brand Messaging's own #cmpCopyContestBtn (line ~9185, same shared
+           function) read "Run copy contest (multi-model)". Since it's
+           genuinely the one shared button/function per the correction just
+           above, its label is restored to match both. -->
+      <button type="button" class="btn-primary" id="copyverCopyContestBtn" style="width:100%;justify-content:center;" onclick="cmpRunCampaignCopyContest('copyverCopyContestPanel','copyverCopyContestBtn','copyverCopyContestSelectFlag');">✦ Run copy contest (multi-model) →</button>
       <p class="hint" style="text-align:center;margin:8px 0 0;">Drafts alternative campaign copy grounded in this account's Brand Voice plus this campaign's real Loop Stage, Audience, and Campaign Type — the same contest and history as the Brand Messaging stage's copy contest.</p>
       <div id="copyverCopyContestPanel" style="margin-top:12px;"></div>
     </div>`;
@@ -51598,11 +51668,18 @@ function cmpRenderCopyVersionsBulkCta(){
   if (!approved.length){ el.innerHTML = ''; return; }
   const c = cmpRailLoadedCampaign();
   const savedCount = (c && c.copyVersionAssets && c.copyVersionAssets.length) || 0;
+  // 2026-09-19 — literal wireframe-parity pass: CopyVersions-Desktop.dc.html's
+  // card sub reads "22 assets are approved by Performance Marketing across 3
+  // channels" (the wireframe's fixed AQ7-campaign numbers) rather than the
+  // functional description this card carried since round 132au. Ported as a
+  // real, campaign-specific computation instead of hard-coding the
+  // wireframe's own sample numbers.
+  const channelCount = new Set(approved.map(a => a.channel)).size;
   el.innerHTML = `
     <div class="msg-card" style="background:#EFF7F4;border:1px solid rgba(15,118,110,0.28);">
       <div class="msg-card-head">
         <span class="msg-card-title">Review copy for all approved assets</span>
-        <span class="msg-card-sub">Opens a full-screen document with every Performance Marketing-approved creative asset, pre-filled with recommended copy — edit or save each one right there, instead of picking assets one at a time below.</span>
+        <span class="msg-card-sub">${approved.length} asset${approved.length === 1 ? ' is' : 's are'} approved by Performance Marketing across ${channelCount} channel${channelCount === 1 ? '' : 's'}.</span>
       </div>
       <div class="btn-row" style="margin-top:0;">
         <button type="button" class="btn-primary" onclick="cmpOpenCopyVersionReviewDoc()">View all ${approved.length} approved asset${approved.length === 1 ? '' : 's'} →</button>
@@ -51664,12 +51741,12 @@ function cmpRenderCopyVersionBuilder(){
         <span class="msg-card-sub">Pick an asset Performance Marketing already approved, then write copy against it.</span>
       </div>
       <div class="field copyver-asset-picker-field" style="margin-bottom:14px;">
-        <label for="cvApprovedAsset">Approved creative asset</label>
+        <label for="cvApprovedAsset">Approved creative asset<span class="copyver-asset-count-mobile"> (${approved.length} eligible)</span></label>
         <select id="cvApprovedAsset" onchange="cmpCopyVersionAssetChanged(this.value)">
           <option value="">Select…</option>
           ${approved.map((a, i) => `<option value="${i}"${selectedIndex === i ? ' selected' : ''}>${escapeHtml(cmpApprovedAssetLabel(a))}</option>`).join('')}
         </select>
-        <div class="hint">Channel, partner, format, and size come from Performance Marketing's approved assets — not editable here.</div>
+        <div class="hint">Channel, partner, format, and size come from Performance Marketing's approved assets — not editable here.${approved.length > 1 ? ` ${approved.length - 1} other approved asset${approved.length - 1 === 1 ? '' : 's'} ${approved.length - 1 === 1 ? 'is' : 'are'} one dropdown away.` : ''}</div>
       </div>
       ${b.sizeIndex !== null && b.sizeOptions[b.sizeIndex] ? `
       <div class="field" style="margin-bottom:14px;">
