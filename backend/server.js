@@ -1838,6 +1838,25 @@ ensureColumn('channel_planning_details', 'stage', 'TEXT');
 // channelCopyVersionsJson on that same endpoint).
 ensureColumn('campaigns', 'activityNotesJson', 'TEXT');
 
+// 2026-09-19, per Todd's direct product question ("how do we train our
+// client brain to look at the overall historical and future marketing in
+// budgets in Account Management when making budget recommendations" / "the
+// brain [should] consider historical performance ... or inform the client
+// that we don't currently have enough internal data"): the AI Brain's
+// channel/budget extraction (generate-recommendation-from-intake below) was
+// only ever grounded in the single campaign's own Objectives conversation —
+// it never checked the account's real confirmed Marketing Budget Upload
+// (marketing_budget_uploads/marketing_budget_line_items, what "Account
+// Management" actually stores) or this account's other campaigns' real
+// actualSpend/actualConversions history. Rather than silently proceed as if
+// that context doesn't exist, or silently ignore it when it's genuinely
+// missing, the model is now asked to say so plainly — this column is where
+// that honest note lives so the Budget & Recommendation screen can surface
+// it instead of a client having to notice the gap themselves. NULL when the
+// most recent recommendation had real account-budget and/or performance
+// data to work from.
+ensureColumn('campaigns', 'recommendationDataConfidenceNote', 'TEXT');
+
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
 // CMP-...) — what's new is a Creative Job ID for an actual request sent to
@@ -9909,6 +9928,74 @@ function mbuBudgetStatusForCategoryMonth(accountId, year, scope, category, month
     // the UI if they exceed a budget by more than 15%."
     alert: overPct > 15
   };
+}
+
+// 2026-09-19, per Todd's direct product question on training the AI Brain
+// to weigh the account's REAL marketing budget (Account Management) and
+// this account's REAL historical campaign performance when it extracts a
+// channel/budget recommendation — not just the one campaign's own
+// Objectives conversation. Two real, already-existing data sources, never
+// wired into the recommendation prompt before now:
+//   1. The confirmed Marketing Budget Upload for this account/year/scope
+//      (computeByVerilumeCategoryForUpload — same source the manual MBU-
+//      draws feature above already checks) plus every OTHER campaign's
+//      already-committed draws against it (campaign_mbu_draws) — gives a
+//      real per-category REMAINING headroom figure, not just this one
+//      campaign's stated budget field.
+//   2. This account's other real campaigns with actual performance on file
+//      (campaigns.actualSpend/actualConversions) — same conversions-per-$1k
+//      figure already used in the campaign-intake conversation (POST /api/
+//      accounts/:id/campaign-intake above), now available to the step that
+//      actually allocates dollars, not just the step that has the intake
+//      conversation.
+// Returns { promptBlock, hasAccountBudget, hasPerformanceData } — the
+// caller decides what to do with the two booleans (e.g. set an honest
+// recommendationDataConfidenceNote when either is false) rather than this
+// function silently deciding what "enough data" means.
+function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
+  const year = (campaign.startDate ? new Date(campaign.startDate).getFullYear() : null) || new Date().getFullYear();
+  const scope = 'domestic'; // no international campaign flag exists yet — matches every other MBU call site's default
+  const upload = mbuConfirmedUploadForAccountYearScope(accountId, year, scope);
+  let budgetLines = '(no confirmed marketing budget upload on file for this account for ' + year + ' — the AI Brain cannot check this recommendation against real account-wide headroom right now)';
+  let hasAccountBudget = false;
+  if (upload){
+    const byCategory = computeByVerilumeCategoryForUpload(upload.id);
+    const committedRows = db.prepare('SELECT verilumeCategory as category, SUM(amount) as total FROM campaign_mbu_draws WHERE accountId = ? AND year = ? AND scope = ? GROUP BY verilumeCategory').all(accountId, year, scope);
+    const committedByCategory = {};
+    committedRows.forEach(r => { committedByCategory[r.category] = Number(r.total) || 0; });
+    const rows = Object.entries(byCategory)
+      .map(([category, budget]) => ({ category, budget, committed: committedByCategory[category] || 0 }))
+      .filter(r => r.budget > 0)
+      .sort((a, b) => b.budget - a.budget)
+      .slice(0, 15); // keep the prompt bounded — the 15 largest categories cover every account seen so far
+    if (rows.length){
+      hasAccountBudget = true;
+      budgetLines = rows.map(r => `- ${r.category}: $${Math.round(r.budget).toLocaleString()} confirmed for ${year}, $${Math.round(r.committed).toLocaleString()} already committed by other campaigns, ~$${Math.round(Math.max(0, r.budget - r.committed)).toLocaleString()} remaining`).join('\n');
+    } else {
+      budgetLines = '(a confirmed marketing budget upload exists for this account/year but has no working-media category totals yet)';
+    }
+  }
+  const pastCampaigns = db.prepare(
+    "SELECT id, name, stage, objective, primaryKpi, channels, budget, actualSpend, actualConversions FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND id != ? ORDER BY createdAt DESC LIMIT 40"
+  ).all(accountId, campaign.id || '');
+  const withPerf = pastCampaigns.filter(c => c.actualConversions != null && c.actualSpend);
+  let performanceLines = '(no other campaign on this account has real actualSpend/actualConversions recorded yet — no historical performance to weigh)';
+  let hasPerformanceData = false;
+  if (withPerf.length){
+    hasPerformanceData = true;
+    performanceLines = withPerf
+      .map(c => ({ c, perf: c.actualConversions / (c.actualSpend / 1000) }))
+      .sort((a, b) => b.perf - a.perf)
+      .slice(0, 10)
+      .map(x => `- "${x.c.name || x.c.id}" (${x.c.channels || 'channels not recorded'}, Stage: ${x.c.stage || 'not set'}): ${x.perf.toFixed(2)} conversions/$1k spend`)
+      .join('\n');
+  }
+  const promptBlock = `ACCOUNT-WIDE MARKETING BUDGET (from Account Management's confirmed budget upload, real dollars across this account's WHOLE year, not just this campaign):
+${budgetLines}
+
+THIS ACCOUNT'S HISTORICAL CAMPAIGN PERFORMANCE (real actuals from past campaigns, best conversions/$1k first):
+${performanceLines}`;
+  return { promptBlock, hasAccountBudget, hasPerformanceData };
 }
 
 // Non-Working Media's own ledger — raw category, exactly as the client
@@ -22053,10 +22140,18 @@ Submit your response via the campaign_intake_turn tool.`;
               },
               required: ['channel', 'budget']
             }
-          }
+          },
+          // 2026-09-19, per Todd's direct product question — see
+          // buildAccountBudgetAndPerformanceContextForPrompt above. The
+          // model must say plainly when it had to generate this plan
+          // without real account budget headroom and/or real historical
+          // performance to check it against, rather than presenting a plan
+          // with unearned confidence.
+          dataConfidenceNote: { type: ['string', 'null'], description: 'If the ACCOUNT-WIDE MARKETING BUDGET and/or HISTORICAL CAMPAIGN PERFORMANCE sections below say that data is missing, say so here in one plain sentence a client would understand (e.g. "No confirmed 2026 marketing budget is on file for this account yet, so this plan could not be checked against account-wide budget headroom" or "No other campaigns on this account have recorded real performance yet, so channel emphasis here is based on the conversation alone, not proven results"). If BOTH sections have real data, use null — do not manufacture a caveat that isn\'t true.' }
         },
         required: ['channels']
       };
+      const { promptBlock: acctContextBlock } = buildAccountBudgetAndPerformanceContextForPrompt(campaign.accountId, campaign);
       const prompt = `You are the AI Brain, extracting a REAL channel/budget recommendation from a completed Objectives conversation that already happened on the Campaign Objectives screen. Do not invent a generic plan — use exactly what this conversation already worked out: the specific channels named, the drop counts and list sizes mentioned, and which channels the user said were free/owned vs paid.
 
 This recommendation reflects the WHOLE ACCOUNT media mix needed to achieve this campaign's goals — it is not limited to a single funnel stage. A campaign can and often does need spend at more than one Lifecycle Stage at once (for example: a past-guest loyalty/reactivation push AND a new-prospect consideration push running together). Tag EACH channel line with the specific Lifecycle Stage that line itself serves, not one stage for the whole campaign.
@@ -22065,10 +22160,12 @@ CAMPAIGN: ${campaign.name || campaignId}
 Total campaign budget on file: $${Number(campaign.budget) || 0}
 ${formatCampaignDatesForPrompt(campaign)}
 
+${acctContextBlock}
+
 FULL OBJECTIVES CONVERSATION:
 ${transcript}
 
-Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above.
+Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Set dataConfidenceNote per its own instructions.
 
 Submit via the recommendation_from_intake tool.`;
       let parsed;
@@ -22082,6 +22179,12 @@ Submit via the recommendation_from_intake tool.`;
         console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] AI extraction failed:', e.message);
         return sendJson(res, 200, { generated: false, reason: 'AI Brain could not extract a recommendation right now — try again' });
       }
+      // Persist the honest data-confidence note (or clear a stale one from a
+      // prior attempt) regardless of channel-save outcome below — this is
+      // about what data the model had, not whether the save succeeded.
+      try {
+        db.prepare('UPDATE campaigns SET recommendationDataConfidenceNote = ? WHERE id = ?').run(typeof parsed.dataConfidenceNote === 'string' && parsed.dataConfidenceNote.trim() ? parsed.dataConfidenceNote.trim() : null, campaignId);
+      } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] could not persist dataConfidenceNote', e.message); }
       let channels = Array.isArray(parsed.channels) ? parsed.channels.filter(c => c && RECO_GENERATION_CHANNELS.includes(c.channel)) : [];
       // Safety clamp — never trust the model's arithmetic outright: if the
       // extracted lines sum to more than the campaign's real budget, scale
@@ -29137,3 +29240,5 @@ try {
 }
 
 module.exports = handleRequest;
+
+
