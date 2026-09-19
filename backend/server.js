@@ -9931,27 +9931,33 @@ function mbuBudgetStatusForCategoryMonth(accountId, year, scope, category, month
 }
 
 // 2026-09-19, per Todd's direct product question on training the AI Brain
-// to weigh the account's REAL marketing budget (Account Management) and
-// this account's REAL historical campaign performance when it extracts a
-// channel/budget recommendation — not just the one campaign's own
-// Objectives conversation. Two real, already-existing data sources, never
-// wired into the recommendation prompt before now:
+// to weigh the account's REAL marketing budget (Account Management), the
+// account's REAL forward-looking target media mix, and this account's REAL
+// historical campaign performance when it extracts a channel/budget
+// recommendation — not just the one campaign's own Objectives conversation.
+// Three real, already-existing data sources, never wired into the
+// recommendation prompt before now:
 //   1. The confirmed Marketing Budget Upload for this account/year/scope
 //      (computeByVerilumeCategoryForUpload — same source the manual MBU-
 //      draws feature above already checks) plus every OTHER campaign's
 //      already-committed draws against it (campaign_mbu_draws) — gives a
 //      real per-category REMAINING headroom figure, not just this one
 //      campaign's stated budget field.
-//   2. This account's other real campaigns with actual performance on file
+//   2. The account's Media Plan (media_plans/media_plan_allocations) — a
+//      human-set, forward-looking channel mix broken out PER Lifecycle
+//      Stage. Per Todd's further correction, this must stay grouped BY
+//      STAGE, never flattened into one account-wide blend — "each stage
+//      does have different mix within the mix."
+//   3. This account's other real campaigns with actual performance on file
 //      (campaigns.actualSpend/actualConversions) — same conversions-per-$1k
 //      figure already used in the campaign-intake conversation (POST /api/
 //      accounts/:id/campaign-intake above), now available to the step that
 //      actually allocates dollars, not just the step that has the intake
 //      conversation.
-// Returns { promptBlock, hasAccountBudget, hasPerformanceData } — the
-// caller decides what to do with the two booleans (e.g. set an honest
-// recommendationDataConfidenceNote when either is false) rather than this
-// function silently deciding what "enough data" means.
+// Returns { promptBlock, hasAccountBudget, hasPerformanceData,
+// hasMediaPlanMix } — the caller decides what to do with the booleans (e.g.
+// set an honest recommendationDataConfidenceNote when any is false) rather
+// than this function silently deciding what "enough data" means.
 function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
   const year = (campaign.startDate ? new Date(campaign.startDate).getFullYear() : null) || new Date().getFullYear();
   const scope = 'domestic'; // no international campaign flag exists yet — matches every other MBU call site's default
@@ -9990,12 +9996,53 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
       .map(x => `- "${x.c.name || x.c.id}" (${x.c.channels || 'channels not recorded'}, Stage: ${x.c.stage || 'not set'}): ${x.perf.toFixed(2)} conversions/$1k spend`)
       .join('\n');
   }
+  // 2026-09-19 follow-on, per Todd's further direct correction: "we're
+  // training based on the overall account level future media mix
+  // expectations as a base recommendation for the humans at a campaign
+  // level knowing that each stage does have different mix within the
+  // mix." The account's Media Plan (media_plans/media_plan_allocations —
+  // Account Management's own two-tier Lifecycle Stage → channel split,
+  // recommendedAmount/approvedAmount) is exactly this: a human-set,
+  // forward-looking account-wide media mix, already broken out PER STAGE.
+  // It was never read here either. approvedAmount is preferred over
+  // recommendedAmount per stage+channel when set (it's the human-adjusted
+  // final number); recommendedAmount is the fallback for an allocation
+  // never manually adjusted. Grouped by stage, not flattened, so a line
+  // tagged Loyalty is weighed against the account's Loyalty mix and a line
+  // tagged Consideration against its Consideration mix — never against the
+  // account's blended average, which is exactly the thing Todd flagged as
+  // wrong ("each stage does have different mix within the mix").
+  const mediaPlan = db.prepare('SELECT * FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+  let mediaMixLines = '(no Media Plan on file for this account for ' + year + ' — no account-level target media mix to use as a base case)';
+  let hasMediaPlanMix = false;
+  if (mediaPlan){
+    const allocs = db.prepare('SELECT stage, channel, recommendedAmount, approvedAmount FROM media_plan_allocations WHERE mediaPlanId = ?').all(mediaPlan.id)
+      .map(a => ({ stage: a.stage, channel: a.channel, amount: (Number(a.approvedAmount) > 0 ? Number(a.approvedAmount) : Number(a.recommendedAmount)) || 0 }))
+      .filter(a => a.stage && a.channel && a.amount > 0);
+    if (allocs.length){
+      hasMediaPlanMix = true;
+      const byStage = {};
+      allocs.forEach(a => { (byStage[a.stage] = byStage[a.stage] || []).push(a); });
+      mediaMixLines = Object.entries(byStage).map(([stage, list]) => {
+        const stageTotal = list.reduce((s, a) => s + a.amount, 0);
+        const channelBits = list.sort((a, b) => b.amount - a.amount)
+          .map(a => `${a.channel} ${Math.round((a.amount / stageTotal) * 100)}%`)
+          .join(', ');
+        return `- ${stage}: ${channelBits}`;
+      }).join('\n');
+    } else {
+      mediaMixLines = '(a Media Plan exists for this account/year but has no channel allocations yet)';
+    }
+  }
   const promptBlock = `ACCOUNT-WIDE MARKETING BUDGET (from Account Management's confirmed budget upload, real dollars across this account's WHOLE year, not just this campaign):
 ${budgetLines}
 
+ACCOUNT-LEVEL MEDIA MIX PLAN (Account Management's forward-looking target channel mix, per Lifecycle Stage, as a % of that stage's own planned spend — use this as the BASE CASE split for a line at that stage, then adjust for anything the conversation specifically named; different stages legitimately have different mixes, never blend them into one account-wide average):
+${mediaMixLines}
+
 THIS ACCOUNT'S HISTORICAL CAMPAIGN PERFORMANCE (real actuals from past campaigns, best conversions/$1k first):
 ${performanceLines}`;
-  return { promptBlock, hasAccountBudget, hasPerformanceData };
+  return { promptBlock, hasAccountBudget, hasPerformanceData, hasMediaPlanMix };
 }
 
 // Non-Working Media's own ledger — raw category, exactly as the client
@@ -22147,7 +22194,7 @@ Submit your response via the campaign_intake_turn tool.`;
           // without real account budget headroom and/or real historical
           // performance to check it against, rather than presenting a plan
           // with unearned confidence.
-          dataConfidenceNote: { type: ['string', 'null'], description: 'If the ACCOUNT-WIDE MARKETING BUDGET and/or HISTORICAL CAMPAIGN PERFORMANCE sections below say that data is missing, say so here in one plain sentence a client would understand (e.g. "No confirmed 2026 marketing budget is on file for this account yet, so this plan could not be checked against account-wide budget headroom" or "No other campaigns on this account have recorded real performance yet, so channel emphasis here is based on the conversation alone, not proven results"). If BOTH sections have real data, use null — do not manufacture a caveat that isn\'t true.' }
+          dataConfidenceNote: { type: ['string', 'null'], description: 'If the ACCOUNT-WIDE MARKETING BUDGET, ACCOUNT-LEVEL MEDIA MIX PLAN, and/or HISTORICAL CAMPAIGN PERFORMANCE sections below say that data is missing, say so here in one plain sentence a client would understand (e.g. "No confirmed 2026 marketing budget is on file for this account yet, so this plan could not be checked against account-wide budget headroom", "No Media Plan is on file for this account for 2026, so channel splits here are based on this conversation alone, not the account\'s own target mix", or "No other campaigns on this account have recorded real performance yet, so channel emphasis here is based on the conversation alone, not proven results"). If ALL THREE sections have real data, use null — do not manufacture a caveat that isn\'t true.' }
         },
         required: ['channels']
       };
@@ -22165,7 +22212,7 @@ ${acctContextBlock}
 FULL OBJECTIVES CONVERSATION:
 ${transcript}
 
-Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Set dataConfidenceNote per its own instructions.
+Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. When the conversation named a general tactic without pinning down exact channels or a split between them, use the ACCOUNT-LEVEL MEDIA MIX PLAN's percentages for that specific Lifecycle Stage as the base-case split — a Loyalty line follows the account's own Loyalty mix, a Consideration line follows its Consideration mix, never one blended account-wide average — and say so in assumptionNote; when the conversation was specific about channels or amounts, that specific instruction always wins over the account's general mix. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Set dataConfidenceNote per its own instructions.
 
 Submit via the recommendation_from_intake tool.`;
       let parsed;
