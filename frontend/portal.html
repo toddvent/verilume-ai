@@ -1802,18 +1802,31 @@
   .cmp-pitch-overlay.open{display:block;}
   .cmp-pitch-panel{display:none;position:fixed;inset:16px;background:var(--white);border-radius:18px;box-shadow:0 30px 80px -20px rgba(15,23,42,0.45);z-index:71;flex-direction:column;overflow:hidden;}
   .cmp-pitch-panel.open{display:flex;}
-  .cmp-pitch-head{display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid var(--line);background:#1E2761;color:#FFFFFF;flex-shrink:0;}
-  .cmp-pitch-head h2{margin:0;font-family:'Newsreader', Georgia, serif;font-size:1.375rem;font-weight:600;color:#FFFFFF;}
-  .cmp-pitch-head .sub{font-size:0.8125rem;color:#CADCFC;margin-top:2px;}
-  .cmp-pitch-head a{color:#FFFFFF;cursor:pointer;text-decoration:underline;font-size:0.8125rem;opacity:0.85;}
-  .cmp-pitch-head a:hover{opacity:1;}
+  /* 2026-09-19 — the old dark-navy .cmp-pitch-head bar (campaign name +
+     "Close ✕" link) is gone, per Todd's direct correction that Objectives
+     and Budget & Recommendation need "the same campaign header design with
+     progress bar" as every other screen. The real campaign identity now
+     lives in the shared .cmp-campaign-header component itself, mounted here
+     via cmpMountCampaignHeaderInto() (see that function) — .cch-panel-mount
+     just gives it the wireframe's tighter top padding, and sticky
+     positioning is turned off since this panel is already a fixed,
+     non-scrolling shell (nothing for "sticky" to stick against). Below the
+     header sits a slim, light secondary row (.cmp-pitch-subrow) naming
+     which screen this is — the same title/close content the old dark bar
+     carried, restyled to match — and then the breadcrumb, unchanged. */
+  .cch-panel-mount{padding:18px 28px 0;flex-shrink:0;}
+  .cmp-pitch-panel .cmp-campaign-header{position:static;top:auto;}
+  .cmp-pitch-subrow{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:8px 28px 0;}
+  .cmp-pitch-subrow h2{margin:0;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.0625rem;font-weight:700;color:var(--ink);}
+  .cmp-pitch-subrow-right{display:flex;align-items:center;gap:16px;}
+  .cmp-pitch-subrow-badge{display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:var(--radius-pill);background:var(--media-tint, #DBEAFE);color:var(--media);}
+  .cmp-pitch-subrow-close{width:32px;height:32px;border-radius:8px;background:var(--paper-dim);border:none;color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:1rem;cursor:pointer;flex-shrink:0;}
+  .cmp-pitch-subrow-close:hover{background:var(--line-hairline);color:var(--ink);}
   /* 2026-09-16 — Workspace breadcrumb, per direct instruction: a way to
      move between steps without closing out back to the Hub first, since
      "the cards are not separate stage experiences. They jump to a single
      campaign experience workflow including all steps once you are in."
-     Sits as its own light bar directly under the dark .cmp-pitch-head, so
-     it reads as wayfinding for the one campaign experience rather than
-     part of either dark header. See cmpRenderWorkspaceBreadcrumb(). */
+     See cmpRenderWorkspaceBreadcrumb(). */
   .cmp-breadcrumb{display:flex;align-items:center;gap:8px;padding:10px 28px;background:var(--paper-dim);border-bottom:1px solid var(--line);flex-shrink:0;flex-wrap:wrap;}
   .cmp-breadcrumb-step{font-size:0.75rem;font-weight:600;color:var(--muted);padding:3px 10px;border-radius:var(--radius-pill);}
   .cmp-breadcrumb-step:not(.disabled){cursor:pointer;color:var(--ink);}
@@ -7763,6 +7776,17 @@
          speech bubble next to it opens the AI Agent Thoughts drawer,
          deep-linked to a topic that reads this exact campaign's live score
          breakdown (see renderFaqN()). -->
+    <!-- 2026-09-19 — this is the header's permanent "home" mount. Per Todd's
+         direct correction ("check the canvas again... Objectives and Budget
+         & Recommendation were not updated"), the same live #cmpCampaignHeader
+         node this Hub page uses is now also mounted inside the Objectives
+         and AI Brain Recommendation full-screen overlays (replacing their
+         old separate dark-navy .cmp-pitch-head bar) — one real DOM node
+         moved between three mount points as each view opens/closes, never
+         three duplicate copies with duplicate ids. Same established pattern
+         as cmpCollabMountId for the Collaboration Center (see that
+         variable's own comment); see cmpMountCampaignHeaderInto() below. -->
+    <div id="cmpHubHeaderMount">
     <div class="cmp-campaign-header" id="cmpCampaignHeader">
       <!-- 2026-09-18, per Todd's direct design-review instruction in the
            wireframe round (this is the one real, approved change to port
@@ -7828,6 +7852,7 @@
         <button type="button" class="btn-primary" onclick="cmpConfirmCancelCampaign()">Yes, cancel campaign</button>
         <button type="button" class="btn-ghost" onclick="cmpToggleCancelConfirm()">Never mind</button>
       </div>
+    </div>
     </div>
     <!-- 2026-09-15, per direct instruction — "Team Collaboration: Link to
          View Comments should be available opening a chat looking type
@@ -7926,12 +7951,13 @@
          into the manual flow. -->
     <div class="cmp-pitch-overlay" id="cmpObjectivesOverlay" onclick="cmpCloseObjectivesIntake()"></div>
     <div class="cmp-pitch-panel" id="cmpObjectivesPanel">
-      <div class="cmp-pitch-head">
-        <div>
-          <h2>Objectives</h2>
-          <div class="sub" id="cmpObjectivesSubhead">—</div>
+      <div class="cch-panel-mount" id="cmpObjectivesHeaderMount"></div>
+      <div class="cmp-pitch-subrow">
+        <h2>Objectives</h2>
+        <div class="cmp-pitch-subrow-right">
+          <span class="cmp-pitch-subrow-badge">Objectives</span>
+          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseObjectivesIntake()" aria-label="Close" title="Close">✕</button>
         </div>
-        <a onclick="cmpCloseObjectivesIntake()">Close ✕</a>
       </div>
       <div id="cmpObjectivesBreadcrumb"></div>
       <!-- 2026-09-16, per Objectives-Desktop.dc.html read directly (not
@@ -7994,12 +8020,13 @@
 
     <div class="cmp-pitch-overlay" id="cmpPitchOverlay" onclick="cmpCloseRecommendationPitch()"></div>
     <div class="cmp-pitch-panel" id="cmpPitchPanel">
-      <div class="cmp-pitch-head">
-        <div>
-          <h2>AI Brain Recommendation</h2>
-          <div class="sub" id="cmpPitchSubhead">—</div>
+      <div class="cch-panel-mount" id="cmpPitchHeaderMount"></div>
+      <div class="cmp-pitch-subrow">
+        <h2>AI Brain Recommendation</h2>
+        <div class="cmp-pitch-subrow-right">
+          <span class="cmp-pitch-subrow-badge">Budget &amp; Recommendation</span>
+          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseRecommendationPitch()" aria-label="Close" title="Close">✕</button>
         </div>
-        <a onclick="cmpCloseRecommendationPitch()">Close ✕</a>
       </div>
       <div id="cmpPitchBreadcrumb"></div>
       <div class="cmp-pitch-body">
@@ -12862,6 +12889,25 @@ window.addEventListener('DOMContentLoaded', cmpUpdateStickyOffsets);
 // end of body), so 'DOMContentLoaded' above may never fire — call once
 // immediately too, for the normal case.
 cmpUpdateStickyOffsets();
+// 2026-09-19 — moves the one real #cmpCampaignHeader node between its three
+// possible homes (the Workspace Hub, the Objectives overlay, the AI Brain
+// Recommendation overlay), per Todd's direct correction that all three need
+// "the same campaign header design with progress bar." A plain DOM move
+// (appendChild on an already-existing node), not a re-render — every
+// listener, and every cchXxx child id cmpRenderCampaignHeader()/
+// cmpRenderProgressBar() already write into, stays exactly as it is. Mirrors
+// the existing cmpCollabMountId pattern for the Collaboration Center (same
+// "one shared live instance, never a duplicate copy" reasoning), just via a
+// node move instead of a fresh render into a tracked mount id, since this
+// component's own render functions already assume fixed, singular ids.
+// No-op if the header is already in the requested mount (e.g. closing an
+// overlay when the Hub was never actually left).
+function cmpMountCampaignHeaderInto(mountId){
+  const header = document.getElementById('cmpCampaignHeader');
+  const mount = document.getElementById(mountId);
+  if (!header || !mount || header.parentElement === mount) return;
+  mount.appendChild(header);
+}
 function cmpRenderCampaignHeader(campaign){
   const header = document.getElementById('cmpCampaignHeader');
   const layout = document.getElementById('cmpLayout');
@@ -36944,8 +36990,7 @@ function cmpOpenObjectivesIntake(){
   overlay.classList.add('open');
   panel.classList.add('open');
   document.body.style.overflow = 'hidden';
-  const subhead = document.getElementById('cmpObjectivesSubhead');
-  if (subhead) subhead.textContent = campaign.name || campaign.id || '';
+  cmpMountCampaignHeaderInto('cmpObjectivesHeaderMount');
   const breadcrumb = document.getElementById('cmpObjectivesBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('objectives');
   renderCmpPickupStage();
@@ -36970,6 +37015,12 @@ function cmpCloseObjectivesIntake(){
   if (objMount) objMount.innerHTML = '';
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderCollabCenter(campaign);
+  // 2026-09-19 — hand the campaign header back to the Hub too, same
+  // handoff as the Collaboration Center just above. A no-op if the
+  // Recommendation overlay is about to claim it instead (cmpBreadcrumbGoTo()
+  // calls both close functions before opening the next one, so this is
+  // immediately overridden in that case — harmless, not a race).
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
 }
 // Real campaigns only (never the synthetic Ad Hoc Projects bucket, and
 // never the campaign currently being built — recommending it to itself
@@ -37480,8 +37531,7 @@ async function cmpOpenRecommendationPitch(){
   overlay.classList.add('open');
   panel.classList.add('open');
   document.body.style.overflow = 'hidden';
-  const subhead = document.getElementById('cmpPitchSubhead');
-  if (subhead) subhead.textContent = campaign.name || campaign.id || '';
+  cmpMountCampaignHeaderInto('cmpPitchHeaderMount');
   const breadcrumb = document.getElementById('cmpPitchBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('budget');
   cmpCollabMountId = 'cmpPitchCollabMount';
@@ -37517,6 +37567,9 @@ function cmpCloseRecommendationPitch(){
   if (pitchMount) pitchMount.innerHTML = '';
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderCollabCenter(campaign);
+  // 2026-09-19 — hand the campaign header back to the Hub, same handoff
+  // cmpCloseObjectivesIntake() already does (see that call's own comment).
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
 }
 
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
