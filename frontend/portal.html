@@ -38162,6 +38162,15 @@ function cmpRenderPitchLeft(campaign){
          ("final scope and pricing not yet decided") — gating exports
          against tiers that don't exist yet would be inventing a rule, not
          building one. Flagged to Todd as deferred until tiers are real. -->
+    ${campaign.recommendationDataConfidenceNote ? `
+    <!-- 2026-09-19, per Todd's direct product question: the AI Brain should
+         say plainly when it generated this plan without real account
+         budget headroom and/or real historical performance to check it
+         against, rather than a client having to notice the gap themselves
+         (generate-recommendation-from-intake, server.js, sets this note). -->
+    <div class="cmp-intake-summary" style="margin-bottom:14px;border-color:var(--media);background:#EAF1FE;">
+      <b>AI Brain data note:</b> ${escapeHtml(campaign.recommendationDataConfidenceNote)}
+    </div>` : ''}
     <div class="btn-row" style="margin-bottom:22px;">
       <button type="button" class="btn-primary" id="cmpRecoPptBtn" onclick="cmpRecoExportPpt()">Export PowerPoint</button>
       <button type="button" class="btn-ghost" onclick="cmpRecoExportCsv()">Export CSV</button>
