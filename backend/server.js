@@ -560,6 +560,17 @@ ensureColumn('campaigns', 'trafficPackageJson', 'TEXT');
 ensureColumn('campaigns', 'primaryKpi', 'TEXT');
 ensureColumn('campaigns', 'kpiGoal', 'INTEGER');
 ensureColumn('campaigns', 'transactionWindowDays', 'INTEGER');
+// 2026-09-18 — Campaign Brief & Analytics Requirements stage (per the
+// approved CampaignBrief-Desktop/Mobile.dc.html wireframe): two CMO-voiced
+// team messages, generated from this campaign's real fields via the same
+// AI Brain mechanism as cmo-narrative (POST .../cmo-team-message below),
+// then edited in place. Persisted here — unlike cmo-narrative's
+// generate-on-demand/never-stored paragraph — because this wireframe's own
+// premise is that a human edit "overrides for this campaign," which only
+// means something if the override survives a reload.
+ensureColumn('campaigns', 'cmoCopywriterBrief', 'TEXT');
+ensureColumn('campaigns', 'cmoAnalyticsBrief', 'TEXT');
+ensureColumn('campaigns', 'briefAnalyticsContinuedAt', 'TEXT');
 // Added 2026-08-05 (round 32, part D) — recommended channel mix, audience
 // mix, and channel spend allocation, stored as one JSON blob (same
 // convention as trafficPackageJson above): { channels, audience, source,
@@ -1284,6 +1295,20 @@ ensureColumn('campaigns', 'mandatoryPhrase', 'TEXT');
 // given campaign at once.
 ensureColumn('campaigns', 'campaignType', 'TEXT');
 ensureColumn('campaigns', 'campaignTypeDetailsJson', 'TEXT');
+
+// Added 2026-09-17 — Business Initiative, per direct instruction: "make sure
+// the key campaign type (e.g. launch) and business initiative is clear and
+// passed to the AI Brain for analysis before we recommend campaign copy."
+// campaignType (above) already answers "what kind of campaign is this";
+// businessInitiative answers the higher-level "what business problem is
+// this campaign actually solving" — a distinct question from Objective
+// (funnel-stage language: Awareness/Consideration/etc.) or campaignType
+// (scenario mechanics: Offer/Launch/Loyalty/Trade Incentive). Fixed
+// picklist (BUSINESS_INITIATIVE_REGISTRY below), same
+// registry+completeness+briefContext pattern as campaignType, so this
+// stays honest and typed rather than a second free-text field competing
+// with Key Message/Creative Brief.
+ensureColumn('campaigns', 'businessInitiative', 'TEXT');
 
 // Added 2026-07-25 (round 53) — org_model (team/solo), per the Media Plan
 // scoping doc's solo/local-business flow folded in as a parallel track, not
@@ -2110,6 +2135,22 @@ createTableIfNeeded(`
     FOREIGN KEY (campaignId) REFERENCES campaigns(id)
   );
 `);
+// 2026-09-18 — Copy Versions' "own" Campaign-Level Copy Contest, added
+// earlier today, is REMOVED as of this same day, per Todd's direct
+// correction: he clarified that the campaign-level contest (brand voice
+// foundation + real per-campaign loop stage/audience/campaign type) is
+// exactly what the existing 'Campaign' contest below (campaign_copy_interviews,
+// POST /api/campaigns/:id/copy-interview) already does — he wants ONE shared
+// campaign-level contest reachable from both Brand Messaging and the Copy
+// Versions drawer, with one shared history, not two parallel duplicate
+// systems. The campaign_copy_versions_contests table, its two endpoints
+// (POST .../campaign-copy-contest and its /select sibling), and the
+// 'Campaign Copy Versions' CONTEST_TYPE_REGISTRY entry that briefly existed
+// here are gone — see cmpRunCampaignCopyContest()/renderCmpCopyContestPanel()
+// in portal.html (now parameterized so the drawer can mount it too) for the
+// consolidated frontend wiring. Any existing campaign_copy_versions_contests
+// table left over in a dev DB from the brief window it existed is harmless
+// and intentionally not migrated away — nothing reads or writes it anymore.
 // 2026-08-25 — Contest-Winner Priority Model, per
 // cxmedia-contest-winner-priority-model-design-2026-08-25.md. When a client
 // runs a blind-test contest and selects a winner, that model becomes the
@@ -2319,7 +2360,75 @@ const CONTEST_TYPE_REGISTRY = {
 // readable contestType string everywhere (e.g. 'Campaign'), not a second,
 // easy-to-typo taskType string. Logs (not throws) on an unregistered
 // contestType — the ranking still gets recorded either way, never lost.
-function recordContestResult(accountId, contestType, contestSubtype, chosen, allCandidates, sourceTable, sourceInterviewId, setBy){
+//
+// 2026-09-18 — AI Brain Contribution Ledger write added, per Todd's direct
+// instruction: "every contest is unique and the winners and final version
+// selected is added to the AI Brain." Before this, a contest winner only
+// fed logContestRanking() (history) and upsertPriorityModelFromCandidate()
+// (future dispatch) — neither of those is the real Contribution Ledger
+// (ai_brain_contributions/ai_brain_contribution_log, ~line 5407) that the
+// AI Brain UI, website-context-style Apply/Remove decisions, and
+// brandVoiceCriticalMessagesContext()-style prompt consumers actually read.
+// Added here, in the one shared function every contest's /select endpoint
+// already calls, so this is automatic for every current AND future contest
+// type — no per-contest special-casing, same reasoning CONTEST_TYPE_REGISTRY
+// itself was built on.
+//
+// Convention chosen, matched against the real existing sourceTypes rather
+// than invented fresh:
+//   - sourceType: 'contest_winner' — a new, distinct sourceType (not reusing
+//     an existing one) because a contest winner is qualitatively different
+//     from every other row in this table: it's real, already-published-
+//     quality candidate COPY chosen by a human from a blind panel, not a
+//     scan/digest/sample-analysis finding.
+//   - sourceRefId: sourceInterviewId — same role sourceRefId already plays
+//     for 'training_digest' (ties the row back to the originating record).
+//     Traces this ledger entry back to its exact contest row in whichever
+//     of the 5 *_interviews/*_contests tables produced it.
+//   - scopeType/scopeValue: 'contestType' / contestType (e.g. 'Campaign',
+//     'Corporate') — same free-dimension-for-filtering use
+//     'writing_purpose'/category already established for
+//     brand_writing_sample_style (~line 6001), applied here so every
+//     contest's wins can be filtered/found by which contest produced them
+//     without parsing contentJson.
+//   - status: 'applied', decided in the same motion (decidedBy = setBy,
+//     decidedAt = now), NOT the usual 'reference'-then-later-Apply/Remove
+//     two-step every scan/digest sourceType above uses. This matches the
+//     one other sourceType in this file that already made this exact call —
+//     'campaign_workspace_ai_reply' (~line 22360) — whose comment states the
+//     reasoning directly: "there's no meaningful 'captured but not yet
+//     reviewed' state" when a human's own action IS the decision. A contest
+//     winner is exactly that: a human already picked it from a blind panel
+//     of every configured vendor, which is a STRONGER decision signal than
+//     a passive website rescan ever is — starting it at 'reference' and
+//     requiring a second, redundant human decision to "apply" a choice the
+//     human just made would be busywork, not a real review gate.
+//   - contentJson: the winning candidate's real content fields (copy /
+//     visionStatement+longformExample / strategyText / beats — whichever
+//     the contest type actually produced, read as-is off `chosen`) plus
+//     contestType/contestSubtype/campaignId for context and vendor/model
+//     for internal attribution. Vendor/model ARE included here — this is
+//     the same posture account_priority_models already takes (it stores
+//     chosen.vendor/chosen.model directly, see upsertPriorityModelFromCandidate
+//     just above) and ai_brain_contributions is an internal/staff-and-
+//     account-admin ledger table, never sent to the client the way
+//     redactCandidatesForClient() strips vendor/model before a contest
+//     panel's own candidates reach the browser. The "never reveal the
+//     actual model to the client-facing side" policy governs THAT redaction
+//     boundary, not this internal ledger row.
+//   - campaignId (new, optional, trailing param, default null): threaded
+//     through only for the 1 contest type that is actually campaign-
+//     scoped ('Campaign') — added as an optional
+//     trailing argument rather than a required one so every existing call
+//     site that has no campaign in scope (Brand Voice, Video Script/
+//     Strategy, Corporate, Creative Job) needs zero changes. Stored in
+//     contentJson (not a new scopeType) since scopeType/scopeValue here is
+//     already spoken for by contestType, and there's no other existing
+//     sourceType that stacks two independent scope dimensions on one row.
+// Wrapped in the same try/catch discipline as the priority-model upsert
+// just below — a ledger-write failure must never break the actual /select
+// response the user is waiting on.
+function recordContestResult(accountId, contestType, contestSubtype, chosen, allCandidates, sourceTable, sourceInterviewId, setBy, campaignId){
   const reg = CONTEST_TYPE_REGISTRY[contestType];
   if (!reg){
     console.error(`recordContestResult: unregistered contestType "${contestType}" — add it to CONTEST_TYPE_REGISTRY so future contests stay on the same structure.`);
@@ -2328,6 +2437,29 @@ function recordContestResult(accountId, contestType, contestSubtype, chosen, all
   try {
     upsertPriorityModelFromCandidate(accountId, (reg && reg.taskType) || contestType, chosen, sourceTable, sourceInterviewId, setBy);
   } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+  try {
+    const now = new Date().toISOString();
+    const id = generateId('ABC');
+    const contentObj = {
+      contestType, contestSubtype: contestSubtype || null, campaignId: campaignId || null,
+      candidateKey: chosen.key, label: chosen.label || null, vendor: chosen.vendor || null, model: chosen.model || null,
+      // Whichever of these fields this contest type actually populated —
+      // read straight off the real winning candidate, not guessed/renamed.
+      copy: chosen.copy || null,
+      visionStatement: chosen.visionStatement || null,
+      longformExample: chosen.longformExample || null,
+      strategyText: chosen.strategyText || null,
+      beats: Array.isArray(chosen.beats) ? chosen.beats : null,
+      relevanceScore: chosen.relevanceScore != null ? chosen.relevanceScore : null,
+      complianceScore: chosen.complianceScore != null ? chosen.complianceScore : null
+    };
+    db.prepare(`INSERT INTO ai_brain_contributions
+      (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, accountId, 'contest_winner', sourceInterviewId || null, 'contestType', contestType, JSON.stringify(contentObj), 'applied', null, setBy || null, now, now);
+    db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?)`)
+      .run(generateId('ABCDEC'), id, accountId, 'applied', null, setBy || null, now);
+  } catch (e){ console.error(`recordContestResult: AI Brain ledger write failed for contestType "${contestType}" interviewId "${sourceInterviewId}":`, e); }
 }
 // Reads the active priority model for an account+taskType, ignoring
 // loopStage (per PRIORITY_MODEL_ALL_STAGES above — not built yet). Returns
@@ -13276,8 +13408,31 @@ const CAMPAIGN_TYPE_REGISTRY = {
       { key: 'partnerName', label: 'Partner/dealer network this incentive targets', required: true },
       { key: 'incentiveAmount', label: 'Incentive amount or structure (real, specific)', required: true }
     ]
+  },
+  // Added 2026-09-17 — closes the gap between this registry and the
+  // separate messageType/MESSAGE_TYPE_CUE selector (Offer/Brand Campaign/
+  // Launch — see that field's own comment), and between this registry and
+  // CONTEST_TYPE_REGISTRY.Campaign's subtypes, per direct instruction to
+  // unify on one campaign-type taxonomy everywhere ("the key campaign type
+  // (e.g. launch)... should be clear and passed to the AI Brain"). Brand
+  // Campaign was the one messageType value with no CAMPAIGN_TYPE_REGISTRY
+  // counterpart until now. General/unset (no entry here) remains the 4th
+  // value, same "General" fallback campaignTypeCompleteness() already uses.
+  brand_campaign: {
+    label: 'Brand Campaign',
+    promptGuidance: 'This is a BRAND CAMPAIGN — warm, brand-forward, offer stays secondary. The copy should build the brand\'s own story and positioning first; any offer or CTA should feel like a natural next step, never the headline.',
+    coreFields: [],
+    detailFields: []
   }
 };
+// 2026-09-17 — unifies CONTEST_TYPE_REGISTRY.Campaign's subtypes onto this
+// registry's own labels (+ 'General' for unset), per direct instruction to
+// use one campaign-type taxonomy everywhere rather than a second,
+// hand-maintained list that can drift from this one. Patched in here
+// (rather than referenced directly inside the CONTEST_TYPE_REGISTRY literal
+// above) because CONTEST_TYPE_REGISTRY is defined earlier in this file,
+// before CAMPAIGN_TYPE_REGISTRY exists.
+CONTEST_TYPE_REGISTRY['Campaign'].subtypes = Object.values(CAMPAIGN_TYPE_REGISTRY).map(t => t.label).concat('General');
 function campaignTypeDetails(campaign){
   if (!campaign.campaignTypeDetailsJson) return {};
   try { const parsed = JSON.parse(campaign.campaignTypeDetailsJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
@@ -13312,6 +13467,70 @@ function campaignTypeBriefContext(campaign){
     .filter(Boolean)
     .join('\n');
   return `\nCAMPAIGN TYPE: ${def.label}\n${def.promptGuidance}${detailLines ? `\n${detailLines}` : ''}\n`;
+}
+
+// Added 2026-09-17 — Business Initiative registry, per direct instruction
+// (see the businessInitiative ensureColumn() comment above for the full
+// context). Fixed picklist rather than free text, same reasoning
+// CAMPAIGN_TYPE_REGISTRY already established: a typed value the AI Brain
+// prompt can reason from, not a second Key Message field. Starter set
+// covers the business drivers that actually show up across this account
+// base's campaign types (urgency offers, product launches, loyalty,
+// trade/dealer incentives) rather than duplicating Objective's funnel-stage
+// language — this is deliberately a level up from Objective, answering
+// "why does the business need this campaign at all," not "what should this
+// specific ad get someone to do." A real starter list, not a placeholder —
+// expected to be revised once used against real accounts.
+const BUSINESS_INITIATIVE_REGISTRY = {
+  new_customer_acquisition: {
+    label: 'New Customer Acquisition',
+    promptGuidance: 'The business driver here is winning NEW customers who have not bought/booked before. The copy should speak to someone with no prior relationship to this brand — establish credibility and the core appeal, don\'t assume familiarity.'
+  },
+  loyalty_retention: {
+    label: 'Loyalty & Retention',
+    promptGuidance: 'The business driver here is keeping EXISTING customers coming back. The copy should read as a genuine thank-you/retention message to someone who already said yes once, not a first-impression acquisition pitch.'
+  },
+  product_or_service_launch: {
+    label: 'Product or Service Launch',
+    promptGuidance: 'The business driver here is a genuinely NEW product, service, or offering entering the market. The copy should build real anticipation and explain why this is new and why it matters now.'
+  },
+  seasonal_demand: {
+    label: 'Seasonal / Off-Peak Demand Generation',
+    promptGuidance: 'The business driver here is filling demand during a slow period or seasonal window. The copy should make the timing itself part of the appeal (why now, what\'s available now) without manufacturing false urgency.'
+  },
+  competitive_defense: {
+    label: 'Competitive Defense / Market Share',
+    promptGuidance: 'The business driver here is defending or growing share against real competitive pressure. The copy should lean on this brand\'s genuine differentiators — never name or disparage a competitor directly.'
+  },
+  cross_sell_share_of_wallet: {
+    label: 'Cross-Sell / Share of Wallet',
+    promptGuidance: 'The business driver here is getting existing customers to buy/use MORE — a second product, a higher tier, an additional visit. The copy should build on the relationship that already exists, not pitch as if to a stranger.'
+  },
+  brand_awareness_new_market: {
+    label: 'Brand Awareness in a New or Underdeveloped Market',
+    promptGuidance: 'The business driver here is building basic awareness in a market/segment where this brand has little to no existing recognition. The copy should introduce the brand plainly — don\'t assume the reader has ever heard of it.'
+  },
+  trade_partner_network: {
+    label: 'Trade / Dealer Partner Network Growth',
+    promptGuidance: 'The business driver here is growing or activating a trade/dealer partner network, not consumer end demand directly. The copy should speak partner-to-partner about their business benefit.'
+  }
+};
+function businessInitiativeCompleteness(campaign){
+  const key = campaign.businessInitiative || '';
+  if (!key || !BUSINESS_INITIATIVE_REGISTRY[key]){
+    return { businessInitiative: '', label: '', set: false };
+  }
+  return { businessInitiative: key, label: BUSINESS_INITIATIVE_REGISTRY[key].label, set: true };
+}
+// Same honest-optional-context convention as campaignTypeBriefContext —
+// returns '' when unset so every prompt that includes this stays valid
+// either way; the actual REQUIRE happens at the two real copy-generation
+// entry points (messaging-ai-draft, copy-interview), not in here.
+function businessInitiativeBriefContext(campaign){
+  const key = campaign.businessInitiative || '';
+  if (!key || !BUSINESS_INITIATIVE_REGISTRY[key]) return '';
+  const def = BUSINESS_INITIATIVE_REGISTRY[key];
+  return `\nBUSINESS INITIATIVE: ${def.label}\n${def.promptGuidance}\n`;
 }
 async function scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMessage, account){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, verdict: null, rationale: null, missingElements: [], note: 'AI business-outcome relevance scoring requires ANTHROPIC_API_KEY to be configured. The deterministic Stage/Objective and Primary KPI checks (see the Messaging QA score above) still run without one.' };
@@ -14222,7 +14441,7 @@ CAMPAIGN CONTEXT:
 - Key Message the human supplied, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief, not a sentence to quote verbatim -- write real, finished copy that captures this direction in your own words; do not reproduce it as-is)' : ' (weave this in as the real anchor of the copy if present, as close to verbatim as reads naturally)'}: ${opts.keyMessage || '(none supplied — establish your own opening line grounded in the brand voice and style facts above)'}
 - Role/Style approach: ${opts.style || 'Storytelling'}
 - Product/Focus: ${opts.focus || '(not set)'}
-${campaignTypeBriefContext(campaign)}
+${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
 Write 3-5 short paragraphs of real Long Form Copy (120-220 words). It must read as something a real luxury travel brand would actually publish — specific, sensory where appropriate, never generic "unforgettable journey" language, and it must end with a call to action that genuinely serves the stated Primary KPI for this Loop Stage.
 
 Submit your draft via the submit_copy tool.`;
@@ -15500,7 +15719,7 @@ CAMPAIGN CONTEXT:
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 - Role/Style approach, if the account has one on file: ${campaign.roleStyle || '(none set -- follow your assigned angle above)'}
-${campaignTypeBriefContext(campaign)}
+${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
 Submit your draft via the submit_copy tool.`;
 }
 // One subagent angle's generation call — a lighter-weight sibling of
@@ -20238,6 +20457,22 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!requireAccount(req, res, campaign.accountId)) return;
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
+      // 2026-09-17 — per direct instruction: "make sure the key campaign
+      // type (e.g. launch) and business initiative is clear and passed to
+      // the AI Brain for analysis before we recommend campaign copy."
+      // Unlike campaignTypeCompleteness()'s own "suggestion, never a silent
+      // gate" convention (which still governs Save on the Campaign Type
+      // card), this one specific moment — generating campaign copy — is a
+      // real, explicit block per that instruction, not just a warning.
+      const missingForGeneration = [];
+      if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForGeneration.push('Campaign Type');
+      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForGeneration.push('Business Initiative');
+      if (missingForGeneration.length){
+        return sendJson(res, 400, {
+          error: `Set ${missingForGeneration.join(' and ')} for this campaign before generating AI copy — the AI Brain needs both to write on-strategy copy.`,
+          missingForGeneration
+        });
+      }
       const body = await readBody(req);
       const genOpts = {
         keyMessage: typeof body.keyMessage === 'string' ? body.keyMessage : (campaign.keyMessage || ''),
@@ -20710,6 +20945,16 @@ Submit your response via the campaign_intake_turn tool.`;
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       return sendJson(res, 200, { types: CAMPAIGN_TYPE_REGISTRY });
+    }
+
+    // GET /api/accounts/:accountId/business-initiative-registry — 2026-09-17,
+    // same "full registry, account-gated but not account-scoped" posture as
+    // campaign-type-registry just above. See BUSINESS_INITIATIVE_REGISTRY's
+    // own comment.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'business-initiative-registry'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, { initiatives: BUSINESS_INITIATIVE_REGISTRY });
     }
 
     // GET /api/campaigns/:id/campaign-type-status — honest completeness
@@ -21288,6 +21533,10 @@ Submit your response via the campaign_intake_turn tool.`;
         campaignTypeDetailsJson: body.campaignTypeDetails !== undefined
           ? (() => { try { return typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : existing.campaignTypeDetailsJson; } catch (e){ return existing.campaignTypeDetailsJson; } })()
           : existing.campaignTypeDetailsJson,
+        // 2026-09-17 — businessInitiative, same merge-update convention as
+        // campaignType above. See the ensureColumn() comment and
+        // BUSINESS_INITIATIVE_REGISTRY for the full context.
+        businessInitiative: body.businessInitiative !== undefined ? body.businessInitiative : existing.businessInitiative,
         // 2026-09-16 — Loop Stage previously had NO update path after
         // creation at all (set once at creation only, same original gap
         // keyMessage/startDate/endDate had before their own rounds closed
@@ -21313,7 +21562,13 @@ Submit your response via the campaign_intake_turn tool.`;
         // gap so every activity-notes thread in the app (accordion Notes
         // panels + the Workspace Hub Collaboration Center) genuinely
         // survives a reload, a different device, or a different teammate.
-        activityNotesJson: body.activityNotesJson !== undefined ? body.activityNotesJson : existing.activityNotesJson
+        activityNotesJson: body.activityNotesJson !== undefined ? body.activityNotesJson : existing.activityNotesJson,
+        // 2026-09-18 — Campaign Brief & Analytics Requirements stage's two
+        // editable CMO-to-team messages, same merge-update convention as
+        // every field above.
+        cmoCopywriterBrief: body.cmoCopywriterBrief !== undefined ? body.cmoCopywriterBrief : existing.cmoCopywriterBrief,
+        cmoAnalyticsBrief: body.cmoAnalyticsBrief !== undefined ? body.cmoAnalyticsBrief : existing.cmoAnalyticsBrief,
+        briefAnalyticsContinuedAt: body.briefAnalyticsContinuedAt !== undefined ? body.briefAnalyticsContinuedAt : existing.briefAnalyticsContinuedAt
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -21328,8 +21583,8 @@ Submit your response via the campaign_intake_turn tool.`;
         merged.campaignCode = existing.campaignCode;
       }
       db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, stage = ?, segment = ?, activityNotesJson = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.stage, merged.segment, merged.activityNotesJson, campaignId);
+        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, businessInitiative = ?, stage = ?, segment = ?, activityNotesJson = ?, cmoCopywriterBrief = ?, cmoAnalyticsBrief = ?, briefAnalyticsContinuedAt = ? WHERE id = ?'
+      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.businessInitiative, merged.stage, merged.segment, merged.activityNotesJson, merged.cmoCopywriterBrief, merged.cmoAnalyticsBrief, merged.briefAnalyticsContinuedAt, campaignId);
       // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
       // digest pooling, build-order item 2). messagingStyleDigestJson has
       // been stored on the campaign row since round 132be but read by
@@ -22333,6 +22588,86 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
         }
       }
       return sendJson(res, 200, { narrative: parsed.narrative || null });
+    }
+
+    // POST /api/campaigns/:id/cmo-team-message — 2026-09-18, Campaign Brief
+    // & Analytics Requirements stage (new build, per the approved
+    // CampaignBrief-Desktop/Mobile.dc.html wireframe: two auto-generated,
+    // editable, CMO-voiced messages, one to Brand Copywriter and one to
+    // Analytics). Same real callClaudeForJSON()/silent-retry mechanism as
+    // POST .../cmo-narrative just above, reading only this campaign's real
+    // stored fields (objective/stage/segment/campaignType/dates/primaryKpi/
+    // kpiGoal, plus its real channel_planning_details rows) and this
+    // account's real Master UTM Configuration element count — never
+    // inventing a number (e.g. "7 UTM parameters," "$299 CPA ceiling") the
+    // wireframe's own copy shows as an illustrative example but that isn't
+    // a real field on this campaign. `audience` picks which of the two
+    // team-facing prompts to write; the frontend persists whichever comes
+    // back (and any later edit) onto the campaign row via the existing
+    // POST /api/campaigns/:id merge-update endpoint, under
+    // cmoCopywriterBrief/cmoAnalyticsBrief.
+    const CMO_TEAM_MESSAGE_SCHEMA = {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'A short paragraph, in the CMO\'s own voice, briefing the named team on what this campaign needs from them. Plain language, no bullet points, grounded only in the real data given.' }
+      },
+      required: ['message']
+    };
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'cmo-team-message'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const body = await readBody(req);
+      const audience = body.audience === 'analytics' ? 'analytics' : 'copywriter';
+      const lines = db.prepare('SELECT channel, budget, impressions FROM channel_planning_details WHERE campaignId = ?').all(campaignId);
+      const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+      const channelList = lines.map(l => l.channel).filter(Boolean).join(', ') || '(none entered yet)';
+      const account = db.prepare('SELECT utmMasterElementsJson FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      let utmElementCount = 0;
+      try { const parsedUtm = account && account.utmMasterElementsJson ? JSON.parse(account.utmMasterElementsJson) : []; utmElementCount = Array.isArray(parsedUtm) ? parsedUtm.length : 0; } catch (e){ utmElementCount = 0; }
+      const sharedFacts = `Campaign objective: ${campaign.objective || '(not set)'}
+Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
+Campaign Type: ${campaign.campaignType || 'General'}
+Audience: ${campaign.segment || '(not set)'}
+Channels: ${channelList}
+${formatCampaignDatesForPrompt(campaign)}
+Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — goal of ${campaign.kpiGoal}` : ''}
+Total planned spend: $${Math.round(totalSpend).toLocaleString()}`;
+      const prompt = audience === 'analytics'
+        ? `Write a short message, in the voice of a CMO briefing the Analytics team on one specific campaign, based only on the real data below. Do not invent numbers, UTM parameter counts, or cost ceilings not given here.
+
+${sharedFacts}
+This account's Master UTM Configuration currently defines ${utmElementCount} tracking element${utmElementCount === 1 ? '' : 's'}.
+
+Write 2-4 sentences telling Analytics what to track for this campaign and why it matters to the KPI/goal above, mentioning the real UTM element count if it's greater than zero, and noting tracking should be live before Creative starts producing. Plain, confident, no jargon, no bullet points.`
+        : `Write a short message, in the voice of a CMO briefing the Brand Copywriter team on one specific campaign, based only on the real data below. Do not invent audience details, offers, or pricing not given here.
+
+${sharedFacts}
+
+Write 2-4 sentences telling the Copywriter team the shape of this campaign — who it's for, what tone fits its Campaign Type and Lifecycle Stage, and which channels their copy needs to fit. Plain, confident, no jargon, no bullet points.`;
+      let parsed;
+      try {
+        parsed = await callClaudeForJSON({
+          model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+          toolName: 'cmo_team_message', toolDescription: 'Submit the CMO-facing team briefing message.',
+          schema: CMO_TEAM_MESSAGE_SCHEMA, timeoutMs: 20000
+        });
+      } catch (firstErr){
+        console.warn('[POST /api/campaigns/:id/cmo-team-message] first attempt failed, retrying once:', firstErr.message);
+        await new Promise(r => setTimeout(r, 800));
+        try {
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            toolName: 'cmo_team_message', toolDescription: 'Submit the CMO-facing team briefing message.',
+            schema: CMO_TEAM_MESSAGE_SCHEMA, timeoutMs: 20000
+          });
+        } catch (secondErr){
+          console.error('[POST /api/campaigns/:id/cmo-team-message] failed after retry:', secondErr.message);
+          return sendJson(res, 200, { message: null, error: 'The AI Brain could not draft this message right now. Try again in a moment.' });
+        }
+      }
+      return sendJson(res, 200, { message: parsed.message || null });
     }
 
     // DELETE /api/campaigns/:id/channel-planning/:entryId
@@ -23515,6 +23850,20 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       if (typeof body.sourceKey !== 'string' || !body.sourceKey){
         return sendJson(res, 400, { error: 'sourceKey is required' });
       }
+      // 2026-09-17 — same required gate as messaging-ai-draft (see its own
+      // comment): this endpoint is real AI campaign-copy generation too
+      // (the campaign-level copy contest), so it's covered by the same
+      // "campaign type and business initiative must be clear before we
+      // recommend campaign copy" instruction.
+      const missingForContest = [];
+      if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForContest.push('Campaign Type');
+      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForContest.push('Business Initiative');
+      if (missingForContest.length){
+        return sendJson(res, 400, {
+          error: `Set ${missingForContest.join(' and ')} for this campaign before running the copy contest — the AI Brain needs both to write on-strategy candidates.`,
+          missingForGeneration: missingForContest
+        });
+      }
       const capCheck2 = checkInterviewWeeklyCap(campaign.accountId);
       if (capCheck2) return sendJson(res, 429, capCheck2);
       const result = await runCandidateInterview(campaign, account);
@@ -23568,13 +23917,31 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       // 2026-08-27 — folded into recordContestResult() (see
       // CONTEST_TYPE_REGISTRY's own comment), which does this AND writes the
       // contest_rankings ledger row in one call, same structure every
-      // contest now uses. campaign.messageType is the exact field behind the
-      // "Offer / Brand Campaign / Launch" selector (cmpKeyMessageType in
-      // portal.html) — 'General' when unset, matching the same fallback
-      // label campaignTypeDetailsJson's own "no type selected" case uses.
-      recordContestResult(campaign.accountId, 'Campaign', campaign.messageType || 'General', chosen, candidates, 'campaign_copy_interviews', interviewId, selectedBy);
+      // contest now uses.
+      // 2026-09-17 — switched from campaign.messageType to
+      // campaign.campaignType (via campaignTypeCompleteness().label) per
+      // direct instruction to unify on one campaign-type taxonomy
+      // everywhere. campaignType is now the required, richer field (real
+      // AI-prompt guidance, required core/detail fields) — messageType
+      // remains a separate tone/CTA-register selector (MESSAGE_TYPE_CUE)
+      // but is no longer what the contest ledger subtypes by, so a
+      // "Launch"-type campaign's contest results roll up under the same
+      // "Launch" label the AI Brain prompt and the Campaign Type picker
+      // both use, not a second, independently-set value that could
+      // disagree with it.
+      recordContestResult(campaign.accountId, 'Campaign', campaignTypeCompleteness(campaign).label || 'General', chosen, candidates, 'campaign_copy_interviews', interviewId, selectedBy, campaignId);
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy });
     }
+
+    // 2026-09-18 — POST .../campaign-copy-contest and its /select sibling
+    // (the Copy Versions drawer's brief, separate "own" campaign-level
+    // contest) are REMOVED as of later the same day, per Todd's direct
+    // correction: one shared campaign-level contest, not two. The Copy
+    // Versions drawer now calls this same POST .../copy-interview endpoint
+    // (and its /select sibling, directly above) that Brand Messaging always
+    // has — see portal.html's cmpRunCampaignCopyContest()/
+    // cmpSelectCopyContestCandidate() for the frontend wiring that now
+    // reaches both surfaces through this one endpoint pair.
 
     // GET /api/campaigns/:id/copy-interviews?sourceKey=... — 2026-08-22,
     // next round (item 8). History list for the client-side MFP copy
@@ -28642,13 +29009,3 @@ try {
 }
 
 module.exports = handleRequest;
-
-
-
-
-
-
-
-
-
-
