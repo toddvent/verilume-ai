@@ -675,6 +675,18 @@
   .cmp-brief-recap-item{display:flex;flex-direction:column;gap:3px;}
   .cmp-brief-recap-label{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;}
   .cmp-brief-recap-val{font-size:0.8125rem;color:var(--ink);font-weight:600;}
+  /* 2026-09-19 — CampaignBrief-Mobile.dc.html combines Start Date + End
+     Date into one "Dates" field; CampaignBrief-Desktop.dc.html keeps the
+     6 separate fields. Desktop-default: show the two date fields, hide the
+     merged one; flip both at the same ≤900px breakpoint the recap grid and
+     tab bar above already use, so the desktop 6-field layout is untouched
+     above that width. Per Todd's direct instruction to build every
+     wireframe detail literally. */
+  .cmp-brief-recap-dates-mobile{display:none;}
+  @media (max-width:900px){
+    .cmp-brief-recap-startend{display:none;}
+    .cmp-brief-recap-dates-mobile{display:flex;}
+  }
   .cmp-brief-cmo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
   @media (max-width:900px){ .cmp-brief-cmo-grid{grid-template-columns:1fr;} }
   .cmp-brief-cmo-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;position:relative;}
@@ -1001,6 +1013,22 @@
      long collab thread scrolls itself, not the page. */
   .cmp-workspace-collab{width:340px;flex-shrink:0;position:sticky;top:var(--sticky-scroll-margin, 100px);align-self:flex-start;max-height:calc(100vh - var(--sticky-scroll-margin, 100px) - 20px);overflow-y:auto;}
   @media (max-width:900px){ .cmp-workspace-hub{flex-direction:column;} .cmp-workspace-collab{width:100%;position:static;max-height:none;overflow-y:visible;} }
+  /* 2026-09-19 — Performance Marketing accordion stage, per
+     PerfMarketing-Desktop.dc.html / PerfMarketing-Step2-Desktop.dc.html:
+     both desktop artboards put the Collaboration Center in a fixed 340px
+     right column beside the Step 1 Channel Plan / Step 2 Creative Asset
+     Selection content, same as Objectives/Recommendation. This stage is a
+     plain in-flow .module-body, not a fixed-position modal pane
+     (.cmp-pitch-body), so it gets its own flex-based scope — .cmp-collab
+     inside it reuses .cmp-workspace-collab's own default sticky/flex-start
+     rule above unmodified (there's real page scroll here, same as the
+     Hub, unlike the fixed pitch/objectives panes). Neither Mobile artboard
+     (PerfMarketing-Mobile.dc.html, PerfMarketing-Step2-Mobile.dc.html)
+     includes the CollabCenter import, so this collapses to one column at
+     the same 900px breakpoint .cmp-workspace-hub already uses. */
+  .cmp-perfmarketing-layout{display:flex;gap:24px;align-items:flex-start;}
+  .cmp-perfmarketing-left{flex:1;min-width:0;}
+  @media (max-width:900px){ .cmp-perfmarketing-layout{flex-direction:column;} }
 
   /* Collaboration Center — shared component per the wireframe standard
      ("one shared component, never a per-screen fork"); this is Slice 1's
@@ -8700,6 +8728,31 @@
             <span class="chevron">▸</span>
           </div>
           <div class="module-body">
+          <!-- 2026-09-19, per Todd's direct instruction: both PerfMarketing-Desktop.dc.html
+               (Step 1 — Channel Plan) and PerfMarketing-Step2-Desktop.dc.html (Step 2 —
+               Creative Asset Selection) include a <dc-import name="CollabCenter" .../> in
+               a fixed 340px right-hand column, the same as the Objectives and AI Brain
+               Recommendation stages already carry. "Build this for real" — not a question
+               to weigh, the wireframe's inclusion of it here is the answer. Unlike
+               Objectives/Recommendation (fixed-position modals using .cmp-pitch-body's
+               grid), this stage is a plain in-flow accordion item, so it gets its own
+               scoped two-column wrapper (.cmp-perfmarketing-layout) rather than reusing
+               .cmp-pitch-body — see that class's CSS for why the two can't share a scope
+               (.cmp-pitch-body's rules assume a fixed-height modal pane, which this
+               accordion body is not). Left column keeps every existing Step 1/Step 2
+               field exactly as it was, untouched by this change; right column mounts the
+               same real, shared Collaboration Center component
+               (#cmpPerfMarketingCollabMount — cmpRenderCollabCenter()) via the same
+               cmpCollabMountId hand-off pattern cmpOpenObjectivesIntake()/
+               cmpOpenRecommendationPitch() already use, now dispatched from
+               openCmpStage() itself (see its own comment) since this stage opens/closes
+               through the generic accordion mechanism, not a dedicated open/close pair.
+               Neither Mobile artboard (PerfMarketing-Mobile.dc.html,
+               PerfMarketing-Step2-Mobile.dc.html) includes the CollabCenter import — both
+               are single full-width columns — so the right rail collapses away below the
+               same 900px breakpoint .cmp-workspace-collab already uses on the Hub. -->
+          <div class="cmp-perfmarketing-layout">
+          <div class="cmp-perfmarketing-left">
             <p class="lede" style="margin:0 0 16px;">Performance Marketing owns this campaign's channel mix and the $/CPM/impressions budget, partner, and creative-format plan behind it — before Brand Messaging and Creative begin.</p>
 
             <!-- Round 132oo (2026-08-10), per direct instruction: "We
@@ -8907,6 +8960,9 @@
               </div>
               <div class="hint" id="cmpCreativeAssetSubmittedNote" style="display:none;margin-top:6px;"></div>
             </div>
+          </div>
+          <div class="cmp-workspace-collab" id="cmpPerfMarketingCollabMount"></div>
+          </div>
           </div>
         </div>
 
@@ -13106,6 +13162,33 @@ function openCmpStage(key){
     return;
   }
   cmpOpenStage = key;
+  // 2026-09-19 — Collaboration Center mount hand-off for the Performance
+  // Marketing accordion stage (see #cmpStage-perfMarketing's own comment
+  // and #cmpPerfMarketingCollabMount). Unlike Objectives/Recommendation,
+  // which have their own dedicated cmpOpen*/cmpClose* pair to do this
+  // hand-off, Performance Marketing opens and closes through this one
+  // generic accordion function alongside every other plain stage — so the
+  // dispatch lives here rather than a duplicated per-stage close handler.
+  // Every openCmpStage() call (including re-opening the same stage, or a
+  // read-only campaign's openAllCmpStages() sweep — which returns above
+  // before reaching this line) means "perfMarketing is now the open stage"
+  // or "it no longer is"; either way the Hub's own #cmpWorkspaceCollab
+  // mount is the correct fallback whenever perfMarketing is NOT the target,
+  // exactly mirroring cmpCloseObjectivesIntake()/cmpCloseRecommendationPitch()
+  // handing the mount back to the Hub on close.
+  if (cmpCollabMountId !== 'cmpPerfMarketingCollabMount' && key === 'perfMarketing'){
+    const hubMount = document.getElementById('cmpWorkspaceCollab');
+    if (hubMount) hubMount.innerHTML = '';
+    cmpCollabMountId = 'cmpPerfMarketingCollabMount';
+    const c = cmpRailLoadedCampaign();
+    if (c) cmpRenderCollabCenter(c);
+  } else if (cmpCollabMountId === 'cmpPerfMarketingCollabMount' && key !== 'perfMarketing'){
+    const pmMount = document.getElementById('cmpPerfMarketingCollabMount');
+    if (pmMount) pmMount.innerHTML = '';
+    cmpCollabMountId = 'cmpWorkspaceCollab';
+    const c = cmpRailLoadedCampaign();
+    if (c) cmpRenderCollabCenter(c);
+  }
   if (key === 'lifecycle') generateCampaignBrief();
   if (key === 'messaging'){ generateCampaignBriefExpanded(); cmpAutoDraftMessaging(); }
   if (key === 'copyVersions') cmpRenderCopyVersionsStage();
@@ -36735,6 +36818,19 @@ function cmpCloseAllStages(){
     const body = el.querySelector('.module-body');
     if (body){ body.style.maxHeight = '0px'; body.style.overflow = 'hidden'; }
   });
+  // 2026-09-19 — this is the one other real path off of the Performance
+  // Marketing stage besides openCmpStage(key) picking a different key (see
+  // its own comment): collapsing every stage back to none-open. Same
+  // hand-off back to the Hub's #cmpWorkspaceCollab, so a stale mount
+  // pointer never survives past #cmpPerfMarketingCollabMount getting
+  // hidden/collapsed.
+  if (cmpCollabMountId === 'cmpPerfMarketingCollabMount'){
+    const pmMount = document.getElementById('cmpPerfMarketingCollabMount');
+    if (pmMount) pmMount.innerHTML = '';
+    cmpCollabMountId = 'cmpWorkspaceCollab';
+    const c = cmpRailLoadedCampaign();
+    if (c) cmpRenderCollabCenter(c);
+  }
   renderCmpStageRail();
 }
 
@@ -37473,15 +37569,53 @@ async function cmpRecoGenerateNarrative(){
 // cmpRecoMeterRows/cmpRecoLoopStageRows/cmpRecoChannelMixRows/
 // cmpRecoRegionRows rather than duplicating that math).
 //
-// Judgment call flagged rather than guessed at: the wireframe's own
-// premise is "no manual regeneration required" — read here as "generated
-// once automatically the first time this stage is opened for a campaign
-// that has neither message yet," not as "silently regenerated every time
-// the stage reopens" (which would blow away a human's inline edit on every
-// visit, the opposite of the wireframe's "edit either message directly to
-// override for this campaign"). A manual "Try again" is offered only when
-// generation itself fails — never a general Regenerate control, matching
-// the wireframe exactly.
+// 2026-09-19 — real auto-refresh built to the wireframe's literal footnote:
+// "Refines automatically as Objectives, the approved Channel Plan, and
+// Copy evolve — edit either message directly to override for this
+// campaign." The 2026-09-18 build (comment above this one, kept for
+// history) read "no manual regeneration required" as "generate once,
+// never again" — a real gap against that sentence once you read past the
+// visible copy into the stated behavior, and Todd has been explicit the
+// approved wireframe's stated behavior is the spec, not a discussion
+// point. This is the real implementation:
+//
+// TRIGGER MECHANISM — hash-compare on open, not reactive-on-save. The real
+// upstream inputs the footnote names (Objectives, the approved Channel
+// Plan, Copy) are edited from several different stages of this app
+// (Brand Messaging for Objectives/Copy, Performance Marketing for the
+// Channel Plan), each with its own separate save path. Hooking a
+// regenerate call into every one of those save functions would mean
+// finding and touching a long, scattered list of call sites and staying
+// right every time a new one is added later — fragile by construction.
+// This app's own existing precedent for "does derived content still match
+// its real inputs" (e.g. messagingRelevanceJson/messagingRelevanceScoredAt,
+// the account intelligence brief) is instead computed on demand at the
+// point of use, not pushed reactively from every place an input could
+// change — so GET .../cmo-brief-staleness (server.js) recomputes today's
+// real signature from the campaign's current row + channel plan and
+// compares it to the hash stamped on each message when it was last
+// (re)generated. Checked once, here, at the same real entry point that
+// already ran the original auto-draft-once logic — opening this stage —
+// not on a timer/poller.
+//
+// HUMAN-OVERRIDE PERMANENCE — a human edit is a standing override, not a
+// one-generation grace period. cmoCopywriterBriefEditedByHuman/
+// cmoAnalyticsBriefEditedByHuman (server.js) gate the auto-refresh: once
+// set, that message is skipped on every future staleness check, the same
+// way this app's other real "human override replaces the computed value"
+// field (accounts.stageBudgetWeightsOverrideJson, Marketing Budget) stays
+// in force until a person explicitly clears it — never something that
+// silently expires or wears off after one refresh cycle. The wireframe's
+// own sentence structure supports this reading too: "edit ... to
+// override," stated as the alternative to "refines automatically," not as
+// "refines automatically, except skip the very next refresh." A "Reset to
+// AI-managed" action (per card, only shown once a message has been
+// human-edited) is the explicit clear, mirroring how the Marketing Budget
+// override is cleared by explicitly unsetting it rather than by any
+// passive expiry — see cmpBriefResetToAiManaged() below. This keeps the
+// wireframe's "no Regenerate control" promise intact: there's still no
+// button that blows away a human edit without them asking for it, and the
+// AI-managed cards still refresh with zero buttons at all.
 let cmpBriefState = { campaignId: null, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter' };
 async function cmpOpenBriefAnalyticsStage(){
   const campaign = cmpRailLoadedCampaign();
@@ -37498,10 +37632,22 @@ async function cmpOpenBriefAnalyticsStage(){
     }
     renderCmpDownstreamStages();
   }
-  // Auto-draft each message exactly once per campaign — only when neither
-  // a prior AI draft nor a human edit is on file yet (see comment above).
+  // Auto-draft each message the first time this campaign has neither an AI
+  // draft nor a human edit on file yet.
   if (!campaign.cmoCopywriterBrief && !cmpBriefState.copyLoading) cmpBriefGenerate('copywriter');
   if (!campaign.cmoAnalyticsBrief && !cmpBriefState.analyticsLoading) cmpBriefGenerate('analytics');
+  // Real auto-refresh check — only for a message that already exists and
+  // hasn't been human-edited (see block comment above). Fired once per
+  // stage-open rather than polled.
+  if (campaign.cmoCopywriterBrief || campaign.cmoAnalyticsBrief){
+    try {
+      const staleness = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/cmo-brief-staleness`, {});
+      if (staleness.copywriterStale && !campaign.cmoCopywriterBriefEditedByHuman && !cmpBriefState.copyLoading) cmpBriefGenerate('copywriter');
+      if (staleness.analyticsStale && !campaign.cmoAnalyticsBriefEditedByHuman && !cmpBriefState.analyticsLoading) cmpBriefGenerate('analytics');
+    } catch (e){
+      console.warn('cmpOpenBriefAnalyticsStage: staleness check failed', e);
+    }
+  }
 }
 async function cmpBriefGenerate(audience){
   const campaign = cmpRailLoadedCampaign();
@@ -37512,8 +37658,16 @@ async function cmpBriefGenerate(audience){
   renderCmpDownstreamStages();
   try {
     const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/cmo-team-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audience }) });
-    if (resp.message) await cmpBriefSaveField(isAnalytics ? 'cmoAnalyticsBrief' : 'cmoCopywriterBrief', resp.message);
-    else {
+    if (resp.message){
+      // A fresh AI draft always lands as AI-managed (editedByHuman: 0) and
+      // stamped with the real signature it was grounded in, whether this
+      // is the first-ever draft, a real auto-refresh, or an explicit
+      // "Reset to AI-managed."
+      const field = isAnalytics ? 'cmoAnalyticsBrief' : 'cmoCopywriterBrief';
+      const editedField = isAnalytics ? 'cmoAnalyticsBriefEditedByHuman' : 'cmoCopywriterBriefEditedByHuman';
+      const hashField = isAnalytics ? 'cmoAnalyticsBriefUpstreamHash' : 'cmoCopywriterBriefUpstreamHash';
+      await cmpBriefSaveField(field, resp.message, { [editedField]: 0, [hashField]: resp.upstreamHash || null });
+    } else {
       const msg = resp.error || 'The AI Brain could not draft this message right now.';
       if (isAnalytics) cmpBriefState.analyticsError = msg; else cmpBriefState.copyError = msg;
     }
@@ -37529,22 +37683,48 @@ async function cmpBriefGenerate(audience){
 // row, same merge-update POST /api/campaigns/:id every other editable
 // campaign field on this rail already uses — real save, not local-only
 // state, so an edit made here survives a reload or a different teammate
-// opening the same campaign.
-async function cmpBriefSaveField(field, value){
+// opening the same campaign. `extra` carries along whichever
+// EditedByHuman/UpstreamHash fields belong with this particular save (see
+// cmpBriefGenerate/cmpBriefOnBlur), saved in the same request rather than
+// a second round-trip.
+async function cmpBriefSaveField(field, value, extra){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
   campaign[field] = value; // optimistic — avoids the contenteditable div flickering/losing cursor position on its own save
+  if (extra) Object.assign(campaign, extra);
   try {
-    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value, ...(extra || {}) }) });
   } catch (e){
     console.warn('cmpBriefSaveField failed:', field, e);
   }
 }
 // Fires on blur of either contenteditable message body — the wireframe's
 // own "click into the body text directly" edit gesture, saved once editing
-// ends rather than on every keystroke.
+// ends rather than on every keystroke. This is the literal "edit ... to
+// override" moment: it always stamps EditedByHuman: 1 (regardless of
+// whether the text actually changed — clicking in and blurring without
+// changing anything still reads as a human having taken ownership of this
+// message, and re-checking equality against the AI draft to decide
+// otherwise would be a guess the wireframe's copy doesn't support), which
+// is what stops cmpOpenBriefAnalyticsStage()'s staleness check from
+// touching it again until a real "Reset to AI-managed" (see
+// cmpBriefResetToAiManaged below).
 function cmpBriefOnBlur(audience, el){
-  cmpBriefSaveField(audience === 'analytics' ? 'cmoAnalyticsBrief' : 'cmoCopywriterBrief', el.innerText.trim());
+  const isAnalytics = audience === 'analytics';
+  const field = isAnalytics ? 'cmoAnalyticsBrief' : 'cmoCopywriterBrief';
+  const editedField = isAnalytics ? 'cmoAnalyticsBriefEditedByHuman' : 'cmoCopywriterBriefEditedByHuman';
+  cmpBriefSaveField(field, el.innerText.trim(), { [editedField]: 1 });
+  renderCmpDownstreamStages(); // reflect the "Edited" tag immediately, not just after the save round-trip
+}
+// The explicit clear for a human override (see the block comment above
+// cmpBriefState's declaration) — hands this message back to auto-refresh
+// and immediately regenerates it from today's real inputs, so a person
+// never sees a card marked "AI-managed" that's still showing their old
+// edited text. Reachable only from the "Edited" tag's own reset link,
+// never from a general always-visible Regenerate control — the wireframe
+// still shows no such control on an AI-managed card.
+function cmpBriefResetToAiManaged(audience){
+  cmpBriefGenerate(audience);
 }
 function cmpBriefSetMobileTab(tab){
   cmpBriefState.mobileTab = tab;
@@ -37553,6 +37733,26 @@ function cmpBriefSetMobileTab(tab){
 async function cmpBriefContinueToCreative(campaignId){
   await cmpBriefSaveField('briefAnalyticsContinuedAt', new Date().toISOString());
   openCmpStage('creative');
+}
+// The tag in a CMO card's top-right corner. Truthfully reflects whichever
+// of the two real states this specific message is in — the wireframe's
+// literal footnote only describes the AI-managed, auto-refreshing state
+// ("✎ Editable"); once a human edit has actually overridden a message
+// (see cmpBriefOnBlur), this is no longer accurate on its own — a person
+// looking at a stale-but-untouched-by-refresh card with no signal would
+// have no way to tell it's staying stale on purpose. "✎ Edited" plus the
+// explicit "Reset to AI-managed" link is the honest state for that case,
+// following this app's own convention of surfacing a computed-vs-override
+// state next to the field it applies to (e.g. the Marketing Budget
+// category rows that show a value came from a saved override) rather than
+// leaving it silent.
+function cmpBriefEditTag(audience, campaign){
+  const isAnalytics = audience === 'analytics';
+  const edited = isAnalytics ? campaign.cmoAnalyticsBriefEditedByHuman : campaign.cmoCopywriterBriefEditedByHuman;
+  if (edited){
+    return `<span class="cmp-brief-edit-tag">✎ Edited — <a href="#" onclick="event.preventDefault();cmpBriefResetToAiManaged('${audience}')" style="color:inherit;text-decoration:underline;">Reset to AI-managed</a></span>`;
+  }
+  return `<span class="cmp-brief-edit-tag">✎ Editable</span>`;
 }
 // One CMO-message card's inner HTML — loading / error+retry / real
 // AI-generated-or-edited text (contenteditable). Never a hardcoded
@@ -37590,8 +37790,18 @@ function cmpBriefAnalyticsBody(c){
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Loop Stage</span><span class="cmp-brief-recap-val">${escapeHtml(c.stage || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Audience</span><span class="cmp-brief-recap-val">${escapeHtml(c.segment || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Type</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Start Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.startDate || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">Start Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.startDate || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
+        <!-- 2026-09-19 — CampaignBrief-Mobile.dc.html merges Start Date +
+             End Date into one "Dates" field ("Oct 6 – Nov 14, 2026") to save
+             horizontal space; CampaignBrief-Desktop.dc.html keeps them
+             separate. Rendered always and toggled by the
+             .cmp-brief-recap-startend / .cmp-brief-recap-dates-mobile CSS
+             pair below (≤900px, same breakpoint this stage's tab bar and
+             recap-grid already switch on) rather than branching this
+             template on viewport, matching the .copyver-asset-count-mobile
+             convention used for CopyVersions' mobile-only asset count. -->
+        <div class="cmp-brief-recap-item cmp-brief-recap-dates-mobile"><span class="cmp-brief-recap-label">Dates</span><span class="cmp-brief-recap-val">${escapeHtml(cmpFmtDateRangeMobile(c.startDate, c.endDate))}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Goal</span><span class="cmp-brief-recap-val">${goalParts.length ? escapeHtml(goalParts.join(' ')) : '(not set)'}</span></div>
       </div>
     </div>
@@ -37615,17 +37825,17 @@ function cmpBriefAnalyticsBody(c){
     </div>
     <div class="cmp-brief-cmo-grid">
       <div class="cmp-brief-cmo-card${s.mobileTab !== 'copywriter' ? ' cmp-brief-tab-hidden' : ''}">
-        <span class="cmp-brief-edit-tag">✎ Editable</span>
+        ${cmpBriefEditTag('copywriter', c)}
         <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>From the CMO — to Brand Copywriter</div>
         ${cmpBriefCmoCardBody('copywriter', c)}
       </div>
       <div class="cmp-brief-cmo-card${s.mobileTab !== 'analytics' ? ' cmp-brief-tab-hidden' : ''}">
-        <span class="cmp-brief-edit-tag">✎ Editable</span>
+        ${cmpBriefEditTag('analytics', c)}
         <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>From the CMO — to the Analytics Team</div>
         ${cmpBriefCmoCardBody('analytics', c)}
       </div>
     </div>
-    <p class="cmp-stage-note" style="padding:8px 0 0;">Drafted once automatically from this campaign's real objective, stage, audience, channels and KPI goal — edit either message directly to override for this campaign.</p>
+    <p class="cmp-stage-note" style="padding:8px 0 0;">Refines automatically as Objectives, the approved Channel Plan, and Copy evolve — edit either message directly to override for this campaign.</p>
     <div style="font-size:0.9375rem;font-weight:700;color:var(--ink);margin-top:18px;">Campaign Dashboards</div>
     ${dashboardsHtml}
     <div class="btn-row" style="margin-top:18px;justify-content:flex-end;">
@@ -49214,6 +49424,27 @@ function cmpFmtDate(iso){
   const d = new Date(`${iso}T00:00:00`);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+// 2026-09-19 — Campaign Brief & Analytics Requirements, mobile artboard
+// only: CampaignBrief-Mobile.dc.html merges Start Date + End Date into one
+// "Dates" recap field ("Oct 6 – Nov 14, 2026") to save horizontal space;
+// CampaignBrief-Desktop.dc.html keeps them as two fields. Per Todd's direct
+// instruction to build every wireframe detail literally, not just the
+// screens flagged, this reuses cmpFmtDate() above rather than re-deriving
+// month/day/year, and drops the year off the start date when both dates
+// fall in the same year, exactly like the wireframe's single-year example.
+function cmpFmtDateRangeMobile(startIso, endIso){
+  if (!startIso && !endIso) return '(not set)';
+  if (!startIso) return cmpFmtDate(endIso);
+  if (!endIso) return cmpFmtDate(startIso);
+  const startD = new Date(`${startIso}T00:00:00`);
+  const endD = new Date(`${endIso}T00:00:00`);
+  const endFull = cmpFmtDate(endIso);
+  if (!isNaN(startD.getTime()) && !isNaN(endD.getTime()) && startD.getFullYear() === endD.getFullYear()){
+    const startNoYear = startD.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${startNoYear} – ${endFull}`;
+  }
+  return `${cmpFmtDate(startIso)} – ${endFull}`;
 }
 // Round 132e follow-on (2026-08-09), per campaign_audit.xlsx's literal
 // Brief Builder copy: "%CAMPAIGN NAME% focuses on %PRODUCT GROUP%
