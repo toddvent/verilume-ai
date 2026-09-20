@@ -22219,7 +22219,7 @@ Submit your response via the campaign_intake_turn tool.`;
                 // itself) — the field exists so that enforcement has a real
                 // signal to key off, not because the model's own `stage`
                 // value can be trusted to carry the rule on its own.
-                audiencePastCustomers: { type: 'boolean', description: 'True if this specific line targets past customers/past guests — a retention/reactivation audience — whatever channel it runs on (e.g. a past-guest mailing, an email to the house list, retargeting past bookers). False for anything aimed at a new/prospective or general audience. This is independent of channel name — Direct Mail — Past Guests is usually true, but Internal Email or Paid Social can be too if the conversation described them as targeting past customers specifically.' }
+                audiencePastCustomers: { type: 'boolean', description: 'True if this specific line targets past customers/past guests, whatever channel it runs on (e.g. a past-guest mailing, an email to the house list, retargeting past bookers) — whether the underlying purpose is retention/reactivation (Loyalty, the default) or asking them to refer/review/advocate (Advocacy, only when the conversation actually said so). False for anything aimed at a new/prospective or general audience. Independent of channel name — Direct Mail — Past Guests is usually true, but Internal Email or Paid Social can be too.' }
               },
               required: ['channel', 'budget']
             }
@@ -22239,7 +22239,7 @@ Submit your response via the campaign_intake_turn tool.`;
 
 This recommendation reflects the WHOLE ACCOUNT media mix needed to achieve this campaign's goals — it is not limited to a single funnel stage. A campaign can and often does need spend at more than one Lifecycle Stage at once (for example: a past-guest loyalty/reactivation push AND a new-prospect consideration push running together). Tag EACH channel line with the specific Lifecycle Stage that line itself serves, not one stage for the whole campaign.
 
-STRUCTURAL RULE — past customers are always Loyalty: any line that targets past customers/past guests is a Loyalty-stage line, full stop, regardless of what stage the rest of this campaign serves. Set audiencePastCustomers true for that line and stage to Loyalty. Determine that spend FIRST, straight from what the conversation described for past customers/past guests specifically — then treat the campaign's remaining budget (total minus that Loyalty spend) as what's available for every other line. Never let a non-Loyalty line's budget crowd out or reduce past-customer spend the conversation actually committed to; scale everything else to fit what's left after Loyalty, not the other way around.
+STRUCTURAL RULE — past customers default to Loyalty: any line that targets past customers/past guests defaults to a Loyalty-stage line, regardless of what stage the rest of this campaign serves — UNLESS the conversation specifically designated that past-customer effort as Advocacy (e.g., asking past customers to refer others, leave a review, or otherwise advocate for the brand, rather than a retention/reactivation push). Only an explicit Advocacy designation in the conversation overrides the Loyalty default; anything else defaults to Loyalty. Set audiencePastCustomers true for that line, and set stage to Advocacy only when the conversation actually said so, Loyalty otherwise. Determine past-customer spend FIRST, straight from what the conversation described for past customers/past guests specifically — then treat the campaign's remaining budget (total minus that spend) as what's available for every other line. Never let another line's budget crowd out or reduce past-customer spend the conversation actually committed to; scale everything else to fit what's left after past-customer spend, not the other way around.
 
 CAMPAIGN: ${campaign.name || campaignId}
 Total campaign budget on file: $${Number(campaign.budget) || 0}
@@ -22271,13 +22271,21 @@ Submit via the recommendation_from_intake tool.`;
         db.prepare('UPDATE campaigns SET recommendationDataConfidenceNote = ? WHERE id = ?').run(typeof parsed.dataConfidenceNote === 'string' && parsed.dataConfidenceNote.trim() ? parsed.dataConfidenceNote.trim() : null, campaignId);
       } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] could not persist dataConfidenceNote', e.message); }
       let channels = Array.isArray(parsed.channels) ? parsed.channels.filter(c => c && RECO_GENERATION_CHANNELS.includes(c.channel)) : [];
-      // 2026-09-20, per Todd's direct structural instruction — enforced in
-      // CODE, not left to the model's own compliance: every line flagged
-      // audiencePastCustomers is forced to Loyalty regardless of whatever
-      // stage the model itself returned. "Regardless of what the loop
-      // stage is" means exactly that — this overrides the model's answer,
-      // it doesn't just hope the model got it right.
-      channels = channels.map(c => c && c.audiencePastCustomers ? { ...c, stage: 'Loyalty' } : c);
+      // 2026-09-20, per Todd's direct structural instruction ("All past
+      // customer audience spend should fall into the Loyalty loop stage
+      // regardless of what the loop stage is" — refined moments later to
+      // "...unless designated as advocacy") — enforced in CODE, not left to
+      // the model's own compliance: every line flagged audiencePastCustomers
+      // is forced to Loyalty UNLESS the model itself already said Advocacy
+      // for that line (the one, narrow exception Todd named — asking past
+      // customers to refer/review rather than a retention push). Any other
+      // stage value the model returned for a past-customer line (e.g. it
+      // mistakenly tagged one Consideration) is overridden to Loyalty; this
+      // does not just hope the model got the default right.
+      channels = channels.map(c => {
+        if (!(c && c.audiencePastCustomers)) return c;
+        return { ...c, stage: c.stage === 'Advocacy' ? 'Advocacy' : 'Loyalty' };
+      });
       // Safety clamp — never trust the model's arithmetic outright. Updated
       // 2026-09-20 for the same structural instruction: past-customer/
       // Loyalty spend is applied FIRST and protected — if the full set of
