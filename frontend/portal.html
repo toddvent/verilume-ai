@@ -1837,6 +1837,29 @@
   .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;}
   @media (max-width:1000px){ .cmp-pitch-body{grid-template-columns:1fr;overflow-y:auto;} }
   .cmp-pitch-left{overflow-y:auto;padding:24px 28px;border-right:1px solid var(--line);}
+  /* 2026-09-20 — Creative workspace's #cmpCreativeLeft holds the three real
+     stages relocated into it (see cmpOpenCreativeWorkspace()'s own
+     comment); stack them with the same 18px gap Creative-Desktop.dc.html
+     uses between its three wf-cards, instead of the accordion's own
+     0-gap/border-top stacking (which assumed they'd never be visible at
+     once). */
+  #cmpCreativeLeft{display:flex;flex-direction:column;gap:18px;}
+  #cmpCreativeLeft > .module.cmp-stage{margin-bottom:0;}
+  /* 2026-09-20, per Creative-Mobile.dc.html — the mobile artboard replaces
+     the right-side Collaboration Center column with a bottom-docked AI
+     Brain bar. Scoped to #cmpCreativePanel only — the Objectives/AI Brain
+     Recommendation overlays keep their own existing
+     stack-the-panel-below-the-content behavior at 1000px unchanged. */
+  .cmp-creative-mobile-ai-bar{display:none;}
+  @media (max-width:600px){
+    #cmpCreativePanel .cmp-pitch-body{grid-template-columns:1fr;}
+    #cmpCreativePanel .cmp-workspace-collab{display:none;}
+    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
+    .cmp-creative-mobile-ai-bar{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:12px 16px;background:var(--white);border-top:1px solid var(--line);cursor:pointer;}
+    .cmp-creative-mobile-ai-avatar{width:34px;height:34px;border-radius:50%;background:#1E2761;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
+    .cmp-creative-mobile-ai-text{flex:1;font-size:0.8125rem;color:var(--muted);}
+    .cmp-creative-mobile-ai-dot{width:8px;height:8px;border-radius:50%;background:#1E9E5A;flex-shrink:0;}
+  }
   .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
   .cmp-pitch-right-body{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;}
   .cmp-pitch-right-input{border-top:1px solid var(--line);padding:14px 22px 18px;background:var(--white);}
@@ -4236,6 +4259,72 @@
     <div id="cfdWsModule-manageAccount"></div>
 
     <div id="aipoMount"></div>
+
+    <!-- 2026-09-20, per Todd's direct instruction: "Is Seed Atlas KPI
+         metrics supposed to be uploaded. I'd question why we would upload
+         anything specific to a client outside of the account management
+         section." This is the real entry point for this account's monthly
+         KPI report (the CMO Dashboard's Monitor/CMO View module — see
+         renderKpiGrid()/renderCmoTop3Tiles()/renderTrendlineChart() — reads
+         exactly this data back via GET /api/accounts/:id/kpi-metrics). Same
+         module/field-divider/table styling as the Product Groups & Creative
+         Focus Group module above (taxonomyManagerModule) — reused, not a
+         new pattern. Replaces backend/seed-atlas-kpi-metrics.js's old
+         implied role as "the way KPI data gets in" for real accounts;
+         that script is now a one-time sandbox bootstrap only. -->
+    <div class="module open accent-cx" id="kpiMetricsAdminModule" style="margin-top:24px;">
+      <div class="module-head" onclick="toggleModule('kpiMetricsAdminModule')">
+        <span class="modnum">2</span>
+        <div class="titles">
+          <span class="tag">Account Data</span>
+          <h2>Monthly KPI Metrics</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <p class="hint" style="margin-top:0;">This account's real monthly report — what feeds the CMO Dashboard's KPI grid, Monthly Trendline, and AI Brain prompts. Add or update one metric/month at a time; saving here is what the Dashboard reads.</p>
+        <div class="field-divider" style="margin-top:0;padding-top:0;border-top:none;">On file for this account</div>
+        <div class="table-scroll">
+          <table class="active-camp-table" id="kpiMetricsAdminTable"></table>
+        </div>
+        <div class="field-divider">Add / update a metric</div>
+        <div class="field-row" style="display:flex;gap:14px;flex-wrap:wrap;">
+          <div class="field" style="flex:1;min-width:160px;">
+            <label>Metric key</label>
+            <input type="text" id="kmaMetricKey" placeholder="e.g. roas, spend, aov">
+          </div>
+          <div class="field" style="flex:1;min-width:160px;">
+            <label>Label</label>
+            <input type="text" id="kmaLabel" placeholder="e.g. Marketing ROAS">
+          </div>
+          <div class="field" style="flex:1;min-width:140px;">
+            <label>Format</label>
+            <select id="kmaFmt">
+              <option value="num">num — plain number</option>
+              <option value="usd2">usd2 — $X.XX</option>
+              <option value="money000">money000 — value already in $000s</option>
+              <option value="moneyRaw000">moneyRaw000 — raw $, shown as $000s</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:140px;">
+            <label>Period</label>
+            <input type="text" id="kmaPeriod" placeholder="YYYY-MM, or &quot;current&quot;">
+          </div>
+          <div class="field" style="flex:1;min-width:140px;">
+            <label>Value</label>
+            <input type="number" step="any" id="kmaValue" placeholder="e.g. 13.54">
+          </div>
+          <div class="field" style="flex:1;min-width:160px;">
+            <label>YoY label <span class="hint">(optional)</span></label>
+            <input type="text" id="kmaYoy" placeholder="e.g. +20.5% YoY">
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:12px;">
+          <button type="button" class="btn-primary" onclick="kmaSaveMetric()">Save metric →</button>
+        </div>
+        <p class="hint" id="kmaSaveResult" style="margin-top:8px;"></p>
+      </div>
+    </div>
   </div>
 
   <!-- ================= MANAGE ACCOUNT > MARKETING CALENDAR BULK UPLOAD ================= -->
@@ -6484,33 +6573,12 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <p class="lede" style="margin-bottom:16px;">A monthly CMO report runs 10+ tracked lines — spend, impressions, visitors, leads, calls, CPV, CPL, cost-per-customer, ROAS. Distilled to the 3 that actually mattered: what the media spend bought (Media Science), what it's worth once a guest gets there (CX), and the outcome both sides produce together (Combined). <span class="illustrative-tag">this account's real July report — a one-month snapshot, not a live-computed trend yet</span></p>
-        <div class="dash-grid">
-          <div class="dash-tile" style="border-top:2px solid var(--cx-tint);">
-            <div class="illustrative-tag" style="display:block;margin-bottom:6px;">CX — leads this section</div>
-            <h3 style="margin:0 0 4px;">Average Per Diem (AOV)</h3>
-            <div class="score-pill" style="padding:10px 0;background:none;border:none;">
-              <div class="val strong" style="font-size:1.75rem;">$871 <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;">+20.5% YoY</span></div>
-            </div>
-            <p style="margin:6px 0 0;font-size:0.8125rem;color:var(--muted);">Booking value rose while unique visitors held roughly flat — a proxy for perceived brand/experience strength, not a direct satisfaction score. Pair with this account's own CX Strength read above rather than letting revenue stand in for experience quality.</p>
-          </div>
-          <div class="dash-tile" style="border-top:2px solid var(--media-tint);">
-            <div class="illustrative-tag" style="display:block;margin-bottom:6px;">Media Science</div>
-            <h3 style="margin:0 0 4px;">Marketing ROAS</h3>
-            <div class="score-pill" style="padding:10px 0;background:none;border:none;">
-              <div class="val strong" style="font-size:1.75rem;">$13.50 <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;">+47.1% YoY</span></div>
-            </div>
-            <p style="margin:6px 0 0;font-size:0.8125rem;color:var(--muted);">Up sharply even as spend fell 16.4% YoY — the "is the media dollar working harder" number.</p>
-          </div>
-          <div class="dash-tile" style="border-top:2px solid var(--advocacy-tint);">
-            <div class="illustrative-tag" style="display:block;margin-bottom:6px;">Combined</div>
-            <h3 style="margin:0 0 4px;">Net FIT Revenue</h3>
-            <div class="score-pill" style="padding:10px 0;background:none;border:none;">
-              <div class="val strong" style="font-size:1.75rem;">$8.19M <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;">+22.9% YoY</span></div>
-            </div>
-            <p style="margin:6px 0 0;font-size:0.8125rem;color:var(--muted);">The output of both sides at once — the number that goes in front of the CFO; the two above are how you explain it.</p>
-          </div>
-        </div>
+        <p class="lede" style="margin-bottom:16px;">A monthly CMO report runs 10+ tracked lines — spend, impressions, visitors, leads, calls, CPV, CPL, cost-per-customer, ROAS. Distilled to the 3 that actually mattered: what the media spend bought (Media Science), what it's worth once a guest gets there (CX), and the outcome both sides produce together (Combined). <span class="illustrative-tag">this account's real latest report — a snapshot, not a live-computed trend yet</span></p>
+        <!-- 2026-09-20, per Todd's direct instruction ("nothing on our site
+             should be hard coded") — filled by renderCmoTop3Tiles() from
+             state.kpiMetrics (GET /api/accounts/:id/kpi-metrics), not
+             static per-account numbers. -->
+        <div class="dash-grid" id="cmoTop3Tiles"></div>
 
         <!-- Round 23 (2026-08-05), per direct instruction: Advanced
              Analytics is the one place this account's full monthly report
@@ -6523,18 +6591,11 @@
         <div class="section-eyebrow" style="color:var(--cx);margin-top:32px;">Monthly Trendline</div>
         <div class="trendline-controls" style="margin:10px 0 14px;">
           <label for="trendlineMetricSelect" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-right:10px;">Metric</label>
-          <select id="trendlineMetricSelect" onchange="onTrendlineMetricChange(this)">
-            <option value="roas">Marketing ROAS</option>
-            <option value="spend">Marketing Spend</option>
-            <option value="visitors">Website Unique Visitors</option>
-            <option value="leads">Website Leads</option>
-            <option value="calls">Call Center Calls</option>
-            <option value="metaLeads">Meta Leads</option>
-            <option value="cpv">Cost-per-Visitor (CPV)</option>
-            <option value="cpl">Cost-per-Lead (CPL)</option>
-            <option value="cta">Cost-per-Customer (CTA)</option>
-            <option value="impressions">Total Impressions (Jul only)</option>
-          </select>
+          <!-- 2026-09-20 — options populated by renderTrendlineMetricOptions()
+               from state.kpiMetrics.monthly's real metricKeys for this
+               account, not a hardcoded list assuming the Atlas demo
+               account's exact metric set. -->
+          <select id="trendlineMetricSelect" onchange="onTrendlineMetricChange(this)"></select>
         </div>
         <div id="trendlineChartWrap"></div>
       </div>
@@ -8049,6 +8110,64 @@
         <div class="cmp-workspace-collab" id="cmpPitchCollabMount"></div>
       </div>
     </div>
+
+    <!-- 2026-09-20 — Creative full-screen workspace, per Todd's direct
+         instruction: "Review the canvas and apply the design to the
+         creative tasks included." Verified against the real
+         Creative-Desktop.dc.html/Creative-Mobile.dc.html wireframes (read
+         directly, not guessed at) — same overlay/panel shell as
+         Objectives/AI Brain Recommendation above (cmpPitchOverlay/
+         cmpPitchPanel, cmpObjectivesOverlay/cmpObjectivesPanel), same
+         minmax(0,1fr) 340px body grid, same shared Collaboration Center
+         component on the right.
+         Reuse decision (the open question flagged in
+         cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md and
+         related rounds): LIGHT MOUNT, not a re-plumb. The wireframe's three
+         stacked cards are exactly the three real, already-built pieces this
+         app already has — the Brand Messaging accordion stage
+         (#cmpStage-messaging, including the Campaign Type & Business
+         Initiative card fixed the same round), the Copy Versions accordion
+         stage (#cmpStage-copyVersions), and the Creative Asset Jobs table
+         (#campaignCreativeJobsCard, normally on the legacy Campaign Detail
+         page). cmpOpenCreativeWorkspace()/cmpCloseCreativeWorkspace() below
+         physically relocate those three real DOM nodes into
+         #cmpCreativeLeft (and back out again on close) rather than
+         rebuilding their markup or state a second time here — one source of
+         truth, whichever entry point is used. This avoids the alternative
+         (ripping the two accordion stages out of the Workspace Hub's own
+         rail, or duplicating their render functions against a second set of
+         element ids) — both riskier than moving nodes that already carry
+         their own working ids/handlers unchanged. -->
+    <div class="cmp-pitch-overlay" id="cmpCreativeOverlay" onclick="cmpCloseCreativeWorkspace()"></div>
+    <div class="cmp-pitch-panel" id="cmpCreativePanel">
+      <div class="cch-panel-mount" id="cmpCreativeHeaderMount"></div>
+      <div class="cmp-pitch-subrow">
+        <h2>Creative</h2>
+        <div class="cmp-pitch-subrow-right">
+          <span class="cmp-pitch-subrow-badge" id="cmpCreativeStatusBadge">Creative</span>
+          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseCreativeWorkspace()" aria-label="Close" title="Close">✕</button>
+        </div>
+      </div>
+      <div id="cmpCreativeBreadcrumb"></div>
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left" id="cmpCreativeLeft"></div>
+        <div class="cmp-workspace-collab" id="cmpCreativeCollabMount"></div>
+      </div>
+      <!-- 2026-09-20, per Creative-Mobile.dc.html — the mobile artboard
+           replaces the right-side Collaboration Center column with a
+           bottom-docked AI Brain bar instead (same avatar/live-dot markup
+           cmpRenderCollabCenter()'s own header uses). Hidden above the
+           panel's own mobile breakpoint (see the .cmp-creative-mobile-ai-bar
+           CSS rule); tapping it opens the same real Collaboration Center as
+           a bottom sheet (cmpToggleCreativeMobileCollab()) rather than a
+           second, disconnected chat surface. -->
+      <div class="cmp-creative-mobile-ai-bar" id="cmpCreativeMobileAiBar" onclick="cmpToggleCreativeMobileCollab()">
+        <div class="cmp-creative-mobile-ai-avatar">AI</div>
+        <div class="cmp-creative-mobile-ai-text" id="cmpCreativeMobileAiText">AI Brain live — tap to open the Collaboration Center</div>
+        <div class="cmp-creative-mobile-ai-dot"></div>
+      </div>
+    </div>
+
     <div class="cmp-layout" id="cmpLayout">
       <div class="cmp-rail" id="cmpStageRail"></div>
       <div class="cmp-stages" id="newCampaignForm">
@@ -8171,6 +8290,39 @@
             <div class="field">
               <label>Creative Focus Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Creative Focus Group?" onmouseenter="cmpFieldHelpTip('creativeFocusGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('creativeFocusGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('creativeFocusGroup', event)">💬</button></label>
               <div class="select-tile-row" id="cmpCreativeFocusGroupRow"></div>
+            </div>
+            <!-- 2026-09-20, per Todd's direct instruction: "Copy the
+                 attached two drop-downs to the Campaign Creation task above
+                 start and end date. This will help us improve the Budget
+                 Recommendations. Very important that they are populated as
+                 a recap on the page that they are currently placed." Same
+                 two fields, same registries (CAMPAIGN_TYPE_REGISTRY_CLIENT/
+                 BUSINESS_INITIATIVE_REGISTRY_CLIENT) and the same
+                 campaign.campaignType/businessInitiative columns as the
+                 Brand Messaging module's Campaign Type & Business
+                 Initiative card (#cmpGenerationRequirementsCard) further
+                 down — one value, two surfaces. cmpOnCreationTypeInitiativeChanged()
+                 persists on change (once a real campaign exists) and
+                 mirrors the pick onto that card's own pair of selects live;
+                 cmpOnGenerationTypeChanged() mirrors back the other
+                 direction, so whichever surface is edited, both — including
+                 this one's own recap on reload via
+                 cmpRenderCreationTypeInitiativeFields() — always show the
+                 same saved value. Before a real campaign exists yet, a pick
+                 here is held in cmpPendingCampaignType/-BusinessInitiative
+                 and folded into cmpBuildFormPayload() so it's part of the
+                 very first Create Campaign submission. -->
+            <div class="field">
+              <label>Campaign type</label>
+              <select id="cmpCreationCampaignTypeSelect" onchange="cmpOnCreationTypeInitiativeChanged();">
+                <option value="">— Select a campaign type —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Business initiative</label>
+              <select id="cmpCreationBusinessInitiativeSelect" onchange="cmpOnCreationTypeInitiativeChanged();">
+                <option value="">— Select a business initiative —</option>
+              </select>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Start
                  Date and End Date are required." Both fields no longer read
@@ -10911,6 +11063,12 @@ document.getElementById('creativeJobsOohSpecsLink').href = `ooh-specs.html?accou
 
 const state = {
   companyId: params.get('accountId') || 'CXM-NAT-2026-700',
+  // 2026-09-20, per Todd's direct instruction ("nothing on our site should
+  // be hard coded") — this account's real monthly KPI report, fetched from
+  // GET /api/accounts/:id/kpi-metrics (see loadKpiMetricsData()) instead of
+  // the old MONTHLY_KPI_SERIES/SINGLE_POINT_KPIS hardcoded JS constants.
+  // null until that fetch resolves; { monthly, singlePoint, hasData } after.
+  kpiMetrics: null,
   // Round 132bx (2026-08-15) — Portal Home redesign, per direct instruction:
   // "We should recognize the role based on user profile who logged in...
   // They should have access via CTA to Analytics to everything licensed in
@@ -11138,6 +11296,13 @@ const state = {
   brandDescriptionFeedback: []
 };
 let currentCampaignId = null;
+// 2026-09-20 — holds whatever's picked in the new Campaign Creation
+// Campaign Type/Business Initiative dropdowns before a real campaign
+// exists yet to save them onto (see cmpOnCreationTypeInitiativeChanged()
+// and cmpBuildFormPayload()). Cleared by resetCampaignForm() via
+// populateCampaignFormSelects() -> cmpRenderCreationTypeInitiativeFields(null).
+let cmpPendingCampaignType = '';
+let cmpPendingBusinessInitiative = '';
 let currentProjectId = null;
 let selectedStage = null; // Media Loop stage selector (points 5/6/7), toggled on the Dashboard
 let selectedFunctions = new Set(); // Marketing functions the user explicitly picked to support the objective
@@ -12402,6 +12567,15 @@ function cmpWorkspaceCardOpen(cardKey){
     cmpOpenObjectivesIntake();
     return;
   }
+  // 2026-09-20 — same routing fix as 'budget'/'objectives' above: Creative
+  // now has its own full-screen workspace (cmpOpenCreativeWorkspace()),
+  // built to the Creative-Desktop.dc.html/Creative-Mobile.dc.html
+  // wireframes, instead of landing on the bare Brand Messaging accordion
+  // stub.
+  if (cardKey === 'creative' && cmpRailLoadedCampaign() && typeof cmpOpenCreativeWorkspace === 'function'){
+    cmpOpenCreativeWorkspace();
+    return;
+  }
   openCmpStage(cmpWorkspaceCardOpenKey(card));
 }
 // 2026-09-16 — Workspace breadcrumb, per direct instruction: "Breadcrumb
@@ -12414,7 +12588,7 @@ function cmpWorkspaceCardOpen(cardKey){
 // paused, not cancelled. A built step's pill routes through the exact
 // same cmpWorkspaceCardOpen() router the Workspace Hub cards already use,
 // so this is never a second, diverging navigation path.
-const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget']);
+const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'creative']);
 function cmpRenderWorkspaceBreadcrumb(activeKey){
   return `<div class="cmp-breadcrumb">${CMP_WORKSPACE_CARDS.map(card => {
     const built = CMP_BREADCRUMB_BUILT_CARDS.has(card.key);
@@ -12430,6 +12604,7 @@ function cmpRenderWorkspaceBreadcrumb(activeKey){
 function cmpBreadcrumbGoTo(cardKey){
   cmpCloseObjectivesIntake();
   cmpCloseRecommendationPitch();
+  if (typeof cmpCloseCreativeWorkspace === 'function') cmpCloseCreativeWorkspace();
   cmpWorkspaceCardOpen(cardKey);
 }
 // 2026-09-20, per Todd's direct instruction: "We moved the Ask Verilume
@@ -22972,35 +23147,34 @@ function getNearTermCampaignsTotal(){
   return state.campaigns.filter(c => !c.cancelled && c.startDate && c.startDate >= todayStr && c.startDate <= twoWeeksStr).length;
 }
 
-// Round 23 (2026-08-05), per direct instruction — the CMO View module on
-// Analysis should carry every KPI from a real monthly report, not
-// just the top 3, plus a Monthly Trendline. This is this account's actual
-// Jan–Jul 2026 report (Atlas — the same real account the top-3 tiles above
-// are sourced from). Impressions was only tracked starting July in the
-// source report — shown as a gap, not backfilled with a guess. AOV and Net
-// FIT Revenue (the two headline tiles above ROAS) have only the one July
-// data point in this account's report, so they're listed here for
-// completeness but excluded from the trendline selector rather than
-// plotting a "trend" from a single point.
-const KPI_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul'];
-const MONTHLY_KPI_SERIES = {
-  spend: { label: 'Marketing Spend', fmt: 'moneyRaw000', values: [1034709,964814,1133673,1111936,885889.75,808411.51,604688.41] },
-  impressions: { label: 'Total Impressions', fmt: 'num', values: [null,null,null,null,null,null,23713858] },
-  visitors: { label: 'Website Unique Visitors', fmt: 'num', values: [93539,110733,111726,119747,125973,166141,102534] },
-  leads: { label: 'Website Leads', fmt: 'num', values: [1785,1692,1371,2112,2056,1973,1456] },
-  calls: { label: 'Call Center Calls', fmt: 'num', values: [1238,1098,1135,1172,1023,1110,1200] },
-  metaLeads: { label: 'Meta Leads', fmt: 'num', values: [5239,5929,5445,96,1679,1973,2868] },
-  cpv: { label: 'Cost-per-Visitor (CPV)', fmt: 'usd2', values: [11.06,8.71,10.15,9.29,7.03,4.87,5.90] },
-  cpl: { label: 'Cost-per-Lead (CPL)', fmt: 'usd2', values: [122.60,108.69,142.58,328.98,186.19,140.20,109.47] },
-  cta: { label: 'Cost-per-Customer (CTA)', fmt: 'usd2', values: [94.69,90.01,108.02,167.99,149.97,79.43,64.38] },
-  roas: { label: 'Marketing ROAS', fmt: 'usd2', values: [8.44,9.92,8.99,5.59,5.86,12.03,13.54] }
-};
-// Single-data-point KPIs — real, but no monthly history exists in this
-// account's report yet, so they're stat-only cards, no sparkline/trendline.
-const SINGLE_POINT_KPIS = {
-  aov: { label: 'Average Per Diem (AOV)', fmt: 'usd2', value: 871, yoy: '+20.5% YoY' },
-  netFitRevenue: { label: 'Net FIT Revenue', fmt: 'money000', value: 8188, yoy: '+22.9% YoY' }
-};
+// 2026-09-20, per Todd's direct instruction ("nothing on our site should be
+// hard coded") — the CMO View module's KPI grid + Monthly Trendline now
+// read state.kpiMetrics (populated by loadKpiMetricsData() from the real
+// per-account GET /api/accounts/:id/kpi-metrics endpoint), not the old
+// hardcoded MONTHLY_KPI_SERIES/SINGLE_POINT_KPIS/KPI_MONTHS constants that
+// used to carry one demo account's (Atlas) Jan–Jul 2026 numbers as literal
+// JS. Month labels are derived from whatever periods ("YYYY-MM") this
+// account actually has on file — never assumed to be Jan–Jul.
+function periodToMonthLabel(period){
+  if (!period || period === 'current') return '';
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const m = parseInt(period.slice(5, 7), 10);
+  return (m >= 1 && m <= 12) ? MONTH_ABBR[m - 1] : period;
+}
+async function loadKpiMetricsData(){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/kpi-metrics`);
+    if (resp && resp.ok){
+      state.kpiMetrics = await resp.json();
+    } else {
+      console.warn('portal.html: GET .../kpi-metrics returned non-OK — showing the honest no-data state rather than any hardcoded fallback.', { companyId: state.companyId, status: resp && resp.status });
+      state.kpiMetrics = { monthly: {}, singlePoint: {}, hasData: false };
+    }
+  } catch (e){
+    console.warn('portal.html: GET .../kpi-metrics failed — showing the honest no-data state rather than any hardcoded fallback.', e);
+    state.kpiMetrics = { monthly: {}, singlePoint: {}, hasData: false };
+  }
+}
 function fmtKpiValue(v, fmt){
   if (v === null || v === undefined) return '—';
   // 'money000' — value is already expressed in thousands (e.g. Net FIT
@@ -23032,50 +23206,83 @@ function buildSparkline(values, color){
   const dots = values.map((v, i) => (v === null || v === undefined) ? '' : `<circle cx="${(pad + i * stepX).toFixed(1)}" cy="${(h - pad - ((v - min) / range) * (h - pad * 2)).toFixed(1)}" r="2" fill="${color}"></circle>`).join('');
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${path.trim()}" fill="none" stroke="${color}" stroke-width="2"></path>${dots}</svg>`;
 }
+// 2026-09-20 — honest empty-state markup shared by the KPI grid, the
+// trendline, and the CMO top-3 tiles when this account has no
+// account_kpi_metrics rows yet. Never falls back to a hardcoded "default"
+// account's numbers.
+function kpiNoDataHtml(){
+  return `<p class="hint">No KPI data on file for this account yet. <a class="flink" onclick="switchPrimaryTab('accountManagement');goToStep('manageAccount');">Add it in Account Management → Monthly KPI Metrics →</a></p>`;
+}
 function renderKpiGrid(){
   const el = document.getElementById('kpiGridAll');
   if (!el) return;
-  const cards = Object.entries(MONTHLY_KPI_SERIES).map(([key, s]) => {
-    const latestIdx = [...s.values].map((v,i) => v !== null && v !== undefined ? i : -1).filter(i => i >= 0).pop();
-    const latest = latestIdx !== undefined ? s.values[latestIdx] : null;
+  const data = state.kpiMetrics;
+  if (!data){ el.innerHTML = '<p class="hint">Loading…</p>'; return; }
+  if (!data.hasData){ el.innerHTML = kpiNoDataHtml(); return; }
+  const cards = Object.entries(data.monthly).map(([key, s]) => {
+    const points = [...s.points].sort((a, b) => a.period < b.period ? -1 : (a.period > b.period ? 1 : 0));
+    const values = points.map(p => p.value);
+    const latestIdx = values.map((v, i) => (v !== null && v !== undefined) ? i : -1).filter(i => i >= 0).pop();
+    const latest = latestIdx !== undefined ? values[latestIdx] : null;
     return `<div class="kpi-card">
       <div class="kpi-card-label">${s.label}</div>
       <div class="kpi-card-val">${fmtKpiValue(latest, s.fmt)}</div>
-      ${buildSparkline(s.values, 'var(--media)')}
+      ${buildSparkline(values, 'var(--media)')}
     </div>`;
   }).join('');
-  const singlePointCards = Object.entries(SINGLE_POINT_KPIS).map(([key, s]) => `
+  const singlePointCards = Object.entries(data.singlePoint).map(([key, s]) => `
     <div class="kpi-card">
       <div class="kpi-card-label">${s.label} <span class="illustrative-tag">one month only</span></div>
-      <div class="kpi-card-val">${fmtKpiValue(s.value, s.fmt)} <span class="kpi-delta">${s.yoy}</span></div>
+      <div class="kpi-card-val">${fmtKpiValue(s.value, s.fmt)} ${s.yoy ? `<span class="kpi-delta">${s.yoy}</span>` : ''}</div>
     </div>`).join('');
   el.innerHTML = cards + singlePointCards;
+  renderTrendlineMetricOptions();
+}
+// Populates the Monthly Trendline metric <select> from whatever monthly
+// metricKeys this account actually has on file — replaces the old
+// hardcoded <option> list that assumed the Atlas demo account's exact
+// metric set.
+function renderTrendlineMetricOptions(){
+  const sel = document.getElementById('trendlineMetricSelect');
+  if (!sel) return;
+  const data = state.kpiMetrics;
+  if (!data || !data.hasData){ sel.innerHTML = ''; return; }
+  const prev = sel.value;
+  sel.innerHTML = Object.entries(data.monthly).map(([key, s]) => `<option value="${key}">${s.label}</option>`).join('');
+  if (prev && data.monthly[prev]) sel.value = prev;
 }
 function renderTrendlineChart(metricKey){
   const wrap = document.getElementById('trendlineChartWrap');
   if (!wrap) return;
-  const s = MONTHLY_KPI_SERIES[metricKey] || MONTHLY_KPI_SERIES.roas;
+  const data = state.kpiMetrics;
+  if (!data || !data.hasData || !Object.keys(data.monthly).length){ wrap.innerHTML = kpiNoDataHtml(); return; }
+  const entry = data.monthly[metricKey] || data.monthly[Object.keys(data.monthly)[0]];
+  const points = [...entry.points].sort((a, b) => a.period < b.period ? -1 : (a.period > b.period ? 1 : 0));
+  const values = points.map(p => p.value);
+  const months = points.map(p => periodToMonthLabel(p.period));
+  const s = { label: entry.label, fmt: entry.fmt, values };
   const w = 640, h = 210, padL = 44, padB = 26, padT = 26, padR = 30;
   const nums = s.values.filter(v => v !== null && v !== undefined);
+  if (!nums.length){ wrap.innerHTML = kpiNoDataHtml(); return; }
   const min = Math.min(...nums), max = Math.max(...nums);
   const range = (max - min) || 1;
   const plotW = w - padL - padR, plotH = h - padT - padB;
   const stepX = plotW / (s.values.length - 1 || 1);
   let path = ''; let pen = false;
-  const points = [];
+  const plotted = [];
   s.values.forEach((v, i) => {
     const x = padL + i * stepX;
     if (v === null || v === undefined){ pen = false; return; }
     const y = padT + plotH - ((v - min) / range) * plotH;
     path += (pen ? ' L' : ' M') + x.toFixed(1) + ' ' + y.toFixed(1);
     pen = true;
-    points.push({ x, y, v });
+    plotted.push({ x, y, v });
   });
-  const dots = points.map((p, i) => {
-    const anchor = i === 0 ? 'start' : (i === points.length - 1 ? 'end' : 'middle');
+  const dots = plotted.map((p, i) => {
+    const anchor = i === 0 ? 'start' : (i === plotted.length - 1 ? 'end' : 'middle');
     return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="var(--media)"></circle><text x="${p.x.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}" font-size="10" fill="var(--muted)" font-family="-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif">${fmtKpiValue(p.v, s.fmt)}</text>`;
   }).join('');
-  const xLabels = KPI_MONTHS.map((m, i) => `<text x="${(padL + i * stepX).toFixed(1)}" y="${h - 6}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif">${m}</text>`).join('');
+  const xLabels = months.map((m, i) => `<text x="${(padL + i * stepX).toFixed(1)}" y="${h - 6}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif">${m}</text>`).join('');
   wrap.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="max-width:100%;height:auto;">
     <line x1="${padL}" y1="${padT + plotH}" x2="${w - padR}" y2="${padT + plotH}" stroke="var(--line)"></line>
     <path d="${path.trim()}" fill="none" stroke="var(--media)" stroke-width="2.5"></path>
@@ -23086,6 +23293,152 @@ function renderTrendlineChart(metricKey){
 function onTrendlineMetricChange(sel){
   renderTrendlineChart(sel.value);
 }
+// 2026-09-20 — the CMO top-3 headline tiles (AOV / Marketing ROAS / Net FIT
+// Revenue), previously static hardcoded HTML in the #cmoTop3Tiles markup.
+// AOV and Net FIT Revenue come from singlePoint; ROAS is this account's
+// latest monthly value — the same single source of truth the KPI grid and
+// trendline read, so this tile and the KPI grid's own ROAS card can never
+// disagree the way the old hardcoded $13.50 (here) vs. $13.54 (grid) did.
+function renderCmoTop3Tiles(){
+  const el = document.getElementById('cmoTop3Tiles');
+  if (!el) return;
+  const data = state.kpiMetrics;
+  if (!data || !data.hasData){ el.innerHTML = kpiNoDataHtml(); return; }
+  const aov = data.singlePoint.aov || null;
+  const netFitRevenue = data.singlePoint.netFitRevenue || null;
+  const roasEntry = data.monthly.roas || null;
+  let roasLatest = null;
+  if (roasEntry){
+    const points = [...roasEntry.points].sort((a, b) => a.period < b.period ? -1 : (a.period > b.period ? 1 : 0));
+    const withVals = points.filter(p => p.value !== null && p.value !== undefined);
+    if (withVals.length) roasLatest = withVals[withVals.length - 1].value;
+  }
+  const tile = (label, tag, val, yoy, note, border) => `
+          <div class="dash-tile" style="border-top:2px solid ${border};">
+            <div class="illustrative-tag" style="display:block;margin-bottom:6px;">${tag}</div>
+            <h3 style="margin:0 0 4px;">${label}</h3>
+            <div class="score-pill" style="padding:10px 0;background:none;border:none;">
+              <div class="val strong" style="font-size:1.75rem;">${val} ${yoy ? `<span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:600;">${yoy}</span>` : ''}</div>
+            </div>
+            <p style="margin:6px 0 0;font-size:0.8125rem;color:var(--muted);">${note}</p>
+          </div>`;
+  el.innerHTML = `
+          ${aov ? tile('Average Per Diem (AOV)', 'CX — leads this section', fmtKpiValue(aov.value, aov.fmt), aov.yoy, 'Booking value rose while unique visitors held roughly flat — a proxy for perceived brand/experience strength, not a direct satisfaction score. Pair with this account’s own CX Strength read above rather than letting revenue stand in for experience quality.', 'var(--cx-tint)') : ''}
+          ${roasLatest !== null ? tile('Marketing ROAS', 'Media Science', fmtKpiValue(roasLatest, roasEntry.fmt), '', 'The "is the media dollar working harder" number, from this account’s latest tracked month.', 'var(--media-tint)') : ''}
+          ${netFitRevenue ? tile('Net FIT Revenue', 'Combined', fmtKpiValue(netFitRevenue.value, netFitRevenue.fmt), netFitRevenue.yoy, 'The output of both sides at once — the number that goes in front of the CFO; the two above are how you explain it.', 'var(--advocacy-tint)') : ''}`;
+}
+
+// 2026-09-20 — Account Management's "Monthly KPI Metrics" admin table (see
+// #kpiMetricsAdminModule in step-manageAccount). Fetches the same GET
+// /api/accounts/:id/kpi-metrics data the Dashboard reads, and renders it as
+// a flat, sorted "on file for this account" list — the real entry point
+// for this data, replacing backend/seed-atlas-kpi-metrics.js's old implied
+// role as a data-loading mechanism.
+async function loadKpiMetricsAdminTable(){
+  const table = document.getElementById('kpiMetricsAdminTable');
+  if (!table) return;
+  table.innerHTML = '<tr><td class="hint">Loading…</td></tr>';
+  await loadKpiMetricsData();
+  renderKpiMetricsAdminTable();
+  // The Dashboard/Analysis views may already be in memory with stale data —
+  // refresh anything currently rendered from state.kpiMetrics.
+  renderKpiGrid();
+  renderCmoTop3Tiles();
+  renderExecCharts();
+}
+function renderKpiMetricsAdminTable(){
+  const table = document.getElementById('kpiMetricsAdminTable');
+  if (!table) return;
+  const data = state.kpiMetrics;
+  const rows = [];
+  if (data && data.hasData){
+    Object.entries(data.monthly).forEach(([key, s]) => {
+      s.points.forEach(p => rows.push({ metricKey: key, label: s.label, fmt: s.fmt, period: p.period, value: p.value, yoy: null }));
+    });
+    Object.entries(data.singlePoint).forEach(([key, s]) => {
+      rows.push({ metricKey: key, label: s.label, fmt: s.fmt, period: 'current', value: s.value, yoy: s.yoy });
+    });
+  }
+  rows.sort((a, b) => (a.metricKey === b.metricKey) ? (a.period < b.period ? -1 : 1) : (a.metricKey < b.metricKey ? -1 : 1));
+  if (!rows.length){
+    table.innerHTML = '<tr><td class="hint">No KPI data on file for this account yet — add the first one below.</td></tr>';
+    return;
+  }
+  table.innerHTML = `<tr><th>Metric key</th><th>Label</th><th>Period</th><th>Value</th><th>YoY</th><th></th></tr>` +
+    rows.map(r => `
+      <tr>
+        <td>${r.metricKey}</td>
+        <td>${r.label}</td>
+        <td>${r.period}</td>
+        <td>${fmtKpiValue(r.value, r.fmt)}</td>
+        <td>${r.yoy || '—'}</td>
+        <td><a class="flink" onclick="kmaEditMetric('${r.metricKey.replace(/'/g, "\\'")}','${r.period}')">Edit →</a></td>
+      </tr>`).join('');
+}
+function kmaEditMetric(metricKey, period){
+  const data = state.kpiMetrics;
+  if (!data) return;
+  let row = null;
+  if (period === 'current' && data.singlePoint[metricKey]){
+    const s = data.singlePoint[metricKey];
+    row = { metricKey, label: s.label, fmt: s.fmt, period: 'current', value: s.value, yoy: s.yoy };
+  } else if (data.monthly[metricKey]){
+    const s = data.monthly[metricKey];
+    const p = s.points.find(pt => pt.period === period);
+    if (p) row = { metricKey, label: s.label, fmt: s.fmt, period, value: p.value, yoy: null };
+  }
+  if (!row) return;
+  document.getElementById('kmaMetricKey').value = row.metricKey;
+  document.getElementById('kmaLabel').value = row.label;
+  document.getElementById('kmaFmt').value = row.fmt;
+  document.getElementById('kmaPeriod').value = row.period;
+  document.getElementById('kmaValue').value = (row.value === null || row.value === undefined) ? '' : row.value;
+  document.getElementById('kmaYoy').value = row.yoy || '';
+  const module = document.getElementById('kpiMetricsAdminModule');
+  if (module) module.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+async function kmaSaveMetric(){
+  const resultEl = document.getElementById('kmaSaveResult');
+  const metricKey = document.getElementById('kmaMetricKey').value.trim();
+  const label = document.getElementById('kmaLabel').value.trim();
+  const fmt = document.getElementById('kmaFmt').value;
+  const period = document.getElementById('kmaPeriod').value.trim();
+  const valueRaw = document.getElementById('kmaValue').value;
+  const yoyLabel = document.getElementById('kmaYoy').value.trim();
+  if (!metricKey || !label || !period){
+    if (resultEl) resultEl.textContent = 'Metric key, label, and period are required.';
+    return;
+  }
+  if (!ACCOUNT_KPI_PERIOD_RE_FRONTEND.test(period)){
+    if (resultEl) resultEl.textContent = 'Period must be "current" or "YYYY-MM" (e.g. 2026-01).';
+    return;
+  }
+  const value = valueRaw === '' ? null : parseFloat(valueRaw);
+  if (value !== null && Number.isNaN(value)){
+    if (resultEl) resultEl.textContent = 'Value must be a number, or left blank.';
+    return;
+  }
+  if (resultEl) resultEl.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/kpi-metrics`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metrics: [{ metricKey, label, fmt, period, value, yoyLabel: yoyLabel || null }], source: 'manual' })
+    });
+    if (resp && resp.ok){
+      if (resultEl) resultEl.textContent = `Saved — ${new Date().toLocaleTimeString()}.`;
+      await loadKpiMetricsAdminTable();
+    } else {
+      const err = resp ? await resp.json().catch(() => ({})) : {};
+      if (resultEl) resultEl.textContent = err.error ? `Save failed: ${err.error}` : 'Save failed — try again.';
+    }
+  } catch (e){
+    if (resultEl) resultEl.textContent = 'Save failed — the backend may be unreachable. Try again.';
+  }
+}
+// Mirrors the backend's ACCOUNT_KPI_PERIOD_RE (server.js) — kept in sync by
+// hand since this is a client-side pre-check only; the backend is the real
+// source of truth and validates again on every POST.
+const ACCOUNT_KPI_PERIOD_RE_FRONTEND = /^(current|\d{4}-(0[1-9]|1[0-2]))$/;
 
 function renderExecCharts(){
   const impCard = document.getElementById('impressionsChartCard');
@@ -23168,11 +23521,13 @@ function renderExecCharts(){
   // leads Analysis with, as 3 chart meters (not paragraph text) —
   // the glance version lives here, the full depth (every KPI + Monthly
   // Trendline) lives on Analysis.
-  const effMeters = [
-    { label: 'AOV (Average Per Diem)', val: '$871', pct: 71, delta: '+20.5% YoY', color: 'var(--cx)' },
-    { label: 'Marketing ROAS', val: '$13.50', pct: 90, delta: '+47.1% YoY', color: 'var(--media)' },
-    { label: 'Net FIT Revenue', val: '$8.19M', pct: 82, delta: '+22.9% YoY', color: 'var(--advocacy)' }
-  ];
+  // 2026-09-20, per Todd's direct instruction ("nothing on our site should
+  // be hard coded") — values/labels/deltas now come from buildEffMeters(),
+  // which reads state.kpiMetrics (the real per-account backend data). Only
+  // pct (bar fill, derived from each metric's own YoY size) and color
+  // remain presentation logic, same as the original design intent's own
+  // caption below.
+  const effMeters = buildEffMeters();
   effCard.innerHTML = `
     <div class="exec-chart-head">
       <h3>Marketing Efficiency</h3>
@@ -23181,14 +23536,50 @@ function renderExecCharts(){
         <button type="button" class="exec-chart-expand-btn" onclick="toggleExecChartExpand('efficiency')">${isEffExpanded ? '⤡ Collapse' : '⤢ Expand'}</button>
       </div>
     </div>
-    <div class="eff-meter-block" style="margin-top:12px;">
+    ${effMeters.length ? `<div class="eff-meter-block" style="margin-top:12px;">
       ${effMeters.map(m => `
         <div class="eff-meter">
           <div class="eff-meter-head"><span class="lbl">${m.label}</span><span><span class="val">${m.val}</span><span class="delta">${m.delta}</span></span></div>
           <div class="eff-meter-bar"><div style="width:${m.pct}%;background:${m.color};"></div></div>
         </div>`).join('')}
     </div>
-    <p class="exec-caption">This account's real July report. <span class="illustrative-tag">bar length is relative to each metric's own YoY improvement, not a shared scale — see the values</span> Full depth (every tracked KPI + Monthly Trendline) is on <a class="flink" onclick="goToStep('analyticsSetup')">Analysis →</a></p>`;
+    <p class="exec-caption">This account's real latest report. <span class="illustrative-tag">bar length is relative to each metric's own YoY improvement, not a shared scale — see the values</span> Full depth (every tracked KPI + Monthly Trendline) is on <a class="flink" onclick="goToStep('analyticsSetup')">Analysis →</a></p>`
+      : `<div style="margin-top:12px;">${kpiNoDataHtml()}</div>`}`;
+}
+// 2026-09-20 — shared by renderExecCharts() and downloadEfficiencyCsv() so
+// the exec-chart meter and its CSV export can never drift from each other
+// or from the CMO View's own KPI grid/tiles the way the old hardcoded
+// copies (here, the top-3 tiles, and the CSV export) used to. Reads
+// state.kpiMetrics — aov/netFitRevenue from singlePoint, roas from the
+// latest monthly value, matching the metricKeys the seed script and the
+// Account Management KPI entry UI both use.
+function buildEffMeters(){
+  const data = state.kpiMetrics;
+  if (!data || !data.hasData) return [];
+  const meters = [];
+  const pctFromYoy = (yoy) => {
+    const m = typeof yoy === 'string' ? yoy.match(/-?\d+(\.\d+)?/) : null;
+    const n = m ? Math.abs(parseFloat(m[0])) : 0;
+    return Math.max(10, Math.min(100, Math.round(n * 2)));
+  };
+  const aov = data.singlePoint.aov;
+  if (aov) meters.push({ label: 'AOV (Average Per Diem)', val: fmtKpiValue(aov.value, aov.fmt), pct: pctFromYoy(aov.yoy), delta: aov.yoy || '—', color: 'var(--cx)' });
+  const roasEntry = data.monthly.roas;
+  if (roasEntry){
+    const points = [...roasEntry.points].sort((a, b) => a.period < b.period ? -1 : (a.period > b.period ? 1 : 0));
+    const withVals = points.filter(p => p.value !== null && p.value !== undefined);
+    if (withVals.length){
+      // Monthly rows (see GET .../kpi-metrics) don't carry a yoyLabel — that
+      // field only exists on 'current'-period (singlePoint) rows — so ROAS
+      // has no YoY delta to show or size the bar from; a fixed mid-length
+      // bar (presentation only, per the caption above) stands in.
+      const latest = withVals[withVals.length - 1];
+      meters.push({ label: 'Marketing ROAS', val: fmtKpiValue(latest.value, roasEntry.fmt), pct: 60, delta: '—', color: 'var(--media)' });
+    }
+  }
+  const netFitRevenue = data.singlePoint.netFitRevenue;
+  if (netFitRevenue) meters.push({ label: 'Net FIT Revenue', val: fmtKpiValue(netFitRevenue.value, netFitRevenue.fmt), pct: pctFromYoy(netFitRevenue.yoy), delta: netFitRevenue.yoy || '—', color: 'var(--advocacy)' });
+  return meters;
 }
 
 function toggleExecChartExpand(which){
@@ -24097,6 +24488,12 @@ function populateCampaignFormSelects(){
   updateKeyMessageCounter();
   renderSegmentRow();
   renderCmpLifecyclePreview();
+  // 2026-09-20 — populates/resets the Campaign Creation Campaign Type &
+  // Business Initiative pair. Called both at page init and by
+  // resetCampaignForm() (no campaign loaded -> null, falls back to
+  // cmpPendingCampaignType/-BusinessInitiative, themselves reset to '' by
+  // resetCampaignForm() just above this call).
+  if (typeof cmpRenderCreationTypeInitiativeFields === 'function') cmpRenderCreationTypeInitiativeFields(findCampaign(currentCampaignId) || null);
 }
 
 // Round 132ae (2026-08-11), per direct instruction: "We can remove the
@@ -36927,6 +37324,11 @@ function cmpPopulateFormFields(c, opts){
   // 2026-09-17 — Campaign Type & Business Initiative, required before
   // generation (see cmpGenerationRequirementsCard's own comment).
   cmpRenderGenerationRequirementsCard(c);
+  // 2026-09-20 — same pair, recapped on Campaign Creation's own copy of
+  // these two fields (see cmpRenderCreationTypeInitiativeFields()'s
+  // comment) so a saved value shows correctly there too whenever a real
+  // campaign loads.
+  if (typeof cmpRenderCreationTypeInitiativeFields === 'function') cmpRenderCreationTypeInitiativeFields(c);
   const styleEl = document.getElementById('cmpLongformStyle');
   // 2026-08-22 — c.roleStyle is the real, backend-persisted value (see
   // server.js); c.longformStyle is the older local-session-only field this
@@ -37791,6 +38193,165 @@ function cmpCloseRecommendationPitch(){
   // 2026-09-20 — same Analysis-card refresh as cmpCloseObjectivesIntake()
   // (see that call's own comment).
   if (campaign) renderCmpWorkspaceHub(campaign);
+}
+
+// 2026-09-20 — Creative full-screen workspace (see the overlay markup's own
+// comment for the reuse decision). Bookmarks where each of the 3 real
+// sections lived before they're relocated into #cmpCreativeLeft, so
+// cmpCloseCreativeWorkspace() can put them back exactly where they came
+// from (including their real position among their original siblings, via
+// insertBefore(el, next) rather than a plain appendChild that would just
+// re-add them at the end every time).
+let cmpCreativeWorkspaceBookmarks = null;
+// 2026-09-20 — #cmpStage-messaging/#cmpStage-copyVersions keep their normal
+// accordion module-head (onclick="openCmpStage('messaging'|'copyVersions')")
+// unchanged when relocated in here, since that's still their real markup —
+// but openCmpStage() closes every OTHER .cmp-stage when called, which would
+// silently collapse whichever of the two this workspace isn't the target
+// of. The wireframe shows both stacked open at once with no click-to-
+// collapse affordance, so a capture-phase guard on the container (bound
+// once) swallows a click on either header's own .module-head while this
+// workspace is open, instead of letting openCmpStage() run and fight the
+// "both always open" behavior cmpOpenCreativeWorkspace() sets up below.
+// Every other click inside these two modules (fields, buttons, links) is
+// untouched — only their own accordion header toggle is disabled here.
+let cmpCreativeLeftClickGuardBound = false;
+function cmpBindCreativeLeftClickGuard(){
+  if (cmpCreativeLeftClickGuardBound) return;
+  const left = document.getElementById('cmpCreativeLeft');
+  if (!left) return;
+  left.addEventListener('click', e => {
+    const panel = document.getElementById('cmpCreativePanel');
+    if (!panel || !panel.classList.contains('open')) return;
+    const head = e.target.closest('.module-head');
+    if (head && (head.closest('#cmpStage-messaging') || head.closest('#cmpStage-copyVersions'))){
+      e.stopPropagation();
+    }
+  }, true);
+  cmpCreativeLeftClickGuardBound = true;
+}
+function cmpOpenCreativeWorkspace(){
+  const campaign = cmpRailLoadedCampaign();
+  const overlay = document.getElementById('cmpCreativeOverlay');
+  const panel = document.getElementById('cmpCreativePanel');
+  const left = document.getElementById('cmpCreativeLeft');
+  if (!campaign || !overlay || !panel || !left) return; // locked — same "no real campaign yet" gate as every other downstream stage
+  overlay.classList.add('open');
+  panel.classList.add('open');
+  panel.classList.remove('mobile-collab-open');
+  document.body.style.overflow = 'hidden';
+  cmpMountCampaignHeaderInto('cmpCreativeHeaderMount');
+  const breadcrumb = document.getElementById('cmpCreativeBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('creative');
+  // Same Collaboration Center hand-off every other full-screen workspace
+  // overlay does (see cmpRenderCollabCenter()'s own comment) — clear every
+  // other possible mount first so nothing stale flashes there once this
+  // overlay closes.
+  cmpCollabMountId = 'cmpCreativeCollabMount';
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m) m.innerHTML = '';
+  });
+  cmpRenderCollabCenter(campaign);
+  // Relocate the 3 real sections (only once — a second open while already
+  // open, e.g. a stray double-click, is a harmless no-op since they're
+  // already exactly where this function wants them).
+  if (!cmpCreativeWorkspaceBookmarks){
+    const ids = ['cmpStage-messaging', 'cmpStage-copyVersions', 'campaignCreativeJobsCard'];
+    cmpCreativeWorkspaceBookmarks = ids.map(id => {
+      const el = document.getElementById(id);
+      return el ? { id, parent: el.parentNode, next: el.nextSibling, marginTop: el.style.marginTop } : null;
+    }).filter(Boolean);
+    cmpCreativeWorkspaceBookmarks.forEach(b => {
+      const el = document.getElementById(b.id);
+      // campaignCreativeJobsCard carries an inline margin-top:26px meant for
+      // its normal spot on the legacy Campaign Detail page — this
+      // container's own flex gap already spaces it correctly here, so that
+      // inline value is cleared while mounted (restored on close below).
+      el.style.marginTop = '0';
+      left.appendChild(el);
+    });
+  }
+  cmpBindCreativeLeftClickGuard();
+  // Force both accordion modules fully open and unclipped — this workspace
+  // shows all 3 sections stacked at once (per the wireframe), not one at a
+  // time, so openCmpStage() itself (which closes every OTHER .cmp-stage)
+  // isn't used here; same 'open' class + unclipped overflow it would set,
+  // applied directly to just these two instead.
+  ['cmpStage-messaging', 'cmpStage-copyVersions'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('open');
+    el.style.overflow = 'visible';
+    const body = el.querySelector('.module-body');
+    if (body){ body.style.maxHeight = 'none'; body.style.overflow = 'visible'; }
+  });
+  // Same data these two stages load on a normal openCmpStage('messaging'|'copyVersions').
+  if (typeof generateCampaignBriefExpanded === 'function') generateCampaignBriefExpanded();
+  if (typeof cmpAutoDraftMessaging === 'function') cmpAutoDraftMessaging();
+  if (typeof cmpRenderCopyVersionsStage === 'function') cmpRenderCopyVersionsStage();
+  if (typeof loadCreativeJobs === 'function') loadCreativeJobs();
+  // #campaignCreativeJobsCard is also a CAMPAIGN_DETAIL_CARD_IDS entry on
+  // the legacy Campaign Detail page — a prior deep-link there
+  // (applyCampaignCardFocus()) can leave it carrying .collapsed, which
+  // would hide its body here too. Always fully shown in this workspace,
+  // matching the wireframe.
+  { const jobsCard = document.getElementById('campaignCreativeJobsCard'); if (jobsCard) jobsCard.classList.remove('collapsed'); }
+  cmpRenderCreativeWorkspaceStatusBadge(campaign);
+}
+function cmpCloseCreativeWorkspace(){
+  const overlay = document.getElementById('cmpCreativeOverlay');
+  const panel = document.getElementById('cmpCreativePanel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
+  document.body.style.overflow = '';
+  // Put the 3 relocated sections back exactly where they came from, and
+  // collapse the two accordion modules back to their normal closed state
+  // (matching how they'd sit if this workspace had never been opened).
+  if (cmpCreativeWorkspaceBookmarks){
+    cmpCreativeWorkspaceBookmarks.forEach(b => {
+      const el = document.getElementById(b.id);
+      if (!el) return;
+      el.style.marginTop = b.marginTop || '';
+      if (b.next && b.next.parentNode === b.parent) b.parent.insertBefore(el, b.next);
+      else b.parent.appendChild(el);
+    });
+    cmpCreativeWorkspaceBookmarks = null;
+  }
+  ['cmpStage-messaging', 'cmpStage-copyVersions'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('open');
+    el.style.overflow = '';
+    const body = el.querySelector('.module-body');
+    if (body){ body.style.maxHeight = '0px'; body.style.overflow = ''; }
+  });
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const creativeMount = document.getElementById('cmpCreativeCollabMount');
+  if (creativeMount) creativeMount.innerHTML = '';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderCollabCenter(campaign);
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  if (campaign) renderCmpWorkspaceHub(campaign);
+}
+// Mirrors the same stage-status pill the Workspace Hub's own card grid uses
+// (see renderCmpWorkspaceHub()'s card markup) — one badge, one source of
+// truth for what "Creative" status means, not a second bespoke label here.
+function cmpRenderCreativeWorkspaceStatusBadge(campaign){
+  const el = document.getElementById('cmpCreativeStatusBadge');
+  if (!el) return;
+  const card = CMP_WORKSPACE_CARDS.find(c => c.key === 'creative');
+  const status = card ? cmpWorkspaceCardStatus(card) : 'not-started';
+  el.className = `stage-status ${status}`;
+  el.textContent = STAGE_STATUS_LABEL[status] || 'Creative';
+}
+// 2026-09-20, per Creative-Mobile.dc.html — the bottom AI Brain bar opens
+// the same real Collaboration Center as a bottom sheet on mobile widths
+// (see the .mobile-collab-open CSS rule), rather than a second chat
+// surface — tapping it again closes the sheet.
+function cmpToggleCreativeMobileCollab(){
+  const panel = document.getElementById('cmpCreativePanel');
+  if (panel) panel.classList.toggle('mobile-collab-open');
 }
 
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
@@ -39611,6 +40172,12 @@ function resetCampaignForm(){
   const searchField = document.getElementById('cmpExistingCampaignSearch');
   if (searchField) searchField.value = '';
   cmpFormTouched = false;
+  // 2026-09-20 — a fresh blank campaign starts with no Campaign
+  // Type/Business Initiative pick either; populateCampaignFormSelects()
+  // below re-renders cmpCreationCampaignTypeSelect/-BusinessInitiativeSelect
+  // from these now-empty pending values.
+  cmpPendingCampaignType = '';
+  cmpPendingBusinessInitiative = '';
   populateCampaignFormSelects();
   document.getElementById('newCampaignHint').textContent = 'Campaign start and end date are required below — everything else here sharpens what Projects inside it will generate. Campaign Audiences, Objective, and the rest of Lifecycle Stage & Goals come next, once this campaign is created.';
   const formTitleEl = document.getElementById('cmpFormTitle');
@@ -40250,6 +40817,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape'){
     const pitchPanel = document.getElementById('cmpPitchPanel');
     if (pitchPanel && pitchPanel.classList.contains('open')) cmpCloseRecommendationPitch();
+    // 2026-09-20 — same Escape-to-close as the AI Brain Recommendation
+    // pitch above, for the new Creative workspace overlay.
+    const creativePanel = document.getElementById('cmpCreativePanel');
+    if (creativePanel && creativePanel.classList.contains('open')) cmpCloseCreativeWorkspace();
   }
 });
 
@@ -41614,7 +42185,17 @@ function cmpBuildFormPayload(){
     plannedImpressionsAuto: cmpPlannedImpressionsAuto,
     budgetAuto: cmpBudgetAuto,
     startDate: document.getElementById('cmpStartDate').value || null,
-    endDate: document.getElementById('cmpEndDate').value || null
+    endDate: document.getElementById('cmpEndDate').value || null,
+    // 2026-09-20 — Campaign Creation's own Campaign Type/Business
+    // Initiative pair (see cmpRenderCreationTypeInitiativeFields()'s
+    // comment). Read from the live selects when present (an existing
+    // campaign being re-saved) and otherwise from the pending values a
+    // pick before Create Campaign was clicked left behind — either way
+    // this is the same campaign.campaignType/businessInitiative column the
+    // Brand Messaging card's own pair reads/writes, so a value set here
+    // recaps correctly there too.
+    campaignType: (document.getElementById('cmpCreationCampaignTypeSelect') ? document.getElementById('cmpCreationCampaignTypeSelect').value : '') || cmpPendingCampaignType || '',
+    businessInitiative: (document.getElementById('cmpCreationBusinessInitiativeSelect') ? document.getElementById('cmpCreationBusinessInitiativeSelect').value : '') || cmpPendingBusinessInitiative || ''
   };
 }
 async function createCampaign(){
@@ -41724,6 +42305,26 @@ async function createCampaign(){
         // yet (Company Profile) — real, not fabricated; the campaign still
         // creates fine and can pick up a code later once that's set.
         campaignCode = created.campaignCode || null;
+        // 2026-09-20 — the creation INSERT (POST /accounts/:id/campaigns)
+        // already persists campaignType (see its own 2026-08-22 comment in
+        // backend/server.js) but was never extended to accept
+        // businessInitiative at INSERT time the same round that column was
+        // added — only the merge-update endpoint (used elsewhere by
+        // cmpOnGenerationTypeChanged()/cmpOnCreationTypeInitiativeChanged())
+        // writes it. Rather than touch that INSERT's 35-column statement, a
+        // pick made here rides in on one immediate follow-up call to that
+        // same merge-update endpoint right after creation succeeds — no new
+        // endpoint, no backend change, just the existing save-on-change
+        // pattern fired once more against the campaign id this response
+        // just returned.
+        if (payload.businessInitiative || payload.campaignType){
+          try {
+            await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ campaignType: payload.campaignType || '', businessInitiative: payload.businessInitiative || '' })
+            });
+          } catch (e){ console.warn('createCampaign: businessInitiative follow-up save failed, local copy only.', e); }
+        }
       }
     } catch (e){ console.warn('createCampaign: backend write failed, creating locally only.', e); }
   }
@@ -42470,6 +43071,16 @@ async function cmpOnGenerationTypeChanged(){
   c.campaignType = typeKey;
   c.businessInitiative = initiativeKey;
   cmpRenderGenerationRequirementsStatus(c);
+  // 2026-09-20 — mirror the pick onto Campaign Creation's own copy of
+  // these two fields (see cmpRenderCreationTypeInitiativeFields()'s
+  // comment above the markup) so both surfaces always agree, whichever one
+  // was actually edited.
+  const creationTypeSelect = document.getElementById('cmpCreationCampaignTypeSelect');
+  const creationInitiativeSelect = document.getElementById('cmpCreationBusinessInitiativeSelect');
+  if (creationTypeSelect) creationTypeSelect.value = typeKey;
+  if (creationInitiativeSelect) creationInitiativeSelect.value = initiativeKey;
+  cmpPendingCampaignType = typeKey;
+  cmpPendingBusinessInitiative = initiativeKey;
   if (!c.localOnly && dataSourceLabel === 'backend'){
     try {
       await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
@@ -42477,6 +43088,74 @@ async function cmpOnGenerationTypeChanged(){
         body: JSON.stringify({ campaignType: typeKey, businessInitiative: initiativeKey })
       });
     } catch (e){ console.warn('cmpOnGenerationTypeChanged: backend write failed, saved locally only.', e); }
+  }
+}
+// 2026-09-20 — populates and syncs the Campaign Creation stage's own copy
+// of the Campaign Type/Business Initiative pair (see that field's markup
+// comment for the full rationale). Mirrors cmpRenderGenerationRequirementsCard()
+// above field-for-field, against the same registries and the same
+// campaign.campaignType/businessInitiative columns — just a second render
+// target so the same saved value recaps correctly on both surfaces.
+function cmpRenderCreationTypeInitiativeFields(c){
+  const typeSelect = document.getElementById('cmpCreationCampaignTypeSelect');
+  const initiativeSelect = document.getElementById('cmpCreationBusinessInitiativeSelect');
+  if (!typeSelect || !initiativeSelect) return;
+  if (typeSelect.options.length <= 1){
+    Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = CAMPAIGN_TYPE_REGISTRY_CLIENT[key].label;
+      typeSelect.appendChild(opt);
+    });
+  }
+  if (initiativeSelect.options.length <= 1){
+    Object.keys(BUSINESS_INITIATIVE_REGISTRY_CLIENT).forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = BUSINESS_INITIATIVE_REGISTRY_CLIENT[key].label;
+      initiativeSelect.appendChild(opt);
+    });
+  }
+  // A real, already-created campaign (c set) is the source of truth; a
+  // brand-new, not-yet-created campaign falls back to whatever was picked
+  // here before Create Campaign was clicked, so a pick made before
+  // submitting survives a re-render of this card (e.g. another field's
+  // onchange re-populating the row above it).
+  typeSelect.value = c ? (c.campaignType || '') : (cmpPendingCampaignType || '');
+  initiativeSelect.value = c ? (c.businessInitiative || '') : (cmpPendingBusinessInitiative || '');
+}
+// Onchange handler for the Campaign Creation pair. Before a real campaign
+// exists, this only records the pick locally (cmpPendingCampaignType/
+// -BusinessInitiative — read by cmpBuildFormPayload() at Create Campaign
+// time, so a pick made here rides along on the very first save); once a
+// real campaign is loaded, it persists immediately and mirrors onto the
+// Brand Messaging card's own pair, same save-on-change convention as
+// cmpOnGenerationTypeChanged() above.
+async function cmpOnCreationTypeInitiativeChanged(){
+  const typeSelect = document.getElementById('cmpCreationCampaignTypeSelect');
+  const initiativeSelect = document.getElementById('cmpCreationBusinessInitiativeSelect');
+  const typeKey = typeSelect ? typeSelect.value : '';
+  const initiativeKey = initiativeSelect ? initiativeSelect.value : '';
+  cmpPendingCampaignType = typeKey;
+  cmpPendingBusinessInitiative = initiativeKey;
+  markCampaignFormTouched();
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  c.campaignType = typeKey;
+  c.businessInitiative = initiativeKey;
+  const msgTypeSelect = document.getElementById('cmpCampaignTypeSelect');
+  const msgInitiativeSelect = document.getElementById('cmpBusinessInitiativeSelect');
+  if (msgTypeSelect) msgTypeSelect.value = typeKey;
+  if (msgInitiativeSelect) msgInitiativeSelect.value = initiativeKey;
+  renderCampaignTypeDetailFields(typeKey, campaignTypeDetailsClient(c), 'cmpCampaignTypeDetailFields');
+  cmpRenderGenerationRequirementsStatus(c);
+  if (!c.localOnly && dataSourceLabel === 'backend'){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignType: typeKey, businessInitiative: initiativeKey })
+      });
+    } catch (e){ console.warn('cmpOnCreationTypeInitiativeChanged: backend write failed, saved locally only.', e); }
   }
 }
 // Live status line + the actual gate check every generation entry point in
@@ -44196,12 +44875,12 @@ function downloadCampaignsCsv(){
   downloadCsvFile('campaigns-snapshot.csv', rows);
 }
 function downloadEfficiencyCsv(){
-  const effMeters = [
-    { label: 'AOV (Average Per Diem)', val: '$871', delta: '+20.5% YoY' },
-    { label: 'Marketing ROAS', val: '$13.50', delta: '+47.1% YoY' },
-    { label: 'Net FIT Revenue', val: '$8.19M', delta: '+22.9% YoY' }
-  ];
-  const rows = [['Metric', 'Value', 'YoY change'], ...effMeters.map(m => [m.label, m.val, m.delta])];
+  // 2026-09-20 — shares buildEffMeters() with renderExecCharts() so this
+  // export can never diverge from what the card itself is showing.
+  const effMeters = buildEffMeters();
+  const rows = effMeters.length
+    ? [['Metric', 'Value', 'YoY change'], ...effMeters.map(m => [m.label, m.val, m.delta])]
+    : [['No KPI data on file for this account yet', '']];
   downloadCsvFile('marketing-efficiency.csv', rows);
 }
 function downloadPlanPacingCsv(){
@@ -49648,6 +50327,8 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'manageAccount'){
     renderAiPartnerOnboardingHub();
     // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
+    // 2026-09-20 — Monthly KPI Metrics admin table (see kmaSaveMetric()).
+    loadKpiMetricsAdminTable();
     document.getElementById('step-manageAccount').classList.add('active');
     // Round 22g (2026-09-08) — the hub's "View My Customers" card status
     // (mouHubStatus()) needs the account's real saved upload state, not
@@ -49702,6 +50383,7 @@ function goToStep(step, arg, arg2, arg3){
     renderFocusGrid();
     // Round 23 — the full-KPI grid + Monthly Trendline chart.
     renderKpiGrid();
+    renderCmoTop3Tiles();
     renderTrendlineChart(document.getElementById('trendlineMetricSelect') ? document.getElementById('trendlineMetricSelect').value : 'roas');
     // Round 29 (2026-08-05), per direct instruction: Comparative Analytics
     // (Channel Performance + Campaign vs. Campaign) relocated here from
@@ -58682,7 +59364,8 @@ async function posSetDecision(contributionId, status){
     loadPrCorpCommData(),
     loadMediaPlan(),
     loadContentLibrary(),
-    loadAccountIntelligence()
+    loadAccountIntelligence(),
+    loadKpiMetricsData()
   ]);
   renderOrgModelRow();
   applyOrgModel();
@@ -58708,6 +59391,7 @@ async function posSetDecision(contributionId, status){
   renderFocusGrid();
   renderQuadrant();
   renderKpiGrid();
+  renderCmoTop3Tiles();
   renderTrendlineChart('roas');
   renderActiveCampaigns();
   renderStageRow();
