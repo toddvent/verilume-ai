@@ -1857,6 +1857,12 @@ ensureColumn('campaigns', 'activityNotesJson', 'TEXT');
 // data to work from.
 ensureColumn('campaigns', 'recommendationDataConfidenceNote', 'TEXT');
 
+// 2026-09-20, per Todd's direct correction on the first-campaign welcome
+// message: scoped to (account, user), not account alone. See the INSERT
+// /api/accounts/:id/campaigns handler's own comment for the full
+// reasoning and known gap on pre-existing rows.
+ensureColumn('campaigns', 'createdByUser', 'TEXT');
+
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
 // CMP-...) — what's new is a Creative Job ID for an actual request sent to
@@ -21541,6 +21547,28 @@ Submit your response via the campaign_intake_turn tool.`;
         initialStatus,
         now
       );
+      // 2026-09-20, per Todd's direct correction: the first-campaign
+      // welcome message must be scoped per (account, user), not account
+      // alone — a second client user on the same account should still see
+      // it for THEIR first campaign. No real per-user login/ID exists in
+      // this build (state.userName, self-reported, is the only identity
+      // concept used anywhere else for authorship — uploadedBy/decidedBy/
+      // createdBy all key off it), so this records that same name against
+      // the campaign it created. Via UPDATE rather than added to the long
+      // INSERT column list above, to avoid a placeholder-position mistake
+      // in a 35-column statement over one optional field. Known gap, not
+      // silently papered over: every campaign created before this column
+      // existed has no createdByUser on file, so a returning user's past
+      // campaigns won't count toward "already seen it" until they create a
+      // new one — a one-time blind spot on existing data, not an ongoing
+      // one. Todd separately flagged that CX Experiences/testing-team
+      // users creating campaigns on a client account shouldn't count the
+      // same way a real client user does — deferred until those rules
+      // exist, per his own "we may need to add it after testing team
+      // rules."
+      if (typeof body.createdByUser === 'string' && body.createdByUser.trim()){
+        db.prepare('UPDATE campaigns SET createdByUser = ? WHERE id = ?').run(body.createdByUser.trim(), campaignId);
+      }
       // Round 55 — insert one row per {allocationId, amount} draw when the
       // campaign spans multiple Media Plan allocations. body.allocationId
       // (single, legacy) stays on the campaign row above for any caller
