@@ -46454,12 +46454,22 @@ function renderCreativeJobsList(jobs){
   // as its own gate, separate from the Status badge, since Status itself
   // stays the fixed round-74 4-value vocabulary untouched.
   el.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr>
-      <th>Campaign ID</th><th>Job ID</th><th>Skill</th><th>Job Type</th><th>Due Date</th><th>Delivery Date</th><th>Status</th><th>CX Relevance</th><th>Copy</th><th></th>
+      <th>Campaign ID</th><th>Job ID</th><th>Skill</th><th>Job Type</th><th>Due Date</th><th>Delivery Date</th><th>Status</th><th>CX Relevance</th><th>Copy</th><th>Asset</th><th></th>
     </tr></thead><tbody>
     ${jobs.map(j => {
       const copyBadge = j.copyApproved
         ? `<span class="badge strong">Approved</span>`
         : (j.workingCopy ? `<span class="badge weak">Draft</span>` : `<span class="badge">Not started</span>`);
+      // 2026-09-20, per Creative-Desktop.dc.html — the wireframe's Creative
+      // Asset Jobs table shows an Asset column alongside Copy/Status. Asset
+      // approval is a real field (job.assetApproved, Round 73) but its own
+      // approve action lives in Ad Trafficking, not here — this is a
+      // read-only reflection of that same real data, same badge styling as
+      // the Trafficking readiness table (renderTraffickingJobGateNote()'s
+      // sibling row), not a second approval control.
+      const assetBadge = j.assetApproved
+        ? `<span class="badge strong">Approved</span>`
+        : `<span class="badge weak">Pending</span>`;
       const statusClass = CREATIVE_JOB_STATUS_BADGE_CLASS[j.status] || 'status-pending';
       let cxCell;
       if (j.cxRelevanceScoredAt){
@@ -46489,6 +46499,7 @@ function renderCreativeJobsList(jobs){
       </td>
       <td>${cxCell}</td>
       <td>${copyBadge}</td>
+      <td>${assetBadge}</td>
       <td><button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="openCopyWorkspace('${j.id}')">Open →</button></td>
     </tr>`;
     }).join('')}
