@@ -12409,10 +12409,29 @@ function cmpBreadcrumbGoTo(cardKey){
   cmpCloseRecommendationPitch();
   cmpWorkspaceCardOpen(cardKey);
 }
+// 2026-09-20, per Todd's direct instruction: "We moved the Ask Verilume
+// into the collaboration center so we no longer need the fixed location
+// during the campaign workflow." The persistent Ask Verilume bar
+// (#askVerilumeBar, a sibling of every .step — see its own markup comment)
+// is now hidden specifically while the Campaign Workspace Hub — and by
+// extension its Collaboration Center, which now covers the same job — is
+// what's on screen, and shown again everywhere else. This is the single
+// place both signals (which .step is active, whether a campaign is loaded
+// into the Hub) are checked together, called from renderCmpWorkspaceHub()
+// (every load/clear of a campaign) and from goToStep()'s own end (every
+// navigation away from step-campaigns entirely).
+function cmpSyncAskVerilumeBarVisibility(){
+  const bar = document.getElementById('askVerilumeBar');
+  if (!bar) return;
+  const campaignStep = document.getElementById('step-campaigns');
+  const hub = document.getElementById('cmpWorkspaceHub');
+  const inCampaignWorkflow = !!(campaignStep && campaignStep.classList.contains('active') && hub && hub.style.display === 'flex');
+  bar.style.display = inCampaignWorkflow ? 'none' : '';
+}
 function renderCmpWorkspaceHub(campaign){
   const hub = document.getElementById('cmpWorkspaceHub');
   if (!hub) return;
-  if (!campaign){ hub.style.display = 'none'; hub.innerHTML = ''; return; }
+  if (!campaign){ hub.style.display = 'none'; hub.innerHTML = ''; cmpSyncAskVerilumeBarVisibility(); return; }
   hub.style.display = 'flex';
   const cardsHtml = CMP_WORKSPACE_CARDS.map(card => {
     const status = cmpWorkspaceCardStatus(card);
@@ -12453,6 +12472,7 @@ function renderCmpWorkspaceHub(campaign){
   `;
   cmpRenderWorkspaceSwitcher(campaign);
   cmpRenderCollabCenter(campaign);
+  cmpSyncAskVerilumeBarVisibility();
 }
 // Round 132zzz follow-up (2026-09-16), per direct feedback — the original
 // <select> switcher (defaulted to the currently-loaded campaign) sat
@@ -12793,9 +12813,43 @@ async function cmpCollabRateAiReply(noteId, rating){
     console.warn('cmpCollabRateAiReply failed — rating not saved:', e);
   }
 }
+// 2026-09-20, per Todd's direct instruction: "AI Brain will provide the
+// equivalent of the recommended chips" — now that the persistent Ask
+// Verilume bar hides during the campaign workflow (see
+// cmpSyncAskVerilumeBarVisibility()), its "Suggested prompts" chips (see
+// ASK_VERILUME_PROMPTS — illustrative-only, per round 14's UI-shell-only
+// scope) need a real equivalent here. Unlike those, these chips are REAL:
+// clicking one sends that exact question through the same
+// cmpCollabSend('ai') path anything typed by hand goes through, and gets a
+// real grounded answer from POST .../ai-brain-reply — not a shell. Scoped
+// to what the AI Brain's own prompt (server.js) is actually grounded to
+// answer well (real channel plan lines, spend by region, Match Market/DMA
+// data, campaign dates/status) rather than generic filler questions.
+const CMP_COLLAB_AI_SUGGESTED_PROMPTS = [
+  "What's our spend by region on this campaign?",
+  'How does our channel mix look right now?',
+  'Is there a Match Market test worth running for this campaign?',
+  "What's left before this campaign can launch?"
+];
+// Takes an index into CMP_COLLAB_AI_SUGGESTED_PROMPTS, not the raw string,
+// so nothing about that array's own punctuation (e.g. apostrophes in
+// "What's") has to survive round-tripping through an HTML attribute.
+function cmpCollabPromptChip(i){
+  const input = document.getElementById('cmpCollabInput_ai');
+  const text = CMP_COLLAB_AI_SUGGESTED_PROMPTS[i];
+  if (!input || !text || cmpCollabAiBusy) return;
+  input.value = text;
+  cmpCollabSend('ai');
+}
 function cmpCollabComposerHtml(tab, placeholder){
   const thinking = tab === 'ai' && cmpCollabAiBusy;
+  // Chips only make sense on the real AI Brain conversation — Team/
+  // Feedback are plain persisted notes with no model on the other end.
+  const chipsHtml = (tab === 'ai' && !thinking)
+    ? `<div class="prompt-row" style="margin-bottom:8px;">${CMP_COLLAB_AI_SUGGESTED_PROMPTS.map((p, i) => `<span class="prompt-chip" onclick="cmpCollabPromptChip(${i})"><span class="q">?</span>${escapeHtml(p)}</span>`).join('')}</div>`
+    : '';
   return `<div class="cmp-note-add">
+    ${chipsHtml}
     <textarea id="cmpCollabInput_${tab}" rows="2" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
     <div class="btn-row" style="margin:2px 0 0;">
       <button type="button" class="btn-ghost" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')">${thinking ? 'AI Brain is thinking…' : 'Send'}</button>
@@ -49675,6 +49729,11 @@ function goToStep(step, arg, arg2, arg3){
   // as 0. Re-measure now that the step is actually visible.
   accResyncAll();
   window.scrollTo(0,0);
+  // 2026-09-20 — see cmpSyncAskVerilumeBarVisibility()'s own comment: the
+  // persistent Ask Verilume bar hides once the Campaign Workspace Hub (and
+  // its Collaboration Center) is what's actually on screen, and needs to
+  // come back the moment the user leaves step-campaigns for anywhere else.
+  cmpSyncAskVerilumeBarVisibility();
 }
 
 /* ---------- Style Guide > Voice — the one fully built function ----------
