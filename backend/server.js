@@ -2667,6 +2667,33 @@ async function withSingleRetryOnTimeout(attemptFn, retryFn){
 // no JSON.parse() to throw, no matter what punctuation the source content
 // contains. Every one of this file's ~14 "ask Claude for JSON" call sites
 // should route through this helper rather than repeating the old pattern.
+//
+// 2026-09-20, per Todd's direct instruction: "adjust the model based on the
+// complexity of the task blending Sonnet and other Anthropic models based
+// on the need to provide the best possible result... budget recommendation
+// is one area I would prioritize." Every callClaudeForJSON site in this
+// file has run on one flat model (claude-sonnet-4-5) since launch. This is
+// the same tiering call already named, but never built, in this project's
+// own P&L review (cxmedia-active-participation-pnl-and-competitive-update-
+// 2026-08-12.md §5: "adding Opus as a real third tier... shouldn't happen
+// silently as a side effect of answering a cost-tiering question — worth
+// its own follow-up") — that doc names Creative briefs and CMO Dashboard
+// synthesis as the other Opus-candidates once this is confirmed; not
+// touched here, since Todd named budget recommendation specifically.
+// MODEL_STANDARD stays the existing default for every other call site
+// (unchanged, no behavior change there). MODEL_REASONING is the tier for
+// the one call this round adds it to — generate-recommendation-from-intake
+// below, the highest-stakes single AI Brain call in the product (real
+// dollars, checked against real account budget/mix/performance data, one
+// shot, no human review before it lands on the client's Budget &
+// Recommendation screen) — the same "master asset, real judgment" category
+// cxmedia-campaign-project-architecture.md's own tiering rule describes.
+// Model ID confirmed live and current via docs.claude.com's models
+// overview (Claude Opus 5, $5/$25 per million input/output tokens — ~2.5x
+// MODEL_STANDARD's per-token cost, real and worth knowing, not hidden in a
+// constant).
+const MODEL_STANDARD = 'claude-sonnet-4-5';
+const MODEL_REASONING = 'claude-opus-5';
 async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
   const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -22218,7 +22245,7 @@ Submit via the recommendation_from_intake tool.`;
       let parsed;
       try {
         parsed = await callClaudeForJSON({
-          model: 'claude-sonnet-4-5', maxTokens: 1200, content: prompt,
+          model: MODEL_REASONING, maxTokens: 1200, content: prompt,
           toolName: 'recommendation_from_intake', toolDescription: 'Submit the extracted channel/budget recommendation for this campaign.',
           schema: RECO_GENERATION_SCHEMA, timeoutMs: 25000
         });
@@ -29287,5 +29314,3 @@ try {
 }
 
 module.exports = handleRequest;
-
-
