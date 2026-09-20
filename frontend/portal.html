@@ -12416,6 +12416,20 @@ function renderCmpWorkspaceHub(campaign){
   hub.style.display = 'flex';
   const cardsHtml = CMP_WORKSPACE_CARDS.map(card => {
     const status = cmpWorkspaceCardStatus(card);
+    // 2026-09-20, per Todd's direct instruction: a real, code-written
+    // Match Market test recommendation (same thought/question text posted
+    // to the Collaboration Center — see cmpCollabRequestAiReply()'s own
+    // comment) also shows directly on the Analysis card, so it's visible
+    // without opening the chat. Only the Analysis card gets this — it's
+    // the card 'market'/'analysis' insights already roll up into (see
+    // CMP_WORKSPACE_CARDS's own comment: "'market' moves from Media
+    // Science to the Analysis card").
+    const mmInsightHtml = (card.key === 'analysis' && campaign.matchMarketSuggestion && campaign.matchMarketSuggestion.thought)
+      ? `<div class="cmp-intake-summary" style="margin-top:8px;text-align:left;font-weight:400;">
+           <span style="color:var(--advocacy);font-weight:700;">AI Brain insight —</span>
+           <span style="color:var(--ink);"> ${escapeHtml(campaign.matchMarketSuggestion.thought)} ${escapeHtml(campaign.matchMarketSuggestion.question)}</span>
+         </div>`
+      : '';
     return `<div class="group-card workstream-card cmp-workspace-card" onclick="cmpWorkspaceCardOpen('${card.key}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')cmpWorkspaceCardOpen('${card.key}')">
       <!-- 2026-09-18, per wireframe round (CampaignHub-Desktop.dc.html) —
            header switched from status-beside-title (space-between) to
@@ -12426,6 +12440,7 @@ function renderCmpWorkspaceHub(campaign){
         <div style="font-weight:700;font-size:0.9375rem;">${card.label}</div>
       </div>
       <div class="count" style="white-space:normal;line-height:1.45;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;letter-spacing:0;text-transform:none;font-weight:400;">${card.desc}</div>
+      ${mmInsightHtml}
       <div class="workstream-alert"><span class="label" style="color:var(--advocacy);font-weight:700;">Open →</span></div>
     </div>`;
   }).join('');
@@ -12647,7 +12662,29 @@ async function cmpCollabRequestAiReply(message){
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, priorNotes }), timeoutMs: 20000
     }, 3, 700);
-    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null, null, resp.matchMarketSuggestion || null);
+    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null, null, (!resp.matchMarketNewlyAttached && resp.matchMarketSuggestion) || null);
+    // 2026-09-20, per Todd's direct instruction: a newly-attached Match
+    // Market recommendation publishes as its OWN thought-and-question
+    // message in the Collaboration Center, separate from the AI Brain's
+    // direct reply above — text is the exact same code-written
+    // thought/question the backend also uses for the Analysis card (see
+    // buildMatchMarketSuggestion()'s comment in server.js), never
+    // model-generated, so the two surfaces always agree.
+    if (resp.matchMarketNewlyAttached && resp.matchMarketSuggestion){
+      const mm = resp.matchMarketSuggestion;
+      cmpCollabAddNote('ai', `${mm.thought} ${mm.question}`, true, null, null, mm);
+      c.matchMarketSuggestion = mm;
+      // Only re-render the Hub's card grid (for the Analysis card's new
+      // insight, see renderCmpWorkspaceHub()) when the Hub is actually the
+      // visible screen right now — calling it while the Objectives or Pitch
+      // overlay is open would needlessly rebuild the Hub underneath it.
+      // Those overlays now refresh it themselves on close instead (see
+      // cmpCloseObjectivesIntake()/cmpCloseRecommendationPitch()'s own
+      // comments), against the same campaign object updated just above.
+      const pitchOpen = document.getElementById('cmpPitchOverlay') && document.getElementById('cmpPitchOverlay').classList.contains('open');
+      const objOpen = document.getElementById('cmpObjectivesOverlay') && document.getElementById('cmpObjectivesOverlay').classList.contains('open');
+      if (!pitchOpen && !objOpen) renderCmpWorkspaceHub(c);
+    }
   } catch (e){
     console.warn('cmpCollabRequestAiReply failed:', e);
     cmpCollabAddNote('ai', 'Something went wrong reaching the AI Brain — try again in a moment.', true);
@@ -23876,6 +23913,16 @@ async function loadCampaigns(){
         if (c.activityNotesJson){
           try { c.activityNotes = JSON.parse(c.activityNotesJson); }
           catch (e){ console.warn('loadCampaigns: could not parse activityNotesJson for', c.id, e); }
+        }
+        // 2026-09-20 — same raw-string-column hydration pattern, for the
+        // real, code-computed Match Market test recommendation (see
+        // ensureColumn('campaigns', 'matchMarketSuggestionJson', ...)'s
+        // comment in server.js and POST .../ai-brain-reply's own comment).
+        // Needed on the client so the Analysis card in the Workspace Hub
+        // can show it without a separate fetch.
+        if (c.matchMarketSuggestionJson){
+          try { c.matchMarketSuggestion = JSON.parse(c.matchMarketSuggestionJson); }
+          catch (e){ console.warn('loadCampaigns: could not parse matchMarketSuggestionJson for', c.id, e); }
         }
         // 2026-09-16 — status is date-derived now (see
         // deriveCampaignStatusFromDates()'s comment), and the backend
@@ -37061,6 +37108,11 @@ function cmpCloseObjectivesIntake(){
   // calls both close functions before opening the next one, so this is
   // immediately overridden in that case — harmless, not a race).
   cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  // 2026-09-20 — refresh the Hub's card grid too, so the Analysis card
+  // picks up a Match Market recommendation that got newly attached while
+  // this overlay's own Collaboration Center was open (see
+  // cmpCollabRequestAiReply()'s own comment).
+  if (campaign) renderCmpWorkspaceHub(campaign);
 }
 // Real campaigns only (never the synthetic Ad Hoc Projects bucket, and
 // never the campaign currently being built — recommending it to itself
@@ -37650,6 +37702,9 @@ function cmpCloseRecommendationPitch(){
   // 2026-09-19 — hand the campaign header back to the Hub, same handoff
   // cmpCloseObjectivesIntake() already does (see that call's own comment).
   cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  // 2026-09-20 — same Analysis-card refresh as cmpCloseObjectivesIntake()
+  // (see that call's own comment).
+  if (campaign) renderCmpWorkspaceHub(campaign);
 }
 
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
