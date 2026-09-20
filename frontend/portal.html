@@ -85,6 +85,20 @@
     --hdr-amber:#D08A3E; --hdr-amber-dim:#B8752E; --hdr-amber-tint:#F3E3CC;
     --hdr-ink-on-navy:#FFFFFF; --hdr-muted-on-navy:rgba(255,255,255,0.62);
     --enterprise:#B8752E; --enterprise-tint:#F3E3CC;
+
+    /* 2026-09-20 — persistent utility nav / Back to Dashboard, per Todd's
+       direct instruction: the campaign workspace overlays (Objectives,
+       Budget & Recommendation, Creative, Trafficking, Analysis) are
+       position:fixed;inset:0, so once inside one there was no visible,
+       consistent way back to the Marketer dashboard. --util-nav-h is set
+       (in px) by vlSyncUtilityNavHeight() in the #utilityNav script block
+       below, measured from the real rendered nav, and used both to push
+       normal page content down (body padding-top, since the nav is now
+       position:fixed and out of flow) and to push the workspace panels'
+       top edge below the nav so the now-topmost nav bar (z-index:90) never
+       clips a panel's own header. This default is only the pre-JS
+       estimate for the very first paint. */
+    --util-nav-h:53px;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:
@@ -92,7 +106,12 @@
       radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.08) 0%, rgba(37,99,235,0) 60%),
       var(--paper);
     color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;
-    overflow-x:hidden;}
+    overflow-x:hidden;
+    /* 2026-09-20 — #utilityNav is now position:fixed (see its own CSS
+       comment below), so it's out of normal flow; this padding-top keeps
+       every other page element sitting exactly where it always has,
+       instead of sliding up underneath the now-fixed bar. */
+    padding-top:var(--util-nav-h);}
   /* 2026-08-24 (round 17, direct feedback: "use the full page width") —
      widened from the original 1040px, which read as a narrow centered
      column on any real monitor. 1440px gives the dashboard's tile grids
@@ -1801,6 +1820,13 @@
   .cmp-pitch-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:70;}
   .cmp-pitch-overlay.open{display:block;}
   .cmp-pitch-panel{display:none;position:fixed;inset:16px;background:var(--white);border-radius:18px;box-shadow:0 30px 80px -20px rgba(15,23,42,0.45);z-index:71;flex-direction:column;overflow:hidden;}
+  /* 2026-09-20 — the persistent #utilityNav (z-index:90) now sits on top
+     of this panel's top ~16px regardless, since the panel's own z-index
+     (71) is below it; without this the nav bar would visually clip the
+     panel's own header row (title, breadcrumb, ✕ close button) which
+     otherwise starts right at inset:16px. Pushes the panel's top edge
+     down below the real rendered nav height instead. */
+  .cmp-pitch-panel.open{top:calc(var(--util-nav-h) + 16px);}
   .cmp-pitch-panel.open{display:flex;}
   /* 2026-09-19 — the old dark-navy .cmp-pitch-head bar (campaign name +
      "Close ✕" link) is gone, per Todd's direct correction that Objectives
@@ -3133,7 +3159,19 @@
      away from it; (3) auth state (logged in vs not) now reads the same
      sessionStorage pointer everywhere, so this bar and any page's own
      logic agree. See the #utilityNav script block for the actual logic. */
-  .utility-nav{background:var(--ink);}
+  /* 2026-09-20 — per Todd's direct instruction: made position:fixed so it
+     stays visible (and clickable — that's where "← Back to Dashboard"
+     lives) above the full-viewport campaign workspace overlays
+     (.cmp-pitch-overlay/.cmp-pitch-panel, z-index 70/71), which otherwise
+     cover the entire page including this bar. z-index:90 is above both.
+     See the body{} padding-top and .cmp-pitch-panel.open top override
+     (below) for how the rest of the page and those panels stay clear of
+     it now that it's out of normal flow. portal.html only — this same
+     .utility-nav/#utilityNav markup is shared verbatim across ~20 other
+     pages (see the big comment at the top of this rule for why), but none
+     of those pages have a full-viewport overlay that hides it, so they
+     don't have the gap this fixes and were deliberately left unchanged. */
+  .utility-nav{background:var(--ink);position:fixed;top:0;left:0;right:0;z-index:90;}
   .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
   /* 2026-08-21 fix, per direct correction ("We have a stylized button
      approach that we perfect in the previous location and used across the
@@ -3150,6 +3188,13 @@
      that variable at all. */
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
+  /* 2026-09-20 — "← Back to Dashboard", per Todd's direct instruction.
+     Sits first (leftmost) in the bar, ahead of Access My Portal/Log in /
+     Logout, and is hidden the rest of the time — shown only while a
+     campaign workspace overlay is open (cmpSyncUtilityNavBack() below
+     toggles it). Not "Save Draft" or any save-related messaging — Todd
+     was explicit that's out of scope for now. */
+  #utilNavBackToDash{margin-right:auto;}
 </style>
 </head>
 <body>
@@ -3170,6 +3215,16 @@
 </div>
 <div class="utility-nav" id="utilityNav">
   <div class="utility-nav-inner">
+    <!-- 2026-09-20 — "← Back to Dashboard", per Todd's direct instruction:
+         the campaign workspace overlays (Objectives/Budget & Recommendation/
+         Creative/Trafficking/Analysis) are full-viewport, and once inside
+         one there was no visible, consistent way back out besides that
+         overlay's own small ✕. Hidden by default; cmpSyncUtilityNavBack()
+         (main app script, near the workspace open/close functions) shows
+         it only while one of those 5 overlays is open, and its onclick
+         closes whichever one is actually open (not all 5 blindly) before
+         returning to the Marketer dashboard. -->
+    <a href="#" id="utilNavBackToDash" style="display:none;" onclick="cmpUtilNavBackToDashboard(event);">← Back to Dashboard</a>
     <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
     <a href="login.html" id="utilNavAuthLink">Log in</a>
   </div>
@@ -3265,6 +3320,31 @@
     if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit();
   });
   window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+
+  // 2026-09-20 — #utilityNav is now position:fixed (see its CSS comment)
+  // so the rest of the page needs to be told how tall it really is, via
+  // --util-nav-h, to keep body padding-top and the campaign workspace
+  // panels' top offset (.cmp-pitch-panel.open{top:...}) in sync with its
+  // actual rendered height rather than a guessed constant — this bar's
+  // height can differ slightly across browsers/zoom levels, and grows by
+  // one row if "← Back to Dashboard" wraps onto its own line on a very
+  // narrow viewport while a workspace overlay is open.
+  function vlSyncUtilityNavHeight(){
+    try {
+      var nav = document.getElementById('utilityNav');
+      if (!nav) return;
+      var h = nav.offsetHeight;
+      if (h) document.documentElement.style.setProperty('--util-nav-h', h + 'px');
+    } catch (e) {}
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', vlSyncUtilityNavHeight);
+  } else {
+    vlSyncUtilityNavHeight();
+  }
+  window.addEventListener('load', vlSyncUtilityNavHeight);
+  window.addEventListener('resize', vlSyncUtilityNavHeight);
+  window.vlSyncUtilityNavHeight = vlSyncUtilityNavHeight; // exposed so cmpSyncUtilityNavBack() can re-measure after toggling the Back-to-Dashboard link's visibility
 })();
 </script>
 
@@ -37736,6 +37816,7 @@ function cmpOpenObjectivesIntake(){
   overlay.classList.add('open');
   panel.classList.add('open');
   document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpObjectivesHeaderMount');
   const breadcrumb = document.getElementById('cmpObjectivesBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('objectives');
@@ -37755,6 +37836,7 @@ function cmpCloseObjectivesIntake(){
   if (overlay) overlay.classList.remove('open');
   if (panel) panel.classList.remove('open');
   document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
   // 2026-09-16 — hand the Collaboration Center back to the Workspace Hub.
   cmpCollabMountId = 'cmpWorkspaceCollab';
   const objMount = document.getElementById('cmpObjectivesCollabMount');
@@ -38322,6 +38404,7 @@ async function cmpOpenRecommendationPitch(){
   overlay.classList.add('open');
   panel.classList.add('open');
   document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpPitchHeaderMount');
   const breadcrumb = document.getElementById('cmpPitchBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('budget');
@@ -38351,6 +38434,7 @@ function cmpCloseRecommendationPitch(){
   if (overlay) overlay.classList.remove('open');
   if (panel) panel.classList.remove('open');
   document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
   // 2026-09-16 — hand the Collaboration Center back to the Workspace Hub,
   // same handoff cmpCloseObjectivesIntake() already does.
   cmpCollabMountId = 'cmpWorkspaceCollab';
@@ -38411,6 +38495,7 @@ function cmpOpenCreativeWorkspace(){
   panel.classList.add('open');
   panel.classList.remove('mobile-collab-open');
   document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpCreativeHeaderMount');
   const breadcrumb = document.getElementById('cmpCreativeBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('creative');
@@ -38476,6 +38561,7 @@ function cmpCloseCreativeWorkspace(){
   if (overlay) overlay.classList.remove('open');
   if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
   document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
   // Put the 3 relocated sections back exactly where they came from, and
   // collapse the two accordion modules back to their normal closed state
   // (matching how they'd sit if this workspace had never been opened).
@@ -38614,6 +38700,7 @@ function cmpOpenTraffickingWorkspace(){
   panel.classList.add('open');
   panel.classList.remove('mobile-collab-open');
   document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpTraffickingHeaderMount');
   const breadcrumb = document.getElementById('cmpTraffickingBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('trafficking');
@@ -38647,6 +38734,7 @@ function cmpCloseTraffickingWorkspace(){
   if (overlay) overlay.classList.remove('open');
   if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
   document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
   if (cmpTraffickingWorkspaceBookmark){
     const cardEl = document.getElementById('campaignTraffickingCard');
     if (cardEl){
@@ -38810,6 +38898,7 @@ function cmpOpenAnalysisWorkspace(){
   panel.classList.add('open');
   panel.classList.remove('mobile-collab-open');
   document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpAnalysisHeaderMount');
   const breadcrumb = document.getElementById('cmpAnalysisBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('analysis');
@@ -38830,6 +38919,7 @@ function cmpCloseAnalysisWorkspace(){
   if (overlay) overlay.classList.remove('open');
   if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
   document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
   cmpCollabMountId = 'cmpWorkspaceCollab';
   const mount = document.getElementById('cmpAnalysisCollabMount');
   if (mount) mount.innerHTML = '';
@@ -38841,6 +38931,44 @@ function cmpCloseAnalysisWorkspace(){
 function cmpToggleAnalysisMobileCollab(){
   const panel = document.getElementById('cmpAnalysisPanel');
   if (panel) panel.classList.toggle('mobile-collab-open');
+}
+
+// 2026-09-20 — persistent utility nav / "← Back to Dashboard", per Todd's
+// direct instruction: these 5 full-screen workspace overlays (Objectives,
+// Budget & Recommendation, Creative, Trafficking, Analysis) had no visible,
+// consistent way back to the Marketer dashboard besides each overlay's own
+// small ✕ close button. cmpSyncUtilityNavBack() is called from every one of
+// the 5 open/close function pairs above (right after they toggle the
+// overlay/panel 'open' class) so the link's visibility always matches
+// whether ANY campaign workspace overlay is currently open — never on
+// ordinary pages/views where there's nothing to back out of.
+const CMP_WORKSPACE_PANEL_CLOSERS = {
+  cmpObjectivesPanel: () => cmpCloseObjectivesIntake(),
+  cmpPitchPanel: () => cmpCloseRecommendationPitch(),
+  cmpCreativePanel: () => cmpCloseCreativeWorkspace(),
+  cmpTraffickingPanel: () => cmpCloseTraffickingWorkspace(),
+  cmpAnalysisPanel: () => cmpCloseAnalysisWorkspace()
+};
+function cmpSyncUtilityNavBack(){
+  const link = document.getElementById('utilNavBackToDash');
+  if (!link) return;
+  const openPanel = document.querySelector('.cmp-pitch-panel.open');
+  link.style.display = openPanel ? '' : 'none';
+  // re-measure #utilityNav's real height now that it may have gained/lost
+  // this link, so body padding-top / the panels' top offset stay in sync
+  if (typeof window.vlSyncUtilityNavHeight === 'function') window.vlSyncUtilityNavHeight();
+}
+function cmpUtilNavBackToDashboard(e){
+  if (e && e.preventDefault) e.preventDefault();
+  // Close whichever ONE of the 5 workspace overlays is actually open —
+  // never all 5 blindly — using that overlay's own real close function,
+  // then return to the Marketer dashboard the same way its own primary-nav
+  // tab does.
+  const openPanel = document.querySelector('.cmp-pitch-panel.open');
+  if (openPanel && CMP_WORKSPACE_PANEL_CLOSERS[openPanel.id]){
+    CMP_WORKSPACE_PANEL_CLOSERS[openPanel.id]();
+  }
+  if (typeof switchPrimaryTab === 'function') switchPrimaryTab('marketer');
 }
 
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
