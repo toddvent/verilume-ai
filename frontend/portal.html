@@ -2731,6 +2731,18 @@
   .ai-thought-tip-role{font-size:0.6875rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:#9FD6C4;margin-bottom:4px;}
   .ai-thought-tip-cta{margin-top:6px;font-size:0.75rem;color:#9FD6C4;}
 
+  /* 2026-09-20, per Todd's direct instruction — Create Campaign form: two
+     fields (Product Group, Creative Focus Group) lose their "sourced from
+     this account's Marketing Calendar taxonomy" caption and the AI Agent
+     Thoughts drawer entirely (see cmpFieldHelpTip()/CMP_FIELD_HELP_TIPS),
+     replaced by a plain speech-bubble tooltip with fixed copy — same
+     shared #aiThoughtTip element/positioning showContestUsageTip() already
+     reuses, but a distinct 💬 icon (not 💭) and no click-to-drawer
+     behavior, since there's no drawer left on this screen to open. */
+  label:has(.cmp-field-help-icon){display:flex;align-items:center;flex-wrap:wrap;gap:2px;}
+  .cmp-field-help-icon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:auto;flex-shrink:0;border:1px solid var(--line-strong);background:var(--paper-dim);padding:0;cursor:pointer;font-size:0.875rem;line-height:1;opacity:1;border-radius:50%;transition:background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;}
+  .cmp-field-help-icon:hover,.cmp-field-help-icon:focus{background:var(--line-hairline);border-color:var(--muted);outline:none;transform:scale(1.06);}
+
   /* 2026-08-25 — Partner Integrations page (built out from a field-only
      entry into a real destination per direct instruction). Each partner is
      a card, not a clickable tile: nothing here is a live "Connect" action
@@ -7701,9 +7713,12 @@
          hasCreatedFirstCampaign() gating unchanged). -->
     <div class="module" id="brandFoundationsModule" style="margin-top:20px;"></div>
 
-    <div class="btn-row" style="margin:0 0 20px;">
-      <a class="flink" onclick="openFaqDrawer()">View AI Agent Thoughts →</a>
-    </div>
+    <!-- 2026-09-20, per Todd's direct instruction: "View all AI thoughts
+         link should be removed" from the Create Campaign screen — the AI
+         Agent Thoughts drawer entry point above (and the inline one further
+         down, and the floating tab — see cmpSyncAskVerilumeBarVisibility()/
+         goToStep()'s own faqDrawerTab toggle) are all removed from this
+         step's UI. -->
 
     <!-- Round 100 (2026-08-06), per direct instruction: account brand
          always stays with the Brand team — a persistent alert-style banner
@@ -8072,7 +8087,7 @@
             </div>
           </div>
           <div class="module-body">
-            <p class="lede" style="margin-bottom:14px;" id="newCampaignHint">Campaign start and end date are required below — everything else here sharpens what Projects inside it will generate. Campaign Audiences, Objective, and the rest of Lifecycle Stage & Goals come next, once this campaign is created. Need AI Agent Thoughts while you fill this out? <a class="flink" onclick="openFaqDrawer()">Open it here →</a></p>
+            <p class="lede" style="margin-bottom:14px;" id="newCampaignHint">Campaign start and end date are required below — everything else here sharpens what Projects inside it will generate. Campaign Audiences, Objective, and the rest of Lifecycle Stage & Goals come next, once this campaign is created.</p>
 
             <!-- Round 132c (2026-08-09), per direct correction — Create
                  Campaign's field list, exact order: Campaign ID (pending
@@ -8101,10 +8116,18 @@
                  Existing Campaign's search results, sees the same
                  consistently-sized name). Same maxlength+counter pattern as
                  Key Message below (updateKeyMessageCounter()). -->
+            <!-- 2026-09-20, per Todd's direct instruction: "Campaign Name is
+                 mandatory expect[sic] for uploads through Account
+                 Management. An * is fine. Additional copy not needed." The
+                 required gate lives in createCampaign() below; it's skipped
+                 there for the bulk-upload path (channel_planning_upload
+                 batches, which never runs through this form/createCampaign()
+                 at all), so this only ever blocks manual creation here. -->
             <div class="field">
-              <label>Campaign name (optional — defaults to the objective)</label>
-              <input type="text" id="cmpName" maxlength="80" placeholder="e.g. Fall Menu Launch" oninput="updateCmpNameCounter();markCampaignFormTouched()">
+              <label>Campaign name <span style="color:var(--advocacy);">*</span></label>
+              <input type="text" id="cmpName" maxlength="80" placeholder="e.g. Fall Menu Launch" oninput="updateCmpNameCounter();markCampaignFormTouched();document.getElementById('cmpNameError').textContent='';">
               <div class="char-counter" id="cmpNameCounter">0 / 80</div>
+              <div class="rr-error" id="cmpNameError"></div>
             </div>
             <!-- Round 132ag (2026-08-11), per direct correction: "The
                  channels lists should only be the default recommended
@@ -8142,11 +8165,11 @@
                  createCampaign()'s own comment on what gates it now
                  (Campaign start/end date, already required below). -->
             <div class="field">
-              <label>Campaign Product Group <span style="font-weight:400;text-transform:none;color:var(--muted);">— sourced from this account's Marketing Calendar taxonomy</span></label>
+              <label>Campaign Product Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Product Group?" onmouseenter="cmpFieldHelpTip('productGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('productGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('productGroup', event)">💬</button></label>
               <div class="select-tile-row" id="cmpProductGroupRow"></div>
             </div>
             <div class="field">
-              <label>Creative Focus Group <span style="font-weight:400;text-transform:none;color:var(--muted);">— sourced from this account's Marketing Calendar taxonomy</span> <span class="ai-thought-mount" data-topic="C"></span></label>
+              <label>Creative Focus Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Creative Focus Group?" onmouseenter="cmpFieldHelpTip('creativeFocusGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('creativeFocusGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('creativeFocusGroup', event)">💬</button></label>
               <div class="select-tile-row" id="cmpCreativeFocusGroupRow"></div>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Start
@@ -12424,8 +12447,12 @@ function cmpSyncAskVerilumeBarVisibility(){
   const bar = document.getElementById('askVerilumeBar');
   if (!bar) return;
   const campaignStep = document.getElementById('step-campaigns');
-  const hub = document.getElementById('cmpWorkspaceHub');
-  const inCampaignWorkflow = !!(campaignStep && campaignStep.classList.contains('active') && hub && hub.style.display === 'flex');
+  // 2026-09-20 follow-up, per Todd's direct instruction: the bar is hidden
+  // for the whole Campaigns step now, not just once a campaign is loaded
+  // into the Hub — the Create Campaign form (no campaign loaded yet) has
+  // its own Collaboration Center placeholder covering the same job, so the
+  // fixed Ask Verilume bar is redundant there too.
+  const inCampaignWorkflow = !!(campaignStep && campaignStep.classList.contains('active'));
   bar.style.display = inCampaignWorkflow ? 'none' : '';
 }
 function renderCmpWorkspaceHub(campaign){
@@ -14058,7 +14085,12 @@ function cmpUpdateCreationPageMode(campaign){
   const collab = document.getElementById('cmpCreationCollabPlaceholder');
   const isNew = !campaign;
   if (rail) rail.style.display = isNew ? 'none' : '';
-  if (collab) collab.style.display = isNew ? '' : 'none';
+  // 2026-09-20 follow-up, per Todd's direct instruction: "We should have
+  // the collaboration center with Ask Verilume hidden" on the Create
+  // Campaign form — this placeholder panel (previously shown while no
+  // campaign exists yet, per the wireframe's two-column layout) is now
+  // always hidden; the Create Campaign form runs full-width instead.
+  if (collab) collab.style.display = 'none';
 }
 function cmpUpdatePickupLockUI(campaign){
   const pickupEl = document.getElementById('cmpStage-pickup');
@@ -39459,6 +39491,8 @@ function resetCampaignForm(){
   if (keyMessageModeResetEl) keyMessageModeResetEl.value = 'exact';
   const dateErrEl = document.getElementById('cmpDateError');
   if (dateErrEl) dateErrEl.textContent = '';
+  const nameErrEl = document.getElementById('cmpNameError');
+  if (nameErrEl) nameErrEl.textContent = '';
   const endDateEl = document.getElementById('cmpEndDate');
   if (endDateEl) endDateEl.min = '';
   // Round 132e follow-on (2026-08-09) — cmpBriefBuilderText (Lifecycle
@@ -40122,6 +40156,38 @@ function showContestUsageTip(evt){
   const wouldOverflowBottom = top + 90 > window.innerHeight;
   tip.style.top = (wouldOverflowBottom ? rect.top - 96 : top) + 'px';
   tip.classList.add('visible');
+}
+// 2026-09-20, per Todd's direct instruction on the Create Campaign form:
+// Product Group and Creative Focus Group each get a plain speech-bubble
+// tooltip with fixed copy instead of their old "sourced from this
+// account's Marketing Calendar taxonomy" caption text / AI Agent Thoughts
+// icon — the drawer is removed from this screen entirely (see item 2's
+// comment near #faqDrawerTab), so this is a lighter, non-drawer-opening
+// sibling of showContestUsageTip() above: same shared #aiThoughtTip
+// element/positioning, fixed copy keyed by a short id (not raw text)
+// passed through the inline handler, same apostrophe-escaping-safe
+// pattern cmpCollabPromptChip() already established this session.
+const CMP_FIELD_HELP_TIPS = {
+  productGroup: "Product Groups are core product themes that may require unique copy or campaign targeting requirements. Marketing calendars will identify all campaigns associated with a product group.",
+  creativeFocusGroup: "Creative focus groups are incorporated into creative briefs sent to the copywriters and design teams."
+};
+function cmpFieldHelpTip(key, evt){
+  const copy = CMP_FIELD_HELP_TIPS[key];
+  if (!copy) return;
+  const tip = aiThoughtTipEl();
+  tip.innerHTML = `<div>${copy}</div>`;
+  const rect = evt.currentTarget.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 268)) + 'px';
+  const top = rect.bottom + 8;
+  const wouldOverflowBottom = top + 90 > window.innerHeight;
+  tip.style.top = (wouldOverflowBottom ? rect.top - 96 : top) + 'px';
+  tip.classList.add('visible');
+}
+function cmpFieldHelpTipHide(){
+  aiThoughtPreviewHide();
+}
+function cmpFieldHelpIconHtml(key, label){
+  return `<button type="button" class="cmp-field-help-icon" aria-label="${label}" onmouseenter="cmpFieldHelpTip('${key}', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('${key}', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('${key}', event)">💬</button>`;
 }
 // Click (mouse) or tap (touch, which never fires hover) both land here —
 // opens AI Agent Thoughts and deep-links straight to the topic the icon is
@@ -41574,6 +41640,18 @@ async function createCampaign(){
   // ordering case; this is the hard gate that actually blocks saving, and
   // sets the "required" message itself for the missing-value case (kept
   // out of the live-validation function so it doesn't nag mid-fill).
+  // 2026-09-20, per Todd's direct instruction: "Campaign Name is mandatory
+  // expect[sic] for uploads through Account Management." This form is the
+  // manual-creation path only — Account Management's bulk campaign uploads
+  // go through their own channel_planning_upload_batches flow and never
+  // reach createCampaign() at all, so this gate can't block that path.
+  const nameEl = document.getElementById('cmpName');
+  if (nameEl && !nameEl.value.trim()){
+    const nameErrEl = document.getElementById('cmpNameError');
+    if (nameErrEl) nameErrEl.textContent = 'Campaign name is required.';
+    nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
   if (!cmpValidateCampaignDates()){
     const dateErrEl = document.getElementById('cmpDateError');
     if (dateErrEl && !dateErrEl.textContent){
@@ -49491,7 +49569,11 @@ function goToStep(step, arg, arg2, arg3){
   // Add Campaign Details form; hide its fixed tab (and close it if open)
   // everywhere else so it doesn't float over unrelated pages.
   closeFaqDrawer();
-  document.getElementById('faqDrawerTab').style.display = step === 'campaigns' ? 'block' : 'none';
+  // 2026-09-20, per Todd's direct instruction: "View all AI thoughts link
+  // should be removed" from the Campaigns step (Create Campaign form +
+  // Workspace Hub alike) — this floating tab was the same drawer entry
+  // point, so it's now hidden everywhere, not just outside 'campaigns'.
+  document.getElementById('faqDrawerTab').style.display = 'none';
   if (step === 'group'){
     if (arg && arg !== '__back') lastGroup = arg;
     renderGroup(lastGroup);
