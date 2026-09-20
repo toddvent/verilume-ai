@@ -22210,7 +22210,16 @@ Submit your response via the campaign_intake_turn tool.`;
                 stage: { type: ['string', 'null'], enum: ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy', null], description: 'The Lifecycle Stage THIS SPECIFIC LINE serves — e.g. a past-guest reactivation mailing is Loyalty, a new-prospect acquisition channel is Consideration or Awareness. Different lines in the same campaign can and often should have different stages — this is a whole-account media mix, not a single-stage campaign. Use null only if genuinely unclear for this line.' },
                 budget: { type: 'number', description: 'Real dollar amount for this line, in USD. 0 for an owned/no-cost channel the user described as free (e.g. their own email list). Estimate a reasonable amount from the total campaign budget and what the conversation described when no exact number was given, and say how in assumptionNote.' },
                 impressions: { type: ['number', 'null'], description: 'Estimated impressions/reach for this line if inferable (e.g. drop count × list size for direct mail), else null.' },
-                assumptionNote: { type: ['string', 'null'], description: 'One short sentence on any estimate made for this line (e.g. "assumed $0.85/piece for direct mail"), or null if the number came straight from the conversation.' }
+                assumptionNote: { type: ['string', 'null'], description: 'One short sentence on any estimate made for this line (e.g. "assumed $0.85/piece for direct mail"), or null if the number came straight from the conversation.' },
+                // 2026-09-20, per Todd's direct structural instruction: "All
+                // past customer audience spend should fall into the Loyalty
+                // loop stage regardless of what the loop stage is." This is
+                // enforced in CODE below (stage is forced to Loyalty whenever
+                // this is true, overriding whatever the model put in `stage`
+                // itself) — the field exists so that enforcement has a real
+                // signal to key off, not because the model's own `stage`
+                // value can be trusted to carry the rule on its own.
+                audiencePastCustomers: { type: 'boolean', description: 'True if this specific line targets past customers/past guests — a retention/reactivation audience — whatever channel it runs on (e.g. a past-guest mailing, an email to the house list, retargeting past bookers). False for anything aimed at a new/prospective or general audience. This is independent of channel name — Direct Mail — Past Guests is usually true, but Internal Email or Paid Social can be too if the conversation described them as targeting past customers specifically.' }
               },
               required: ['channel', 'budget']
             }
@@ -22229,6 +22238,8 @@ Submit your response via the campaign_intake_turn tool.`;
       const prompt = `You are the AI Brain, extracting a REAL channel/budget recommendation from a completed Objectives conversation that already happened on the Campaign Objectives screen. Do not invent a generic plan — use exactly what this conversation already worked out: the specific channels named, the drop counts and list sizes mentioned, and which channels the user said were free/owned vs paid.
 
 This recommendation reflects the WHOLE ACCOUNT media mix needed to achieve this campaign's goals — it is not limited to a single funnel stage. A campaign can and often does need spend at more than one Lifecycle Stage at once (for example: a past-guest loyalty/reactivation push AND a new-prospect consideration push running together). Tag EACH channel line with the specific Lifecycle Stage that line itself serves, not one stage for the whole campaign.
+
+STRUCTURAL RULE — past customers are always Loyalty: any line that targets past customers/past guests is a Loyalty-stage line, full stop, regardless of what stage the rest of this campaign serves. Set audiencePastCustomers true for that line and stage to Loyalty. Determine that spend FIRST, straight from what the conversation described for past customers/past guests specifically — then treat the campaign's remaining budget (total minus that Loyalty spend) as what's available for every other line. Never let a non-Loyalty line's budget crowd out or reduce past-customer spend the conversation actually committed to; scale everything else to fit what's left after Loyalty, not the other way around.
 
 CAMPAIGN: ${campaign.name || campaignId}
 Total campaign budget on file: $${Number(campaign.budget) || 0}
@@ -22260,15 +22271,41 @@ Submit via the recommendation_from_intake tool.`;
         db.prepare('UPDATE campaigns SET recommendationDataConfidenceNote = ? WHERE id = ?').run(typeof parsed.dataConfidenceNote === 'string' && parsed.dataConfidenceNote.trim() ? parsed.dataConfidenceNote.trim() : null, campaignId);
       } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] could not persist dataConfidenceNote', e.message); }
       let channels = Array.isArray(parsed.channels) ? parsed.channels.filter(c => c && RECO_GENERATION_CHANNELS.includes(c.channel)) : [];
-      // Safety clamp — never trust the model's arithmetic outright: if the
-      // extracted lines sum to more than the campaign's real budget, scale
-      // every paid line down proportionally rather than rejecting the
-      // whole recommendation.
+      // 2026-09-20, per Todd's direct structural instruction — enforced in
+      // CODE, not left to the model's own compliance: every line flagged
+      // audiencePastCustomers is forced to Loyalty regardless of whatever
+      // stage the model itself returned. "Regardless of what the loop
+      // stage is" means exactly that — this overrides the model's answer,
+      // it doesn't just hope the model got it right.
+      channels = channels.map(c => c && c.audiencePastCustomers ? { ...c, stage: 'Loyalty' } : c);
+      // Safety clamp — never trust the model's arithmetic outright. Updated
+      // 2026-09-20 for the same structural instruction: past-customer/
+      // Loyalty spend is applied FIRST and protected — if the full set of
+      // lines exceeds the campaign's real budget, only the non-Loyalty
+      // lines get scaled down to fit what's left after Loyalty spend, not
+      // a flat proportional cut across everything (which would silently
+      // shrink the past-customer commitment the conversation actually
+      // made). Only if Loyalty spend alone already exceeds the total
+      // budget — a genuine conflict, not the normal case — does it get
+      // scaled too, as the last resort.
       const totalBudget = Number(campaign.budget) || 0;
-      const rawSum = channels.reduce((s, c) => s + (Number(c.budget) || 0), 0);
-      if (totalBudget > 0 && rawSum > totalBudget){
-        const scale = totalBudget / rawSum;
-        channels = channels.map(c => ({ ...c, budget: Math.round((Number(c.budget) || 0) * scale) }));
+      const loyaltyChannels = channels.filter(c => c && c.audiencePastCustomers);
+      const otherChannels = channels.filter(c => !(c && c.audiencePastCustomers));
+      const loyaltySum = loyaltyChannels.reduce((s, c) => s + (Number(c.budget) || 0), 0);
+      const otherSum = otherChannels.reduce((s, c) => s + (Number(c.budget) || 0), 0);
+      if (totalBudget > 0 && loyaltySum > totalBudget){
+        const scale = totalBudget / loyaltySum;
+        channels = [
+          ...loyaltyChannels.map(c => ({ ...c, budget: Math.round((Number(c.budget) || 0) * scale) })),
+          ...otherChannels.map(c => ({ ...c, budget: 0 }))
+        ];
+      } else if (totalBudget > 0 && (loyaltySum + otherSum) > totalBudget){
+        const remainingForOthers = totalBudget - loyaltySum;
+        const scale = otherSum > 0 ? remainingForOthers / otherSum : 0;
+        channels = [
+          ...loyaltyChannels,
+          ...otherChannels.map(c => ({ ...c, budget: Math.round((Number(c.budget) || 0) * scale) }))
+        ];
       }
       let savedCount = 0;
       const stageBudgets = {};
@@ -22281,7 +22318,7 @@ Submit via the recommendation_from_intake tool.`;
             impressions: typeof c.impressions === 'number' ? c.impressions : null,
             status: 'draft',
             stage: lineStage,
-            detailsJson: c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}
+            detailsJson: Object.assign({}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {})
           });
           savedCount++;
           if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + (Number(c.budget) || 0);
