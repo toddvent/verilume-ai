@@ -14044,9 +14044,11 @@ const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'New To Brand', 'Par
 let selectedSegments = new Set();
 
 // 2026-09-20, per Todd's direct copy: shown once, as the first AI Brain
-// message in the Objectives conversation, only for an account's very first
-// real campaign (cmpIsFirstCampaignForAccount() below) — walks a brand-new
-// client through what the conversational builder is about to do. Minor
+// message in the Objectives conversation, only for THIS USER's very first
+// real campaign on this account (cmpIsFirstCampaignForAccount() below,
+// revised same day to read per-user, not account-wide) — walks a
+// brand-new client user through what the conversational builder is about
+// to do. Minor
 // copy cleanup from Todd's draft ("walk you how" → "walk you through how",
 // a duplicated "and", and capitalizing Loyalty/Advocacy to match how every
 // other Lifecycle Stage name is capitalized elsewhere in this file) —
@@ -37212,14 +37214,29 @@ function cmpMaybeResetIntake(campaignId){
   const recEl = document.getElementById('cmpIntakeRecommendations');
   if (recEl) recEl.innerHTML = '';
 }
-// 2026-09-20 — "this is your first campaign" is read at the ACCOUNT level
-// (no per-user campaign-authorship tracking exists in this build): true
-// when the account has at most one real, non-Ad-Hoc campaign on file,
-// which — since a campaign already exists in order for this overlay to be
-// open at all (cmpOpenObjectivesIntake()'s own gate) — means this specific
-// campaign is that one.
+// 2026-09-20, revised per Todd's direct correction: "The first time rule
+// should be applied at the client id and user level vs account only." Read
+// at (account, user) now, not account alone — a second client user on the
+// same account still gets the welcome for THEIR first campaign. "User" is
+// state.userName (self-reported; no real per-user login exists in this
+// build — the same identity concept uploadedBy/decidedBy/createdBy already
+// use everywhere else). True when NONE of this account's other real,
+// non-Ad-Hoc campaigns were created by this same name — since a campaign
+// already exists in order for this overlay to be open at all
+// (cmpOpenObjectivesIntake()'s own gate), that's equivalent to "every real
+// campaign on file created by this user is the one open right now."
+// Known gap, not silently papered over: a campaign created before the
+// createdByUser column existed has no value there, so it can never match
+// and won't count toward "this user has already done this" — a one-time
+// blind spot on existing data. Todd separately flagged that CX
+// Experiences/testing-team users shouldn't count the same way a real
+// client user does; deferred until those rules exist ("we may need to add
+// it after testing team rules").
 function cmpIsFirstCampaignForAccount(){
-  return state.campaigns.filter(c => !c.isAdHoc).length <= 1;
+  const myName = (state.userName || '').trim();
+  const realCampaigns = state.campaigns.filter(c => !c.isAdHoc);
+  if (!myName) return realCampaigns.length <= 1; // no known user name — fall back to the old account-level read rather than guessing
+  return !realCampaigns.some(c => (c.createdByUser || '').trim() === myName && c.id !== cmpIntakeCampaignId);
 }
 function cmpRenderIntakeChat(){
   const body = document.getElementById('cmpIntakeBody');
@@ -41240,6 +41257,16 @@ function cmpBuildFormPayload(){
   const drawsTotal = allocationDraws.reduce((s, d) => s + d.amount, 0);
   return {
     objective,
+    // 2026-09-20, per Todd's direct correction: the first-campaign welcome
+    // message needs to be scoped per (account, user), not account alone.
+    // state.userName is the same self-reported identity every other
+    // authorship field in this file already uses (uploadedBy/decidedBy/
+    // createdBy) — no real per-user login exists to key off instead. Only
+    // meaningful on the real POST-creation path (backend/server.js only
+    // writes it at INSERT time); harmless no-op on the "update existing
+    // campaign locally" branch above, since that branch never calls the
+    // creation endpoint.
+    createdByUser: (state.userName || '').trim() || null,
     name: name || objective || 'Untitled Campaign',
     segment: [...selectedSegments].join(', '),
     stage: selectedStage || '',
