@@ -2987,6 +2987,36 @@
   .select-tile-disabled{opacity:0.42;cursor:not-allowed;}
   .select-tile-disabled:hover{border-color:var(--line);}
 
+  /* 2026-09-20, per Todd's direct feedback: "Campaign Product Group and
+     Creative Focus Groups should plan for a minimum of 10 options. Why not
+     use a drop-down with check-box instead of chips and then show what was
+     selected. Same for audiences." One reusable checkbox-dropdown
+     multi-select ("cd-select") — no equivalent pattern existed anywhere
+     else in this file (grepped for an existing dropdown+checkbox
+     multi-select before building this), so this is new, but built once and
+     shared by all three fields it applies to (Campaign Audiences, Campaign
+     Product Group, Creative Focus Group) rather than three one-off
+     versions. Closed by default; the trigger shows a live summary of what's
+     selected ("3 selected: A, B, C", truncated once it'd otherwise run past
+     a couple of names) so the choice is visible without opening the panel.
+     The panel itself scrolls (max-height) instead of growing the page once
+     an account's real taxonomy has 10+ entries — see cmpRenderCdSelect(). */
+  .cd-select{position:relative;max-width:420px;}
+  .cd-select-trigger{width:100%;background:var(--white);border:1px solid var(--line);border-radius:4px;padding:11px 14px;cursor:pointer;text-align:left;font-family:inherit;font-size:0.9062rem;color:var(--ink);display:flex;gap:8px;align-items:center;justify-content:space-between;transition:border-color 0.15s ease;}
+  .cd-select-trigger:hover{border-color:var(--cx);}
+  .cd-select.open .cd-select-trigger{border-color:var(--cx);}
+  .cd-select-trigger .cd-select-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  .cd-select-trigger .cd-select-summary.cd-select-placeholder{color:var(--muted);}
+  .cd-select-trigger .cd-select-caret{flex-shrink:0;color:var(--muted);font-size:0.75rem;transition:transform 0.15s ease;}
+  .cd-select.open .cd-select-trigger .cd-select-caret{transform:rotate(180deg);}
+  .cd-select-panel{display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;background:var(--white);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.12);max-height:280px;overflow-y:auto;padding:6px;}
+  .cd-select.open .cd-select-panel{display:block;}
+  .cd-select-option{display:flex;align-items:center;gap:9px;padding:8px 8px;border-radius:4px;cursor:pointer;font-size:0.875rem;color:var(--ink);}
+  .cd-select-option:hover{background:var(--panel, #F5F3EF);}
+  .cd-select-option input[type="checkbox"]{margin:0;width:16px;height:16px;flex-shrink:0;accent-color:var(--advocacy);}
+  .cd-select-option.cd-select-option-disabled{opacity:0.42;cursor:not-allowed;}
+  .cd-select-option.cd-select-option-disabled:hover{background:none;}
+
   /* Buttons — border-radius:999px always yields a full pill regardless of
      the control's own height, matching the public site's pill CTAs
      (previously a barely-rounded 4px, the single most visible gap between
@@ -8488,11 +8518,11 @@
                  (Campaign start/end date, already required below). -->
             <div class="field">
               <label>Campaign Product Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Product Group?" onmouseenter="cmpFieldHelpTip('productGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('productGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('productGroup', event)">💬</button></label>
-              <div class="select-tile-row" id="cmpProductGroupRow"></div>
+              <div class="cd-select" id="cmpProductGroupRow"></div>
             </div>
             <div class="field">
               <label>Creative Focus Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Creative Focus Group?" onmouseenter="cmpFieldHelpTip('creativeFocusGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('creativeFocusGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('creativeFocusGroup', event)">💬</button></label>
-              <div class="select-tile-row" id="cmpCreativeFocusGroupRow"></div>
+              <div class="cd-select" id="cmpCreativeFocusGroupRow"></div>
             </div>
             <!-- 2026-09-20, per Todd's direct instruction: "Copy the
                  attached two drop-downs to the Campaign Creation task above
@@ -8595,42 +8625,16 @@
              follow-up further down (cmpUpdateCreationPageMode()'s own
              comment) that force-hid this same panel — Todd's later,
              explicit instruction in this same round is to show the real
-             shell here, not the placeholder text block. -->
+             shell here, not the placeholder text block.
+             2026-09-20 follow-up, per Todd's direct feedback: "Why did you
+             place the budget under the collaboration center? That's not
+             part of the defined working area." The Preliminary Budget field
+             (previously a card here, id="cmpCreationBudgetCard") is gone
+             from this right column entirely — it now sits inline in the
+             main form next to Campaign Audiences (#cmpStage-lifecycle,
+             #cmpCreationBudgetRow), not beside the Collaboration Center.
+             This right column is the Collaboration Center only now. -->
         <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">
-          <!-- 2026-09-20, per Todd's direct instruction: "add budget in the
-               right column where we have white space" — a genuinely new
-               input, clearly optional/preliminary. It writes to the exact
-               same real campaign.budget column every downstream screen
-               already reads (Budget & Recommendation, generate-
-               recommendation-from-intake's "Total campaign budget on file")
-               by mirroring straight into the existing #cmpBudget field
-               (Lifecycle Stage & Goals' own Estimated Budget input, already
-               in the DOM even while that stage is locked — see
-               cmpUpdateLifecycleLockUI()'s own comment) rather than being a
-               second, disconnected column — cmpBuildFormPayload() already
-               reads #cmpBudget's value as-is, so no backend change is
-               needed. Setting cmpBudgetAuto=false here matches #cmpBudget's
-               own oninput, so a later Recommend Budget suggestion never
-               silently overwrites a number a person actually typed. If
-               Lifecycle Stage & Goals later sets a more considered budget of
-               its own, that just overwrites #cmpBudget directly (same field,
-               same column) — this early number is a starting point, not a
-               second source of truth to reconcile. -->
-          <div class="module cmp-stage open" id="cmpCreationBudgetCard">
-            <div class="module-head" style="cursor:default;">
-              <div class="titles"><h2 style="font-size:1rem;">Preliminary budget <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></h2></div>
-            </div>
-            <div class="module-body">
-              <div class="field" style="margin:0;">
-                <label>Estimated budget (USD)</label>
-                <div style="position:relative;">
-                  <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
-                  <input type="number" id="cmpCreationBudget" placeholder="e.g. 15000" min="0" step="100" style="padding-left:24px;" oninput="cmpSyncCreationBudget();">
-                </div>
-                <div class="hint" style="margin-top:6px;">A rough early number helps sharpen the Budget Recommendation later — refine it anytime in Lifecycle Stage &amp; Goals or Budget &amp; Recommendation. Not required to create this campaign.</div>
-              </div>
-            </div>
-          </div>
           <div class="cmp-workspace-collab" id="cmpCreationCollabMount"></div>
         </div>
         </div>
@@ -8833,12 +8837,37 @@
               <!-- Round 132bv (2026-08-13) fix — same trim as Lifecycle-Loop
                    Stage above: topic M's AI Thought already covers how Stage
                    narrows eligible audiences in full (renderFaqM()). -->
-              <div class="field-divider">Campaign Audiences <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="M"></span></div>
-              <p class="lede" style="margin-bottom:14px;">Select every segment this campaign targets.</p>
-              <div class="select-tile-row" id="cmpSegmentRow"></div>
-              <div class="rr-error" id="cmpSegmentError"></div>
-              <div class="hint" id="cmpSegmentStageNote" style="margin-top:6px;"></div>
-              <div id="cmpSegmentSmartDefault" style="margin-top:8px;"></div>
+              <!-- 2026-09-20, per Todd's direct feedback: "Why did you place
+                   the budget under the collaboration center? That's not part
+                   of the defined working area." / "Place Budget to the right
+                   of Campaign Audiences." Preliminary Budget (id
+                   cmpCreationBudget, unchanged — see cmpSyncCreationBudget()'s
+                   own comment) moves out of the Create Campaign right column
+                   entirely and sits here instead, in a two-column row next
+                   to Campaign Audiences. Pure layout move — same field, same
+                   id, same oninput="cmpSyncCreationBudget()" mirror onto
+                   #cmpBudget, same optional/no-gate behavior. -->
+              <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+                <div style="flex:1 1 320px;min-width:260px;">
+                  <div class="field-divider">Campaign Audiences <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="M"></span></div>
+                  <p class="lede" style="margin-bottom:14px;">Select every segment this campaign targets.</p>
+                  <div class="cd-select" id="cmpSegmentRow"></div>
+                  <div class="rr-error" id="cmpSegmentError"></div>
+                  <div class="hint" id="cmpSegmentStageNote" style="margin-top:6px;"></div>
+                  <div id="cmpSegmentSmartDefault" style="margin-top:8px;"></div>
+                </div>
+                <div style="flex:1 1 220px;min-width:200px;max-width:280px;">
+                  <div class="field-divider">Preliminary budget <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></div>
+                  <div class="field" style="margin:0;">
+                    <label>Estimated budget (USD)</label>
+                    <div style="position:relative;">
+                      <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
+                      <input type="number" id="cmpCreationBudget" placeholder="e.g. 15000" min="0" step="100" style="padding-left:24px;" oninput="cmpSyncCreationBudget();">
+                    </div>
+                    <div class="hint" style="margin-top:6px;">A rough early number helps sharpen the Budget Recommendation later — refine it anytime in Budget &amp; Recommendation. Not required.</div>
+                  </div>
+                </div>
+              </div>
 
               <!-- Round 132aj (2026-08-11), per direct instruction: "The
                    objective copy and speech bubble can be removed because it
@@ -14678,7 +14707,44 @@ const CAMPAIGN_OBJECTIVE_GOAL_TEXT = {
 // Customers, Hand-Raisers, New To Brand, Partners, Sales Team. Replaces
 // round 132's "New Prospects" with "New To Brand" and hyphenates
 // "Hand-Raisers"; Licensed Households stays removed.
-const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'New To Brand', 'Partners', 'Sales Team'];
+// 2026-09-20, per Todd's direct correction on the Create Campaign form
+// audit: "Audiences are not correct. It should include Past Customers,
+// Hand-Raisers, Prospects, Future Customers. Add Anonymous Website
+// Traffic." New exact list: Past Customers, Hand-Raisers, Prospects,
+// Future Customers, Anonymous Website Traffic. Old→new mapping:
+//   - Past Customers, Hand-Raisers — unchanged.
+//   - New To Brand → replaced by Prospects. Prospects is the closest
+//     semantic successor (people who've shown interest but haven't
+//     converted) but is NOT a bare rename — a prospect may already know the
+//     brand, where "New To Brand" specifically meant a first impression.
+//     Every lookup table keyed by 'New To Brand' below got its own new,
+//     purpose-written 'Prospects' entry (adapted from, not copied from, the
+//     old 'New To Brand' entry) — see SEGMENT_CHANNEL_ELIGIBILITY and
+//     ACCOUNT_SEGMENT_ANGLE below, and cmpAudienceAngle()'s tier logic,
+//     which now checks 'Prospects' where it used to check 'New To Brand'.
+//   - Future Customers — genuinely new: broader, top-of-funnel/aspirational
+//     people not yet in-market at all (vs. Prospects, who've already shown
+//     some interest). Routed through the SAME 'new-to-brand' messaging tier
+//     as Prospects/Hand-Raisers in cmpAudienceAngle() — the copy job
+//     (introduce and differentiate the brand before asking for anything) is
+//     the same for both; a separate tier isn't warranted by anything this
+//     account's messaging logic actually varies on today.
+//   - Anonymous Website Traffic — genuinely new: known site visitors with no
+//     identity on file, i.e. retargeting/remarketing audience, not
+//     acquisition. Its channel eligibility leans toward Programmatic
+//     Display, Paid Social and Email — Remarketing per Todd's own framing
+//     ("Anonymous Website Traffic"); its angle in ACCOUNT_SEGMENT_ANGLE is
+//     its own real entry, not folded into Prospects/Future Customers.
+//   - Partners, Sales Team — RETIRED from this selectable list (no longer
+//     in ACCOUNT_SEGMENTS), but NOT deleted from the lookup tables below.
+//     An already-saved campaign/account record can still have segment
+//     values referencing them, so their SEGMENT_CHANNEL_ELIGIBILITY/
+//     ACCOUNT_SEGMENT_ANGLE entries stay in place as harmless legacy
+//     fallbacks — same "graceful degrade for a legacy value" pattern as a
+//     retired Primary KPI still rendering via its original saved text
+//     instead of crashing. No new UI re-adds them; this is data
+//     preservation only.
+const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'Prospects', 'Future Customers', 'Anonymous Website Traffic'];
 let selectedSegments = new Set();
 
 // 2026-09-20, per Todd's direct copy: shown once, as the first AI Brain
@@ -14710,7 +14776,28 @@ const CMP_FIRST_CAMPAIGN_WELCOME = "Welcome to the conversational campaign build
 const SEGMENT_CHANNEL_ELIGIBILITY = {
   'Past Customers': ['Internal Email', 'Remarketing', 'Email — Remarketing', 'Direct Mail — Past Guests', 'Paid Social', 'Retail Media'],
   'Hand-Raisers': ['Internal Email', 'Remarketing', 'Email — Remarketing', 'Direct Mail — Inquiries', 'Paid Social', 'Programmatic Display', 'Non-Brand Search', 'Brand Search'],
-  'New To Brand': ['Linear TV', 'OTV', 'CTV', 'Paid Social', 'Non-Brand Search', 'Brand Search', 'Programmatic Display', 'Direct Mail — Prospects', 'Out-of-Home', 'Radio', 'Magazines', 'Newspapers', 'Podcasts', 'Retail Media'],
+  // 2026-09-20 — replaces 'New To Brand' (see ACCOUNT_SEGMENTS' own comment
+  // on the mapping). A Prospect has already shown some interest (raised a
+  // hand short of Hand-Raiser status, or matches a rented/licensed list this
+  // account already screens for fit) but hasn't converted — broad-reach
+  // acquisition channels still apply, but the paid-search split leans a
+  // little more Brand than a cold Future Customer, since some Prospects
+  // already know the brand's name even if they haven't bought yet.
+  'Prospects': ['Linear TV', 'OTV', 'CTV', 'Paid Social', 'Non-Brand Search', 'Brand Search', 'Programmatic Display', 'Direct Mail — Prospects', 'Out-of-Home', 'Radio', 'Magazines', 'Newspapers', 'Podcasts', 'Retail Media'],
+  // 2026-09-20 — new. Broader, top-of-funnel/aspirational people not yet
+  // in-market at all (no signal of interest on file, unlike Prospects) —
+  // pure mass-reach/brand-building channels, Non-Brand Search only (no
+  // Brand Search — there's no brand awareness yet to capture), no Direct
+  // Mail (no list to mail).
+  'Future Customers': ['Linear TV', 'OTV', 'CTV', 'Paid Social', 'Non-Brand Search', 'Programmatic Display', 'Out-of-Home', 'Radio', 'Magazines', 'Newspapers', 'Podcasts'],
+  // 2026-09-20 — new. Known site visitors with no identity on file: a
+  // retargeting/remarketing audience, not an acquisition one, per Todd's own
+  // framing of this segment. Leans on pixel-based, addressable-to-the-
+  // anonymous-visitor channels rather than broad/rented-list ones.
+  'Anonymous Website Traffic': ['Programmatic Display', 'Paid Social', 'Email — Remarketing', 'Remarketing'],
+  // Retired from ACCOUNT_SEGMENTS (no longer selectable) but kept as a
+  // legacy fallback for any already-saved campaign/account record whose
+  // segment still references it — see ACCOUNT_SEGMENTS' own comment.
   'Partners': ['Partner Media', 'Field / ABM', 'PR', 'Internal Email'],
   'Sales Team': ['Internal Email', 'Field / ABM', 'PR']
 };
@@ -15065,10 +15152,12 @@ function renderCmpProductGroupRow(){
   // Marketing Calendar filtering and any already-tagged historical campaign
   // still show/report it correctly.
   values = values.filter(v => v.toUpperCase() !== 'MULTI-PRODUCT');
-  row.innerHTML = values.map(v => `
-    <button type="button" class="select-tile${selectedProductGroups.has(v) ? ' selected' : ''}" onclick="toggleProductGroup('${v}')">
-      <span class="indicator">✓</span><span class="label">${v}</span>
-    </button>`).join('');
+  // 2026-09-20, per Todd's direct feedback — checkbox-dropdown multi-select
+  // (see cmpRenderCdSelect()'s own comment) in place of the chip row, so
+  // this scales cleanly once an account's real Product Group taxonomy grows
+  // past a handful of values.
+  const options = values.map(v => ({ value: v, label: v }));
+  cmpRenderCdSelect('cmpProductGroupRow', options, selectedProductGroups, 'toggleProductGroup', 'Select product group(s)');
 }
 function toggleCreativeFocusGroup(v){
   if (selectedCreativeFocusGroups.has(v)) selectedCreativeFocusGroups.delete(v); else selectedCreativeFocusGroups.add(v);
@@ -15088,10 +15177,9 @@ function renderCmpCreativeFocusGroupRow(){
   // DESTINATION is a real rollup value, filtered from the selectable tiles
   // only, taxonomy itself untouched.
   values = values.filter(v => v.toUpperCase() !== 'MULTI-DESTINATION');
-  row.innerHTML = values.map(v => `
-    <button type="button" class="select-tile${selectedCreativeFocusGroups.has(v) ? ' selected' : ''}" onclick="toggleCreativeFocusGroup('${v}')">
-      <span class="indicator">✓</span><span class="label">${v}</span>
-    </button>`).join('');
+  // 2026-09-20 — same checkbox-dropdown conversion as Product Group above.
+  const options = values.map(v => ({ value: v, label: v }));
+  cmpRenderCdSelect('cmpCreativeFocusGroupRow', options, selectedCreativeFocusGroups, 'toggleCreativeFocusGroup', 'Select creative focus group(s)');
 }
 
 // ---------- Round 132x (2026-08-10), per direct instruction — Marketing
@@ -25641,14 +25729,77 @@ function cmpSegmentDisabledSetForStage(stage){
   }
   return disabled;
 }
+// 2026-09-20, per Todd's direct feedback: "Campaign Product Group and
+// Creative Focus Groups should plan for a minimum of 10 options. Why not
+// use a drop-down with check-box instead of chips and then show what was
+// selected. Same for audiences." One reusable checkbox-dropdown
+// multi-select ("cd-select"), shared by Campaign Audiences
+// (renderSegmentRow), Campaign Product Group (renderCmpProductGroupRow) and
+// Creative Focus Group (renderCmpCreativeFocusGroupRow) below — grepped this
+// whole file first for an existing dropdown+checkbox multi-select pattern to
+// reuse before building this; none existed (every other multi-select here is
+// the chip/tile row this replaces for these three fields), so this is new
+// but built once, not three separate one-offs. Closed by default; the
+// trigger button shows a live summary of the current selection so the
+// choice is visible without opening the panel, and the panel itself scrolls
+// (.cd-select-panel's max-height, see the CSS block above) rather than
+// growing the page once an account's real taxonomy has 10+ entries.
+let cmpCdSelectOpenId = null;
+const cmpCdSelectRenderers = {};
+function cmpCdSelectSummary(selectedLabels, placeholder){
+  if (!selectedLabels.length) return `<span class="cd-select-summary cd-select-placeholder">${escapeHtml(placeholder)}</span>`;
+  const max = 3;
+  const shown = selectedLabels.slice(0, max).join(', ');
+  const more = selectedLabels.length > max ? ` +${selectedLabels.length - max} more` : '';
+  return `<span class="cd-select-summary">${selectedLabels.length} selected: ${escapeHtml(shown)}${more}</span>`;
+}
+// options: [{value,label,disabled?,title?}]. selectedSet: a Set of selected
+// values. toggleFnName: the global function name to call (as an existing
+// onclick string) with one value argument when an option's checkbox changes
+// — each field keeps its own toggle function (toggleSegment(),
+// toggleProductGroup(), toggleCreativeFocusGroup()) so its own side effects
+// (markCampaignFormTouched(), stage-disabled rules, etc.) are unchanged.
+function cmpRenderCdSelect(containerId, options, selectedSet, toggleFnName, placeholder){
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  cmpCdSelectRenderers[containerId] = () => cmpRenderCdSelect(containerId, options, selectedSet, toggleFnName, placeholder);
+  const isOpen = cmpCdSelectOpenId === containerId;
+  const selectedLabels = options.filter(o => selectedSet.has(o.value)).map(o => o.label);
+  el.className = 'cd-select' + (isOpen ? ' open' : '');
+  el.innerHTML = `
+    <button type="button" class="cd-select-trigger" onclick="cmpCdSelectToggleOpen('${containerId}');event.stopPropagation();" aria-haspopup="listbox" aria-expanded="${isOpen}">
+      ${cmpCdSelectSummary(selectedLabels, placeholder)}
+      <span class="cd-select-caret">▾</span>
+    </button>
+    <div class="cd-select-panel" role="listbox">
+      ${options.map(o => `
+        <label class="cd-select-option${o.disabled ? ' cd-select-option-disabled' : ''}" title="${o.disabled && o.title ? escapeHtml(o.title) : ''}">
+          <input type="checkbox" ${selectedSet.has(o.value) ? 'checked' : ''} ${o.disabled ? 'disabled' : ''} onchange="${toggleFnName}('${String(o.value).replace(/'/g, "\\'")}')">
+          <span>${escapeHtml(o.label)}</span>
+        </label>`).join('') || '<p class="hint" style="margin:4px 8px;">No options available.</p>'}
+    </div>`;
+}
+function cmpCdSelectToggleOpen(containerId){
+  const prevOpen = cmpCdSelectOpenId;
+  cmpCdSelectOpenId = (cmpCdSelectOpenId === containerId) ? null : containerId;
+  if (prevOpen && prevOpen !== containerId && cmpCdSelectRenderers[prevOpen]) cmpCdSelectRenderers[prevOpen]();
+  if (cmpCdSelectRenderers[containerId]) cmpCdSelectRenderers[containerId]();
+}
+// Closes an open cd-select panel on any click outside it — a listbox that
+// only closes via its own trigger (re-clicking it) reads as stuck open.
+document.addEventListener('click', function(){
+  if (!cmpCdSelectOpenId) return;
+  const id = cmpCdSelectOpenId;
+  const openEl = document.getElementById(id);
+  cmpCdSelectOpenId = null;
+  if (openEl && cmpCdSelectRenderers[id]) cmpCdSelectRenderers[id]();
+});
 function renderSegmentRow(){
   const row = document.getElementById('cmpSegmentRow');
   if (!row) return;
   const disabled = cmpSegmentDisabledSet();
-  row.innerHTML = ACCOUNT_SEGMENTS.map(s => `
-    <button type="button" class="select-tile${selectedSegments.has(s) ? ' selected' : ''}${disabled.has(s) ? ' select-tile-disabled' : ''}" ${disabled.has(s) ? 'disabled aria-disabled="true"' : ''} title="${disabled.has(s) ? cmpSegmentDisabledReason(s) : ''}" onclick="toggleSegment('${s}')">
-      <span class="indicator">✓</span><span class="label">${s}</span>
-    </button>`).join('');
+  const options = ACCOUNT_SEGMENTS.map(s => ({ value: s, label: s, disabled: disabled.has(s), title: disabled.has(s) ? cmpSegmentDisabledReason(s) : '' }));
+  cmpRenderCdSelect('cmpSegmentRow', options, selectedSegments, 'toggleSegment', 'Select every segment this campaign targets');
   cmpRenderSegmentStageNote();
 }
 function cmpSegmentDisabledReason(s){
@@ -41718,7 +41869,7 @@ function renderFaqM(){
   if (!el) return;
   const labelEl = document.querySelector('#bpFaqHeadM .faq-label');
   const rules = [
-    `Awareness — Past Customers isn't eligible. They already know this brand, so there's no genuine awareness job to do for them; this stage is scoped to Hand-Raisers, New To Brand, Partners, and Sales Team only.`,
+    `Awareness — Past Customers isn't eligible. They already know this brand, so there's no genuine awareness job to do for them; this stage is scoped to Hand-Raisers, Prospects, Future Customers, and Anonymous Website Traffic only.`,
     `Loyalty — only Past Customers is eligible. This stage is built entirely around retention (Internal Email, Direct Mail — Past Guests, Partner Media) — every other segment is off-mission here, not just deprioritized.`,
     `Consideration, Purchase, and Advocacy — every audience segment is eligible; none of these stages restricts the audience picker.`
   ];
@@ -51595,7 +51746,20 @@ const PRIMARY_KPI_ANGLE = {
 const ACCOUNT_SEGMENT_ANGLE = {
   'Past Customers': 'people who already know this brand \u2014 skip the introduction, go straight to what changed',
   'Hand-Raisers': 'people who already raised a hand \u2014 meet the interest they already showed, don\u2019t restart the pitch from zero',
-  'New To Brand': 'people meeting this brand for the first time \u2014 earn the first impression before asking for anything',
+  // 2026-09-20 \u2014 replaces 'New To Brand' (see ACCOUNT_SEGMENTS' own comment
+  // on the mapping). Written as its own entry, not a rename: a Prospect has
+  // already shown some interest or fit, unlike a true first-impression
+  // stranger, so the angle earns trust rather than starting from zero.
+  'Prospects': 'people who\u2019ve shown real interest or fit but haven\u2019t bought yet \u2014 meet where their interest already is, don\u2019t restart the pitch from zero, but still make the full case since nothing\u2019s been won yet',
+  // 2026-09-20 \u2014 new. Broader, aspirational, not-yet-in-market people with no
+  // signal of interest on file at all \u2014 a genuine first impression.
+  'Future Customers': 'people meeting this brand for the first time, with no prior interest on file \u2014 earn the first impression before asking for anything, and lead with what makes the brand worth knowing',
+  // 2026-09-20 \u2014 new. Known site visitors with no identity on file \u2014 a
+  // retargeting audience, not a stranger: they've already engaged once.
+  'Anonymous Website Traffic': 'people who already visited but didn\u2019t convert \u2014 they know the brand exists, so skip the introduction and give them the specific reason to finish what they started',
+  // Retired from ACCOUNT_SEGMENTS (no longer selectable) but kept as a
+  // legacy fallback for any already-saved campaign/account record whose
+  // segment still references it \u2014 see ACCOUNT_SEGMENTS' own comment.
   'Partners': 'partner organizations, not individual consumers \u2014 collaborative, specific about mutual benefit',
   'Sales Team': 'this account\u2019s own sales team, using this material to sell \u2014 arm them with the claim and the proof behind it, not a consumer pitch'
 };
@@ -51640,7 +51804,19 @@ function cmpAudienceAngle(segments){
   if (hasPast && segments.length > 1){
     return { tier: 'neutral', text: 'an audience broad enough to genuinely fit everyone selected \u2014 a shared brand message that doesn\u2019t assume how much this particular reader already knows', arc: 'recognition \u2192 relevance \u2014 doesn\u2019t assume shared history, but doesn\u2019t re-explain the brand from zero either', hook: n => `Welcome back to ${n}.`, copyLine: `Whether this is a first look or a familiar one, here's what's actually worth your time right now.` };
   }
-  if (segments.includes('Hand-Raisers') || segments.includes('New To Brand')){
+  // 2026-09-20 \u2014 was 'Hand-Raisers'/'New To Brand'; now 'Hand-Raisers',
+  // 'Prospects' and 'Future Customers' all route through this same
+  // new-to-brand-shaped messaging tier. Prospects and Future Customers both
+  // need the brand introduced/differentiated before asking for anything \u2014
+  // the same copy job Hand-Raisers and the old New To Brand shared \u2014 so a
+  // separate tier for either isn't warranted by anything this account's
+  // messaging logic actually varies on; see ACCOUNT_SEGMENTS' own comment
+  // for the full reasoning. Anonymous Website Traffic deliberately does NOT
+  // route through here \u2014 it's a retargeting audience, not a
+  // stranger-to-the-brand one, and falls through to its own
+  // ACCOUNT_SEGMENT_ANGLE entry in the 'other' tier below when selected
+  // without Past Customers/Hand-Raisers/Prospects/Future Customers.
+  if (segments.includes('Hand-Raisers') || segments.includes('Prospects') || segments.includes('Future Customers')){
     return { tier: 'new-to-brand', text: 'people who don\u2019t yet know this brand well \u2014 emphasizing product education, earning trust and understanding before asking for anything', arc: 'discovery \u2192 differentiation \u2192 trust \u2014 explains what makes this account different without reading like a brochure; earns the first impression before asking for anything', hook: n => `Here's what makes ${n} different.`, copyLine: `No crowds, no filler \u2014 just the specific things that make this worth trying for the first time.` };
   }
   // 2026-08-22, next round (item 4) \u2014 this tier is reached by whatever's
