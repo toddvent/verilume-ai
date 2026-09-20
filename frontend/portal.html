@@ -12561,7 +12561,14 @@ function cmpCollabNotesFor(campaign, tab){
 // before/after budget table, never model-generated) is stashed on the note
 // and only shown via cmpShowNoteDetail()'s modal, behind a "See full
 // details →" link. A note with no detail renders exactly as before.
-function cmpCollabAddNote(tab, text, isAi, suggestion, detail){
+// 2026-09-20 — `matchMarketSuggestion` param added: the real, code-computed
+// test/control DMA pairing from POST .../ai-brain-reply (see that
+// endpoint's own comment) — never model-generated. Stashed on the note the
+// same way `suggestion`/`detail` already are, so cmpCollabNoteRowHtml can
+// render it as its own informational card (no Apply button — unlike the
+// budget `suggestion` card, "attaching" this already happened server-side
+// the moment it became eligible; this card is just surfacing that).
+function cmpCollabAddNote(tab, text, isAi, suggestion, detail, matchMarketSuggestion){
   const c = cmpRailLoadedCampaign();
   if (!c || !text) return;
   if (!c.activityNotes) c.activityNotes = {};
@@ -12571,7 +12578,8 @@ function cmpCollabAddNote(tab, text, isAi, suggestion, detail){
     author: isAi ? 'AI Assistant' : (cmpNoteAuthorName || 'Team member'),
     text, isAi: !!isAi, tab, ts: Date.now(),
     suggestion: (suggestion && suggestion.entryId) ? suggestion : null,
-    detail: detail || null
+    detail: detail || null,
+    matchMarketSuggestion: matchMarketSuggestion || null
   });
   cmpPersistActivityNotesToCampaign(c);
   cmpRenderCollabBody(c);
@@ -12639,7 +12647,7 @@ async function cmpCollabRequestAiReply(message){
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, priorNotes }), timeoutMs: 20000
     }, 3, 700);
-    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null);
+    cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null, null, resp.matchMarketSuggestion || null);
   } catch (e){
     console.warn('cmpCollabRequestAiReply failed:', e);
     cmpCollabAddNote('ai', 'Something went wrong reaching the AI Brain — try again in a moment.', true);
@@ -12693,11 +12701,31 @@ function cmpCollabNoteRowHtml(n){
   const detailHtml = n.detail
     ? `<div class="btn-row" style="margin:2px 0 6px;"><button type="button" class="btn-ghost" onclick="cmpShowNoteDetail('${n.id}')">See full details →</button></div>`
     : '';
+  // 2026-09-20 — Match Market test recommendation card. Informational only
+  // (no Apply button): the pairing is real data attached to the campaign
+  // server-side the moment it became eligible (see POST .../ai-brain-reply's
+  // own comment) — this card is just surfacing what's already attached, not
+  // proposing an action to take.
+  let matchMarketHtml = '';
+  if (n.matchMarketSuggestion && Array.isArray(n.matchMarketSuggestion.pairs)){
+    const mm = n.matchMarketSuggestion;
+    const pairRows = mm.pairs.map(p => `<div style="padding:4px 0;border-top:1px solid var(--line-hairline,#E8E8ED);">
+        <b>Test:</b> ${escapeHtml(p.testDmaName || p.testDma)}${p.testOpportunityTier ? ` <span style="color:var(--muted);">(${escapeHtml(p.testOpportunityTier)})</span>` : ''}
+        &nbsp;vs&nbsp; <b>Control:</b> ${escapeHtml(p.controlDmaName || p.controlDma)}
+      </div>`).join('');
+    matchMarketHtml = `<div class="cmp-intake-summary" style="margin-top:8px;">
+      <b>Match Market test recommendation — attached to this campaign</b>
+      <div style="color:var(--muted);margin:2px 0 4px;">From upload "${escapeHtml(mm.uploadLabel || '')}" — ${mm.pairCount} matched DMA pair${mm.pairCount === 1 ? '' : 's'}, ${mm.holdoutDmaCount} held out. Justified by $${Math.round(Number(mm.eligibleChannelBudget) || 0).toLocaleString()} in geo-addressable spend (${escapeHtml((mm.eligibleChannels || []).join(', '))}).</div>
+      ${pairRows}
+      ${mm.disclosure ? `<div style="color:var(--muted);margin-top:6px;font-size:12px;">${escapeHtml(mm.disclosure)}</div>` : ''}
+    </div>`;
+  }
   return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
     <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
     <p class="cmp-note-text">${escapeHtml(n.text)}</p>
     ${detailHtml}
     ${suggestionHtml}
+    ${matchMarketHtml}
     ${ratingHtml}
   </div>`;
 }
