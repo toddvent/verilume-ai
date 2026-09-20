@@ -21976,9 +21976,96 @@ Submit your response via the campaign_intake_turn tool.`;
       } else {
         merged.campaignCode = existing.campaignCode;
       }
-      db.prepare(
-        'UPDATE campaigns SET status = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, analysisNotes = ?, campaignUrl = ?, conversionType = ?, brandStage = ?, qaApproved = ?, channels = ?, fundingSource = ?, allocationId = ?, budget = ?, keyMessage = ?, brandToneNotes = ?, brandGuidelines = ?, creativeBrief = ?, longformCopy = ?, mediaMixJson = ?, audienceTargets = ?, pmValidatedAt = ?, productGroups = ?, creativeFocusGroups = ?, approvedAssetJobIds = ?, pmAssetsApprovedAt = ?, approvedAssetSummary = ?, creativeActive = ?, creativeComplete = ?, messagingTrainingExample = ?, messagingTrainingExampleAt = ?, messagingStyleDigestJson = ?, cancelled = ?, cancelledAt = ?, productCode = ?, productName = ?, campaignCode = ?, roleStyle = ?, keyMessageMode = ?, messageType = ?, mandatoryPhrase = ?, startDate = ?, endDate = ?, campaignType = ?, campaignTypeDetailsJson = ?, businessInitiative = ?, stage = ?, segment = ?, activityNotesJson = ?, cmoCopywriterBrief = ?, cmoAnalyticsBrief = ?, briefAnalyticsContinuedAt = ?, cmoCopywriterBriefEditedByHuman = ?, cmoAnalyticsBriefEditedByHuman = ?, cmoCopywriterBriefUpstreamHash = ?, cmoAnalyticsBriefUpstreamHash = ? WHERE id = ?'
-      ).run(merged.status, merged.actualSpend, merged.actualImpressions, merged.actualConversions, merged.analysisNotes, merged.campaignUrl, merged.conversionType, merged.brandStage, merged.qaApproved, merged.channels, merged.fundingSource, merged.allocationId, merged.budget, merged.keyMessage, merged.brandToneNotes, merged.brandGuidelines, merged.creativeBrief, merged.longformCopy, merged.mediaMixJson, merged.audienceTargets, merged.pmValidatedAt, merged.productGroups, merged.creativeFocusGroups, merged.approvedAssetJobIds, merged.pmAssetsApprovedAt, merged.approvedAssetSummary, merged.creativeActive, merged.creativeComplete, merged.messagingTrainingExample, merged.messagingTrainingExampleAt, merged.messagingStyleDigestJson, merged.cancelled, merged.cancelledAt, merged.productCode, merged.productName, merged.campaignCode, merged.roleStyle, merged.keyMessageMode, merged.messageType, merged.mandatoryPhrase, merged.startDate, merged.endDate, merged.campaignType, merged.campaignTypeDetailsJson, merged.businessInitiative, merged.stage, merged.segment, merged.activityNotesJson, merged.cmoCopywriterBrief, merged.cmoAnalyticsBrief, merged.briefAnalyticsContinuedAt, merged.cmoCopywriterBriefEditedByHuman, merged.cmoAnalyticsBriefEditedByHuman, merged.cmoCopywriterBriefUpstreamHash, merged.cmoAnalyticsBriefUpstreamHash, campaignId);
+      // 2026-09-20 — real concurrency fix, per Todd's direct report ("The
+      // loop stage was selected and campaign information was added. Nothing
+      // appears on the Budget & Recommendation section."). Root cause: this
+      // endpoint always wrote ALL ~50 columns above on every call, using
+      // `existing` as the fallback for whatever this particular request's
+      // body didn't include. That's a classic lost-update race — during an
+      // active Objectives conversation, each AI Brain turn fires its own
+      // fire-and-forget POST here (cmpPersistActivityNotesToCampaign, only
+      // sending activityNotesJson) while a same-turn "Apply Stage" click
+      // fires ANOTHER POST here concurrently (only sending stage). Whichever
+      // of the two reads `existing` first and commits SECOND wins overall —
+      // and it commits the OTHER request's field back to its own stale
+      // pre-change snapshot, silently reverting it. That's exactly how
+      // campaign.stage (or activityNotesJson's objectivesIntake transcript)
+      // could end up right back at empty/null even though the user just set
+      // it — which is what generate-recommendation-from-intake then reads
+      // and finds nothing to work from, leaving Budget & Recommendation
+      // blank. Fixed at the root: the SQL below now only SETs the columns
+      // this specific request actually intended to change (present in
+      // `body`, or one of the two always-derived fields, status/
+      // campaignCode, which are pure functions of already-consistent data
+      // and safe to recompute on every call) — two concurrent requests
+      // touching different fields can now commit in either order without
+      // clobbering each other. `merged` above is unchanged and still used
+      // for every field's final EFFECTIVE value (including columns not
+      // written this call, e.g. deriveCampaignStatusFromDates(merged) and
+      // the training-digest ledger check below still need the real current
+      // value even when this request isn't the one changing it).
+      const setCols = [];
+      const setVals = [];
+      const addCol = (col, cond, val) => { if (cond) { setCols.push(`${col} = ?`); setVals.push(val); } };
+      addCol('status', true, merged.status);
+      addCol('actualSpend', body.actualSpend !== undefined, merged.actualSpend);
+      addCol('actualImpressions', body.actualImpressions !== undefined, merged.actualImpressions);
+      addCol('actualConversions', body.actualConversions !== undefined, merged.actualConversions);
+      addCol('analysisNotes', body.analysisNotes !== undefined, merged.analysisNotes);
+      addCol('campaignUrl', body.campaignUrl !== undefined, merged.campaignUrl);
+      addCol('conversionType', body.conversionType !== undefined, merged.conversionType);
+      addCol('brandStage', body.brandStage !== undefined, merged.brandStage);
+      addCol('qaApproved', body.qaApproved !== undefined, merged.qaApproved);
+      addCol('channels', body.channels !== undefined, merged.channels);
+      addCol('fundingSource', body.fundingSource !== undefined, merged.fundingSource);
+      addCol('allocationId', body.allocationId !== undefined, merged.allocationId);
+      addCol('budget', body.budget !== undefined, merged.budget);
+      addCol('keyMessage', body.keyMessage !== undefined, merged.keyMessage);
+      addCol('brandToneNotes', body.brandToneNotes !== undefined, merged.brandToneNotes);
+      addCol('brandGuidelines', body.brandGuidelines !== undefined, merged.brandGuidelines);
+      addCol('creativeBrief', body.creativeBrief !== undefined, merged.creativeBrief);
+      addCol('longformCopy', body.longformCopy !== undefined, merged.longformCopy);
+      addCol('mediaMixJson', body.mediaMixJson !== undefined, merged.mediaMixJson);
+      addCol('audienceTargets', body.audienceTargets !== undefined, merged.audienceTargets);
+      addCol('pmValidatedAt', body.pmValidatedAt !== undefined, merged.pmValidatedAt);
+      addCol('productGroups', body.productGroups !== undefined, merged.productGroups);
+      addCol('creativeFocusGroups', body.creativeFocusGroups !== undefined, merged.creativeFocusGroups);
+      addCol('approvedAssetJobIds', body.approvedAssetJobIds !== undefined, merged.approvedAssetJobIds);
+      addCol('pmAssetsApprovedAt', body.pmAssetsApprovedAt !== undefined, merged.pmAssetsApprovedAt);
+      addCol('approvedAssetSummary', body.approvedAssetSummary !== undefined, merged.approvedAssetSummary);
+      addCol('creativeActive', body.creativeActive !== undefined, merged.creativeActive);
+      addCol('creativeComplete', body.creativeComplete !== undefined, merged.creativeComplete);
+      addCol('messagingTrainingExample', body.messagingTrainingExample !== undefined, merged.messagingTrainingExample);
+      addCol('messagingTrainingExampleAt', body.messagingTrainingExampleAt !== undefined, merged.messagingTrainingExampleAt);
+      addCol('messagingStyleDigestJson', body.messagingStyleDigestJson !== undefined, merged.messagingStyleDigestJson);
+      addCol('cancelled', body.cancelled !== undefined, merged.cancelled);
+      addCol('cancelledAt', body.cancelledAt !== undefined, merged.cancelledAt);
+      addCol('productCode', body.productCode !== undefined, merged.productCode);
+      addCol('productName', body.productName !== undefined, merged.productName);
+      addCol('campaignCode', !existing.campaignCode, merged.campaignCode); // only when newly generated this call — otherwise merged.campaignCode === existing.campaignCode already, a no-op not worth a write
+      addCol('roleStyle', body.roleStyle !== undefined, merged.roleStyle);
+      addCol('keyMessageMode', body.keyMessageMode !== undefined, merged.keyMessageMode);
+      addCol('messageType', body.messageType !== undefined, merged.messageType);
+      addCol('mandatoryPhrase', body.mandatoryPhrase !== undefined, merged.mandatoryPhrase);
+      addCol('startDate', body.startDate !== undefined, merged.startDate);
+      addCol('endDate', body.endDate !== undefined, merged.endDate);
+      addCol('campaignType', body.campaignType !== undefined, merged.campaignType);
+      addCol('campaignTypeDetailsJson', body.campaignTypeDetails !== undefined, merged.campaignTypeDetailsJson);
+      addCol('businessInitiative', body.businessInitiative !== undefined, merged.businessInitiative);
+      addCol('stage', body.stage !== undefined, merged.stage);
+      addCol('segment', body.segment !== undefined, merged.segment);
+      addCol('activityNotesJson', body.activityNotesJson !== undefined, merged.activityNotesJson);
+      addCol('cmoCopywriterBrief', body.cmoCopywriterBrief !== undefined, merged.cmoCopywriterBrief);
+      addCol('cmoAnalyticsBrief', body.cmoAnalyticsBrief !== undefined, merged.cmoAnalyticsBrief);
+      addCol('briefAnalyticsContinuedAt', body.briefAnalyticsContinuedAt !== undefined, merged.briefAnalyticsContinuedAt);
+      addCol('cmoCopywriterBriefEditedByHuman', body.cmoCopywriterBriefEditedByHuman !== undefined, merged.cmoCopywriterBriefEditedByHuman);
+      addCol('cmoAnalyticsBriefEditedByHuman', body.cmoAnalyticsBriefEditedByHuman !== undefined, merged.cmoAnalyticsBriefEditedByHuman);
+      addCol('cmoCopywriterBriefUpstreamHash', body.cmoCopywriterBriefUpstreamHash !== undefined, merged.cmoCopywriterBriefUpstreamHash);
+      addCol('cmoAnalyticsBriefUpstreamHash', body.cmoAnalyticsBriefUpstreamHash !== undefined, merged.cmoAnalyticsBriefUpstreamHash);
+      if (setCols.length){
+        setVals.push(campaignId);
+        db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
+      }
       // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
       // digest pooling, build-order item 2). messagingStyleDigestJson has
       // been stored on the campaign row since round 132be but read by
