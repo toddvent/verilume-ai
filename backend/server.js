@@ -10236,6 +10236,173 @@ function buildMatchMarketSuggestion(topMarkets, eligibility){
   };
 }
 
+// 2026-09-20, per Todd's direct instruction: "scope and build the backend
+// [they] need to support the client specific backend/DB home. Incorporate
+// the rule that all client data is isolated from other clients and must
+// be audit proof should an enterprise account want proof showing how we
+// protect client specific data." This gives the CMO Dashboard's real
+// monthly account report (MONTHLY_KPI_SERIES/SINGLE_POINT_KPIS in
+// portal.html — spend, impressions, visitors, leads, calls, CPV, CPL,
+// cost-per-customer, ROAS, AOV, Net FIT Revenue) — flagged as a real gap
+// in cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md's
+// 2026-09-20 addendum — a real, per-account backend home, so it can
+// finally reach AI-Brain-facing prompts per that same doc's confirmed
+// governing principle ("every metric on the site is also an input the AI
+// Brain should be reading"). Backend only, per Todd's explicit scope
+// ("scope and build the backend") — the frontend Monitor tab still
+// renders its own hardcoded illustrative dataset for now; swapping it to
+// read from this table is a separate, not-yet-scoped follow-up (flagged
+// in that same doc).
+//
+// ISOLATION: every row is scoped by accountId, same convention as every
+// other account-scoped table in this file (FOREIGN KEY, always filtered
+// by accountId in every query, requireAccount()/requireAccountOrAdmin()
+// gating every route that touches it — see the endpoints below).
+//
+// AUDIT-PROOF: account_data_access_log (below) is a new, general-purpose
+// append-only log of who touched which account's data, when, and —
+// specifically for isolation proof — every time a session authenticated
+// for one account tried to reach a DIFFERENT account's data and was
+// denied (requireAccountAudited()'s 'denied_cross_account' rows). The AI
+// Brain's own reads are logged too (actorType 'ai_brain', from
+// buildAccountMonthlyKpiContextForPrompt() below), so there's a real
+// record of the AI Brain having read this account's data, not just a
+// human. GET /api/ops/accounts/:id/kpi-audit-log (ADMIN_API_TOKEN-gated,
+// added below near the other ops endpoints) is what an enterprise account
+// asking "prove our data is isolated" would actually be handed. This log
+// table is intentionally general (resource is a free string) so it can be
+// reused for other account-scoped tables later without a schema change —
+// flagged as a natural next step, not done here to keep this round's
+// change bounded to the one new data surface Todd asked for.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_kpi_metrics (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    metricKey TEXT NOT NULL,
+    label TEXT NOT NULL,
+    fmt TEXT NOT NULL,
+    period TEXT NOT NULL,
+    value REAL,
+    yoyLabel TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    updatedByMemberId TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId),
+    UNIQUE(accountId, metricKey, period)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_data_access_log (
+    id TEXT PRIMARY KEY,
+    accountId TEXT,
+    resource TEXT NOT NULL,
+    action TEXT NOT NULL,
+    actorType TEXT NOT NULL,
+    actorId TEXT,
+    actorAccountId TEXT,
+    recordCount INTEGER,
+    requestPath TEXT,
+    detail TEXT,
+    occurredAt TEXT NOT NULL
+  );
+`);
+// This table's `period` column is either 'YYYY-MM' (a real month of real
+// monthly data) or the literal 'current' (a single-point-in-time stat
+// card, e.g. AOV/Net FIT Revenue — same distinction MONTHLY_KPI_SERIES vs
+// SINGLE_POINT_KPIS already draws in portal.html).
+const ACCOUNT_KPI_PERIOD_RE = /^(current|\d{4}-(0[1-9]|1[0-2]))$/;
+const ACCOUNT_KPI_FMT_VALUES = ['num', 'usd2', 'money000', 'moneyRaw000'];
+
+// Appends one row to the audit trail. Never throws — a logging failure
+// must not take down the real request it's describing; it's caught and
+// warned instead. `accountId` is the account whose data this touched (may
+// be null for a rejected request that never resolved to a real account);
+// `actorAccountId` is the account the caller's OWN session/credential
+// actually belongs to — when the two differ, that IS a cross-account
+// access attempt, and the enterprise audit report highlights it
+// specifically.
+function logAccountDataAccess(entry){
+  try {
+    db.prepare(`INSERT INTO account_data_access_log (id, accountId, resource, action, actorType, actorId, actorAccountId, recordCount, requestPath, detail, occurredAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(generateId('ADAL'), entry.accountId || null, entry.resource, entry.action, entry.actorType, entry.actorId || null, entry.actorAccountId || null, (entry.recordCount != null ? entry.recordCount : null), entry.requestPath || null, entry.detail ? JSON.stringify(entry.detail) : null, new Date().toISOString());
+  } catch (e){
+    console.warn('[logAccountDataAccess] failed to write audit row (request proceeds regardless):', e.message);
+  }
+}
+
+// requireAccountAudited() — same contract as requireAccount() (returns
+// true/false, sends the 401 itself), but additionally writes a
+// 'denied_cross_account' audit row whenever a REAL, valid session exists
+// but belongs to a different account than the one being requested — the
+// literal proof-of-isolation an enterprise auditor would ask for: not
+// just "we filter by accountId" as a design claim, but a durable record
+// of every time that filter actually stopped a real cross-account
+// request. A missing/expired session (no session at all) is not a cross-
+// account attempt and isn't logged here — requireAccount()'s own 401
+// covers that case identically either way.
+function requireAccountAudited(req, res, accountId, resource, requestPath){
+  const header = req.headers['authorization'] || '';
+  const match = header.match(/^Bearer\s+(.+)$/);
+  const token = match ? match[1].trim() : null;
+  const session = token ? db.prepare('SELECT * FROM sessions WHERE token = ?').get(token) : null;
+  if (session && session.accountId && session.accountId !== accountId){
+    logAccountDataAccess({ accountId, resource, action: 'denied_cross_account', actorType: 'member', actorId: session.memberId || null, actorAccountId: session.accountId, requestPath });
+  }
+  return requireAccount(req, res, accountId);
+}
+// Admin-token counterpart, same shape as requireAccountOrAdmin() above —
+// a valid staff token bypasses the session check entirely (staff touching
+// any account is expected, not a cross-account violation to flag), so
+// only the session path below goes through the audited check.
+function requireAccountOrAdminAudited(req, res, accountId, resource, requestPath){
+  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  return requireAccountAudited(req, res, accountId, resource, requestPath);
+}
+
+// Real, per-account backend home for the CMO Dashboard's monthly account
+// report, so it can finally reach an AI-Brain-facing prompt (see this
+// function's caller in ai-brain-reply below). Same "say so plainly when
+// data is missing" discipline as buildAccountBudgetAndPerformanceContext-
+// ForPrompt/buildAccountTopMarketsContextForPrompt above — an account
+// with nothing seeded here yet gets an honest "(no data on file)" block,
+// never a silently-invented one. Every read through this function is
+// itself logged as an 'ai_brain' actor row in account_data_access_log —
+// the same audit trail a human read gets via GET .../kpi-metrics below,
+// so there's a real record of the AI Brain itself having read this
+// account's data.
+function buildAccountMonthlyKpiContextForPrompt(accountId){
+  const rows = db.prepare(`SELECT metricKey, label, fmt, period, value, yoyLabel FROM account_kpi_metrics WHERE accountId = ? ORDER BY metricKey ASC, period ASC`).all(accountId);
+  logAccountDataAccess({ accountId, resource: 'account_kpi_metrics', action: 'read', actorType: 'ai_brain', actorId: 'ai_brain_reply', recordCount: rows.length });
+  if (!rows.length){
+    return { promptBlock: '(no account-level monthly KPI report on file for this account yet — Account Management can load one)', hasMonthlyKpiData: false };
+  }
+  const byMetric = {};
+  rows.forEach(r => { (byMetric[r.metricKey] = byMetric[r.metricKey] || { label: r.label, fmt: r.fmt, points: [] }).points.push(r); });
+  const lines = Object.values(byMetric).map(m => {
+    const monthly = m.points.filter(p => p.period !== 'current').sort((a, b) => a.period.localeCompare(b.period));
+    const single = m.points.find(p => p.period === 'current');
+    if (monthly.length){
+      const latest = monthly[monthly.length - 1];
+      const trend = monthly.map(p => fmtAccountKpiValueForPrompt(p.value, m.fmt)).join(' -> ');
+      return `- ${m.label}: latest ${fmtAccountKpiValueForPrompt(latest.value, m.fmt)} (${latest.period}); trend ${trend}`;
+    }
+    if (single) return `- ${m.label}: ${fmtAccountKpiValueForPrompt(single.value, m.fmt)}${single.yoyLabel ? ` (${single.yoyLabel})` : ''}`;
+    return null;
+  }).filter(Boolean);
+  return {
+    promptBlock: `THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT (from Account Management's account-level report, not this one campaign — use for account-wide trend context, e.g. whether CPV/CPL/ROAS are improving or worsening):\n${lines.join('\n')}`,
+    hasMonthlyKpiData: true
+  };
+}
+function fmtAccountKpiValueForPrompt(v, fmt){
+  if (v === null || v === undefined) return '—';
+  if (fmt === 'usd2') return `$${Number(v).toFixed(2)}`;
+  if (fmt === 'money000') return `$${Math.round(Number(v)).toLocaleString()}K`;
+  if (fmt === 'moneyRaw000') return `$${Math.round(Number(v) / 1000).toLocaleString()}K`;
+  return Number(v).toLocaleString();
+}
+
 // Non-Working Media's own ledger — raw category, exactly as the client
 // labeled it, with whatever monthly figures or single total their file
 // gave. No Verilume-category mapping, no suggestion, no Exceptions —
@@ -16773,6 +16940,40 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, summary);
     }
 
+    // GET /api/ops/accounts/:id/kpi-audit-log — 2026-09-20, per Todd's
+    // direct instruction: "must be audit proof should an enterprise
+    // account want proof showing how we protect client specific data."
+    // This is the literal document that request is answered with: every
+    // logged read/write of this account's KPI metrics (human and AI
+    // Brain alike), plus — the actual isolation proof, not just a design
+    // claim — every real attempt by a session belonging to a DIFFERENT
+    // account to reach this account's data, each one recorded as
+    // 'denied_cross_account' by requireAccountAudited() and never
+    // fulfilled. Staff-only (ADMIN_API_TOKEN/X-Admin-Token), same gate as
+    // every other ops endpoint on this file — an account's own session
+    // does not get to read its own audit log through this route (there's
+    // nothing sensitive about another account's data IN it, since it's
+    // pre-scoped to one accountId, but it's an internal/compliance
+    // artifact, requested and handed over by staff, not a self-service
+    // account feature).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'kpi-audit-log'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = decodeURIComponent(parts[3]);
+      const account = db.prepare('SELECT accountId, company FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const rows = db.prepare(`SELECT id, resource, action, actorType, actorId, actorAccountId, recordCount, requestPath, detail, occurredAt FROM account_data_access_log WHERE accountId = ? ORDER BY occurredAt DESC LIMIT 500`).all(accountId);
+      const deniedCrossAccountAttempts = rows.filter(r => r.action === 'denied_cross_account');
+      return sendJson(res, 200, {
+        accountId, company: account.company,
+        totalLoggedEvents: rows.length,
+        deniedCrossAccountAttemptCount: deniedCrossAccountAttempts.length,
+        events: rows.map(r => ({ ...r, detail: r.detail ? JSON.parse(r.detail) : null })),
+        note: rows.length >= 500 ? 'showing the 500 most recent events — the full trail is retained in account_data_access_log' : null
+      });
+    }
+
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'integration-status'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
@@ -18248,6 +18449,74 @@ async function handleRequest(req, res) {
       db.prepare(`INSERT INTO ai_brain_contribution_log (id, contributionId, accountId, status, reason, decidedBy, decidedAt, qualityTag, qualityRating) VALUES (?,?,?,?,?,?,?,?,?)`)
         .run(generateId('ABCDEC'), contributionId, accountId, body.status, reason, decidedBy, now, qualityTag, qualityRating);
       return sendJson(res, 200, { contributionId, status: body.status, reason, decidedBy, decidedAt: now, qualityTag, qualityRating });
+    }
+
+    // GET /api/accounts/:id/kpi-metrics — 2026-09-20, per Todd's direct
+    // instruction to give the CMO Dashboard's real monthly account report
+    // a real per-account backend home (see account_kpi_metrics's own
+    // comment above). Returns the same monthly-series/single-point shape
+    // the frontend's hardcoded MONTHLY_KPI_SERIES/SINGLE_POINT_KPIS
+    // already use, so swapping the Monitor tab over to this endpoint later
+    // is a data-source change, not a reshape. requireAccountAudited() —
+    // not the plain requireAccount() — so a real cross-account attempt on
+    // this endpoint leaves a 'denied_cross_account' row in the audit log,
+    // and every successful read is logged too.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'kpi-metrics'){
+      const accountId = decodeURIComponent(parts[2]);
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      if (!requireAccountOrAdminAudited(req, res, accountId, 'account_kpi_metrics', req.url)) return;
+      const rows = db.prepare(`SELECT metricKey, label, fmt, period, value, yoyLabel, source, updatedAt FROM account_kpi_metrics WHERE accountId = ? ORDER BY metricKey ASC, period ASC`).all(accountId);
+      const session = isStaffCaller ? null : authenticate(req);
+      logAccountDataAccess({ accountId, resource: 'account_kpi_metrics', action: 'read', actorType: isStaffCaller ? 'admin' : 'member', actorId: session ? (session.memberId || null) : null, actorAccountId: session ? session.accountId : accountId, recordCount: rows.length, requestPath: req.url });
+      const monthly = {};
+      const singlePoint = {};
+      rows.forEach(r => {
+        if (r.period === 'current'){
+          singlePoint[r.metricKey] = { label: r.label, fmt: r.fmt, value: r.value, yoy: r.yoyLabel, source: r.source, updatedAt: r.updatedAt };
+        } else {
+          const entry = (monthly[r.metricKey] = monthly[r.metricKey] || { label: r.label, fmt: r.fmt, points: [] });
+          entry.points.push({ period: r.period, value: r.value, source: r.source, updatedAt: r.updatedAt });
+        }
+      });
+      return sendJson(res, 200, { monthly, singlePoint, hasData: rows.length > 0 });
+    }
+
+    // POST /api/accounts/:id/kpi-metrics — same round. Upserts one or more
+    // metric rows for this account (real ON CONFLICT(accountId, metricKey,
+    // period) upsert, so re-loading the same month's report is idempotent,
+    // never a duplicate row). Session (this account only) or the
+    // X-Admin-Token staff path (Account Management's own upload tooling,
+    // same convention as every other admin-token-gated write elsewhere in
+    // this file) — either way requireAccountOrAdminAudited() logs a
+    // cross-account denial if a session for a DIFFERENT account tries this
+    // accountId, and every successful write is logged too, with the real
+    // row count and (for a session write) which team member did it.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'kpi-metrics'){
+      const accountId = decodeURIComponent(parts[2]);
+      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      if (!requireAccountOrAdminAudited(req, res, accountId, 'account_kpi_metrics', req.url)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const metrics = Array.isArray(body.metrics) ? body.metrics : [];
+      if (!metrics.length) return sendJson(res, 400, { error: 'metrics must be a non-empty array of { metricKey, label, fmt, period, value } rows' });
+      for (const m of metrics){
+        if (!m || typeof m.metricKey !== 'string' || !m.metricKey.trim()) return sendJson(res, 400, { error: 'every metric row needs a non-empty metricKey' });
+        if (typeof m.label !== 'string' || !m.label.trim()) return sendJson(res, 400, { error: `metric "${m.metricKey}" needs a label` });
+        if (!ACCOUNT_KPI_FMT_VALUES.includes(m.fmt)) return sendJson(res, 400, { error: `metric "${m.metricKey}" fmt must be one of: ${ACCOUNT_KPI_FMT_VALUES.join(', ')}` });
+        if (typeof m.period !== 'string' || !ACCOUNT_KPI_PERIOD_RE.test(m.period)) return sendJson(res, 400, { error: `metric "${m.metricKey}" period must be "current" or "YYYY-MM"` });
+        if (m.value !== null && m.value !== undefined && typeof m.value !== 'number') return sendJson(res, 400, { error: `metric "${m.metricKey}" value must be a number or null` });
+      }
+      const session = isStaffCaller ? null : authenticate(req);
+      const now = new Date().toISOString();
+      const source = (typeof body.source === 'string' && body.source.trim()) ? body.source.trim() : (isStaffCaller ? 'account_management_upload' : 'manual');
+      const upsert = db.prepare(`INSERT INTO account_kpi_metrics (id, accountId, metricKey, label, fmt, period, value, yoyLabel, source, createdAt, updatedAt, updatedByMemberId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(accountId, metricKey, period) DO UPDATE SET label = excluded.label, fmt = excluded.fmt, value = excluded.value, yoyLabel = excluded.yoyLabel, source = excluded.source, updatedAt = excluded.updatedAt, updatedByMemberId = excluded.updatedByMemberId`);
+      metrics.forEach(m => {
+        upsert.run(generateId('AKM'), accountId, m.metricKey.trim(), m.label.trim(), m.fmt, m.period, (m.value === undefined ? null : m.value), (typeof m.yoyLabel === 'string' && m.yoyLabel.trim()) ? m.yoyLabel.trim() : null, source, now, now, session ? (session.memberId || null) : null);
+      });
+      logAccountDataAccess({ accountId, resource: 'account_kpi_metrics', action: 'write', actorType: isStaffCaller ? 'admin' : 'member', actorId: session ? (session.memberId || null) : null, actorAccountId: session ? session.accountId : accountId, recordCount: metrics.length, requestPath: req.url, detail: { source } });
+      return sendJson(res, 200, { saved: metrics.length, source });
     }
 
     // GET /api/accounts/:id/voice-decisions — 2026-09-12, AI Brain
@@ -22876,13 +23145,20 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         // via topMarkets — that gap was already closed 2026-09-20 earlier
         // today (see buildAccountTopMarketsContextForPrompt's own comment);
         // this closes the remaining two.
-        const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(campaign.accountId);
+        const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
         const { promptBlock: acctBudgetPerfBlock, hasPerformanceData } = buildAccountBudgetAndPerformanceContextForPrompt(campaign.accountId, campaign);
         const audienceLabel = account ? humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) : '';
         const wealthLabel = account ? humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) : '';
         const segmentationBlock = `THIS ACCOUNT'S TARGETING DATA (from its Verilume assessment — already loaded, supports segmented recommendations without asking the team for it):
 - Target generation(s): ${audienceLabel || '(not set — assume a broad, general audience)'}
 - Net-worth / wealth tier(s): ${wealthLabel || '(not set — assume a general, mixed-income audience)'}`;
+        // 2026-09-20 — per the governing principle recorded in
+        // cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md
+        // ("every metric on the site is also an input the AI Brain should
+        // be reading"): the CMO Dashboard's real monthly account report
+        // now has a real per-account backend home (account_kpi_metrics —
+        // see its own comment above) and is read here too.
+        const { promptBlock: monthlyKpiBlock } = buildAccountMonthlyKpiContextForPrompt(campaign.accountId);
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
         const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
         // 2026-09-16 — `id` added to this SELECT: per the real
@@ -22978,6 +23254,8 @@ ${acctBudgetPerfBlock}
 
 ${segmentationBlock}
 
+${monthlyKpiBlock}
+
 CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
@@ -22985,7 +23263,7 @@ The team just said: "${message}"
 
 Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above).
 
-BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
+BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report above (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
         const AI_BRAIN_REPLY_SCHEMA = {
