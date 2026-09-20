@@ -21095,7 +21095,11 @@ Submit your response via the campaign_intake_turn tool.`;
       // real, explicit block per that instruction, not just a warning.
       const missingForGeneration = [];
       if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForGeneration.push('Campaign Type');
-      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForGeneration.push('Business Initiative');
+      // 2026-09-20 — 'Campaign Objective' is a pure UI relabel of this same
+      // businessInitiative field/column (see the ensureColumn() comment
+      // above and BUSINESS_INITIATIVE_REGISTRY) — only the wording shown to
+      // the user changed here, not the underlying data.
+      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForGeneration.push('Campaign Objective');
       if (missingForGeneration.length){
         return sendJson(res, 400, {
           error: `Set ${missingForGeneration.join(' and ')} for this campaign before generating AI copy — the AI Brain needs both to write on-strategy copy.`,
@@ -24844,7 +24848,9 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // recommend campaign copy" instruction.
       const missingForContest = [];
       if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForContest.push('Campaign Type');
-      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForContest.push('Business Initiative');
+      // 2026-09-20 — same UI relabel as messaging-ai-draft above ('Campaign
+      // Objective' is the businessInitiative field's display name only).
+      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForContest.push('Campaign Objective');
       if (missingForContest.length){
         return sendJson(res, 400, {
           error: `Set ${missingForContest.join(' and ')} for this campaign before running the copy contest — the AI Brain needs both to write on-strategy candidates.`,
