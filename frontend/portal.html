@@ -1845,21 +1845,37 @@
      once). */
   #cmpCreativeLeft{display:flex;flex-direction:column;gap:18px;}
   #cmpCreativeLeft > .module.cmp-stage{margin-bottom:0;}
-  /* 2026-09-20, per Creative-Mobile.dc.html — the mobile artboard replaces
-     the right-side Collaboration Center column with a bottom-docked AI
-     Brain bar. Scoped to #cmpCreativePanel only — the Objectives/AI Brain
-     Recommendation overlays keep their own existing
+  /* 2026-09-20 — Trafficking/Analysis workspaces (cmpOpenTraffickingWorkspace()/
+     cmpOpenAnalysisWorkspace()) stack their real-data cards with the same
+     18px gap as Creative's #cmpCreativeLeft above — same wf-card rhythm
+     Trafficking-Desktop.dc.html/Analysis-Desktop.dc.html both use. */
+  #cmpTraffickingLeft, #cmpAnalysisLeft{display:flex;flex-direction:column;gap:18px;}
+  #cmpTraffickingLeft > .module.cmp-stage, #cmpAnalysisLeft > .module.cmp-stage{margin-bottom:0;}
+  /* 2026-09-20, per Creative-Mobile.dc.html (and now Trafficking-Mobile.dc.html/
+     Analysis-Mobile.dc.html, same bottom-bar convention) — the mobile
+     artboard replaces the right-side Collaboration Center column with a
+     bottom-docked AI Brain bar. Scoped to these 3 panels only — the
+     Objectives/AI Brain Recommendation overlays keep their own existing
      stack-the-panel-below-the-content behavior at 1000px unchanged. */
   .cmp-creative-mobile-ai-bar{display:none;}
   @media (max-width:600px){
-    #cmpCreativePanel .cmp-pitch-body{grid-template-columns:1fr;}
-    #cmpCreativePanel .cmp-workspace-collab{display:none;}
-    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
+    #cmpCreativePanel .cmp-pitch-body, #cmpTraffickingPanel .cmp-pitch-body, #cmpAnalysisPanel .cmp-pitch-body{grid-template-columns:1fr;}
+    #cmpCreativePanel .cmp-workspace-collab, #cmpTraffickingPanel .cmp-workspace-collab, #cmpAnalysisPanel .cmp-workspace-collab{display:none;}
+    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab, #cmpTraffickingPanel.mobile-collab-open .cmp-workspace-collab, #cmpAnalysisPanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
     .cmp-creative-mobile-ai-bar{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:12px 16px;background:var(--white);border-top:1px solid var(--line);cursor:pointer;}
     .cmp-creative-mobile-ai-avatar{width:34px;height:34px;border-radius:50%;background:#1E2761;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
     .cmp-creative-mobile-ai-text{flex:1;font-size:0.8125rem;color:var(--muted);}
     .cmp-creative-mobile-ai-dot{width:8px;height:8px;border-radius:50%;background:#1E9E5A;flex-shrink:0;}
   }
+  /* Trafficking/Analysis-specific bits: QR/UTM + Actuals stat tiles (same
+     wf-stat treatment as Creative's own cards) and the Media Mix meter list
+     reuses .eff-meter (cmpRecoMeterRows()) unchanged. */
+  .cmp-wf-stat-row{display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;}
+  .cmp-wf-stat{flex:1;min-width:120px;background:var(--paper-dim);border:1px solid var(--line-hairline);border-radius:12px;padding:14px 16px;}
+  .cmp-wf-stat-label{font-size:0.6875rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;}
+  .cmp-wf-stat-value{font-size:1.25rem;font-weight:700;color:var(--ink);margin-top:4px;}
+  .cmp-wf-qa-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;}
+  .cmp-wf-qa-item{display:flex;align-items:center;gap:8px;font-size:0.8125rem;color:var(--ink);}
   .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
   .cmp-pitch-right-body{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;}
   .cmp-pitch-right-input{border-top:1px solid var(--line);padding:14px 22px 18px;background:var(--white);}
@@ -8168,6 +8184,113 @@
       </div>
     </div>
 
+    <!-- 2026-09-20 — Trafficking full-screen workspace, per
+         Trafficking-Desktop.dc.html/Trafficking-Mobile.dc.html, same shell
+         as the Creative workspace above. Unlike Creative, the wireframe's 3
+         cards (QR Code & UTM, QA Rating, Send to Trafficking Team) aren't
+         all one stable, already-standalone real DOM node: QR/UTM and QA
+         Rating today only exist as content inside the accordion's
+         dynamically-rebuilt #cmpStage-qrutm/#cmpStage-qa stubs (rebuilt via
+         innerHTML on every renderCmpDownstreamStages() call — unsafe to
+         relocate the way #cmpStage-messaging/#cmpStage-copyVersions were,
+         since a later rebuild would silently orphan the moved copy). So
+         #cmpTraffickingQrUtm/#cmpTraffickingQa are fresh containers, rendered
+         by cmpRenderTraffickingQrUtm()/cmpRenderTraffickingQa() — same real
+         state and the same real functions (cmpRunUtmLinkTest(),
+         cmpApproveQa(), computeStageStatuses()) the accordion stub already
+         calls, just mounted here instead of duplicated. "Send to Trafficking
+         Team" IS a stable real card (#campaignTraffickingCard, Round 73) —
+         that one relocates physically, same pattern as Creative's
+         #campaignCreativeJobsCard. -->
+    <div class="cmp-pitch-overlay" id="cmpTraffickingOverlay" onclick="cmpCloseTraffickingWorkspace()"></div>
+    <div class="cmp-pitch-panel" id="cmpTraffickingPanel">
+      <div class="cch-panel-mount" id="cmpTraffickingHeaderMount"></div>
+      <div class="cmp-pitch-subrow">
+        <h2>Trafficking</h2>
+        <div class="cmp-pitch-subrow-right">
+          <span class="cmp-pitch-subrow-badge" id="cmpTraffickingStatusBadge">Trafficking</span>
+          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseTraffickingWorkspace()" aria-label="Close" title="Close">✕</button>
+        </div>
+      </div>
+      <div id="cmpTraffickingBreadcrumb"></div>
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left" id="cmpTraffickingLeft">
+          <div class="module cmp-stage open" id="cmpTraffickingQrUtmCard" style="overflow:visible;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+              <h2 style="margin:0 0 4px;">QR Code &amp; UTM</h2>
+              <div id="cmpTraffickingQrUtm"></div>
+            </div>
+          </div>
+          <div class="module cmp-stage open" id="cmpTraffickingQaCard" style="overflow:visible;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+              <h2 style="margin:0 0 14px;">QA Rating</h2>
+              <div id="cmpTraffickingQa"></div>
+            </div>
+          </div>
+        </div>
+        <div class="cmp-workspace-collab" id="cmpTraffickingCollabMount"></div>
+      </div>
+      <div class="cmp-creative-mobile-ai-bar" id="cmpTraffickingMobileAiBar" onclick="cmpToggleTraffickingMobileCollab()">
+        <div class="cmp-creative-mobile-ai-avatar">AI</div>
+        <div class="cmp-creative-mobile-ai-text" id="cmpTraffickingMobileAiText">AI Brain live — tap to open the Collaboration Center</div>
+        <div class="cmp-creative-mobile-ai-dot"></div>
+      </div>
+    </div>
+
+    <!-- 2026-09-20 — Analysis full-screen workspace, per
+         Analysis-Desktop.dc.html/Analysis-Mobile.dc.html, same shell again.
+         In Market status + Actuals vs. Plan are freshly rendered from real
+         campaign fields (c.status/startDate/endDate/actualSpend/budget/
+         actualImpressions/plannedImpressions/actualConversions/kpiGoal) —
+         there's no standalone stable DOM node for these today (they're
+         inline text inside the #cmpStage-market/#cmpStage-analysis
+         accordion stubs, same rebuild-on-every-render issue as Trafficking's
+         QR/UTM and QA above). Media Mix by Loop Stage reuses the real,
+         already-shipped stageTotals rollup (cmpRecoLoopStageRows()) and the
+         real chart renderer (cmpRecoMeterRows()) the Budget & Recommendation
+         screen's own Loop Stage Distribution chart uses — same data, same
+         component, just mounted here for one campaign's read-out. -->
+    <div class="cmp-pitch-overlay" id="cmpAnalysisOverlay" onclick="cmpCloseAnalysisWorkspace()"></div>
+    <div class="cmp-pitch-panel" id="cmpAnalysisPanel">
+      <div class="cch-panel-mount" id="cmpAnalysisHeaderMount"></div>
+      <div class="cmp-pitch-subrow">
+        <h2>Analysis</h2>
+        <div class="cmp-pitch-subrow-right">
+          <span class="cmp-pitch-subrow-badge" id="cmpAnalysisStatusBadge">Analysis</span>
+          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseAnalysisWorkspace()" aria-label="Close" title="Close">✕</button>
+        </div>
+      </div>
+      <div id="cmpAnalysisBreadcrumb"></div>
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left" id="cmpAnalysisLeft">
+          <div class="module cmp-stage open" id="cmpAnalysisMarketCard" style="overflow:visible;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+              <div id="cmpAnalysisInMarket"></div>
+            </div>
+          </div>
+          <div class="module cmp-stage open" id="cmpAnalysisActualsCard" style="overflow:visible;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+              <h2 style="margin:0 0 14px;">Actuals vs. Plan</h2>
+              <div id="cmpAnalysisActuals"></div>
+            </div>
+          </div>
+          <div class="module cmp-stage open" id="cmpAnalysisMixCard" style="overflow:visible;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+              <h2 style="margin:0 0 4px;">Media Mix by Loop Stage</h2>
+              <p class="lede" style="margin:0 0 16px;">This campaign's real mix — a channel line's own stage, not one guess for the whole plan.</p>
+              <div id="cmpAnalysisMix"></div>
+            </div>
+          </div>
+        </div>
+        <div class="cmp-workspace-collab" id="cmpAnalysisCollabMount"></div>
+      </div>
+      <div class="cmp-creative-mobile-ai-bar" id="cmpAnalysisMobileAiBar" onclick="cmpToggleAnalysisMobileCollab()">
+        <div class="cmp-creative-mobile-ai-avatar">AI</div>
+        <div class="cmp-creative-mobile-ai-text" id="cmpAnalysisMobileAiText">AI Brain live — tap to open the Collaboration Center</div>
+        <div class="cmp-creative-mobile-ai-dot"></div>
+      </div>
+    </div>
+
     <div class="cmp-layout" id="cmpLayout">
       <div class="cmp-rail" id="cmpStageRail"></div>
       <div class="cmp-stages" id="newCampaignForm">
@@ -12576,6 +12699,20 @@ function cmpWorkspaceCardOpen(cardKey){
     cmpOpenCreativeWorkspace();
     return;
   }
+  // 2026-09-20 — same routing fix, now for Trafficking/Analysis: each has
+  // its own full-screen workspace (cmpOpenTraffickingWorkspace()/
+  // cmpOpenAnalysisWorkspace()), built to the Trafficking-Desktop.dc.html/
+  // Trafficking-Mobile.dc.html and Analysis-Desktop.dc.html/
+  // Analysis-Mobile.dc.html wireframes, instead of landing on the bare
+  // accordion stubs.
+  if (cardKey === 'trafficking' && cmpRailLoadedCampaign() && typeof cmpOpenTraffickingWorkspace === 'function'){
+    cmpOpenTraffickingWorkspace();
+    return;
+  }
+  if (cardKey === 'analysis' && cmpRailLoadedCampaign() && typeof cmpOpenAnalysisWorkspace === 'function'){
+    cmpOpenAnalysisWorkspace();
+    return;
+  }
   openCmpStage(cmpWorkspaceCardOpenKey(card));
 }
 // 2026-09-16 — Workspace breadcrumb, per direct instruction: "Breadcrumb
@@ -12588,7 +12725,7 @@ function cmpWorkspaceCardOpen(cardKey){
 // paused, not cancelled. A built step's pill routes through the exact
 // same cmpWorkspaceCardOpen() router the Workspace Hub cards already use,
 // so this is never a second, diverging navigation path.
-const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'creative']);
+const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'creative', 'trafficking', 'analysis']);
 function cmpRenderWorkspaceBreadcrumb(activeKey){
   return `<div class="cmp-breadcrumb">${CMP_WORKSPACE_CARDS.map(card => {
     const built = CMP_BREADCRUMB_BUILT_CARDS.has(card.key);
@@ -12605,6 +12742,8 @@ function cmpBreadcrumbGoTo(cardKey){
   cmpCloseObjectivesIntake();
   cmpCloseRecommendationPitch();
   if (typeof cmpCloseCreativeWorkspace === 'function') cmpCloseCreativeWorkspace();
+  if (typeof cmpCloseTraffickingWorkspace === 'function') cmpCloseTraffickingWorkspace();
+  if (typeof cmpCloseAnalysisWorkspace === 'function') cmpCloseAnalysisWorkspace();
   cmpWorkspaceCardOpen(cardKey);
 }
 // 2026-09-20, per Todd's direct instruction: "We moved the Ask Verilume
@@ -38386,6 +38525,324 @@ function cmpToggleCreativeMobileCollab(){
   if (panel) panel.classList.toggle('mobile-collab-open');
 }
 
+// ============================================================
+// 2026-09-20 — Trafficking full-screen workspace (see the overlay markup's
+// own comment for why QR/UTM + QA are freshly rendered here rather than
+// relocated, and why "Send to Trafficking Team" IS relocated).
+// ============================================================
+let cmpTraffickingWorkspaceBookmark = null;
+// Same real fields/state the accordion's qrBody already used (see
+// renderCmpDownstreamStages()'s own qrBody comment) — state.utmMasterElements,
+// c.projects' trackingUrl, cmpUtmLinkTest — just rendered as the wireframe's
+// 3-stat block instead of one paragraph, and calling the same real
+// cmpRunUtmLinkTest() (POST /api/utm-links/validate) rather than a second,
+// duplicate test implementation.
+function cmpRenderTraffickingQrUtm(campaign){
+  const el = document.getElementById('cmpTraffickingQrUtm');
+  if (!el || !campaign) return;
+  const elementCount = (state.utmMasterElements || []).length;
+  const jobsWithTracking = (campaign.projects || []).filter(p => p.trackingUrl);
+  const totalJobs = (campaign.projects || []).length;
+  const test = cmpUtmLinkTest.campaignId === campaign.id ? cmpUtmLinkTest : null;
+  const testStatLabel = test && test.results ? `${test.results.filter(r => r.ok).length} ✓ / ${test.results.filter(r => !r.ok).length} ✕` : '—';
+  el.innerHTML = `
+    <p class="lede" style="margin-bottom:16px;">${elementCount ? `This account's Master UTM Configuration uses ${elementCount} element${elementCount === 1 ? '' : 's'}.` : 'No Master UTM Configuration set for this account yet.'} Built from this account's Master UTM Configuration — test every link before it ships.</p>
+    <div class="cmp-wf-stat-row">
+      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">UTM elements configured</div><div class="cmp-wf-stat-value">${elementCount}</div></div>
+      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Tracking links built</div><div class="cmp-wf-stat-value">${jobsWithTracking.length} of ${totalJobs}</div></div>
+      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Last test run</div><div class="cmp-wf-stat-value">${testStatLabel}</div></div>
+    </div>
+    ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : `<p class="cmp-stage-note" style="padding:0;">No tracking links built for this campaign yet.</p>`}
+    <a class="flink" onclick="openExperienceSubWorkstream('marketingOps')">Build/manage tracking links in Marketing Ops →</a>`;
+}
+// Wraps the real cmpRunUtmLinkTest() (defined above, still the single real
+// implementation/endpoint) so this workspace's own stat block refreshes too
+// — cmpRunUtmLinkTest() only knows how to refresh the accordion stub
+// (renderCmpDownstreamStages()), which sits behind this overlay and isn't
+// visible while it's open.
+async function cmpTraffickingRunUtmLinkTest(){
+  await cmpRunUtmLinkTest();
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderTraffickingQrUtm(campaign);
+}
+// Same real Marketing Functions/Creative/QA & Approval statuses + the same
+// real cmpApproveQa() gate the accordion's qaBody already uses.
+function cmpRenderTraffickingQa(campaign){
+  const el = document.getElementById('cmpTraffickingQa');
+  if (!el || !campaign) return;
+  const stages = computeStageStatuses(campaign);
+  const st = key => stages.find(s => s.key === key);
+  const fn = st('functions'), cr = st('creative'), qa = st('qa');
+  const rowItem = (label, status) => `<div class="cmp-wf-qa-item"><span class="wf-badge-dot" style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:var(--radius-pill);background:${status === 'complete' ? '#E7F5EC' : '#F5F5F7'};color:${status === 'complete' ? '#1E7A45' : '#6E6E73'};">${status === 'complete' ? '✓' : '—'}</span> ${escapeHtml(label)}: ${escapeHtml(STAGE_STATUS_LABEL[status] || status)}</div>`;
+  el.innerHTML = `
+    <div class="cmp-wf-qa-row">
+      ${rowItem('Marketing Functions', fn.status)}
+      ${rowItem('Creative', cr.status)}
+      ${rowItem('QA & Approval', qa.status)}
+    </div>
+    ${campaign.qaApproved
+      ? `<p class="cmp-stage-note" style="padding:0;">QA &amp; Approval is marked complete for this campaign.</p>`
+      : `<button type="button" class="btn-primary" onclick="cmpTraffickingApproveQa('${campaign.id}')">Mark QA &amp; Approval complete →</button>
+         <p class="cmp-stage-note" style="padding:8px 0 0;">Requires Marketing Functions and Creative both Complete first — same check as the campaign's own detail page.</p>`}`;
+}
+// Wraps the real cmpApproveQa() (server-gated on Functions+Creative both
+// Complete, same as the accordion's qaBody and the campaign detail page) so
+// this workspace's own QA card refreshes too.
+async function cmpTraffickingApproveQa(campaignId){
+  await cmpApproveQa(campaignId);
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign){
+    cmpRenderTraffickingQa(campaign);
+    cmpRenderTraffickingWorkspaceStatusBadge(campaign);
+  }
+}
+function cmpRenderTraffickingWorkspaceStatusBadge(campaign){
+  const el = document.getElementById('cmpTraffickingStatusBadge');
+  if (!el) return;
+  const card = CMP_WORKSPACE_CARDS.find(c => c.key === 'trafficking');
+  const status = card ? cmpWorkspaceCardStatus(card) : 'not-started';
+  el.className = `stage-status ${status}`;
+  el.textContent = STAGE_STATUS_LABEL[status] || 'Trafficking';
+}
+function cmpOpenTraffickingWorkspace(){
+  const campaign = cmpRailLoadedCampaign();
+  const overlay = document.getElementById('cmpTraffickingOverlay');
+  const panel = document.getElementById('cmpTraffickingPanel');
+  const left = document.getElementById('cmpTraffickingLeft');
+  if (!campaign || !overlay || !panel || !left) return;
+  overlay.classList.add('open');
+  panel.classList.add('open');
+  panel.classList.remove('mobile-collab-open');
+  document.body.style.overflow = 'hidden';
+  cmpMountCampaignHeaderInto('cmpTraffickingHeaderMount');
+  const breadcrumb = document.getElementById('cmpTraffickingBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('trafficking');
+  cmpCollabMountId = 'cmpTraffickingCollabMount';
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m) m.innerHTML = '';
+  });
+  cmpRenderCollabCenter(campaign);
+  // Relocate the one real, stable "Send to Trafficking Team" card (see the
+  // overlay markup's own comment) — same bookmark/restore pattern as
+  // Creative's #campaignCreativeJobsCard.
+  if (!cmpTraffickingWorkspaceBookmark){
+    const cardEl = document.getElementById('campaignTraffickingCard');
+    if (cardEl){
+      cmpTraffickingWorkspaceBookmark = { parent: cardEl.parentNode, next: cardEl.nextSibling, marginTop: cardEl.style.marginTop };
+      cardEl.style.marginTop = '0';
+      left.appendChild(cardEl);
+    }
+  }
+  cmpRenderTraffickingQrUtm(campaign);
+  cmpRenderTraffickingQa(campaign);
+  if (typeof loadCreativeJobs === 'function') loadCreativeJobs().then(() => {
+    if (typeof renderTraffickingJobsSummary === 'function') renderTraffickingJobsSummary();
+  }).catch(() => {});
+  cmpRenderTraffickingWorkspaceStatusBadge(campaign);
+}
+function cmpCloseTraffickingWorkspace(){
+  const overlay = document.getElementById('cmpTraffickingOverlay');
+  const panel = document.getElementById('cmpTraffickingPanel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
+  document.body.style.overflow = '';
+  if (cmpTraffickingWorkspaceBookmark){
+    const cardEl = document.getElementById('campaignTraffickingCard');
+    if (cardEl){
+      cardEl.style.marginTop = cmpTraffickingWorkspaceBookmark.marginTop || '';
+      const b = cmpTraffickingWorkspaceBookmark;
+      if (b.next && b.next.parentNode === b.parent) b.parent.insertBefore(cardEl, b.next);
+      else b.parent.appendChild(cardEl);
+    }
+    cmpTraffickingWorkspaceBookmark = null;
+  }
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const mount = document.getElementById('cmpTraffickingCollabMount');
+  if (mount) mount.innerHTML = '';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderCollabCenter(campaign);
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  if (campaign) renderCmpWorkspaceHub(campaign);
+}
+function cmpToggleTraffickingMobileCollab(){
+  const panel = document.getElementById('cmpTraffickingPanel');
+  if (panel) panel.classList.toggle('mobile-collab-open');
+}
+
+// ============================================================
+// 2026-09-20 — Analysis full-screen workspace (see the overlay markup's own
+// comment). In Market status + Actuals vs. Plan render from real campaign
+// fields; Media Mix by Loop Stage reuses the real stageTotals rollup +
+// chart renderer the Budget & Recommendation screen already uses.
+// ============================================================
+function cmpRenderAnalysisInMarket(campaign){
+  const el = document.getElementById('cmpAnalysisInMarket');
+  if (!el || !campaign) return;
+  if (campaign.isAdHoc){
+    el.innerHTML = `<p class="cmp-stage-note" style="padding:0;">Ad Hoc projects don't move through an In Market stage.</p>`;
+    return;
+  }
+  const status = campaign.status || 'Not Started';
+  let note;
+  if (status === 'In Market') note = `This campaign is In Market — today falls within its ${campaign.startDate || '?'} – ${campaign.endDate || '?'} run.`;
+  else if (status === 'Analysis') note = `This campaign's run ended ${campaign.endDate || 'on its end date'} and has moved to Analysis.`;
+  else if (campaign.startDate) note = `Enters market automatically on ${campaign.startDate}.`;
+  else note = `Enters market automatically once a start date is set.`;
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:40px;height:40px;border-radius:10px;background:var(--media-tint,#EAF1FB);display:flex;align-items:center;justify-content:center;font-size:18px;">📍</div>
+        <div>
+          <div style="font-size:0.9375rem;font-weight:700;color:var(--ink);">Status: ${escapeHtml(status)}</div>
+          <div style="font-size:0.78125rem;color:var(--muted);">${escapeHtml(note)}</div>
+        </div>
+      </div>
+      <a class="flink" onclick="goToStep('campaign','${campaign.id}','campaignAnalyticsCard')">${(campaign.actualSpend != null || campaign.actualImpressions != null || campaign.actualConversions != null) ? 'Edit actuals' : 'Log actuals'} →</a>
+    </div>`;
+}
+// Spend/Impressions/Conversions vs. plan, with pacing — every value is a
+// real, already-persisted campaign field (actualSpend/budget/
+// actualImpressions/plannedImpressions/actualConversions/kpiGoal,
+// startDate/endDate); "on pace" is a derived read of those real fields
+// (% of budget spent vs. % of the campaign's own date window elapsed),
+// the same kind of client-side derivation deriveCampaignStatusFromDates()
+// already does from real dates — not a fabricated or invented metric.
+function cmpAnalysisPacingNote(campaign){
+  const budget = Number(campaign.budget) || 0;
+  const spend = campaign.actualSpend != null && campaign.actualSpend !== '' ? Number(campaign.actualSpend) : null;
+  if (!budget || spend == null) return null;
+  const spendPct = Math.round((spend / budget) * 100);
+  if (!campaign.startDate || !campaign.endDate) return `${spendPct}% of budget spent.`;
+  const start = new Date(campaign.startDate).getTime();
+  const end = new Date(campaign.endDate).getTime();
+  const now = Date.now();
+  if (!(end > start)) return `${spendPct}% of budget spent.`;
+  const windowPct = Math.max(0, Math.min(100, Math.round(((now - start) / (end - start)) * 100)));
+  const diff = spendPct - windowPct;
+  const verdict = Math.abs(diff) <= 8 ? 'On pace' : (diff > 0 ? 'Ahead of pace' : 'Behind pace');
+  return `${verdict} — ${spendPct}% spent, ${windowPct}% of window elapsed`;
+}
+function cmpRenderAnalysisActuals(campaign){
+  const el = document.getElementById('cmpAnalysisActuals');
+  if (!el || !campaign) return;
+  const hasActuals = [campaign.actualSpend, campaign.actualImpressions, campaign.actualConversions].some(v => v !== undefined && v !== null && v !== '');
+  if (!hasActuals){
+    el.innerHTML = `<p class="cmp-stage-note" style="padding:0;">No actuals logged yet.</p><a class="flink" onclick="goToStep('campaign','${campaign.id}','campaignAnalyticsCard')">Log actuals on this campaign's detail page →</a>`;
+    return;
+  }
+  const pacing = cmpAnalysisPacingNote(campaign);
+  const spend = campaign.actualSpend, imps = campaign.actualImpressions, convs = campaign.actualConversions;
+  const costPer = (convs && spend != null) ? (spend / convs) : null;
+  const per1k = (spend && convs != null) ? (convs / (Number(spend) / 1000)) : null;
+  el.innerHTML = `
+    <div class="cmp-wf-stat-row">
+      <div class="cmp-wf-stat">
+        <div class="cmp-wf-stat-label">Spend</div>
+        <div class="cmp-wf-stat-value">${fmtMoney(spend)}${campaign.budget != null ? ` <span style="font-size:0.75rem;color:var(--muted);font-weight:600;">of ${fmtMoney(campaign.budget)}</span>` : ''}</div>
+        ${pacing ? `<div style="font-size:0.71875rem;color:var(--cx);margin-top:4px;">${escapeHtml(pacing)}</div>` : ''}
+      </div>
+      <div class="cmp-wf-stat">
+        <div class="cmp-wf-stat-label">Impressions</div>
+        <div class="cmp-wf-stat-value">${imps != null ? Number(imps).toLocaleString() : '—'}</div>
+        ${campaign.plannedImpressions != null ? `<div style="font-size:0.71875rem;color:var(--muted);margin-top:4px;">vs. ${Number(campaign.plannedImpressions).toLocaleString()} planned</div>` : ''}
+      </div>
+      <div class="cmp-wf-stat">
+        <div class="cmp-wf-stat-label">Conversions</div>
+        <div class="cmp-wf-stat-value">${convs != null ? Number(convs).toLocaleString() : '—'}${campaign.kpiGoal != null ? ` <span style="font-size:0.75rem;color:var(--muted);font-weight:600;">of ${Number(campaign.kpiGoal).toLocaleString()} goal</span>` : ''}</div>
+        <div style="font-size:0.71875rem;color:var(--muted);margin-top:4px;">${costPer != null ? `${fmtMoney(costPer)} per conversion` : ''}${costPer != null && per1k != null ? ' · ' : ''}${per1k != null ? `${per1k.toFixed(2)} per $1k spent` : ''}</div>
+      </div>
+    </div>
+    <a class="flink" onclick="goToStep('campaign','${campaign.id}','campaignAnalyticsCard')">Edit actuals →</a>`;
+}
+// Real stageTotals rollup — same GET pitch-summary data + cmpRecoLoopStageRows()/
+// cmpRecoMeterRows() the Budget & Recommendation screen's Loop Stage
+// Distribution chart already uses (see cmpRecoLoopStageRows()'s own
+// comment on why this is a real per-line rollup, not a single-bucket guess).
+// Kept in its own small state object (not cmpRecoState) since this
+// workspace only ever reads the summary — it never edits Loop Stage, line
+// items, or audience the way the Recommendation pitch screen does.
+let cmpAnalysisMixState = { campaignId: null, summary: null, loading: false };
+async function cmpLoadAnalysisMix(campaign){
+  const el = document.getElementById('cmpAnalysisMix');
+  if (!el) return;
+  if (cmpAnalysisMixState.campaignId === campaign.id && cmpAnalysisMixState.summary){
+    cmpRenderAnalysisMix(campaign);
+    return;
+  }
+  cmpAnalysisMixState = { campaignId: campaign.id, summary: null, loading: true };
+  el.innerHTML = `<p class="lede">Loading this campaign's media mix…</p>`;
+  try {
+    const summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
+    cmpAnalysisMixState = { campaignId: campaign.id, summary, loading: false };
+  } catch (e){
+    console.warn('cmpLoadAnalysisMix: pitch-summary load failed', e);
+    cmpAnalysisMixState = { campaignId: campaign.id, summary: null, loading: false };
+  }
+  cmpRenderAnalysisMix(campaign);
+}
+function cmpRenderAnalysisMix(campaign){
+  const el = document.getElementById('cmpAnalysisMix');
+  if (!el) return;
+  if (cmpAnalysisMixState.loading){ el.innerHTML = `<p class="lede">Loading this campaign's media mix…</p>`; return; }
+  const summary = cmpAnalysisMixState.summary;
+  if (!summary){ el.innerHTML = `<p class="lede">Couldn't load this campaign's media mix right now.</p>`; return; }
+  const rows = cmpRecoLoopStageRows(summary);
+  const activeRows = rows.filter(r => r.value > 0);
+  el.innerHTML = cmpRecoMeterRows(rows) +
+    (activeRows.length ? `<div style="margin-top:14px;font-size:0.71875rem;color:var(--muted);">Media mix spans ${activeRows.length} stage${activeRows.length === 1 ? '' : 's'}: ${activeRows.map(r => `${escapeHtml(r.label)} (${fmtMoney(r.value)})`).join(', ')}.</div>` : '');
+}
+function cmpRenderAnalysisWorkspaceStatusBadge(campaign){
+  const el = document.getElementById('cmpAnalysisStatusBadge');
+  if (!el) return;
+  const card = CMP_WORKSPACE_CARDS.find(c => c.key === 'analysis');
+  const status = card ? cmpWorkspaceCardStatus(card) : 'not-started';
+  el.className = `stage-status ${status}`;
+  el.textContent = STAGE_STATUS_LABEL[status] || 'Analysis';
+}
+function cmpOpenAnalysisWorkspace(){
+  const campaign = cmpRailLoadedCampaign();
+  const overlay = document.getElementById('cmpAnalysisOverlay');
+  const panel = document.getElementById('cmpAnalysisPanel');
+  const left = document.getElementById('cmpAnalysisLeft');
+  if (!campaign || !overlay || !panel || !left) return;
+  overlay.classList.add('open');
+  panel.classList.add('open');
+  panel.classList.remove('mobile-collab-open');
+  document.body.style.overflow = 'hidden';
+  cmpMountCampaignHeaderInto('cmpAnalysisHeaderMount');
+  const breadcrumb = document.getElementById('cmpAnalysisBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('analysis');
+  cmpCollabMountId = 'cmpAnalysisCollabMount';
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpTraffickingCollabMount'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m) m.innerHTML = '';
+  });
+  cmpRenderCollabCenter(campaign);
+  cmpRenderAnalysisInMarket(campaign);
+  cmpRenderAnalysisActuals(campaign);
+  cmpLoadAnalysisMix(campaign);
+  cmpRenderAnalysisWorkspaceStatusBadge(campaign);
+}
+function cmpCloseAnalysisWorkspace(){
+  const overlay = document.getElementById('cmpAnalysisOverlay');
+  const panel = document.getElementById('cmpAnalysisPanel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
+  document.body.style.overflow = '';
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const mount = document.getElementById('cmpAnalysisCollabMount');
+  if (mount) mount.innerHTML = '';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderCollabCenter(campaign);
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  if (campaign) renderCmpWorkspaceHub(campaign);
+}
+function cmpToggleAnalysisMobileCollab(){
+  const panel = document.getElementById('cmpAnalysisPanel');
+  if (panel) panel.classList.toggle('mobile-collab-open');
+}
+
 // Loop Stage distribution: a single campaign belongs to one Loop Stage, so
 // its "distribution" is its own spend attributed 100% to that stage among
 // the other 4 — same 5-stage set, same STAGE_LOOP_COLORS, same .eff-meter
@@ -40853,6 +41310,12 @@ document.addEventListener('keydown', e => {
     // pitch above, for the new Creative workspace overlay.
     const creativePanel = document.getElementById('cmpCreativePanel');
     if (creativePanel && creativePanel.classList.contains('open')) cmpCloseCreativeWorkspace();
+    // 2026-09-20 — same Escape-to-close for the new Trafficking/Analysis
+    // workspace overlays.
+    const traffickingPanel = document.getElementById('cmpTraffickingPanel');
+    if (traffickingPanel && traffickingPanel.classList.contains('open')) cmpCloseTraffickingWorkspace();
+    const analysisPanel = document.getElementById('cmpAnalysisPanel');
+    if (analysisPanel && analysisPanel.classList.contains('open')) cmpCloseAnalysisWorkspace();
   }
 });
 
