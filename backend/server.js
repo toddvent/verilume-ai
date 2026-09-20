@@ -22857,6 +22857,32 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const message = typeof body.message === 'string' ? body.message.trim() : '';
         if (!message) return sendJson(res, 400, { error: 'message is required' });
         if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 503, { error: 'AI Brain is not configured on this environment.' });
+        // 2026-09-20, per Todd's direct correction on a real budget-
+        // recommendation turn: the AI Brain asked the team to supply target
+        // CPM/cost-per-visit benchmarks, expected frequency, and DMA
+        // population size — all data this platform already has (or has a
+        // real default for) and never should have asked the team for. Two
+        // real, already-built data sources were simply never read by THIS
+        // endpoint: (1) buildAccountBudgetAndPerformanceContextForPrompt()
+        // (account-wide budget headroom, the account's own Media Plan mix,
+        // and this account's real historical campaign performance —
+        // already built for generate-recommendation-from-intake above, same
+        // "say so plainly when data is missing" discipline reused here),
+        // and (2) this account's generation/wealth-tier targeting from its
+        // Verilume assessment (account.audience/account.wealth — same
+        // fields Company Overview/Assessment already surface, see
+        // humanizeAudienceKeys() above), which support segmented
+        // recommendations. Population/DMA data was already wired in below
+        // via topMarkets — that gap was already closed 2026-09-20 earlier
+        // today (see buildAccountTopMarketsContextForPrompt's own comment);
+        // this closes the remaining two.
+        const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(campaign.accountId);
+        const { promptBlock: acctBudgetPerfBlock, hasPerformanceData } = buildAccountBudgetAndPerformanceContextForPrompt(campaign.accountId, campaign);
+        const audienceLabel = account ? humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) : '';
+        const wealthLabel = account ? humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) : '';
+        const segmentationBlock = `THIS ACCOUNT'S TARGETING DATA (from its Verilume assessment — already loaded, supports segmented recommendations without asking the team for it):
+- Target generation(s): ${audienceLabel || '(not set — assume a broad, general audience)'}
+- Net-worth / wealth tier(s): ${wealthLabel || '(not set — assume a general, mixed-income audience)'}`;
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
         const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
         // 2026-09-16 — `id` added to this SELECT: per the real
@@ -22948,12 +22974,18 @@ ${regionText}
 ${topMarketsBlock}
 ${matchMarketPromptSection}
 
+${acctBudgetPerfBlock}
+
+${segmentationBlock}
+
 CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
 The team just said: "${message}"
 
-Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
+Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above).
+
+BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
         const AI_BRAIN_REPLY_SCHEMA = {
