@@ -39002,6 +39002,19 @@ function cmpRecoExportCsv(){
 // cmpRecoSaveLoopStage() already uses, independent of whatever form state
 // happens to exist, and to show a real confirmation (or error) instead of
 // silently doing nothing visible either way.
+// 2026-09-20 — cmpConfirmIntakeBusy: per Todd's direct report ("clicking on
+// the Looks Good CTA takes the user to the Campaign Overview page with all
+// of the workstreams and then redirects to the Budget and Recommendation
+// section after a few seconds. There is no reason to pass the user back to
+// the start page and then redirect to the next step"). The old
+// cmpConfirmIntakeAndContinue() closed this Objectives overlay FIRST (which
+// reveals the Hub underneath it) and only opened the Recommendation pitch
+// overlay AFTER its awaited backend work finished — up to several real
+// seconds (an AI extraction call) with nothing but the bare Hub grid on
+// screen in between. Fixed by keeping this overlay open, with this button
+// showing a real busy state, for the whole async duration — see
+// cmpConfirmIntakeAndContinue()'s own comment for the reordered close/open.
+let cmpConfirmIntakeBusy = false;
 function cmpRenderIntakeRecommendations(extracted, recs){
   const mount = document.getElementById('cmpIntakeRecommendations');
   if (!mount) return;
@@ -39031,7 +39044,7 @@ function cmpRenderIntakeRecommendations(extracted, recs){
          ends the dialogue and advances — nothing auto-advances on its
          own once the AI Brain is ready. -->
     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;display:flex;justify-content:flex-end;">
-      <button type="button" class="btn-primary" onclick="cmpConfirmIntakeAndContinue()">Looks good — Continue to Recommendation →</button>
+      <button type="button" class="btn-primary" ${cmpConfirmIntakeBusy ? 'disabled' : ''} onclick="cmpConfirmIntakeAndContinue()">${cmpConfirmIntakeBusy ? 'Building your recommendation…' : 'Looks good — Continue to Recommendation →'}</button>
     </div>
   `;
 }
@@ -39041,8 +39054,18 @@ function cmpRenderIntakeRecommendations(extracted, recs){
 // click, just show the page") rather than routing back through the
 // accordion, since the user just explicitly asked to move on.
 async function cmpConfirmIntakeAndContinue(){
+  if (cmpConfirmIntakeBusy) return;
   const campaign = cmpRailLoadedCampaign();
-  cmpCloseObjectivesIntake(); // 2026-09-16 — close this overlay before the Recommendation pitch overlay opens; both use the same fixed-position panel classes
+  // 2026-09-20, per Todd's direct report: this overlay now STAYS open (with
+  // the button above showing a real busy state — see cmpConfirmIntakeBusy's
+  // own comment) for the whole async duration below, instead of closing
+  // immediately and leaving the bare Workspace Hub on screen for however
+  // long the backend call takes. cmpCloseObjectivesIntake() now runs right
+  // before cmpOpenRecommendationPitch(), back-to-back with no await between
+  // them, so the two overlays swap directly with nothing else visible in
+  // between.
+  cmpConfirmIntakeBusy = true;
+  cmpRenderIntakeRecommendations(cmpIntakeLastExtracted || {}, cmpIntakeLastRecs);
   // 2026-09-16, per Todd's direct correction ("No it wasn't. You produced
   // the outputs based on the campaign objectives with detail.") — this is
   // the step that was missing entirely: nothing ever turned a completed
@@ -39061,6 +39084,20 @@ async function cmpConfirmIntakeAndContinue(){
   // when the backend reports there's no real conversation to extract from
   // (e.g. a campaign whose recommendation was requested some other way).
   if (campaign){
+    // 2026-09-20 fix, per Todd's direct report of Budget & Recommendation
+    // coming back empty even after a real conversation: every AI Brain turn
+    // and every "Apply Stage" click persists to this campaign through
+    // cmpPersistActivityNotesToCampaign()'s own fire-and-forget save queue
+    // (cmpActivityNotesSaveChains) — clicking "Looks good" the moment the
+    // last turn renders could reach generate-recommendation-from-intake
+    // BEFORE that last save actually committed server-side, so it read a
+    // transcript missing its most recent turn (or, on a brand-new campaign,
+    // no transcript at all yet) and correctly reported nothing to extract.
+    // Awaiting this campaign's own pending save chain first guarantees the
+    // real transcript is already in the database by the time the backend
+    // reads it.
+    try { await (cmpActivityNotesSaveChains[campaign.id] || Promise.resolve()); }
+    catch (e){ console.warn('cmpConfirmIntakeAndContinue: pending activity-notes save failed, continuing anyway', e); }
     let handled = false;
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/generate-recommendation-from-intake`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
@@ -39074,6 +39111,8 @@ async function cmpConfirmIntakeAndContinue(){
       try { await cmpGenerateAndPersistRecommendation(campaign); } catch (e) { console.warn('cmpGenerateAndPersistRecommendation failed:', e); }
     }
   }
+  cmpConfirmIntakeBusy = false;
+  cmpCloseObjectivesIntake();
   if (typeof cmpOpenRecommendationPitch === 'function') cmpOpenRecommendationPitch();
 }
 // Builds a real channel/budget recommendation from this campaign's own
