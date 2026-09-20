@@ -37520,20 +37520,52 @@ function cmpCloseAllStages(){
 // real: cmpApplyTemplate() below both fills the form AND writes the copy
 // straight onto that campaign's record (same local-only convention as every
 // other save in this file — no backend PATCH endpoint exists yet).
+// 2026-09-20 fix, per Todd's direct report (two bugs, both in this
+// function):
+// 1) "Selecting previous campaign takes the user to the old Lifecycle
+//    Budget template" — this used to end with openCmpStage('lifecycle'),
+//    the legacy accordion stage, a completely different template from the
+//    modern AI Brain Recommendation overlay the sibling "Looks good —
+//    Continue to Recommendation" button (cmpConfirmIntakeAndContinue(),
+//    right next to this card in cmpRenderIntakeRecommendations()) opens.
+//    Since "Use as template" lives inside that same intake-recommendations
+//    panel, it now finishes the SAME way "Looks good" does — apply the
+//    template's structural fields, then hand off to
+//    cmpConfirmIntakeAndContinue() so the real recommendation is generated
+//    from this campaign's actual saved conversation/budget and the modern
+//    cmpOpenRecommendationPitch() overlay opens, exactly as it would for a
+//    from-scratch intake.
+// 2) "Selecting the previous campaign should not override the campaign
+//    details collected... $300k budget now at $2,500" — the old
+//    `Object.assign(target, cmpBuildFormPayload())` blanket-copied EVERY
+//    field cmpBuildFormPayload() returns (budget, name, dates, KPI goal,
+//    key message, funnel assumptions, ...) from the form — which
+//    cmpPopulateFormFields(source, {isTemplate:true}) had just filled with
+//    the SOURCE template campaign's own values — onto the real target
+//    campaign, silently clobbering whatever the Objectives dialogue/
+//    Campaign Creation form had already collected. That directly
+//    contradicted this same function's own hint text ("Funding wasn't
+//    copied"). "Use as template" only ever means the structural planning
+//    fields the recommendation card's "why" text is about (Lifecycle
+//    Stage / audience-channel similarity) — never this campaign's own
+//    budget, dates, name, KPI goal or messaging, so only those structural
+//    fields are copied now, via an explicit whitelist rather than a
+//    blanket Object.assign.
 function cmpApplyTemplate(campaignId){
   const source = state.campaigns.find(x => x.id === campaignId);
   const target = cmpRailLoadedCampaign();
   if (!source || !target) return;
   cmpPopulateFormFields(source, { isTemplate: true });
-  Object.assign(target, cmpBuildFormPayload());
+  const templatePayload = cmpBuildFormPayload();
+  const TEMPLATE_STRUCTURAL_FIELDS = ['stage', 'segment', 'channels', 'channelGroups', 'productGroups', 'creativeFocusGroups', 'functions'];
+  TEMPLATE_STRUCTURAL_FIELDS.forEach(k => { target[k] = templatePayload[k]; });
   document.getElementById('newCampaignHint').textContent =
-    `Pre-filled from "${source.name || source.objective}" (${source.id}) — review and edit anything below before continuing. Funding wasn't copied — pick funding for this campaign in Lifecycle Stage & Goals next.`;
+    `Structure pre-filled from "${source.name || source.objective}" (${source.id}) — Lifecycle Stage, Audience, Channels, Product Group and Creative Focus Group only. This campaign's own budget, dates, name, KPI and goals stay exactly what you already entered.`;
   renderCmpPickupStage();
   renderCmpStageRail();
   renderCampaignsList();
   renderActiveCampaigns();
-  cmpCloseObjectivesIntake(); // 2026-09-16 — close the standalone overlay before advancing
-  openCmpStage('lifecycle');
+  cmpConfirmIntakeAndContinue(); // continue the same modern flow "Looks good" uses — closes this overlay and opens the real AI Brain Recommendation pitch
 }
 // Per the same correction: "User can select one of our copy options or skip
 // to work from scratch" — skip just moves on with whatever Campaign
