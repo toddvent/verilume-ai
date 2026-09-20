@@ -1863,6 +1863,19 @@ ensureColumn('campaigns', 'recommendationDataConfidenceNote', 'TEXT');
 // reasoning and known gap on pre-existing rows.
 ensureColumn('campaigns', 'createdByUser', 'TEXT');
 
+// 2026-09-20 — persisted Match Market test recommendation, per Todd's
+// direct instruction that the AI Brain "recommend and attach Match Market
+// testing recommendations should a campaign justify the analytics
+// approach with or without the client asking." Generated once, from real
+// data (see computeMatchMarketTestEligibility()/buildMatchMarketSuggestion()
+// in the ai-brain-reply handler's own comment), and persisted here so it
+// isn't regenerated or re-announced every chat turn — matchMarketSuggestionAttachedAt
+// null means "not yet eligible/attached"; once set, the AI Brain only
+// proactively re-announces it if the client asks, per the same "attach
+// once" pattern this build already uses for other AI Brain suggestions.
+ensureColumn('campaigns', 'matchMarketSuggestionJson', 'TEXT');
+ensureColumn('campaigns', 'matchMarketSuggestionAttachedAt', 'TEXT');
+
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
 // CMP-...) — what's new is a Creative Job ID for an actual request sent to
@@ -10107,9 +10120,106 @@ function buildAccountTopMarketsContextForPrompt(accountId){
   const top = dmas.slice().sort((a, b) => (b.volume || 0) - (a.volume || 0)).slice(0, 25);
   const disclosure = (analysis.dma && analysis.dma.disclosure) ? analysis.dma.disclosure : (analysis.dma && analysis.dma.licensed === false ? 'DMA boundaries are a free public approximation, not Nielsen-licensed.' : '');
   const lines = top.map(d => `- ${d.dmaName || d.dmaCode} (${d.dmaCode}): ${d.share != null ? d.share + '% of' : ''} customer volume${d.populationIndex != null ? `, population index ${d.populationIndex}` : ''}${d.opportunityTier ? `, tier: ${d.opportunityTier}` : ''}`).join('\n');
+  // 2026-09-20 follow-on, per Todd's direct instruction to also be able to
+  // "recommend and attach Match Market testing recommendations": the caller
+  // needs the REAL, code-computed test/control/holdout pairing data, not
+  // just the formatted prompt text above — so this now also passes back
+  // `analysis.dmaExport` (the same matched-pairs/holdout shape
+  // computeDmaCompositeAndMatching() produces, already used verbatim by the
+  // real Excel export for both the zip-level and DMA-level upload
+  // branches — see computeMarketUploadAnalysis()'s own comments). A caller
+  // building a deterministic suggestion should use THIS, never ask the
+  // model to invent test/control DMA pairs.
+  const dmaExport = analysis.dmaExport || { available: false, dmas: [], holdout: { dmaCodes: [] }, matching: { pairs: [] } };
   return {
     promptBlock: `TOP MARKETS / DMA INDEXING (from this account's real Match Market Builder upload "${upload.label || upload.id}", ${dmas.length} DMAs scored, top ${top.length} by volume shown${disclosure ? ` — ${disclosure}` : ''}):\n${lines}`,
-    hasTopMarkets: true
+    hasTopMarkets: true,
+    uploadId: upload.id,
+    uploadLabel: upload.label || upload.id,
+    disclosure,
+    matchingAvailable: !!(dmaExport.available && dmaExport.matching && Array.isArray(dmaExport.matching.pairs) && dmaExport.matching.pairs.length),
+    dmasScored: dmaExport.dmas || [],
+    matching: dmaExport.matching || { pairs: [], unpaired: [] },
+    holdout: dmaExport.holdout || { dmaCodes: [] }
+  };
+}
+
+// 2026-09-20 — "does this campaign justify a Match Market test?", per
+// Todd's direct instruction: "recommend and attach Match Market testing
+// recommendations should a campaign justify the analytics approach with or
+// without the client asking." This is the CODE-level eligibility gate
+// (never left to the model to decide on its own) plus a deterministic
+// suggestion built only from real, already-computed data — reusing
+// buildAccountTopMarketsContextForPrompt()'s matching/holdout output
+// (itself computeDmaCompositeAndMatching()'s real nearest-neighbor pairs),
+// never inventing a test/control pairing.
+//
+// GEO_TESTABLE_CHANNELS is a judgment call, not a settled product
+// definition — flagged to Todd as such. It extrapolates from the product
+// docs' own framing of which channels are typically used for geo/market
+// lift testing (broad-reach, market-addressable channels where a whole
+// DMA can be turned on/off cleanly) — Linear TV, Radio, PR, and
+// unaddressed Print/OOH — extended to OTV/CTV and Podcasts as reasonable
+// modern equivalents of "market-addressable broadcast." Channels that are
+// inherently audience-targeted rather than geo-addressable (paid search,
+// paid social, email/CRM, SEO) are deliberately excluded — a geo holdout
+// test on those channels doesn't isolate a market the way it does on a
+// broadcast/market buy.
+const GEO_TESTABLE_CHANNELS = ['linear tv', 'tv', 'broadcast tv', 'cable tv', 'radio', 'pr', 'public relations', 'ooh', 'out of home', 'print', 'otv', 'ctv', 'connected tv', 'podcast', 'podcasts'];
+// Minimum combined budget across geo-testable lines before a Match Market
+// test is worth proposing — another judgment call (flagged to Todd), set
+// low enough to catch a real market buy but high enough to skip token
+// line items that wouldn't produce a readable lift.
+const MATCH_MARKET_MIN_ELIGIBLE_BUDGET = 15000;
+function cmpChannelIsGeoTestable(channelName){
+  const c = String(channelName || '').toLowerCase();
+  return GEO_TESTABLE_CHANNELS.some(g => c.includes(g));
+}
+// Returns { eligible, reason, eligibleChannelBudget, eligibleLines } — pure
+// function over real data, no model call. `topMarkets` is
+// buildAccountTopMarketsContextForPrompt()'s return value; `lines` is this
+// campaign's real channel_planning_details rows.
+function computeMatchMarketTestEligibility(lines, topMarkets){
+  if (!topMarkets || !topMarkets.matchingAvailable){
+    return { eligible: false, reason: 'no real, matched Match Market DMA pairs on file for this account yet (needs an uploaded customer file with at least 2 scoreable DMAs)', eligibleChannelBudget: 0, eligibleLines: [] };
+  }
+  const eligibleLines = (lines || []).filter(l => cmpChannelIsGeoTestable(l.channel));
+  const eligibleChannelBudget = eligibleLines.reduce((sum, l) => sum + (Number(l.budget) || 0), 0);
+  if (!eligibleLines.length){
+    return { eligible: false, reason: 'this campaign has no channel plan lines yet in a geo-addressable channel (Linear TV, Radio, PR, OTV/CTV, Podcasts, unaddressed Print/OOH)', eligibleChannelBudget: 0, eligibleLines: [] };
+  }
+  if (eligibleChannelBudget < MATCH_MARKET_MIN_ELIGIBLE_BUDGET){
+    return { eligible: false, reason: `geo-addressable channel spend on this campaign ($${Math.round(eligibleChannelBudget).toLocaleString()}) is below the threshold ($${MATCH_MARKET_MIN_ELIGIBLE_BUDGET.toLocaleString()}) where a Match Market test is likely to produce a readable lift`, eligibleChannelBudget, eligibleLines };
+  }
+  return { eligible: true, reason: null, eligibleChannelBudget, eligibleLines };
+}
+// Builds the actual suggestion object to persist/surface — deterministic,
+// drawn directly from topMarkets.matching.pairs (real nearest-neighbor
+// DMA pairs) and topMarkets.holdout (real holdout DMA codes). Takes the
+// top 3 pairs by similarityDistance (closest match = most defensible
+// test/control pair) rather than every pair, to keep what's surfaced to
+// the client readable.
+function buildMatchMarketSuggestion(topMarkets, eligibility){
+  const dmaByCode = new Map((topMarkets.dmasScored || []).map(d => [d.dmaCode, d]));
+  const pairs = (topMarkets.matching && Array.isArray(topMarkets.matching.pairs)) ? topMarkets.matching.pairs : [];
+  const topPairs = pairs.slice().sort((a, b) => (Number(a.similarityDistance) || 0) - (Number(b.similarityDistance) || 0)).slice(0, 3).map(p => {
+    const testD = dmaByCode.get(p.testDma), ctrlD = dmaByCode.get(p.controlDma);
+    return {
+      testDma: p.testDma, testDmaName: (testD && testD.dmaName) || p.testDma,
+      controlDma: p.controlDma, controlDmaName: (ctrlD && ctrlD.dmaName) || p.controlDma,
+      similarityDistance: Number(p.similarityDistance) || 0,
+      testOpportunityTier: (testD && testD.opportunityTier) || null
+    };
+  });
+  const holdoutCodes = (topMarkets.holdout && Array.isArray(topMarkets.holdout.dmaCodes)) ? topMarkets.holdout.dmaCodes : [];
+  const holdoutNames = holdoutCodes.map(code => (dmaByCode.get(code) && dmaByCode.get(code).dmaName) || code);
+  return {
+    uploadId: topMarkets.uploadId, uploadLabel: topMarkets.uploadLabel,
+    pairs: topPairs, pairCount: pairs.length,
+    holdoutDmaCount: holdoutCodes.length, holdoutDmaNames: holdoutNames.slice(0, 5),
+    eligibleChannelBudget: eligibility.eligibleChannelBudget,
+    eligibleChannels: [...new Set(eligibility.eligibleLines.map(l => l.channel).filter(Boolean))],
+    disclosure: topMarkets.disclosure || null
   };
 }
 
@@ -22681,7 +22791,40 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         // buildAccountTopMarketsContextForPrompt's own comment. This is the
         // real, already-built Match Market Builder data (DMA/zip indexing),
         // not previously wired into this conversation.
-        const { promptBlock: topMarketsBlock } = buildAccountTopMarketsContextForPrompt(campaign.accountId);
+        const topMarkets = buildAccountTopMarketsContextForPrompt(campaign.accountId);
+        const topMarketsBlock = topMarkets.promptBlock;
+        // 2026-09-20 — Match Market test eligibility + attach-once, per
+        // Todd's direct instruction: "recommend and attach Match Market
+        // testing recommendations should a campaign justify the analytics
+        // approach with or without the client asking." Eligibility and the
+        // suggestion itself are computed in CODE (see
+        // computeMatchMarketTestEligibility()/buildMatchMarketSuggestion()'s
+        // own comments) — the model only narrates it, never invents the
+        // pairing. "Attach" here means persisted to this campaign row the
+        // first time it becomes eligible, so it isn't regenerated or
+        // re-announced unprompted on every later turn — only the turn it
+        // first attaches, or afterward if the team asks.
+        let matchMarketSuggestion = null;
+        let matchMarketNewlyAttached = false;
+        let matchMarketPromptSection = '';
+        const mmEligibility = computeMatchMarketTestEligibility(lines, topMarkets);
+        if (campaign.matchMarketSuggestionJson){
+          try { matchMarketSuggestion = JSON.parse(campaign.matchMarketSuggestionJson); } catch (e){ matchMarketSuggestion = null; }
+        }
+        if (mmEligibility.eligible && !matchMarketSuggestion){
+          matchMarketSuggestion = buildMatchMarketSuggestion(topMarkets, mmEligibility);
+          matchMarketNewlyAttached = true;
+          try {
+            db.prepare('UPDATE campaigns SET matchMarketSuggestionJson = ?, matchMarketSuggestionAttachedAt = ? WHERE id = ?')
+              .run(JSON.stringify(matchMarketSuggestion), new Date().toISOString(), campaignId);
+          } catch (e){ console.warn('[ai-brain-reply] could not persist matchMarketSuggestion:', e.message); }
+        }
+        if (matchMarketSuggestion){
+          const pairLines = (matchMarketSuggestion.pairs || []).map(p => `  - Test: ${p.testDmaName} (${p.testDma})${p.testOpportunityTier ? `, ${p.testOpportunityTier}` : ''} vs Control: ${p.controlDmaName} (${p.controlDma})`).join('\n');
+          matchMarketPromptSection = `\nMATCH MARKET TEST RECOMMENDATION (real, code-computed — from upload "${matchMarketSuggestion.uploadLabel}", ${matchMarketSuggestion.pairCount} total matched DMA pairs, ${matchMarketSuggestion.holdoutDmaCount} held out; this campaign has $${Math.round(matchMarketSuggestion.eligibleChannelBudget).toLocaleString()} in geo-addressable channel spend (${matchMarketSuggestion.eligibleChannels.join(', ')}) that justifies this):\n${pairLines || '  (no pairs to show)'}\nStatus: ${matchMarketNewlyAttached ? 'NEWLY ATTACHED THIS TURN — proactively tell the team about this in your reply, even though they did not ask, briefly explaining it is a real test/control DMA pairing from their own uploaded data.' : 'already attached to this campaign in an earlier turn — only bring it up again if the team asks about Match Market, geo testing, or DMA testing; do not repeat it unprompted.'}`;
+        } else if (!mmEligibility.eligible){
+          matchMarketPromptSection = `\nMATCH MARKET TEST: not yet recommended for this campaign (${mmEligibility.reason}). Only mention this if the team specifically asks about Match Market or geo testing for this campaign — do not bring it up unprompted.`;
+        }
         const prompt = `You are the AI Brain, a marketing operations assistant embedded in this real campaign's Workspace hub, having a real back-and-forth conversation with the team — not writing a one-shot report.
 
 CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
@@ -22703,13 +22846,14 @@ SPEND BY REGION (US / Canada / International — precomputed, use these numbers 
 ${regionText}
 
 ${topMarketsBlock}
+${matchMarketPromptSection}
 
 CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
 The team just said: "${message}"
 
-Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
+Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
         const AI_BRAIN_REPLY_SCHEMA = {
@@ -22751,7 +22895,20 @@ Submit your response via the ai_brain_reply tool.`;
         // suggestion validation).
         let suggestion = parsed.suggestion || null;
         if (suggestion && !lines.some(l => l.id === suggestion.entryId)) suggestion = null;
-        return sendJson(res, 200, { reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion });
+        // The structured pairs card is only sent to the frontend when it's
+        // actually relevant to THIS reply: newly attached this turn (so it
+        // always shows once, per "with or without the client asking"), or
+        // the team's own message plainly asked about it. A simple keyword
+        // check, not model judgment — deliberately conservative so the card
+        // doesn't pop up on unrelated turns just because a suggestion
+        // exists on the campaign.
+        const askedAboutMatchMarket = /match\s*market|geo[\s-]?test|dma\b|hold\s*out|holdout|test\s*\/?\s*control/i.test(message);
+        const showMatchMarketCard = matchMarketSuggestion && (matchMarketNewlyAttached || askedAboutMatchMarket);
+        return sendJson(res, 200, {
+          reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion,
+          matchMarketSuggestion: showMatchMarketCard ? matchMarketSuggestion : null,
+          matchMarketNewlyAttached
+        });
       } catch (e){
         console.error(`[POST /api/campaigns/:id/ai-brain-reply] campaignId=${campaignId}:`, e);
         return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message });
@@ -29429,3 +29586,5 @@ try {
 }
 
 module.exports = handleRequest;
+
+
