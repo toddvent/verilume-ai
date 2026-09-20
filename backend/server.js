@@ -10078,6 +10078,41 @@ ${performanceLines}`;
   return { promptBlock, hasAccountBudget, hasPerformanceData, hasMediaPlanMix };
 }
 
+// 2026-09-20, per Todd's direct question after watching the AI Brain reply
+// "I don't have visibility into your account's DMA performance data or
+// indexing right now" to a real targeting question: that reply was
+// correct given what the model was told, but the underlying premise was
+// wrong — Match Market Builder (market_customer_uploads/zip_dma_master/
+// computeDmaRollup/computeDmaCompositeAndMatching, rounds 132bl/132bm/
+// 2026-09-05) is real, shipped functionality, not a documented-but-unbuilt
+// idea. The gap was that the ai-brain-reply endpoint below never read it —
+// same class of "real data exists elsewhere, AI Brain isn't fed it" gap
+// closed for account budget/media mix/performance above. Reuses
+// computeMarketUploadAnalysis() (the exact function the real Match Market
+// Builder screen and its Excel export already call) against this
+// account's most recent uploaded/committed market-customer file, rather
+// than recomputing anything a second way.
+function buildAccountTopMarketsContextForPrompt(accountId){
+  const upload = db.prepare('SELECT * FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId);
+  if (!upload){
+    return { promptBlock: '(no Match Market / DMA data uploaded for this account yet — the Match Market Builder tool exists in Account Management, but no customer-by-zip/DMA file has been run through it here)', hasTopMarkets: false };
+  }
+  let analysis;
+  try { analysis = computeMarketUploadAnalysis(accountId, upload, {}); }
+  catch (e){ return { promptBlock: `(this account's Match Market upload "${upload.label || upload.id}" exists but could not be analyzed right now: ${String(e && e.message || e).slice(0, 160)})`, hasTopMarkets: false }; }
+  const dmas = (analysis.dma && analysis.dma.available && Array.isArray(analysis.dma.dmas)) ? analysis.dma.dmas : [];
+  if (!dmas.length){
+    return { promptBlock: `(this account's Match Market upload "${upload.label || upload.id}" is on file but has no scoreable DMA rollup yet — ${(analysis.dma && analysis.dma.note) || (analysis.dma && analysis.dma.disclosure) || 'no DMA crosswalk coverage for its zip codes'})`, hasTopMarkets: false };
+  }
+  const top = dmas.slice().sort((a, b) => (b.volume || 0) - (a.volume || 0)).slice(0, 25);
+  const disclosure = (analysis.dma && analysis.dma.disclosure) ? analysis.dma.disclosure : (analysis.dma && analysis.dma.licensed === false ? 'DMA boundaries are a free public approximation, not Nielsen-licensed.' : '');
+  const lines = top.map(d => `- ${d.dmaName || d.dmaCode} (${d.dmaCode}): ${d.share != null ? d.share + '% of' : ''} customer volume${d.populationIndex != null ? `, population index ${d.populationIndex}` : ''}${d.opportunityTier ? `, tier: ${d.opportunityTier}` : ''}`).join('\n');
+  return {
+    promptBlock: `TOP MARKETS / DMA INDEXING (from this account's real Match Market Builder upload "${upload.label || upload.id}", ${dmas.length} DMAs scored, top ${top.length} by volume shown${disclosure ? ` — ${disclosure}` : ''}):\n${lines}`,
+    hasTopMarkets: true
+  };
+}
+
 // Non-Working Media's own ledger — raw category, exactly as the client
 // labeled it, with whatever monthly figures or single total their file
 // gave. No Verilume-category mapping, no suggestion, no Exceptions —
@@ -22642,6 +22677,11 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const regionText = lines.length
           ? regionTotals.map(r => `- ${r.region}: $${Math.round(r.total).toLocaleString()} across ${r.count} line item${r.count === 1 ? '' : 's'}${grandTotal ? ` (${Math.round((r.total / grandTotal) * 100)}% of total spend)` : ''}`).join('\n')
           : '(no channel plan lines entered yet, so no regional distribution to report)';
+        // 2026-09-20, per Todd's direct question — see
+        // buildAccountTopMarketsContextForPrompt's own comment. This is the
+        // real, already-built Match Market Builder data (DMA/zip indexing),
+        // not previously wired into this conversation.
+        const { promptBlock: topMarketsBlock } = buildAccountTopMarketsContextForPrompt(campaign.accountId);
         const prompt = `You are the AI Brain, a marketing operations assistant embedded in this real campaign's Workspace hub, having a real back-and-forth conversation with the team — not writing a one-shot report.
 
 CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
@@ -22662,12 +22702,14 @@ ${lineText}
 SPEND BY REGION (US / Canada / International — precomputed, use these numbers exactly, do not recompute):
 ${regionText}
 
+${topMarketsBlock}
+
 CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
 The team just said: "${message}"
 
-Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
+Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above). If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
         const AI_BRAIN_REPLY_SCHEMA = {
