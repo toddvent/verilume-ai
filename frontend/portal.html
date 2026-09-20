@@ -8388,7 +8388,7 @@
              (matching every other still-accordion stage) are removed here;
              the module-head no longer toggles anything since this stage is
              always open the moment it's reachable — it's the front door,
-             not a step to collapse. #cmpCreationTwoCol/#cmpCreationCollabPlaceholder
+             not a step to collapse. #cmpCreationTwoCol/#cmpCreationCollabMount
              give it the wireframe's two-column layout ONLY while no real
              campaign exists yet (cmpUpdateCreationPageMode(), called from
              renderCmpDownstreamStages() same as every other lock-state
@@ -8522,9 +8522,17 @@
               </select>
             </div>
             <div class="field">
-              <label>Business initiative</label>
+              <!-- 2026-09-20, per Todd's direct confirmation: "Same as
+                   Business Initiative — just relabel the existing Business
+                   Initiative dropdown to Campaign Objective — no new field
+                   needed." Pure UI relabel only — the underlying
+                   campaign.businessInitiative column, the
+                   BUSINESS_INITIATIVE_REGISTRY_CLIENT/BUSINESS_INITIATIVE_REGISTRY
+                   variable names, and this select's own id
+                   (cmpCreationBusinessInitiativeSelect) are all unchanged. -->
+              <label>Campaign Objective</label>
               <select id="cmpCreationBusinessInitiativeSelect" onchange="cmpOnCreationTypeInitiativeChanged();">
-                <option value="">— Select a business initiative —</option>
+                <option value="">— Select a campaign objective —</option>
               </select>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Start
@@ -8567,20 +8575,63 @@
             </div>
           </div>
         </div>
-        <!-- Collaboration Center placeholder — matches the wireframe's
-             persistent right-side panel, honestly labeled as inert until
-             there's a real campaign id for it to attach to. Hidden (not
-             rendered fake data) once a real campaign exists — see
-             cmpUpdateCreationPageMode(). -->
-        <div class="cmp-workspace-collab" id="cmpCreationCollabPlaceholder" style="width:340px;flex-shrink:0;">
-          <div class="module cmp-stage open" style="opacity:0.75;">
+        <!-- 2026-09-20, per Todd's direct instruction: "Add the real
+             Collaboration Center to the Create Campaign form, replacing the
+             current placeholder." This is the same real, shared component
+             (cmpRenderCollabCenter()/cmpCollabComposerHtml() — see that
+             function's own comment on the single-instance/multi-mount
+             pattern) every built overlay (Objectives/Recommendation/
+             Creative/Trafficking/Analysis) already mounts, not a second,
+             disconnected copy — mounted here into #cmpCreationCollabMount
+             by cmpUpdateCreationPageMode() the same way those overlays mount
+             it into their own *CollabMount ids on open. No real campaign
+             exists yet at this point in the flow, so it renders with a null
+             campaign — cmpRenderCollabBody() already has a real, honest
+             empty state for that ("Load a campaign to use the Collaboration
+             Center."), the same state a null-campaign call would produce
+             anywhere else in this file; that's reused as-is rather than
+             inventing a second empty-state string, so the wording never
+             drifts between the two. This supersedes the narrower 2026-09-20
+             follow-up further down (cmpUpdateCreationPageMode()'s own
+             comment) that force-hid this same panel — Todd's later,
+             explicit instruction in this same round is to show the real
+             shell here, not the placeholder text block. -->
+        <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">
+          <!-- 2026-09-20, per Todd's direct instruction: "add budget in the
+               right column where we have white space" — a genuinely new
+               input, clearly optional/preliminary. It writes to the exact
+               same real campaign.budget column every downstream screen
+               already reads (Budget & Recommendation, generate-
+               recommendation-from-intake's "Total campaign budget on file")
+               by mirroring straight into the existing #cmpBudget field
+               (Lifecycle Stage & Goals' own Estimated Budget input, already
+               in the DOM even while that stage is locked — see
+               cmpUpdateLifecycleLockUI()'s own comment) rather than being a
+               second, disconnected column — cmpBuildFormPayload() already
+               reads #cmpBudget's value as-is, so no backend change is
+               needed. Setting cmpBudgetAuto=false here matches #cmpBudget's
+               own oninput, so a later Recommend Budget suggestion never
+               silently overwrites a number a person actually typed. If
+               Lifecycle Stage & Goals later sets a more considered budget of
+               its own, that just overwrites #cmpBudget directly (same field,
+               same column) — this early number is a starting point, not a
+               second source of truth to reconcile. -->
+          <div class="module cmp-stage open" id="cmpCreationBudgetCard">
             <div class="module-head" style="cursor:default;">
-              <div class="titles"><h2 style="font-size:1rem;">Collaboration Center</h2></div>
+              <div class="titles"><h2 style="font-size:1rem;">Preliminary budget <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></h2></div>
             </div>
             <div class="module-body">
-              <p class="cmp-stage-note" style="padding:0;">Activates the moment this campaign is created — the AI Brain starts watching immediately, and any teammate can pick up a workstream from there, no hand-off required.</p>
+              <div class="field" style="margin:0;">
+                <label>Estimated budget (USD)</label>
+                <div style="position:relative;">
+                  <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
+                  <input type="number" id="cmpCreationBudget" placeholder="e.g. 15000" min="0" step="100" style="padding-left:24px;" oninput="cmpSyncCreationBudget();">
+                </div>
+                <div class="hint" style="margin-top:6px;">A rough early number helps sharpen the Budget Recommendation later — refine it anytime in Lifecycle Stage &amp; Goals or Budget &amp; Recommendation. Not required to create this campaign.</div>
+              </div>
             </div>
           </div>
+          <div class="cmp-workspace-collab" id="cmpCreationCollabMount"></div>
         </div>
         </div>
 
@@ -9496,10 +9547,10 @@
                      reads/writes — one campaign, one value, two surfaces. -->
                 <div class="msg-card" id="cmpGenerationRequirementsCard">
                   <div class="msg-card-head">
-                    <span class="msg-card-title">Campaign Type &amp; Business Initiative</span>
+                    <span class="msg-card-title">Campaign Type &amp; Campaign Objective</span>
                     <span class="msg-card-sub">Required — the AI Brain reads both before drafting or contesting any campaign copy below</span>
                   </div>
-                  <p class="hint" style="margin:0 0 8px;">Relevance scoring for this campaign starts here. Campaign Type is the scenario mechanic (Offer, Launch, Loyalty…); Business Initiative is the underlying business reason this campaign exists — both shape the AI Copywriter's brief.</p>
+                  <p class="hint" style="margin:0 0 8px;">Relevance scoring for this campaign starts here. Campaign Type is the scenario mechanic (Offer, Launch, Loyalty…); Campaign Objective is the underlying business reason this campaign exists — both shape the AI Copywriter's brief.</p>
                   <div class="msg-subfield">
                     <label for="cmpCampaignTypeSelect">Campaign type</label>
                     <select id="cmpCampaignTypeSelect" onchange="cmpOnGenerationTypeChanged();">
@@ -9508,9 +9559,13 @@
                   </div>
                   <div id="cmpCampaignTypeDetailFields"></div>
                   <div class="msg-subfield">
-                    <label for="cmpBusinessInitiativeSelect">Business initiative</label>
+                    <!-- 2026-09-20 — Business Initiative dropdown relabeled to
+                         Campaign Objective (UI text only, see the matching
+                         comment on Create Campaign's own copy of this pair
+                         above); id/data model unchanged. -->
+                    <label for="cmpBusinessInitiativeSelect">Campaign Objective</label>
                     <select id="cmpBusinessInitiativeSelect" onchange="cmpOnGenerationTypeChanged();">
-                      <option value="">— Select a business initiative —</option>
+                      <option value="">— Select a campaign objective —</option>
                     </select>
                   </div>
                   <div id="cmpGenerationRequirementsStatus" style="margin-top:8px;"></div>
@@ -14474,17 +14529,55 @@ function cmpCheckKpiStageMismatch(){
 // back, if a "review the original fields" path ever lands here for an
 // existing campaign) — same lock-state call site as every other stage's
 // UI update, cmpUpdateDownstreamStages()'s renderCmpDownstreamStages().
+// 2026-09-20 — mirrors Create Campaign's own "Preliminary budget" input
+// straight onto the real #cmpBudget field (Lifecycle Stage & Goals'
+// Estimated Budget — see #cmpCreationBudget's own markup comment), so
+// cmpBuildFormPayload()'s existing budgetRaw read of #cmpBudget picks it up
+// with no separate payload field or backend change needed.
+function cmpSyncCreationBudget(){
+  const src = document.getElementById('cmpCreationBudget');
+  const dest = document.getElementById('cmpBudget');
+  if (!src || !dest) return;
+  dest.value = src.value;
+  cmpBudgetAuto = false;
+  markCampaignFormTouched();
+}
 function cmpUpdateCreationPageMode(campaign){
   const rail = document.getElementById('cmpStageRail');
-  const collab = document.getElementById('cmpCreationCollabPlaceholder');
+  const collab = document.getElementById('cmpCreationCollabMount');
   const isNew = !campaign;
   if (rail) rail.style.display = isNew ? 'none' : '';
-  // 2026-09-20 follow-up, per Todd's direct instruction: "We should have
-  // the collaboration center with Ask Verilume hidden" on the Create
-  // Campaign form — this placeholder panel (previously shown while no
-  // campaign exists yet, per the wireframe's two-column layout) is now
-  // always hidden; the Create Campaign form runs full-width instead.
-  if (collab) collab.style.display = 'none';
+  // 2026-09-20, per Todd's later direct instruction this same round: "Add
+  // the real Collaboration Center to the Create Campaign form, replacing
+  // the current placeholder." This supersedes the earlier same-day
+  // follow-up ("collaboration center with Ask Verilume hidden") that force-
+  // hid this panel — see the markup's own comment just above
+  // #cmpCreationCollabMount. While no real campaign exists yet, the real
+  // Collaboration Center shell mounts here (same cmpRenderCollabCenter()
+  // component every built overlay uses), showing its own honest
+  // null-campaign empty state rather than fake conversation. Once a real
+  // campaign exists, this mount is cleared and handed back to the Hub's
+  // #cmpWorkspaceCollab, and this whole two-column layout is only reached
+  // again via the deliberate "review the original fields" path (see this
+  // block's own top-level comment), where the normal stage rail — not a
+  // redundant Collaboration Center copy — is the correct navigation.
+  if (collab){
+    if (isNew){
+      collab.style.display = '';
+      if (cmpCollabMountId !== 'cmpCreationCollabMount'){
+        const priorMount = document.getElementById(cmpCollabMountId);
+        if (priorMount) priorMount.innerHTML = '';
+        cmpCollabMountId = 'cmpCreationCollabMount';
+      }
+      cmpRenderCollabCenter(null);
+    } else {
+      collab.style.display = 'none';
+      if (cmpCollabMountId === 'cmpCreationCollabMount'){
+        collab.innerHTML = '';
+        cmpCollabMountId = 'cmpWorkspaceCollab';
+      }
+    }
+  }
 }
 function cmpUpdatePickupLockUI(campaign){
   const pickupEl = document.getElementById('cmpStage-pickup');
@@ -40662,7 +40755,7 @@ function cmpSelectTemplateSearchResult(campaignId){
 
 function resetCampaignForm(){
   if (typeof cmpApplyReadOnlyMode === 'function') cmpApplyReadOnlyMode(false); // Round 132yy — starting a fresh campaign always clears read-only mode
-  ['cmpName','cmpKeyMessage','cmpBudget','cmpPlannedImpressions','cmpStartDate','cmpEndDate','cmpKpiGoal','cmpReachFrequency','cmpVideoViewRate','cmpFunnelVisitRate','cmpFunnelLeadRate','cmpFunnelBookingRate','cmpFunnelAov','cmpFunnelEcommerceMix','cmpFunnelDirectRate','cmpTransactionWindow','cmpLongFormCopy','cmpKeyMessageType','cmpMandatoryPhrase'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['cmpName','cmpKeyMessage','cmpBudget','cmpCreationBudget','cmpPlannedImpressions','cmpStartDate','cmpEndDate','cmpKpiGoal','cmpReachFrequency','cmpVideoViewRate','cmpFunnelVisitRate','cmpFunnelLeadRate','cmpFunnelBookingRate','cmpFunnelAov','cmpFunnelEcommerceMix','cmpFunnelDirectRate','cmpTransactionWindow','cmpLongFormCopy','cmpKeyMessageType','cmpMandatoryPhrase'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const styleResetEl = document.getElementById('cmpLongformStyle');
   if (styleResetEl) styleResetEl.value = 'Storytelling';
   const keyMessageModeResetEl = document.getElementById('cmpKeyMessageMode');
@@ -43789,7 +43882,7 @@ function cmpRequiredForGenerationGate(){
   const c = findCampaign(currentCampaignId);
   const missing = [];
   if (!c || !c.campaignType || !CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) missing.push('Campaign Type');
-  if (!c || !c.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative]) missing.push('Business Initiative');
+  if (!c || !c.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative]) missing.push('Campaign Objective');
   return { ok: missing.length === 0, missing };
 }
 function cmpRenderGenerationRequirementsStatus(c){
@@ -43797,7 +43890,7 @@ function cmpRenderGenerationRequirementsStatus(c){
   if (!statusEl) return;
   const gate = cmpRequiredForGenerationGate();
   statusEl.innerHTML = gate.ok
-    ? `<span class="hint" style="color:var(--cx);">✓ Both set — the AI Brain will use this Campaign Type and Business Initiative when drafting or contesting copy below.</span>`
+    ? `<span class="hint" style="color:var(--cx);">✓ Both set — the AI Brain will use this Campaign Type and Campaign Objective when drafting or contesting copy below.</span>`
     : `<span class="hint" style="color:var(--advocacy);font-weight:600;">⚠ Set ${gate.missing.join(' and ')} before generating or contesting campaign copy below — required as of this round.</span>`;
 }
 // Saves the new Brand Messaging card's Campaign Type detail-field inputs
