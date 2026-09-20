@@ -14043,6 +14043,16 @@ const CAMPAIGN_OBJECTIVE_GOAL_TEXT = {
 const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'New To Brand', 'Partners', 'Sales Team'];
 let selectedSegments = new Set();
 
+// 2026-09-20, per Todd's direct copy: shown once, as the first AI Brain
+// message in the Objectives conversation, only for an account's very first
+// real campaign (cmpIsFirstCampaignForAccount() below) — walks a brand-new
+// client through what the conversational builder is about to do. Minor
+// copy cleanup from Todd's draft ("walk you how" → "walk you through how",
+// a duplicated "and", and capitalizing Loyalty/Advocacy to match how every
+// other Lifecycle Stage name is capitalized elsewhere in this file) —
+// substance unchanged, flagged to Todd rather than silently altered.
+const CMP_FIRST_CAMPAIGN_WELCOME = "Welcome to the conversational campaign builder. This is your first campaign, so we want to walk you through how the AI Brain works. We already understand your product group and creative focus groups. We're going to dig a little deeper and ask you to provide the campaign type (e.g., tactical offer, brand, product launch), audience target, budget, and key KPIs. Add the information below, and then we'll look at your overall budgets, media mix, and historical analysis to come up with a recommendation. We may not have enough information, so we'll just ask when we need some additional help. All past customer spend will fall under Loyalty by default, unless designated as Advocacy. Let's get started.";
+
 // Round 132[new] (2026-08-11), per direct instruction: "channel
 // recommendations... based on... audience selections." A Segment here is a
 // contact list, not a demographic (see the comment above), so what actually
@@ -37202,11 +37212,35 @@ function cmpMaybeResetIntake(campaignId){
   const recEl = document.getElementById('cmpIntakeRecommendations');
   if (recEl) recEl.innerHTML = '';
 }
+// 2026-09-20 — "this is your first campaign" is read at the ACCOUNT level
+// (no per-user campaign-authorship tracking exists in this build): true
+// when the account has at most one real, non-Ad-Hoc campaign on file,
+// which — since a campaign already exists in order for this overlay to be
+// open at all (cmpOpenObjectivesIntake()'s own gate) — means this specific
+// campaign is that one.
+function cmpIsFirstCampaignForAccount(){
+  return state.campaigns.filter(c => !c.isAdHoc).length <= 1;
+}
 function cmpRenderIntakeChat(){
   const body = document.getElementById('cmpIntakeBody');
   if (!body) return;
   const myName = (state.userName || '').trim();
-  body.innerHTML = cmpIntakeHistory.length ? cmpIntakeHistory.map(h => {
+  // 2026-09-20, per Todd's direct instruction — the welcome message is
+  // rendered here, NOT pushed onto cmpIntakeHistory: that array is exactly
+  // the transcript cmpSaveIntakeHistory() persists to activityNotesJson.
+  // objectivesIntake and generate-recommendation-from-intake later reads
+  // back as "the conversation" to extract a real budget from — boilerplate
+  // onboarding copy has no business in that transcript. It only shows
+  // before any real turn exists, and only for the account's first campaign.
+  const showWelcome = !cmpIntakeHistory.length && cmpIsFirstCampaignForAccount();
+  const welcomeHtml = showWelcome ? `<div class="cmp-chat-msg">
+      <div class="cmp-team-chat-avatar" style="background:#2F0D4D;">${escapeHtml('✦')}</div>
+      <div class="cmp-chat-msg-body">
+        <div class="cmp-chat-msg-meta"><b>AI Brain</b></div>
+        <div class="cmp-chat-msg-text">${escapeHtml(CMP_FIRST_CAMPAIGN_WELCOME)}</div>
+      </div>
+    </div>` : '';
+  const historyHtml = cmpIntakeHistory.length ? cmpIntakeHistory.map(h => {
     const isAi = h.role === 'assistant';
     const author = isAi ? 'AI Brain' : (myName || 'You');
     return `<div class="cmp-chat-msg">
@@ -37216,7 +37250,8 @@ function cmpRenderIntakeChat(){
         <div class="cmp-chat-msg-text">${escapeHtml(h.text)}</div>
       </div>
     </div>`;
-  }).join('') : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>';
+  }).join('') : (showWelcome ? '' : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>');
+  body.innerHTML = welcomeHtml + historyHtml;
   body.scrollTop = body.scrollHeight;
   cmpSaveIntakeHistory();
 }
