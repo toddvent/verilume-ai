@@ -8481,6 +8481,24 @@
               <div class="char-counter" id="cmpNameCounter">0 / 80</div>
               <div class="rr-error" id="cmpNameError"></div>
             </div>
+            <!-- 2026-09-21, per direct instruction: "We didn't add the
+                 Estimated Budget (optional field) added during the previous
+                 session. It should be under Campaign Name." Moved back onto
+                 this Create Campaign step, directly under Campaign name —
+                 supersedes the 2026-09-20 placement next to Campaign
+                 Audiences in Lifecycle Stage & Goals (see that field's old
+                 spot, now just Campaign Audiences alone, further down).
+                 Same field, same id (cmpCreationBudget), same
+                 oninput="cmpSyncCreationBudget()" mirror onto #cmpBudget —
+                 pure layout move, no logic changed. -->
+            <div class="field">
+              <label>Estimated budget (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></label>
+              <div style="position:relative;">
+                <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
+                <input type="number" id="cmpCreationBudget" placeholder="e.g. 15000" min="0" step="100" style="padding-left:24px;" oninput="cmpSyncCreationBudget();">
+              </div>
+              <div class="hint" style="margin-top:6px;">A rough early number helps sharpen the Budget Recommendation later — refine it anytime in Budget &amp; Recommendation. Not required.</div>
+            </div>
             <!-- Round 132ag (2026-08-11), per direct correction: "The
                  channels lists should only be the default recommended
                  channels with the human having the option to expand." This
@@ -8842,37 +8860,17 @@
               <!-- Round 132bv (2026-08-13) fix — same trim as Lifecycle-Loop
                    Stage above: topic M's AI Thought already covers how Stage
                    narrows eligible audiences in full (renderFaqM()). -->
-              <!-- 2026-09-20, per Todd's direct feedback: "Why did you place
-                   the budget under the collaboration center? That's not part
-                   of the defined working area." / "Place Budget to the right
-                   of Campaign Audiences." Preliminary Budget (id
-                   cmpCreationBudget, unchanged — see cmpSyncCreationBudget()'s
-                   own comment) moves out of the Create Campaign right column
-                   entirely and sits here instead, in a two-column row next
-                   to Campaign Audiences. Pure layout move — same field, same
-                   id, same oninput="cmpSyncCreationBudget()" mirror onto
-                   #cmpBudget, same optional/no-gate behavior. -->
-              <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
-                <div style="flex:1 1 320px;min-width:260px;">
-                  <div class="field-divider">Campaign Audiences <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="M"></span></div>
-                  <p class="lede" style="margin-bottom:14px;">Select every segment this campaign targets.</p>
-                  <div class="cd-select" id="cmpSegmentRow"></div>
-                  <div class="rr-error" id="cmpSegmentError"></div>
-                  <div class="hint" id="cmpSegmentStageNote" style="margin-top:6px;"></div>
-                  <div id="cmpSegmentSmartDefault" style="margin-top:8px;"></div>
-                </div>
-                <div style="flex:1 1 220px;min-width:200px;max-width:280px;">
-                  <div class="field-divider">Preliminary budget <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span></div>
-                  <div class="field" style="margin:0;">
-                    <label>Estimated budget (USD)</label>
-                    <div style="position:relative;">
-                      <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.9062rem;pointer-events:none;">$</span>
-                      <input type="number" id="cmpCreationBudget" placeholder="e.g. 15000" min="0" step="100" style="padding-left:24px;" oninput="cmpSyncCreationBudget();">
-                    </div>
-                    <div class="hint" style="margin-top:6px;">A rough early number helps sharpen the Budget Recommendation later — refine it anytime in Budget &amp; Recommendation. Not required.</div>
-                  </div>
-                </div>
-              </div>
+              <!-- 2026-09-21 — Preliminary Budget moved back to the Create
+                   Campaign step, directly under Campaign name (see that
+                   field's own comment) — supersedes the 2026-09-20 "next to
+                   Campaign Audiences" placement. Campaign Audiences stays
+                   here alone, no longer paired in a two-column row. -->
+              <div class="field-divider">Campaign Audiences <span style="font-weight:400;text-transform:none;color:var(--muted);">— required</span> <span class="ai-thought-mount" data-topic="M"></span></div>
+              <p class="lede" style="margin-bottom:14px;">Select every segment this campaign targets.</p>
+              <div class="cd-select" id="cmpSegmentRow"></div>
+              <div class="rr-error" id="cmpSegmentError"></div>
+              <div class="hint" id="cmpSegmentStageNote" style="margin-top:6px;"></div>
+              <div id="cmpSegmentSmartDefault" style="margin-top:8px;"></div>
 
               <!-- Round 132aj (2026-08-11), per direct instruction: "The
                    objective copy and speech bubble can be removed because it
@@ -11333,7 +11331,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-collab-center-pre-campaign-ai-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-estimated-budget-under-campaign-name';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
