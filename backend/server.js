@@ -16913,7 +16913,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-recommendation-user-stated-budget-correction',
+        buildStamp: '2026-09-21-reco-audience-impressions-productgroup-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -22672,9 +22672,29 @@ Submit your response via the campaign_intake_turn tool.`;
         rows.forEach(r => { const v = (r[col] || '').trim(); if (v) seen.add(v); });
         return [...seen];
       };
-      const productGroups = distinctNonEmpty('productGroup').join(', ');
-      const creativeFocusGroups = distinctNonEmpty('creativeMarket').join(', ');
-      db.prepare('UPDATE campaigns SET productGroups = ?, creativeFocusGroups = ? WHERE id = ?').run(productGroups, creativeFocusGroups, campaignId);
+      // 2026-09-21 fix, per direct bug report: Campaign Creation's real
+      // Product Group/Creative Focus Group values were showing up blank on
+      // the Budget & Recommendation screen right after a recommendation was
+      // generated from an Objectives conversation. Root cause: generate-
+      // recommendation-from-intake's extraction has no per-channel product/
+      // creative-group signal to give (it only ever extracts channel/
+      // budget/stage from the conversation), so every line it inserts has
+      // productGroup/creativeMarket = null — `rows.length` was still truthy
+      // (the lines exist), so this function's own "only ever ADDS... never
+      // erases" guard let it proceed anyway and overwrote the real Campaign
+      // Creation values with an empty rollup. Each column now updates only
+      // when there's an actual non-empty value to derive, independently —
+      // a campaign can have real product-group lines but no creative-market
+      // lines (or vice versa) at any given moment, and leaving one column
+      // alone should never depend on whether the other happens to have data.
+      const productGroups = distinctNonEmpty('productGroup');
+      const creativeFocusGroups = distinctNonEmpty('creativeMarket');
+      if (productGroups.length){
+        db.prepare('UPDATE campaigns SET productGroups = ? WHERE id = ?').run(productGroups.join(', '), campaignId);
+      }
+      if (creativeFocusGroups.length){
+        db.prepare('UPDATE campaigns SET creativeFocusGroups = ? WHERE id = ?').run(creativeFocusGroups.join(', '), campaignId);
+      }
     }
 
     // GET /api/campaigns/:id/channel-planning — list every Channel Planning
@@ -22945,9 +22965,30 @@ Submit your response via the campaign_intake_turn tool.`;
       // is the frontend) so it's obvious this must be kept in sync with
       // CHANNEL_MIX_GROUPS if that ever changes.
       const RECO_GENERATION_CHANNELS = ['Linear TV', 'OTV', 'CTV', 'Newspapers', 'Magazines', 'Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries', 'Programmatic Display', 'Brand Search', 'Non-Brand Search', 'Paid Social', 'Partner Media', 'Podcasts', 'Retail Media', 'Radio', 'Out-of-Home', 'Field / ABM', 'Internal Email'];
+      // Mirrors ACCOUNT_SEGMENTS (portal.html) — same vocabulary the Loop
+      // Stage & Audience row's own tile picker uses, so whatever this
+      // extracts lines up exactly with what a human would pick by hand.
+      // Not imported (this is the backend, portal.html is the frontend), so
+      // it must be kept in sync with ACCOUNT_SEGMENTS if that list changes.
+      const RECO_GENERATION_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'Prospects', 'Future Customers', 'Anonymous Website Traffic'];
       const RECO_GENERATION_SCHEMA = {
         type: 'object',
         properties: {
+          // 2026-09-21 fix, per direct report: "We have an empty audience
+          // area that should be Past Guest, Hand-Raisers and Consideration
+          // intent." The Audience row on this screen was never populated
+          // from the Objectives conversation at all — only stage and the
+          // channel plan were ever extracted, so Audience stayed whatever
+          // it was before this conversation happened (usually nothing, since
+          // Campaign Creation itself has no Audience field — see
+          // CMP_OBJ_RECAP_FIELDS's own comment). Extracted the same way
+          // audiencePastCustomers already is per channel line, just rolled
+          // up to the whole-campaign level this field actually lives at.
+          audienceSegments: {
+            type: 'array',
+            items: { type: 'string', enum: RECO_GENERATION_SEGMENTS },
+            description: 'Every real audience segment this conversation actually targets, using ONLY this exact vocabulary. "Past Customers" for past guests/bookers being reactivated. "Hand-Raisers" for anyone who already showed interest (brochure requestors, inquiries, past leads). "Prospects" for a general new/consideration-intent audience with no prior relationship to the brand. "Future Customers" only if the conversation specifically described people who haven\'t traveled/bought yet but are in an active planning or decision window. "Anonymous Website Traffic" only if retargeting anonymous site visitors was specifically discussed. Never guess a segment the conversation didn\'t actually describe — an empty array is correct if none of these clearly apply.'
+          },
           channels: {
             type: 'array',
             items: {
@@ -22997,7 +23038,7 @@ ${acctContextBlock}
 FULL OBJECTIVES CONVERSATION:
 ${transcript}
 
-Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. When the conversation named a general tactic without pinning down exact channels or a split between them, use the ACCOUNT-LEVEL MEDIA MIX PLAN's percentages for that specific Lifecycle Stage as the base-case split — a Loyalty line follows the account's own Loyalty mix, a Consideration line follows its Consideration mix, never one blended account-wide average — and say so in assumptionNote; when the conversation was specific about channels or amounts, that specific instruction always wins over the account's general mix. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Set dataConfidenceNote per its own instructions.
+Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. When the conversation named a general tactic without pinning down exact channels or a split between them, use the ACCOUNT-LEVEL MEDIA MIX PLAN's percentages for that specific Lifecycle Stage as the base-case split — a Loyalty line follows the account's own Loyalty mix, a Consideration line follows its Consideration mix, never one blended account-wide average — and say so in assumptionNote; when the conversation was specific about channels or amounts, that specific instruction always wins over the account's general mix. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Also extract the campaign-level audienceSegments per that field's own instructions — this is a separate, whole-campaign rollup, not one value per channel line. Set dataConfidenceNote per its own instructions.
 
 Submit via the recommendation_from_intake tool.`;
       let parsed;
@@ -23040,9 +23081,19 @@ Submit via the recommendation_from_intake tool.`;
         const stated = userStatedBudgets[c.channel];
         if (!stated) return c;
         const current = Number(c.budget) || 0;
-        if (Math.abs(current - stated.amount) <= Math.max(50, stated.amount * 0.05)) return c;
+        // 2026-09-21, per direct follow-up: "Direct Mail at $35k was also
+        // extracted. It could be a chip listed below the table to reinforce
+        // what was said." Tag this line as a real, exact figure straight
+        // from the conversation regardless of whether a correction actually
+        // fired below — the frontend budget table reads this flag to render
+        // a confirming chip, and that's just as worth showing when the AI
+        // Brain's own number already matched what the user said as when it
+        // didn't.
+        if (Math.abs(current - stated.amount) <= Math.max(50, stated.amount * 0.05)){
+          return { ...c, exactFromConversation: true };
+        }
         budgetCorrectionNotes.push(`${c.channel} corrected to $${stated.amount.toLocaleString()} (you gave this exact figure in the conversation — the AI Brain's own extraction had returned $${current.toLocaleString()}).`);
-        return { ...c, budget: stated.amount, assumptionNote: `Exact amount from your conversation: "${stated.quote.slice(0, 140)}"` };
+        return { ...c, budget: stated.amount, exactFromConversation: true, assumptionNote: `Exact amount from your conversation: "${stated.quote.slice(0, 140)}"` };
       });
       // Persist the honest data-confidence note (or clear a stale one from a
       // prior attempt) regardless of channel-save outcome below — this is
@@ -23095,7 +23146,7 @@ Submit via the recommendation_from_intake tool.`;
             impressions: typeof c.impressions === 'number' ? c.impressions : null,
             status: 'draft',
             stage: lineStage,
-            detailsJson: Object.assign({}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {})
+            detailsJson: Object.assign({}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {}, c.exactFromConversation ? { exactFromConversation: true } : {})
           });
           savedCount++;
           if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + (Number(c.budget) || 0);
@@ -23115,8 +23166,21 @@ Submit via the recommendation_from_intake tool.`;
       if (stage && stage !== campaign.stage){
         db.prepare('UPDATE campaigns SET stage = ? WHERE id = ?').run(stage, campaignId);
       }
+      // 2026-09-21 fix, per direct report: "We have an empty audience area
+      // that should be Past Guest, Hand-Raisers and Consideration intent."
+      // Only sets it when the campaign doesn't already have a real Audience
+      // — same "never overwrite a human's deliberate choice" discipline as
+      // everything else in this endpoint, even though in practice this is
+      // always the first time Audience gets set (Campaign Creation itself
+      // collects no Audience field — see CMP_OBJ_RECAP_FIELDS's own
+      // comment on the frontend — so this screen's Audience row starts
+      // genuinely empty until either a human sets it or this runs).
+      const audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s)) : [];
+      if (audienceSegments.length && !(campaign.segment || '').trim()){
+        db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(audienceSegments.join(', '), campaignId);
+      }
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
-      return sendJson(res, 200, { generated: savedCount > 0, savedCount, stageApplied: stage, stagesUsed: Object.keys(stageBudgets) });
+      return sendJson(res, 200, { generated: savedCount > 0, savedCount, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
     }
 
     // POST /api/campaigns/:id/channel-planning/:entryId/client-approve —
@@ -23624,10 +23688,25 @@ Submit your response via the ai_brain_reply tool.`;
         const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
         if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
         if (!requireAccount(req, res, campaign.accountId)) return;
-        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy, region, stage FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId)
+        const lines = db.prepare('SELECT id, channel, audience, budget, impressions, status, clientApprovedAt, clientApprovedBy, region, stage, detailsJson FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId)
           .map(l => ({ ...l, region: normalizeChannelPlanningRegion(l.region), stage: normalizeChannelPlanningStage(l.stage) }));
         const totalSpend = lines.reduce((s, l) => s + (Number(l.budget) || 0), 0);
         const totalImpressions = lines.reduce((s, l) => s + (Number(l.impressions) || 0), 0);
+        // 2026-09-21, per direct follow-up: "Direct Mail at $35k was also
+        // extracted. It could be a chip listed below the table to reinforce
+        // what was said." generate-recommendation-from-intake tags a line's
+        // detailsJson with exactFromConversation whenever its budget came
+        // straight from an explicit dollar figure the user typed — surface
+        // those here as a small, named list so the frontend can render a
+        // confirming chip per line without parsing detailsJson itself.
+        const conversationConfirmedBudgets = [];
+        lines.forEach(l => {
+          if (!l.detailsJson) return;
+          try {
+            const details = JSON.parse(l.detailsJson);
+            if (details && details.exactFromConversation) conversationConfirmedBudgets.push({ channel: l.channel, budget: Number(l.budget) || 0 });
+          } catch (e){ /* malformed detailsJson on an old row — skip, not fatal to the rest of this response */ }
+        });
         const audienceTotals = {};
         lines.forEach(l => {
           const key = l.audience || campaign.segment || 'Unspecified';
@@ -23671,6 +23750,7 @@ Submit your response via the ai_brain_reply tool.`;
           audienceTotals,
           regionTotals,
           stageTotals,
+          conversationConfirmedBudgets,
           budgetApprovedAt: campaign.budgetApprovedAt || null,
           budgetApprovedBy: campaign.budgetApprovedBy || null
         });
