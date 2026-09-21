@@ -17012,7 +17012,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-campaigns-casing-normalization-fix',
+        buildStamp: '2026-09-21-objectives-intake-uses-campaign-context',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -20703,6 +20703,48 @@ async function handleRequest(req, res) {
       // runaway client bug (or someone pasting a huge amount of text)
       // shouldn't be able to blow up a single call.
       const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
+      // 2026-09-21 round 3, per Todd's direct report ("We need to train the
+      // AI brain to consider all campaign information already sent over...
+      // Our AI Brain should leverage all of this information in addition to
+      // the account details overall budget and media mix"): this endpoint
+      // is reused for BOTH the pre-creation "what do you want to build"
+      // chat (no campaign exists yet — campaignId is absent) AND the
+      // post-creation Objectives-stage intake chat (cmpIntakeExchange,
+      // portal.html — a real campaign already exists, with Campaign
+      // Experience Focus, Media Science Primary Focus, Product Group,
+      // Creative Focus Group, and Estimated Budget already captured at
+      // Campaign Creation). Until now this endpoint never received or used
+      // campaignId at all, so on the Objectives screen the AI Brain had zero
+      // visibility into any of that and opened by asking things like "what
+      // does success look like for this launch?" as if starting from
+      // nothing — even though Media Science Primary Focus (the primary KPI)
+      // was already selected. Loading the real campaign row here (when
+      // present) and folding both its already-captured fields AND this
+      // account's real budget/media-mix context (the same
+      // buildAccountBudgetAndPerformanceContextForPrompt() helper
+      // generate-recommendation-from-intake already uses) into the prompt
+      // fixes that at the root, for every campaign, not just this one.
+      const campaignId = typeof body.campaignId === 'string' ? body.campaignId.trim() : '';
+      const activeCampaign = campaignId ? db.prepare('SELECT * FROM campaigns WHERE id = ? AND accountId = ?').get(campaignId, accountId) : null;
+      let activeCampaignContextBlock = '';
+      let acctBudgetMixContextBlock = '';
+      if (activeCampaign){
+        const campaignTypeLabel = (activeCampaign.campaignType && CAMPAIGN_TYPE_REGISTRY[activeCampaign.campaignType]) ? CAMPAIGN_TYPE_REGISTRY[activeCampaign.campaignType].label : null;
+        const businessInitiativeLabel = (activeCampaign.businessInitiative && BUSINESS_INITIATIVE_REGISTRY[activeCampaign.businessInitiative]) ? BUSINESS_INITIATIVE_REGISTRY[activeCampaign.businessInitiative].label : null;
+        activeCampaignContextBlock = `
+THIS CAMPAIGN'S DETAILS, ALREADY CAPTURED AT CAMPAIGN CREATION (real — never ask the user for any of these again; use them to inform your questions and skip straight to what's genuinely still unknown):
+- Campaign Name: ${activeCampaign.name || '(not set)'}
+- Campaign Experience Focus: ${campaignTypeLabel || '(not set)'}
+- Media Science Primary Focus (this campaign's primary KPI): ${businessInitiativeLabel || '(not set)'}
+- Product Group: ${activeCampaign.productGroups || '(not set)'}
+- Creative Focus Group: ${activeCampaign.creativeFocusGroups || '(not set)'}
+- Estimated Budget: ${activeCampaign.budget ? `$${Number(activeCampaign.budget).toLocaleString()}` : '(not set)'}
+- Dates: ${activeCampaign.startDate && activeCampaign.endDate ? `${activeCampaign.startDate} to ${activeCampaign.endDate}` : '(not set)'}
+`;
+        const { promptBlock: acctContext } = buildAccountBudgetAndPerformanceContextForPrompt(accountId, activeCampaign);
+        acctBudgetMixContextBlock = `
+${acctContext}`;
+      }
       // 2026-09-21 fix, per direct report: a cancelled campaign was being
       // offered as a "recommended campaign to replicate" here (fell through
       // to the generic "Recently created" match below). Cancelled campaigns
@@ -20725,7 +20767,9 @@ async function handleRequest(req, res) {
       }).join('\n');
       const conversationText = history.map(h => `${h.role === 'assistant' ? 'AI Brain' : 'User'}: ${h.text}`).join('\n');
       const prompt = `You are the AI Brain inside a marketing platform, helping a real marketer start a new campaign by understanding what they want to accomplish — through real conversation, not a form. Ask one focused follow-up at a time; don't interrogate. Once you genuinely understand the goal well enough to be useful (usually 2-4 exchanges), say so and set readyToRecommend to true — don't drag the conversation out past that point.
-
+${activeCampaign ? `
+This conversation is happening on the Campaign Objectives screen for a campaign that ALREADY EXISTS — Campaign Creation already captured real details below. NEVER ask the user for anything already listed in "THIS CAMPAIGN'S DETAILS" — that would make you look like you weren't paying attention to what they already told the platform. Instead, open by acknowledging what you already know about this specific campaign in plain language, and use it (plus the account's real budget/media mix context below) to ask about what's genuinely still unknown — audience specifics, channel preferences, timing considerations, anything not already captured.
+${activeCampaignContextBlock}${acctBudgetMixContextBlock}` : ''}
 THIS ACCOUNT'S CORPORATE GOALS (real, on file — weigh these whenever the conversation touches strategy or KPI choice):
 ${(account.corporateGoals || '').trim() || '(none on file for this account yet)'}
 
@@ -30404,3 +30448,13 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
+
+
+
+
+
+
+
