@@ -1860,7 +1860,17 @@
   .cmp-breadcrumb-step.active{background:#1E2761;color:#FFFFFF;}
   .cmp-breadcrumb-step.disabled{color:var(--line);cursor:default;}
   .cmp-breadcrumb-sep{color:var(--line);font-size:0.75rem;}
-  .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;}
+  /* 2026-09-21 fix, per direct report: couldn't scroll to the bottom of the
+     Objectives overlay's left column. Root cause — this grid had no
+     grid-template-rows, so its single implicit row sized to CONTENT height
+     (max-content) instead of being bounded to the panel's actual available
+     height; .cmp-pitch-left's own overflow-y:auto never had a bounded box
+     to scroll within, so it just grew past .cmp-pitch-panel's edge and got
+     silently clipped by that panel's overflow:hidden — no scrollbar, no way
+     to reach it. grid-template-rows:minmax(0,1fr) bounds the row to the
+     grid's own height (the min:0 lets it shrink below content size), which
+     is what makes both columns' own scroll/height rules actually engage. */
+  .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr);}
   @media (max-width:1000px){ .cmp-pitch-body{grid-template-columns:1fr;overflow-y:auto;} }
   .cmp-pitch-left{overflow-y:auto;padding:24px 28px;border-right:1px solid var(--line);}
   /* 2026-09-20 — Creative workspace's #cmpCreativeLeft holds the three real
@@ -11331,7 +11341,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-exclude-cancelled-from-template-recs';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-overlay-scroll-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14485,7 +14495,13 @@ function cmpRenderUtmLinkTestResults(results){
 // approximated), so this grid and Campaign Management's never drift into
 // two different definitions of "due."
 function cmpCreativeGridRows(){
-  const rows = (state.campaigns || []).filter(c => !c.isAdHoc);
+  // 2026-09-21 fix, per direct report: this feeds both the Creative grid
+  // and Top 5 Most Urgent — both dashboard-facing — and had missed the
+  // `!c.cancelled` filter every other such list in this file already
+  // applies (see cmpTemplateCandidates()'s own comment for the fuller
+  // rationale and where a cancelled campaign IS still meant to be viewable
+  // on purpose, via cmgmtStatusFilter's 'cancelled' filter).
+  const rows = (state.campaigns || []).filter(c => !c.isAdHoc && !c.cancelled);
   return rows.slice().sort((a, b) => {
     const da = cmgmtCampaignDueDate(a), db_ = cmgmtCampaignDueDate(b);
     if (!da && !db_) return 0;
@@ -21238,8 +21254,11 @@ function renderWorkingDashboardAccess(){
 // pick, never silently broken.
 function cfdUrgentAdCopyCandidates(){
   const todayStr = new Date().toISOString().slice(0, 10);
+  // 2026-09-21 fix — a cancelled campaign doesn't need urgent ad copy;
+  // same `!c.cancelled` convention as every other work-queue/dashboard
+  // list in this file (see cmpTemplateCandidates()'s own comment).
   return state.campaigns
-    .filter(c => !c.isAdHoc && !c.longformCopy && c.startDate)
+    .filter(c => !c.isAdHoc && !c.cancelled && !c.longformCopy && c.startDate)
     .sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
 }
 function cfdGoToCampaignAdCopy(campaignId){
@@ -22023,8 +22042,10 @@ function cfdParseCampaignGoal(q){
 }
 
 function cfdInMarketImpressions(windowStart, windowEnd){
+  // 2026-09-21 fix — a cancelled campaign isn't really in-market; excluded
+  // same as every other work-queue/dashboard list in this file.
   return state.campaigns
-    .filter(c => !c.isAdHoc && c.startDate && c.endDate && c.plannedImpressions)
+    .filter(c => !c.isAdHoc && !c.cancelled && c.startDate && c.endDate && c.plannedImpressions)
     .filter(c => c.startDate <= windowEnd && c.endDate >= windowStart)
     .reduce((sum, c) => sum + Number(c.plannedImpressions || 0), 0);
 }
@@ -29422,7 +29443,9 @@ function goToUnallocatedCampaigns(){
 function renderMpUnplannedList(){
   const el = document.getElementById('mpUnplannedList');
   if (!el) return;
-  const unplanned = state.campaigns.filter(c => !c.isAdHoc && c.fundingSource !== 'plan');
+  // 2026-09-21 fix — a cancelled campaign doesn't need a Media Plan draw;
+  // excluded same as every other work-queue/dashboard list in this file.
+  const unplanned = state.campaigns.filter(c => !c.isAdHoc && !c.cancelled && c.fundingSource !== 'plan');
   if (!unplanned.length){
     el.innerHTML = `<p class="lede" style="margin:0;">Every non-Ad-Hoc campaign is currently drawing from this Media Plan.</p>`;
     return;
@@ -46176,7 +46199,9 @@ async function loadMarketingOpsQueue(){
     return;
   }
 
-  const real = state.campaigns.filter(c => !c.isAdHoc);
+  // 2026-09-21 fix — a cancelled campaign has no outstanding work; excluded
+  // same as every other work-queue/dashboard list in this file.
+  const real = state.campaigns.filter(c => !c.isAdHoc && !c.cancelled);
   const rows = real.map(c => {
     const channelsSet = !!(c.channels && c.channels.trim());
     let complete, detail, focusCard;
