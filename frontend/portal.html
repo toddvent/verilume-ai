@@ -11388,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-reco-card-unified-edit-reorder-video';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-budget-page-drops-cmo-generative-creative-assets';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40428,7 +40428,12 @@ function cmpRenderPitchLeft(campaign){
   const mixRows = cmpRecoChannelMixRows(summary);
   const audienceRows = cmpRecoAudienceRows(summary);
   const regionRows = cmpRecoRegionRows(summary);
-  const creativeAssets = cmpRecoCreativeAssetsNeeded(summary);
+  // 2026-09-21 round 6 — creativeAssets (cmpRecoCreativeAssetsNeeded) is no
+  // longer rendered on this page; Creative Assets Needed moved to its own
+  // downstream screen per Todd's direct correction (see the comment further
+  // down, near Budget Line-Item Approval). cmpRecoCreativeAssetsNeeded()
+  // itself is left in place, unused from here, for whatever screen picks
+  // this content up next.
   const viewingChannel = s.pitchViewMode !== 'audience';
   // 2026-09-16 — region filter for the Budget Line-Item table, per Todd's
   // "toggle between budget allocations" instruction. 'all' shows every
@@ -40638,15 +40643,21 @@ function cmpRenderPitchLeft(campaign){
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Spend by Region</h4>${cmpRecoMeterRows(regionRows)}</div>
     </div>
 
-    <!-- 2026-09-21 round 5, per direct feedback (items 5/6): "Creative
-         Assets Needed comes after budgets are confirmed or edited... can
-         be removed [from here]" / "Generative AI descriptors from CMO page
-         comes between Budget Submission and Channels Activated." Reordered
-         from Creative Assets → Generative Descriptor → Budget Line-Item
-         Approval to Budget Line-Item Approval ("Budget Submission") →
-         Generative Descriptor for the CMO → Creative Assets Needed
-         ("Channels Activated") — same three blocks, same markup, new
-         sequence only. -->
+    <!-- 2026-09-21 round 6, per Todd's direct correction to round 5's
+         reorder: "5-6 are not part of the budget page. They are separate
+         pages after the budgets are reviewed and approved. I provided the
+         order." Creative Assets Needed and the Generative Descriptor for
+         the CMO are removed from this page entirely — round 5 had reordered
+         them as sections WITHIN cmpRenderPitchLeft(), which was the wrong
+         move; Todd's order (Budget Submission → CMO Generative page →
+         Channels Activated) describes separate downstream SCREENS, not
+         sections of this one. This page now ends at Approve Overall Budget.
+         The CMO Generative page itself — per Todd's description, "including
+         the recap, same charts as budget page and two column generative
+         paragraphs focused on creative vision and media science" — and
+         where Creative Assets Needed now lives are being scoped as their
+         own build, not guessed at here (no wireframe exists yet for either
+         per the cxmedia-verify-against-wireframe discipline). -->
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Budget Line-Item Approval</h3>
       ${viewingChannel ? `
@@ -40688,24 +40699,6 @@ function cmpRenderPitchLeft(campaign){
       ${summary.budgetApprovedAt
         ? `<span class="lede">✓ Overall budget approved${summary.budgetApprovedBy ? ' by ' + escapeHtml(summary.budgetApprovedBy) : ''}</span>`
         : `<button type="button" class="btn-primary" onclick="cmpRecoApproveOverall()">Approve Overall Budget →</button>`}
-    </div>
-
-    <div class="cmp-intake-summary" style="margin-top:22px;margin-bottom:22px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <b>Generative Descriptor for the CMO</b>
-        <button type="button" class="btn-ghost" ${s.narrativeLoading ? 'disabled' : ''} onclick="cmpRecoGenerateNarrative()">${s.narrativeLoading ? 'Writing…' : (s.narrative ? 'Regenerate' : 'Generate with AI Brain')}</button>
-      </div>
-      ${s.narrative ? `<p class="lede" style="margin-top:10px;">${escapeHtml(s.narrative)}</p>` : ''}
-      ${s.narrativeError ? `<p class="lede" style="margin-top:10px;color:#B3261E;">${escapeHtml(s.narrativeError)}</p>` : ''}
-    </div>
-
-    <div class="stage-row" style="margin-bottom:8px;">
-      <h3 style="margin:0;font-size:1rem;">Creative Assets Needed</h3>
-    </div>
-    <div class="cmp-intake-summary" style="margin-bottom:22px;">
-      ${creativeAssets.length
-        ? `<ul style="margin:0;padding-left:18px;">${creativeAssets.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>`
-        : `<p class="lede" style="margin:0;">No channels selected yet — asset needs are derived from the channels approved below.</p>`}
     </div>
   `;
   // 2026-09-21 round 4 — mount the checkbox-dropdown widgets into the
