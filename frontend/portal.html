@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-reco-consolidated-summary-audience-impressions';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-reco-summary-two-column-redesign-casing-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13743,11 +13743,22 @@ function cmpRenderCampaignHeader(campaign){
   // 2026-09-15, per direct instruction — relabeled from "Starts <date>" to
   // "In Market: <date>" and promoted to its own larger H3-style line (see
   // .cch-inmarket) instead of sitting in the small muted meta row.
+  //
+  // 2026-09-21 round 2, per Todd's direct Priority 2 instruction ("We
+  // should update the header format to In Market: %StartDate% -
+  // %EndDate%"): the header is now the ONE place a campaign's dates show
+  // (the Budget & Recommendation "Campaign Summary" card below no longer
+  // repeats them — see cmpRenderPitchLeft()'s own comment), so it needs
+  // the full range, not just the start date.
   const startDateEl = document.getElementById('cchStartDate');
   // fmtDate() isn't a global here (it's a locally-scoped const in a few
   // other render functions) — inline the same "raw ISO string or em dash"
   // fallback rather than calling something undefined.
-  if (startDateEl) startDateEl.textContent = campaign.startDate ? `In Market: ${campaign.startDate}` : 'In Market date not set';
+  if (startDateEl){
+    if (campaign.startDate && campaign.endDate) startDateEl.textContent = `In Market: ${campaign.startDate} - ${campaign.endDate}`;
+    else if (campaign.startDate) startDateEl.textContent = `In Market: ${campaign.startDate}`;
+    else startDateEl.textContent = 'In Market date not set';
+  }
   const score = computeCampaignRelevanceScore(campaign);
   // Round 132bx follow-up, per direct instruction: "the score in a circle
   // filled with client brand color." Falls back to the app's own teal
@@ -40467,56 +40478,83 @@ function cmpRenderPitchLeft(campaign){
         <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpCloseRecommendationPitch();cmpOpenObjectivesIntake();">✎ Edit</button>
       </div>
       ${(campaign.activityNotes && campaign.activityNotes.objectivesGoalSummary) ? `<p class="lede" style="margin:2px 0 14px;"><b>What the AI Brain heard:</b> ${escapeHtml(campaign.activityNotes.objectivesGoalSummary)}</p>` : ''}
-      <div class="cmp-objectives-recap-grid">${cmpRecoOriginContextFieldsHtml(campaign)}</div>
-      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <b>Loop Stage:</b>
-        ${s.editingLoopStage
-          ? `<div class="field" style="width:auto;min-width:160px;margin:0;"><select id="cmpRecoStageSelect" onchange="cmpRecoStageDraftChanged(this.value)" ${s.stageSaving ? 'disabled' : ''}>${stageOptionsHtml}</select></div>
-             ${stageChanged ? `<button type="button" class="btn-primary" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoSaveLoopStage()">${s.stageSaving ? 'Saving…' : 'Save →'}</button>` : ''}
-             <button type="button" class="btn-ghost" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditLoopStage()">Cancel</button>`
-          : `<span>${escapeHtml(campaign.stage || '(not set)')}</span><button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditLoopStage()">Edit</button>`}
-      </div>
-      ${s.stageSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.stageSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.stageSaveBanner.text)}</div>` : ''}
-      <!-- 2026-09-17 — per Todd's direct correction: this campaign's real
-           media mix can span more than one Lifecycle Stage at once (his
-           example: a Loyalty allocation AND a Consideration allocation in
-           the same campaign). The single "Loop Stage" field above stays as
-           the campaign-level rollup label, but whenever more than one
-           stage actually carries budget (summary.stageTotals, computed
-           per line item server-side), show the real breakdown here rather
-           than letting the single label imply the whole campaign is one
-           stage. -->
-      ${(() => {
-        const stEntries = Object.entries(summary.stageTotals || {}).filter(([, v]) => v > 0);
-        if (stEntries.length < 2) return '';
-        return `<div class="hint" style="margin-top:6px;">Media mix spans ${stEntries.length} stages: ${stEntries.map(([st, v]) => `${escapeHtml(st)} (${fmtMoney(v)})`).join(', ')}</div>`;
-      })()}
-      <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <b>Audience:</b>
-        ${s.editingAudience
-          ? ''
-          : `<span>${escapeHtml(audienceSaved.length ? audienceSaved.join(', ') : '(not set)')}</span><button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditAudience()">Edit</button>`}
-      </div>
-      ${s.editingAudience ? `
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-          ${ACCOUNT_SEGMENTS.map(seg => `<button type="button" class="select-tile${audienceDraftList.includes(seg) ? ' selected' : ''}${audienceDisabled.has(seg) ? ' select-tile-disabled' : ''}" ${audienceDisabled.has(seg) ? 'disabled aria-disabled="true"' : ''} title="${audienceDisabled.has(seg) ? cmpSegmentDisabledReason(seg) : ''}" onclick="cmpRecoToggleAudienceDraft('${seg}')"><span class="indicator">✓</span><span class="label">${escapeHtml(seg)}</span></button>`).join('')}
+      <!-- 2026-09-21 round 2, per Todd's direct layout spec (Priority 2):
+           Campaign Name and the two campaign dates are dropped here — both
+           already show in the page header above (see
+           cmpRenderCampaignHeader()'s "In Market: %StartDate% - %EndDate%"
+           line) and repeating them in the working area was pure
+           duplication. Channels and the "Edit CPM & impressions defaults"
+           CTA are dropped too — Channels is already the Budget Line-Item
+           table below, and the CPM/impressions edit link now sits next to
+           that same table (see the "Budget Line-Item Approval" section
+           header) since both are about reviewing channel spend, not about
+           this top-level summary. What's left is a real two-column grid,
+           left-to-right per row exactly as specified: Target Audiences /
+           Loop Stage, then Product Group / Creative Focus Group, then
+           Total Spend / Estimated Impressions (previously shown twice —
+           once here, once below the channel table; now shown once). -->
+      <div class="cmp-objectives-recap-grid">
+        <div class="cmp-objectives-recap-row">
+          <span class="cmp-objectives-recap-label">Target Audiences</span>
+          <div class="cmp-objectives-recap-value">
+            ${s.editingAudience
+              ? ''
+              : `${escapeHtml(audienceSaved.length ? audienceSaved.join(', ') : '(not set)')} <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditAudience()">Edit</button>`}
+            ${s.editingAudience ? `
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                ${ACCOUNT_SEGMENTS.map(seg => `<button type="button" class="select-tile${audienceDraftList.includes(seg) ? ' selected' : ''}${audienceDisabled.has(seg) ? ' select-tile-disabled' : ''}" ${audienceDisabled.has(seg) ? 'disabled aria-disabled="true"' : ''} title="${audienceDisabled.has(seg) ? cmpSegmentDisabledReason(seg) : ''}" onclick="cmpRecoToggleAudienceDraft('${seg}')"><span class="indicator">✓</span><span class="label">${escapeHtml(seg)}</span></button>`).join('')}
+              </div>
+              <div class="btn-row" style="margin-top:8px;">
+                ${audienceChanged ? `<button type="button" class="btn-primary" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoSaveAudience()">${s.audienceSaving ? 'Saving…' : 'Save →'}</button>` : ''}
+                <button type="button" class="btn-ghost" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditAudience()">Cancel</button>
+              </div>` : ''}
+            ${s.audienceSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.audienceSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.audienceSaveBanner.text)}</div>` : ''}
+          </div>
         </div>
-        <div class="btn-row" style="margin-top:8px;">
-          ${audienceChanged ? `<button type="button" class="btn-primary" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoSaveAudience()">${s.audienceSaving ? 'Saving…' : 'Save →'}</button>` : ''}
-          <button type="button" class="btn-ghost" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditAudience()">Cancel</button>
-        </div>` : ''}
-      ${s.audienceSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.audienceSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.audienceSaveBanner.text)}</div>` : ''}
-      <br><b>Channels:</b> ${(summary.channels || []).length ? escapeHtml(summary.channels.join(', ')) : '(none selected yet)'}
-      <!-- 2026-09-21 fix, per direct report: "You know spend so Impressions
-           should be already estimated..." — see
-           cmpRecoEstimatedTotalImpressions()'s own comment. -->
-      ${(() => {
-        const est = cmpRecoEstimatedTotalImpressions(summary);
-        return `<br><b>Total Spend:</b> ${fmtMoney(summary.totalSpend)} &nbsp; <b>Total Impressions:</b> ${est.total.toLocaleString()}${est.anyEstimated ? ` <span class="illustrative-tag">estimated from spend &amp; channel CPM</span>` : ''}`;
-      })()}
-      <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit CPM &amp; impressions defaults →</button>
+        <div class="cmp-objectives-recap-row">
+          <span class="cmp-objectives-recap-label">Loop Stage</span>
+          <div class="cmp-objectives-recap-value">
+            ${s.editingLoopStage
+              ? `<div class="field" style="width:auto;min-width:160px;margin:0;"><select id="cmpRecoStageSelect" onchange="cmpRecoStageDraftChanged(this.value)" ${s.stageSaving ? 'disabled' : ''}>${stageOptionsHtml}</select></div>
+                 ${stageChanged ? `<button type="button" class="btn-primary" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoSaveLoopStage()">${s.stageSaving ? 'Saving…' : 'Save →'}</button>` : ''}
+                 <button type="button" class="btn-ghost" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditLoopStage()">Cancel</button>`
+              : `${escapeHtml(campaign.stage || '(not set)')} <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditLoopStage()">Edit</button>`}
+            ${s.stageSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.stageSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.stageSaveBanner.text)}</div>` : ''}
+            <!-- 2026-09-17 — per Todd's direct correction: this campaign's
+                 real media mix can span more than one Lifecycle Stage at
+                 once (his example: a Loyalty allocation AND a Consideration
+                 allocation in the same campaign). The single "Loop Stage"
+                 field above stays as the campaign-level rollup label, but
+                 whenever more than one stage actually carries budget
+                 (summary.stageTotals, computed per line item server-side),
+                 show the real breakdown here rather than letting the single
+                 label imply the whole campaign is one stage. -->
+            ${(() => {
+              const stEntries = Object.entries(summary.stageTotals || {}).filter(([, v]) => v > 0);
+              if (stEntries.length < 2) return '';
+              return `<div class="hint" style="margin-top:6px;">Media mix spans ${stEntries.length} stages: ${stEntries.map(([st, v]) => `${escapeHtml(st)} (${fmtMoney(v)})`).join(', ')}</div>`;
+            })()}
+          </div>
+        </div>
+        <div class="cmp-objectives-recap-row">
+          <span class="cmp-objectives-recap-label">Product Group</span>
+          <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(campaign, CMP_OBJ_RECAP_FIELDS.find(f => f.key === 'productGroups')))}</span>
+        </div>
+        <div class="cmp-objectives-recap-row">
+          <span class="cmp-objectives-recap-label">Creative Focus Group</span>
+          <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(campaign, CMP_OBJ_RECAP_FIELDS.find(f => f.key === 'creativeFocusGroups')))}</span>
+        </div>
+        <div class="cmp-objectives-recap-row">
+          <span class="cmp-objectives-recap-label">Total Spend</span>
+          <span class="cmp-objectives-recap-value">${fmtMoney(summary.totalSpend)}</span>
+        </div>
+        <div class="cmp-objectives-recap-row">
+          <!-- 2026-09-21 fix, per direct report: "You know spend so
+               Impressions should be already estimated..." — see
+               cmpRecoEstimatedTotalImpressions()'s own comment. -->
+          <span class="cmp-objectives-recap-label">Estimated Impressions</span>
+          <span class="cmp-objectives-recap-value">${(() => { const est = cmpRecoEstimatedTotalImpressions(summary); return `${est.total.toLocaleString()}${est.anyEstimated ? ` <span class="illustrative-tag">estimated from spend &amp; channel CPM</span>` : ''}`; })()}</span>
+        </div>
       </div>
     </div>
 
@@ -40580,6 +40618,14 @@ function cmpRenderPitchLeft(campaign){
         <button type="button" class="stage-tile${regionFilter === 'all' ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetRegionFilter('all')">All Regions</button>
         ${CMP_SPEND_REGIONS.map(r => `<button type="button" class="stage-tile${regionFilter === r ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetRegionFilter('${r}')">${escapeHtml(r)}</button>`).join('')}
       </div>` : ''}
+    </div>
+    <!-- 2026-09-21 round 2 — "Edit CPM & impressions defaults" moved here
+         from the Campaign Summary card above, per Todd's direct
+         instruction ("Remove, featured below when reviewing channel
+         spend"): it's about the line items in this table, not the
+         top-level summary. -->
+    <div class="btn-row" style="margin-bottom:10px;">
+      <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit CPM &amp; impressions defaults →</button>
     </div>
     ${viewingChannel ? cmpRecoChannelTableHtml(summary, regionFilter) : cmpRecoAudienceTableHtml(audienceRows)}
     <!-- 2026-09-21, per direct follow-up: "Direct Mail at $35k was also
