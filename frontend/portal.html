@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-recap-single-edit-reorder';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-recap-dropdown-width-ai-sync';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38404,7 +38404,7 @@ function renderCmpPickupStage(){
         <button type="button" class="btn-ghost" onclick="cmpStartDialogueFromCampaign('${c.id}')">Start from this campaign →</button>
       </div>
     </div>
-  `).join('') : `<div class="hint">We can't identify a similar campaign. Continue speaking with your AI Brain, or <a class="flink" onclick="cmpSkipPickupAndContinue()">click to build manually</a> with your AI Brain observing.</div>`;
+  `).join('') : `<div class="hint" style="grid-column:1 / -1;">We can't identify a similar campaign. Continue speaking with your AI Brain, or <a class="flink" onclick="cmpSkipPickupAndContinue()">click to build manually</a> with your AI Brain observing.</div>`;
   cmpMaybeResetIntake(campaign.id);
 }
 
@@ -38562,7 +38562,7 @@ function cmpObjRecapInputId(key){ return `cmpObjRecapField_${key}`; }
 // draft: every field's in-progress value, keyed by field key — a string for
 // text/select/money/date, an array for the two multi-select fields. banner:
 // the last save's {ok, text}, same shape as cmpRecoState.stageSaveBanner.
-let cmpObjRecapState = { editing: false, draft: null, saving: false, banner: null };
+let cmpObjRecapState = { editing: false, draft: null, saving: false, banner: null, multiSets: null };
 function cmpObjRecapFieldValue(c, key){
   if (key === 'productGroups' || key === 'creativeFocusGroups'){
     return (c[key] || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -38597,6 +38597,17 @@ function cmpObjRecapStartEdit(){
   if (!campaign) return;
   const draft = {};
   CMP_OBJ_RECAP_FIELDS.forEach(field => { draft[field.key] = cmpObjRecapFieldValue(campaign, field.key); });
+  // 2026-09-21, per direct feedback ("Selecting Edit brings the chips back
+  // instead of the drop-down. Was that intentional?") — it wasn't meant to
+  // diverge: Product Group / Creative Focus Group everywhere else in the
+  // portal (Campaign Creation's own form, since the 2026-09-20 conversion)
+  // use the cmpRenderCdSelect() checkbox-dropdown, not always-visible tile
+  // chips. These Sets back that same widget for the recap card's edit mode
+  // — see cmpObjRecapRenderMultiField()/cmpObjRecapToggle*Groups() below.
+  cmpObjRecapState.multiSets = {
+    productGroups: new Set(draft.productGroups || []),
+    creativeFocusGroups: new Set(draft.creativeFocusGroups || [])
+  };
   cmpObjRecapState.editing = true;
   cmpObjRecapState.draft = draft;
   cmpObjRecapState.banner = null;
@@ -38605,23 +38616,50 @@ function cmpObjRecapStartEdit(){
 function cmpObjRecapCancelEdit(){
   cmpObjRecapState.editing = false;
   cmpObjRecapState.draft = null;
+  cmpObjRecapState.multiSets = null;
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderObjectivesRecap(campaign);
 }
-function cmpObjRecapToggleMultiDraft(key, value){
-  cmpObjRecapSyncSimpleFieldsFromDom();
-  const draft = Array.isArray(cmpObjRecapState.draft[key]) ? cmpObjRecapState.draft[key].slice() : [];
-  const idx = draft.indexOf(value);
-  if (idx >= 0) draft.splice(idx, 1); else draft.push(value);
-  cmpObjRecapState.draft[key] = draft;
-  const campaign = cmpRailLoadedCampaign();
-  if (campaign) cmpRenderObjectivesRecap(campaign);
+function cmpObjRecapMultiContainerId(key){ return `cmpObjRecapCd_${key}`; }
+// Mounts/refreshes the cmpRenderCdSelect() checkbox-dropdown for one multi
+// field inside the recap card. Called once right after cmpRenderObjectives-
+// Recap() inserts the container divs (the widget owns its own re-render
+// after every toggle via cmpCdSelectRenderers, same pattern as Campaign
+// Creation's Product Group/Creative Focus Group rows), and again from
+// cmpObjRecapToggleProductGroups()/cmpObjRecapToggleCreativeFocusGroups()
+// below rather than re-rendering the whole recap card on every checkbox
+// click (that would also blow away any not-yet-saved text field mid-type).
+function cmpObjRecapRenderMultiField(key){
+  const s = cmpObjRecapState;
+  if (!s.editing || !s.multiSets) return;
+  const field = CMP_OBJ_RECAP_FIELDS.find(f => f.key === key);
+  if (!field || !document.getElementById(cmpObjRecapMultiContainerId(key))) return;
+  const options = (field.options() || []).map(v => ({ value: v, label: v }));
+  const toggleFn = key === 'productGroups' ? 'cmpObjRecapToggleProductGroups' : 'cmpObjRecapToggleCreativeFocusGroups';
+  cmpRenderCdSelect(cmpObjRecapMultiContainerId(key), options, s.multiSets[key], toggleFn, `Select ${field.label.toLowerCase()}(s)`);
+}
+function cmpObjRecapToggleProductGroups(v){
+  const set = cmpObjRecapState.multiSets.productGroups;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  cmpObjRecapState.draft.productGroups = Array.from(set);
+  cmpObjRecapRenderMultiField('productGroups');
+}
+function cmpObjRecapToggleCreativeFocusGroups(v){
+  const set = cmpObjRecapState.multiSets.creativeFocusGroups;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  cmpObjRecapState.draft.creativeFocusGroups = Array.from(set);
+  cmpObjRecapRenderMultiField('creativeFocusGroups');
 }
 async function cmpObjRecapSave(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign || !cmpObjRecapState.draft) return;
   cmpObjRecapSyncSimpleFieldsFromDom();
   const draft = cmpObjRecapState.draft;
+  // Snapshot each field's DISPLAY value before the save overwrites the
+  // campaign object, so we can tell after saving exactly what changed —
+  // see the AI Brain notification below.
+  const beforeDisplay = {};
+  CMP_OBJ_RECAP_FIELDS.forEach(field => { beforeDisplay[field.key] = cmpObjRecapDisplayValue(campaign, field); });
   const payload = {};
   CMP_OBJ_RECAP_FIELDS.forEach(field => {
     let v = draft[field.key];
@@ -38647,8 +38685,40 @@ async function cmpObjRecapSave(){
   cmpObjRecapState.saving = false;
   cmpObjRecapState.editing = false;
   cmpObjRecapState.draft = null;
+  cmpObjRecapState.multiSets = null;
   cmpObjRecapState.banner = { ok, text: ok ? 'Saved — Campaign Creation fields updated.' : 'Could not save — try again.' };
   cmpRenderObjectivesRecap(campaign);
+  // 2026-09-21 fix, per direct bug report: "The AI Brain is not recognizing
+  // the updated spend and KPI focus entered for the campaign via the edit
+  // process." Root cause: cmpIntakeHistory only ever got the campaign's
+  // FIELD SNAPSHOT once, in the one-time auto-start opening line
+  // (cmpObjectivesAutoStartLine(), pushed by cmpAutoStartObjectivesDialogue-
+  // IfNeeded()) — an edit made here afterward updated the campaign record
+  // and this recap card, but nothing ever told the ongoing AI Brain
+  // conversation, so its next reply kept reasoning from the stale numbers
+  // baked into that first turn. Fix: whenever a save actually changes a
+  // field AND a dialogue is already underway, push a real follow-up turn
+  // announcing the new values and let the AI Brain respond to it normally
+  // — same mechanism cmpAutoStartObjectivesDialogueIfNeeded() itself uses,
+  // just mid-conversation instead of as the opener.
+  if (ok) cmpObjRecapNotifyAiBrainOfEdits(campaign, beforeDisplay);
+}
+// Fire-and-forget: runs after the recap card has already shown its "Saved"
+// banner, so a slow AI Brain reply never blocks the Save button. Silently
+// does nothing when there's no conversation yet to update (the next auto-
+// start will just use the current, already-fresh values) or one is already
+// in flight (cmpIntakeBusy) — in that rare race the AI Brain still has the
+// prior turn's values for one reply, which is the same latency any other
+// concurrent edit would see.
+async function cmpObjRecapNotifyAiBrainOfEdits(campaign, beforeDisplay){
+  if (!cmpIntakeHistory.length || cmpIntakeBusy) return;
+  const changed = CMP_OBJ_RECAP_FIELDS.filter(field => cmpObjRecapDisplayValue(campaign, field) !== beforeDisplay[field.key]);
+  if (!changed.length) return;
+  const summary = changed.map(field => `${field.label} is now ${cmpObjRecapDisplayValue(campaign, field)}`).join('; ');
+  const message = `I just updated these campaign details in Campaign Creation: ${summary}. Please use these updated values for the budget recommendation going forward.`;
+  cmpIntakeHistory.push({ role: 'user', text: message, recapUpdate: true });
+  cmpRenderIntakeChat();
+  await cmpIntakeExchange(message);
 }
 // Renders the recap card — called from cmpMaybeResetIntake() any time the
 // loaded campaign changes, and by every edit/save/cancel handler above so
@@ -38675,9 +38745,13 @@ function cmpRenderObjectivesRecap(c){
       editorHtml = `<select id="${cmpObjRecapInputId(field.key)}" ${s.saving ? 'disabled' : ''}>${optsHtml}</select>`;
     } else if (field.type === 'multi'){
       const options = field.options();
-      const draftArr = Array.isArray(draftVal) ? draftVal : [];
+      // Checkbox-dropdown (cmpRenderCdSelect), same widget/convention as
+      // Campaign Creation's own Product Group/Creative Focus Group rows —
+      // mounted into this container right after innerHTML is set below,
+      // via cmpObjRecapRenderMultiField(). Not built here: cmpRenderCdSelect
+      // needs the container to already exist in the DOM.
       editorHtml = options.length
-        ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${options.map(opt => `<button type="button" class="select-tile${draftArr.includes(opt) ? ' selected' : ''}" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapToggleMultiDraft('${field.key}','${escapeHtml(opt).replace(/'/g, "\\'")}')"><span class="indicator">✓</span><span class="label">${escapeHtml(opt)}</span></button>`).join('')}</div>`
+        ? `<div id="${cmpObjRecapMultiContainerId(field.key)}"></div>`
         : `<p class="hint" style="margin:0;">No ${escapeHtml(field.label.toLowerCase())} options are set up for this account yet — add them under Configuration.</p>`;
     } else if (field.type === 'money'){
       editorHtml = `<input type="number" min="0" step="1" id="${cmpObjRecapInputId(field.key)}" value="${draftVal === null || draftVal === undefined ? '' : escapeHtml(String(draftVal))}" ${s.saving ? 'disabled' : ''}>`;
@@ -38705,6 +38779,10 @@ function cmpRenderObjectivesRecap(c){
       <button type="button" class="btn-ghost" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapCancelEdit()">Cancel</button>
     </div>` : ''}
   </div>`;
+  if (s.editing){
+    cmpObjRecapRenderMultiField('productGroups');
+    cmpObjRecapRenderMultiField('creativeFocusGroups');
+  }
 }
 // Builds the auto-started opening line — same "real field summary, not
 // fabricated prose" discipline as cmpCampaignOriginalCopy(), ending with an
