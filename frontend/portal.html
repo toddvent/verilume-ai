@@ -2275,10 +2275,17 @@
   .mktcal-day-num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--muted);}
   .mktcal-day.mktcal-today .mktcal-day-num{color:var(--cx);}
   .mktcal-day-events{display:flex;flex-direction:column;gap:3px;overflow:hidden;min-width:0;}
-  .mktcal-pill{display:flex;align-items:center;gap:6px;background:var(--paper-dim);border-radius:5px;padding:3px 6px;font-size:0.6875rem;line-height:1.3;cursor:pointer;border:none;text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;color:var(--ink);width:100%;min-width:0;box-sizing:border-box;}
+  .mktcal-pill{display:flex;align-items:center;gap:6px;background:var(--paper-dim);border-radius:5px;padding:3px 6px;font-size:0.6875rem;line-height:1.3;cursor:pointer;border:1px solid transparent;text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;color:var(--ink);width:100%;min-width:0;box-sizing:border-box;}
   .mktcal-pill:hover{background:#EAF3EF;}
   .mktcal-pill .mktcal-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;}
   .mktcal-pill .mktcal-pill-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;font-weight:700;}
+  /* 2026-09-21 — work-in-progress campaigns (no Channel Planning Detail
+     entry yet, synthesized by getMarketingCalendarEvents() so they still
+     show up on the calendar) get a dashed outline instead of the default
+     solid-look pill, so they visually stand out from confirmed/trafficked
+     events per direct instruction. */
+  .mktcal-pill-wip{border:1px dashed var(--cx);background:var(--white);}
+  .mktcal-pill-wip:hover{background:#EAF3EF;}
   .mktcal-more-btn{background:none;border:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6562rem;color:var(--cx);cursor:pointer;padding:2px 4px;text-align:left;}
   .mktcal-more-btn:hover{text-decoration:underline;}
 
@@ -2287,6 +2294,8 @@
   .mktcal-agenda-date{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line);}
   .mktcal-agenda-row{display:flex;align-items:center;gap:10px;width:100%;background:var(--white);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;text-align:left;font-family:'Inter';}
   .mktcal-agenda-row:hover{border-color:var(--cx);}
+  /* See .mktcal-pill-wip above — same dashed treatment for the agenda list. */
+  .mktcal-agenda-row-wip{border-style:dashed;border-color:var(--cx);}
   .mktcal-agenda-row .mktcal-dot{flex-shrink:0;width:9px;height:9px;border-radius:50%;margin-top:2px;}
   .mktcal-agenda-main{flex:1;min-width:0;}
   .mktcal-agenda-title{font-weight:600;font-size:0.9062rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -2341,6 +2350,16 @@
   .cmp-intake-input-row button{flex-shrink:0;}
   .cmp-intake-summary{border:1px solid var(--cx);background:#EAF3EF;border-radius:10px;padding:12px 14px;font-size:0.8125rem;margin-top:4px;}
   .cmp-intake-summary b{color:var(--ink);}
+  /* 2026-09-21 — recap of the Campaign Creation step's real selections,
+     shown below the Objectives dialogue's own intro so the AI Brain
+     conversation never opens looking like it forgot what step 1 already
+     collected. See cmpRenderObjectivesRecap(). */
+  .cmp-objectives-recap{border:1px solid var(--line);border-radius:10px;background:var(--white);padding:12px 14px;margin:14px 0;}
+  .cmp-objectives-recap-title{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:8px;}
+  .cmp-objectives-recap-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;}
+  .cmp-objectives-recap-row{display:flex;flex-direction:column;gap:1px;min-width:0;}
+  .cmp-objectives-recap-label{font-size:0.6875rem;color:var(--muted);}
+  .cmp-objectives-recap-value{font-size:0.8125rem;font-weight:600;color:var(--ink);overflow-wrap:break-word;}
   /* 2026-09-15 — voice wiring for the campaign-intake conversation. See
      cmpIntakeStartVoice() (JS) — real ElevenLabs Conversational AI session,
      not a shell. Mic sits beside Send, same input row, same visual system;
@@ -8214,6 +8233,12 @@
               <button type="button" class="btn-ghost" style="flex:none;white-space:nowrap;" onclick="cmpSkipPickupAndContinue()">Skip to Manual Campaign Creation →</button>
             </div>
             <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
+            <!-- 2026-09-21, per direct instruction: recap of what Campaign
+                 Creation (step 1) already collected, so this stage doesn't
+                 read as if it forgot the Audience/Channel/Product Group/
+                 Creative Focus Group/Estimated Budget the user already gave
+                 us. Populated by cmpRenderObjectivesRecap(). -->
+            <div id="cmpObjectivesRecap"></div>
             <div class="cmp-intake-body" id="cmpIntakeBody"></div>
             <div class="cmp-intake-input-row">
               <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
@@ -11341,7 +11366,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-overlay-scroll-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-mktcal-wip-events-objectives-recap';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38450,6 +38475,96 @@ function cmpMaybeResetIntake(campaignId){
   cmpRenderIntakeChat();
   const recEl = document.getElementById('cmpIntakeRecommendations');
   if (recEl) recEl.innerHTML = '';
+  const campaign = state.campaigns.find(x => x.id === campaignId);
+  cmpRenderObjectivesRecap(campaign);
+  // 2026-09-21 — a genuinely new (never-yet-opened) dialogue for this
+  // campaign auto-starts from the real Campaign Creation fields instead of
+  // sitting on a blank "say what you want this campaign to accomplish"
+  // prompt — see cmpAutoStartObjectivesDialogueIfNeeded()'s own comment.
+  cmpAutoStartObjectivesDialogueIfNeeded(campaign);
+}
+// 2026-09-21 — per direct instruction: "The campaign objective stage does
+// not inherit the selections from the campaign creation step... populate
+// the recap from the previous step below the dialogue start section and
+// default the initial comment from the AI Brain to ask the next question
+// needed to generate enough information for a budget recommendation."
+//
+// cmpObjectivesRecapFields() reads the SAME real campaign record fields
+// Campaign Creation (step 1) actually saved — Audience/Channels/Product
+// Group/Creative Focus Group/Campaign Experience Focus/Estimated Budget —
+// same source of truth cmpCampaignOriginalCopy() already uses for "Start
+// from this campaign," just applied to the campaign that's actually loaded
+// rather than a different one being used as a template.
+function cmpObjectivesRecapFields(c){
+  if (!c) return null;
+  const seg = (c.segment || '').split(',').map(s => s.trim()).filter(Boolean);
+  const ch = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+  const pg = (c.productGroups || '').split(',').map(s => s.trim()).filter(Boolean);
+  const cfg = (c.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean);
+  const typeEntry = (typeof CAMPAIGN_TYPE_REGISTRY_CLIENT !== 'undefined' && c.campaignType) ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType] : null;
+  return {
+    audience: seg.join(', ') || null,
+    channels: ch.join(', ') || null,
+    productGroups: pg.join(', ') || null,
+    creativeFocusGroups: cfg.join(', ') || null,
+    experienceFocus: typeEntry ? typeEntry.label : null,
+    budget: (c.budget !== null && c.budget !== undefined && c.budget !== '') ? Number(c.budget) : null
+  };
+}
+// Renders the read-only recap card — called from cmpMaybeResetIntake() any
+// time the loaded campaign changes, so it's always in sync with whichever
+// campaign the Objectives overlay currently has open. Not a chat message:
+// this is context that sits beside the dialogue, not part of the transcript
+// cmpSaveIntakeHistory() persists.
+function cmpRenderObjectivesRecap(c){
+  const mount = document.getElementById('cmpObjectivesRecap');
+  if (!mount) return;
+  const f = cmpObjectivesRecapFields(c);
+  if (!f){ mount.innerHTML = ''; return; }
+  const rows = [
+    ['Campaign Experience Focus', f.experienceFocus || '—'],
+    ['Audience', f.audience || '—'],
+    ['Channels', f.channels || '—'],
+    ['Product Group', f.productGroups || '—'],
+    ['Creative Focus Group', f.creativeFocusGroups || '—'],
+    ['Estimated Budget', f.budget !== null ? `$${f.budget.toLocaleString()}` : 'Not set yet']
+  ];
+  mount.innerHTML = `<div class="cmp-objectives-recap">
+    <div class="cmp-objectives-recap-title">From Campaign Creation</div>
+    <div class="cmp-objectives-recap-grid">
+      ${rows.map(([label, value]) => `<div class="cmp-objectives-recap-row"><span class="cmp-objectives-recap-label">${escapeHtml(label)}</span><span class="cmp-objectives-recap-value">${escapeHtml(String(value))}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+// Builds the auto-started opening line — same "real field summary, not
+// fabricated prose" discipline as cmpCampaignOriginalCopy(), ending with an
+// explicit ask so the AI Brain's own reply (via the real campaign-intake
+// call in cmpIntakeExchange(), not client-side guesswork) is what actually
+// asks the next question it needs toward a budget recommendation.
+function cmpObjectivesAutoStartLine(c){
+  const f = cmpObjectivesRecapFields(c);
+  if (!f) return '';
+  const known = [
+    `Audience ${f.audience || 'TBD'}`,
+    `Channels ${f.channels || 'TBD'}`,
+    `Product Group ${f.productGroups || 'TBD'}`,
+    `Creative Focus Group ${f.creativeFocusGroups || 'TBD'}`
+  ];
+  if (f.experienceFocus) known.push(`Campaign Experience Focus ${f.experienceFocus}`);
+  known.push(f.budget !== null ? `Estimated Budget $${f.budget.toLocaleString()}` : 'no Estimated Budget set yet');
+  return `Here's what we already set up for "${c.name || c.id}" in Campaign Creation: ${known.join(', ')}. What do you still need from me to put together a budget recommendation?`;
+}
+// Fires once per campaign (cmpMaybeResetIntake() only calls this when the
+// loaded campaign actually changed) and only when there's truly no
+// conversation yet for it — never overwrites a real, in-progress dialogue
+// the user or a teammate already started.
+async function cmpAutoStartObjectivesDialogueIfNeeded(campaign){
+  if (!campaign || cmpIntakeHistory.length || cmpIntakeBusy) return;
+  const message = cmpObjectivesAutoStartLine(campaign);
+  if (!message) return;
+  cmpIntakeHistory.push({ role: 'user', text: message, autoStarted: true });
+  cmpRenderIntakeChat();
+  await cmpIntakeExchange(message);
 }
 // 2026-09-20, revised per Todd's direct correction: "The first time rule
 // should be applied at the client id and user level vs account only." Read
@@ -45780,8 +45895,14 @@ function mktCalIso(y, m, d){
 function mktCalPillHtml(e){
   const idLabel = escapeHtml(e.campaignId || e.id || '—');
   const title = escapeHtml(e.campaignTitle || '(untitled campaign)');
-  const tooltip = `${title} — ${escapeHtml(e.channel || '')}`;
-  return `<button type="button" class="mktcal-pill" onclick="mktCalOpenDetail('${e.id}')" title="${tooltip}">
+  // 2026-09-21 — work-in-progress placeholder events (no real Channel
+  // Planning Detail entry yet — see getMarketingCalendarEvents()) get a
+  // dashed border instead of the default solid one, so a campaign that's
+  // still being built stands out from one with a confirmed channel plan,
+  // per direct instruction.
+  const wipClass = e.workInProgress ? ' mktcal-pill-wip' : '';
+  const tooltip = e.workInProgress ? `${title} — work in progress (not yet trafficked)` : `${title} — ${escapeHtml(e.channel || '')}`;
+  return `<button type="button" class="mktcal-pill${wipClass}" onclick="mktCalOpenDetail('${e.id}')" title="${tooltip}">
     <span class="mktcal-dot" style="background:${channelCalColor(e.channel)}"></span>
     <span class="mktcal-pill-label">${idLabel}</span>
   </button>`;
@@ -45810,13 +45931,13 @@ function mktCalRenderAgenda(events){
     const d = new Date(iso + 'T00:00:00Z');
     const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
     const rows = byDate[iso].map(e => `
-      <button type="button" class="mktcal-agenda-row" onclick="mktCalOpenDetail('${e.id}')">
+      <button type="button" class="mktcal-agenda-row${e.workInProgress ? ' mktcal-agenda-row-wip' : ''}" onclick="mktCalOpenDetail('${e.id}')">
         <span class="mktcal-dot" style="background:${channelCalColor(e.channel)}"></span>
         <span class="mktcal-agenda-main">
           <div class="mktcal-agenda-title">${escapeHtml(e.campaignTitle || '(untitled campaign)')}</div>
-          <div class="mktcal-agenda-meta">${escapeHtml(e.partner || '—')}</div>
+          <div class="mktcal-agenda-meta">${e.workInProgress ? 'Work in progress — not yet trafficked' : escapeHtml(e.partner || '—')}</div>
         </span>
-        <span class="mktcal-agenda-channel" style="background:${channelCalColor(e.channel)}">${escapeHtml(e.channel || '—')}</span>
+        <span class="mktcal-agenda-channel" style="background:${channelCalColor(e.channel)}">${e.workInProgress ? 'WIP' : escapeHtml(e.channel || '—')}</span>
       </button>`).join('');
     return `<div class="mktcal-agenda-group"><div class="mktcal-agenda-date">${label}</div>${rows}</div>`;
   }).join('');
@@ -45853,29 +45974,44 @@ function mktCalOpenDetail(eventId){
   }
   const body = document.getElementById('mktCalModalBody');
   if (body){
-    // 2026-09-13 — Publisher/Vendor Performance actuals, per direct
-    // instruction ("we capture cost, household reach, total circulation
-    // and creative size compared to other magazines and newspapers based
-    // on calls, QR code scans, direct URL visits and measurable leads —
-    // Direct Mail: same approach"). Four separate inputs, not one blended
-    // response field, so which engagement type is actually driving this
-    // placement stays visible. Feeds renderPublisherPerformanceLeaderboard()
-    // below via GET .../channel-planning/publisher-performance.
-    body.innerHTML = rows.map(([label, value]) => `<div class="mktcal-detail-row"><span class="mktcal-detail-label">${escapeHtml(label)}</span><span class="mktcal-detail-value">${escapeHtml(String(value))}</span></div>`).join('')
-      + `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-           <p style="font-size:0.8125rem;font-weight:700;margin:0 0 4px;">Response actuals</p>
-           <p class="hint" style="margin:0 0 10px;">Feeds the Publisher/Vendor Performance leaderboard under Comparative Analytics.</p>
-           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-             <div class="field"><label for="mktCalActualCalls">Calls</label><input type="number" min="0" id="mktCalActualCalls" value="${e.actualCalls ?? ''}"></div>
-             <div class="field"><label for="mktCalActualQrScans">QR scans</label><input type="number" min="0" id="mktCalActualQrScans" value="${e.actualQrScans ?? ''}"></div>
-             <div class="field"><label for="mktCalActualUrlVisits">Direct URL visits</label><input type="number" min="0" id="mktCalActualUrlVisits" value="${e.actualUrlVisits ?? ''}"></div>
-             <div class="field"><label for="mktCalActualLeads">Measurable leads</label><input type="number" min="0" id="mktCalActualLeads" value="${e.actualLeads ?? ''}"></div>
-           </div>
-           <div class="btn-row" style="margin-top:10px;">
-             <button type="button" class="btn-primary" onclick="mktCalSaveActuals('${e.campaignId}','${e.id}')">Save actuals</button>
-           </div>
-           <div id="mktCalActualsSaveNote" class="hint" style="margin-top:6px;"></div>
-         </div>`;
+    const detailRowsHtml = rows.map(([label, value]) => `<div class="mktcal-detail-row"><span class="mktcal-detail-label">${escapeHtml(label)}</span><span class="mktcal-detail-value">${escapeHtml(String(value))}</span></div>`).join('');
+    // 2026-09-21 — work-in-progress placeholder events (synthesized by
+    // getMarketingCalendarEvents() for campaigns that haven't been
+    // trafficked yet, so they have no real channel_planning_details row)
+    // have no cpd entryId to save Response Actuals against — show a plain
+    // status note pointing at the campaign instead of a form that would
+    // PATCH a fake id.
+    if (e.workInProgress){
+      body.innerHTML = detailRowsHtml
+        + `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+             <p style="font-size:0.8125rem;font-weight:700;margin:0 0 4px;">Not yet trafficked</p>
+             <p class="hint" style="margin:0;">This campaign hasn't reached channel planning yet, so there's no Channel Planning Detail entry to show response actuals for. It's plotted here on its own Start Date so it doesn't disappear from the calendar while work is in progress.</p>
+           </div>`;
+    } else {
+      // 2026-09-13 — Publisher/Vendor Performance actuals, per direct
+      // instruction ("we capture cost, household reach, total circulation
+      // and creative size compared to other magazines and newspapers based
+      // on calls, QR code scans, direct URL visits and measurable leads —
+      // Direct Mail: same approach"). Four separate inputs, not one blended
+      // response field, so which engagement type is actually driving this
+      // placement stays visible. Feeds renderPublisherPerformanceLeaderboard()
+      // below via GET .../channel-planning/publisher-performance.
+      body.innerHTML = detailRowsHtml
+        + `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+             <p style="font-size:0.8125rem;font-weight:700;margin:0 0 4px;">Response actuals</p>
+             <p class="hint" style="margin:0 0 10px;">Feeds the Publisher/Vendor Performance leaderboard under Comparative Analytics.</p>
+             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+               <div class="field"><label for="mktCalActualCalls">Calls</label><input type="number" min="0" id="mktCalActualCalls" value="${e.actualCalls ?? ''}"></div>
+               <div class="field"><label for="mktCalActualQrScans">QR scans</label><input type="number" min="0" id="mktCalActualQrScans" value="${e.actualQrScans ?? ''}"></div>
+               <div class="field"><label for="mktCalActualUrlVisits">Direct URL visits</label><input type="number" min="0" id="mktCalActualUrlVisits" value="${e.actualUrlVisits ?? ''}"></div>
+               <div class="field"><label for="mktCalActualLeads">Measurable leads</label><input type="number" min="0" id="mktCalActualLeads" value="${e.actualLeads ?? ''}"></div>
+             </div>
+             <div class="btn-row" style="margin-top:10px;">
+               <button type="button" class="btn-primary" onclick="mktCalSaveActuals('${e.campaignId}','${e.id}')">Save actuals</button>
+             </div>
+             <div id="mktCalActualsSaveNote" class="hint" style="margin-top:6px;"></div>
+           </div>`;
+    }
   }
   const footer = document.getElementById('mktCalModalFooter');
   if (footer){
