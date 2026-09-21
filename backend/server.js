@@ -16913,7 +16913,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-exclude-cancelled-from-template-recs',
+        buildStamp: '2026-09-21-mktcal-work-in-progress-events',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21647,6 +21647,33 @@ Submit your response via the campaign_intake_turn tool.`;
     // getMarketingCalendarEvents() is shared by the JSON route and both
     // export routes below so all three return the exact same event set for
     // the same query params.
+    //
+    // 2026-09-21 — per direct instruction ("the marketing calendar is not
+    // picking up active campaigns... make sure it reflects all campaigns
+    // even if they are work in progress"). Root cause: this function used
+    // to be a straight INNER JOIN against channel_planning_details, so any
+    // campaign with zero trafficking line items yet was entirely invisible
+    // — regardless of its own Start/End dates or lifecycle status. That's
+    // every campaign still working through Campaign Creation / Media
+    // Science / CX (messaging, copywriting, creative — see
+    // CMP_STAGE_CATEGORY_ORDER in portal.html), since channel_planning_
+    // details rows only get created once a campaign reaches the Ops/
+    // trafficking stage. This is exactly what Todd meant by "CX campaigns
+    // do not appear" — campaigns sitting in the CX stage category haven't
+    // been trafficked yet, so they had no cpd rows and no calendar events.
+    //
+    // Fix: still return every real cpd-driven event as before (unchanged),
+    // and ADD ONE synthesized placeholder event per non-cancelled campaign
+    // that (a) has no channel_planning_details rows at all yet and (b) has
+    // a startDate falling inside the requested window (or, lacking a
+    // startDate, is not yet cancelled/complete — we still want a work-in-
+    // progress campaign to show up on today's date rather than vanish).
+    // Placeholder events carry workInProgress:true and a null id (never a
+    // real cpd id) so the frontend can key its dashed-border treatment off
+    // that flag and so mktCalOpenDetail's real-cpd lookup path isn't
+    // confused by a synthetic row. A campaign that already has at least one
+    // cpd row keeps showing only its real, trafficked events — once
+    // trafficking starts, the placeholder naturally stops being generated.
     function getMarketingCalendarEvents(accountId, q){
       let sql = `SELECT cpd.id, cpd.campaignId, c.name AS campaignName, c.objective AS campaignObjective,
           cpd.channel, cpd.partner, cpd.hitDate, cpd.dropDate, cpd.endDate,
@@ -21669,7 +21696,7 @@ Submit your response via the campaign_intake_turn tool.`;
       // campaign-list rows) — matched here so the calendar's campaignTitle
       // never disagrees with what the campaign is called anywhere else in
       // the product.
-      return rows.map(r => ({
+      const realEvents = rows.map(r => ({
         id: r.id,
         campaignId: r.campaignId,
         campaignTitle: r.campaignName || r.campaignObjective || '(untitled campaign)',
@@ -21691,8 +21718,60 @@ Submit your response via the campaign_intake_turn tool.`;
         actualCalls: r.actualCalls === null ? null : Number(r.actualCalls),
         actualQrScans: r.actualQrScans === null ? null : Number(r.actualQrScans),
         actualUrlVisits: r.actualUrlVisits === null ? null : Number(r.actualUrlVisits),
-        actualLeads: r.actualLeads === null ? null : Number(r.actualLeads)
+        actualLeads: r.actualLeads === null ? null : Number(r.actualLeads),
+        workInProgress: false
       }));
+
+      // Skip the placeholder pass entirely when filtering to a single
+      // campaignId or a specific channel/productGroup/creativeMarket — a
+      // work-in-progress campaign has no channel/productGroup/creativeMarket
+      // of its own yet, so it can never legitimately match one of those
+      // filters, and a campaignId filter is already asking for one specific
+      // campaign's real trafficked events.
+      if (q.channel || q.productGroup || q.creativeMarket || q.campaignId){
+        return realEvents;
+      }
+
+      const campaignsWithCpd = new Set(
+        db.prepare('SELECT DISTINCT campaignId FROM channel_planning_details').all().map(r => r.campaignId)
+      );
+      let wipSql = 'SELECT id, name, objective, startDate, endDate, budget, createdAt FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND (cancelled IS NULL OR cancelled = 0)';
+      const wipRows = db.prepare(wipSql).all(accountId);
+      const placeholders = [];
+      wipRows.forEach(c => {
+        if (campaignsWithCpd.has(c.id)) return; // already trafficked — real events only
+        // Plot it on its own startDate when it has one; otherwise fall back
+        // to the day it was created, so a brand-new campaign still lands
+        // somewhere sensible on the calendar instead of being dropped for
+        // lacking a date.
+        const plotDate = (c.startDate && c.startDate.slice(0, 10)) || (c.createdAt && c.createdAt.slice(0, 10));
+        if (!plotDate) return;
+        if (q.start && plotDate < q.start) return;
+        if (q.end && plotDate > q.end) return;
+        placeholders.push({
+          id: `wip-${c.id}`,
+          campaignId: c.id,
+          campaignTitle: c.name || c.objective || '(untitled campaign)',
+          channel: null,
+          partner: null,
+          hitDate: plotDate,
+          dropDate: null,
+          endDate: c.endDate || null,
+          productYear: null,
+          productGroup: null,
+          creativeMarket: null,
+          audience: null,
+          budget: c.budget === null || c.budget === undefined ? null : Number(c.budget),
+          status: 'Work in progress',
+          impressions: null,
+          actualCalls: null,
+          actualQrScans: null,
+          actualUrlVisits: null,
+          actualLeads: null,
+          workInProgress: true
+        });
+      });
+      return realEvents.concat(placeholders).sort((a, b) => (a.hitDate || '').localeCompare(b.hitDate || ''));
     }
 
     // GET /api/accounts/:accountId/marketing-calendar/export.xlsx — must be
