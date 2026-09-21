@@ -10157,8 +10157,22 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
   // tagged Consideration against its Consideration mix — never against the
   // account's blended average, which is exactly the thing Todd flagged as
   // wrong ("each stage does have different mix within the mix").
-  const mediaPlan = db.prepare('SELECT * FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
-  let mediaMixLines = '(no Media Plan on file for this account for ' + year + ' — no account-level target media mix to use as a base case)';
+  // 2026-09-21 round 5, item 1, per Todd's direct instruction: "AI Brain
+  // can assume that historical media plans should be used when the
+  // current campaign year budget has not been added." When this
+  // campaign's own year has no Media Plan on file, fall back to the most
+  // recent PRIOR year's plan for this account rather than telling the AI
+  // Brain there's no base-case mix to work from at all — a year-old human-
+  // set mix is still a far better starting point than nothing, so long as
+  // the prompt is honest that it's a prior year being used directionally
+  // (isFallbackYear below), not this campaign's own year.
+  let mediaPlan = db.prepare('SELECT * FROM media_plans WHERE accountId = ? AND year = ? ORDER BY updatedAt DESC LIMIT 1').get(accountId, year);
+  let isFallbackYearMediaPlan = false;
+  if (!mediaPlan){
+    mediaPlan = db.prepare('SELECT * FROM media_plans WHERE accountId = ? AND year < ? ORDER BY year DESC, updatedAt DESC LIMIT 1').get(accountId, year);
+    if (mediaPlan) isFallbackYearMediaPlan = true;
+  }
+  let mediaMixLines = '(no Media Plan on file for this account for ' + year + ' or any prior year — no account-level target media mix to use as a base case)';
   let hasMediaPlanMix = false;
   if (mediaPlan){
     const allocs = db.prepare('SELECT stage, channel, recommendedAmount, approvedAmount FROM media_plan_allocations WHERE mediaPlanId = ?').all(mediaPlan.id)
@@ -10175,6 +10189,9 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
           .join(', ');
         return `- ${stage}: ${channelBits}`;
       }).join('\n');
+      if (isFallbackYearMediaPlan){
+        mediaMixLines = `(no Media Plan on file for ${year} yet — using this account's most recent prior plan, ${mediaPlan.year}, as a directional base case; treat the split below as a starting point, not a confirmed ${year} target)\n${mediaMixLines}`;
+      }
     } else {
       mediaMixLines = '(a Media Plan exists for this account/year but has no channel allocations yet)';
     }
@@ -17012,7 +17029,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-objectives-intake-uses-campaign-context',
+        buildStamp: '2026-09-21-mediaplan-fallback-video-taxonomy-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -23181,6 +23198,8 @@ ${acctContextBlock}
 FULL OBJECTIVES CONVERSATION:
 ${transcript}
 
+VIDEO — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video both run under Paid Social. When the conversation mentions video in any general form ("digital and video," "streaming," "YouTube," "CTV," "intent-signal" or "conquesting" targeting, "FB video"), extract it as its own OTV, CTV, or Paid Social line (whichever the conversation's wording best maps to) rather than folding it into another channel or dropping it — video is real signal the team specifically raised and should not disappear from the extracted plan.
+
 Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. When the conversation named a general tactic without pinning down exact channels or a split between them, use the ACCOUNT-LEVEL MEDIA MIX PLAN's percentages for that specific Lifecycle Stage as the base-case split — a Loyalty line follows the account's own Loyalty mix, a Consideration line follows its Consideration mix, never one blended account-wide average — and say so in assumptionNote; when the conversation was specific about channels or amounts, that specific instruction always wins over the account's general mix. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Also extract the campaign-level audienceSegments per that field's own instructions — this is a separate, whole-campaign rollup, not one value per channel line. Set dataConfidenceNote per its own instructions.
 
 Submit via the recommendation_from_intake tool.`;
@@ -23696,6 +23715,8 @@ ${priorText || '(nothing yet)'}
 The team just said: "${message}"
 
 Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above).
+
+VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) above already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and suggest adding one via a suggestion (or by naming it in your reply) rather than saying the platform has no video capability.
 
 BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report above (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
@@ -30448,13 +30469,3 @@ try {
 }
 
 module.exports = handleRequest;
-
-
-
-
-
-
-
-
-
-
