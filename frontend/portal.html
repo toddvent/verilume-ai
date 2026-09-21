@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-continue-routes-to-recommendation';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-reco-consolidated-summary-audience-impressions';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38980,8 +38980,8 @@ async function cmpIntakeExchange(message){
       // does not fully capture the AI Brain summary... in the recap
       // section." goalSummary previously only ever lived in the
       // cmpIntakeLastExtracted client variable, scoped to this overlay —
-      // the Budget & Recommendation stage (cmpRecoOriginContextHtml()) has
-      // no way to read it back. Persist it the same real way the
+      // the Budget & Recommendation stage's own consolidated summary card
+      // (cmpRenderPitchLeft()) has no way to read it back. Persist it the same real way the
       // transcript itself is (activityNotesJson) — cmpSaveIntakeHistory(),
       // called moments later inside cmpRenderIntakeChat() below, writes
       // whatever is on c.activityNotes as one payload, so setting this
@@ -39825,6 +39825,37 @@ function cmpRecoChannelMixRows(summary){
   });
   return CHANNEL_MIX_GROUPS.map(g => ({ label: g.label, value: totals[g.key] || 0 })).filter(r => r.value > 0).sort((a, b) => b.value - a.value);
 }
+// 2026-09-21 fix, per direct report: "You know spend so Impressions should
+// be already estimated based on consideration channel average CPM and
+// channel spend amount recommendations listed on the page output." Total
+// Impressions showed 0 whenever a line's own extraction couldn't infer a
+// real count (the AI Brain can usually only infer one for Direct Mail, from
+// a stated drop count × list size — nothing else in the conversation gives
+// it a real per-piece number to work from). Display-only fallback — never
+// written back to channel_planning_details, so a real extracted number
+// always wins and this never contaminates the stored data — using the
+// exact same illustrative CPM benchmarks (ILLUSTRATIVE_CHANNEL_CPM) and
+// impression-channel exclusions (NON_IMPRESSION_CHANNELS — Direct Mail and
+// Field/ABM are priced per-piece, not per-ad-impression, same reasoning as
+// computeBlendedCpm() above) already used everywhere else on the platform
+// impressions get estimated from budget, so this never introduces a second,
+// disagreeing CPM assumption for the same channel.
+function cmpRecoEstimatedTotalImpressions(summary){
+  const lines = summary.lineItems || [];
+  let total = 0;
+  let anyEstimated = false;
+  lines.forEach(l => {
+    const real = Number(l.impressions) || 0;
+    if (real > 0){ total += real; return; }
+    if (!isImpressionChannel(l.channel)) return; // Direct Mail/Field-ABM: no per-impression rate applies — leave uncounted rather than fabricate one
+    const budget = Number(l.budget) || 0;
+    if (!budget) return;
+    const cpm = ILLUSTRATIVE_CHANNEL_CPM[l.channel] || DEFAULT_BLENDED_CPM;
+    total += (budget / cpm) * 1000;
+    anyEstimated = true;
+  });
+  return { total: Math.round(total), anyEstimated };
+}
 function cmpRecoAudienceRows(summary){
   return Object.entries(summary.audienceTotals || {}).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
 }
@@ -40319,25 +40350,21 @@ async function cmpRecoExportPpt(){
 // the Objectives stage, where cmpObjRecapStartEdit() already owns editing
 // these same fields; two independent editors for one set of fields would
 // drift.
-function cmpRecoOriginContextHtml(campaign){
+// 2026-09-21 follow-up, per direct report: "One consolidated summary is
+// best experience" — this used to render as its own separately-bordered
+// box, stacked above a SECOND separately-bordered box (Loop Stage/
+// Audience/Channels/Spend/Impressions) that Todd correctly called out as
+// "the incomplete section." Pulled the outer card and the "What the AI
+// Brain heard" callout out of this function — cmpRenderPitchLeft() now
+// wraps this fragment together with that other content in ONE card, so
+// there's a single border and a single "Campaign Summary" instead of two.
+function cmpRecoOriginContextFieldsHtml(campaign){
   if (!campaign) return '';
-  const goalSummary = campaign.activityNotes && campaign.activityNotes.objectivesGoalSummary;
-  const fieldsHtml = CMP_OBJ_RECAP_FIELDS.map(field => `
+  return CMP_OBJ_RECAP_FIELDS.map(field => `
     <div class="cmp-objectives-recap-row">
       <span class="cmp-objectives-recap-label">${escapeHtml(field.label)}</span>
       <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(campaign, field))}</span>
     </div>`).join('');
-  return `
-    ${goalSummary ? `<div class="cmp-intake-summary" style="margin-bottom:14px;">
-      <b>What the AI Brain heard:</b> ${escapeHtml(goalSummary)}
-    </div>` : ''}
-    <div class="cmp-objectives-recap" style="margin-bottom:22px;">
-      <div class="cmp-objectives-recap-title-row">
-        <div class="cmp-objectives-recap-title">From Campaign Creation</div>
-        <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpCloseRecommendationPitch();cmpOpenObjectivesIntake();">✎ Edit</button>
-      </div>
-      <div class="cmp-objectives-recap-grid">${fieldsHtml}</div>
-    </div>`;
 }
 function cmpRenderPitchLeft(campaign){
   const mount = document.getElementById('cmpPitchLeft');
@@ -40424,7 +40451,24 @@ function cmpRenderPitchLeft(campaign){
       <button type="button" class="btn-primary" id="cmpRecoPptBtn" onclick="cmpRecoExportPpt()">Export PowerPoint</button>
       <button type="button" class="btn-ghost" onclick="cmpRecoExportCsv()">Export CSV</button>
     </div>
-    <div class="cmp-intake-summary" style="margin-bottom:18px;">
+    <!-- 2026-09-21 fix, per direct report: "You brought over the campaign
+         creation summary with some missing info and left the incomplete
+         section... One consolidated summary is best experience." This used
+         to be two separately-bordered boxes stacked on top of each other —
+         Loop Stage/Audience/Channels/Spend/Impressions in one, Campaign
+         Creation's fields in a second one right below it. Merged into one
+         card: the AI Brain's goal summary, the Campaign Creation fields
+         (read-only here — Edit routes to Objectives, where the real editor
+         lives), then Loop Stage/Audience/Channels/Spend/Impressions with
+         their existing inline edit controls unchanged. -->
+    <div class="cmp-objectives-recap" style="margin-bottom:22px;">
+      <div class="cmp-objectives-recap-title-row">
+        <div class="cmp-objectives-recap-title">Campaign Summary</div>
+        <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpCloseRecommendationPitch();cmpOpenObjectivesIntake();">✎ Edit</button>
+      </div>
+      ${(campaign.activityNotes && campaign.activityNotes.objectivesGoalSummary) ? `<p class="lede" style="margin:2px 0 14px;"><b>What the AI Brain heard:</b> ${escapeHtml(campaign.activityNotes.objectivesGoalSummary)}</p>` : ''}
+      <div class="cmp-objectives-recap-grid">${cmpRecoOriginContextFieldsHtml(campaign)}</div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <b>Loop Stage:</b>
         ${s.editingLoopStage
@@ -40464,13 +40508,17 @@ function cmpRenderPitchLeft(campaign){
         </div>` : ''}
       ${s.audienceSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.audienceSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.audienceSaveBanner.text)}</div>` : ''}
       <br><b>Channels:</b> ${(summary.channels || []).length ? escapeHtml(summary.channels.join(', ')) : '(none selected yet)'}
-      <br><b>Total Spend:</b> ${fmtMoney(summary.totalSpend)} &nbsp; <b>Total Impressions:</b> ${Math.round(summary.totalImpressions || 0).toLocaleString()}
+      <!-- 2026-09-21 fix, per direct report: "You know spend so Impressions
+           should be already estimated..." — see
+           cmpRecoEstimatedTotalImpressions()'s own comment. -->
+      ${(() => {
+        const est = cmpRecoEstimatedTotalImpressions(summary);
+        return `<br><b>Total Spend:</b> ${fmtMoney(summary.totalSpend)} &nbsp; <b>Total Impressions:</b> ${est.total.toLocaleString()}${est.anyEstimated ? ` <span class="illustrative-tag">estimated from spend &amp; channel CPM</span>` : ''}`;
+      })()}
       <div class="btn-row" style="margin-top:10px;">
         <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit CPM &amp; impressions defaults →</button>
       </div>
     </div>
-
-    ${cmpRecoOriginContextHtml(campaign)}
 
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Campaign Dashboards</h3>
@@ -40534,7 +40582,19 @@ function cmpRenderPitchLeft(campaign){
       </div>` : ''}
     </div>
     ${viewingChannel ? cmpRecoChannelTableHtml(summary, regionFilter) : cmpRecoAudienceTableHtml(audienceRows)}
-    <div class="btn-row">
+    <!-- 2026-09-21, per direct follow-up: "Direct Mail at $35k was also
+         extracted. It could be a chip listed below the table to reinforce
+         what was said." One chip per line whose budget came straight from
+         an explicit dollar figure the user typed in the Objectives
+         conversation (generate-recommendation-from-intake tags these via
+         detailsJson.exactFromConversation — see that endpoint and
+         pitch-summary's own comments) — a quiet confirmation that this
+         number is real and traceable, not a guess. -->
+    ${viewingChannel && (summary.conversationConfirmedBudgets || []).length ? `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+      ${summary.conversationConfirmedBudgets.map(c => `<span class="select-tile selected" style="cursor:default;" title="You gave this exact figure in the Objectives conversation">✓ ${escapeHtml(c.channel)}: ${fmtMoney(c.budget)} — from your conversation</span>`).join('')}
+    </div>` : ''}
+    <div class="btn-row" style="margin-top:10px;">
       ${summary.budgetApprovedAt
         ? `<span class="lede">✓ Overall budget approved${summary.budgetApprovedBy ? ' by ' + escapeHtml(summary.budgetApprovedBy) : ''}</span>`
         : `<button type="button" class="btn-primary" onclick="cmpRecoApproveOverall()">Approve Overall Budget →</button>`}
