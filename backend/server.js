@@ -213,6 +213,105 @@ if (process.env.DATABASE_URL) {
   console.log('CXMedia.AI backend: using local SQLite file (no DATABASE_URL set)');
 }
 
+// 2026-09-21 fix — root cause of Todd's Round 6 report ("Media Science
+// Primary Focus, Product Group, and Creative Focus Group are not saving").
+// Confirmed directly against the live Supabase database (information_schema
+// query): a real subset of campaigns' camelCase columns were originally
+// added via ensureColumn()'s unquoted `ALTER TABLE ... ADD COLUMN
+// businessInitiative ...` — Postgres always folds an UNQUOTED identifier to
+// lowercase, both at creation and in every later unquoted query, so these
+// columns are physically stored (and correctly read/written by every
+// existing `db.prepare('...businessInitiative...')` call) under their
+// all-lowercase name, e.g. `businessinitiative`. Confirmed on the real test
+// campaign (CMP-mubf1k1d-138-1): businessinitiative = 'website_visits' —
+// the value IS saved correctly — but every plain JS `row.businessInitiative`
+// property access (camelCase, matching how the column is spelled
+// everywhere in this file's own code) reads `undefined` off that same row
+// object, because the row's actual key is the lowercase one. That's a
+// silent, permanent "blank display" for every campaign, not just this test
+// one, and it's the same exact bug shape as the activityNotesJson case
+// documented at ensureColumn('campaigns','activityNotesJson',...) above —
+// confirmed via the same live-DB check that activityNotesJson has this
+// exact problem too (right now, in production) despite that comment
+// believing it was already fixed by a spelling correction alone; the
+// spelling was correct, but the column itself was never actually restored
+// to camelCase.
+//
+// Renaming the stored columns (fixLegacyColumnCasing()'s approach) was
+// considered and rejected here: that function's own `RENAME COLUMN x TO
+// businessInitiative` is *also* unquoted, so it silently renames lowercase
+// to lowercase (a no-op) rather than restoring case — and worse, running it
+// against a column that already has a genuine camelCase duplicate sitting
+// alongside the lowercase one (confirmed live: campaigns has BOTH
+// "campaignType" and campaigntype as two separate columns) risks exactly
+// that kind of silent duplicate/data-loss mess. Fixing this at the
+// application layer instead — a single, additive, non-destructive
+// normalization applied to every row this file reads off `campaigns` — is
+// far lower risk than touching the schema, and fixes all ~43 call sites
+// that do `SELECT ... FROM campaigns ...` at once instead of requiring a
+// manual, error-prone edit at each one.
+//
+// CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS: every campaigns column confirmed
+// (via information_schema.columns) to exist ONLY under its all-lowercase
+// folded name, with no risk of a genuine camelCase duplicate sitting
+// alongside it (campaignType is deliberately excluded — see below).
+const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
+  activitynotesjson: 'activityNotesJson',
+  briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
+  businessinitiative: 'businessInitiative',
+  campaigntypedetailsjson: 'campaignTypeDetailsJson',
+  cmoanalyticsbrief: 'cmoAnalyticsBrief',
+  cmoanalyticsbriefeditedbyhuman: 'cmoAnalyticsBriefEditedByHuman',
+  cmoanalyticsbriefupstreamhash: 'cmoAnalyticsBriefUpstreamHash',
+  cmocopywriterbrief: 'cmoCopywriterBrief',
+  cmocopywriterbriefeditedbyhuman: 'cmoCopywriterBriefEditedByHuman',
+  cmocopywriterbriefupstreamhash: 'cmoCopywriterBriefUpstreamHash',
+  createdbyuploadbatchid: 'createdByUploadBatchId',
+  createdbyuser: 'createdByUser',
+  keymessagemode: 'keyMessageMode',
+  mandatoryphrase: 'mandatoryPhrase',
+  matchmarketsuggestionattachedat: 'matchMarketSuggestionAttachedAt',
+  matchmarketsuggestionjson: 'matchMarketSuggestionJson',
+  messagetype: 'messageType',
+  recommendationdataconfidencenote: 'recommendationDataConfidenceNote',
+  rolestyle: 'roleStyle'
+  // campaignType/campaigntype deliberately NOT included: a real, currently-
+  // correct "campaignType" column already exists (confirmed live — this is
+  // the field rendering fine today as "Campaign Experience Focus") sitting
+  // alongside a stray, apparently-unused lowercase "campaigntype" leftover.
+  // Aliasing campaignType from the lowercase duplicate here would silently
+  // overwrite the real value with that leftover's (empty/stale) one.
+};
+function normalizeCampaignRow(row){
+  if (!row || typeof row !== 'object') return row;
+  for (const lower in CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS){
+    if (Object.prototype.hasOwnProperty.call(row, lower)){
+      const camel = CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS[lower];
+      if (row[camel] === undefined) row[camel] = row[lower];
+    }
+  }
+  return row;
+}
+// Wrap db.prepare() once, centrally, so every existing (and future)
+// `db.prepare('SELECT ... FROM campaigns ...')` call site in this file gets
+// this normalization automatically — additive only (never overwrites a key
+// that's already present), so it's a no-op for local SQLite (which
+// preserves camelCase natively and never has the lowercase keys this looks
+// for) and a no-op for any query that isn't reading from `campaigns`.
+{
+  const _rawDbPrepare = db.prepare.bind(db);
+  db.prepare = function(sql){
+    const stmt = _rawDbPrepare(sql);
+    if (/\bcampaigns\b/i.test(sql) && /^\s*select/i.test(sql)){
+      const origGet = stmt.get ? stmt.get.bind(stmt) : null;
+      const origAll = stmt.all ? stmt.all.bind(stmt) : null;
+      if (origGet) stmt.get = (...args) => normalizeCampaignRow(origGet(...args));
+      if (origAll) stmt.all = (...args) => { const rows = origAll(...args); rows.forEach(normalizeCampaignRow); return rows; };
+    }
+    return stmt;
+  };
+}
+
 // 2026-08-27 — dedicated real async Postgres connection, used only by the
 // POST /api/auth/verify-login-code route further down (see that route's
 // own comment for the full story). Every other query in this file goes
@@ -16913,7 +17012,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-reco-audience-impressions-productgroup-fix',
+        buildStamp: '2026-09-21-campaigns-casing-normalization-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -30305,3 +30404,13 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
+
+
+
+
+
+
+
