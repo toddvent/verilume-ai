@@ -17029,7 +17029,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-mediaplan-fallback-video-taxonomy-fix',
+        buildStamp: '2026-09-21-ai-brain-reply-maxtokens-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21892,14 +21892,37 @@ Submit your response via the campaign_intake_turn tool.`;
         return realEvents;
       }
 
-      const campaignsWithCpd = new Set(
-        db.prepare('SELECT DISTINCT campaignId FROM channel_planning_details').all().map(r => r.campaignId)
+      // 2026-09-21, per direct report ("Marketing calendar is not showing
+      // Polar or Mediterranean campaigns"): this used to be ANY campaign
+      // with a channel_planning_details row at all, on the assumption that
+      // having a channel plan meant it was "already trafficked — real
+      // events only." That's true for the bulk-upload path (which always
+      // sets a real hitDate), but NOT for the Budget & Recommendation
+      // screen's own two write paths — Add Channel (cmpRecoSaveNewChannel,
+      // portal.html) and the AI Brain's generate-recommendation-from-intake
+      // (above) — neither of which has ever sent a hitDate; those lines are
+      // budget/channel drafts, not scheduled trafficking dates. A campaign
+      // built that way (which is most campaigns going through the modern
+      // Campaign Creation → Objectives → Budget & Recommendation flow) had
+      // real cpd rows that could never match the hitDate-ranged query
+      // above, AND was excluded from this placeholder fallback for having
+      // those same rows — permanently invisible on the calendar with no
+      // path back. Scoped to only campaigns with at least one row that
+      // actually HAS a hitDate: those are genuinely scheduled/trafficked
+      // and still get real-events-only treatment; a campaign whose channel
+      // plan exists but has no hitDate on any line yet still falls through
+      // to the WIP placeholder below (plotted on its own startDate), the
+      // same as a campaign with no channel plan at all — and moves off the
+      // placeholder automatically the moment a real hitDate is set on any
+      // of its lines.
+      const campaignsWithScheduledCpd = new Set(
+        db.prepare("SELECT DISTINCT campaignId FROM channel_planning_details WHERE hitDate IS NOT NULL AND hitDate != ''").all().map(r => r.campaignId)
       );
       let wipSql = 'SELECT id, name, objective, startDate, endDate, budget, createdAt FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND (cancelled IS NULL OR cancelled = 0)';
       const wipRows = db.prepare(wipSql).all(accountId);
       const placeholders = [];
       wipRows.forEach(c => {
-        if (campaignsWithCpd.has(c.id)) return; // already trafficked — real events only
+        if (campaignsWithScheduledCpd.has(c.id)) return; // already scheduled — real events only
         // Plot it on its own startDate when it has one; otherwise fall back
         // to the day it was created, so a brand-new campaign still lands
         // somewhere sensible on the calendar instead of being dropped for
@@ -23741,7 +23764,19 @@ Submit your response via the ai_brain_reply tool.`;
         let parsed;
         try {
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            // 2026-09-21, per Todd's direct report ("AI Brain error
+            // continues. I tried twice.") on a video-channel question:
+            // maxTokens was 400 on this call, forcing a structured tool
+            // call via tool_choice. A longer, genuinely explanatory reply
+            // (exactly what a "why isn't X being recommended" question
+            // needs) can get cut off mid-JSON before the tool call closes,
+            // which callClaudeForJSON then can't parse as a valid tool_use
+            // — surfacing as the generic "Something went wrong reaching
+            // the AI Brain" error on the frontend. Raised to 900 so a real
+            // explanatory answer has room without truncating; the prompt's
+            // own "Keep it conversational, not a report" instruction still
+            // keeps ordinary replies short.
+            model: 'claude-sonnet-4-5', maxTokens: 900, content: prompt,
             toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
             schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
           });
@@ -23749,7 +23784,7 @@ Submit your response via the ai_brain_reply tool.`;
           console.warn('[POST /api/campaigns/:id/ai-brain-reply] first attempt failed, retrying once:', firstErr.message);
           await new Promise(r => setTimeout(r, 800));
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            model: 'claude-sonnet-4-5', maxTokens: 900, content: prompt,
             toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
             schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
           });
@@ -30469,3 +30504,13 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
+
+
+
+
+
+
+
