@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-budget-reco-origin-context-recap';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-continue-routes-to-recommendation';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38249,9 +38249,22 @@ function cmpApplyTemplate(campaignId){
 // (see cmpOpenObjectivesIntake() below), since that overlay is the one
 // real door into this manual flow; leaving it open underneath the
 // accordion would show both templates stacked.
+// 2026-09-21 fix, per direct bug report: "Selecting Continue to Budget
+// Evaluation takes you to the old Lifecycle Stage and Goals experience."
+// This button (and this function's other two callers — the "click to build
+// manually" empty-state link, and typing "start from scratch" mid-
+// conversation) still routed to the legacy accordion stage
+// (openCmpStage('lifecycle')), a dead end that predates the real AI Brain
+// Recommendation pitch screen built this same week. cmpConfirmIntakeAndContinue()
+// — what "Looks good — Continue to Recommendation →" and "Use as Template"
+// already call — is the one real, current path to Budget & Recommendation:
+// it generates a real plan from whatever Objectives conversation exists (or
+// safely no-ops if one was already generated/approved, per its own "never
+// overwrite" guard), then opens the AI Brain Recommendation pitch. Routing
+// here to the SAME function means every "continue" door in this overlay now
+// lands in the same place, whether or not a recommendation already exists.
 function cmpSkipPickupAndContinue(){
-  cmpCloseObjectivesIntake();
-  openCmpStage('lifecycle');
+  cmpConfirmIntakeAndContinue();
 }
 // 2026-09-16 — standalone full-screen presentation for the Objectives
 // conversational AI Brain intake, per direct correction: "Selecting
