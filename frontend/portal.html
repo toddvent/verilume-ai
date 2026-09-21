@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-reco-summary-two-column-redesign-casing-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-inmarket-header-wording-universal-confirm';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13744,19 +13744,26 @@ function cmpRenderCampaignHeader(campaign){
   // "In Market: <date>" and promoted to its own larger H3-style line (see
   // .cch-inmarket) instead of sitting in the small muted meta row.
   //
-  // 2026-09-21 round 2, per Todd's direct Priority 2 instruction ("We
-  // should update the header format to In Market: %StartDate% -
-  // %EndDate%"): the header is now the ONE place a campaign's dates show
-  // (the Budget & Recommendation "Campaign Summary" card below no longer
-  // repeats them — see cmpRenderPitchLeft()'s own comment), so it needs
-  // the full range, not just the start date.
+  // 2026-09-21 round 2, per Todd's direct Priority 2 instruction (first
+  // "In Market: %StartDate% - %EndDate%", then corrected same-round to "In
+  // Market From %StartDate% to %EndDate%"): the header is now the ONE
+  // place a campaign's dates show (the Budget & Recommendation "Campaign
+  // Summary" card below no longer repeats them — see
+  // cmpRenderPitchLeft()'s own comment), so it needs the full range, not
+  // just the start date. cmpRenderCampaignHeader() is the single shared
+  // header component every post-creation stage mounts (via
+  // cmpMountCampaignHeaderInto) and every stage transition re-renders (via
+  // renderCmpStageRail(), which unconditionally calls this function) — so
+  // this wording applies universally across every step after Campaign
+  // Creation with no per-screen change needed, confirmed per Todd's
+  // follow-up asking for exactly that.
   const startDateEl = document.getElementById('cchStartDate');
   // fmtDate() isn't a global here (it's a locally-scoped const in a few
   // other render functions) — inline the same "raw ISO string or em dash"
   // fallback rather than calling something undefined.
   if (startDateEl){
-    if (campaign.startDate && campaign.endDate) startDateEl.textContent = `In Market: ${campaign.startDate} - ${campaign.endDate}`;
-    else if (campaign.startDate) startDateEl.textContent = `In Market: ${campaign.startDate}`;
+    if (campaign.startDate && campaign.endDate) startDateEl.textContent = `In Market From ${campaign.startDate} to ${campaign.endDate}`;
+    else if (campaign.startDate) startDateEl.textContent = `In Market From ${campaign.startDate}`;
     else startDateEl.textContent = 'In Market date not set';
   }
   const score = computeCampaignRelevanceScore(campaign);
