@@ -2017,6 +2017,14 @@
   .active-camp-table, .data-table{width:100%;border-collapse:collapse;margin-top:8px;}
   .active-camp-table th, .data-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line);}
   .active-camp-table td, .data-table td{padding:10px 10px 10px 0;border-bottom:1px solid var(--line);font-size:0.8438rem;vertical-align:top;}
+  /* 2026-09-21 round 5, item 7, per direct feedback: "Vertically center
+     channel, loop stage, Region, Budget, Impressions with Approve button."
+     Scoped to the Budget Line-Item Approval table specifically (its
+     Client Approval column can wrap to a taller cell than the rest of the
+     row, since it may hold an Approve button plus Edit/Delete) rather than
+     changing .active-camp-table's own top-alignment default, which other
+     tables on the platform rely on. */
+  .cmp-reco-channel-table td{vertical-align:middle;}
   .active-camp-table tr:last-child td, .data-table tr:last-child td{border-bottom:none;}
   .active-camp-table td.name, .data-table td.name{font-weight:600;}
   .active-camp-table td.num, .data-table td.num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7812rem;white-space:nowrap;}
@@ -11380,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-intake-sends-campaignid';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-reco-card-unified-edit-reorder-video';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -39210,7 +39218,18 @@ async function cmpIntakeStopVoice(){
 // per cxmedia-campaign-objectives-recommendation-screen-scoping-2026-09-15.md's
 // Budget & Recommendation spec. None of these persist anywhere themselves
 // (pure view/draft state) except via the explicit Save actions below.
-let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLoopStage: false, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all' };
+let cmpRecoState = { campaignId: null, summary: null, loading: false, error: null, narrative: null, narrativeLoading: false, narrativeError: null, pitchViewMode: 'channel', stageDraft: null, stageSaving: false, stageSaveBanner: null, editingLoopStage: false, editingLineItemId: null, addingLine: false, editingAudience: false, audienceDraft: null, audienceSaving: false, audienceSaveBanner: null, regionFilter: 'all',
+  // 2026-09-21 round 4, per Todd's direct feedback: "Edit top right is
+  // supposed to enable all fields in the card as editable." The old
+  // per-field editingLoopStage/editingAudience flow (still used internally
+  // below) is now driven by ONE top-level edit mode instead of navigating
+  // away to Objectives (cmpRecoStartEditCard()/cmpRecoSaveCardEdits() below)
+  // — cardDraft holds all four editable fields' in-progress values at once
+  // (stage, segments, productGroups, creativeFocusGroups); Total Spend and
+  // Estimated Impressions are deliberately excluded — both are computed
+  // rollups from the Budget Line-Item table, not independently stored
+  // fields, so there's nothing for a card-level edit to write back to.
+  editingCard: false, cardDraft: null, cardSaving: false, cardSaveBanner: null };
 
 // 2026-09-15 follow-on, per Todd's real report of "Recommendations did not
 // load" against a real campaign — two fixes here, on top of the backend
@@ -40493,9 +40512,15 @@ function cmpRenderPitchLeft(campaign){
     <div class="cmp-objectives-recap" style="margin-bottom:22px;">
       <div class="cmp-objectives-recap-title-row">
         <div class="cmp-objectives-recap-title">Campaign Summary</div>
-        <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpCloseRecommendationPitch();cmpOpenObjectivesIntake();">✎ Edit</button>
+        <!-- 2026-09-21 round 4, per Todd's direct correction: "Edit top
+             right is supposed to enable all fields in the card as
+             editable" — this used to navigate away to Objectives; now it
+             turns on cardDraft edit mode for every real (non-computed)
+             field on this card in place, same as the fields below it. -->
+        ${s.editingCard ? '' : `<button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpRecoStartEditCard()">✎ Edit</button>`}
       </div>
       ${(campaign.activityNotes && campaign.activityNotes.objectivesGoalSummary) ? `<p class="lede" style="margin:2px 0 14px;"><b>What the AI Brain heard:</b> ${escapeHtml(campaign.activityNotes.objectivesGoalSummary)}</p>` : ''}
+      ${s.cardSaveBanner ? `<div class="hint" style="margin-bottom:8px;color:${s.cardSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.cardSaveBanner.text)}</div>` : ''}
       <!-- 2026-09-21 round 2, per Todd's direct layout spec (Priority 2):
            Campaign Name and the two campaign dates are dropped here — both
            already show in the page header above (see
@@ -40510,34 +40535,32 @@ function cmpRenderPitchLeft(campaign){
            left-to-right per row exactly as specified: Target Audiences /
            Loop Stage, then Product Group / Creative Focus Group, then
            Total Spend / Estimated Impressions (previously shown twice —
-           once here, once below the channel table; now shown once). -->
+           once here, once below the channel table; now shown once).
+           2026-09-21 round 4 — Target Audiences, Loop Stage, Product Group
+           and Creative Focus Group all edit together under s.editingCard/
+           s.cardDraft now (see cmpRecoStartEditCard() below); Total Spend
+           and Estimated Impressions stay read-only in every mode — both
+           are computed rollups from the Budget Line-Item table, not
+           independently stored fields. Target Audiences/Product Group/
+           Creative Focus Group all use the same checkbox-dropdown
+           (cmpRenderCdSelect) as Campaign Creation's own multi-selects, per
+           Todd's direct instruction to keep that consistent everywhere
+           rather than the tile-chip picker this screen used before. -->
       <div class="cmp-objectives-recap-grid">
         <div class="cmp-objectives-recap-row">
           <span class="cmp-objectives-recap-label">Target Audiences</span>
           <div class="cmp-objectives-recap-value">
-            ${s.editingAudience
-              ? ''
-              : `${escapeHtml(audienceSaved.length ? audienceSaved.join(', ') : '(not set)')} <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditAudience()">Edit</button>`}
-            ${s.editingAudience ? `
-              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-                ${ACCOUNT_SEGMENTS.map(seg => `<button type="button" class="select-tile${audienceDraftList.includes(seg) ? ' selected' : ''}${audienceDisabled.has(seg) ? ' select-tile-disabled' : ''}" ${audienceDisabled.has(seg) ? 'disabled aria-disabled="true"' : ''} title="${audienceDisabled.has(seg) ? cmpSegmentDisabledReason(seg) : ''}" onclick="cmpRecoToggleAudienceDraft('${seg}')"><span class="indicator">✓</span><span class="label">${escapeHtml(seg)}</span></button>`).join('')}
-              </div>
-              <div class="btn-row" style="margin-top:8px;">
-                ${audienceChanged ? `<button type="button" class="btn-primary" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoSaveAudience()">${s.audienceSaving ? 'Saving…' : 'Save →'}</button>` : ''}
-                <button type="button" class="btn-ghost" ${s.audienceSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditAudience()">Cancel</button>
-              </div>` : ''}
-            ${s.audienceSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.audienceSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.audienceSaveBanner.text)}</div>` : ''}
+            ${s.editingCard
+              ? `<div id="${cmpRecoCardMultiContainerId('segments')}"></div>`
+              : escapeHtml(audienceSaved.length ? audienceSaved.join(', ') : '(not set)')}
           </div>
         </div>
         <div class="cmp-objectives-recap-row">
           <span class="cmp-objectives-recap-label">Loop Stage</span>
           <div class="cmp-objectives-recap-value">
-            ${s.editingLoopStage
-              ? `<div class="field" style="width:auto;min-width:160px;margin:0;"><select id="cmpRecoStageSelect" onchange="cmpRecoStageDraftChanged(this.value)" ${s.stageSaving ? 'disabled' : ''}>${stageOptionsHtml}</select></div>
-                 ${stageChanged ? `<button type="button" class="btn-primary" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoSaveLoopStage()">${s.stageSaving ? 'Saving…' : 'Save →'}</button>` : ''}
-                 <button type="button" class="btn-ghost" ${s.stageSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditLoopStage()">Cancel</button>`
-              : `${escapeHtml(campaign.stage || '(not set)')} <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.8rem;" onclick="cmpRecoStartEditLoopStage()">Edit</button>`}
-            ${s.stageSaveBanner ? `<div class="hint" style="margin-top:6px;color:${s.stageSaveBanner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.stageSaveBanner.text)}</div>` : ''}
+            ${s.editingCard
+              ? `<div class="field" style="width:auto;min-width:160px;margin:0;"><select id="cmpRecoCardStageSelect" onchange="cmpRecoCardStageChanged(this.value)" ${s.cardSaving ? 'disabled' : ''}>${MEDIA_LOOP_STAGES.map(st => `<option value="${escapeHtml(st)}" ${st === (s.cardDraft ? s.cardDraft.stage : '') ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('')}</select></div>`
+              : escapeHtml(campaign.stage || '(not set)')}
             <!-- 2026-09-17 — per Todd's direct correction: this campaign's
                  real media mix can span more than one Lifecycle Stage at
                  once (his example: a Loyalty allocation AND a Consideration
@@ -40556,11 +40579,19 @@ function cmpRenderPitchLeft(campaign){
         </div>
         <div class="cmp-objectives-recap-row">
           <span class="cmp-objectives-recap-label">Product Group</span>
-          <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(campaign, CMP_OBJ_RECAP_FIELDS.find(f => f.key === 'productGroups')))}</span>
+          <div class="cmp-objectives-recap-value">
+            ${s.editingCard
+              ? `<div id="${cmpRecoCardMultiContainerId('productGroups')}"></div>`
+              : escapeHtml(cmpObjRecapDisplayValue(campaign, CMP_OBJ_RECAP_FIELDS.find(f => f.key === 'productGroups')))}
+          </div>
         </div>
         <div class="cmp-objectives-recap-row">
           <span class="cmp-objectives-recap-label">Creative Focus Group</span>
-          <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(campaign, CMP_OBJ_RECAP_FIELDS.find(f => f.key === 'creativeFocusGroups')))}</span>
+          <div class="cmp-objectives-recap-value">
+            ${s.editingCard
+              ? `<div id="${cmpRecoCardMultiContainerId('creativeFocusGroups')}"></div>`
+              : escapeHtml(cmpObjRecapDisplayValue(campaign, CMP_OBJ_RECAP_FIELDS.find(f => f.key === 'creativeFocusGroups')))}
+          </div>
         </div>
         <div class="cmp-objectives-recap-row">
           <span class="cmp-objectives-recap-label">Total Spend</span>
@@ -40574,6 +40605,10 @@ function cmpRenderPitchLeft(campaign){
           <span class="cmp-objectives-recap-value">${(() => { const est = cmpRecoEstimatedTotalImpressions(summary); return `${est.total.toLocaleString()}${est.anyEstimated ? ` <span class="illustrative-tag">estimated from spend &amp; channel CPM</span>` : ''}`; })()}</span>
         </div>
       </div>
+      ${s.editingCard ? `<div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="btn-primary" ${s.cardSaving ? 'disabled' : ''} onclick="cmpRecoSaveCardEdits()">${s.cardSaving ? 'Saving…' : 'Save →'}</button>
+        <button type="button" class="btn-ghost" ${s.cardSaving ? 'disabled' : ''} onclick="cmpRecoCancelEditCard()">Cancel</button>
+      </div>` : ''}
     </div>
 
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -40603,24 +40638,15 @@ function cmpRenderPitchLeft(campaign){
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Spend by Region</h4>${cmpRecoMeterRows(regionRows)}</div>
     </div>
 
-    <div class="stage-row" style="margin-bottom:8px;">
-      <h3 style="margin:0;font-size:1rem;">Creative Assets Needed</h3>
-    </div>
-    <div class="cmp-intake-summary" style="margin-bottom:22px;">
-      ${creativeAssets.length
-        ? `<ul style="margin:0;padding-left:18px;">${creativeAssets.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>`
-        : `<p class="lede" style="margin:0;">No channels selected yet — asset needs are derived from the channels approved below.</p>`}
-    </div>
-
-    <div class="cmp-intake-summary" style="margin-bottom:22px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <b>Generative Descriptor for the CMO</b>
-        <button type="button" class="btn-ghost" ${s.narrativeLoading ? 'disabled' : ''} onclick="cmpRecoGenerateNarrative()">${s.narrativeLoading ? 'Writing…' : (s.narrative ? 'Regenerate' : 'Generate with AI Brain')}</button>
-      </div>
-      ${s.narrative ? `<p class="lede" style="margin-top:10px;">${escapeHtml(s.narrative)}</p>` : ''}
-      ${s.narrativeError ? `<p class="lede" style="margin-top:10px;color:#B3261E;">${escapeHtml(s.narrativeError)}</p>` : ''}
-    </div>
-
+    <!-- 2026-09-21 round 5, per direct feedback (items 5/6): "Creative
+         Assets Needed comes after budgets are confirmed or edited... can
+         be removed [from here]" / "Generative AI descriptors from CMO page
+         comes between Budget Submission and Channels Activated." Reordered
+         from Creative Assets → Generative Descriptor → Budget Line-Item
+         Approval to Budget Line-Item Approval ("Budget Submission") →
+         Generative Descriptor for the CMO → Creative Assets Needed
+         ("Channels Activated") — same three blocks, same markup, new
+         sequence only. -->
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Budget Line-Item Approval</h3>
       ${viewingChannel ? `
@@ -40663,7 +40689,34 @@ function cmpRenderPitchLeft(campaign){
         ? `<span class="lede">✓ Overall budget approved${summary.budgetApprovedBy ? ' by ' + escapeHtml(summary.budgetApprovedBy) : ''}</span>`
         : `<button type="button" class="btn-primary" onclick="cmpRecoApproveOverall()">Approve Overall Budget →</button>`}
     </div>
+
+    <div class="cmp-intake-summary" style="margin-top:22px;margin-bottom:22px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <b>Generative Descriptor for the CMO</b>
+        <button type="button" class="btn-ghost" ${s.narrativeLoading ? 'disabled' : ''} onclick="cmpRecoGenerateNarrative()">${s.narrativeLoading ? 'Writing…' : (s.narrative ? 'Regenerate' : 'Generate with AI Brain')}</button>
+      </div>
+      ${s.narrative ? `<p class="lede" style="margin-top:10px;">${escapeHtml(s.narrative)}</p>` : ''}
+      ${s.narrativeError ? `<p class="lede" style="margin-top:10px;color:#B3261E;">${escapeHtml(s.narrativeError)}</p>` : ''}
+    </div>
+
+    <div class="stage-row" style="margin-bottom:8px;">
+      <h3 style="margin:0;font-size:1rem;">Creative Assets Needed</h3>
+    </div>
+    <div class="cmp-intake-summary" style="margin-bottom:22px;">
+      ${creativeAssets.length
+        ? `<ul style="margin:0;padding-left:18px;">${creativeAssets.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>`
+        : `<p class="lede" style="margin:0;">No channels selected yet — asset needs are derived from the channels approved below.</p>`}
+    </div>
   `;
+  // 2026-09-21 round 4 — mount the checkbox-dropdown widgets into the
+  // container divs just inserted above (Target Audiences/Product Group/
+  // Creative Focus Group), same post-innerHTML mounting pattern
+  // cmpRenderObjectivesRecap() uses for cmpObjRecapRenderMultiField().
+  if (s.editingCard){
+    cmpRecoRenderCardMultiField('segments');
+    cmpRecoRenderCardMultiField('productGroups');
+    cmpRecoRenderCardMultiField('creativeFocusGroups');
+  }
 }
 // 2026-09-16 — the Channel-mode table, per wireframe spec: "a scroll-capped
 // 8-channel table with edit/delete and Add Channel." Capped via CSS
@@ -40695,6 +40748,20 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   // stageTotals rollup), so leaving it unset on an older or manually-added
   // line never drops it out of the Loop Stage Distribution chart.
   const stageOptionsForRow = (selected) => `<option value="" ${!selected ? 'selected' : ''}>(unset — uses campaign default)</option>` + MEDIA_LOOP_STAGES.map(st => `<option value="${escapeHtml(st)}" ${st === selected ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('');
+  // 2026-09-21 round 5, item 9, per direct feedback: "Selecting Add Channel
+  // includes loop stage option. First row is 'Unset (uses campaign
+  // default)'. We should just default to the campaign default." Unlike
+  // stageOptionsForRow() above (used for existing/editing lines, where an
+  // empty stage is a real, meaningful saved value meaning "follow whatever
+  // the campaign's stage is at read time"), a brand-new line has no saved
+  // value yet — so instead of an "(unset)" placeholder, this pre-selects
+  // the campaign's actual current Loop Stage directly, with no blank
+  // option in the list at all.
+  const stageOptionsForNewRow = () => {
+    const campaign = cmpRailLoadedCampaign();
+    const defaultStage = (campaign && campaign.stage) || MEDIA_LOOP_STAGES[0];
+    return MEDIA_LOOP_STAGES.map(st => `<option value="${escapeHtml(st)}" ${st === defaultStage ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('');
+  };
   const rowHtml = (l) => {
     if (s.editingLineItemId === l.id){
       return `
@@ -40727,7 +40794,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   const addRowHtml = s.addingLine ? `
     <tr>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewChannel">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></div></td>
-      <td><div class="field" style="margin:0;"><select id="cmpRecoNewStage">${stageOptionsForRow('')}</select></div></td>
+      <td><div class="field" style="margin:0;"><select id="cmpRecoNewStage">${stageOptionsForNewRow()}</select></div></td>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewRegion">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></div></td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewBudget" value="0" min="0" step="1"></div></td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewImpressions" value="0" min="0" step="1"></div></td>
@@ -40755,7 +40822,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
     ? `<p class="lede">No channel plan lines for ${escapeHtml(regionFilter)} — try "All Regions" or add one below.</p>`
     : `<p class="lede">No channel plan lines entered for this campaign yet.</p>${generateFromIntakeBtn}`;
   const table = items.length || s.addingLine ? `
-    <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table" style="width:100%;margin-bottom:14px;">
+    <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table cmp-reco-channel-table" style="width:100%;margin-bottom:14px;">
       <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
       <tbody>${items.map(rowHtml).join('')}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
@@ -40787,6 +40854,138 @@ function cmpRecoSetViewMode(mode){
   cmpRecoState.pitchViewMode = mode === 'audience' ? 'audience' : 'channel';
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderPitchLeft(campaign);
+}
+// 2026-09-21 round 4 — unified Campaign Summary card edit mode, per Todd's
+// direct correction: "Edit top right is supposed to enable all fields in
+// the card as editable." Replaces the old per-field editingLoopStage/
+// editingAudience flow (still defined above for now, but no longer called
+// from cmpRenderPitchLeft()'s markup) with one editingCard/cardDraft pair
+// covering Target Audiences, Loop Stage, Product Group and Creative Focus
+// Group together — Total Spend/Estimated Impressions stay read-only always
+// since both are computed rollups from the Budget Line-Item table, not
+// independently stored fields. Target Audiences/Product Group/Creative
+// Focus Group all use the same cmpRenderCdSelect() checkbox-dropdown as
+// Campaign Creation's own multi-selects, per Todd's direct instruction —
+// same pattern as cmpObjRecapRenderMultiField()/cmpObjRecapToggle*Groups()
+// on the Objectives recap card above.
+function cmpRecoCardMultiContainerId(key){ return `cmpRecoCardCd_${key}`; }
+function cmpRecoStartEditCard(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign) return;
+  const summary = cmpRecoState.summary || {};
+  const audienceSaved = (summary.audience || '').split(',').map(x => x.trim()).filter(Boolean);
+  const productGroupsSaved = (campaign.productGroups || '').split(',').map(x => x.trim()).filter(Boolean);
+  const creativeFocusGroupsSaved = (campaign.creativeFocusGroups || '').split(',').map(x => x.trim()).filter(Boolean);
+  cmpRecoState.editingCard = true;
+  cmpRecoState.cardSaveBanner = null;
+  cmpRecoState.cardDraft = {
+    stage: campaign.stage || '',
+    segments: new Set(audienceSaved),
+    productGroups: new Set(productGroupsSaved),
+    creativeFocusGroups: new Set(creativeFocusGroupsSaved)
+  };
+  cmpRenderPitchLeft(campaign);
+}
+function cmpRecoCancelEditCard(){
+  cmpRecoState.editingCard = false;
+  cmpRecoState.cardDraft = null;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+// Changing the in-progress Loop Stage re-renders the whole card (rather
+// than just the select) because Target Audiences' disabled-segment set
+// (cmpSegmentDisabledSetForStage()) depends on the draft stage value, same
+// dependency the old per-field flow above already had.
+function cmpRecoCardStageChanged(value){
+  if (!cmpRecoState.cardDraft) return;
+  cmpRecoState.cardDraft.stage = value;
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderPitchLeft(campaign);
+}
+function cmpRecoRenderCardMultiField(key){
+  const s = cmpRecoState;
+  if (!s.editingCard || !s.cardDraft) return;
+  const containerId = cmpRecoCardMultiContainerId(key);
+  if (!document.getElementById(containerId)) return;
+  let options, toggleFn, placeholder, selectedSet;
+  if (key === 'segments'){
+    const disabledSet = cmpSegmentDisabledSetForStage(s.cardDraft.stage);
+    options = ACCOUNT_SEGMENTS.map(seg => ({ value: seg, label: seg, disabled: disabledSet.has(seg), title: disabledSet.has(seg) ? cmpSegmentDisabledReason(seg) : undefined }));
+    toggleFn = 'cmpRecoCardToggleSegment';
+    placeholder = 'Select audience(s)';
+    selectedSet = s.cardDraft.segments;
+  } else if (key === 'productGroups'){
+    options = cmpTaxonomyValues('productGroup').map(v => ({ value: v, label: v }));
+    toggleFn = 'cmpRecoCardToggleProductGroups';
+    placeholder = 'Select product group(s)';
+    selectedSet = s.cardDraft.productGroups;
+  } else {
+    options = cmpTaxonomyValues('creativeMarket').map(v => ({ value: v, label: v }));
+    toggleFn = 'cmpRecoCardToggleCreativeFocusGroups';
+    placeholder = 'Select creative focus group(s)';
+    selectedSet = s.cardDraft.creativeFocusGroups;
+  }
+  cmpRenderCdSelect(containerId, options, selectedSet, toggleFn, placeholder);
+}
+function cmpRecoCardToggleSegment(seg){
+  if (!cmpRecoState.cardDraft) return;
+  const set = cmpRecoState.cardDraft.segments;
+  if (set.has(seg)) set.delete(seg); else set.add(seg);
+  cmpRecoRenderCardMultiField('segments');
+}
+function cmpRecoCardToggleProductGroups(v){
+  if (!cmpRecoState.cardDraft) return;
+  const set = cmpRecoState.cardDraft.productGroups;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  cmpRecoRenderCardMultiField('productGroups');
+}
+function cmpRecoCardToggleCreativeFocusGroups(v){
+  if (!cmpRecoState.cardDraft) return;
+  const set = cmpRecoState.cardDraft.creativeFocusGroups;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  cmpRecoRenderCardMultiField('creativeFocusGroups');
+}
+async function cmpRecoSaveCardEdits(){
+  const campaign = cmpRailLoadedCampaign();
+  if (!campaign || !cmpRecoState.cardDraft) return;
+  const draft = cmpRecoState.cardDraft;
+  const oldStage = campaign.stage || null;
+  const newStage = draft.stage;
+  const segmentStr = Array.from(draft.segments).join(', ');
+  const productGroupsStr = Array.from(draft.productGroups).join(', ');
+  const creativeFocusGroupsStr = Array.from(draft.creativeFocusGroups).join(', ');
+  cmpRecoState.cardSaving = true;
+  cmpRenderPitchLeft(campaign);
+  let ok = false;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: newStage, segment: segmentStr, productGroups: productGroupsStr, creativeFocusGroups: creativeFocusGroupsStr })
+    });
+    ok = resp.ok;
+    if (ok){
+      // keep this session's copy in sync without a full reload
+      campaign.stage = newStage;
+      campaign.segment = segmentStr;
+      campaign.productGroups = productGroupsStr;
+      campaign.creativeFocusGroups = creativeFocusGroupsStr;
+    }
+  } catch (e){ console.warn('cmpRecoSaveCardEdits failed:', e); }
+  cmpRecoState.cardSaving = false;
+  cmpRecoState.cardDraft = null;
+  cmpRecoState.editingCard = false;
+  cmpRecoState.cardSaveBanner = { ok, text: ok ? `Saved ${new Date().toLocaleTimeString()} — Campaign Summary updated.` : 'Could not save — try again.' };
+  cmpRenderPitchLeft(campaign);
+  // Preserve the existing Loop-Stage-change auto-regenerate behavior
+  // (cmpRecoRegenerateForStageChange(), below) — only draft/non-submitted/
+  // non-approved channel_planning_details rows are ever touched.
+  if (ok && oldStage !== newStage){
+    try {
+      await cmpRecoRegenerateForStageChange(campaign, oldStage, newStage);
+      cmpRecoState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
+    } catch (e){ console.warn('cmpRecoSaveCardEdits: post-stage-change refresh failed', e); }
+    cmpRenderPitchLeft(campaign);
+  }
 }
 // 2026-09-16 — per the real Recommendation-Desktop.dc.html wireframe
 // (extracted and read, not assumed) and Todd's direct instruction "every
