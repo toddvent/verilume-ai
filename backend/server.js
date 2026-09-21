@@ -16913,7 +16913,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-mktcal-work-in-progress-events',
+        buildStamp: '2026-09-21-campaign-name-merge-update-field',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -22209,6 +22209,13 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!requireAccount(req, res, existing.accountId)) return;
       const body = await readBody(req);
       const merged = {
+        // 2026-09-21 — Campaign Name previously had NO update path after
+        // creation at all (same original gap keyMessage/startDate/endDate/
+        // stage/segment each had before their own rounds closed it — see
+        // those comments below). Closing it now per direct instruction: the
+        // Objectives stage's recap card needs Campaign Name to be editable
+        // in place, same as every other Campaign Creation field.
+        name: body.name !== undefined ? body.name : existing.name,
         // 2026-09-16 — status is no longer a client-settable field (see
         // deriveCampaignStatusFromDates()'s comment above); it's always
         // recomputed below from whatever startDate/endDate this save ends
@@ -22394,6 +22401,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const setCols = [];
       const setVals = [];
       const addCol = (col, cond, val) => { if (cond) { setCols.push(`${col} = ?`); setVals.push(val); } };
+      addCol('name', body.name !== undefined, merged.name);
       addCol('status', true, merged.status);
       addCol('actualSpend', body.actualSpend !== undefined, merged.actualSpend);
       addCol('actualImpressions', body.actualImpressions !== undefined, merged.actualImpressions);
