@@ -8551,9 +8551,9 @@
                  and folded into cmpBuildFormPayload() so it's part of the
                  very first Create Campaign submission. -->
             <div class="field">
-              <label>Campaign type</label>
+              <label>Campaign Experience Focus</label>
               <select id="cmpCreationCampaignTypeSelect" onchange="cmpOnCreationTypeInitiativeChanged();">
-                <option value="">— Select a campaign type —</option>
+                <option value="">— Select a campaign experience focus —</option>
               </select>
             </div>
             <div class="field">
@@ -8565,9 +8565,9 @@
                    BUSINESS_INITIATIVE_REGISTRY_CLIENT/BUSINESS_INITIATIVE_REGISTRY
                    variable names, and this select's own id
                    (cmpCreationBusinessInitiativeSelect) are all unchanged. -->
-              <label>Campaign Objective</label>
+              <label>Media Science Primary Focus</label>
               <select id="cmpCreationBusinessInitiativeSelect" onchange="cmpOnCreationTypeInitiativeChanged();">
-                <option value="">— Select a campaign objective —</option>
+                <option value="">— Select a media science primary focus —</option>
               </select>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Start
@@ -9581,14 +9581,14 @@
                      reads/writes — one campaign, one value, two surfaces. -->
                 <div class="msg-card" id="cmpGenerationRequirementsCard">
                   <div class="msg-card-head">
-                    <span class="msg-card-title">Campaign Type &amp; Campaign Objective</span>
+                    <span class="msg-card-title">Campaign Experience Focus &amp; Media Science Primary Focus</span>
                     <span class="msg-card-sub">Required — the AI Brain reads both before drafting or contesting any campaign copy below</span>
                   </div>
-                  <p class="hint" style="margin:0 0 8px;">Relevance scoring for this campaign starts here. Campaign Type is the scenario mechanic (Offer, Launch, Loyalty…); Campaign Objective is the underlying business reason this campaign exists — both shape the AI Copywriter's brief.</p>
+                  <p class="hint" style="margin:0 0 8px;">Relevance scoring for this campaign starts here. Campaign Experience Focus is the scenario mechanic (Product Launch, Tactical Offer, Loyalty…); Media Science Primary Focus is the metric this campaign is being optimized and measured against — both shape the AI Copywriter's brief.</p>
                   <div class="msg-subfield">
-                    <label for="cmpCampaignTypeSelect">Campaign type</label>
+                    <label for="cmpCampaignTypeSelect">Campaign Experience Focus</label>
                     <select id="cmpCampaignTypeSelect" onchange="cmpOnGenerationTypeChanged();">
-                      <option value="">— Select a campaign type —</option>
+                      <option value="">— Select a campaign experience focus —</option>
                     </select>
                   </div>
                   <div id="cmpCampaignTypeDetailFields"></div>
@@ -9597,9 +9597,9 @@
                          Campaign Objective (UI text only, see the matching
                          comment on Create Campaign's own copy of this pair
                          above); id/data model unchanged. -->
-                    <label for="cmpBusinessInitiativeSelect">Campaign Objective</label>
+                    <label for="cmpBusinessInitiativeSelect">Media Science Primary Focus</label>
                     <select id="cmpBusinessInitiativeSelect" onchange="cmpOnGenerationTypeChanged();">
-                      <option value="">— Select a campaign objective —</option>
+                      <option value="">— Select a media science primary focus —</option>
                     </select>
                   </div>
                   <div id="cmpGenerationRequirementsStatus" style="margin-top:8px;"></div>
@@ -11072,12 +11072,12 @@
          types, not only after a save. -->
     <div class="sk-card cmp-form-col" id="campaignTypeCard">
       <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Campaign Type</div><h3>What kind of campaign is this?</h3></div>
+        <div class="htext"><div class="kicker">Campaign Experience Focus</div><h3>What kind of campaign is this?</h3></div>
         <div class="hicon">▣</div>
       </div>
       <div class="sk-card-body">
         <div class="field">
-          <label for="campaignTypeSelect">Campaign type (optional — shapes the AI copy prompts below with scenario-specific guidance; General/not-set behaves exactly as before this field existed)</label>
+          <label for="campaignTypeSelect">Campaign Experience Focus (optional — shapes the AI copy prompts below with scenario-specific guidance; General/not-set behaves exactly as before this field existed)</label>
           <select id="campaignTypeSelect" onchange="onCampaignTypeSelectChanged();">
             <option value="">General — no specific scenario, no extra requirements</option>
           </select>
@@ -11333,7 +11333,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-campaign-header-zero-state';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-campaign-experience-focus-media-science-rename';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -39610,7 +39610,7 @@ function cmpBriefAnalyticsBody(c){
       <div class="cmp-brief-recap-grid">
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Loop Stage</span><span class="cmp-brief-recap-val">${escapeHtml(c.stage || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Audience</span><span class="cmp-brief-recap-val">${escapeHtml(c.segment || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Type</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Experience Focus</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
         <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">Start Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.startDate || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
         <!-- 2026-09-19 — CampaignBrief-Mobile.dc.html merges Start Date +
@@ -43931,20 +43931,22 @@ async function saveCampaignBrandFields(){
 }
 
 // 2026-08-22 — hand-mirrored copy of backend/server.js's
-// CAMPAIGN_TYPE_REGISTRY (same convention MESSAGE_TYPE_CUE already uses for
-// messageType — a small, rarely-changing registry duplicated client-side
-// rather than fetched, so the picker/detail-fields render with no extra
-// round trip). coreFieldLabels is frontend-only — friendly display names for
-// the completeness check, since coreFields itself just names existing
-// campaign columns (mandatoryPhrase, endDate, etc.) the same way the
-// backend's campaignTypeCompleteness() does.
+// Renamed 2026-09-21, per direct instruction: hand-mirrored copy of
+// backend's CAMPAIGN_TYPE_REGISTRY, now the Campaign Experience Focus
+// taxonomy (Brand Expansion, Product Launch, Tactical Offer, Loyalty,
+// Advocacy, Nurturing Sequence, Trade, Corporate Communications) — see that
+// registry's own comment in backend/server.js for the full context.
+// coreFieldLabels is frontend-only — friendly display names for the
+// completeness check, since coreFields itself just names existing campaign
+// columns (mandatoryPhrase, endDate, etc.) the same way the backend's
+// campaignTypeCompleteness() does.
 const CAMPAIGN_TYPE_REGISTRY_CLIENT = {
-  urgency_offer: {
-    label: 'Urgency Offer',
-    coreFields: ['mandatoryPhrase', 'endDate'],
-    coreFieldLabels: { mandatoryPhrase: 'Mandatory phrase (Brand card)', endDate: 'Campaign end date' },
+  brand_expansion: {
+    label: 'Brand Expansion',
+    coreFields: [],
+    coreFieldLabels: {},
     detailFields: [
-      { key: 'offerDetails', label: 'Offer details (what exactly is being offered, in plain terms)', required: true }
+      { key: 'expansionTarget', label: 'The new audience, segment, or market this campaign is expanding into', required: true }
     ]
   },
   product_launch: {
@@ -43955,6 +43957,14 @@ const CAMPAIGN_TYPE_REGISTRY_CLIENT = {
       { key: 'launchHighlights', label: 'What makes this launch genuinely newsworthy (real, specific)', required: true }
     ]
   },
+  tactical_offer: {
+    label: 'Tactical Offer',
+    coreFields: ['mandatoryPhrase', 'endDate'],
+    coreFieldLabels: { mandatoryPhrase: 'Mandatory phrase (Brand card)', endDate: 'Campaign end date' },
+    detailFields: [
+      { key: 'offerDetails', label: 'Offer details (what exactly is being offered, in plain terms)', required: true }
+    ]
+  },
   loyalty: {
     label: 'Loyalty',
     coreFields: ['audienceTargets'],
@@ -43963,36 +43973,54 @@ const CAMPAIGN_TYPE_REGISTRY_CLIENT = {
       { key: 'rewardDetail', label: 'The specific reward/benefit being offered to returning customers', required: true }
     ]
   },
-  // 2026-09-17 — added to match backend's CAMPAIGN_TYPE_REGISTRY (see that
-  // registry's own comment): unifies with the messageType selector's
-  // 'Brand Campaign' value and CONTEST_TYPE_REGISTRY.Campaign's subtypes.
-  brand_campaign: {
-    label: 'Brand Campaign',
-    coreFields: [],
-    coreFieldLabels: {},
-    detailFields: []
-  },
-  trade_incentive: {
-    label: 'Trade Incentive',
+  advocacy: {
+    label: 'Advocacy',
     coreFields: [],
     coreFieldLabels: {},
     detailFields: [
-      { key: 'partnerName', label: 'Partner/dealer network this incentive targets', required: true },
+      { key: 'advocacyAsk', label: 'The specific ask being made of this advocate (refer a friend, leave a review, share, etc.)', required: true }
+    ]
+  },
+  nurturing_sequence: {
+    label: 'Nurturing Sequence',
+    coreFields: [],
+    coreFieldLabels: {},
+    detailFields: [
+      { key: 'sequencePosition', label: 'Where this message sits in the sequence (e.g. "2nd of 4 — following the intro email")', required: true }
+    ]
+  },
+  trade: {
+    label: 'Trade',
+    coreFields: [],
+    coreFieldLabels: {},
+    detailFields: [
+      { key: 'partnerName', label: 'Partner/dealer network this campaign targets', required: true },
       { key: 'incentiveAmount', label: 'Incentive amount or structure (real, specific)', required: true }
+    ]
+  },
+  corporate_communications: {
+    label: 'Corporate Communications',
+    coreFields: [],
+    coreFieldLabels: {},
+    detailFields: [
+      { key: 'announcementDetail', label: 'What is actually being communicated (the real news, policy, or position)', required: true }
     ]
   }
 };
-// 2026-09-17 — hand-mirrored copy of backend's BUSINESS_INITIATIVE_REGISTRY,
-// same convention as CAMPAIGN_TYPE_REGISTRY_CLIENT above.
+// Renamed 2026-09-21, per direct instruction: hand-mirrored copy of
+// backend's BUSINESS_INITIATIVE_REGISTRY, now the Media Science Primary
+// Focus taxonomy (Acquisition Cost, ROAS, Website Visits, Website
+// Engagement, Qualified Leads, Total Registrations, Net Promoter Score,
+// Brand Recognition) — same convention as CAMPAIGN_TYPE_REGISTRY_CLIENT above.
 const BUSINESS_INITIATIVE_REGISTRY_CLIENT = {
-  new_customer_acquisition: { label: 'New Customer Acquisition' },
-  loyalty_retention: { label: 'Loyalty & Retention' },
-  product_or_service_launch: { label: 'Product or Service Launch' },
-  seasonal_demand: { label: 'Seasonal / Off-Peak Demand Generation' },
-  competitive_defense: { label: 'Competitive Defense / Market Share' },
-  cross_sell_share_of_wallet: { label: 'Cross-Sell / Share of Wallet' },
-  brand_awareness_new_market: { label: 'Brand Awareness in a New or Underdeveloped Market' },
-  trade_partner_network: { label: 'Trade / Dealer Partner Network Growth' }
+  acquisition_cost: { label: 'Acquisition Cost' },
+  roas: { label: 'ROAS' },
+  website_visits: { label: 'Website Visits' },
+  website_engagement: { label: 'Website Engagement' },
+  qualified_leads: { label: 'Qualified Leads' },
+  total_registrations: { label: 'Total Registrations' },
+  net_promoter_score: { label: 'Net Promoter Score' },
+  brand_recognition: { label: 'Brand Recognition' }
 };
 // 2026-09-17 — populates and renders the Brand Messaging module's Campaign
 // Type & Business Initiative card (#cmpGenerationRequirementsCard). Distinct
@@ -44134,8 +44162,8 @@ async function cmpOnCreationTypeInitiativeChanged(){
 function cmpRequiredForGenerationGate(){
   const c = findCampaign(currentCampaignId);
   const missing = [];
-  if (!c || !c.campaignType || !CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) missing.push('Campaign Type');
-  if (!c || !c.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative]) missing.push('Campaign Objective');
+  if (!c || !c.campaignType || !CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) missing.push('Campaign Experience Focus');
+  if (!c || !c.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative]) missing.push('Media Science Primary Focus');
   return { ok: missing.length === 0, missing };
 }
 function cmpRenderGenerationRequirementsStatus(c){
@@ -44143,7 +44171,7 @@ function cmpRenderGenerationRequirementsStatus(c){
   if (!statusEl) return;
   const gate = cmpRequiredForGenerationGate();
   statusEl.innerHTML = gate.ok
-    ? `<span class="hint" style="color:var(--cx);">✓ Both set — the AI Brain will use this Campaign Type and Campaign Objective when drafting or contesting copy below.</span>`
+    ? `<span class="hint" style="color:var(--cx);">✓ Both set — the AI Brain will use this Campaign Experience Focus and Media Science Primary Focus when drafting or contesting copy below.</span>`
     : `<span class="hint" style="color:var(--advocacy);font-weight:600;">⚠ Set ${gate.missing.join(' and ')} before generating or contesting campaign copy below — required as of this round.</span>`;
 }
 // Saves the new Brand Messaging card's Campaign Type detail-field inputs
@@ -51164,7 +51192,7 @@ function renderCampaignSubNav(containerId, isAdHoc){
   if (!currentCampaignId){ el.innerHTML = ''; return; }
   const sections = [
     { id: 'campaignBrandCard', label: 'Brand' },
-    { id: 'campaignTypeCard', label: 'Campaign Type' },
+    { id: 'campaignTypeCard', label: 'Campaign Experience Focus' },
     { id: 'campaignLifecycleCard', label: 'Overview' },
     ...(isAdHoc ? [] : [{ id: 'campaignAnalyticsCard', label: 'Performance' }]),
     ...(isAdHoc ? [] : [{ id: 'campaignTrackingCard', label: 'Tracking' }]),
