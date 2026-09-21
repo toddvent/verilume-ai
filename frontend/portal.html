@@ -11333,7 +11333,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-productgroup-focusgroup-ai-thoughts';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-campaign-header-zero-state';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13564,21 +13564,55 @@ function cmpRenderCampaignHeader(campaign){
   const layout = document.getElementById('cmpLayout');
   if (!header || !layout) return;
   cmpUpdateStickyOffsets();
-  if (!campaign){
-    header.style.display = 'none';
-    header.classList.remove('cch-active');
-    layout.classList.remove('cch-active');
-    return;
-  }
   header.style.display = 'block';
   header.classList.add('cch-active');
   layout.classList.add('cch-active');
+  // 2026-09-21, per direct instruction: the campaign header (name,
+  // progress bar, relevance score circle) shows across every campaign
+  // step, INCLUDING the "0 state" before any campaign exists yet (Create a
+  // Campaign) — it used to hide entirely (display:none) whenever no
+  // campaign was loaded, which is the bug this fixes. Null-state values,
+  // as specified: (a) no campaign name -> "Create Campaign" (b) no
+  // campaign id -> blank (c) progress bar defaults to grey/not-started —
+  // 'cch-progress-seg' with no status class is exactly that CSS default,
+  // same as a real campaign's not-yet-reached stages (d) relevance score
+  // circle stays at the end of the progress bar showing "—", same "not
+  // scored yet" display a real campaign gets before CX work starts.
+  if (!campaign){
+    document.getElementById('cchName').textContent = 'Create Campaign';
+    document.getElementById('cchCode').textContent = '';
+    const pill = document.getElementById('cchStatusPill');
+    if (pill){ pill.textContent = ''; pill.className = 'cch-status-pill'; pill.style.display = 'none'; }
+    const cancelLink = document.getElementById('cchCancelLink');
+    if (cancelLink) cancelLink.style.display = 'none';
+    const lastStepEl = document.getElementById('cchLastStep');
+    if (lastStepEl) lastStepEl.textContent = '';
+    const startDateEl = document.getElementById('cchStartDate');
+    if (startDateEl) startDateEl.textContent = '';
+    const circle = document.getElementById('cchScoreCircle');
+    if (circle){
+      const brandColor = (state.styleAssets && state.styleAssets.primaryColorHex) || '#0891B2';
+      circle.style.background = brandColor;
+      circle.style.color = cmpContrastTextColor(brandColor);
+      circle.textContent = '—';
+      circle.title = 'Not yet scored — create this campaign to begin';
+    }
+    const progressMount = document.getElementById('cchProgress');
+    if (progressMount) progressMount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(() => `<div class="cch-progress-seg" title="Not started"></div>`).join('');
+    document.getElementById('cchStepsPanel').classList.remove('open');
+    const commentsCountEl = document.getElementById('cchCommentsCount');
+    if (commentsCountEl) commentsCountEl.textContent = '';
+    const chatNameEl = document.getElementById('cmpTeamChatCampaignName');
+    if (chatNameEl) chatNameEl.textContent = 'Create Campaign';
+    return;
+  }
   document.getElementById('cchName').textContent = campaign.name || 'Untitled campaign';
   document.getElementById('cchCode').textContent = campaign.id;
   const status = cmpLifecycleStatus(campaign);
   const pill = document.getElementById('cchStatusPill');
   pill.textContent = status;
   pill.className = `cch-status-pill ${status.toLowerCase()}`;
+  pill.style.display = ''; // undo the 0-state's display:none, if it was just set
   // Round 132bx follow-up, per direct instruction: "cancel can only happen
   // before the start date" — narrowed from "anything not already
   // Cancelled/Completed" to Pending only (start date hasn't arrived yet).
