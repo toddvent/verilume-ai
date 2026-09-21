@@ -8206,6 +8206,11 @@
            disconnected copy. -->
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left">
+          <!-- 2026-09-21, per direct instruction: a heading above the
+               search bar so it reads as its own labeled action ("Search or
+               Select a campaign below to help your recommendation") rather
+               than an unlabeled input floating at the top of the panel. -->
+          <p class="lede" style="margin:0 0 6px;font-weight:700;color:var(--ink);">Search or Select a campaign below to help your recommendation</p>
           <div class="cmp-template-search-row">
             <div class="cmp-search-combo">
               <input type="text" id="cmpTemplateSearch"
@@ -8219,7 +8224,6 @@
               <div class="cmp-search-results" id="cmpTemplateSearchResults" role="listbox" style="display:none;"></div>
             </div>
           </div>
-          <p class="lede" style="margin:10px 0 0;">Already have a campaign in mind to build from? Search for it above — picking one starts the conversation with that campaign's real setup already on the table, and the AI Brain takes it from there.</p>
           <div class="template-rec-row" id="cmpTemplateRecRow" style="margin-top:14px;"></div>
           <!-- 2026-09-19 — literal parity fix per Todd's direct instruction
                ("every page ... needs to match the artifact document...
@@ -8231,17 +8235,8 @@
                corners rounded like a standalone card instead of a
                continuation of the section above it. -->
           <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;border-top-left-radius:0;border-top-right-radius:0;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
-              <h3 style="margin:0 0 6px;">Create Your New Program</h3>
-              <button type="button" class="btn-ghost" style="flex:none;white-space:nowrap;" onclick="cmpSkipPickupAndContinue()">Skip to Manual Campaign Creation →</button>
-            </div>
+            <h3 style="margin:0 0 6px;">Create Your New Program</h3>
             <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
-            <!-- 2026-09-21, per direct instruction: recap of what Campaign
-                 Creation (step 1) already collected, so this stage doesn't
-                 read as if it forgot the Audience/Channel/Product Group/
-                 Creative Focus Group/Estimated Budget the user already gave
-                 us. Populated by cmpRenderObjectivesRecap(). -->
-            <div id="cmpObjectivesRecap"></div>
             <div class="cmp-intake-body" id="cmpIntakeBody"></div>
             <div class="cmp-intake-input-row">
               <textarea id="cmpIntakeText" rows="1" placeholder="e.g. We want to drive more repeat bookings from past guests this fall…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpIntakeSendMessage();}"></textarea>
@@ -8253,6 +8248,22 @@
             <p class="cmp-intake-voice-status" id="cmpIntakeVoiceStatus" style="display:none;"></p>
             <div id="cmpIntakeRecommendations"></div>
           </div>
+          <!-- 2026-09-21, per direct instruction: "Move 'Skip to Manual
+               Creation' button above the recap, below the AI Brain Dialogue
+               Area. Rename to 'Continue to Budget Evaluation'." Same
+               handler as before (cmpSkipPickupAndContinue()) — only its
+               label and position changed, not what it does. -->
+          <div class="btn-row" style="margin-top:18px;justify-content:flex-end;">
+            <button type="button" class="btn-ghost" onclick="cmpSkipPickupAndContinue()">Continue to Budget Evaluation →</button>
+          </div>
+          <!-- 2026-09-21, per direct instruction: recap of what Campaign
+               Creation (step 1) already collected, so this stage doesn't
+               read as if it forgot the Product Group/Creative Focus Group/
+               Campaign Experience Focus/Media Science Primary Focus/
+               Estimated Budget/dates the user already gave us. Now sits
+               below the dialogue area, per the same instruction that moved
+               the button above it. Populated by cmpRenderObjectivesRecap(). -->
+          <div id="cmpObjectivesRecap" style="margin-top:14px;"></div>
         </div>
         <div class="cmp-workspace-collab" id="cmpObjectivesCollabMount"></div>
       </div>
@@ -11369,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-cmgmt-all-filter-excludes-cancelled';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-recap-single-edit-reorder';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38393,7 +38404,7 @@ function renderCmpPickupStage(){
         <button type="button" class="btn-ghost" onclick="cmpStartDialogueFromCampaign('${c.id}')">Start from this campaign →</button>
       </div>
     </div>
-  `).join('') : '<div class="hint">No other campaigns exist yet to recommend.</div>';
+  `).join('') : `<div class="hint">We can't identify a similar campaign. Continue speaking with your AI Brain, or <a class="flink" onclick="cmpSkipPickupAndContinue()">click to build manually</a> with your AI Brain observing.</div>`;
   cmpMaybeResetIntake(campaign.id);
 }
 
@@ -38486,7 +38497,7 @@ function cmpMaybeResetIntake(campaignId){
   const recEl = document.getElementById('cmpIntakeRecommendations');
   if (recEl) recEl.innerHTML = '';
   const campaign = state.campaigns.find(x => x.id === campaignId);
-  cmpObjRecapState = { editingField: null, draft: null, saving: false, banner: null };
+  cmpObjRecapState = { editing: false, draft: null, saving: false, banner: null };
   cmpRenderObjectivesRecap(campaign);
   // 2026-09-21 — a genuinely new (never-yet-opened) dialogue for this
   // campaign auto-starts from the real Campaign Creation fields instead of
@@ -38511,15 +38522,30 @@ function cmpMaybeResetIntake(campaignId){
 // follow-up ("does not capture all of the fields we added to creation
 // form") to exactly the 8 real fields, nothing invented.
 //
-// SECOND fix in the same follow-up: "per previous budget and recommendation
-// versions needs to be editable." The AI Brain Recommendation pitch screen
-// (cmpRenderPitchLeft()) already established the pattern this reuses:
-// label + value + "Edit" button; editing swaps in the real input, Save
-// persists through the generic POST /api/campaigns/:id merge-update
-// endpoint (same endpoint that screen's Loop Stage/Audience edits use),
-// Cancel discards the draft, and a save-confirmation banner reports the
-// result — see cmpRecoSaveLoopStage()/cmpRecoSaveAudience() for the
-// original of this pattern.
+// SECOND follow-up, per Todd's direct correction to the first pass: "We
+// don't need back to campaign creation if fields are editable. You only
+// need one EDIT icon that is consistent with the rest of the portal. All
+// fields are editable. We don't need to select each field." The
+// per-field Edit/Save/Cancel triplet (eight of them, one per field, mirrored
+// from cmpRenderPitchLeft()'s Loop Stage/Audience pattern) is replaced with
+// ONE edit toggle for the whole card — clicking it puts every field into
+// edit mode at once; one Save persists all eight in a single request; one
+// Cancel discards every draft. The "← Back to Campaign Creation" link this
+// round also removed is gone entirely — no longer needed now that every
+// field can be changed right here.
+//
+// THIRD follow-up, same message: "Editing estimated budget closes after
+// each keystroke when in edit mode." Root cause: the per-field version
+// called cmpRenderObjectivesRecap() (a full innerHTML replace) on every
+// oninput, which tore out and recreated the <input> node on every
+// keystroke — the DOM input the user was typing into no longer existed
+// after the first character, which reads exactly like "closes after each
+// keystroke." Fixed by never re-rendering on a text/number/date keystroke:
+// those inputs are uncontrolled (no oninput handler at all) and are read
+// directly from the DOM only when something actually needs their value —
+// Save, or a multi-select tile click forcing a re-render for its own
+// reason (cmpObjRecapSyncSimpleFieldsFromDom() below preserves whatever
+// was typed in the other fields when that happens).
 const CMP_OBJ_RECAP_FIELDS = [
   { key: 'name', label: 'Campaign Name', type: 'text' },
   { key: 'campaignType', label: 'Campaign Experience Focus', type: 'select', registry: () => (typeof CAMPAIGN_TYPE_REGISTRY_CLIENT !== 'undefined' ? CAMPAIGN_TYPE_REGISTRY_CLIENT : {}) },
@@ -38530,12 +38556,13 @@ const CMP_OBJ_RECAP_FIELDS = [
   { key: 'startDate', label: 'Campaign Start Date', type: 'date' },
   { key: 'endDate', label: 'Campaign End Date', type: 'date' }
 ];
-// editingField: the CMP_OBJ_RECAP_FIELDS key currently mid-edit (only one
-// at a time, same as the Recommendation pitch screen). draft: that field's
-// in-progress value (a string, or an array for the two multi-select
-// fields). banner: the last save's {ok, text}, same shape as
-// cmpRecoState.stageSaveBanner.
-let cmpObjRecapState = { editingField: null, draft: null, saving: false, banner: null };
+const CMP_OBJ_RECAP_SIMPLE_KEYS = CMP_OBJ_RECAP_FIELDS.filter(f => f.type !== 'multi').map(f => f.key);
+function cmpObjRecapInputId(key){ return `cmpObjRecapField_${key}`; }
+// editing: the whole card is in edit mode or not (never per-field anymore).
+// draft: every field's in-progress value, keyed by field key — a string for
+// text/select/money/date, an array for the two multi-select fields. banner:
+// the last save's {ok, text}, same shape as cmpRecoState.stageSaveBanner.
+let cmpObjRecapState = { editing: false, draft: null, saving: false, banner: null };
 function cmpObjRecapFieldValue(c, key){
   if (key === 'productGroups' || key === 'creativeFocusGroups'){
     return (c[key] || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -38553,63 +38580,74 @@ function cmpObjRecapDisplayValue(c, field){
   if (field.type === 'date') return raw || '—';
   return raw || '—';
 }
-function cmpObjRecapStartEdit(key){
+// Reads whatever the user currently has typed/selected in the plain
+// (non-tile) inputs straight off the DOM and folds it into the draft —
+// called right before any re-render that's triggered by something OTHER
+// than one of those inputs (a multi-select tile click), so that re-render
+// doesn't silently revert text the user hadn't saved yet.
+function cmpObjRecapSyncSimpleFieldsFromDom(){
+  if (!cmpObjRecapState.draft) return;
+  CMP_OBJ_RECAP_SIMPLE_KEYS.forEach(key => {
+    const el = document.getElementById(cmpObjRecapInputId(key));
+    if (el) cmpObjRecapState.draft[key] = el.value;
+  });
+}
+function cmpObjRecapStartEdit(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
-  const field = CMP_OBJ_RECAP_FIELDS.find(f => f.key === key);
-  if (!field) return;
-  cmpObjRecapState.editingField = key;
-  cmpObjRecapState.draft = cmpObjRecapFieldValue(campaign, key);
+  const draft = {};
+  CMP_OBJ_RECAP_FIELDS.forEach(field => { draft[field.key] = cmpObjRecapFieldValue(campaign, field.key); });
+  cmpObjRecapState.editing = true;
+  cmpObjRecapState.draft = draft;
   cmpObjRecapState.banner = null;
   cmpRenderObjectivesRecap(campaign);
 }
 function cmpObjRecapCancelEdit(){
-  cmpObjRecapState.editingField = null;
+  cmpObjRecapState.editing = false;
   cmpObjRecapState.draft = null;
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderObjectivesRecap(campaign);
 }
-function cmpObjRecapDraftChanged(value){
-  cmpObjRecapState.draft = value;
-  const campaign = cmpRailLoadedCampaign();
-  if (campaign) cmpRenderObjectivesRecap(campaign);
-}
-function cmpObjRecapToggleMultiDraft(value){
-  const draft = Array.isArray(cmpObjRecapState.draft) ? cmpObjRecapState.draft.slice() : [];
+function cmpObjRecapToggleMultiDraft(key, value){
+  cmpObjRecapSyncSimpleFieldsFromDom();
+  const draft = Array.isArray(cmpObjRecapState.draft[key]) ? cmpObjRecapState.draft[key].slice() : [];
   const idx = draft.indexOf(value);
   if (idx >= 0) draft.splice(idx, 1); else draft.push(value);
-  cmpObjRecapState.draft = draft;
+  cmpObjRecapState.draft[key] = draft;
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderObjectivesRecap(campaign);
 }
 async function cmpObjRecapSave(){
   const campaign = cmpRailLoadedCampaign();
-  const key = cmpObjRecapState.editingField;
-  if (!campaign || !key) return;
-  const field = CMP_OBJ_RECAP_FIELDS.find(f => f.key === key);
-  if (!field) return;
-  let payloadValue = cmpObjRecapState.draft;
-  if (field.type === 'multi') payloadValue = (payloadValue || []).join(', ');
-  if (field.type === 'money') payloadValue = payloadValue === '' || payloadValue === null ? null : Number(payloadValue);
+  if (!campaign || !cmpObjRecapState.draft) return;
+  cmpObjRecapSyncSimpleFieldsFromDom();
+  const draft = cmpObjRecapState.draft;
+  const payload = {};
+  CMP_OBJ_RECAP_FIELDS.forEach(field => {
+    let v = draft[field.key];
+    if (field.type === 'multi') v = (v || []).join(', ');
+    if (field.type === 'money') v = (v === '' || v === null || v === undefined) ? null : Number(v);
+    payload[field.key] = v;
+  });
   cmpObjRecapState.saving = true;
   cmpRenderObjectivesRecap(campaign);
   let ok = false;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key]: payloadValue })
+      body: JSON.stringify(payload)
     });
     ok = resp.ok;
     if (ok){
-      campaign[key] = payloadValue; // keep this session's copy in sync without a full reload
-      // Campaign Name changed — the overlay's own header mount shows it too.
-      if (key === 'name') cmpMountCampaignHeaderInto('cmpObjectivesHeaderMount');
+      Object.assign(campaign, payload); // keep this session's copy in sync without a full reload
+      // Campaign Name may have changed — the overlay's own header mount shows it too.
+      cmpMountCampaignHeaderInto('cmpObjectivesHeaderMount');
     }
   } catch (e){ console.warn('cmpObjRecapSave failed:', e); }
   cmpObjRecapState.saving = false;
-  cmpObjRecapState.editingField = null;
+  cmpObjRecapState.editing = false;
   cmpObjRecapState.draft = null;
-  cmpObjRecapState.banner = { ok, text: ok ? `Saved — ${field.label} updated.` : 'Could not save — try again.' };
+  cmpObjRecapState.banner = { ok, text: ok ? 'Saved — Campaign Creation fields updated.' : 'Could not save — try again.' };
   cmpRenderObjectivesRecap(campaign);
 }
 // Renders the recap card — called from cmpMaybeResetIntake() any time the
@@ -38623,65 +38661,50 @@ function cmpRenderObjectivesRecap(c){
   if (!c){ mount.innerHTML = ''; return; }
   const s = cmpObjRecapState;
   const rowHtml = field => {
-    const editing = s.editingField === field.key;
-    let editorHtml = '';
-    if (editing){
-      if (field.type === 'select'){
-        const registry = field.registry();
-        const optsHtml = `<option value="">— Select —</option>` + Object.keys(registry).map(k => `<option value="${escapeHtml(k)}" ${s.draft === k ? 'selected' : ''}>${escapeHtml(registry[k].label)}</option>`).join('');
-        editorHtml = `<select onchange="cmpObjRecapDraftChanged(this.value)" ${s.saving ? 'disabled' : ''}>${optsHtml}</select>`;
-      } else if (field.type === 'multi'){
-        const options = field.options();
-        const draft = Array.isArray(s.draft) ? s.draft : [];
-        editorHtml = options.length
-          ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${options.map(opt => `<button type="button" class="select-tile${draft.includes(opt) ? ' selected' : ''}" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapToggleMultiDraft('${escapeHtml(opt).replace(/'/g, "\\'")}')"><span class="indicator">✓</span><span class="label">${escapeHtml(opt)}</span></button>`).join('')}</div>`
-          : `<p class="hint" style="margin:0;">No ${escapeHtml(field.label.toLowerCase())} options are set up for this account yet — add them under Configuration.</p>`;
-      } else if (field.type === 'money'){
-        editorHtml = `<input type="number" min="0" step="100" value="${s.draft === null || s.draft === undefined ? '' : escapeHtml(String(s.draft))}" oninput="cmpObjRecapDraftChanged(this.value)" ${s.saving ? 'disabled' : ''}>`;
-      } else if (field.type === 'date'){
-        editorHtml = `<input type="date" value="${escapeHtml(s.draft || '')}" oninput="cmpObjRecapDraftChanged(this.value)" ${s.saving ? 'disabled' : ''}>`;
-      } else {
-        editorHtml = `<input type="text" value="${escapeHtml(s.draft || '')}" oninput="cmpObjRecapDraftChanged(this.value)" ${s.saving ? 'disabled' : ''}>`;
-      }
-      return `<div class="cmp-objectives-recap-row cmp-objectives-recap-row-editing">
+    if (!s.editing){
+      return `<div class="cmp-objectives-recap-row">
         <span class="cmp-objectives-recap-label">${escapeHtml(field.label)}</span>
-        <div style="margin-top:4px;">${editorHtml}</div>
-        <div class="btn-row" style="margin-top:8px;">
-          <button type="button" class="btn-primary" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapSave()">${s.saving ? 'Saving…' : 'Save →'}</button>
-          <button type="button" class="btn-ghost" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapCancelEdit()">Cancel</button>
-        </div>
+        <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(c, field))}</span>
       </div>`;
     }
-    return `<div class="cmp-objectives-recap-row">
+    const draftVal = s.draft[field.key];
+    let editorHtml;
+    if (field.type === 'select'){
+      const registry = field.registry();
+      const optsHtml = `<option value="">— Select —</option>` + Object.keys(registry).map(k => `<option value="${escapeHtml(k)}" ${draftVal === k ? 'selected' : ''}>${escapeHtml(registry[k].label)}</option>`).join('');
+      editorHtml = `<select id="${cmpObjRecapInputId(field.key)}" ${s.saving ? 'disabled' : ''}>${optsHtml}</select>`;
+    } else if (field.type === 'multi'){
+      const options = field.options();
+      const draftArr = Array.isArray(draftVal) ? draftVal : [];
+      editorHtml = options.length
+        ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${options.map(opt => `<button type="button" class="select-tile${draftArr.includes(opt) ? ' selected' : ''}" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapToggleMultiDraft('${field.key}','${escapeHtml(opt).replace(/'/g, "\\'")}')"><span class="indicator">✓</span><span class="label">${escapeHtml(opt)}</span></button>`).join('')}</div>`
+        : `<p class="hint" style="margin:0;">No ${escapeHtml(field.label.toLowerCase())} options are set up for this account yet — add them under Configuration.</p>`;
+    } else if (field.type === 'money'){
+      editorHtml = `<input type="number" min="0" step="1" id="${cmpObjRecapInputId(field.key)}" value="${draftVal === null || draftVal === undefined ? '' : escapeHtml(String(draftVal))}" ${s.saving ? 'disabled' : ''}>`;
+    } else if (field.type === 'date'){
+      editorHtml = `<input type="date" id="${cmpObjRecapInputId(field.key)}" value="${escapeHtml(draftVal || '')}" ${s.saving ? 'disabled' : ''}>`;
+    } else {
+      editorHtml = `<input type="text" id="${cmpObjRecapInputId(field.key)}" value="${escapeHtml(draftVal || '')}" ${s.saving ? 'disabled' : ''}>`;
+    }
+    return `<div class="cmp-objectives-recap-row cmp-objectives-recap-row-editing">
       <span class="cmp-objectives-recap-label">${escapeHtml(field.label)}</span>
-      <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(c, field))}</span>
-      <button type="button" class="btn-ghost" style="padding:1px 8px;font-size:0.75rem;margin-left:6px;" onclick="cmpObjRecapStartEdit('${field.key}')">Edit</button>
+      <div style="margin-top:4px;">${editorHtml}</div>
     </div>`;
   };
   mount.innerHTML = `<div class="cmp-objectives-recap">
     <div class="cmp-objectives-recap-title-row">
       <div class="cmp-objectives-recap-title">From Campaign Creation</div>
-      <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpBackToCampaignCreation()">← Back to Campaign Creation</button>
+      ${s.editing ? '' : `<button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpObjRecapStartEdit()">✎ Edit</button>`}
     </div>
     ${s.banner ? `<div class="hint" style="margin-bottom:8px;color:${s.banner.ok ? 'var(--advocacy)' : '#B3261E'};">${escapeHtml(s.banner.text)}</div>` : ''}
     <div class="cmp-objectives-recap-grid">
       ${CMP_OBJ_RECAP_FIELDS.map(rowHtml).join('')}
     </div>
+    ${s.editing ? `<div class="btn-row" style="margin-top:10px;">
+      <button type="button" class="btn-primary" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapSave()">${s.saving ? 'Saving…' : 'Save →'}</button>
+      <button type="button" class="btn-ghost" ${s.saving ? 'disabled' : ''} onclick="cmpObjRecapCancelEdit()">Cancel</button>
+    </div>` : ''}
   </div>`;
-}
-// 2026-09-21 — per direct report: "Users can't get back to the campaign
-// creation page." Once a campaign moves into the Objectives overlay,
-// nothing on screen pointed back at the Create Campaign form itself — the
-// overlay's own close (✕) only returns to the Workspace Hub, not step 1.
-// Reuses the exact same edit-form entry point Campaign Management's own
-// "Manage Campaign →" / mops queue rows already use
-// (openCampaignInEditForm()) rather than inventing a second path back into
-// the same form.
-function cmpBackToCampaignCreation(){
-  const campaign = cmpRailLoadedCampaign();
-  if (!campaign) return;
-  cmpCloseObjectivesIntake();
-  openCampaignInEditForm(campaign.id, 'cmpName');
 }
 // Builds the auto-started opening line — same "real field summary, not
 // fabricated prose" discipline as cmpCampaignOriginalCopy(), ending with an
