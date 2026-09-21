@@ -11306,7 +11306,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-17-multistage-account-media-mix';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-cd-select-checkbox-click-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -25787,8 +25787,19 @@ function cmpCdSelectToggleOpen(containerId){
 }
 // Closes an open cd-select panel on any click outside it — a listbox that
 // only closes via its own trigger (re-clicking it) reads as stuck open.
-document.addEventListener('click', function(){
+// 2026-09-21 fix, per direct bug report: "Creative focus groups are not
+// selectable. Attempting to select closes window." This listener had no
+// check for whether the click originated INSIDE the open panel — every
+// click anywhere in the document (including on an option's own checkbox
+// or label) bubbled up here and closed the panel before/alongside the
+// checkbox's own onchange toggle could register, so a selection attempt
+// looked identical to clicking away. The trigger button already stops its
+// own click from reaching here (event.stopPropagation() on cd-select-
+// trigger); this adds the same protection for clicks anywhere else inside
+// an open .cd-select (its panel, an option row, the checkbox itself).
+document.addEventListener('click', function(event){
   if (!cmpCdSelectOpenId) return;
+  if (event.target.closest && event.target.closest('.cd-select')) return;
   const id = cmpCdSelectOpenId;
   const openEl = document.getElementById(id);
   cmpCdSelectOpenId = null;
