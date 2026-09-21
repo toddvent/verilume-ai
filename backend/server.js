@@ -13902,13 +13902,25 @@ const MEDIA_LOOP_STAGE_JOB = {
 // same convention as competitorsJson/brandKeywordsJson elsewhere in this
 // schema). An unset/'' campaignType is "General" — no extra requirements,
 // existing behavior for every campaign created before this round.
+// Renamed 2026-09-21, per direct instruction: "Campaign Types should be
+// called Campaign Experience Focus" with a new 8-value set (Brand
+// Expansion, Product Launch, Tactical Offer, Loyalty, Advocacy, Nurturing
+// Sequence, Trade, Corporate Communications), replacing the prior 5-value
+// set (Urgency Offer/Product Launch/Loyalty/Trade Incentive/Brand
+// Campaign). Variable name, column name (campaignType), and every other
+// mechanic (coreFields/detailFields/campaignTypeCompleteness/
+// campaignTypeBriefContext) are unchanged — only the taxonomy and its
+// user-facing label ("Campaign Experience Focus") changed. Where a prior
+// type's coreFields/detailFields still made sense for its closest new
+// counterpart they were kept as-is so existing saved campaigns/columns
+// keep working; General/unset remains the no-extra-requirements fallback.
 const CAMPAIGN_TYPE_REGISTRY = {
-  urgency_offer: {
-    label: 'Urgency Offer',
-    promptGuidance: 'This is a time-bound URGENCY OFFER. The copy must create genuine urgency around a real deadline, lead with the specific offer, and never bury the expiration. Do not manufacture false scarcity beyond what is actually true here.',
-    coreFields: ['mandatoryPhrase', 'endDate'],
+  brand_expansion: {
+    label: 'Brand Expansion',
+    promptGuidance: 'This is a BRAND EXPANSION campaign — growing the brand into new audiences, segments, or markets. The copy should build real awareness and credibility with people who have little to no existing relationship with this brand, without assuming familiarity.',
+    coreFields: [],
     detailFields: [
-      { key: 'offerDetails', label: 'Offer details (what exactly is being offered, in plain terms)', required: true }
+      { key: 'expansionTarget', label: 'The new audience, segment, or market this campaign is expanding into', required: true }
     ]
   },
   product_launch: {
@@ -13919,6 +13931,14 @@ const CAMPAIGN_TYPE_REGISTRY = {
       { key: 'launchHighlights', label: 'What makes this launch genuinely newsworthy (real, specific)', required: true }
     ]
   },
+  tactical_offer: {
+    label: 'Tactical Offer',
+    promptGuidance: 'This is a time-bound TACTICAL OFFER. The copy must create genuine urgency around a real deadline, lead with the specific offer, and never bury the expiration. Do not manufacture false scarcity beyond what is actually true here.',
+    coreFields: ['mandatoryPhrase', 'endDate'],
+    detailFields: [
+      { key: 'offerDetails', label: 'Offer details (what exactly is being offered, in plain terms)', required: true }
+    ]
+  },
   loyalty: {
     label: 'Loyalty',
     promptGuidance: 'This is a LOYALTY campaign, speaking ONLY to past customers. The copy must read as a genuine thank-you/retention message to someone who already said yes once — never a first-impression pitch, never generic acquisition language.',
@@ -13927,29 +13947,38 @@ const CAMPAIGN_TYPE_REGISTRY = {
       { key: 'rewardDetail', label: 'The specific reward/benefit being offered to returning customers', required: true }
     ]
   },
-  trade_incentive: {
-    label: 'Trade Incentive',
-    promptGuidance: 'This is a TRADE INCENTIVE — written for a trade partner/dealer audience, not a consumer end customer. The copy must speak partner-to-partner (their business benefit, not a consumer sales pitch) and state the real incentive structure plainly.',
+  advocacy: {
+    label: 'Advocacy',
+    promptGuidance: 'This is an ADVOCACY campaign, speaking to people who already believe in the brand. The job is to turn that belief into a referral or a public endorsement — asking them to tell someone else, or share their own experience — never a first-impression sales pitch to the reader themselves.',
     coreFields: [],
     detailFields: [
-      { key: 'partnerName', label: 'Partner/dealer network this incentive targets', required: true },
+      { key: 'advocacyAsk', label: 'The specific ask being made of this advocate (refer a friend, leave a review, share, etc.)', required: true }
+    ]
+  },
+  nurturing_sequence: {
+    label: 'Nurturing Sequence',
+    promptGuidance: 'This is one message in a NURTURING SEQUENCE — a multi-touch series building toward a decision over time, not a single one-shot pitch. The copy should acknowledge where this message sits in that sequence and build logically on what came before it.',
+    coreFields: [],
+    detailFields: [
+      { key: 'sequencePosition', label: 'Where this message sits in the sequence (e.g. "2nd of 4 — following the intro email")', required: true }
+    ]
+  },
+  trade: {
+    label: 'Trade',
+    promptGuidance: 'This is a TRADE campaign — written for a trade partner/dealer audience, not a consumer end customer. The copy must speak partner-to-partner (their business benefit, not a consumer sales pitch) and state the real incentive or program structure plainly.',
+    coreFields: [],
+    detailFields: [
+      { key: 'partnerName', label: 'Partner/dealer network this campaign targets', required: true },
       { key: 'incentiveAmount', label: 'Incentive amount or structure (real, specific)', required: true }
     ]
   },
-  // Added 2026-09-17 — closes the gap between this registry and the
-  // separate messageType/MESSAGE_TYPE_CUE selector (Offer/Brand Campaign/
-  // Launch — see that field's own comment), and between this registry and
-  // CONTEST_TYPE_REGISTRY.Campaign's subtypes, per direct instruction to
-  // unify on one campaign-type taxonomy everywhere ("the key campaign type
-  // (e.g. launch)... should be clear and passed to the AI Brain"). Brand
-  // Campaign was the one messageType value with no CAMPAIGN_TYPE_REGISTRY
-  // counterpart until now. General/unset (no entry here) remains the 4th
-  // value, same "General" fallback campaignTypeCompleteness() already uses.
-  brand_campaign: {
-    label: 'Brand Campaign',
-    promptGuidance: 'This is a BRAND CAMPAIGN — warm, brand-forward, offer stays secondary. The copy should build the brand\'s own story and positioning first; any offer or CTA should feel like a natural next step, never the headline.',
+  corporate_communications: {
+    label: 'Corporate Communications',
+    promptGuidance: 'This is a CORPORATE COMMUNICATIONS message — institutional, not a consumer sales pitch. The copy should speak in the brand\'s own voice about company news, positioning, or policy, with no offer or consumer CTA driving it.',
     coreFields: [],
-    detailFields: []
+    detailFields: [
+      { key: 'announcementDetail', label: 'What is actually being communicated (the real news, policy, or position)', required: true }
+    ]
   }
 };
 // 2026-09-17 — unifies CONTEST_TYPE_REGISTRY.Campaign's subtypes onto this
@@ -13996,50 +14025,49 @@ function campaignTypeBriefContext(campaign){
   return `\nCAMPAIGN TYPE: ${def.label}\n${def.promptGuidance}${detailLines ? `\n${detailLines}` : ''}\n`;
 }
 
-// Added 2026-09-17 — Business Initiative registry, per direct instruction
-// (see the businessInitiative ensureColumn() comment above for the full
-// context). Fixed picklist rather than free text, same reasoning
-// CAMPAIGN_TYPE_REGISTRY already established: a typed value the AI Brain
-// prompt can reason from, not a second Key Message field. Starter set
-// covers the business drivers that actually show up across this account
-// base's campaign types (urgency offers, product launches, loyalty,
-// trade/dealer incentives) rather than duplicating Objective's funnel-stage
-// language — this is deliberately a level up from Objective, answering
-// "why does the business need this campaign at all," not "what should this
-// specific ad get someone to do." A real starter list, not a placeholder —
-// expected to be revised once used against real accounts.
+// Renamed 2026-09-21, per direct instruction: "Campaign Objectives should
+// be Media Science Primary Focus" with a new 8-value set (Acquisition
+// Cost, ROAS, Website Visits, Website Engagement, Qualified Leads, Total
+// Registrations, Net Promoter Score, Brand Recognition), replacing the
+// prior business-driver taxonomy. Variable name, column name
+// (businessInitiative), and every other mechanic
+// (businessInitiativeCompleteness/businessInitiativeBriefContext) are
+// unchanged — only the taxonomy and its user-facing label ("Media Science
+// Primary Focus") changed. This is now a measurement-focus picklist (what
+// this campaign is being optimized/measured against), not a business-driver
+// one — each entry's promptGuidance was rewritten accordingly.
 const BUSINESS_INITIATIVE_REGISTRY = {
-  new_customer_acquisition: {
-    label: 'New Customer Acquisition',
-    promptGuidance: 'The business driver here is winning NEW customers who have not bought/booked before. The copy should speak to someone with no prior relationship to this brand — establish credibility and the core appeal, don\'t assume familiarity.'
+  acquisition_cost: {
+    label: 'Acquisition Cost',
+    promptGuidance: 'This campaign\'s primary media science focus is ACQUISITION COST — the real measure of success is cost-efficient new customer acquisition. The copy should drive a clear, low-friction action rather than pure brand-building.'
   },
-  loyalty_retention: {
-    label: 'Loyalty & Retention',
-    promptGuidance: 'The business driver here is keeping EXISTING customers coming back. The copy should read as a genuine thank-you/retention message to someone who already said yes once, not a first-impression acquisition pitch.'
+  roas: {
+    label: 'ROAS',
+    promptGuidance: 'This campaign\'s primary media science focus is ROAS (return on ad spend) — the real measure of success is revenue generated relative to spend. The copy should drive toward a real transaction/conversion, not just engagement.'
   },
-  product_or_service_launch: {
-    label: 'Product or Service Launch',
-    promptGuidance: 'The business driver here is a genuinely NEW product, service, or offering entering the market. The copy should build real anticipation and explain why this is new and why it matters now.'
+  website_visits: {
+    label: 'Website Visits',
+    promptGuidance: 'This campaign\'s primary media science focus is WEBSITE VISITS — the real measure of success is driving qualified traffic to the site. The copy should make the click itself feel worthwhile and set clear expectations for what\'s waiting there.'
   },
-  seasonal_demand: {
-    label: 'Seasonal / Off-Peak Demand Generation',
-    promptGuidance: 'The business driver here is filling demand during a slow period or seasonal window. The copy should make the timing itself part of the appeal (why now, what\'s available now) without manufacturing false urgency.'
+  website_engagement: {
+    label: 'Website Engagement',
+    promptGuidance: 'This campaign\'s primary media science focus is WEBSITE ENGAGEMENT — the real measure of success is depth of interaction once someone arrives (time on site, pages viewed, tool/content use), not just the initial click. The copy should set up a reason to explore, not just arrive.'
   },
-  competitive_defense: {
-    label: 'Competitive Defense / Market Share',
-    promptGuidance: 'The business driver here is defending or growing share against real competitive pressure. The copy should lean on this brand\'s genuine differentiators — never name or disparage a competitor directly.'
+  qualified_leads: {
+    label: 'Qualified Leads',
+    promptGuidance: 'This campaign\'s primary media science focus is QUALIFIED LEADS — the real measure of success is generating leads that are genuinely sales-ready, not raw volume. The copy should self-select for real intent rather than maximize clicks.'
   },
-  cross_sell_share_of_wallet: {
-    label: 'Cross-Sell / Share of Wallet',
-    promptGuidance: 'The business driver here is getting existing customers to buy/use MORE — a second product, a higher tier, an additional visit. The copy should build on the relationship that already exists, not pitch as if to a stranger.'
+  total_registrations: {
+    label: 'Total Registrations',
+    promptGuidance: 'This campaign\'s primary media science focus is TOTAL REGISTRATIONS — the real measure of success is completed sign-ups/registrations. The copy should make the registration action itself clear, low-friction, and worth completing.'
   },
-  brand_awareness_new_market: {
-    label: 'Brand Awareness in a New or Underdeveloped Market',
-    promptGuidance: 'The business driver here is building basic awareness in a market/segment where this brand has little to no existing recognition. The copy should introduce the brand plainly — don\'t assume the reader has ever heard of it.'
+  net_promoter_score: {
+    label: 'Net Promoter Score',
+    promptGuidance: 'This campaign\'s primary media science focus is NET PROMOTER SCORE — the real measure of success is improving how likely customers are to recommend this brand. The copy should reinforce genuine satisfaction and goodwill, not push a hard sell.'
   },
-  trade_partner_network: {
-    label: 'Trade / Dealer Partner Network Growth',
-    promptGuidance: 'The business driver here is growing or activating a trade/dealer partner network, not consumer end demand directly. The copy should speak partner-to-partner about their business benefit.'
+  brand_recognition: {
+    label: 'Brand Recognition',
+    promptGuidance: 'This campaign\'s primary media science focus is BRAND RECOGNITION — the real measure of success is memorability and recall, not an immediate conversion. The copy should build a distinctive, repeatable brand impression rather than lead with an offer.'
   }
 };
 function businessInitiativeCompleteness(campaign){
@@ -16885,7 +16913,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-16-recommendation-collab-center-wireframe-fix',
+        buildStamp: '2026-09-21-campaign-experience-focus-media-science-rename',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21094,12 +21122,12 @@ Submit your response via the campaign_intake_turn tool.`;
       // card), this one specific moment — generating campaign copy — is a
       // real, explicit block per that instruction, not just a warning.
       const missingForGeneration = [];
-      if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForGeneration.push('Campaign Type');
+      if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForGeneration.push('Campaign Experience Focus');
       // 2026-09-20 — 'Campaign Objective' is a pure UI relabel of this same
       // businessInitiative field/column (see the ensureColumn() comment
       // above and BUSINESS_INITIATIVE_REGISTRY) — only the wording shown to
       // the user changed here, not the underlying data.
-      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForGeneration.push('Campaign Objective');
+      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForGeneration.push('Media Science Primary Focus');
       if (missingForGeneration.length){
         return sendJson(res, 400, {
           error: `Set ${missingForGeneration.join(' and ')} for this campaign before generating AI copy — the AI Brain needs both to write on-strategy copy.`,
@@ -23591,7 +23619,7 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       const upstreamHash = buildCmoBriefUpstreamSignature(campaign, lines);
       const sharedFacts = `Campaign objective: ${campaign.objective || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
-Campaign Type: ${campaign.campaignType || 'General'}
+Campaign Experience Focus: ${campaign.campaignType || 'General'}
 Audience: ${campaign.segment || '(not set)'}
 Channels: ${channelList}
 ${formatCampaignDatesForPrompt(campaign)}
@@ -24847,10 +24875,10 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // "campaign type and business initiative must be clear before we
       // recommend campaign copy" instruction.
       const missingForContest = [];
-      if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForContest.push('Campaign Type');
+      if (!campaign.campaignType || !CAMPAIGN_TYPE_REGISTRY[campaign.campaignType]) missingForContest.push('Campaign Experience Focus');
       // 2026-09-20 — same UI relabel as messaging-ai-draft above ('Campaign
       // Objective' is the businessInitiative field's display name only).
-      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForContest.push('Campaign Objective');
+      if (!campaign.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) missingForContest.push('Media Science Primary Focus');
       if (missingForContest.length){
         return sendJson(res, 400, {
           error: `Set ${missingForContest.join(' and ')} for this campaign before running the copy contest — the AI Brain needs both to write on-strategy candidates.`,
