@@ -11331,7 +11331,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-estimated-budget-under-campaign-name';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-exclude-cancelled-from-template-recs';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38244,10 +38244,16 @@ function cmpCloseObjectivesIntake(){
 }
 // Real campaigns only (never the synthetic Ad Hoc Projects bucket, and
 // never the campaign currently being built — recommending it to itself
-// makes no sense).
+// makes no sense). 2026-09-21 fix, per direct report: cancelled campaigns
+// were showing up as "Recently created" recommendations/search results
+// here — this list had missed the `!c.cancelled` filter every other
+// dashboard-facing campaign list in this file already applies (Marketing
+// Calendar, Campaign Management's default views, Analysis, budget totals —
+// see cmgmtStatusFilter's own 'cancelled' filter for where a cancelled
+// campaign IS still meant to be viewable, on purpose, by explicit choice).
 function cmpTemplateCandidates(){
   const current = cmpRailLoadedCampaign();
-  return state.campaigns.filter(c => !c.isAdHoc && (!current || c.id !== current.id));
+  return state.campaigns.filter(c => !c.isAdHoc && !c.cancelled && (!current || c.id !== current.id));
 }
 function cmpTemplateFieldSets(c){
   return {
