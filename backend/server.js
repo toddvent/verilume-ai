@@ -16913,7 +16913,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-campaign-experience-focus-media-science-rename',
+        buildStamp: '2026-09-21-exclude-cancelled-from-template-recs',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -20604,8 +20604,15 @@ async function handleRequest(req, res) {
       // runaway client bug (or someone pasting a huge amount of text)
       // shouldn't be able to blow up a single call.
       const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
+      // 2026-09-21 fix, per direct report: a cancelled campaign was being
+      // offered as a "recommended campaign to replicate" here (fell through
+      // to the generic "Recently created" match below). Cancelled campaigns
+      // should be maintained and still viewable elsewhere via an explicit
+      // filter, but never recommended to build a new campaign from — same
+      // `cancelled = 0` convention every other campaign-list query in this
+      // file uses once it's meant to feed something user-facing like this.
       const campaigns = db.prepare(
-        'SELECT id, name, stage, objective, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt, startDate, endDate FROM campaigns WHERE accountId = ? AND isAdHoc = 0 ORDER BY createdAt DESC LIMIT 40'
+        'SELECT id, name, stage, objective, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt, startDate, endDate FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND cancelled = 0 ORDER BY createdAt DESC LIMIT 40'
       ).all(accountId);
       const campaignSummaries = campaigns.map(c => {
         const perfBits = [];
