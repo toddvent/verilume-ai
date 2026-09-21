@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-recap-dropdown-width-ai-sync';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-budget-reco-origin-context-recap';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38963,6 +38963,22 @@ async function cmpIntakeExchange(message){
       cmpIntakeLastRecs = data.recommendedCampaigns || [];
       cmpIntakeStageApplied = null; // a fresh extraction this turn — any earlier "Applied" confirmation no longer describes the current suggestion
       cmpRenderIntakeRecommendations(data.extracted, cmpIntakeLastRecs);
+      // 2026-09-21 fix, per direct report: "The budget recommendation page
+      // does not fully capture the AI Brain summary... in the recap
+      // section." goalSummary previously only ever lived in the
+      // cmpIntakeLastExtracted client variable, scoped to this overlay —
+      // the Budget & Recommendation stage (cmpRecoOriginContextHtml()) has
+      // no way to read it back. Persist it the same real way the
+      // transcript itself is (activityNotesJson) — cmpSaveIntakeHistory(),
+      // called moments later inside cmpRenderIntakeChat() below, writes
+      // whatever is on c.activityNotes as one payload, so setting this
+      // here rides along with that same save rather than firing a second
+      // network write.
+      const goalC = state.campaigns.find(x => x.id === cmpIntakeCampaignId);
+      if (goalC){
+        if (!goalC.activityNotes) goalC.activityNotes = {};
+        goalC.activityNotes.objectivesGoalSummary = data.extracted.goalSummary || null;
+      }
     }
   } catch (e){
     cmpIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again, or use the search above to pick a different starting campaign.' });
@@ -40276,6 +40292,40 @@ async function cmpRecoExportPpt(){
 // Left panel — the pitch itself: summary, similar campaign, dashboards,
 // CMO narrative, PPT export, and budget line-item approval. Per Todd:
 // "the presented budget to the left."
+// 2026-09-21 fix, per direct report: "The budget recommendation page does
+// not fully capture the AI Brain summary and campaign creation summary in
+// the recap section." The Objectives stage shows two recap boxes — "What
+// the AI Brain heard" (the intake conversation's goalSummary) and "From
+// Campaign Creation" (cmpRenderObjectivesRecap(), the 8 real Campaign
+// Creation fields) — but this Budget & Recommendation screen is a separate
+// stage with its own render pass, and neither ever carried forward: the
+// goalSummary only ever lived in a client-side variable scoped to the
+// Objectives overlay, and this screen's own recap (above) only ever showed
+// Loop Stage/Audience/Channels/Spend, none of it Campaign Creation data.
+// Read-only here (not a second copy of the edit UI) — Edit routes back to
+// the Objectives stage, where cmpObjRecapStartEdit() already owns editing
+// these same fields; two independent editors for one set of fields would
+// drift.
+function cmpRecoOriginContextHtml(campaign){
+  if (!campaign) return '';
+  const goalSummary = campaign.activityNotes && campaign.activityNotes.objectivesGoalSummary;
+  const fieldsHtml = CMP_OBJ_RECAP_FIELDS.map(field => `
+    <div class="cmp-objectives-recap-row">
+      <span class="cmp-objectives-recap-label">${escapeHtml(field.label)}</span>
+      <span class="cmp-objectives-recap-value">${escapeHtml(cmpObjRecapDisplayValue(campaign, field))}</span>
+    </div>`).join('');
+  return `
+    ${goalSummary ? `<div class="cmp-intake-summary" style="margin-bottom:14px;">
+      <b>What the AI Brain heard:</b> ${escapeHtml(goalSummary)}
+    </div>` : ''}
+    <div class="cmp-objectives-recap" style="margin-bottom:22px;">
+      <div class="cmp-objectives-recap-title-row">
+        <div class="cmp-objectives-recap-title">From Campaign Creation</div>
+        <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="cmpCloseRecommendationPitch();cmpOpenObjectivesIntake();">✎ Edit</button>
+      </div>
+      <div class="cmp-objectives-recap-grid">${fieldsHtml}</div>
+    </div>`;
+}
 function cmpRenderPitchLeft(campaign){
   const mount = document.getElementById('cmpPitchLeft');
   if (!mount) return;
@@ -40406,6 +40456,8 @@ function cmpRenderPitchLeft(campaign){
         <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit CPM &amp; impressions defaults →</button>
       </div>
     </div>
+
+    ${cmpRecoOriginContextHtml(campaign)}
 
     <div class="stage-row" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;font-size:1rem;">Campaign Dashboards</h3>
