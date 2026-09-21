@@ -8516,12 +8516,17 @@
                  It no longer gates Campaign creation here in step 1 — see
                  createCampaign()'s own comment on what gates it now
                  (Campaign start/end date, already required below). -->
+            <!-- 2026-09-21, per direct instruction: "speech bubbles should
+                 always open AI Thoughts" — reverses the 2026-09-20 change
+                 (a plain hover-only tooltip button) back to the real
+                 ai-thought-mount/aiThoughtOpen() pattern every other field
+                 icon in this app uses (topics AE/AF; see BP_FAQ_TOPICS). -->
             <div class="field">
-              <label>Campaign Product Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Product Group?" onmouseenter="cmpFieldHelpTip('productGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('productGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('productGroup', event)">💬</button></label>
+              <label>Campaign Product Group <span class="ai-thought-mount" data-topic="AE"></span></label>
               <div class="cd-select" id="cmpProductGroupRow"></div>
             </div>
             <div class="field">
-              <label>Creative Focus Group <button type="button" class="cmp-field-help-icon" aria-label="What is a Creative Focus Group?" onmouseenter="cmpFieldHelpTip('creativeFocusGroup', event)" onmouseleave="cmpFieldHelpTipHide()" onfocus="cmpFieldHelpTip('creativeFocusGroup', event)" onblur="cmpFieldHelpTipHide()" onclick="event.stopPropagation();cmpFieldHelpTip('creativeFocusGroup', event)">💬</button></label>
+              <label>Creative Focus Group <span class="ai-thought-mount" data-topic="AF"></span></label>
               <div class="cd-select" id="cmpCreativeFocusGroupRow"></div>
             </div>
             <!-- 2026-09-20, per Todd's direct instruction: "Copy the
@@ -10043,6 +10048,28 @@
     <p class="faq-no-match" id="bpFaqNoMatch" style="display:none;">No topics match that search — try a different word, or browse all 13 below.</p>
 
     <div class="faq-widget" id="bpFaqWidget">
+      <!-- 2026-09-21, per direct instruction: "speech bubbles should always
+           open AI Thoughts." Product Group and Creative Focus Group, ahead
+           of Lifecycle-Loop Stage, matching both fields' position as the
+           very first fields on the Create a Campaign form. -->
+      <div class="faq-item">
+        <div class="faq-head open" id="bpFaqHeadAE" onclick="toggleFaqItem('AE')">
+          <span class="faq-label">Product Group</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body open" id="bpFaqBodyAE">
+          <p id="bpFaqTextAE"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head open" id="bpFaqHeadAF" onclick="toggleFaqItem('AF')">
+          <span class="faq-label">Creative Focus Group</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body open" id="bpFaqBodyAF">
+          <p id="bpFaqTextAF"></p>
+        </div>
+      </div>
       <!-- Round 132uu (2026-08-11) — Lifecycle-Loop Stage, ahead of
            Objective, matching both the form's field order and the fact
            that Objective's own recommendation below now reads off whatever
@@ -11306,7 +11333,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-cd-select-checkbox-click-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-productgroup-focusgroup-ai-thoughts';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -41103,6 +41130,14 @@ function setFaqItemOpen(letter, isOpen){
 // this account's actual objective or industry name) still finds it,
 // without this code keeping a separate, driftable copy of that text.
 const BP_FAQ_TOPICS = [
+  // 2026-09-21, per direct instruction: "speech bubbles should always open
+  // AI Thoughts" — reverses the 2026-09-20 change that gave Product Group
+  // and Creative Focus Group a plain fixed-copy tooltip instead of the real
+  // AI Agent Thoughts icon (see CMP_FIELD_HELP_TIPS's own comment). Placed
+  // first, ahead of F, to match these two fields' position as the very
+  // first fields on the Create a Campaign form.
+  { letter: 'AE', label: 'Product Group', keywords: ['product group','product theme','marketing calendar','campaign classification'] },
+  { letter: 'AF', label: 'Creative Focus Group', keywords: ['creative focus group','creative brief','copywriters','design team','campaign classification'] },
   { letter: 'F', label: 'Past campaigns', keywords: ['learned','history','previous','analysis','pattern','overspend','underspend','delivered'] },
   // Round 132uu (2026-08-11), per direct instruction: "We should have a
   // speech bubble next to Lifecycle-loop stage explaining what this is and
@@ -41276,7 +41311,11 @@ const BP_FAQ_TOPIC_TAB = {
   // under "marketer" alongside the other media-optimization topics
   // (B/G/L/N/M) rather than "strategy", since these explain a media-plan
   // output, not an account-setup judgment call.
-  AA: 'marketer', AB: 'marketer', AC: 'marketer', AD: 'marketer'
+  AA: 'marketer', AB: 'marketer', AC: 'marketer', AD: 'marketer',
+  // 2026-09-21 — Product Group / Creative Focus Group, grouped under
+  // "marketer" alongside Campaign Audiences (M) and the other campaign-
+  // classification/setup topics rather than "strategy".
+  AE: 'marketer', AF: 'marketer'
 };
 
 function renderFaqTopicChips(){
@@ -41716,6 +41755,8 @@ document.addEventListener('click', e => {
 
 function renderBestPracticeFaq(){
   renderFaqTopicChips();
+  renderFaqAE();
+  renderFaqAF();
   renderFaqF();
   renderFaqK();
   renderFaqM();
@@ -41854,6 +41895,22 @@ const LOOP_STAGE_DESCRIPTIONS = {
   Loyalty: 'the audience has already converted once — the job here is earning a repeat visit or renewal from an existing customer',
   Advocacy: 'the audience is already a customer who’s had a good experience — the job here is turning that into a referral, review, or public endorsement'
 };
+// 2026-09-21, per direct instruction: "speech bubbles should always open
+// AI Thoughts." Fixed copy (no per-account dynamism, same convention as
+// G-J/L) — reuses the exact wording from the 2026-09-20 CMP_FIELD_HELP_TIPS
+// tooltip rather than inventing new copy, since that text was already
+// direct-instruction-approved; only the delivery mechanism changes (drawer
+// topic instead of a hover-only tip).
+function renderFaqAE(){
+  const el = document.getElementById('bpFaqTextAE');
+  if (!el) return;
+  el.textContent = CMP_FIELD_HELP_TIPS.productGroup;
+}
+function renderFaqAF(){
+  const el = document.getElementById('bpFaqTextAF');
+  if (!el) return;
+  el.textContent = CMP_FIELD_HELP_TIPS.creativeFocusGroup;
+}
 function renderFaqK(){
   const el = document.getElementById('bpFaqTextK');
   if (!el) return;
