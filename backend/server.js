@@ -16913,7 +16913,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-campaign-name-merge-update-field',
+        buildStamp: '2026-09-21-recommendation-user-stated-budget-correction',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -22793,6 +22793,85 @@ Submit your response via the campaign_intake_turn tool.`;
       return sendJson(res, 200, { updatedAt: now });
     }
 
+    // 2026-09-21 fix, per direct bug report on a real test campaign: "The
+    // Budget and Recommendation did not recognize full summary provided
+    // during the conversation to include the user feedback. It allocated a
+    // direct mail budget of $66k when I provided $35k when asked by the AI
+    // Brain." The generation prompt below already tells the model to use the
+    // exact number when the conversation gave one — but nothing VERIFIED it
+    // actually did, and a single extraction pass over a full multi-turn
+    // conversation (with other dollar figures and percentage math also in
+    // play — $650/booking, $65/passenger day, a $300k total, etc.) can
+    // mis-attribute a number to the wrong line. Same principle as the
+    // Loyalty-stage rule enforced in code just below (don't just hope the
+    // model complies with an instruction — verify and correct it): scan the
+    // USER's own messages (never the AI Brain's, which may restate a number
+    // incorrectly mid-conversation) for an explicit dollar figure mentioned
+    // together with a channel family's name, and if the model's returned
+    // line for that channel disagrees with what the user actually said,
+    // correct it back to the user's own number.
+    // Deliberately conservative: only fires on a real "$<number>" the user
+    // typed near a recognized channel-family keyword — never invents a
+    // number, never touches a line the user never gave an explicit figure
+    // for. A channel family (e.g. "direct mail") can map to more than one
+    // RECO_GENERATION_CHANNELS entry (Prospects/Past Guests/Inquiries); the
+    // correction applies to whichever of those the model actually returned
+    // a line for, not all three at once.
+    function extractUserStatedChannelBudgets(intake){
+      const CHANNEL_FAMILY_PATTERNS = [
+        { test: /direct\s*mail/i, channels: ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'] },
+        { test: /\binternal\s+email\b|\bemail\b/i, channels: ['Internal Email'] },
+        { test: /paid\s*social/i, channels: ['Paid Social'] },
+        { test: /non[- ]brand\s*search/i, channels: ['Non-Brand Search'] },
+        { test: /brand\s*search/i, channels: ['Brand Search'] },
+        { test: /programmatic\s*display|\bdisplay\b/i, channels: ['Programmatic Display'] },
+        { test: /\bconnected\s*tv\b|\bctv\b/i, channels: ['CTV'] },
+        { test: /\bott\b|\botv\b/i, channels: ['OTV'] },
+        { test: /linear\s*tv/i, channels: ['Linear TV'] },
+        { test: /\bradio\b/i, channels: ['Radio'] },
+        { test: /out[- ]of[- ]home|\booh\b/i, channels: ['Out-of-Home'] },
+        { test: /podcast/i, channels: ['Podcasts'] },
+        { test: /retail\s*media/i, channels: ['Retail Media'] },
+        { test: /magazine/i, channels: ['Magazines'] },
+        { test: /newspaper/i, channels: ['Newspapers'] },
+        { test: /partner\s*media/i, channels: ['Partner Media'] },
+        { test: /field\s*\/?\s*abm|\babm\b/i, channels: ['Field / ABM'] }
+      ];
+      const DOLLAR_RE = /\$\s?([\d,]+(?:\.\d+)?)\s?(k|K|m|M)?/g;
+      const found = {};
+      (intake || []).forEach(turn => {
+        if (!turn || turn.role !== 'user' || typeof turn.text !== 'string') return;
+        // Sentence-scoped, not a character window around each dollar sign —
+        // a fixed window bled across sentence boundaries and would have
+        // mis-attached "$35k" to "Email" in exactly the reported case
+        // ("Direct mail will be $35k. Email does not need campaign level
+        // costs.") since "Email" sits well within 40 chars of "$35k.". A
+        // dollar figure only ever associates with a channel actually named
+        // in the SAME sentence it appears in.
+        const sentences = turn.text.split(/(?<=[.!?;])\s+|\n+/).filter(s => s.trim());
+        sentences.forEach(sentence => {
+          const dollarAmounts = [];
+          let m;
+          DOLLAR_RE.lastIndex = 0;
+          while ((m = DOLLAR_RE.exec(sentence))){
+            let amount = parseFloat(m[1].replace(/,/g, ''));
+            if (!isFinite(amount) || amount <= 0) continue;
+            const suffix = (m[2] || '').toLowerCase();
+            if (suffix === 'k') amount *= 1000;
+            if (suffix === 'm') amount *= 1000000;
+            dollarAmounts.push(amount);
+          }
+          if (dollarAmounts.length !== 1) return; // 0 = nothing to attach; 2+ = ambiguous which figure goes with which channel, skip rather than guess
+          const matchedFamilies = CHANNEL_FAMILY_PATTERNS.filter(family => family.test.test(sentence));
+          if (!matchedFamilies.length) return;
+          matchedFamilies.forEach(family => {
+            family.channels.forEach(ch => { found[ch] = { amount: dollarAmounts[0], quote: sentence.trim() }; });
+          });
+        });
+      });
+      return found;
+    }
+
     // POST /api/campaigns/:id/generate-recommendation-from-intake —
     // 2026-09-17, per Todd's direct correction on the Antarctica test
     // campaign: the old fallback (cmpGenerateAndPersistRecommendation() on
@@ -22932,12 +23011,6 @@ Submit via the recommendation_from_intake tool.`;
         console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] AI extraction failed:', e.message);
         return sendJson(res, 200, { generated: false, reason: 'AI Brain could not extract a recommendation right now — try again' });
       }
-      // Persist the honest data-confidence note (or clear a stale one from a
-      // prior attempt) regardless of channel-save outcome below — this is
-      // about what data the model had, not whether the save succeeded.
-      try {
-        db.prepare('UPDATE campaigns SET recommendationDataConfidenceNote = ? WHERE id = ?').run(typeof parsed.dataConfidenceNote === 'string' && parsed.dataConfidenceNote.trim() ? parsed.dataConfidenceNote.trim() : null, campaignId);
-      } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] could not persist dataConfidenceNote', e.message); }
       let channels = Array.isArray(parsed.channels) ? parsed.channels.filter(c => c && RECO_GENERATION_CHANNELS.includes(c.channel)) : [];
       // 2026-09-20, per Todd's direct structural instruction ("All past
       // customer audience spend should fall into the Loyalty loop stage
@@ -22954,6 +23027,34 @@ Submit via the recommendation_from_intake tool.`;
         if (!(c && c.audiencePastCustomers)) return c;
         return { ...c, stage: c.stage === 'Advocacy' ? 'Advocacy' : 'Loyalty' };
       });
+      // 2026-09-21 fix (see extractUserStatedChannelBudgets()'s own comment
+      // above) — correct any line where the user gave an explicit dollar
+      // figure for that channel family and the model's extraction disagrees
+      // with it by more than a small rounding tolerance. Runs before the
+      // total-budget clamp below so a correction is itself protected by
+      // that clamp like any other line.
+      const userStatedBudgets = extractUserStatedChannelBudgets(intake);
+      const budgetCorrectionNotes = [];
+      channels = channels.map(c => {
+        if (!c) return c;
+        const stated = userStatedBudgets[c.channel];
+        if (!stated) return c;
+        const current = Number(c.budget) || 0;
+        if (Math.abs(current - stated.amount) <= Math.max(50, stated.amount * 0.05)) return c;
+        budgetCorrectionNotes.push(`${c.channel} corrected to $${stated.amount.toLocaleString()} (you gave this exact figure in the conversation — the AI Brain's own extraction had returned $${current.toLocaleString()}).`);
+        return { ...c, budget: stated.amount, assumptionNote: `Exact amount from your conversation: "${stated.quote.slice(0, 140)}"` };
+      });
+      // Persist the honest data-confidence note (or clear a stale one from a
+      // prior attempt) regardless of channel-save outcome below — this is
+      // about what data the model had, not whether the save succeeded. Any
+      // budget corrections made just above are folded in here too, so it's
+      // visible to whoever reviews this recommendation, not a silent fix.
+      const dataConfidenceParts = [];
+      if (typeof parsed.dataConfidenceNote === 'string' && parsed.dataConfidenceNote.trim()) dataConfidenceParts.push(parsed.dataConfidenceNote.trim());
+      if (budgetCorrectionNotes.length) dataConfidenceParts.push(`Corrected against your own stated numbers: ${budgetCorrectionNotes.join(' ')}`);
+      try {
+        db.prepare('UPDATE campaigns SET recommendationDataConfidenceNote = ? WHERE id = ?').run(dataConfidenceParts.length ? dataConfidenceParts.join(' ') : null, campaignId);
+      } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] could not persist dataConfidenceNote', e.message); }
       // Safety clamp — never trust the model's arithmetic outright. Updated
       // 2026-09-20 for the same structural instruction: past-customer/
       // Loyalty spend is applied FIRST and protected — if the full set of
