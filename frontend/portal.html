@@ -11380,7 +11380,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-inmarket-header-wording-universal-confirm';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-objectives-intake-sends-campaignid';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38985,7 +38985,18 @@ async function cmpIntakeExchange(message){
   try {
     const data = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1) }),
+      // 2026-09-21 round 3, per Todd's direct report: this endpoint is
+      // reused for both the pre-creation "what do you want to build" chat
+      // (no campaign yet) and this Objectives-stage intake, where a real
+      // campaign already exists with Campaign Experience Focus, Media
+      // Science Primary Focus, Product Group, Creative Focus Group, and
+      // Estimated Budget already captured — but campaignId was never sent,
+      // so the AI Brain had no way to know any of that and re-asked things
+      // like "what does success look like" from scratch. Sending it here
+      // lets the backend load the real campaign and fold its already-
+      // captured fields (plus the account's real budget/media mix) into
+      // the prompt — see that endpoint's own comment.
+      body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1), campaignId: cmpIntakeCampaignId || undefined }),
       timeoutMs: 20000
     }, 3, 700);
     cmpIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
