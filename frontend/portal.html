@@ -11333,7 +11333,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-campaign-experience-focus-media-science-rename';
+const CXMEDIA_BUILD_STAMP = '2026-09-21-collab-center-pre-campaign-ai-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13065,16 +13065,30 @@ const CMP_COLLAB_TABS = [
 // markup (#cmpCollabTabs, #cmpCollabBody, #cmpCollabInput_<tab>, etc.)
 // stay unique in the live DOM even though two possible parents exist.
 let cmpCollabMountId = 'cmpWorkspaceCollab';
+// 2026-09-21 fix, per direct report: this shell is intentionally mounted
+// before a real campaign exists too (Create Campaign form —
+// cmpCollabMountId === 'cmpCreationCollabMount'), but the AI tab used to
+// dead-end with "Load a campaign" there, with no way to start talking to
+// the AI Brain. cmpPreCampaignCollabHistory holds that pre-campaign
+// conversation — ephemeral, in-memory only (there's no campaign row yet to
+// attach it to), cleared once a real campaign is loaded. See
+// cmpCollabSendPreCampaign()'s own comment for why this is scoped as a
+// narrow, same-endpoint fix rather than the larger "AI Brain recognizes
+// every product section" build (still open — see
+// cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md).
+let cmpPreCampaignCollabHistory = [];
+let cmpPreCampaignCollabBusy = false;
 function cmpRenderCollabCenter(campaign){
   const el = document.getElementById(cmpCollabMountId);
   if (!el) return;
+  if (campaign && cmpPreCampaignCollabHistory.length) cmpPreCampaignCollabHistory = [];
   el.innerHTML = `
     <div class="cmp-collab">
       <div class="cmp-collab-head">
         <div class="cmp-collab-avatar">AI</div>
         <div class="cmp-collab-titles">
           <div class="cmp-collab-title">Collaboration Center</div>
-          <div class="cmp-collab-status"><span class="dot"></span>AI Brain live — watching this campaign</div>
+          <div class="cmp-collab-status"><span class="dot"></span>${campaign ? 'AI Brain live — watching this campaign' : 'AI Brain live — ready to help you plan a campaign'}</div>
         </div>
         <button type="button" class="cmp-collab-mic" aria-label="Voice input (coming soon)" title="Voice input (coming soon)" onclick="cmpToggleCollabVoiceNote()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
@@ -13197,10 +13211,55 @@ async function cmpCollabSend(tab){
   if (!input) return;
   const text = input.value.trim();
   if (!text) return;
+  // 2026-09-21 fix — no real campaign loaded yet (Create Campaign form):
+  // the AI tab still works, routed to cmpCollabSendPreCampaign() below;
+  // Team notes genuinely need a real campaign to attach to, so that tab
+  // stays a no-op here (cmpRenderCollabBody already explains why).
+  if (!cmpRailLoadedCampaign()){
+    if (tab === 'ai'){ input.value = ''; await cmpCollabSendPreCampaign(text); }
+    return;
+  }
   input.value = '';
   cmpCollabAddNote(tab, text, false);
   if (tab !== 'ai') return;
   await cmpCollabRequestAiReply(text);
+}
+// Pre-campaign AI Brain conversation — 2026-09-21 fix, per direct report
+// that the Collaboration Center dead-ended with "Load a campaign" on the
+// Create Campaign form, with no way to begin a conversation, even though
+// this component is intentionally mounted there before a campaign exists
+// (see cmpUpdateCreationPageMode()'s own comment on #cmpCreationCollabMount).
+// Reuses the existing, already account-scoped
+// POST /api/accounts/:id/campaign-intake endpoint rather than standing up
+// a new one — it never actually required a campaign id, only this app's
+// other UI (cmpIntakeSendMessage()) happened to gate it behind one always
+// having a campaign loaded first. Ephemeral: held in
+// cmpPreCampaignCollabHistory only, not persisted to activityNotes (no
+// campaign row exists yet to attach it to) — same "stateless per call,
+// client holds the transcript" shape the backend endpoint already
+// documents. This is the narrow, same-session fix Todd asked for; it does
+// not attempt the larger "AI Brain recognizes every product section and
+// routes to the correct skill" build, which stays open per
+// cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md.
+async function cmpCollabSendPreCampaign(text){
+  if (cmpPreCampaignCollabBusy) return;
+  cmpPreCampaignCollabHistory.push({ author: state.userName || 'You', text, isAi: false, ts: Date.now() });
+  cmpPreCampaignCollabBusy = true;
+  cmpRenderCollabBody(null);
+  try {
+    const history = cmpPreCampaignCollabHistory.slice(0, -1).map(n => ({ role: n.isAi ? 'assistant' : 'user', text: n.text }));
+    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history }), timeoutMs: 20000
+    }, 3, 700);
+    cmpPreCampaignCollabHistory.push({ author: 'AI Assistant', text: resp.reply || "Sorry, I didn't get a response — try again.", isAi: true, ts: Date.now() });
+  } catch (e){
+    console.warn('cmpCollabSendPreCampaign failed:', e);
+    cmpPreCampaignCollabHistory.push({ author: 'AI Assistant', text: 'Something went wrong reaching the AI Brain — try again in a moment.', isAi: true, ts: Date.now() });
+  } finally {
+    cmpPreCampaignCollabBusy = false;
+    cmpRenderCollabBody(null);
+  }
 }
 async function cmpCollabRequestAiReply(message){
   if (cmpCollabAiBusy) return;
@@ -13374,7 +13433,7 @@ function cmpCollabPromptChip(i){
   cmpCollabSend('ai');
 }
 function cmpCollabComposerHtml(tab, placeholder){
-  const thinking = tab === 'ai' && cmpCollabAiBusy;
+  const thinking = tab === 'ai' && (cmpCollabAiBusy || cmpPreCampaignCollabBusy);
   // Chips only make sense on the real AI Brain conversation — Team/
   // Feedback are plain persisted notes with no model on the other end.
   const chipsHtml = (tab === 'ai' && !thinking)
@@ -13391,7 +13450,19 @@ function cmpCollabComposerHtml(tab, placeholder){
 function cmpRenderCollabBody(campaign){
   const body = document.getElementById('cmpCollabBody');
   if (!body) return;
-  if (!campaign){ body.innerHTML = `<div class="cmp-collab-empty">Load a campaign to use the Collaboration Center.</div>`; return; }
+  if (!campaign){
+    // 2026-09-21 fix — only Team notes genuinely need a persisted campaign
+    // row to attach to. The AI tab now works pre-campaign, via
+    // cmpPreCampaignCollabHistory/cmpCollabSendPreCampaign() below.
+    if (cmpCollabActiveTab === 'ai'){
+      const notes = cmpPreCampaignCollabHistory;
+      body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No campaign loaded yet — ask the AI Brain a question below to start planning one.</div>`)
+        + cmpCollabComposerHtml('ai', 'Ask the AI Brain about the campaign you want to build…');
+      return;
+    }
+    body.innerHTML = `<div class="cmp-collab-empty">Team notes attach to a real campaign — load or create one first to use this tab.</div>`;
+    return;
+  }
   if (cmpCollabActiveTab === 'ai'){
     const notes = cmpCollabNotesFor(campaign, 'ai');
     body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — send it a question about this campaign to start.</div>`)
@@ -14644,8 +14715,10 @@ function cmpUpdateCreationPageMode(campaign){
   // hid this panel — see the markup's own comment just above
   // #cmpCreationCollabMount. While no real campaign exists yet, the real
   // Collaboration Center shell mounts here (same cmpRenderCollabCenter()
-  // component every built overlay uses), showing its own honest
-  // null-campaign empty state rather than fake conversation. Once a real
+  // component every built overlay uses). 2026-09-21 fix: the AI tab now
+  // holds a real, working pre-campaign conversation here instead of a
+  // dead-end "Load a campaign" message — see cmpCollabSendPreCampaign()'s
+  // own comment. Once a real
   // campaign exists, this mount is cleared and handed back to the Hub's
   // #cmpWorkspaceCollab, and this whole two-column layout is only reached
   // again via the deliberate "review the original fields" path (see this
