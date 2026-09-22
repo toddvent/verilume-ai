@@ -721,16 +721,57 @@
   .cmp-step0-field{margin-bottom:16px;}
   .cmp-step0-field:last-child{margin-bottom:0;}
   .cmp-step0-field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;}
-  .cmp-step0-field-head label{font-size:0.75rem;color:var(--muted);margin:0;}
+  /* 2026-09-22 fix, per direct feedback ("You can't read headline or What
+     Makes Launch... They should be bold same font sizes as recap."): this
+     was missing font-weight/text-transform entirely, so it rendered as
+     thin, easy-to-miss text next to the recap column's bold uppercase
+     labels. Now matches .cmp-step0-recap-label exactly (same size/weight/
+     transform), just without the recap's flex-shrink. */
+  .cmp-step0-field-head label{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;margin:0;}
   .cmp-step0-hint-inline{font-size:0.6875rem;color:#9A9AA0;margin-top:6px;}
   .cmp-step0-mini-toggle-label{font-size:0.6875rem;color:var(--muted);margin-top:8px;margin-right:8px;display:inline-block;}
   .cmp-step0-mini-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-top:8px;}
   .cmp-step0-mini-toggle-opt{padding:5px 12px;font-size:0.6875rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
   .cmp-step0-mini-toggle-opt.on{background:var(--ink);color:var(--white);}
+  /* 2026-09-22 — per-audience contest chips, replacing the heavy black
+     .btn-primary buttons Todd flagged as "still awful and not consistent
+     with the page." Matches the light, thin-border chip pattern already
+     used elsewhere in this file (.collab-role-chip) rather than the
+     app-wide solid CTA button, which reads as a giant billboard next to
+     this page's otherwise light recap rows and text-only fields. */
+  .cmp-step0-contest-chip{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:0.8125rem;font-weight:600;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color 0.15s ease,background 0.15s ease,color 0.15s ease;}
+  .cmp-step0-contest-chip:hover:not(:disabled){border-color:var(--cx);color:var(--cx);}
+  .cmp-step0-contest-chip:disabled{opacity:0.5;cursor:not-allowed;}
+  .cmp-step0-contest-chip.has-result{background:#EAF6F1;border-color:#8FCDB0;color:#1E7A45;}
   .cmp-step0-audience-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;}
-  .cmp-step0-audience-toggle-opt{padding:8px 18px;font-size:0.8125rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
+  .cmp-step0-audience-toggle-opt{padding:6px 16px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
   .cmp-step0-audience-toggle-opt.on{background:var(--ink);color:var(--white);}
   .cmp-step0-callout{border-radius:10px;padding:11px 14px;font-size:0.75rem;line-height:1.5;background:#EAF1FB;color:#1E5FA8;margin-top:12px;}
+  /* 2026-09-22 — recap rows rebuilt to match Creative-Desktop.dc.html's own
+     .recap-row/.recap-label/.recap-value exactly (label left, value
+     right-aligned, same row) — the pre-existing .cmp-brief-recap-item used
+     here before was a DIFFERENT, unrelated shared component
+     (.cmp-brief-recap-item{flex-direction:column}, label stacked ABOVE the
+     value), which is why the recap read as label/value stacked instead of
+     side-by-side per the real wireframe. Scoped to its own class names so
+     this doesn't affect that other component's existing usages elsewhere. */
+  .cmp-step0-recap-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #F0F0F2;}
+  .cmp-step0-recap-row:last-child{border-bottom:none;}
+  .cmp-step0-recap-label{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;flex-shrink:0;}
+  .cmp-step0-recap-val{font-size:0.8125rem;color:var(--ink);font-weight:600;text-align:right;}
+  /* 2026-09-22 — per-card collapse control + a top "jump to" nav, per direct
+     feedback: "Steps require direct links for different users to enter the
+     process at different stages or be collapsable." Both are provided:
+     cmpCreativeStepJumpNav's links scroll straight to a given step's card
+     (useful when returning to a specific stage), and every card's own
+     header toggles that card's body via cmpToggleCreativeStepCard() (useful
+     for skipping past an already-done step without scrolling past it). */
+  .cmp-step0-jumpnav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:2px;}
+  .cmp-step0-jumpnav a{font-size:0.75rem;font-weight:700;color:#1E5FA8;text-decoration:none;padding:6px 13px;border:1px solid #D2D2D7;border-radius:999px;background:var(--white);}
+  .cmp-step0-jumpnav a:hover{background:#EAF1FB;}
+  .cmp-step0-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;}
+  .cmp-step0-card-chevron{font-size:0.875rem;color:var(--muted);transition:transform 0.2s ease;flex-shrink:0;}
+  .cmp-step0-card-chevron.collapsed{transform:rotate(-90deg);}
   /* Creative Step 1's contest-entry cards — same class names and colors as
      Creative-Step1-SelectWinner-Desktop.dc.html's own .entry-card/.entries-grid,
      ported directly rather than reinterpreted, per direct instruction that
@@ -8433,50 +8474,65 @@
       <div id="cmpCreativeBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpCreativeLeft">
-          <!-- 2026-09-22 — Creative Step 0: Recap & Assessment, rebuilt to
-               match the real, approved Creative-Desktop.dc.html wireframe
-               directly (two-column recap+detail card, then the audience
-               toggle, then Run the contest) rather than a generic
-               reinterpretation of it — per Todd's direct correction: "The
-               real code is supposed [to match] the wireframe... That is why
-               we built the wireframe first." Static, always-present first
-               child of #cmpCreativeLeft, re-rendered on open via
-               cmpRenderCreativeStep0(). The wireframe's "Which asset types
-               apply?" card (per-audience, budget-gated asset-type chips) is
-               NOT built — there's no real backend data for per-audience
-               approved-asset-type/budget scoping to ground it in (flagged to
+          <!-- 2026-09-22, third pass — per direct feedback: (1) recap
+               rows rebuilt side-by-side (label left / value right, matching
+               Creative-Desktop.dc.html's .recap-row exactly, not the
+               unrelated stacked .cmp-brief-recap-item component used
+               before); (2) Campaign Objective now reads the real
+               c.activityNotes.objectivesGoalSummary field (the Objectives
+               Dialogue's own AI-written summary) instead of the wrong
+               c.objective field (that's actually just a legacy campaign-name
+               fallback, unrelated to the wireframe's narrative objective);
+               (3) the audience-experience toggle moved out of its own card
+               and into the recap list itself, directly after Audiences, as
+               a plain Yes/No toggle with no extra hint/callout copy — per
+               "Should all audiences should be next to audiences and is
+               just a simple Yes No toggle. Additional copy is not needed."
+               (deliberately NOT what Creative-Desktop.dc.html itself shows,
+               which is this toggle as its own separate wf-card with hint +
+               callout — overridden here by direct instruction); (4) field
+               labels (Headline, per-Writing-Style fields) now bold/uppercase
+               to match the recap column instead of thin default text; (5) a
+               jump-nav row plus a click-to-collapse header on every card,
+               so a Step 1-only visit doesn't require scrolling past Step 0,
+               and (6) "Run the contest" renamed "Run Campaign Copy Contest"
+               per direct instruction. Static, always-present, re-rendered on
+               open via cmpRenderCreativeStep0()/cmpRenderCreativeStep1().
+               The wireframe's own "Which asset types apply?" card is still
+               NOT built — no real backend data to ground it in (flagged to
                Todd, not silently dropped). Steps 2-3 remain wireframe-only. -->
-          <div class="module cmp-stage" id="cmpCreativeStep0" style="margin-bottom:0;">
-            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
-              <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 0</div>
-              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Recap &amp; Assessment</div>
-              <p class="hint" style="margin:0 0 14px;">Everything below feeds copy development and the contests that follow — confirm it's right, then complete what's still needed before any contest runs.</p>
-
-              <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start;">
-                <div>
-                  <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">This campaign, at a glance</div>
-                  <div style="font-size:0.6875rem;color:#9A9AA0;margin-bottom:10px;">Already set earlier in the flow — read-only here.</div>
-                  <div class="cmp-brief-recap-grid" id="cmpCreativeStep0Recap" style="grid-template-columns:1fr;"></div>
-                </div>
-                <div>
-                  <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Complete Writing Style detail</div>
-                  <p class="hint" style="margin:0 0 12px;">Every field needs a real answer — none is inferred. Headline is shared across Writing Styles; the rest are unique to this campaign's Writing Style.</p>
-                  <div id="cmpCreativeStep0Headline"></div>
-                  <div id="cmpCreativeStep0DetailFields"></div>
-                </div>
-              </div>
-            </div>
+          <div class="cmp-step0-jumpnav" id="cmpCreativeStepJumpNav">
+            <a href="#cmpCreativeStep0" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0')">Step 0 — Recap &amp; Assessment</a>
+            <a href="#cmpCreativeStep0RunContest" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0RunContest')">Step 0 — Run Campaign Copy Contest</a>
+            <a href="#cmpCreativeStep1" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep1')">Step 1 — Select Winner &amp; Apply</a>
           </div>
 
-          <div class="module cmp-stage" id="cmpCreativeStep0Audience" style="margin-bottom:0;margin-top:20px;">
+          <div class="module cmp-stage" id="cmpCreativeStep0" style="margin-bottom:0;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
-              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Should all audiences' experiences be the same?</div>
-              <p class="hint" style="margin:0 0 14px;">Applies to every contest below.</p>
-              <div class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
-                <div class="cmp-step0-audience-toggle-opt" data-val="shared" onclick="cmpSetAudienceSharedExperience('shared')">Yes — one shared creative experience</div>
-                <div class="cmp-step0-audience-toggle-opt" data-val="separate" onclick="cmpSetAudienceSharedExperience('separate')">No — each audience gets its own</div>
+              <div class="cmp-step0-card-head" onclick="cmpToggleCreativeStepCard('cmpCreativeStep0Body','cmpCreativeStep0Chevron')">
+                <div>
+                  <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 0</div>
+                  <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Recap &amp; Assessment</div>
+                </div>
+                <span class="cmp-step0-card-chevron" id="cmpCreativeStep0Chevron">▾</span>
               </div>
-              <div class="cmp-step0-callout" id="cmpCreativeStep0AudienceCallout" style="margin-top:12px;"></div>
+              <div id="cmpCreativeStep0Body">
+                <p class="hint" style="margin:0 0 14px;">Everything below feeds copy development and the contests that follow — confirm it's right, then complete what's still needed before any contest runs.</p>
+
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start;">
+                  <div>
+                    <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">This campaign, at a glance</div>
+                    <div style="font-size:0.6875rem;color:#9A9AA0;margin-bottom:10px;">Already set earlier in the flow — read-only here.</div>
+                    <div id="cmpCreativeStep0Recap"></div>
+                  </div>
+                  <div>
+                    <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Complete Writing Style detail</div>
+                    <p class="hint" style="margin:0 0 12px;">Every field needs a real answer — none is inferred. Headline is shared across Writing Styles; the rest are unique to this campaign's Writing Style.</p>
+                    <div id="cmpCreativeStep0Headline"></div>
+                    <div id="cmpCreativeStep0DetailFields"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -8484,11 +8540,15 @@
                each audience's contest belongs in Step 0, not Step 1. Step 1
                (below) now ONLY shows results and lets you pick a winner —
                it no longer has its own "Run" button. Rendered/hidden by
-               cmpRenderCreativeStep0() (only shown in "separate" mode; in
-               "shared" mode this card is empty, since the existing shared
-               Brand Messaging contest already covers that case). -->
+               cmpRenderStep0RunContest() (shared mode gets one button; in
+               "separate" mode, one per audience). Renamed to "Run Campaign
+               Copy Contest" per direct instruction. -->
           <div class="module cmp-stage" id="cmpCreativeStep0RunContest" style="margin-bottom:0;margin-top:20px;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div class="cmp-step0-card-head" onclick="cmpToggleCreativeStepCard('cmpCreativeStep0RunContestBody','cmpCreativeStep0RunContestChevron')">
+                <div style="font-size:1.125rem;font-weight:700;color:var(--ink);">Run Campaign Copy Contest</div>
+                <span class="cmp-step0-card-chevron" id="cmpCreativeStep0RunContestChevron">▾</span>
+              </div>
               <div id="cmpCreativeStep0RunContestBody"></div>
             </div>
           </div>
@@ -8501,15 +8561,21 @@
                chosen. When Step 0's audience toggle is "shared," this step
                points at the existing shared Brand Messaging contest instead
                of duplicating it — Todd's own correction from the Copy
-               Versions round was "one shared contest, not two." Same
-               permanently-open treatment as Step 0 — not an accordion
-               module. Steps 2-3 remain wireframe-only. -->
+               Versions round was "one shared contest, not two." Steps 2-3
+               remain wireframe-only. -->
           <div class="module cmp-stage" id="cmpCreativeStep1" style="margin-bottom:0;margin-top:20px;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
-              <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 1</div>
-              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Select Winner &amp; Apply</div>
-              <p class="hint" style="margin:0 0 14px;">Each audience ran its own contest in Step 0 — pick the winning entry for each, then apply it to the rest of the campaign.</p>
-              <div id="cmpCreativeStep1Body"></div>
+              <div class="cmp-step0-card-head" onclick="cmpToggleCreativeStepCard('cmpCreativeStep1Wrap','cmpCreativeStep1Chevron')">
+                <div>
+                  <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 1</div>
+                  <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Select Winner &amp; Apply</div>
+                </div>
+                <span class="cmp-step0-card-chevron" id="cmpCreativeStep1Chevron">▾</span>
+              </div>
+              <div id="cmpCreativeStep1Wrap">
+                <p class="hint" style="margin:0 0 14px;">Each audience ran its own contest in Step 0 — pick the winning entry for each, then apply it to the rest of the campaign.</p>
+                <div id="cmpCreativeStep1Body"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -11636,7 +11702,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-workspace-card-clipping-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-run-contest-chips';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -39809,24 +39875,63 @@ function cmpStep0DetailMode(c, fieldKey){
   const modes = campaignTypeDetailModesClient(c);
   return modes[fieldKey] === 'descriptive' ? 'descriptive' : 'exact';
 }
+// Jump-nav + per-card collapse, per direct feedback: "Steps require direct
+// links for different users to enter the process at different stages or be
+// collapsable." cmpScrollToCreativeStep() is the direct-link half; every
+// card's own clickable header (onclick="cmpToggleCreativeStepCard(...)")
+// is the collapse half — independent per card, no shared accordion state.
+function cmpScrollToCreativeStep(e, id){
+  if (e) e.preventDefault();
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cmpToggleCreativeStepCard(bodyId, chevronId){
+  const body = document.getElementById(bodyId);
+  const chevron = document.getElementById(chevronId);
+  if (!body) return;
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  if (chevron) chevron.classList.toggle('collapsed', !collapsed);
+}
 function cmpRenderCreativeStep0(c){
   if (!c) return;
   const recapEl = document.getElementById('cmpCreativeStep0Recap');
   if (recapEl){
     const typeLabel = (c.campaignType && CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType].label : 'General';
-    const rows = [
-      ['Campaign Writing Style', typeLabel],
-      ['Audiences', c.audienceTargets || '—'],
-      ['Campaign Objective', c.objective || '—'],
-      ['Product Group', c.productGroups || '—'],
-      ['Creative Focus', c.creativeFocusGroups || '—'],
-      ['Approved Channels', c.channels || '—']
-    ];
-    recapEl.innerHTML = rows.map(([label, val]) => `
-      <div class="cmp-brief-recap-item">
-        <span class="cmp-brief-recap-label">${escapeHtml(label)}</span>
-        <span class="cmp-brief-recap-val">${escapeHtml(val)}</span>
-      </div>`).join('');
+    // 2026-09-22 fix, per direct feedback: "Campaign Objective" was reading
+    // c.objective, which is actually just a legacy campaign-name fallback
+    // used all over this file (`c.name || c.objective`) — unrelated to the
+    // wireframe's narrative objective ("Reactivate past guests"). The real
+    // field for that is c.activityNotes.objectivesGoalSummary — the
+    // Objectives Dialogue's own AI-written 1-2 sentence summary (see
+    // backend/server.js's goalSummary field and this file's own
+    // objectivesGoalSummary write, ~line 39362). Using the real field now.
+    const objectiveSummary = (c.activityNotes && c.activityNotes.objectivesGoalSummary) || '—';
+    const row = (label, val) => `
+      <div class="cmp-step0-recap-row">
+        <span class="cmp-step0-recap-label">${escapeHtml(label)}</span>
+        <span class="cmp-step0-recap-val">${escapeHtml(val)}</span>
+      </div>`;
+    // 2026-09-22 — per direct instruction ("Should all audiences should be
+    // next to audiences and is just a simple Yes No toggle. Additional
+    // copy is not needed."), the audience-experience toggle now lives here
+    // as its own recap row directly after Audiences, plain Yes/No with no
+    // hint text or callout — replacing the separate wf-card-style toggle
+    // card the wireframe itself shows, by direct override.
+    recapEl.innerHTML =
+      row('Campaign Writing Style', typeLabel) +
+      row('Audiences', c.audienceTargets || '—') +
+      `<div class="cmp-step0-recap-row">
+        <span class="cmp-step0-recap-label">Same experience for all audiences?</span>
+        <span class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
+          <span class="cmp-step0-audience-toggle-opt" data-val="shared" onclick="cmpSetAudienceSharedExperience('shared')">Yes</span>
+          <span class="cmp-step0-audience-toggle-opt" data-val="separate" onclick="cmpSetAudienceSharedExperience('separate')">No</span>
+        </span>
+      </div>` +
+      row('Campaign Objective', objectiveSummary) +
+      row('Product Group', c.productGroups || '—') +
+      row('Creative Focus', c.creativeFocusGroups || '—') +
+      row('Approved Channels', c.channels || '—');
   }
   cmpRenderStep0Headline(c);
   cmpRenderStep0DetailFields(c);
@@ -39884,17 +39989,16 @@ function cmpRenderStep0DetailFields(c){
     </div>`;
   }).join('');
 }
+// 2026-09-22 — no longer touches a callout element (removed per direct
+// instruction: "Additional copy is not needed"); just reflects the current
+// value on the plain Yes/No toggle now living inline in the recap list.
 function cmpRenderStep0AudienceToggle(c){
   const row = document.getElementById('cmpCreativeStep0AudienceToggle');
-  const callout = document.getElementById('cmpCreativeStep0AudienceCallout');
-  if (!row || !callout) return;
+  if (!row) return;
   const val = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
   row.querySelectorAll('.cmp-step0-audience-toggle-opt').forEach(el => {
     el.classList.toggle('on', el.getAttribute('data-val') === val);
   });
-  callout.innerHTML = val === 'separate'
-    ? `<b>No selected:</b> a separate copy contest runs per audience, and approved channels are validated separately for each audience.`
-    : `<b>Yes selected:</b> every audience shares one creative experience — one contest, applied campaign-wide.`;
 }
 // Persists a campaign field via the same merge-update endpoint every other
 // Step 0/Brand Messaging save call in this file uses (see
@@ -39956,9 +40060,11 @@ async function cmpSetAudienceSharedExperience(val){
   if (updated){
     cmpRenderStep0AudienceToggle(updated);
     // Step 1's shape (one shared contest pointer vs. one card per audience)
-    // depends directly on this toggle — re-render it the moment the toggle
-    // changes, not just on next workspace open.
+    // and the "Run Campaign Copy Contest" card's own buttons (one shared vs.
+    // one per audience) both depend directly on this toggle — re-render
+    // both the moment the toggle changes, not just on next workspace open.
     cmpRenderCreativeStep1(updated);
+    cmpRenderStep0RunContest(updated);
   }
 }
 
@@ -40021,7 +40127,7 @@ function cmpRenderStep0RunContest(c){
     cmpStep1AudienceNames = [];
     holder.innerHTML = `
       <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
-      <button type="button" class="btn-primary" id="cmpStep0SharedContestBtn" onclick="cmpRunCampaignCopyContest('cmpStep0SharedContestPanel','cmpStep0SharedContestBtn','cmpStep0SharedContestFlag')">✦ Run Contest →</button>
+      <button type="button" class="btn-primary" id="cmpStep0SharedContestBtn" onclick="cmpRunCampaignCopyContest('cmpStep0SharedContestPanel','cmpStep0SharedContestBtn','cmpStep0SharedContestFlag')">✦ Run Campaign Copy Contest →</button>
       <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
     return;
   }
@@ -40031,14 +40137,26 @@ function cmpRenderStep0RunContest(c){
     holder.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here to run each one's contest.</div>`;
     return;
   }
-  holder.innerHTML = audiences.map((name, idx) => {
-    const hasResult = !!cmpStep1AudienceResults[idx];
-    return `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
-      <button type="button" class="btn-primary" id="cmpStep0RunBtn_${idx}" onclick="cmpRunAudienceContest(${idx})">${hasResult ? '↻ Re-run Contest' : '✦ Run Contest'} — ${escapeHtml(name)} →</button>
-      <span class="hint" id="cmpStep0RunStatus_${idx}"></span>
-    </div>`;
-  }).join('');
+  // 2026-09-22, per direct instruction — replaced the heavy black
+  // .btn-primary buttons (still flagged as "awful and not consistent
+  // with the page" even at normal size) with light per-audience chips,
+  // labeled "Run Audience Specific Contest" above them, matching this
+  // file's existing chip pattern (.collab-role-chip) rather than the
+  // app-wide solid CTA button class. Chip text is just the audience
+  // name; a ✦/↻ prefix shows not-yet-run vs. re-run, and a completed
+  // run tints the chip (.has-result) instead of adding another button.
+  holder.innerHTML = `
+    <div class="cmp-step0-field-head" style="margin-bottom:8px;"><label>Run Audience Specific Contest</label></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">` +
+    audiences.map((name, idx) => {
+      const hasResult = !!cmpStep1AudienceResults[idx];
+      return `
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <button type="button" class="cmp-step0-contest-chip${hasResult ? ' has-result' : ''}" id="cmpStep0RunBtn_${idx}" onclick="cmpRunAudienceContest(${idx})">${hasResult ? '↻' : '✦'} ${escapeHtml(name)}</button>
+        <span class="hint" id="cmpStep0RunStatus_${idx}" style="display:block;max-width:280px;"></span>
+      </div>`;
+    }).join('') +
+    `</div>`;
 }
 async function cmpRunAudienceContest(idx){
   const audienceName = cmpStep1AudienceNames[idx];
