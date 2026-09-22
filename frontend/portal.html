@@ -11714,7 +11714,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-collab-center-round4';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-active-channels-union-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13821,14 +13821,27 @@ function cmpCollabNoteRowHtml(n){
            <button type="button" class="btn-ghost" onclick="cmpCollabRateAiReply('${n.id}', 5)" title="This reply was helpful">👍 Helpful</button>
            <button type="button" class="btn-ghost" onclick="cmpCollabRateAiReply('${n.id}', 1)" title="This reply was not helpful">👎 Not helpful</button></div>`;
   }
+  // 2026-09-22 fix, per direct report: a suggestion that read "shift $30k
+  // from Programmatic Display into a new CTV line" applied as only a $30k
+  // CUT to Programmatic Display — no CTV line was ever created, so the
+  // campaign's total budget silently dropped instead of being reallocated.
+  // The suggestion now carries two independent parts (see
+  // AI_BRAIN_REPLY_SCHEMA's own comment, backend) — an existing-line change
+  // (entryId/newBudget) and/or a new-line creation (newLineChannel/
+  // newLineBudget) — so the card below shows each part that's actually
+  // present, and passes the note id (not the raw suggestion) into the apply
+  // call so cmpRecoApplySuggestion() can apply BOTH parts together.
   let suggestionHtml = '';
-  if (n.suggestion && n.suggestion.entryId){
+  if (n.suggestion && (n.suggestion.entryId || n.suggestion.newLineChannel)){
     const sug = n.suggestion;
+    const parts = [];
+    if (sug.entryId) parts.push(`${escapeHtml(sug.channel || 'this line')} → ${fmtMoney(Number(sug.newBudget) || 0)}`);
+    if (sug.newLineChannel) parts.push(`Add new line: ${escapeHtml(sug.newLineChannel)} → ${fmtMoney(Number(sug.newLineBudget) || 0)}`);
     suggestionHtml = `<div class="cmp-intake-summary" style="margin-top:8px;">
-      <b>Proposed change:</b> ${escapeHtml(sug.channel || 'this line')} → ${fmtMoney(Number(sug.newBudget) || 0)}
+      <b>Proposed change:</b> ${parts.join(' &nbsp;·&nbsp; ')}
       ${sug.rationale ? `<br><span style="color:var(--muted);">${escapeHtml(sug.rationale)}</span>` : ''}
       <div class="btn-row" style="margin-top:8px;">
-        <button type="button" class="btn-ghost" onclick="cmpRecoApplySuggestion('${sug.entryId}', ${Number(sug.newBudget) || 0})">Apply this change →</button>
+        <button type="button" class="btn-ghost" onclick="cmpCollabApplySuggestionForNote('${n.id}')">Apply this change →</button>
       </div>
     </div>`;
   }
@@ -28701,8 +28714,24 @@ async function loadMpYearActiveChannels(){
   // Channels is exactly the set that budget identifies (fromBudget: the
   // crosswalk of its categories, without the always-on trio). The client
   // can still switch a channel on by hand afterwards.
+  // 2026-09-22 fix, per direct bug report: "It indicates saved but frontend
+  // does not reflect the updates adding CTV, OTV, Linear TV, Internal
+  // Email, Email Remarketing, Remarketing." Root cause — this block's own
+  // comment above says "Union only — a channel the client switched on by
+  // hand is never switched off here," but the code REPLACED
+  // state.activeChannels with exactly mpYearActiveChannelsMeta.fromBudget
+  // (the budget upload's own channels only), dropping every manually-added
+  // channel that wasn't in that year's uploaded budget — then immediately
+  // persisted that narrowed set back to the backend via
+  // mbuSaveActiveChannels(), overwriting the manual toggle's own save the
+  // next time this ran (on year change, or on returning to Marketing
+  // Budget Upload/Media Plan). Fixed to be a real union, matching the
+  // comment: start from the channels already active, only ADD whatever the
+  // budget identifies that isn't already on — never drop a manually-added
+  // one, and never re-save when nothing actually changed.
   if (mpYearActiveChannelsMeta && mpYearActiveChannelsMeta.restricted && Array.isArray(mpYearActiveChannelsMeta.fromBudget)){
-    const next = new Set(mpYearActiveChannelsMeta.fromBudget.filter(ch => MMM_CATEGORIES.includes(ch)));
+    const fromBudget = mpYearActiveChannelsMeta.fromBudget.filter(ch => MMM_CATEGORIES.includes(ch));
+    const next = new Set([...(state.activeChannels || []), ...fromBudget]);
     const same = state.activeChannels && next.size === state.activeChannels.size && [...next].every(ch => state.activeChannels.has(ch));
     if (!same){
       state.activeChannels = next;
@@ -41463,14 +41492,49 @@ async function cmpRecoApproveOverall(){
 // line/overall budget approval elsewhere on this screen. Now called from
 // the Collaboration Center's AI Brain tab (cmpCollabNoteRowHtml) instead of
 // the removed bespoke dialogue panel.
-async function cmpRecoApplySuggestion(entryId, newBudget){
+// 2026-09-22 fix, per direct report: applying a suggestion like "shift $30k
+// from Programmatic Display into a new CTV line" only ever PATCHed the
+// existing entryId's budget — no new channel_planning_details row was ever
+// created for the new channel, so the campaign's total budget silently
+// dropped instead of being reallocated, and the "new" line never actually
+// showed up in the plan. A suggestion can now carry two independent parts
+// (see AI_BRAIN_REPLY_SCHEMA's own comment, backend): an existing-line
+// change (entryId + newBudget) and/or a new-line creation (newLineChannel +
+// newLineBudget) — this applies whichever part(s) are present, via the same
+// two real endpoints cmpRecoSaveNewChannel()/the line PATCH already use, so
+// "Apply" now actually creates the missing line instead of just cutting the
+// source line's budget.
+async function cmpCollabApplySuggestionForNote(noteId){
+  const c = cmpRailLoadedCampaign();
+  const notes = (c && c.activityNotes && Array.isArray(c.activityNotes.workspace)) ? c.activityNotes.workspace : [];
+  const note = notes.find(n => n.id === noteId);
+  if (note && note.suggestion) await cmpRecoApplySuggestion(note.suggestion);
+}
+async function cmpRecoApplySuggestion(suggestion){
   const campaign = cmpRailLoadedCampaign();
-  if (!campaign) return;
+  if (!campaign || !suggestion) return;
+  const hasExistingChange = !!suggestion.entryId && typeof suggestion.newBudget === 'number';
+  const hasNewLine = !!suggestion.newLineChannel && typeof suggestion.newLineBudget === 'number';
+  if (!hasExistingChange && !hasNewLine) return;
   try {
-    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(entryId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ budget: newBudget })
-    });
+    if (hasExistingChange){
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning/${encodeURIComponent(suggestion.entryId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget: suggestion.newBudget })
+      });
+    }
+    if (hasNewLine){
+      // Same real create endpoint/shape cmpRecoSaveNewChannel() (the manual
+      // "+ Add Category" flow) already uses — stage defaults to the
+      // campaign's own stage (there's no form here to ask), region defaults
+      // to 'US' (same default cmpRecoSaveNewChannel's own region select
+      // starts on), impressions computed later once the team sets a CPM on
+      // the Channel Plan screen, same as any manually-added line.
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: suggestion.newLineChannel, stage: campaign.stage || null, region: 'US', budget: suggestion.newLineBudget, impressions: 0 })
+      });
+    }
   } catch (e){ console.warn('cmpRecoApplySuggestion failed:', e); }
   // Refresh from the server — a real applied change, worth confirming it
   // stuck, same convention as cmpRecoApproveLine()/cmpRecoApproveOverall().
