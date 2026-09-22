@@ -11388,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-media-cx-vision-hub-card-campaign-budget-rename';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-wip-card-impressions-match-pitch-summary';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -46648,7 +46648,7 @@ function mktCalOpenDetail(eventId){
         ['Creative Market', e.creativeMarket || '—'],
         ['Audience', e.audience || '—'],
         ['Budget', money(e.budget)],
-        ['Impressions (planned)', num(e.impressions)],
+        ['Estimated Impressions', num(e.impressions)],
         ['Status', e.status || '—']
       ]
     : [
