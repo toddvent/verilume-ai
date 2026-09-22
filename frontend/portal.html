@@ -706,6 +706,31 @@
     .cmp-brief-recap-startend{display:none;}
     .cmp-brief-recap-dates-mobile{display:flex;}
   }
+  /* 2026-09-22 — Creative Step 0 (Recap & Assessment), per the approved
+     Creative-Desktop.dc.html wireframe restructure. cmp-brief-recap-* above
+     is reused unchanged for the read-only recap grid; these are the new
+     pieces the wireframe adds: a Set/Needs-answer badge pairing with the
+     existing .badge/.badge.strong/.badge.weak component (no new badge CSS
+     needed), a compact verbatim/guidance mini-toggle per Writing Style
+     detail field, and the audience-experience Yes/No toggle. Namespaced
+     cmp-step0- throughout to avoid colliding with the legacy Campaign Type
+     card's own #campaignTypeDetailFields styling.
+     Mini-toggle mirrors the wireframe's mini-toggle-row/mini-toggle-opt
+     exactly (same 999px pill, same on-state fill) but sized for this app's
+     real 10.5-13px type scale rather than the wireframe's flat px values. */
+  .cmp-step0-field{margin-bottom:16px;}
+  .cmp-step0-field:last-child{margin-bottom:0;}
+  .cmp-step0-field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;}
+  .cmp-step0-field-head label{font-size:0.75rem;color:var(--muted);margin:0;}
+  .cmp-step0-hint-inline{font-size:0.6875rem;color:#9A9AA0;margin-top:6px;}
+  .cmp-step0-mini-toggle-label{font-size:0.6875rem;color:var(--muted);margin-top:8px;margin-right:8px;display:inline-block;}
+  .cmp-step0-mini-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-top:8px;}
+  .cmp-step0-mini-toggle-opt{padding:5px 12px;font-size:0.6875rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
+  .cmp-step0-mini-toggle-opt.on{background:var(--ink);color:var(--white);}
+  .cmp-step0-audience-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;}
+  .cmp-step0-audience-toggle-opt{padding:8px 18px;font-size:0.8125rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
+  .cmp-step0-audience-toggle-opt.on{background:var(--ink);color:var(--white);}
+  .cmp-step0-callout{border-radius:10px;padding:11px 14px;font-size:0.75rem;line-height:1.5;background:#EAF1FB;color:#1E5FA8;margin-top:12px;}
   .cmp-brief-cmo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
   @media (max-width:900px){ .cmp-brief-cmo-grid{grid-template-columns:1fr;} }
   .cmp-brief-cmo-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;position:relative;}
@@ -8375,7 +8400,52 @@
       </div>
       <div id="cmpCreativeBreadcrumb"></div>
       <div class="cmp-pitch-body">
-        <div class="cmp-pitch-left" id="cmpCreativeLeft"></div>
+        <div class="cmp-pitch-left" id="cmpCreativeLeft">
+          <!-- 2026-09-22 — Creative Step 0: Recap & Assessment, per the
+               approved Creative-Desktop.dc.html restructure ("Creative now
+               runs earlier in the flow"). Static, always-present first
+               child of #cmpCreativeLeft — unlike the 3 relocated real
+               sections below it (Brand Messaging/Copy Versions/Creative
+               Asset Jobs, still moved in/out by cmpOpenCreativeWorkspace()/
+               cmpCloseCreativeWorkspace()), this card lives here permanently
+               and is just re-rendered on open via cmpRenderCreativeStep0().
+               Steps 1-3 (Select Winner & Apply / Specific Assets with Copy /
+               Send to Marketing Ops) are still wireframe-only as of this
+               round — see that doc's Decision log. -->
+          <div class="module cmp-stage" id="cmpCreativeStep0" style="margin-bottom:0;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 0</div>
+              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Recap &amp; Assessment</div>
+              <p class="hint" style="margin:0 0 14px;">Everything below feeds copy development and the contests that follow — confirm it's right, then complete what's still needed before any contest runs.</p>
+
+              <div class="cmp-brief-recap-card" style="padding:16px 18px;margin-bottom:16px;">
+                <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);">This campaign, at a glance</div>
+                <div class="cmp-brief-recap-grid" id="cmpCreativeStep0Recap" style="grid-template-columns:repeat(2,minmax(0,1fr));"></div>
+              </div>
+
+              <div class="msg-card" style="margin-bottom:16px;">
+                <div class="msg-card-head">
+                  <span class="msg-card-title">Complete Writing Style detail</span>
+                  <span class="msg-card-sub">Every field needs a real answer — none is inferred. Headline is shared across Writing Styles; the rest are unique to this campaign's Writing Style.</span>
+                </div>
+                <div id="cmpCreativeStep0Headline"></div>
+                <div id="cmpCreativeStep0DetailFields"></div>
+              </div>
+
+              <div class="msg-card">
+                <div class="msg-card-head">
+                  <span class="msg-card-title">Should all audiences' experiences be the same?</span>
+                  <span class="msg-card-sub">Applies to every contest and asset choice that follows.</span>
+                </div>
+                <div class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
+                  <div class="cmp-step0-audience-toggle-opt" data-val="shared" onclick="cmpSetAudienceSharedExperience('shared')">Yes — one shared creative experience</div>
+                  <div class="cmp-step0-audience-toggle-opt" data-val="separate" onclick="cmpSetAudienceSharedExperience('separate')">No — each audience gets its own</div>
+                </div>
+                <div class="cmp-step0-callout" id="cmpCreativeStep0AudienceCallout"></div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="cmp-workspace-collab" id="cmpCreativeCollabMount"></div>
       </div>
       <!-- 2026-09-20, per Creative-Mobile.dc.html — the mobile artboard
@@ -39613,6 +39683,10 @@ function cmpOpenCreativeWorkspace(){
   // matching the wireframe.
   { const jobsCard = document.getElementById('campaignCreativeJobsCard'); if (jobsCard) jobsCard.classList.remove('collapsed'); }
   cmpRenderCreativeWorkspaceStatusBadge(campaign);
+  // 2026-09-22 — Step 0 (Recap & Assessment), the new leading card; see its
+  // own function comment for what it renders and why it's separate from the
+  // 3 relocated real sections above.
+  cmpRenderCreativeStep0(campaign);
 }
 function cmpCloseCreativeWorkspace(){
   const overlay = document.getElementById('cmpCreativeOverlay');
@@ -39668,6 +39742,197 @@ function cmpRenderCreativeWorkspaceStatusBadge(campaign){
 function cmpToggleCreativeMobileCollab(){
   const panel = document.getElementById('cmpCreativePanel');
   if (panel) panel.classList.toggle('mobile-collab-open');
+}
+
+// ============================================================
+// 2026-09-22 — Creative Step 0 (Recap & Assessment). Per the approved
+// Creative-Desktop.dc.html wireframe restructure ("Creative now runs
+// earlier in the flow, closer to how the app actually works"), plus direct
+// follow-up instruction validating that core/detail fields actually reach
+// the contest prompt and adding a per-field verbatim/guidance toggle. Reads
+// only real, already-persisted fields — no invented data:
+//   - the recap grid reads campaignType/audienceTargets/objective/
+//     productGroups/creativeFocusGroups/channels straight off the campaign,
+//     same fields the legacy Campaign Detail page's own cards show;
+//   - Headline is the real campaign.keyMessage/keyMessageMode pair (see the
+//     AI Brain Copy Interview's own "I'll ask for the Headline every
+//     Writing Style needs" comment above — Headline has always meant
+//     Key Message in this UI, this just surfaces it under that label here
+//     too, same field, same backend column);
+//   - the Writing Style detail fields reuse CAMPAIGN_TYPE_REGISTRY_CLIENT/
+//     campaignTypeDetailsClient(), same as the legacy Campaign Type card and
+//     the Brand Messaging card, but add the new per-field verbatim toggle
+//     (campaignTypeDetailModesJson, shipped backend-side 2026-09-22 — see
+//     campaignTypeDetailModesClient()/cmpSetStep0DetailMode() below) that
+//     neither of those two existing renderers has;
+//   - the audience-experience toggle reads/writes the new
+//     campaign.audienceSharedExperience column (also shipped 2026-09-22),
+//     confirmed logic: 'shared' = one creative experience for every
+//     audience (one contest); 'separate' = each audience gets its own
+//     contest, validated against its own approved asset types.
+// Deliberately a separate rendering function from
+// cmpRenderGenerationRequirementsCard()/renderCampaignTypeDetailFields()
+// rather than reusing those directly — this card needs its own layout
+// (Set/Needs-answer badges, the verbatim toggle, the audience toggle) that
+// those two shared, multiply-used renderers don't, and changing their
+// shared signature would risk the legacy Campaign Detail page and the
+// Brand Messaging card both still relocated into this same workspace below.
+// ------------------------------------------------------------
+// Parses campaign.campaignTypeDetailModesJson the same defensively-empty
+// way campaignTypeDetailsClient() already does for campaignTypeDetailsJson
+// — mirrors backend's campaignTypeDetailMode() default-to-'exact' behavior.
+function campaignTypeDetailModesClient(c){
+  if (!c || !c.campaignTypeDetailModesJson) return {};
+  try { const parsed = JSON.parse(c.campaignTypeDetailModesJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
+}
+function cmpStep0DetailMode(c, fieldKey){
+  const modes = campaignTypeDetailModesClient(c);
+  return modes[fieldKey] === 'descriptive' ? 'descriptive' : 'exact';
+}
+function cmpRenderCreativeStep0(c){
+  if (!c) return;
+  const recapEl = document.getElementById('cmpCreativeStep0Recap');
+  if (recapEl){
+    const typeLabel = (c.campaignType && CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType].label : 'General';
+    const rows = [
+      ['Campaign Writing Style', typeLabel],
+      ['Audiences', c.audienceTargets || '—'],
+      ['Campaign Objective', c.objective || '—'],
+      ['Product Group', c.productGroups || '—'],
+      ['Creative Focus', c.creativeFocusGroups || '—'],
+      ['Approved Channels', c.channels || '—']
+    ];
+    recapEl.innerHTML = rows.map(([label, val]) => `
+      <div class="cmp-brief-recap-item">
+        <span class="cmp-brief-recap-label">${escapeHtml(label)}</span>
+        <span class="cmp-brief-recap-val">${escapeHtml(val)}</span>
+      </div>`).join('');
+  }
+  cmpRenderStep0Headline(c);
+  cmpRenderStep0DetailFields(c);
+  cmpRenderStep0AudienceToggle(c);
+}
+function cmpRenderStep0Headline(c){
+  const holder = document.getElementById('cmpCreativeStep0Headline');
+  if (!holder) return;
+  const hasValue = !!(c.keyMessage && c.keyMessage.trim());
+  const mode = c.keyMessageMode === 'descriptive' ? 'descriptive' : 'exact';
+  holder.innerHTML = `
+    <div class="cmp-step0-field">
+      <div class="cmp-step0-field-head">
+        <label>Headline</label>
+        <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
+      </div>
+      <input type="text" id="cmpStep0HeadlineInput" value="${escapeHtml(c.keyMessage || '')}" placeholder="e.g., Reconnect past guests — Antarctica's first private charter returns." onblur="cmpSaveStep0Headline()" style="width:100%;box-sizing:border-box;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">
+      ${hasValue ? `
+        <span class="cmp-step0-mini-toggle-label">Use exactly as written in the copy?</span>
+        <div class="cmp-step0-mini-toggle-row">
+          <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}" onclick="cmpSetStep0HeadlineMode('exact')">Yes — verbatim</div>
+          <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}" onclick="cmpSetStep0HeadlineMode('descriptive')">No — treat as guidance</div>
+        </div>
+      ` : `<div class="cmp-step0-hint-inline">Verbatim-use toggle appears once this has an answer.</div>`}
+    </div>`;
+}
+function cmpRenderStep0DetailFields(c){
+  const holder = document.getElementById('cmpCreativeStep0DetailFields');
+  if (!holder) return;
+  const def = c.campaignType ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType] : null;
+  if (!def || !def.detailFields.length){
+    holder.innerHTML = `<div class="cmp-step0-hint-inline" style="margin-top:12px;">Set this campaign's Writing Style (Campaign Experience Focus, on Brand Messaging below) to see its own required fields here.</div>`;
+    return;
+  }
+  const values = campaignTypeDetailsClient(c);
+  holder.innerHTML = def.detailFields.map(f => {
+    const val = values[f.key] || '';
+    const hasValue = !!val.trim();
+    const mode = cmpStep0DetailMode(c, f.key);
+    return `
+    <div class="cmp-step0-field">
+      <div class="cmp-step0-field-head">
+        <label>${escapeHtml(f.label)}</label>
+        <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
+      </div>
+      <textarea data-detail-key="${escapeHtml(f.key)}" rows="2" placeholder="Real, specific — required for this Writing Style." onblur="cmpSaveStep0DetailFields()" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
+      ${hasValue ? `
+        <span class="cmp-step0-mini-toggle-label">Use exactly as written in the copy?</span>
+        <div class="cmp-step0-mini-toggle-row">
+          <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}" onclick="cmpSetStep0DetailMode('${escapeHtml(f.key)}','exact')">Yes — verbatim</div>
+          <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}" onclick="cmpSetStep0DetailMode('${escapeHtml(f.key)}','descriptive')">No — treat as guidance</div>
+        </div>
+      ` : `<div class="cmp-step0-hint-inline">Verbatim-use toggle appears once this has an answer.</div>`}
+    </div>`;
+  }).join('');
+}
+function cmpRenderStep0AudienceToggle(c){
+  const row = document.getElementById('cmpCreativeStep0AudienceToggle');
+  const callout = document.getElementById('cmpCreativeStep0AudienceCallout');
+  if (!row || !callout) return;
+  const val = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
+  row.querySelectorAll('.cmp-step0-audience-toggle-opt').forEach(el => {
+    el.classList.toggle('on', el.getAttribute('data-val') === val);
+  });
+  callout.innerHTML = val === 'separate'
+    ? `<b>No selected:</b> a separate copy contest runs per audience, and approved channels are validated separately for each audience.`
+    : `<b>Yes selected:</b> every audience shares one creative experience — one contest, applied campaign-wide.`;
+}
+// Persists a campaign field via the same merge-update endpoint every other
+// Step 0/Brand Messaging save call in this file uses (see
+// cmpSaveGenerationTypeDetails()'s own version of this pattern) — updates
+// the in-memory campaign object first so the UI never waits on the network
+// round-trip, then fires the real write when this isn't a local-only demo
+// campaign.
+async function cmpSaveCampaignField(fieldsForServer, extraLocalAssign){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  Object.assign(c, extraLocalAssign || {});
+  if (!c.localOnly && dataSourceLabel === 'backend'){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fieldsForServer)
+      });
+    } catch (e){ console.warn('cmpSaveCampaignField: backend write failed, saved locally only.', e); }
+  }
+  return c;
+}
+async function cmpSaveStep0Headline(){
+  const input = document.getElementById('cmpStep0HeadlineInput');
+  if (!input) return;
+  const c = await cmpSaveCampaignField({ keyMessage: input.value }, { keyMessage: input.value });
+  if (c) cmpRenderStep0Headline(c);
+}
+async function cmpSetStep0HeadlineMode(mode){
+  const c = await cmpSaveCampaignField({ keyMessageMode: mode }, { keyMessageMode: mode });
+  if (c) cmpRenderStep0Headline(c);
+}
+async function cmpSaveStep0DetailFields(){
+  const holder = document.getElementById('cmpCreativeStep0DetailFields');
+  const c = findCampaign(currentCampaignId);
+  if (!holder || !c) return;
+  const details = {};
+  holder.querySelectorAll('[data-detail-key]').forEach(el => {
+    if (el.value && el.value.trim()) details[el.getAttribute('data-detail-key')] = el.value.trim();
+  });
+  const updated = await cmpSaveCampaignField(
+    { campaignTypeDetails: details },
+    { campaignTypeDetailsJson: Object.keys(details).length ? JSON.stringify(details) : '' }
+  );
+  if (updated) cmpRenderStep0DetailFields(updated);
+}
+async function cmpSetStep0DetailMode(fieldKey, mode){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const modes = campaignTypeDetailModesClient(c);
+  modes[fieldKey] = mode;
+  const updated = await cmpSaveCampaignField(
+    { campaignTypeDetailModes: modes },
+    { campaignTypeDetailModesJson: JSON.stringify(modes) }
+  );
+  if (updated) cmpRenderStep0DetailFields(updated);
+}
+async function cmpSetAudienceSharedExperience(val){
+  const updated = await cmpSaveCampaignField({ audienceSharedExperience: val }, { audienceSharedExperience: val });
+  if (updated) cmpRenderStep0AudienceToggle(updated);
 }
 
 // ============================================================
