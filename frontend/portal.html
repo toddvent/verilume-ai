@@ -11702,7 +11702,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-dead-field-consolidation-backend';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-dead-field-consolidation-phase3-writers';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13153,7 +13153,7 @@ function cmpModuleStatus(key){
     case 'recommendation':
       if (!campaign) return 'not-started';
       if (campaign.budgetApprovedAt) return 'complete';
-      return (campaign.stage || campaign.channels) ? 'in-progress' : 'not-started';
+      return (campaign.stage || cmpCreativeChannelsText(campaign)) ? 'in-progress' : 'not-started';
     // 2026-09-18 — Campaign Brief & Analytics Requirements. Complete once
     // this campaign has explicitly continued to Creative Execution from
     // here (campaign.briefAnalyticsContinuedAt); in-progress once either
@@ -27001,7 +27001,7 @@ function computeRecommendedMix(totalBudget){
 // human wants to start over after hand-editing.
 function computeRecommendedMediaMix(c){
   const stage = c.stage || null;
-  const paidSelected = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean).filter(ch => !OWNED_MEDIA_CHANNELS.includes(ch));
+  const paidSelected = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean).filter(ch => !OWNED_MEDIA_CHANNELS.includes(ch));
   const stageWeights = (stage && effectiveStageChannelWeights(stage)) || {};
   // Weight each selected paid channel from the stage's own heuristic table
   // where available; a channel picked outside that stage's usual set still
@@ -30264,7 +30264,7 @@ function getChannelMediaMix(rangeKey){
   const totals = {};
   CHANNEL_MIX_GROUPS.forEach(g => { totals[g.key] = 0; });
   state.campaigns.filter(c => !c.isAdHoc && !c.cancelled && c.startDate && c.startDate >= startStr && c.startDate <= todayStr).forEach(c => {
-    const chans = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+    const chans = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
     if (!chans.length) return;
     const amount = (c.actualSpend != null && c.actualSpend !== '') ? Number(c.actualSpend) : (Number(c.budget) || 0);
     const per = amount / chans.length;
@@ -35769,7 +35769,7 @@ function mbdChartRows(key){
   const startStr = start.toISOString().slice(0, 10), todayStr = today.toISOString().slice(0, 10);
   state.campaigns.filter(c => !c.isAdHoc && !c.cancelled && c.startDate && c.startDate >= startStr && c.startDate <= todayStr).forEach(c => {
     const amount = (c.actualSpend != null && c.actualSpend !== '') ? Number(c.actualSpend) : (Number(c.budget) || 0);
-    rows.push([c.name || c.objective || 'Untitled Campaign', c.channels || '', c.startDate || '', Math.round(amount)]);
+    rows.push([c.name || c.objective || 'Untitled Campaign', cmpCreativeChannelsText(c), c.startDate || '', Math.round(amount)]);
   });
   return rows;
 }
@@ -37905,7 +37905,7 @@ function getUtmLinkChannelContext(){
   const c = findCampaign(currentCampaignId);
   const jobId = document.getElementById('utmBuilderCreativeJob') ? document.getElementById('utmBuilderCreativeJob').value : '';
   const job = jobId ? findCreativeJob(jobId) : null;
-  const channelText = (job && `${job.channel} ${job.deliveryPlatform || ''}`) || (c && c.channels) || '';
+  const channelText = (job && `${job.channel} ${job.deliveryPlatform || ''}`) || (c && cmpCreativeChannelsText(c)) || '';
   const hay = channelText.toLowerCase();
   return {
     job,
@@ -38056,7 +38056,7 @@ function buildUtmLink(){
   const jobId = document.getElementById('utmBuilderCreativeJob').value;
   const job = jobId ? findCreativeJob(jobId) : null;
   const segments = ((c && c.segment) || '').split(',').map(s => s.trim()).filter(Boolean);
-  const channelText = (job && job.channel) || (c && (c.channels || '').split(',')[0].trim()) || '';
+  const channelText = (job && job.channel) || (c && cmpCreativeChannelsText(c).split(',')[0].trim()) || '';
 
   const VALUE_BY_KEY = {
     utm_source: slugify(channelText) || 'direct',
@@ -38310,7 +38310,7 @@ function cmpPopulateFormFields(c, opts){
   cmpBudgetAuto = c.budgetAuto !== false;
   selectedSegments = new Set((c.segment || '').split(',').map(s => s.trim()).filter(Boolean));
   renderSegmentRow();
-  selectedChannels = new Set((c.channels || '').split(',').map(s => s.trim()).filter(Boolean));
+  selectedChannels = new Set(cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean));
   renderCmpChannelRow();
   renderCmpChannelGroupRow();
   // Round 132 (2026-08-09) — Product Group / Creative Focus Group load from
@@ -38747,7 +38747,7 @@ function cmpTemplateCandidates(){
 function cmpTemplateFieldSets(c){
   return {
     segments: new Set((c.segment || '').split(',').map(s => s.trim()).filter(Boolean)),
-    channels: new Set((c.channels || '').split(',').map(s => s.trim()).filter(Boolean)),
+    channels: new Set(cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean)),
     productGroups: new Set((c.productGroups || '').split(',').map(s => s.trim()).filter(Boolean)),
     creativeFocusGroups: new Set((c.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean))
   };
@@ -39467,7 +39467,7 @@ async function cmpIntakeSendMessage(){
 // turn (cmpIntakeExchange()).
 function cmpCampaignOriginalCopy(c){
   const audience = (c.segment || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
-  const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
+  const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
   const pg = (c.productGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
   const cfg = (c.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(', ') || 'TBD';
   return `I'd like to build a new campaign starting from "${c.name || c.id}" (${c.id}). That campaign: Lifecycle Stage ${c.stage || 'TBD'}, Objective ${c.objective || 'TBD'}, Audience ${audience}, Channels ${channels}, Product Group ${pg}, Creative Focus Group ${cfg}.`;
@@ -42685,7 +42685,7 @@ function cmpTemplateSearchFields(c){
     { text: c.name || c.objective || '', weight: 1.5, label: null },
     { text: c.id || '', weight: 1.1, label: null },
     { text: c.segment || '', weight: 1.2, label: 'Audience' },
-    { text: c.channels || '', weight: 1.2, label: 'Channel' },
+    { text: cmpCreativeChannelsText(c), weight: 1.2, label: 'Channel' },
     { text: c.productGroups || '', weight: 1.0, label: 'Product Group' },
     { text: c.creativeFocusGroups || '', weight: 1.0, label: 'Creative Focus Group' },
     { text: c.objective || '', weight: 0.8, label: 'Objective' }
@@ -45474,7 +45474,7 @@ async function fetchChannelPerformanceRows(channel){
   });
   state.campaigns.forEach(c => {
     if (c.isAdHoc || campaignsWithJobRows.has(c.id)) return;
-    const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+    const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
     if (channels.length !== 1 || channels[0] !== channel) return;
     if (c.actualSpend == null && c.actualConversions == null) return;
     rows.push({
@@ -45610,7 +45610,7 @@ function renderCampaignComparisonTable(){
       <th>Campaign</th><th>Channel(s)</th><th>Budget</th><th>Spend</th><th>Conversions</th><th>Conversions / $1,000</th><th>Alignment</th><th>Benchmark verdict</th>
     </tr></thead><tbody>
     ${campaigns.map(c => {
-      const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+      const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
       const align = computeCampaignRelevanceScore(c);
       const per1000 = (c.actualSpend && c.actualConversions != null) ? (c.actualConversions / (c.actualSpend / 1000)) : null;
       let verdict = '—';
@@ -45771,7 +45771,7 @@ async function saveAnalysisInputs(){
 function renderCampaignMmmLineItemsRows(c){
   const tbody = document.getElementById('cmpMmmLineItemsRows');
   if (!tbody) return;
-  const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+  const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
   if (!channels.length){
     tbody.innerHTML = '<tr><td colspan="4">No channels selected for this campaign — add at least one Channel back on Objective &amp; Details.</td></tr>';
     return;
@@ -46454,9 +46454,16 @@ async function saveCampaignTypeFields(){
 async function saveCampaignPerformanceFields(){
   const c = findCampaign(currentCampaignId);
   if (!c) return;
+  // 2026-09-22 — dead-field consolidation, per direct instruction ("retire
+  // the dead fields"). This card used to write campaign.audienceTargets,
+  // a column Supabase confirmed is empty on every real campaign because
+  // every reader actually falls back to campaign.segment instead (see
+  // cmpCreativeAudienceText() and its comment). Rather than leave this
+  // whole validated-audience workflow writing into a column nothing
+  // reads, it now writes the real source of truth directly: segment.
   const audienceTargets = document.getElementById('campaignAudienceTargets').value.trim();
   const pmValidatedAt = new Date().toISOString();
-  c.audienceTargets = audienceTargets;
+  c.segment = audienceTargets;
   c.pmValidatedAt = pmValidatedAt;
   const flag = document.getElementById('campaignPerfMarketingSaveFlag');
   let persisted = false;
@@ -46464,7 +46471,7 @@ async function saveCampaignPerformanceFields(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audienceTargets, pmValidatedAt })
+        body: JSON.stringify({ segment: audienceTargets, pmValidatedAt })
       });
       persisted = resp.ok;
     } catch (e){ console.warn('saveCampaignPerformanceFields: backend write failed, saved locally only.', e); }
@@ -46515,7 +46522,7 @@ function renderCampaignDetail(focusCardId){
   const perfMarketingCardEl = document.getElementById('campaignPerfMarketingCard');
   if (perfMarketingCardEl) perfMarketingCardEl.style.display = isAdHoc ? 'none' : '';
   if (!isAdHoc){
-    document.getElementById('campaignAudienceTargets').value = c.audienceTargets || '';
+    document.getElementById('campaignAudienceTargets').value = c.segment || c.audienceTargets || '';
     const validatedNoteEl = document.getElementById('campaignPerfMarketingValidatedNote');
     if (validatedNoteEl) validatedNoteEl.textContent = c.pmValidatedAt ? `Last validated ${new Date(c.pmValidatedAt).toLocaleString()}.` : 'Not yet validated.';
   }
@@ -46546,7 +46553,7 @@ function renderCampaignDetail(focusCardId){
     visTagsEl.innerHTML = '';
   } else {
     const segments = (c.segment || '').split(',').map(s => s.trim()).filter(Boolean);
-    const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+    const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
     const align = computeCampaignRelevanceScore(c);
     const funding = c.fundingSource === 'plan' ? 'Media Plan' : 'Unplanned';
     visTagsEl.innerHTML = `
@@ -46750,7 +46757,7 @@ function renderCampaignPerformancePanel(){
   const el = document.getElementById('campaignAnalyticsPanel');
   const c = findCampaign(currentCampaignId);
   if (!el || !c || c.isAdHoc) return;
-  const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+  const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
 
   if (!channels.length){
     el.innerHTML = `<p class="lede">Set at least one channel on this campaign (Add Campaign Details) to see channel-specific best practices here.</p>
@@ -46843,7 +46850,7 @@ async function renderCampaignPlanRollup(campaignId){
   const el = document.getElementById('campaignPlanRollupPanel');
   const c = findCampaign(campaignId);
   if (!el || !c) return;
-  const channels = (c.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+  const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
 
   let accountHtml = '<p class="lede">Set a channel on this campaign to see how it compares to the rest of the account.</p>';
   if (channels.length){
@@ -49858,7 +49865,7 @@ function computeCampaignRelevanceScore(campaign){
   let channelRelevancePct = null;
   if (campaign.recommendedChannels){
     const recommended = new Set(campaign.recommendedChannels.split(',').map(s => s.trim()).filter(Boolean));
-    const final = new Set((campaign.channels || '').split(',').map(s => s.trim()).filter(Boolean));
+    const final = new Set(cmpCreativeChannelsText(campaign).split(',').map(s => s.trim()).filter(Boolean));
     if (recommended.size){
       const overlap = [...final].filter(ch => recommended.has(ch)).length;
       channelRelevancePct = Math.round(100 * overlap / recommended.size);
@@ -58098,14 +58105,15 @@ async function cmpApproveChannelPlan(){
     // moment, mirroring cmpPersistMessagingToCampaign()'s pattern.
     const pmBriefBuilderEl = document.getElementById('cmpPmBriefBuilderText');
     campaign.pmBriefBuilderText = pmBriefBuilderEl ? pmBriefBuilderEl.value.trim() : '';
-    if (!campaign.isAdHoc && !campaign.localOnly){
-      try {
-        await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ channels, channelGroups })
-        });
-      } catch (e){ /* best-effort — local state still updated above */ }
-    }
+    // 2026-09-22 — dead-field consolidation, per direct instruction ("retire
+    // the dead fields"). campaign.channels/channelGroups stay set in memory
+    // above so this session's UI (and every cmpCreativeChannelsText() reader)
+    // keeps working exactly as before, but the backend write that used to
+    // sit here is dropped: the channel-planning writes right below
+    // (channel_planning_details, the real source of truth) already persist
+    // this approval for real, and Supabase confirmed the campaigns.channels
+    // column is never read back by anything once a page reloads — writing
+    // it there was pure duplication with no reader on the other end.
   }
   syncRequiredFunctions();
   renderCampaignsList();
@@ -58632,7 +58640,7 @@ function cmpSaveLifecycleAndContinue(){
   // already-finalized channel list (existing.channels already set, or this
   // campaign's own tile picker already has something checked) is never
   // overwritten by a later-recomputed recommendation.
-  if (!existing.channels && !selectedChannels.size && selectedRecommendedChannels.size){
+  if (!cmpCreativeChannelsText(existing) && !selectedChannels.size && selectedRecommendedChannels.size){
     selectedRecommendedChannels.forEach(ch => selectedChannels.add(ch));
     renderCmpChannelRow();
   }
