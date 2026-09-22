@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-22-dead-field-consolidation-backend (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-22-ai-brain-reply-30s-ceiling (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -17209,7 +17209,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-22-dead-field-consolidation-backend',
+        buildStamp: '2026-09-22-ai-brain-reply-30s-ceiling',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -23976,6 +23976,10 @@ The team just said: "${message}"
 
 Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above).
 
+NEVER EXPOSE INTERNAL IDS — the \`id=...\` value on each REAL CHANNEL PLAN LINES row (and any other raw database id, table name, or record identifier anywhere in this prompt) is there only so you can fill the suggestion field's entryId correctly. The team never sees a database schema and does not know what "CPD-..." means — never quote a raw id, table name, or column name in your reply text. Refer to a line the way a person would: by its channel name, region, budget, and status (e.g. "the Field/ABM line at $90,000, still in draft" — not "line CPD-mubu5mq5-161-4").
+
+PLACEHOLDER VS. REAL EXECUTION PLAN — a channel_planning_details line's budget can come from two different places: a real, specific plan the team entered (vendor, tactics, a real impressions estimate from an actual CPM), or this platform's own recommended media-mix split of the campaign's overall budget with nothing further filled in yet (0 or missing impressions, no execution detail anywhere in what's given above). When asked what a line is "made up of," what tactics or vendors it covers, or anything similar, and there's no real execution detail on file for it (impressions are 0/missing and nothing above names a vendor, tactic, or plan), say so plainly and say what the number actually is: a placeholder — this channel's share of the recommended media mix, based on the account's best-practice split of the annual spend forecast, with no specific vendor or tactic plan attached yet. Do NOT list generic "typically includes" industry tactics as if they describe this campaign's actual plan — that reads as a real answer when it's a guess. It's fine, and preferred, to say plainly that Performance Marketing/Channel Plan hasn't entered specific execution detail for this line yet.
+
 VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) above already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and suggest adding one via a suggestion (or by naming it in your reply) rather than saying the platform has no video capability.
 
 BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report above (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
@@ -23999,31 +24003,42 @@ Submit your response via the ai_brain_reply tool.`;
           required: ['reply']
         };
         let parsed;
+        // 2026-09-22, per Todd's direct, hard ceiling: "More than 30 seconds
+        // is too long. We'll lose users. Humans think faster." The old
+        // shape here (20s timeout, then ALWAYS retry — even after our own
+        // timeout aborted the first attempt — with a fresh 20s timeout) had
+        // a real worst case around 20000 + 800 + 20000 = ~40.8s: a retry
+        // triggered by a TIMEOUT just repeats the same slow prompt/model
+        // call and is very likely to take about as long again, so it was
+        // doubling the wait for the exact cases most likely to already be
+        // slow. Fixed shape: one attempt gets nearly the whole 30s budget
+        // (27s, leaving ~3s of headroom for the context-building queries
+        // above and JSON/network overhead so the endpoint's own total stays
+        // under 30s even in the worst case) — and a retry only fires for a
+        // genuine non-timeout failure (a fast-failing 4xx/5xx or a parse
+        // error), which resolves in a couple seconds in practice, not
+        // another 27s wait. maxTokens stays 900 — that's the 2026-09-21 fix
+        // for truncated replies, unrelated to this timing change and not
+        // worth reopening that bug to shave a few seconds.
         try {
           parsed = await callClaudeForJSON({
-            // 2026-09-21, per Todd's direct report ("AI Brain error
-            // continues. I tried twice.") on a video-channel question:
-            // maxTokens was 400 on this call, forcing a structured tool
-            // call via tool_choice. A longer, genuinely explanatory reply
-            // (exactly what a "why isn't X being recommended" question
-            // needs) can get cut off mid-JSON before the tool call closes,
-            // which callClaudeForJSON then can't parse as a valid tool_use
-            // — surfacing as the generic "Something went wrong reaching
-            // the AI Brain" error on the frontend. Raised to 900 so a real
-            // explanatory answer has room without truncating; the prompt's
-            // own "Keep it conversational, not a report" instruction still
-            // keeps ordinary replies short.
             model: 'claude-sonnet-4-5', maxTokens: 900, content: prompt,
             toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
-            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
+            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 27000
           });
         } catch (firstErr){
-          console.warn('[POST /api/campaigns/:id/ai-brain-reply] first attempt failed, retrying once:', firstErr.message);
+          if (/timed out/i.test(firstErr.message || '')){
+            // A retry after our own timeout just repeats the same slow
+            // call — propagate immediately so the whole request still
+            // resolves near the 27s mark, not ~55s later.
+            throw firstErr;
+          }
+          console.warn('[POST /api/campaigns/:id/ai-brain-reply] first attempt failed (non-timeout), retrying once:', firstErr.message);
           await new Promise(r => setTimeout(r, 800));
           parsed = await callClaudeForJSON({
             model: 'claude-sonnet-4-5', maxTokens: 900, content: prompt,
             toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
-            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 20000
+            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 8000
           });
         }
         // Validate the suggestion's entryId is a real line before returning
