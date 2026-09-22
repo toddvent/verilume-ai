@@ -1179,6 +1179,18 @@
   .cmp-collab-tab{flex:1;text-align:center;padding:10px 6px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;background:none;border-left:none;border-right:none;border-top:none;font-family:inherit;}
   .cmp-collab-tab.active{color:var(--advocacy);border-bottom-color:var(--advocacy);}
   .cmp-collab-body{padding:14px 16px;max-height:420px;overflow-y:auto;}
+  /* 2026-09-22, per direct instruction: "Give a user the option to view a
+     larger AI Brain Collaboration Center view to make it easier to read long
+     replies. Collapsing returns to the right panel." The expanded state
+     lifts the same .cmp-collab element (re-rendered by cmpRenderCollabCenter,
+     not a separate component) out of its normal right-rail flow into a
+     centered fixed overlay, backed by a click-to-close backdrop — collapsing
+     just removes the class and the panel falls back into its normal spot. */
+  .cmp-collab-expand-btn{margin-left:6px;width:30px;height:30px;border-radius:8px;background:var(--paper-dim);border:none;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+  .cmp-collab-expand-btn:hover{background:var(--line-hairline);}
+  .cmp-collab-expand-backdrop{position:fixed;inset:0;background:rgba(20,20,20,0.45);z-index:900;}
+  .cmp-collab.expanded{position:fixed;top:5vh;left:50%;transform:translateX(-50%);width:min(720px,92vw);height:90vh;z-index:901;display:flex;flex-direction:column;}
+  .cmp-collab.expanded .cmp-collab-body{flex:1;max-height:none;}
   /* 2026-09-19 — Todd flagged the Collaboration Center reading as a
      small floating card instead of a full-height sidebar when it's
      mounted inside the fixed Objectives/Recommendation modal panels
@@ -11702,7 +11714,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-channel-kpi-mismatch-signal';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-collab-center-round4';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13469,12 +13481,25 @@ let cmpCollabMountId = 'cmpWorkspaceCollab';
 // cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md).
 let cmpPreCampaignCollabHistory = [];
 let cmpPreCampaignCollabBusy = false;
+// 2026-09-22, per direct instruction to give the AI Brain Collaboration
+// Center a larger view for reading long replies: this is state on the
+// component itself (not a given campaign), so it survives whichever
+// campaign/screen is loaded while the panel is open, and is read back into
+// the template on every cmpRenderCollabCenter() call — including the
+// re-renders that already happen whenever the loaded campaign changes —
+// rather than living only inside one render call's closure.
+let cmpCollabExpanded = false;
+function cmpToggleCollabExpanded(){
+  cmpCollabExpanded = !cmpCollabExpanded;
+  cmpRenderCollabCenter(cmpRailLoadedCampaign());
+}
 function cmpRenderCollabCenter(campaign){
   const el = document.getElementById(cmpCollabMountId);
   if (!el) return;
   if (campaign && cmpPreCampaignCollabHistory.length) cmpPreCampaignCollabHistory = [];
   el.innerHTML = `
-    <div class="cmp-collab">
+    ${cmpCollabExpanded ? `<div class="cmp-collab-expand-backdrop" onclick="cmpToggleCollabExpanded()"></div>` : ''}
+    <div class="cmp-collab${cmpCollabExpanded ? ' expanded' : ''}">
       <div class="cmp-collab-head">
         <div class="cmp-collab-avatar">AI</div>
         <div class="cmp-collab-titles">
@@ -13483,6 +13508,11 @@ function cmpRenderCollabCenter(campaign){
         </div>
         <button type="button" class="cmp-collab-mic" aria-label="Voice input (coming soon)" title="Voice input (coming soon)" onclick="cmpToggleCollabVoiceNote()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        </button>
+        <button type="button" class="cmp-collab-expand-btn" aria-label="${cmpCollabExpanded ? 'Collapse Collaboration Center' : 'Expand Collaboration Center for easier reading'}" title="${cmpCollabExpanded ? 'Collapse' : 'Expand for easier reading'}" onclick="cmpToggleCollabExpanded()">
+          ${cmpCollabExpanded
+            ? `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10 21 3"/><path d="M3 21l7-7"/></svg>`
+            : `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6"/><path d="M21 9V3h-6"/><path d="M3 15v6h6"/><path d="M21 15v6h-6"/></svg>`}
         </button>
       </div>
       <div class="cmp-collab-voice-note" id="cmpCollabVoiceNote">Voice input isn't wired up yet — it's coming in a later round.</div>
@@ -13540,6 +13570,41 @@ function cmpCollabNotesFor(campaign, tab){
 // render it as its own informational card (no Apply button — unlike the
 // budget `suggestion` card, "attaching" this already happened server-side
 // the moment it became eligible; this card is just surfacing that).
+// 2026-09-22, per direct instruction: "Don't save AI Brain Collaboration
+// Center dialogues when users leave the page. Compress after 5 questions
+// and answers." Two behavior changes for the 'ai' tab specifically (Team
+// notes are unaffected — those remain a real persisted record other people
+// rely on): (1) the AI dialogue is no longer written to the backend on
+// every turn — it lives only in this session's in-memory campaign object,
+// so a genuine page leave/reload starts the conversation fresh, while it
+// still works normally for as long as the user stays on this page/campaign.
+// (2) once a dialogue passes CMP_AI_COLLAB_COMPRESS_AFTER_EXCHANGES full
+// question/answer exchanges, the older turns are folded into one compact
+// summary note so neither the visible thread nor what's sent back to the
+// model as prior context (cmpCollabRequestAiReply's priorNotes) grows
+// without bound.
+const CMP_AI_COLLAB_COMPRESS_AFTER_EXCHANGES = 5;
+function cmpCompressAiCollabHistoryIfNeeded(c){
+  if (!c || !c.activityNotes || !Array.isArray(c.activityNotes.workspace)) return;
+  const all = c.activityNotes.workspace;
+  const aiNotes = all.filter(n => (n.tab || 'ai') === 'ai');
+  const exchangeCount = aiNotes.filter(n => n.isAi && !n.compressedSummary).length;
+  if (exchangeCount <= CMP_AI_COLLAB_COMPRESS_AFTER_EXCHANGES) return;
+  // Keep the most recent 2 exchanges (up to 4 notes) visible in full; fold
+  // everything older than that into a single summary note.
+  const keepFromIdx = Math.max(0, aiNotes.length - 4);
+  const toCompress = aiNotes.slice(0, keepFromIdx).filter(n => !n.compressedSummary);
+  if (toCompress.length < 2) return;
+  const summaryLines = toCompress.map(n => `${n.isAi ? 'AI Brain' : 'Team'}: ${(n.text || '').slice(0, 140)}${(n.text || '').length > 140 ? '…' : ''}`);
+  const summaryNote = {
+    id: `wsnote_compressed_${Math.round(performance.now())}`,
+    author: 'AI Assistant',
+    text: `(Earlier conversation compressed — ${toCompress.length} earlier message${toCompress.length === 1 ? '' : 's'})\n${summaryLines.join('\n')}`,
+    isAi: true, tab: 'ai', ts: toCompress[0].ts, compressedSummary: true
+  };
+  const toCompressIds = new Set(toCompress.map(n => n.id));
+  c.activityNotes.workspace = [summaryNote, ...all.filter(n => !toCompressIds.has(n.id))];
+}
 function cmpCollabAddNote(tab, text, isAi, suggestion, detail, matchMarketSuggestion){
   const c = cmpRailLoadedCampaign();
   if (!c || !text) return;
@@ -13553,7 +13618,11 @@ function cmpCollabAddNote(tab, text, isAi, suggestion, detail, matchMarketSugges
     detail: detail || null,
     matchMarketSuggestion: matchMarketSuggestion || null
   });
-  cmpPersistActivityNotesToCampaign(c);
+  if (tab === 'ai'){
+    cmpCompressAiCollabHistoryIfNeeded(c);
+  } else {
+    cmpPersistActivityNotesToCampaign(c);
+  }
   cmpRenderCollabBody(c);
 }
 // Generic "see full details" popup — a scrollable modal over whatever HTML
@@ -13849,11 +13918,15 @@ function cmpCollabPromptChip(i){
   input.value = text;
   cmpCollabSend('ai');
 }
-function cmpCollabComposerHtml(tab, placeholder){
+function cmpCollabComposerHtml(tab, placeholder, hasHistory){
   const thinking = tab === 'ai' && (cmpCollabAiBusy || cmpPreCampaignCollabBusy);
   // Chips only make sense on the real AI Brain conversation — Team/
   // Feedback are plain persisted notes with no model on the other end.
-  const chipsHtml = (tab === 'ai' && !thinking)
+  // 2026-09-22, per direct feedback: the chips are a cold-start prompt, not
+  // a permanent fixture — once a real dialogue has begun (hasHistory) they
+  // just clutter the composer under the actual conversation, so they hide
+  // as soon as there's at least one note in this tab's history.
+  const chipsHtml = (tab === 'ai' && !thinking && !hasHistory)
     ? `<div class="prompt-row" style="margin-bottom:8px;">${CMP_COLLAB_AI_SUGGESTED_PROMPTS.map((p, i) => `<span class="prompt-chip" onclick="cmpCollabPromptChip(${i})"><span class="q">?</span>${escapeHtml(p)}</span>`).join('')}</div>`
     : '';
   return `<div class="cmp-note-add">
@@ -13877,7 +13950,7 @@ function cmpRenderCollabBody(campaign){
     if (cmpCollabActiveTab === 'ai'){
       const notes = cmpPreCampaignCollabHistory;
       body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No campaign loaded yet — ask the AI Brain a question below to start planning one.</div>`)
-        + cmpCollabComposerHtml('ai', 'Ask the AI Brain about the campaign you want to build…');
+        + cmpCollabComposerHtml('ai', 'Ask the AI Brain about the campaign you want to build…', notes.length > 0);
       return;
     }
     body.innerHTML = `<div class="cmp-collab-empty">Team notes attach to a real campaign — load or create one first to use this tab.</div>`;
@@ -13886,7 +13959,7 @@ function cmpRenderCollabBody(campaign){
   if (cmpCollabActiveTab === 'ai'){
     const notes = cmpCollabNotesFor(campaign, 'ai');
     body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — send it a question about this campaign to start.</div>`)
-      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…');
+      + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…', notes.length > 0);
     return;
   }
   // Team tab — Feedback tab removed 2026-09-16 (see cmpCollabNoteRowHtml's
@@ -14668,7 +14741,20 @@ const cmpActivityNotesSaveChains = {};
 function cmpPersistActivityNotesToCampaign(c){
   if (!c || c.localOnly || dataSourceLabel !== 'backend') return;
   const id = c.id;
-  const payload = JSON.stringify(c.activityNotes || {});
+  // 2026-09-22, per direct instruction that AI Brain Collaboration Center
+  // dialogues shouldn't be saved: this function persists the FULL
+  // activityNotes object, including the 'workspace' array shared by both the
+  // Team tab (persisted) and the AI tab (deliberately not, per
+  // cmpCollabAddNote's own comment). Without this filter, a Team note added
+  // in the same session would carry the in-memory AI notes along for the
+  // ride and save them anyway. Strip 'ai'-tab workspace entries from the
+  // OUTGOING payload only — c.activityNotes.workspace itself stays
+  // untouched so the AI dialogue keeps rendering normally for this session.
+  const activityNotesForSave = Object.assign({}, c.activityNotes || {});
+  if (Array.isArray(activityNotesForSave.workspace)){
+    activityNotesForSave.workspace = activityNotesForSave.workspace.filter(n => (n.tab || 'ai') !== 'ai');
+  }
+  const payload = JSON.stringify(activityNotesForSave);
   const prior = cmpActivityNotesSaveChains[id] || Promise.resolve();
   const next = prior.then(() => authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(id)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -58222,12 +58308,22 @@ async function cmpApproveChannelPlan(){
       // in the campaign, so we allocated a % based on the overall budget
       // media mix." The channel's INCLUSION in the plan and its DOLLAR
       // AMOUNT are two separate facts that were being conflated — every
-      // channel here is in the plan because a human (the client at intake,
-      // or Performance Marketing via "+ Add Category") chose to include
-      // it; the system only ever decides the $ split for an already-chosen
-      // channel, never the choice to include it. Every rationale now leads
-      // with that inclusion fact before the sizing detail.
-      let recommendationRationale = `${r.channel} is included in this campaign because it's part of the channel mix requested at setup (or added later by Performance Marketing) — Verilume never adds a channel on its own. `;
+      // rationale now leads with the inclusion fact before the sizing detail.
+      //
+      // 2026-09-22 correction, per direct feedback: the first version of this
+      // said "Verilume never adds a channel on its own," which is wrong —
+      // recommending channels IS Verilume's job. Verilume recommends the
+      // channel mix based on the campaign objective established at intake
+      // (the campaign creation survey) and refined through AI Brain
+      // conversation; the human team then gives final approval. Whether
+      // recommendedAmount is defined here tells us which of those two real
+      // paths this specific channel took: a defined amount means it's part
+      // of Verilume's stage-based recommended mix for this objective; no
+      // amount means it falls outside that recommended mix and was added by
+      // Performance Marketing on top of it.
+      let recommendationRationale = typeof recommendedAmount === 'number'
+        ? `${r.channel} is in this campaign's channel mix because Verilume recommended it based on the campaign's objective (set at intake and refined through the AI Brain) — the team gave final approval to include it. `
+        : `${r.channel} is in this campaign's channel mix even though it falls outside Verilume's stage-based recommended mix for this campaign's objective — Performance Marketing added it, and the team gave final approval to include it. `;
       if (typeof recommendedAmount === 'number' && typeof r.budget === 'number' && Math.abs(r.budget - recommendedAmount) < 1){
         const pct = totalBudgetForRationale ? Math.round((recommendedAmount / totalBudgetForRationale) * 100) : null;
         recommendationRationale += `Its $${Math.round(r.budget).toLocaleString()} budget is Verilume's recommended stage-weighted split for ${campaign.stage || 'this campaign\'s'} stage${pct != null ? ` — ${pct}% of the $${Math.round(totalBudgetForRationale).toLocaleString()} total campaign budget` : ''}. Not a bottom-up cost estimate or a vendor quote — a top-down allocation only.`;
