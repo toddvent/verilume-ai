@@ -11702,7 +11702,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-budget-rationale';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-channel-kpi-mismatch-signal';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15448,6 +15448,39 @@ const MMM_CATEGORIES = [
   'Remarketing'
 ];
 let selectedChannels = new Set();
+
+// 2026-09-22, per direct instruction: "proactively highlight inconsistencies
+// between media asked for and objective... core foundation piece for the
+// relevance score." A first, code-computed (not model-guessed) channel/KPI
+// fit signal, so it's a reliable, reusable flag rather than something an LLM
+// re-derives inconsistently each time it's asked. Illustrative starting
+// taxonomy — these are the MMM_CATEGORIES channels with no direct click/
+// visit-level tracking mechanism (no landing-page click-through to attribute
+// a website visit to); flag for review/adjustment as a real product
+// judgment call, not asserted as definitive.
+const CHANNELS_WITHOUT_DIRECT_VISIT_TRACKING = [
+  'Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries',
+  'Linear TV', 'PR', 'Magazines', 'Newspapers', 'Out-of-Home', 'Radio', 'Podcasts', 'Field / ABM'
+];
+// Checks a channel against BOTH the structured Primary KPI (Clicks is the
+// one canonical KPI option that's a direct proxy for "website visits" — see
+// PRIMARY_KPI_OPTIONS) and free-text signal in the campaign's real narrative
+// objective (activityNotes.objectivesGoalSummary — see cmpCreativeObjectiveText's
+// comment on why that's the real objective text, not the dead `objective`
+// column) for visit/traffic/click language a structured KPI dropdown
+// wouldn't otherwise catch. Returns a note string when this channel can't
+// produce what the campaign is actually trying to measure, or null when
+// there's no mismatch (or nothing to check against).
+function cmpChannelKpiMismatchNote(channel, campaign){
+  if (!channel || !campaign || !CHANNELS_WITHOUT_DIRECT_VISIT_TRACKING.includes(channel)) return null;
+  const narrativeObjective = (typeof cmpCreativeObjectiveText === 'function' ? cmpCreativeObjectiveText(campaign) : '') || '';
+  const visitLanguage = /\bvisits?\b|\btraffic\b|\bclicks?\b/i.test(narrativeObjective);
+  const clicksKpi = campaign.primaryKpi === 'Clicks';
+  if (!visitLanguage && !clicksKpi) return null;
+  const basis = clicksKpi && visitLanguage ? 'the Primary KPI (Clicks) and the stated objective'
+    : clicksKpi ? 'the Primary KPI (Clicks)' : 'the stated objective';
+  return `${channel} has no direct click/visit-level tracking, but ${basis} ${clicksKpi && visitLanguage ? 'are' : 'is'} visit/click-based — this line's performance can't be measured the same way as the campaign's other trackable channels.`;
+}
 
 // Round 132bx follow-on (2026-08-15), per direct instruction: a confirmed
 // Marketing Budget Upload's identified channels should drive which
@@ -57842,7 +57875,18 @@ function cmpToggleChannelPlanRationale(){
 function cmpRenderChannelPlanList(){
   const listEl = document.getElementById('cmpPerfMarketingAssetsList');
   if (!listEl) return;
-  listEl.innerHTML = Object.entries(cmpChannelPlanRows).map(([channel, r]) => `
+  // 2026-09-22, per Todd's direct instruction to "proactively highlight
+  // inconsistencies between media asked for and objective": surface the same
+  // code-computed cmpChannelKpiMismatchNote() signal used at Approve time
+  // (and read back into the AI Brain prompt) right here in the Channel Plan
+  // builder itself, before the team ever approves — not just after the fact
+  // in chat. Computed live off the loaded campaign, not off saved
+  // detailsJson, so it reflects the current Primary KPI/objective even
+  // before this plan has been approved once.
+  const cmpKpiMismatchCampaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  listEl.innerHTML = Object.entries(cmpChannelPlanRows).map(([channel, r]) => {
+    const kpiNote = (typeof cmpChannelKpiMismatchNote === 'function') ? cmpChannelKpiMismatchNote(channel, cmpKpiMismatchCampaign) : null;
+    return `
     <div class="field" style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
       <div style="flex:0 0 160px;overflow:hidden;">
         <label style="visibility:hidden;">Channel</label>
@@ -57886,7 +57930,9 @@ function cmpRenderChannelPlanList(){
         <label style="visibility:hidden;">Delete</label>
         <button type="button" class="btn-ghost" style="padding:11px 14px;white-space:nowrap;" onclick="cmpDeleteChannelPlanCategory('${escapeHtml(channel)}')" title="Delete category">Delete</button>
       </div>
-    </div>`).join('')
+      ${kpiNote ? `<div style="flex:0 0 100%;margin-top:2px;padding:8px 12px;border-radius:8px;background:var(--warning-bg, #fdf3e3);border:1px solid var(--warning, #b8791a);font-family:'Inter';font-size:0.85rem;color:var(--warning, #b8791a);">⚠ ${escapeHtml(kpiNote)}</div>` : ''}
+    </div>`;
+  }).join('')
     // Round 132al (2026-08-11) — informational-only note naming any
     // demand-fulfillment channels on this campaign (Brand Search,
     // Remarketing, Internal Email): no $ row here since their budget lives
@@ -58171,25 +58217,42 @@ async function cmpApproveChannelPlan(){
   if (campaign && !campaign.isAdHoc && !campaign.localOnly){
     for (const r of rows){
       const recommendedAmount = recommendedByChannel[r.channel];
-      let recommendationRationale;
+      // 2026-09-22 follow-up, per direct instruction: "make sure that the
+      // AI Brain recaps that the client user asked to include [the channel]
+      // in the campaign, so we allocated a % based on the overall budget
+      // media mix." The channel's INCLUSION in the plan and its DOLLAR
+      // AMOUNT are two separate facts that were being conflated — every
+      // channel here is in the plan because a human (the client at intake,
+      // or Performance Marketing via "+ Add Category") chose to include
+      // it; the system only ever decides the $ split for an already-chosen
+      // channel, never the choice to include it. Every rationale now leads
+      // with that inclusion fact before the sizing detail.
+      let recommendationRationale = `${r.channel} is included in this campaign because it's part of the channel mix requested at setup (or added later by Performance Marketing) — Verilume never adds a channel on its own. `;
       if (typeof recommendedAmount === 'number' && typeof r.budget === 'number' && Math.abs(r.budget - recommendedAmount) < 1){
         const pct = totalBudgetForRationale ? Math.round((recommendedAmount / totalBudgetForRationale) * 100) : null;
-        recommendationRationale = `Verilume's recommended stage-weighted split for ${campaign.stage || 'this campaign\'s'} stage${pct != null ? ` — ${pct}% of the $${Math.round(totalBudgetForRationale).toLocaleString()} total campaign budget` : ''}. Not a bottom-up cost estimate or a vendor quote — a top-down allocation only.`;
+        recommendationRationale += `Its $${Math.round(r.budget).toLocaleString()} budget is Verilume's recommended stage-weighted split for ${campaign.stage || 'this campaign\'s'} stage${pct != null ? ` — ${pct}% of the $${Math.round(totalBudgetForRationale).toLocaleString()} total campaign budget` : ''}. Not a bottom-up cost estimate or a vendor quote — a top-down allocation only.`;
       } else if (typeof recommendedAmount === 'number'){
-        recommendationRationale = `Manually set by Performance Marketing at $${Math.round(r.budget || 0).toLocaleString()} — differs from Verilume's recommended $${Math.round(recommendedAmount).toLocaleString()} split for this stage. No vendor/tactic breakdown for the manual number is captured on the platform.`;
+        recommendationRationale += `Its $${Math.round(r.budget || 0).toLocaleString()} budget was manually set by Performance Marketing — differs from Verilume's recommended $${Math.round(recommendedAmount).toLocaleString()} split for this stage. No vendor/tactic breakdown for the manual number is captured on the platform.`;
       } else {
-        recommendationRationale = `Manually entered by Performance Marketing — this channel has no recommended-split basis on file (e.g. it's not in this stage's best-practice mix, or was hand-added). No vendor/tactic breakdown is captured on the platform.`;
+        recommendationRationale += `Its $${Math.round(r.budget || 0).toLocaleString()} budget was manually entered by Performance Marketing — this channel has no recommended-split basis on file (e.g. it's not in this stage's best-practice mix). No vendor/tactic breakdown is captured on the platform.`;
       }
+      // 2026-09-22, per direct instruction: "proactively highlight
+      // inconsistencies between media asked for and objective... core
+      // foundation piece for the relevance score." Code-computed (not
+      // model-guessed) — see CHANNELS_WITHOUT_DIRECT_VISIT_TRACKING/
+      // cmpChannelKpiMismatchNote's own comment.
+      const kpiMismatchNote = cmpChannelKpiMismatchNote(r.channel, campaign);
       const cpdBody = {
         channel: r.channel, budget: typeof r.budget === 'number' ? r.budget : null,
         impressions: typeof r.impressions === 'number' ? r.impressions : null,
         productYear: String(new Date().getFullYear()), status: 'approved',
         // Round 132c17 — Mail Class + Postage, Direct Mail rows only (see
         // cmpRenderChannelPlanList()'s own comment). recommendationRationale
-        // now added on every channel, per the comment above.
+        // and kpiMismatchNote now added on every channel, per the comments
+        // above.
         detailsJson: Object.assign(
           r.channel.startsWith('Direct Mail') ? { mailClass: r.mailClass || null, postageCost: typeof r.postageCost === 'number' ? r.postageCost : null } : {},
-          { recommendationRationale }
+          { recommendationRationale, kpiMismatchNote }
         )
       };
       try {
