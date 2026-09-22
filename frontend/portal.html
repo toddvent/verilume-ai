@@ -11702,7 +11702,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-dead-field-consolidation-phase3-writers';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-reply-30s-ceiling';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13675,26 +13675,20 @@ async function cmpCollabRequestAiReply(message){
   cmpRenderCollabBody(c);
   try {
     const priorNotes = cmpCollabNotesFor(c, 'ai').slice(-10).map(n => ({ author: n.author, text: n.text, isAi: n.isAi }));
-    // 2026-09-22 round 2 fix, per Todd's report that ai-brain-reply is
-    // STILL timing out even after the round-1 bump (20000ms -> 45000ms) —
-    // confirmed via his Console/Network capture that both client attempts
-    // were still hitting AbortError around the ~45-50s mark. The backend's
-    // internal retry budget (a ~20s Anthropic call, an 800ms pause, a
-    // second ~20s call) only bounds the Anthropic portion of the request;
-    // real wall-clock also includes cold starts and the account-context
-    // building ahead of the model call (buildAccountBudgetAndPerformanceContextForPrompt,
-    // buildAccountTopMarketsContextForPrompt, etc.), which can push a
-    // genuinely slow-but-successful turn past 45s with little margin left
-    // for ordinary network/Vercel overhead. Raised to 100000ms (Vercel's
-    // own function ceiling is 120s — see vendor-blind-panel's fix — so
-    // this stays safely under it) and maxAttempts dropped 2 -> 1: retrying
-    // a call that's slow-but-working just doubles the user's wait for no
-    // benefit, and the backend already retries once internally on a
-    // genuine Anthropic failure, so a second full client-side attempt is
-    // redundant.
+    // 2026-09-22 round 3 fix, per Todd's hard ceiling: "More than 30
+    // seconds is too long. We'll lose users. Humans think faster." Round 2
+    // (above, kept for history) raised this to 100000ms because the
+    // backend's own retry-after-timeout could legitimately run to ~41s and
+    // still be genuinely working. That backend retry-on-timeout is now
+    // removed (see POST .../ai-brain-reply's own comment) — its single
+    // attempt is capped at 27s specifically so the whole request resolves
+    // well inside 30s. Tightened to match: 30000ms gives a small margin
+    // over the backend's own 27s budget for real network/JSON overhead,
+    // and a request that's still running past that is failing, not just
+    // slow — waiting longer for it doesn't serve the person waiting.
     const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/ai-brain-reply`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, priorNotes }), timeoutMs: 100000
+      body: JSON.stringify({ message, priorNotes }), timeoutMs: 30000
     }, 1, 700);
     cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null, null, (!resp.matchMarketNewlyAttached && resp.matchMarketSuggestion) || null);
     // 2026-09-20, per Todd's direct instruction: a newly-attached Match
@@ -17593,6 +17587,20 @@ const STAGE_TO_OBJECTIVE = Object.fromEntries(
 );
 function cmpCurrentObjective(){
   return (selectedStage && STAGE_TO_OBJECTIVE[selectedStage]) || '';
+}
+// 2026-09-22 — dead-field consolidation, phase 4. cmpCurrentObjective()
+// above answers "what is this campaign's Objective" for the LIVE creation
+// form (selectedStage). A SAVED campaign needs the same answer from its
+// own campaign.stage — this is that lookup. Supabase confirmed
+// campaign.objective is empty on every real campaign, so any code still
+// keying CAMPAIGN_OBJECTIVE_COPY off campaign.objective directly (see
+// sharedContextClause()) was silently failing on every real campaign;
+// campaign.objective is kept only as a last-resort fallback for any
+// pre-existing local-only data that predates this fix.
+function cmpCampaignObjectiveCategory(campaign){
+  if (!campaign) return '';
+  if (campaign.stage && STAGE_TO_OBJECTIVE[campaign.stage]) return STAGE_TO_OBJECTIVE[campaign.stage];
+  return campaign.objective || '';
 }
 
 // How long, in days, this build assumes it takes a given funnel stage's
@@ -50607,8 +50615,9 @@ function sharedContextClause(){
   if (campaign){
     const focus = (campaign.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(' and ')
       || (campaign.productGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(' and ');
-    const copyFn = CAMPAIGN_OBJECTIVE_COPY[campaign.objective];
-    objectiveLine = copyFn ? copyFn(focus) : (campaign.objective ? `${campaign.objective} — worth your attention right now.` : '');
+    const objectiveCategory = cmpCampaignObjectiveCategory(campaign);
+    const copyFn = CAMPAIGN_OBJECTIVE_COPY[objectiveCategory];
+    objectiveLine = copyFn ? copyFn(focus) : (objectiveCategory ? `${objectiveCategory} — worth your attention right now.` : '');
     objectiveShort = objectiveLine ? objectiveLine.split(/(?<=[.!?])\s/)[0] : '';
   }
 
@@ -57942,14 +57951,37 @@ function cmpChannelPlanBudgetDelta(){
 // from). Each row's own r.impressions is already the real Budget ÷ CPM × 1000
 // readout cmpUpdateChannelPlanField() keeps current — this just totals what's
 // already on screen rather than recomputing the math a second way.
+// 2026-09-22 fix, per direct report: this readout showed the line items'
+// own derived total but never compared it against the campaign's full
+// Estimated Impressions forecast (campaign.plannedImpressions, set on
+// Lifecycle Stage & Goals) — so a channel plan could be wildly short of
+// (or over) what the campaign was actually sized for, with nothing on
+// this screen calling that out. Mirrors the existing Spend-vs-budget
+// comparison in cmpRenderChannelPlanTotals() just below, same material
+// threshold shape (skip float-rounding noise), for impressions.
 function cmpRenderChannelPlanTargetImpressions(){
   const el = document.getElementById('cmpChannelPlanTargetImpressions');
   if (!el) return;
   const rows = Object.entries(cmpChannelPlanRows || {});
   if (!rows.length){ el.style.display = 'none'; el.textContent = ''; return; }
   const totalImpr = rows.reduce((s, [, r]) => s + (Number(r.impressions) || 0), 0);
+  const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  const forecast = campaign && typeof campaign.plannedImpressions === 'number' ? campaign.plannedImpressions : null;
   el.style.display = '';
-  el.innerHTML = `<span style="font-weight:700;color:var(--ink);">🎯 Target Impressions: ${totalImpr.toLocaleString()}</span><br><span style="font-weight:400;">Derived from this plan's approved Spend ÷ CPM (×1,000) across every channel above — not a manually set goal, and it updates as Spend or CPM changes.</span>`;
+  let compareLine = '';
+  if (forecast != null){
+    const diff = totalImpr - forecast;
+    const material = Math.abs(diff) > 1 && Math.abs(diff) > forecast * 0.01;
+    if (material){
+      const pct = forecast > 0 ? Math.round(Math.abs(diff) / forecast * 100) : null;
+      compareLine = `<br><span style="font-weight:600;color:${diff > 0 ? 'var(--warning, #b8791a)' : 'var(--flagged, #b8391a)'};">⚠ ${diff > 0 ? 'Over' : 'Under'} the campaign's full Estimated Impressions forecast of ${forecast.toLocaleString()} by ${Math.abs(diff).toLocaleString()}${pct != null ? ` (${pct}%)` : ''} — these line items alone won't deliver what the campaign was sized for.</span>`;
+    } else {
+      compareLine = `<br><span style="font-weight:400;color:var(--muted);">Matches the campaign's full Estimated Impressions forecast (${forecast.toLocaleString()}).</span>`;
+    }
+  } else {
+    compareLine = `<br><span style="font-weight:400;color:var(--muted);">No Estimated Impressions forecast on file for this campaign yet — set one on Lifecycle Stage &amp; Goals to compare against.</span>`;
+  }
+  el.innerHTML = `<span style="font-weight:700;color:var(--ink);">🎯 Target Impressions: ${totalImpr.toLocaleString()}</span><br><span style="font-weight:400;">Derived from this plan's approved Spend ÷ CPM (×1,000) across every channel above — not a manually set goal, and it updates as Spend or CPM changes.</span>${compareLine}`;
 }
 function cmpRenderChannelPlanTotals(){
   const el = document.getElementById('cmpPerfMarketingChannelPlanTotals');
