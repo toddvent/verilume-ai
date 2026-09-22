@@ -11388,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-marketing-calendar-wip-card-audience-stage-fields';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-cmo-brief-analytics-recap-product-creative-group-fields';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40189,7 +40189,7 @@ function cmpBriefAnalyticsBody(c){
       <div class="cmp-brief-recap-grid">
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Loop Stage</span><span class="cmp-brief-recap-val">${escapeHtml(c.stage || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Audience</span><span class="cmp-brief-recap-val">${escapeHtml(c.segment || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Experience Focus</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Type</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
         <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">Start Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.startDate || '(not set)')}</span></div>
         <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
         <!-- 2026-09-19 — CampaignBrief-Mobile.dc.html merges Start Date +
@@ -40203,6 +40203,18 @@ function cmpBriefAnalyticsBody(c){
              convention used for CopyVersions' mobile-only asset count. -->
         <div class="cmp-brief-recap-item cmp-brief-recap-dates-mobile"><span class="cmp-brief-recap-label">Dates</span><span class="cmp-brief-recap-val">${escapeHtml(cmpFmtDateRangeMobile(c.startDate, c.endDate))}</span></div>
         <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Goal</span><span class="cmp-brief-recap-val">${goalParts.length ? escapeHtml(goalParts.join(' ')) : '(not set)'}</span></div>
+        <!-- 2026-09-22 — restored per the same "reproduce every wireframe
+             field literally" standard the 2026-09-19 fix above already
+             applied to this exact card: Campaign-Brief-Analytics-
+             Requirements-Desktop.dc.html's real recap grid is 8 fields, not
+             6 — these two (Campaign Product Group, Creative Focus Group)
+             were missing. Sourced from the same campaign fields Objectives/
+             Campaign Creation and this app's other recap cards already use
+             (campaign.productGroups, campaign.creativeFocusGroups — see
+             cmpRenderPerformanceMarketingRecap() and the Budget &
+             Recommendation brief recap for the same two fields). -->
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Product Group</span><span class="cmp-brief-recap-val">${escapeHtml(c.productGroups || '(not set)')}</span></div>
+        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Creative Focus Group</span><span class="cmp-brief-recap-val">${escapeHtml(c.creativeFocusGroups || '(not set)')}</span></div>
       </div>
     </div>
     <!-- 2026-09-19 — restored per the CampaignBrief-Desktop/Mobile.dc.html
