@@ -11388,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-cmo-brief-analytics-recap-product-creative-group-fields';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-approve-budget-navigates-to-cmo-brief-analytics';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40270,17 +40270,34 @@ async function cmpRecoApproveLine(entryId){
   cmpOpenRecommendationPitch();
 }
 
+// 2026-09-22, per direct report: "Approving the budget should take you the
+// CMO page but it only tells the user that the budget is saved. We don't
+// have a way to access the page." Before this fix, a successful approval
+// just re-rendered this same Recommendation stage (the button flips to
+// "✓ Overall budget approved") — Campaign Brief & Analytics Requirements
+// (the "CMO page", rail key 'briefAnalytics', CMP_STAGE_RAIL above) sits
+// right after this stage in the rail and has real content the moment a
+// budget is approved (the recap + dashboards are already populated by
+// Lifecycle/Performance Marketing, and cmpOpenBriefAnalyticsStage()
+// auto-drafts both CMO messages on open), but nothing ever navigated a
+// person to it — it was only reachable by scrolling the rail and knowing
+// to look for it. A failed approval (the catch below) still leaves the
+// budget unapproved, so it re-renders this same stage instead of
+// navigating away from a save that didn't actually happen.
 async function cmpRecoApproveOverall(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
+  let approved = false;
   try {
     await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/approve-budget-overall`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
     });
+    approved = true;
   } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
   cmpRecoState.campaignId = null;
-  cmpOpenRecommendationPitch();
+  if (approved) openCmpStage('briefAnalytics');
+  else cmpOpenRecommendationPitch();
 }
 
 // 2026-09-16 — the bespoke recommendation-comments dialogue (cmpRecoSendComment/
