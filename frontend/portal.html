@@ -1895,9 +1895,9 @@
      stack-the-panel-below-the-content behavior at 1000px unchanged. */
   .cmp-creative-mobile-ai-bar{display:none;}
   @media (max-width:600px){
-    #cmpCreativePanel .cmp-pitch-body, #cmpTraffickingPanel .cmp-pitch-body, #cmpAnalysisPanel .cmp-pitch-body{grid-template-columns:1fr;}
-    #cmpCreativePanel .cmp-workspace-collab, #cmpTraffickingPanel .cmp-workspace-collab, #cmpAnalysisPanel .cmp-workspace-collab{display:none;}
-    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab, #cmpTraffickingPanel.mobile-collab-open .cmp-workspace-collab, #cmpAnalysisPanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
+    #cmpCreativePanel .cmp-pitch-body, #cmpTraffickingPanel .cmp-pitch-body, #cmpAnalysisPanel .cmp-pitch-body, #cmpCxVisionPanel .cmp-pitch-body{grid-template-columns:1fr;}
+    #cmpCreativePanel .cmp-workspace-collab, #cmpTraffickingPanel .cmp-workspace-collab, #cmpAnalysisPanel .cmp-workspace-collab, #cmpCxVisionPanel .cmp-workspace-collab{display:none;}
+    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab, #cmpTraffickingPanel.mobile-collab-open .cmp-workspace-collab, #cmpAnalysisPanel.mobile-collab-open .cmp-workspace-collab, #cmpCxVisionPanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
     .cmp-creative-mobile-ai-bar{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:12px 16px;background:var(--white);border-top:1px solid var(--line);cursor:pointer;}
     .cmp-creative-mobile-ai-avatar{width:34px;height:34px;border-radius:50%;background:#1E2761;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
     .cmp-creative-mobile-ai-text{flex:1;font-size:0.8125rem;color:var(--muted);}
@@ -8458,6 +8458,40 @@
       </div>
     </div>
 
+    <!-- 2026-09-22 — Media + CX Vision full-screen workspace, per direct
+         correction: "Selecting Media Science & CX takes users to the
+         workstream cards. There is no workstream for this. It's a simple
+         page based on the campaign objectives and approved budget. The
+         navigation should just link to the populated page based on the
+         previous steps and generative AI call to create the two paragraphs
+         that should be editable." Same shell as Trafficking/Analysis above.
+         #cmpCxVisionLeft is filled by cmpRenderCxVisionLeft() (portal.html
+         JS), which reuses cmpBriefAnalyticsBody() — the exact same real
+         recap-card/dashboards/AI-Brain-generated-editable-messages render
+         function the (now-superseded-as-a-destination) accordion module
+         already used — rather than a second copy of that markup. -->
+    <div class="cmp-pitch-overlay" id="cmpCxVisionOverlay" onclick="cmpCloseCxVisionWorkspace()"></div>
+    <div class="cmp-pitch-panel" id="cmpCxVisionPanel">
+      <div class="cch-panel-mount" id="cmpCxVisionHeaderMount"></div>
+      <div class="cmp-pitch-subrow">
+        <h2>Media + CX Vision</h2>
+        <div class="cmp-pitch-subrow-right">
+          <span class="cmp-pitch-subrow-badge" id="cmpCxVisionStatusBadge">Media + CX Vision</span>
+          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseCxVisionWorkspace()" aria-label="Close" title="Close">✕</button>
+        </div>
+      </div>
+      <div id="cmpCxVisionBreadcrumb"></div>
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left" id="cmpCxVisionLeft"></div>
+        <div class="cmp-workspace-collab" id="cmpCxVisionCollabMount"></div>
+      </div>
+      <div class="cmp-creative-mobile-ai-bar" id="cmpCxVisionMobileAiBar" onclick="cmpToggleCxVisionMobileCollab()">
+        <div class="cmp-creative-mobile-ai-avatar">AI</div>
+        <div class="cmp-creative-mobile-ai-text" id="cmpCxVisionMobileAiText">AI Brain live — tap to open the Collaboration Center</div>
+        <div class="cmp-creative-mobile-ai-dot"></div>
+      </div>
+    </div>
+
     <div class="cmp-layout" id="cmpLayout">
       <div class="cmp-rail" id="cmpStageRail"></div>
       <div class="cmp-stages" id="newCampaignForm">
@@ -11388,7 +11422,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-wip-card-impressions-match-pitch-summary';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-media-cx-vision-full-screen-workspace';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12954,6 +12988,14 @@ function cmpWorkspaceCardOpen(cardKey){
   // built to the Creative-Desktop.dc.html/Creative-Mobile.dc.html
   // wireframes, instead of landing on the bare Brand Messaging accordion
   // stub.
+  // 2026-09-22 — same routing fix as 'budget'/'objectives'/'creative' above:
+  // Media + CX Vision now has its own full-screen workspace
+  // (cmpOpenCxVisionWorkspace()) instead of landing on the Workspace Hub
+  // with the briefAnalytics accordion module scrolled open.
+  if (cardKey === 'cxVision' && cmpRailLoadedCampaign() && typeof cmpOpenCxVisionWorkspace === 'function'){
+    cmpOpenCxVisionWorkspace();
+    return;
+  }
   if (cardKey === 'creative' && cmpRailLoadedCampaign() && typeof cmpOpenCreativeWorkspace === 'function'){
     cmpOpenCreativeWorkspace();
     return;
@@ -13000,6 +13042,7 @@ function cmpRenderWorkspaceBreadcrumb(activeKey){
 function cmpBreadcrumbGoTo(cardKey){
   cmpCloseObjectivesIntake();
   cmpCloseRecommendationPitch();
+  if (typeof cmpCloseCxVisionWorkspace === 'function') cmpCloseCxVisionWorkspace();
   if (typeof cmpCloseCreativeWorkspace === 'function') cmpCloseCreativeWorkspace();
   if (typeof cmpCloseTraffickingWorkspace === 'function') cmpCloseTraffickingWorkspace();
   if (typeof cmpCloseAnalysisWorkspace === 'function') cmpCloseAnalysisWorkspace();
@@ -39381,7 +39424,7 @@ function cmpOpenCreativeWorkspace(){
   // other possible mount first so nothing stale flashes there once this
   // overlay closes.
   cmpCollabMountId = 'cmpCreativeCollabMount';
-  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount'].forEach(id => {
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCxVisionCollabMount'].forEach(id => {
     const m = document.getElementById(id);
     if (m) m.innerHTML = '';
   });
@@ -39582,7 +39625,7 @@ function cmpOpenTraffickingWorkspace(){
   const breadcrumb = document.getElementById('cmpTraffickingBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('trafficking');
   cmpCollabMountId = 'cmpTraffickingCollabMount';
-  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpCxVisionCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
     const m = document.getElementById(id);
     if (m) m.innerHTML = '';
   });
@@ -39780,7 +39823,7 @@ function cmpOpenAnalysisWorkspace(){
   const breadcrumb = document.getElementById('cmpAnalysisBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('analysis');
   cmpCollabMountId = 'cmpAnalysisCollabMount';
-  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpTraffickingCollabMount'].forEach(id => {
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpCxVisionCollabMount', 'cmpTraffickingCollabMount'].forEach(id => {
     const m = document.getElementById(id);
     if (m) m.innerHTML = '';
   });
@@ -39810,18 +39853,85 @@ function cmpToggleAnalysisMobileCollab(){
   if (panel) panel.classList.toggle('mobile-collab-open');
 }
 
+// 2026-09-22 — Media + CX Vision full-screen workspace, same shell/pattern
+// as Trafficking/Analysis above (light mount: cmpRenderCxVisionLeft() reuses
+// the real cmpBriefAnalyticsBody(c) render function and cmpBriefState this
+// file already built for the accordion module, nothing duplicated). Per
+// direct correction: clicking the Hub's Media + CX Vision card used to land
+// on the Workspace Hub with that accordion module scrolled open — this is
+// its own dedicated page instead, matching every other Hub card.
+function cmpRenderCxVisionWorkspaceStatusBadge(campaign){
+  const el = document.getElementById('cmpCxVisionStatusBadge');
+  if (!el) return;
+  const card = CMP_WORKSPACE_CARDS.find(c => c.key === 'cxVision');
+  const status = card ? cmpWorkspaceCardStatus(card) : 'not-started';
+  el.className = `stage-status ${status}`;
+  el.textContent = STAGE_STATUS_LABEL[status] || 'Media + CX Vision';
+}
+function cmpOpenCxVisionWorkspace(){
+  const campaign = cmpRailLoadedCampaign();
+  const overlay = document.getElementById('cmpCxVisionOverlay');
+  const panel = document.getElementById('cmpCxVisionPanel');
+  const left = document.getElementById('cmpCxVisionLeft');
+  if (!campaign || !overlay || !panel || !left) return; // locked — same "no real campaign yet" gate as every other downstream stage
+  overlay.classList.add('open');
+  panel.classList.add('open');
+  panel.classList.remove('mobile-collab-open');
+  document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
+  cmpMountCampaignHeaderInto('cmpCxVisionHeaderMount');
+  const breadcrumb = document.getElementById('cmpCxVisionBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('cxVision');
+  cmpCollabMountId = 'cmpCxVisionCollabMount';
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpTraffickingCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
+    const m = document.getElementById(id);
+    if (m) m.innerHTML = '';
+  });
+  cmpRenderCollabCenter(campaign);
+  // Real content: the same recap + campaign dashboards + AI Brain-generated,
+  // editable CMO messages the accordion module already built — auto-drafts
+  // each message the first time (or auto-refreshes a stale, non-human-edited
+  // one), same as opening the accordion module did. cmpRenderCxVisionLeft()
+  // (mounted by the generate/save flow itself) paints the recap/dashboards
+  // shell immediately; the two messages fill in as soon as they resolve.
+  cmpOpenBriefAnalyticsStage();
+  cmpRenderCxVisionLeft();
+  cmpRenderCxVisionWorkspaceStatusBadge(campaign);
+}
+function cmpCloseCxVisionWorkspace(){
+  const overlay = document.getElementById('cmpCxVisionOverlay');
+  const panel = document.getElementById('cmpCxVisionPanel');
+  if (overlay) overlay.classList.remove('open');
+  if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
+  document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const mount = document.getElementById('cmpCxVisionCollabMount');
+  if (mount) mount.innerHTML = '';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign) cmpRenderCollabCenter(campaign);
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  if (campaign) renderCmpWorkspaceHub(campaign);
+}
+function cmpToggleCxVisionMobileCollab(){
+  const panel = document.getElementById('cmpCxVisionPanel');
+  if (panel) panel.classList.toggle('mobile-collab-open');
+}
+
 // 2026-09-20 — persistent utility nav / "← Back to Dashboard", per Todd's
-// direct instruction: these 5 full-screen workspace overlays (Objectives,
-// Budget & Recommendation, Creative, Trafficking, Analysis) had no visible,
-// consistent way back to the Marketer dashboard besides each overlay's own
-// small ✕ close button. cmpSyncUtilityNavBack() is called from every one of
-// the 5 open/close function pairs above (right after they toggle the
-// overlay/panel 'open' class) so the link's visibility always matches
-// whether ANY campaign workspace overlay is currently open — never on
-// ordinary pages/views where there's nothing to back out of.
+// direct instruction: these full-screen workspace overlays (Objectives,
+// Budget & Recommendation, Media + CX Vision, Creative, Trafficking,
+// Analysis) had no visible, consistent way back to the Marketer dashboard
+// besides each overlay's own small ✕ close button. cmpSyncUtilityNavBack()
+// is called from every one of the open/close function pairs above (right
+// after they toggle the overlay/panel 'open' class) so the link's
+// visibility always matches whether ANY campaign workspace overlay is
+// currently open — never on ordinary pages/views where there's nothing to
+// back out of.
 const CMP_WORKSPACE_PANEL_CLOSERS = {
   cmpObjectivesPanel: () => cmpCloseObjectivesIntake(),
   cmpPitchPanel: () => cmpCloseRecommendationPitch(),
+  cmpCxVisionPanel: () => cmpCloseCxVisionWorkspace(),
   cmpCreativePanel: () => cmpCloseCreativeWorkspace(),
   cmpTraffickingPanel: () => cmpCloseTraffickingWorkspace(),
   cmpAnalysisPanel: () => cmpCloseAnalysisWorkspace()
@@ -40030,6 +40140,29 @@ async function cmpRecoGenerateNarrative(){
 // button that blows away a human edit without them asking for it, and the
 // AI-managed cards still refresh with zero buttons at all.
 let cmpBriefState = { campaignId: null, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter' };
+// 2026-09-22 — Media + CX Vision full-screen workspace (cmpOpenCxVisionWorkspace()
+// below). Per direct correction: "Selecting Media Science & CX takes users
+// to the workstream cards. There is no workstream for this. It's a simple
+// page based on the campaign objectives and approved budget. The
+// navigation should just link to the populated page based on the previous
+// steps and generative AI call to create the two paragraphs that should be
+// editable." This card's target, briefAnalytics, only existed as one more
+// accordion module inside the Workspace Hub's 13-stage rail — clicking the
+// Hub card landed a person back on the Hub with that module scrolled open,
+// reading exactly like "the workstream cards," not a dedicated page. Light
+// mount, not a re-plumb (same "reuse the real function/state, don't
+// duplicate it" call this file already made for Trafficking/Analysis):
+// cmpBriefAnalyticsBody(c) is the same real render function the accordion
+// module already used, just mounted into its own full-screen panel here.
+// This helper is the one new piece — called alongside every existing
+// renderCmpDownstreamStages() call below so the overlay (when open) stays
+// in sync with the same auto-draft/auto-refresh/save flow the accordion
+// module already had, instead of being a second, disconnected copy.
+function cmpRenderCxVisionLeft(){
+  const left = document.getElementById('cmpCxVisionLeft');
+  const campaign = cmpRailLoadedCampaign();
+  if (left && campaign) left.innerHTML = cmpBriefAnalyticsBody(campaign);
+}
 async function cmpOpenBriefAnalyticsStage(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
@@ -40037,6 +40170,7 @@ async function cmpOpenBriefAnalyticsStage(){
     cmpBriefState = { campaignId: campaign.id, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter' };
   }
   renderCmpDownstreamStages();
+  cmpRenderCxVisionLeft();
   if (!cmpBriefState.summary){
     try {
       cmpBriefState.summary = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`, {});
@@ -40044,6 +40178,7 @@ async function cmpOpenBriefAnalyticsStage(){
       console.warn('cmpOpenBriefAnalyticsStage: pitch-summary load failed', e);
     }
     renderCmpDownstreamStages();
+    cmpRenderCxVisionLeft();
   }
   // Auto-draft each message the first time this campaign has neither an AI
   // draft nor a human edit on file yet.
@@ -40069,6 +40204,7 @@ async function cmpBriefGenerate(audience){
   if (isAnalytics) { cmpBriefState.analyticsLoading = true; cmpBriefState.analyticsError = null; }
   else { cmpBriefState.copyLoading = true; cmpBriefState.copyError = null; }
   renderCmpDownstreamStages();
+  cmpRenderCxVisionLeft();
   try {
     const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/cmo-team-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audience }) });
     if (resp.message){
@@ -40091,6 +40227,7 @@ async function cmpBriefGenerate(audience){
   }
   if (isAnalytics) cmpBriefState.analyticsLoading = false; else cmpBriefState.copyLoading = false;
   renderCmpDownstreamStages();
+  cmpRenderCxVisionLeft();
 }
 // Persists an inline edit (or a fresh AI draft) straight to the campaign
 // row, same merge-update POST /api/campaigns/:id every other editable
@@ -40128,6 +40265,7 @@ function cmpBriefOnBlur(audience, el){
   const editedField = isAnalytics ? 'cmoAnalyticsBriefEditedByHuman' : 'cmoCopywriterBriefEditedByHuman';
   cmpBriefSaveField(field, el.innerText.trim(), { [editedField]: 1 });
   renderCmpDownstreamStages(); // reflect the "Edited" tag immediately, not just after the save round-trip
+  cmpRenderCxVisionLeft();
 }
 // The explicit clear for a human override (see the block comment above
 // cmpBriefState's declaration) — hands this message back to auto-refresh
@@ -40142,10 +40280,18 @@ function cmpBriefResetToAiManaged(audience){
 function cmpBriefSetMobileTab(tab){
   cmpBriefState.mobileTab = tab;
   renderCmpDownstreamStages();
+  cmpRenderCxVisionLeft();
 }
+// 2026-09-22 fix — this used to always call openCmpStage('creative'), which
+// only opens the accordion module. Creative has had its own full-screen
+// workspace (cmpOpenCreativeWorkspace()) since 2026-09-20; routing through
+// cmpWorkspaceCardOpen('creative') picks that up the same way the
+// Workspace Hub's own Creative card does, and closes this overlay first so
+// the two full-screen panels never stack.
 async function cmpBriefContinueToCreative(campaignId){
   await cmpBriefSaveField('briefAnalyticsContinuedAt', new Date().toISOString());
-  openCmpStage('creative');
+  if (typeof cmpCloseCxVisionWorkspace === 'function') cmpCloseCxVisionWorkspace();
+  cmpWorkspaceCardOpen('creative');
 }
 // The tag in a CMO card's top-right corner. Truthfully reflects whichever
 // of the two real states this specific message is in — the wireframe's
@@ -40196,7 +40342,15 @@ function cmpBriefAnalyticsBody(c){
     <div class="cmp-brief-recap-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="font-size:1rem;font-weight:700;color:var(--ink);">Campaign brief recap</div>
-        <button type="button" class="btn-ghost" onclick="openCmpStage('lifecycle')">Edit →</button>
+        <!-- 2026-09-22 fix — this page now also opens as its own full-screen
+             workspace (cmpOpenCxVisionWorkspace()), which sits visually
+             above the accordion Lifecycle stage this button targets; without
+             closing the overlay first, the click silently changed state
+             behind it with nothing visibly happening. Still a harmless
+             no-op when this body is rendered inside the accordion module
+             itself (cmpCloseCxVisionWorkspace() is a no-op there since the
+             overlay is already closed). -->
+        <button type="button" class="btn-ghost" onclick="if(typeof cmpCloseCxVisionWorkspace==='function')cmpCloseCxVisionWorkspace();openCmpStage('lifecycle')">Edit →</button>
       </div>
       <p class="cmp-stage-note" style="padding:6px 0 0;">Carried forward from Lifecycle Stage &amp; Goals so the messages below can be checked against it at a glance — edited there, not here.</p>
       <div class="cmp-brief-recap-grid">
@@ -40287,16 +40441,20 @@ async function cmpRecoApproveLine(entryId){
 // CMO page but it only tells the user that the budget is saved. We don't
 // have a way to access the page." Before this fix, a successful approval
 // just re-rendered this same Recommendation stage (the button flips to
-// "✓ Overall budget approved") — Campaign Brief & Analytics Requirements
-// (the "CMO page", rail key 'briefAnalytics', CMP_STAGE_RAIL above) sits
-// right after this stage in the rail and has real content the moment a
-// budget is approved (the recap + dashboards are already populated by
-// Lifecycle/Performance Marketing, and cmpOpenBriefAnalyticsStage()
-// auto-drafts both CMO messages on open), but nothing ever navigated a
-// person to it — it was only reachable by scrolling the rail and knowing
-// to look for it. A failed approval (the catch below) still leaves the
-// budget unapproved, so it re-renders this same stage instead of
+// "✓ Overall budget approved"). Media + CX Vision (rail key 'briefAnalytics',
+// CMP_WORKSPACE_CARDS key 'cxVision') has real content the moment a budget
+// is approved (the recap + dashboards are already populated by Lifecycle/
+// Performance Marketing, and cmpOpenBriefAnalyticsStage() auto-drafts both
+// CMO messages on open). A failed approval (the catch below) still leaves
+// the budget unapproved, so it re-renders this same stage instead of
 // navigating away from a save that didn't actually happen.
+// 2026-09-22 follow-up, per direct correction: "Selecting Media Science &
+// CX takes users to the workstream cards. There is no workstream for this.
+// ... The navigation should just link to the populated page." Switched from
+// openCmpStage('briefAnalytics') (opens the accordion module inside the
+// Workspace Hub — reads as landing back on the Hub) to
+// cmpOpenCxVisionWorkspace(), the dedicated full-screen page that same
+// correction asked for.
 async function cmpRecoApproveOverall(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
@@ -40309,7 +40467,7 @@ async function cmpRecoApproveOverall(){
     approved = true;
   } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
   cmpRecoState.campaignId = null;
-  if (approved) openCmpStage('briefAnalytics');
+  if (approved){ cmpCloseRecommendationPitch(); cmpOpenCxVisionWorkspace(); }
   else cmpOpenRecommendationPitch();
 }
 
