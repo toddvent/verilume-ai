@@ -709,12 +709,34 @@
   .cmp-brief-cmo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
   @media (max-width:900px){ .cmp-brief-cmo-grid{grid-template-columns:1fr;} }
   .cmp-brief-cmo-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;position:relative;}
-  .cmp-brief-cmo-label{font-size:0.75rem;font-weight:700;color:var(--advocacy);text-transform:uppercase;letter-spacing:0.03em;display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  /* 2026-09-22 fix, per direct report ("We moved away from our standard
+     Edit design treatment"): this label used color:var(--advocacy) (the
+     app's bright indigo/purple accent) where every other card title in
+     the app — Campaign Summary, Campaign brief recap, From Campaign
+     Creation, etc. — renders its title in var(--ink), reserving the
+     accent color for the "Edit" affordance itself, not the title text.
+     Also matches the wireframe's own #1D1D1F (near-black) spec for this
+     exact label per Campaign-Brief-Analytics-Requirements-Desktop.dc.html.
+     The AI avatar keeps its var(--advocacy) badge background — that IS
+     this app's standard treatment for an AI-attributed avatar (see
+     .cmp-collab-avatar / .cmp-collab-team-avatar, same color). */
+  .cmp-brief-cmo-label{font-size:0.75rem;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:0.03em;display:flex;align-items:center;gap:8px;margin-bottom:12px;}
   .cmp-brief-cmo-avatar{width:26px;height:26px;border-radius:50%;background:var(--advocacy);color:var(--white);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
   .cmp-brief-cmo-body{font-size:0.8125rem;color:var(--ink);line-height:1.6;min-height:60px;outline:none;}
   .cmp-brief-cmo-body:focus{background:var(--paper-dim);border-radius:8px;}
   .cmp-brief-cmo-body.placeholder{color:var(--muted);font-style:italic;}
-  .cmp-brief-edit-tag{position:absolute;top:18px;right:18px;font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
+  /* 2026-09-22 fix, same report: this was a plain floating muted-text
+     label ("✎ Editable") with no border/pill, unlike every other "Edit"
+     affordance in the app (Campaign Summary's "✎ Edit", "✎ Edit total →",
+     "✎ Edit media plan..." — all .btn-ghost pills: bordered, ink-colored
+     text, rounded). Restyled as a small ghost-pill badge matching that
+     family (border, radius, ink text) instead of introducing a new,
+     unbordered treatment. Still non-interactive text in the "Editable"
+     state (the card body itself is directly contenteditable — there's no
+     separate click-to-edit action to route to a button), but its "Edited
+     — Reset to AI-managed" state is a real link, so the pill shape now
+     reads consistently whether or not it's clickable. */
+  .cmp-brief-edit-tag{position:absolute;top:16px;right:16px;font-size:0.75rem;font-weight:600;color:var(--ink);background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;display:flex;align-items:center;gap:4px;}
   /* Mobile "To Copywriter / To Analytics" tab bar — hidden ≥900px, where
      both cards show side by side per the desktop wireframe instead. No
      existing tab-bar component fit this exact underline-tab shape, so this
@@ -11422,7 +11444,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-media-cx-vision-full-screen-workspace';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-cmo-card-edit-treatment-and-workstream-cleanup';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -19552,11 +19574,21 @@ function toggleNewsRead(id){
 // below shows an honest "nothing built here yet, here's what's related"
 // message for that tab rather than fabricating a card. See the project doc
 // for the full phase plan.
+// 2026-09-22 fix, per direct instruction ("Remove Media Science and CX from
+// the workstream page"): the 'mediaScience' and 'customerExperiences' cards
+// are removed from this top-level workstream grid. This is a different
+// "workstream page" than the per-campaign Workspace Hub cards
+// (CMP_WORKSPACE_CARDS) — that's the account-wide CMO Dashboard grid these
+// two labels ("Media Science", "Customer Experiences (CX)") literally
+// matched. Their underlying pages (step-mediaScience, step-customerExperiences)
+// and every existing cross-link into them (openWorkstream('mediaScience'),
+// the "Go to Analytics →" button, the Geographic Agentic Optimization
+// teaser card, etc.) are left intact — only the top-level entry points into
+// them from this grid are removed, so nothing that already links deeper in
+// breaks.
 const WORKSTREAMS = [
   { key: 'experienceManagement', tab: 'marketer', label: 'AI Agent Training', desc: 'Budgets, research, brand style, marketing ops, content development, omni-channel creative, performance marketing, lifecycle marketing, and PR — the direct-access grid, if you already know where you\'re going.' },
   { key: 'brand', tab: 'accountManagement', label: () => state.company ? `${state.company} Configuration` : 'Configuration', desc: 'The upfront setup every other workstream depends on: brand voice & style, sample writings & presentations, competitive positioning, marketing budget upload, product & campaign groups, and team management — done once here, inherited everywhere else.' },
-  { key: 'mediaScience', tab: 'dataScientist', label: 'Media Science', desc: 'Measurement coverage & confidence, match-market testing, website traffic analysis, and the media-performance side of AI agent analysis.', badge: 'Analytics' },
-  { key: 'customerExperiences', tab: 'brand', label: 'Customer Experiences (CX)', desc: 'AI agent analysis, layered from the CMO view down to channel-specific creative performance — the guest/customer-experience side.' },
   { key: 'reputation', tab: 'brand', label: 'PR & Corp Comm', desc: 'PR & Corporate Communications — brand mentions, press, and editorial relationships, monitored continuously and connected to what Search Optimization is already seeing.', badge: 'Enterprise' },
   { key: 'teamDevelopment', tab: 'accountManagement', label: 'Team Experiences', desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.' },
   { key: 'marketingCalendar', tab: 'marketer', label: 'Marketing Calendar', desc: 'Every scheduled campaign event across this account, by month — the account-wide view before drilling into any one campaign.' },
