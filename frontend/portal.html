@@ -11444,7 +11444,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-client-timeout-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-budget-cpm-column-and-impressions-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40941,14 +40941,13 @@ function cmpRenderPitchLeft(campaign){
         ${CMP_SPEND_REGIONS.map(r => `<button type="button" class="stage-tile${regionFilter === r ? ' selected' : ''}" style="padding:6px 14px;" onclick="cmpRecoSetRegionFilter('${r}')">${escapeHtml(r)}</button>`).join('')}
       </div>` : ''}
     </div>
-    <!-- 2026-09-21 round 2 — "Edit CPM & impressions defaults" moved here
-         from the Campaign Summary card above, per Todd's direct
-         instruction ("Remove, featured below when reviewing channel
-         spend"): it's about the line items in this table, not the
-         top-level summary. -->
-    <div class="btn-row" style="margin-bottom:10px;">
-      <button type="button" class="btn-ghost" onclick="cmpCloseRecommendationPitch();openCmpStage('perfMarketing');">Edit CPM &amp; impressions defaults →</button>
-    </div>
+    <!-- 2026-09-22 — "Edit CPM & impressions defaults →" link removed
+         entirely, per Todd's direct instruction ("We can remove Edit CPM
+         and Impression defaults link that takes user to a different
+         page"): the table below now shows each line's real/derived CPM
+         directly (see cmpRecoLineCpmHtml's own comment), so there's no
+         longer a reason to route the user to a separate Performance
+         Marketing screen just to see or reason about CPM here. -->
     ${viewingChannel ? cmpRecoChannelTableHtml(summary, regionFilter) : cmpRecoAudienceTableHtml(audienceRows)}
     <!-- 2026-09-21, per direct follow-up: "Direct Mail at $35k was also
          extracted. It could be a chip listed below the table to reinforce
@@ -40989,6 +40988,36 @@ function cmpRenderPitchLeft(campaign){
 // endpoints (server.js round 102), same "refresh from server after a real
 // write" convention cmpRecoApproveLine()/cmpRecoApplySuggestion() already
 // use on this screen.
+// 2026-09-22, per Todd's direct instruction: "We should add the CPM as a
+// new column based on the data we originally loaded or current data
+// provided by the client." A real line already carrying both a real
+// budget and real impressions (either originally loaded, or since edited
+// with a client-provided actual) has a REAL derived CPM — budget divided
+// by impressions — which is stronger data than any illustrative default
+// and shown first. Only falls back to this channel's illustrative default
+// rate (ILLUSTRATIVE_CHANNEL_CPM, same table this screen's own impressions
+// estimate already uses — see cmpRecoEstimatedTotalImpressions's comment)
+// when no real impressions figure is on this line yet. A non-impression
+// channel (Direct Mail, Field/ABM — priced per-piece/per-contact, not
+// per-ad-impression, per NON_IMPRESSION_CHANNELS's own comment) still has
+// a real per-piece "CPM-equivalent" rate in the same table, so it renders
+// the same way rather than reading as blank.
+function cmpRecoLineCpm(l){
+  const budget = Number(l.budget) || 0;
+  const impressions = Number(l.impressions) || 0;
+  if (budget > 0 && impressions > 0){
+    return { value: (budget / impressions) * 1000, source: 'actual' };
+  }
+  const cpm = ILLUSTRATIVE_CHANNEL_CPM[l.channel];
+  if (typeof cpm === 'number') return { value: cpm, source: 'default' };
+  return { value: null, source: 'none' };
+}
+function cmpRecoLineCpmHtml(l){
+  const c = cmpRecoLineCpm(l);
+  if (c.value == null) return '—';
+  const formatted = `$${c.value.toLocaleString(undefined, { maximumFractionDigits: c.value < 10 ? 2 : 0 })}`;
+  return c.source === 'actual' ? formatted : `${formatted} <span class="illustrative-tag">default</span>`;
+}
 function cmpRecoChannelTableHtml(summary, regionFilter){
   const allItems = summary.lineItems || [];
   // 2026-09-16 — region filter, per Todd's "toggle between budget
@@ -41030,6 +41059,10 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditStage_${l.id}">${stageOptionsForRow(l.stage || '')}</select></div></td>
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditRegion_${l.id}">${regionOptionsHtml(l.region || 'US')}</select></div></td>
           <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditBudget_${l.id}" value="${Number(l.budget) || 0}" min="0" step="1"></div></td>
+          <!-- CPM is derived (budget ÷ impressions, or this channel's
+               illustrative default) — not independently editable; it
+               updates on its own once Budget/Impressions are saved. -->
+          <td>${cmpRecoLineCpmHtml(l)}</td>
           <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditImpressions_${l.id}" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1"></div></td>
           <td>
             <button type="button" class="btn-primary" onclick="cmpRecoSaveLineEdit('${l.id}')">Save</button>
@@ -41043,6 +41076,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
         <td>${escapeHtml(l.stage || '(campaign default)')}</td>
         <td>${escapeHtml(l.region || 'US')}</td>
         <td>${fmtMoney(Number(l.budget) || 0)}</td>
+        <td>${cmpRecoLineCpmHtml(l)}</td>
         <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
         <td style="white-space:nowrap;">
           ${l.clientApprovedAt ? `✓ Approved${l.clientApprovedBy ? ' by ' + escapeHtml(l.clientApprovedBy) : ''}` : `<button type="button" class="btn-ghost" onclick="cmpRecoApproveLine('${l.id}')">Approve →</button>`}
@@ -41057,6 +41091,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewStage">${stageOptionsForNewRow()}</select></div></td>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewRegion">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></div></td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewBudget" value="0" min="0" step="1"></div></td>
+      <td>—</td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewImpressions" value="0" min="0" step="1"></div></td>
       <td>
         <button type="button" class="btn-primary" onclick="cmpRecoSaveNewChannel()">Save</button>
@@ -41083,7 +41118,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
     : `<p class="lede">No channel plan lines entered for this campaign yet.</p>${generateFromIntakeBtn}`;
   const table = items.length || s.addingLine ? `
     <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table cmp-reco-channel-table" style="width:100%;margin-bottom:14px;">
-      <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>Impressions</th><th>Client Approval</th></tr></thead>
+      <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>CPM</th><th>Impressions</th><th>Client Approval</th></tr></thead>
       <tbody>${items.map(rowHtml).join('')}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
@@ -41601,9 +41636,12 @@ function cmpRecoExportCsv(){
   const campaign = cmpRailLoadedCampaign();
   const summary = cmpRecoState.summary || {};
   if (!campaign) return;
-  const rows = [['Channel', 'Region', 'Budget', 'Impressions', 'Client Approval']];
+  // 2026-09-22 — CPM column added, same real/derived-or-default value as
+  // the on-screen table (cmpRecoLineCpm) — see that function's own comment.
+  const rows = [['Channel', 'Region', 'Budget', 'CPM', 'Impressions', 'Client Approval']];
   (summary.lineItems || []).forEach(l => {
-    rows.push([l.channel || '', l.region || 'US', Number(l.budget) || 0, Math.round(Number(l.impressions) || 0), l.clientApprovedAt ? 'Approved' : 'Pending']);
+    const cpm = cmpRecoLineCpm(l);
+    rows.push([l.channel || '', l.region || 'US', Number(l.budget) || 0, cpm.value != null ? cpm.value.toFixed(2) : '', Math.round(Number(l.impressions) || 0), l.clientApprovedAt ? 'Approved' : 'Pending']);
   });
   const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
