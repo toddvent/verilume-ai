@@ -258,6 +258,7 @@ if (process.env.DATABASE_URL) {
 const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   activitynotesjson: 'activityNotesJson',
   audiencesharedexperience: 'audienceSharedExperience',
+  audiencecopyjson: 'audienceCopyJson',
   briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
   businessinitiative: 'businessInitiative',
   campaigntypedetailsjson: 'campaignTypeDetailsJson',
@@ -1461,6 +1462,22 @@ ensureColumn('campaigns', 'campaignTypeDetailModesJson', 'TEXT');
 // behavior for every campaign saved before this field existed.
 ensureColumn('campaigns', 'audienceSharedExperience', "TEXT DEFAULT 'shared'");
 
+// audienceCopyJson — Step 1's real per-audience contest winners. Added
+// 2026-09-22, per direct instruction to build Step 1 (Select Winner &
+// Apply) for real. audienceTargets (above) is parsed into a plain list by
+// splitting on commas (Todd's direct choice over building a real
+// structured audience table — lighter-weight, works with what Performance
+// Marketing already writes) — see parseAudienceList(). This column stores
+// one JSON object keyed by that EXACT parsed audience name (case-
+// sensitive, matching the string as it appears in audienceTargets) ->
+// { copy, interviewId, selectedAt, selectedBy }. Written only by POST
+// .../copy-interview/:id/select when the request includes an `audience`
+// field (see that endpoint) — running the shared, non-audience-scoped
+// contest never touches this column. Null/absent = no audience has a
+// winner yet, same "nothing changes until someone actually picks a
+// winner" default every other additive field here uses.
+ensureColumn('campaigns', 'audienceCopyJson', 'TEXT');
+
 // Added 2026-09-17 — Business Initiative, per direct instruction: "make sure
 // the key campaign type (e.g. launch) and business initiative is clear and
 // passed to the AI Brain for analysis before we recommend campaign copy."
@@ -2338,6 +2355,15 @@ createTableIfNeeded(`
     FOREIGN KEY (campaignId) REFERENCES campaigns(id)
   );
 `);
+// audience — 2026-09-22, Step 1 (Select Winner & Apply). When this
+// interview was run for one specific audience (Creative Step 1's
+// per-audience contest, not the shared campaign-wide one), the exact
+// audience string it was written for is recorded here too — belt-and-
+// suspenders alongside sourceKey already encoding it (see
+// audienceContestSourceKey()), and it's what the /select endpoint falls
+// back to when the client doesn't repeat `audience` on the select call.
+// Null for every pre-existing row and for the shared contest, unchanged.
+ensureColumn('campaign_copy_interviews', 'audience', 'TEXT');
 // 2026-09-18 — Copy Versions' "own" Campaign-Level Copy Contest, added
 // earlier today, is REMOVED as of this same day, per Todd's direct
 // correction: he clarified that the campaign-level contest (brand voice
@@ -14199,6 +14225,36 @@ function campaignTypeDetailMode(campaign, fieldKey){
   } catch (e) { /* fall through to default */ }
   return 'exact';
 }
+// 2026-09-22 — Creative Step 1 (Select Winner & Apply), per direct
+// instruction to build real per-audience contests. Todd's direct choice
+// over standing up a real structured audience table: parse the EXISTING
+// audienceTargets free-text field (Performance Marketing's shared
+// comma-separated string — see its ensureColumn comment) into a plain
+// list, trimmed and de-duplicated, empty entries dropped. Lighter-weight
+// than a schema change, works with what the app already writes today —
+// the tradeoff (flagged to Todd before building this) is that it relies
+// on audienceTargets staying comma-separated; a differently-formatted
+// entry won't split the way this expects. Used both server-side (running
+// a contest per audience) and mirrored client-side in portal.html so
+// Step 1's UI lists the exact same audiences this function would.
+function parseAudienceList(audienceTargetsText){
+  if (!audienceTargetsText || typeof audienceTargetsText !== 'string') return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of audienceTargetsText.split(',')){
+    const name = raw.trim();
+    if (name && !seen.has(name)){ seen.add(name); out.push(name); }
+  }
+  return out;
+}
+// One stable sourceKey per audience, so re-running that audience's contest
+// and reading its history both land on the same campaign_copy_interviews
+// rows (same convention as CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY on the
+// client for the shared contest). Deliberately keeps the exact audience
+// string in the key (not a hash) so it stays human-readable in the DB.
+function audienceContestSourceKey(audienceName){
+  return `campaign_copy::audience::${audienceName}`;
+}
 // Honest completeness check — never blocks anything (this codebase's
 // "suggestion, never a silent gate" discipline holds here too), just
 // reports what's missing so the UI/AI prompt can be honest about gaps
@@ -16471,7 +16527,7 @@ const INTERVIEW_CROSS_VENDOR_BRIEF = 'Write the single best, most persuasive ver
 // path and the 4 vendor paths below build from this same context, so a
 // cross-vendor comparison is actually comparing the same brief, not
 // accidentally different context depth per vendor.
-function buildInterviewPrompt(brief, campaign, account, sampleContext){
+function buildInterviewPrompt(brief, campaign, account, sampleContext, audienceLabel){
   const stageJob = MEDIA_LOOP_STAGE_JOB[campaign.stage] || 'No Loop Stage set on this campaign yet.';
   const voiceGuide = (account.voiceGuideText || '').slice(0, 2000);
   const styleNotes = (account.styleNotes || '').slice(0, 1200);
@@ -16491,7 +16547,7 @@ CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 - Objective: ${campaign.objective || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}
-- Primary KPI: ${campaign.primaryKpi || '(not set)'}
+${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n` : ''}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 - Role/Style approach, if the account has one on file: ${campaign.roleStyle || '(none set -- follow your assigned angle above)'}
 ${campaign.mandatoryPhrase ? `- MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy -- this is not optional, its absence is a compliance failure): "${campaign.mandatoryPhrase}"\n` : ''}${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
@@ -16502,9 +16558,9 @@ Submit your draft via the submit_copy tool.`;
 // taking an explicit strategic brief instead of the general-purpose prompt,
 // so the candidates are honestly different drafts rather than three samples
 // of one instruction.
-async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext){
+async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel){
   try {
-    const prompt = buildInterviewPrompt(angle.brief, campaign, account, sampleContext);
+    const prompt = buildInterviewPrompt(angle.brief, campaign, account, sampleContext, audienceLabel);
     const parsed = await callClaudeForJSON({
       model: angle.model,
       maxTokens: 700,
@@ -16522,9 +16578,9 @@ async function generateInterviewCandidateCopy(angle, campaign, account, sampleCo
 // shares buildInterviewPrompt() (already ends in the {"copy": "..."}
 // instruction) with the Anthropic angles above, so this compares vendors on
 // the exact same brief-and-context depth.
-async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleContext){
+async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleContext, audienceLabel){
   try {
-    const prompt = buildInterviewPrompt(INTERVIEW_CROSS_VENDOR_BRIEF, campaign, account, sampleContext);
+    const prompt = buildInterviewPrompt(INTERVIEW_CROSS_VENDOR_BRIEF, campaign, account, sampleContext, audienceLabel);
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
     if (!parsed) return { copy: null, error: 'Generation returned no parseable JSON.' };
@@ -16984,7 +17040,7 @@ function checkInterviewWeeklyCap(accountId){
 // configured" placeholder, same as before this round — the only change is
 // that a configured vendor now runs for real instead of being permanently
 // unconfigured.
-async function runCandidateInterview(campaign, account){
+async function runCandidateInterview(campaign, account, audienceLabel){
   if (!process.env.ANTHROPIC_API_KEY){
     return {
       available: false,
@@ -17005,10 +17061,10 @@ async function runCandidateInterview(campaign, account){
   // candidate for a future round, not this one.
   const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
   const generated = await Promise.all(
-    INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext))
+    INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel))
   );
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext)));
+  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)));
 
   const scored = await Promise.all(
     generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
@@ -25635,6 +25691,17 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (typeof body.sourceKey !== 'string' || !body.sourceKey){
         return sendJson(res, 400, { error: 'sourceKey is required' });
       }
+      // 2026-09-22 — Step 1 (Select Winner & Apply): optional body.audience
+      // runs THIS interview for one specific audience instead of the
+      // shared campaign-wide brief — see runCandidateInterview's
+      // audienceLabel param and parseAudienceList()'s comment for why this
+      // is a free-text match against audienceTargets rather than an id.
+      // Not validated against parseAudienceList(campaign.audienceTargets)
+      // here on purpose: a client re-running a contest for an audience
+      // that's since been edited off audienceTargets should still work
+      // (the interview and any already-applied winner are historical
+      // record, not invalidated by a later edit elsewhere).
+      const audienceLabel = typeof body.audience === 'string' && body.audience.trim() ? body.audience.trim() : null;
       // 2026-09-17 — same required gate as messaging-ai-draft (see its own
       // comment): this endpoint is real AI campaign-copy generation too
       // (the campaign-level copy contest), so it's covered by the same
@@ -25653,18 +25720,18 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }
       const capCheck2 = checkInterviewWeeklyCap(campaign.accountId);
       if (capCheck2) return sendJson(res, 429, capCheck2);
-      const result = await runCandidateInterview(campaign, account);
+      const result = await runCandidateInterview(campaign, account, audienceLabel);
       if (!result.available){
         return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
       }
       const now = new Date().toISOString();
       const interviewId = generateId('CCI');
       const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
-      db.prepare(`INSERT INTO campaign_copy_interviews (id, campaignId, accountId, sourceKey, requestedBy, candidatesJson, createdAt)
-        VALUES (?,?,?,?,?,?,?)`)
-        .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now);
+      db.prepare(`INSERT INTO campaign_copy_interviews (id, campaignId, accountId, sourceKey, requestedBy, candidatesJson, createdAt, audience)
+        VALUES (?,?,?,?,?,?,?,?)`)
+        .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now, audienceLabel);
       return sendJson(res, 200, {
-        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now
+        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now, audience: audienceLabel
       });
     }
 
@@ -25696,6 +25763,25 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
       db.prepare('UPDATE campaign_copy_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
         .run(body.candidateKey, selectedBy, now, interviewId);
+      // 2026-09-22 — Step 1 (Select Winner & Apply): when this select comes
+      // from a per-audience contest (interview.audience set, or an explicit
+      // body.audience matching it), also persist the winning copy onto
+      // campaign.audienceCopyJson keyed by that exact audience string —
+      // this is what "apply campaign-wide for that audience" actually means
+      // server-side, since there's no per-audience longFormCopy column.
+      // Only ever written here, on an explicit click — never silently.
+      const audienceForApply = typeof body.audience === 'string' && body.audience.trim()
+        ? body.audience.trim()
+        : (interview.audience || null);
+      let audienceApplied = null;
+      if (audienceForApply){
+        let audienceCopyMap = {};
+        try { audienceCopyMap = campaign.audienceCopyJson ? JSON.parse(campaign.audienceCopyJson) : {}; } catch (e){ audienceCopyMap = {}; }
+        if (!audienceCopyMap || typeof audienceCopyMap !== 'object') audienceCopyMap = {};
+        audienceCopyMap[audienceForApply] = { copy: chosen.copy, interviewId, selectedAt: now, selectedBy };
+        db.prepare('UPDATE campaigns SET audienceCopyJson = ? WHERE id = ?').run(JSON.stringify(audienceCopyMap), campaignId);
+        audienceApplied = audienceForApply;
+      }
       // 2026-08-25 — Contest-Winner Priority Model: this winner becomes the
       // account's priority model for marketing_copy generation going
       // forward, until a future contest overwrites it. Additive only — the
@@ -25717,7 +25803,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // both use, not a second, independently-set value that could
       // disagree with it.
       recordContestResult(campaign.accountId, 'Campaign', campaignTypeCompleteness(campaign).label || 'General', chosen, candidates, 'campaign_copy_interviews', interviewId, selectedBy, campaignId);
-      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy });
+      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy, audienceApplied });
     }
 
     // 2026-09-18 — POST .../campaign-copy-contest and its /select sibling
@@ -25750,7 +25836,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         let candidates = [];
         try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
         return {
-          id: r.id, sourceKey: r.sourceKey, candidates: redactCandidatesForClient(candidates),
+          id: r.id, sourceKey: r.sourceKey, audience: r.audience || null, candidates: redactCandidatesForClient(candidates),
           selectedCandidateKey: r.selectedCandidateKey, selectedAt: r.selectedAt, createdAt: r.createdAt
         };
       }) });
