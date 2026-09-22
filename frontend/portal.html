@@ -11444,7 +11444,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-cmo-card-edit-treatment-and-workstream-cleanup';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-client-timeout-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13381,10 +13381,21 @@ async function cmpCollabSendPreCampaign(text){
   cmpRenderCollabBody(null);
   try {
     const history = cmpPreCampaignCollabHistory.slice(0, -1).map(n => ({ role: n.isAi ? 'assistant' : 'user', text: n.text }));
+    // 2026-09-22 fix — timeoutMs raised from 20000 to 45000 (and
+    // maxAttempts 3 -> 2): the backend's own campaign-intake handler
+    // already does one internal retry on a transient Anthropic failure
+    // (up to a ~20s call + an 800ms pause + a second ~20s call — see its
+    // own comment in server.js), so a single request here can legitimately
+    // take close to 41s to finish. At the old 20000ms this client aborted
+    // (AbortError, "signal is aborted without reason") before the backend
+    // could ever finish and reply, every single time a reply happened to
+    // take longer than 20s — which reads identically to a 500 in DevTools
+    // (an aborted request has no response body to show), but was never a
+    // server error at all.
     const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-intake`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history }), timeoutMs: 20000
-    }, 3, 700);
+      body: JSON.stringify({ message: text, history }), timeoutMs: 45000
+    }, 2, 700);
     cmpPreCampaignCollabHistory.push({ author: 'AI Assistant', text: resp.reply || "Sorry, I didn't get a response — try again.", isAi: true, ts: Date.now() });
   } catch (e){
     console.warn('cmpCollabSendPreCampaign failed:', e);
@@ -13402,10 +13413,26 @@ async function cmpCollabRequestAiReply(message){
   cmpRenderCollabBody(c);
   try {
     const priorNotes = cmpCollabNotesFor(c, 'ai').slice(-10).map(n => ({ author: n.author, text: n.text, isAi: n.isAi }));
+    // 2026-09-22 fix, per Todd's report that ai-brain-reply "failed again"
+    // even after the account_kpi_metrics/zip_dma_master casing fixes were
+    // confirmed deployed — root cause turned out to be here, not in the
+    // database. This endpoint's own backend handler does one internal
+    // retry on a transient Anthropic failure (up to a ~20s call + an 800ms
+    // pause + a second ~20s call — see its own comment in server.js,
+    // where maxTokens was also raised 400->900 on 2026-09-21 for longer,
+    // more thorough replies), so a single request can legitimately take
+    // close to 41s. At the old timeoutMs: 20000 / 3 attempts, this client
+    // aborted every attempt (AbortError, "signal is aborted without
+    // reason", confirmed via console at authedFetch's controller.abort()
+    // call) before the backend could ever finish and reply — which reads
+    // identically to a 500 in DevTools (an aborted request has no response
+    // body to show: "Failed to load response data"), but was never a
+    // server error at all. Raised to 45000ms / 2 attempts so a real reply
+    // has room to land before the client gives up.
     const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/ai-brain-reply`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, priorNotes }), timeoutMs: 20000
-    }, 3, 700);
+      body: JSON.stringify({ message, priorNotes }), timeoutMs: 45000
+    }, 2, 700);
     cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null, null, (!resp.matchMarketNewlyAttached && resp.matchMarketSuggestion) || null);
     // 2026-09-20, per Todd's direct instruction: a newly-attached Match
     // Market recommendation publishes as its OWN thought-and-question
@@ -39093,8 +39120,16 @@ async function cmpIntakeExchange(message){
       // captured fields (plus the account's real budget/media mix) into
       // the prompt — see that endpoint's own comment.
       body: JSON.stringify({ message, history: cmpIntakeHistory.slice(0, -1), campaignId: cmpIntakeCampaignId || undefined }),
-      timeoutMs: 20000
-    }, 3, 700);
+      // 2026-09-22 fix — timeoutMs raised from 20000 to 45000 (and
+      // maxAttempts 3 -> 2), same fix and same reasoning as
+      // cmpCollabRequestAiReply's and cmpCollabSendPreCampaign's identical
+      // change above: this endpoint's own backend handler already does one
+      // internal retry on a transient Anthropic failure (up to a ~20s call
+      // + an 800ms pause + a second ~20s call), so a single request can
+      // legitimately take close to 41s — longer than the old 20000ms this
+      // client allowed before aborting.
+      timeoutMs: 45000
+    }, 2, 700);
     cmpIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
     if (data.readyToRecommend && data.extracted){
       cmpIntakeLastExtracted = data.extracted;
