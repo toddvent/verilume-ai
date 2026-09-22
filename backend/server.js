@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-22-creative-step0-step1-real (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-22-dead-field-consolidation-backend (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1984,6 +1984,26 @@ ensureColumn('channel_planning_details', 'stage', 'TEXT');
 // campaign.activityNotes, the same pattern already used for mediaMixJson/
 // channelCopyVersionsJson on that same endpoint).
 ensureColumn('campaigns', 'activityNotesJson', 'TEXT');
+// 2026-09-22 — per Todd's direct instruction to stop campaign concepts
+// living redundantly across fields that drift apart: a direct query on
+// every real campaign in the account showed campaigns.objective is
+// always '' — the real narrative objective is the Objectives Dialogue's
+// own AI-written summary, sitting in activityNotesJson.objectivesGoalSummary
+// (same field the frontend's cmpCreativeObjectiveText() reads, portal.html).
+// This is the server-side twin, for the ~15 places in this file that
+// build live AI-prompt text from campaign.objective and would otherwise
+// always interpolate "(not set)". NOT for the small number of frontend-
+// only usages where campaign.objective means something different (a
+// canonical funnel-stage category like "Brand Awareness" used to pick a
+// copy template) — those aren't read here and don't apply server-side.
+function campaignObjectiveText(campaign){
+  if (!campaign) return '';
+  try {
+    const notes = campaign.activityNotesJson ? JSON.parse(campaign.activityNotesJson) : null;
+    if (notes && notes.objectivesGoalSummary && notes.objectivesGoalSummary.trim()) return notes.objectivesGoalSummary.trim();
+  } catch (e){ /* malformed JSON on an old row — fall through to the legacy field */ }
+  return (campaign.objective || '').trim();
+}
 
 // 2026-09-19, per Todd's direct product question ("how do we train our
 // client brain to look at the overall historical and future marketing in
@@ -14034,7 +14054,7 @@ function ctaPathCoherence(ctaHref, conversionType){
 async function scoreContentRelevance(page, campaign){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, note: 'AI content relevance scoring requires ANTHROPIC_API_KEY to be configured.' };
   try {
-    const prompt = `You are scoring whether a landing page's actual content matches a marketing campaign's intended messaging. Campaign objective: ${campaign.objective || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Campaign long-form copy: ${(campaign.longformCopy || '').slice(0, 1500) || '(not set)'}.\n\nLanding page title: ${page.title}\nLanding page headline: ${page.headline}\nLanding page body text: ${page.bodyText.slice(0, 2000)}\n\nScore 0-100 how well the landing page's actual content matches the campaign's intended messaging and objective.`;
+    const prompt = `You are scoring whether a landing page's actual content matches a marketing campaign's intended messaging. Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Campaign long-form copy: ${(campaign.longformCopy || '').slice(0, 1500) || '(not set)'}.\n\nLanding page title: ${page.title}\nLanding page headline: ${page.headline}\nLanding page body text: ${page.bodyText.slice(0, 2000)}\n\nScore 0-100 how well the landing page's actual content matches the campaign's intended messaging and objective.`;
     const parsed = await callClaudeForJSON({
       model: 'claude-sonnet-4-5',
       maxTokens: 300,
@@ -14062,7 +14082,7 @@ async function scoreImageRelevance(imageUrl, campaign){
     const buf = Buffer.from(await imgResp.arrayBuffer());
     if (buf.length > 5_000_000) return { score: null, note: 'Hero image is too large to score (over 5MB).' };
     const b64 = buf.toString('base64');
-    const prompt = `You are scoring whether a landing page's hero image matches a marketing campaign's intended brand and messaging. Campaign objective: ${campaign.objective || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Brand tone notes: ${campaign.brandToneNotes || '(not set)'}.\n\nScore 0-100 how well this image fits that campaign's brand and messaging.`;
+    const prompt = `You are scoring whether a landing page's hero image matches a marketing campaign's intended brand and messaging. Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Brand tone notes: ${campaign.brandToneNotes || '(not set)'}.\n\nScore 0-100 how well this image fits that campaign's brand and messaging.`;
     const parsed = await callClaudeForJSON({
       model: 'claude-sonnet-4-5',
       maxTokens: 300,
@@ -14371,7 +14391,7 @@ async function scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMe
     const prompt = `You are an expert direct-response marketing reviewer for ${industryPersonaPhrase(account)}, judging whether a piece of campaign copy will actually achieve its stated business outcome — NOT whether it contains particular words or phrases. Literal phrase-matching is explicitly the wrong approach here; judge substance and likely real-world effect.
 
 Campaign Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
-Campaign Objective: ${campaign.objective || '(not set)'}
+Campaign Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Audience/Segment: ${campaign.segment || '(not set)'}
 Primary KPI this campaign is measured on: ${campaign.primaryKpi || '(not set)'}
 Key Message (if the human supplied one): ${keyMessage || '(none supplied)'}
@@ -15264,7 +15284,7 @@ ${competitorContext || '(none on file)'}
 
 CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
-- Objective: ${campaign.objective || '(not set)'}
+- Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}
 - Target generation(s) (from this account's Verilume assessment): ${humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'}
 - Target wealth tier (Verilume Wealth Index-derived): ${humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
@@ -16190,7 +16210,7 @@ function tokenize(text){
 // segment/key message/primary KPI; complianceScore starts at 100 and
 // deducts for each matched risk term, brand-specific or generic.
 function scoreDraftHeuristically(copyText, campaign){
-  const signalSource = [campaign.objective, campaign.segment, campaign.keyMessage, campaign.primaryKpi].filter(Boolean).join(' ');
+  const signalSource = [campaignObjectiveText(campaign), campaign.segment, campaign.keyMessage, campaign.primaryKpi].filter(Boolean).join(' ');
   const signalTerms = [...new Set(tokenize(signalSource).filter(w => w.length >= 4 && !RELEVANCE_STOPWORDS.has(w)))];
   const copyTokens = new Set(tokenize(copyText));
   let relevanceScore = null;
@@ -16254,7 +16274,7 @@ async function scoreDraftCopy(copyText, campaign, account){
       const prompt = `Score this marketing copy on two dimensions, 0-100 each.
 
 RELEVANCE (0-100): how well this copy serves the campaign's stated objective, audience/segment, and primary KPI below. 100 = precisely on-brief; 0 = unrelated.
-- Objective: ${campaign.objective || '(not set)'}
+- Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message: ${campaign.keyMessage || '(not set)'}
@@ -16545,7 +16565,7 @@ ${styleNotes || '(none on file)'}
 
 CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
-- Objective: ${campaign.objective || '(not set)'}
+- Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}
 ${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n` : ''}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
@@ -17189,7 +17209,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-22-creative-step0-step1-real',
+        buildStamp: '2026-09-22-dead-field-consolidation-backend',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -20930,7 +20950,7 @@ ${acctContext}`;
       // `cancelled = 0` convention every other campaign-list query in this
       // file uses once it's meant to feed something user-facing like this.
       const campaigns = db.prepare(
-        'SELECT id, name, stage, objective, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt, startDate, endDate FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND cancelled = 0 ORDER BY createdAt DESC LIMIT 40'
+        'SELECT id, name, stage, objective, activityNotesJson, primaryKpi, segment, channels, productGroups, creativeFocusGroups, budget, actualSpend, plannedImpressions, actualImpressions, actualConversions, createdAt, startDate, endDate FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND cancelled = 0 ORDER BY createdAt DESC LIMIT 40'
       ).all(accountId);
       const campaignSummaries = campaigns.map(c => {
         const perfBits = [];
@@ -20940,7 +20960,7 @@ ${acctContext}`;
         if (c.plannedImpressions && c.actualImpressions != null){
           perfBits.push(`delivered ${Math.round((c.actualImpressions / c.plannedImpressions) * 100)}% of planned impressions`);
         }
-        return `- ${c.id} "${c.name || '(untitled)'}" — Stage: ${c.stage || '(not set)'}, Objective: ${c.objective || '(not set)'}, Primary KPI: ${c.primaryKpi || '(not set)'}${perfBits.length ? `, real performance: ${perfBits.join('; ')}` : ', no actuals recorded yet'}. ${formatCampaignDatesForPrompt(c)}`;
+        return `- ${c.id} "${c.name || '(untitled)'}" — Stage: ${c.stage || '(not set)'}, Objective: ${campaignObjectiveText(c) || '(not set)'}, Primary KPI: ${c.primaryKpi || '(not set)'}${perfBits.length ? `, real performance: ${perfBits.join('; ')}` : ', no actuals recorded yet'}. ${formatCampaignDatesForPrompt(c)}`;
       }).join('\n');
       const conversationText = history.map(h => `${h.role === 'assistant' ? 'AI Brain' : 'User'}: ${h.text}`).join('\n');
       const prompt = `You are the AI Brain inside a marketing platform, helping a real marketer start a new campaign by understanding what they want to accomplish — through real conversation, not a form. Ask one focused follow-up at a time; don't interrogate. Once you genuinely understand the goal well enough to be useful (usually 2-4 exchanges), say so and set readyToRecommend to true — don't drag the conversation out past that point.
@@ -23729,7 +23749,7 @@ Submit via the recommendation_from_intake tool.`;
 CAMPAIGN: ${campaign.name || campaignId}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
-Objective: ${campaign.objective || '(not set)'}
+Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 ${formatCampaignDatesForPrompt(campaign)}
 
 REAL CHANNEL PLAN LINES (the only ids you may reference in a suggestion — never invent one):
@@ -23924,7 +23944,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
 
 CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
-Objective: ${campaign.objective || '(not set)'}
+Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
 Channels selected: ${campaign.channels || '(none yet)'}
 Status: ${deriveCampaignStatusFromDates(campaign)}
@@ -24289,8 +24309,16 @@ Submit your response via the messaging_intake_turn tool.`;
           campaignId,
           loopStage: campaign.stage || null,
           audience: campaign.segment || null,
-          channels: (campaign.channels || '').split(',').map(s => s.trim()).filter(Boolean),
-          objective: campaign.objective || null,
+          // 2026-09-22 fix — campaign.channels is empty on every real
+          // campaign in the account (Performance Marketing's "Approve
+          // Channel Plan" write path is effectively dead); the real
+          // channel list is the channel_planning_details rows already
+          // loaded above as `lines`. Same dead-field pattern as
+          // objective just below.
+          channels: (campaign.channels || '').trim()
+            ? campaign.channels.split(',').map(s => s.trim()).filter(Boolean)
+            : [...new Set(lines.map(l => l.channel).filter(Boolean))],
+          objective: campaignObjectiveText(campaign) || null,
           totalSpend,
           totalImpressions,
           lineItems: lines,
@@ -24332,7 +24360,7 @@ Submit your response via the messaging_intake_turn tool.`;
       const channelList = lines.map(l => l.channel).filter(Boolean).join(', ') || '(none entered yet)';
       const prompt = `Write a short executive narrative for a CMO about this marketing campaign, based only on the real data below. Do not invent numbers not given here.
 
-Campaign objective: ${campaign.objective || '(not set)'}
+Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
 Channels: ${channelList}
@@ -24381,8 +24409,13 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
     // not an input to it. Shared by both messages since the wireframe's
     // footnote names the same three inputs for each.
     function buildCmoBriefUpstreamSignature(campaign, channelLines){
+      // 2026-09-22 fix — campaign.objective was always '' on every real
+      // campaign, so this staleness signature never changed when the
+      // real objective (activityNotesJson.objectivesGoalSummary) did —
+      // meaning a CMO brief could sit stale after a real objective edit
+      // and never know to regenerate. Same fix as pitch-summary above.
       const payload = {
-        objective: campaign.objective || null,
+        objective: campaignObjectiveText(campaign) || null,
         stage: campaign.stage || null,
         segment: campaign.segment || null,
         campaignType: campaign.campaignType || null,
@@ -24439,7 +24472,7 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       let utmElementCount = 0;
       try { const parsedUtm = account && account.utmMasterElementsJson ? JSON.parse(account.utmMasterElementsJson) : []; utmElementCount = Array.isArray(parsedUtm) ? parsedUtm.length : 0; } catch (e){ utmElementCount = 0; }
       const upstreamHash = buildCmoBriefUpstreamSignature(campaign, lines);
-      const sharedFacts = `Campaign objective: ${campaign.objective || '(not set)'}
+      const sharedFacts = `Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Campaign Experience Focus: ${campaign.campaignType || 'General'}
 Audience: ${campaign.segment || '(not set)'}
