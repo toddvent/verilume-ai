@@ -11388,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-approve-budget-navigates-to-cmo-brief-analytics';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-media-cx-vision-hub-card-campaign-budget-rename';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12879,8 +12879,21 @@ const CMP_WORKSPACE_CARDS = [
   // "Open →" landed on Performance Marketing (channel-planning line-item
   // entry) instead — the pitch screen was unreachable from the hub
   // entirely. See cmpWorkspaceCardOpen() below for the actual routing fix.
-  { key: 'budget', label: 'Budget & Recommendation', railKeys: ['recommendation', 'perfMarketing'],
+  { key: 'budget', label: 'Campaign Budget', railKeys: ['recommendation', 'perfMarketing'],
     desc: "AI Brain's channel mix, spend plan, and line-item approvals — yours to review and approve." },
+  // 2026-09-22, per direct instruction: "How do I get to the CMO page after
+  // the budget is approved? We don't have navigation if someone wants to
+  // take a look. Should we add a new navigation element called Media + CX
+  // Vision that sits between Budgets & Creative?" Campaign Brief &
+  // Analytics Requirements (rail key 'briefAnalytics', the "CMO page") had
+  // no Hub card and no breadcrumb entry at all — it was only reachable by
+  // scrolling the 13-stage accordion rail, or via the direct navigate this
+  // session added to cmpRecoApproveOverall() on a fresh budget approval.
+  // This card gives it the same standing, always-visible access every other
+  // workstream already has, so revisiting it later (not just the moment
+  // right after approval) has a real home.
+  { key: 'cxVision', label: 'Media + CX Vision', railKeys: ['briefAnalytics'],
+    desc: "The CMO's brief recap, campaign dashboards, and AI Brain-generated messages to the Copywriter and Analytics team." },
   { key: 'creative', label: 'Creative', railKeys: ['messaging', 'copyVersions', 'creative'],
     desc: 'Creative layers, brand alignment, and asset production for the approved channel mix.' },
   { key: 'trafficking', label: 'Trafficking', railKeys: ['qrutm', 'qa', 'trafficking'],
@@ -12971,7 +12984,7 @@ function cmpWorkspaceCardOpen(cardKey){
 // paused, not cancelled. A built step's pill routes through the exact
 // same cmpWorkspaceCardOpen() router the Workspace Hub cards already use,
 // so this is never a second, diverging navigation path.
-const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'creative', 'trafficking', 'analysis']);
+const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'cxVision', 'creative', 'trafficking', 'analysis']);
 function cmpRenderWorkspaceBreadcrumb(activeKey){
   return `<div class="cmp-breadcrumb">${CMP_WORKSPACE_CARDS.map(card => {
     const built = CMP_BREADCRUMB_BUILT_CARDS.has(card.key);
