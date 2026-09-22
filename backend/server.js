@@ -23952,6 +23952,137 @@ Submit your response via the ai_brain_reply tool.`;
       }
     }
 
+    // POST /api/campaigns/:id/messaging-intake — 2026-09-22, per Todd's
+    // direct correction on the AI Brain Copy Interview build: "This is how
+    // Claude Code surfaces messages... The page should not exist. We just
+    // replaced it with the AI Dialogue page based on the version that
+    // exists within the budget process" (backed by a screenshot of the
+    // real Objectives "Create Your New Program" conversational intake —
+    // "You"/"AI Brain" chat bubbles, free text, real back-and-forth). The
+    // first pass at this feature (static "Question N of M" bubbles reading
+    // straight off CAMPAIGN_TYPE_REGISTRY_CLIENT, still driven by the old
+    // dropdown-card form fields underneath) was NOT what was asked for —
+    // Todd wants the same real conversational mechanism the Objectives
+    // screen already uses (POST /api/accounts/:id/campaign-intake), not a
+    // form dressed up to look like a chat. This is that mechanism's sibling
+    // for the Brand Messaging stage: stateless, same
+    // client-holds-the-transcript convention as campaign-intake and
+    // ai-brain-reply above (no persisted conversation row server-side —
+    // the frontend's Collaboration Center already owns thread persistence
+    // via activityNotesJson).
+    //
+    // Deliberate scope: this endpoint does NOT choose the Writing Style
+    // (Campaign Experience Focus) itself — that's already picked earlier,
+    // at Campaign Creation/Lifecycle, and is real data by the time a
+    // campaign reaches Brand Messaging (see activeCampaignContextBlock in
+    // campaign-intake above for the same assumption). Its only job is to
+    // have the AI Brain ask, one at a time, for (1) this campaign's
+    // Headline — asked for every Writing Style, maps to the existing Key
+    // Message field, per Todd's correction that Headline is a universal,
+    // not per-type, concept — and (2) each of this Writing Style's real
+    // detailFields from CAMPAIGN_TYPE_REGISTRY, in conversation, and to
+    // extract the answers as they're given. The extraction schema is built
+    // per-request from this campaign's actual campaignType, so the model
+    // can only "answer" fields that are real for this Writing Style — never
+    // a hallucinated key. Each turn returns the model's best current read
+    // of every field from the WHOLE conversation so far (not just this
+    // turn's delta), so the frontend can simply persist whatever comes back
+    // non-null via the existing PUT /api/campaigns/:id (keyMessage,
+    // campaignTypeDetails) — the same save path cmpSaveGenerationTypeDetails
+    // already uses, unchanged.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'messaging-intake'){
+      const campaignId = decodeURIComponent(parts[2]);
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        if (!process.env.ANTHROPIC_API_KEY){
+          return sendJson(res, 200, {
+            reply: 'AI Brain conversation requires ANTHROPIC_API_KEY to be configured on this deployment — nothing was generated.',
+            headline: null, detailFields: {}, readyToGenerate: false
+          });
+        }
+        const body = await readBody(req);
+        const message = typeof body.message === 'string' ? body.message.trim() : '';
+        if (!message) return sendJson(res, 400, { error: 'message is required' });
+        const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
+        const typeKey = campaign.campaignType || '';
+        const def = CAMPAIGN_TYPE_REGISTRY[typeKey] || null;
+        if (!def){
+          return sendJson(res, 200, {
+            reply: "This campaign doesn't have a Writing Style (Campaign Experience Focus) set yet — pick one on Campaign Creation first, then come back and I'll walk through what it needs.",
+            headline: null, detailFields: {}, readyToGenerate: false
+          });
+        }
+        const details = campaignTypeDetails(campaign);
+        const detailFieldSchema = {};
+        def.detailFields.forEach(f => {
+          detailFieldSchema[f.key] = { type: ['string', 'null'], description: `${f.label}${f.required ? ' (required for this Writing Style)' : ''}. Your best current understanding from the WHOLE conversation so far, or null if genuinely not yet known.` };
+        });
+        const schema = {
+          type: 'object',
+          properties: {
+            reply: { type: 'string', description: 'Your next message to the user — one focused question at a time, never a checklist.' },
+            headline: { type: ['string', 'null'], description: 'This campaign\'s Headline — the one line it needs to lead with — asked first, before any Writing-Style-specific question. Your best current understanding from the whole conversation, or null if not yet known.' },
+            detailFields: { type: 'object', properties: detailFieldSchema, description: `This Writing Style's own real questions (${def.label}). Include every key even if still null.` },
+            readyToGenerate: { type: 'boolean', description: 'True once the Headline and every required detail field below are genuinely known.' }
+          },
+          required: ['reply', 'headline', 'detailFields', 'readyToGenerate']
+        };
+        const conversationText = history.map(h => `${h.role === 'assistant' ? 'AI Brain' : 'User'}: ${h.text}`).join('\n');
+        const alreadyKnown = [
+          campaign.keyMessage ? `- Headline: ${campaign.keyMessage}` : null,
+          ...def.detailFields.map(f => details[f.key] ? `- ${f.label}: ${details[f.key]}` : null)
+        ].filter(Boolean).join('\n');
+        const prompt = `You are the AI Brain, helping a real marketer supply what campaign copy generation needs for this campaign — through real conversation, one focused question at a time, never a form or a checklist read aloud.
+
+This campaign's Writing Style is ${def.label}. ${def.promptGuidance}
+
+Ask for exactly these things, in this order, one at a time:
+1. The campaign's Headline — the one line it needs to lead with. This is asked for every Writing Style, not just this one.
+${def.detailFields.map((f, i) => `${i + 2}. ${f.label}${f.required ? ' (required for this Writing Style)' : ' (optional)'}`).join('\n')}
+
+Skip anything already known below — never ask for it again, just acknowledge it in passing if relevant:
+${alreadyKnown || '(nothing captured yet)'}
+
+CONVERSATION SO FAR:
+${conversationText || '(nothing yet — this is the first message)'}
+
+The user just said: "${message}"
+
+Respond with your next message, and your best-guess current value for the Headline and each of this Writing Style's fields based on the ENTIRE conversation (not just this turn) — null for anything genuinely still unknown. Never fabricate a specific the user didn't actually say. Set readyToGenerate to true only once the Headline and every required field are genuinely known.
+
+Submit your response via the messaging_intake_turn tool.`;
+        let parsed;
+        try {
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5', maxTokens: 700, content: prompt,
+            toolName: 'messaging_intake_turn',
+            toolDescription: 'Submit this turn of the messaging-intake conversation.',
+            schema
+          });
+        } catch (firstErr){
+          console.warn('[POST /api/campaigns/:id/messaging-intake] first attempt failed, retrying once:', firstErr.message);
+          await new Promise(r => setTimeout(r, 800));
+          parsed = await callClaudeForJSON({
+            model: 'claude-sonnet-4-5', maxTokens: 700, content: prompt,
+            toolName: 'messaging_intake_turn',
+            toolDescription: 'Submit this turn of the messaging-intake conversation.',
+            schema
+          });
+        }
+        return sendJson(res, 200, {
+          reply: parsed.reply || "Sorry, I didn't get a response — try again.",
+          headline: (typeof parsed.headline === 'string' && parsed.headline.trim()) ? parsed.headline.trim() : null,
+          detailFields: (parsed.detailFields && typeof parsed.detailFields === 'object') ? parsed.detailFields : {},
+          readyToGenerate: !!parsed.readyToGenerate
+        });
+      } catch (e){
+        console.error(`[POST /api/campaigns/:id/messaging-intake] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message });
+      }
+    }
+
     // GET /api/campaigns/:id/pitch-summary — 2026-09-15, the AI Brain
     // Recommendation ("campaign pitch") screen's data source for its
     // campaign-level dashboards (Loop Stage, Channel Mix, Audience,
