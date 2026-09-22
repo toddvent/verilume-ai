@@ -257,9 +257,11 @@ if (process.env.DATABASE_URL) {
 // alongside it (campaignType is deliberately excluded — see below).
 const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   activitynotesjson: 'activityNotesJson',
+  audiencesharedexperience: 'audienceSharedExperience',
   briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
   businessinitiative: 'businessInitiative',
   campaigntypedetailsjson: 'campaignTypeDetailsJson',
+  campaigntypedetailmodesjson: 'campaignTypeDetailModesJson',
   cmoanalyticsbrief: 'cmoAnalyticsBrief',
   cmoanalyticsbriefeditedbyhuman: 'cmoAnalyticsBriefEditedByHuman',
   cmoanalyticsbriefupstreamhash: 'cmoAnalyticsBriefUpstreamHash',
@@ -1429,6 +1431,35 @@ ensureColumn('campaigns', 'mandatoryPhrase', 'TEXT');
 // given campaign at once.
 ensureColumn('campaigns', 'campaignType', 'TEXT');
 ensureColumn('campaigns', 'campaignTypeDetailsJson', 'TEXT');
+
+// Added 2026-09-22 — closes two real gaps found while wireframing the
+// Creative Step 0 (Recap & Assessment) screen and validating it against
+// this file directly, per direct instruction: "validate the final prompt
+// used for the contest includes what you are describing as core and
+// detail. Users also need to toggle yes or no if provided detail needs to
+// be incorporated into the campaigns exactly as written."
+//
+// campaignTypeDetailModesJson — keyMessageMode's exact-vs-descriptive
+// distinction existed ONLY for Key Message; none of CAMPAIGN_TYPE_REGISTRY's
+// per-type detailFields (launchHighlights, offerDetails, rewardDetail, etc.)
+// had any verbatim/guidance toggle at all — every detail field was silently
+// treated as guidance-only inside campaignTypeBriefContext(). Stored as one
+// JSON blob keyed by detailField key -> 'exact'|'descriptive' (mirrors
+// campaignTypeDetailsJson's own "one blob, not a column per type per field"
+// convention, since only one type's fields are ever in use on a given
+// campaign at once). Missing/absent key defaults to 'exact' — same default
+// keyMessageMode already uses, so existing campaigns with detail values
+// already saved keep behaving exactly as before (treated as real,
+// close-to-verbatim input) rather than silently downgrading to guidance.
+ensureColumn('campaigns', 'campaignTypeDetailModesJson', 'TEXT');
+
+// audienceSharedExperience — the Creative workspace's new per-campaign
+// choice (Step 0): 'shared' (default — every audience gets one shared
+// creative experience, one copy contest) or 'separate' (each audience gets
+// its own copy contest, each validated against its own approved asset
+// types). Default 'shared' preserves this campaign's existing single-contest
+// behavior for every campaign saved before this field existed.
+ensureColumn('campaigns', 'audienceSharedExperience', "TEXT DEFAULT 'shared'");
 
 // Added 2026-09-17 — Business Initiative, per direct instruction: "make sure
 // the key campaign type (e.g. launch) and business initiative is clear and
@@ -14154,6 +14185,20 @@ function campaignTypeDetails(campaign){
   if (!campaign.campaignTypeDetailsJson) return {};
   try { const parsed = JSON.parse(campaign.campaignTypeDetailsJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
 }
+// Added 2026-09-22, alongside campaignTypeDetailModesJson (see its
+// ensureColumn comment) — per-detail-field-key verbatim/guidance mode.
+// Defaults an absent key to 'exact', matching keyMessageMode's default and
+// this campaign's pre-existing behavior (detail values were already the
+// real, human-authored answer to a specific required question, not a loose
+// brief) — so this doesn't reinterpret any already-saved campaign.
+function campaignTypeDetailMode(campaign, fieldKey){
+  if (!campaign.campaignTypeDetailModesJson) return 'exact';
+  try {
+    const parsed = JSON.parse(campaign.campaignTypeDetailModesJson);
+    if (parsed && typeof parsed === 'object' && parsed[fieldKey] === 'descriptive') return 'descriptive';
+  } catch (e) { /* fall through to default */ }
+  return 'exact';
+}
 // Honest completeness check — never blocks anything (this codebase's
 // "suggestion, never a silent gate" discipline holds here too), just
 // reports what's missing so the UI/AI prompt can be honest about gaps
@@ -14179,8 +14224,22 @@ function campaignTypeBriefContext(campaign){
   if (!type || !CAMPAIGN_TYPE_REGISTRY[type]) return '';
   const def = CAMPAIGN_TYPE_REGISTRY[type];
   const details = campaignTypeDetails(campaign);
+  // 2026-09-22 — each detail line now carries its own verbatim/guidance
+  // instruction, same pattern keyMessageMode already applies to Key Message
+  // (see the keyMessage line in generateMessagingCopyViaAI/
+  // buildInterviewPrompt), via campaignTypeDetailMode() instead of a single
+  // campaign-wide mode. 'exact' (default) asks the AI to keep the field's
+  // wording close to verbatim; 'descriptive' tells it to treat the field as
+  // a brief to paraphrase in its own words.
   const detailLines = def.detailFields
-    .map(f => details[f.key] ? `- ${f.label}: ${details[f.key]}` : null)
+    .map(f => {
+      if (!details[f.key]) return null;
+      const mode = campaignTypeDetailMode(campaign, f.key);
+      const modeNote = mode === 'descriptive'
+        ? ' (a DESCRIPTIVE brief -- write real copy that captures this in your own words, do not quote it verbatim)'
+        : ' (real, human-authored input -- keep it close to verbatim, as close as reads naturally)';
+      return `- ${f.label}${modeNote}: ${details[f.key]}`;
+    })
     .filter(Boolean)
     .join('\n');
   return `\nCAMPAIGN TYPE: ${def.label}\n${def.promptGuidance}${detailLines ? `\n${detailLines}` : ''}\n`;
@@ -15157,7 +15216,7 @@ CAMPAIGN CONTEXT:
 - Key Message the human supplied, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief, not a sentence to quote verbatim -- write real, finished copy that captures this direction in your own words; do not reproduce it as-is)' : ' (weave this in as the real anchor of the copy if present, as close to verbatim as reads naturally)'}: ${opts.keyMessage || '(none supplied — establish your own opening line grounded in the brand voice and style facts above)'}
 - Role/Style approach: ${opts.style || 'Storytelling'}
 - Product/Focus: ${opts.focus || '(not set)'}
-${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
+${campaign.mandatoryPhrase ? `- MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy -- this is not optional, its absence is a compliance failure): "${campaign.mandatoryPhrase}"\n` : ''}${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
 Write 3-5 short paragraphs of real Long Form Copy (120-220 words). It must read as something a real luxury travel brand would actually publish — specific, sensory where appropriate, never generic "unforgettable journey" language, and it must end with a call to action that genuinely serves the stated Primary KPI for this Loop Stage.
 
 Submit your draft via the submit_copy tool.`;
@@ -16435,7 +16494,7 @@ CAMPAIGN CONTEXT:
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 - Role/Style approach, if the account has one on file: ${campaign.roleStyle || '(none set -- follow your assigned angle above)'}
-${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
+${campaign.mandatoryPhrase ? `- MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy -- this is not optional, its absence is a compliance failure): "${campaign.mandatoryPhrase}"\n` : ''}${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
 Submit your draft via the submit_copy tool.`;
 }
 // One subagent angle's generation call — a lighter-weight sibling of
@@ -22307,8 +22366,8 @@ Submit your response via the campaign_intake_turn tool.`;
       // write-through read to correct it.
       const initialStatus = deriveCampaignStatusFromDates({ startDate: body.startDate || null, endDate: body.endDate || null });
       db.prepare(
-        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, campaignType, campaignTypeDetailsJson, status, createdAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, campaignType, campaignTypeDetailsJson, campaignTypeDetailModesJson, audienceSharedExperience, status, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         campaignId, accountId, body.objective || '', body.segment || '', body.stage || '', body.keyMessage || '',
         body.name || body.objective || 'Untitled Campaign',
@@ -22351,6 +22410,10 @@ Submit your response via the campaign_intake_turn tool.`;
         // trusted verbatim, since it's a client-supplied blob.
         body.campaignType || '',
         (() => { try { return body.campaignTypeDetails && typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : ''; } catch (e){ return ''; } })(),
+        // 2026-09-22 — campaignTypeDetailModesJson/audienceSharedExperience,
+        // see the ensureColumn() comments above.
+        (() => { try { return body.campaignTypeDetailModes && typeof body.campaignTypeDetailModes === 'object' ? JSON.stringify(body.campaignTypeDetailModes) : ''; } catch (e){ return ''; } })(),
+        body.audienceSharedExperience === 'separate' ? 'separate' : 'shared',
         initialStatus,
         now
       );
@@ -22571,6 +22634,12 @@ Submit your response via the campaign_intake_turn tool.`;
         campaignTypeDetailsJson: body.campaignTypeDetails !== undefined
           ? (() => { try { return typeof body.campaignTypeDetails === 'object' ? JSON.stringify(body.campaignTypeDetails) : existing.campaignTypeDetailsJson; } catch (e){ return existing.campaignTypeDetailsJson; } })()
           : existing.campaignTypeDetailsJson,
+        // 2026-09-22 — campaignTypeDetailModesJson/audienceSharedExperience,
+        // same merge-update convention. See the ensureColumn() comments.
+        campaignTypeDetailModesJson: body.campaignTypeDetailModes !== undefined
+          ? (() => { try { return typeof body.campaignTypeDetailModes === 'object' ? JSON.stringify(body.campaignTypeDetailModes) : existing.campaignTypeDetailModesJson; } catch (e){ return existing.campaignTypeDetailModesJson; } })()
+          : existing.campaignTypeDetailModesJson,
+        audienceSharedExperience: body.audienceSharedExperience !== undefined ? (body.audienceSharedExperience === 'separate' ? 'separate' : 'shared') : existing.audienceSharedExperience,
         // 2026-09-17 — businessInitiative, same merge-update convention as
         // campaignType above. See the ensureColumn() comment and
         // BUSINESS_INITIATIVE_REGISTRY for the full context.
@@ -22708,6 +22777,8 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('endDate', body.endDate !== undefined, merged.endDate);
       addCol('campaignType', body.campaignType !== undefined, merged.campaignType);
       addCol('campaignTypeDetailsJson', body.campaignTypeDetails !== undefined, merged.campaignTypeDetailsJson);
+      addCol('campaignTypeDetailModesJson', body.campaignTypeDetailModes !== undefined, merged.campaignTypeDetailModesJson);
+      addCol('audienceSharedExperience', body.audienceSharedExperience !== undefined, merged.audienceSharedExperience);
       addCol('businessInitiative', body.businessInitiative !== undefined, merged.businessInitiative);
       addCol('stage', body.stage !== undefined, merged.stage);
       addCol('segment', body.segment !== undefined, merged.segment);
@@ -30725,3 +30796,13 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
+
+
+
+
+
+
+
