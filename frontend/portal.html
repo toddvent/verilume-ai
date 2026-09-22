@@ -1557,13 +1557,24 @@
   .cmp-note-row.ai{background:var(--media-tint);border-radius:6px;padding:8px 10px;margin:6px 0;border-top:none;}
   .cmp-note-meta{font-size:0.75rem;color:var(--muted);margin-bottom:2px;}
   .cmp-note-ai-badge{display:inline-block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--media);background:var(--white);border-radius:var(--radius-pill);padding:1px 7px;margin-left:4px;}
-  .cmp-note-text{margin:0;font-size:0.8438rem;color:var(--ink);white-space:pre-line;}
+  .cmp-note-text{margin:0;font-size:0.8438rem;color:var(--ink);}
+  .cmp-note-list{margin:0 0 6px;padding-left:20px;}
+  .cmp-note-list li{margin:0 0 3px;}
   .cmp-note-brain-training{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
   .cmp-note-brain-training-label{font-size:0.6875rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.02em;}
   .cmp-note-brain-training-done{font-size:0.75rem;color:var(--muted);}
   .cmp-note-brain-training button.btn-ghost{padding:2px 9px;font-size:0.75rem;}
   .cmp-note-add{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line-hairline);}
   .cmp-note-add input, .cmp-note-add textarea{font:inherit;font-size:0.8125rem;border:1px solid var(--line);border-radius:6px;padding:6px 8px;box-sizing:border-box;width:100%;resize:vertical;}
+  /* 2026-09-22, per Todd: match the Creative wireframe canvas's Collaboration
+     Center — a rounded pill input beside a circular icon "send" button,
+     replacing the old textarea + text "Send" btn-ghost row, applied to every
+     screen that renders cmpCollabComposerHtml() (Budget, Media Science, etc). */
+  .cmp-note-send-row{display:flex;align-items:center;gap:8px;}
+  .cmp-note-send-row textarea{flex:1 1 auto;min-height:38px;max-height:38px;border-radius:10px;resize:none;padding:9px 12px;}
+  .cmp-note-send-btn{flex-shrink:0;width:38px;height:38px;border-radius:10px;background:#1E2761;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .cmp-note-send-btn:disabled{background:#9096B8;cursor:default;}
+  .cmp-note-send-btn svg{width:15px;height:15px;}
   @media (max-width:860px){
     .cmp-layout{flex-direction:column;}
     .cmp-rail{position:static;flex-direction:row;flex-wrap:wrap;width:100%;gap:4px;}
@@ -1821,7 +1832,7 @@
   .cmp-chat-msg-body{min-width:0;flex:1;}
   .cmp-chat-msg-meta{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--ink);margin-bottom:2px;}
   .cmp-chat-msg-meta .ts{color:var(--muted);font-weight:400;margin-left:6px;}
-  .cmp-chat-msg-text{font-size:0.8125rem;color:var(--ink);white-space:pre-line;line-height:1.45;}
+  .cmp-chat-msg-text{font-size:0.8125rem;color:var(--ink);line-height:1.45;}
   .cmp-team-chat-avatar{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;color:#FFFFFF;}
   .cmp-team-chat-input{border-top:1px solid var(--line);padding:12px 18px 16px;}
   .cmp-team-chat-input-row{display:flex;gap:10px;align-items:flex-start;}
@@ -11444,7 +11455,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-timeout-round2-100s';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-collab-center-send-treatment';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13535,7 +13546,7 @@ function cmpCollabNoteRowHtml(n){
   }
   return `<div class="cmp-note-row${n.isAi ? ' ai' : ''}">
     <div class="cmp-note-meta"><b>${escapeHtml(n.author)}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
-    <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+    <div class="cmp-note-text">${n.isAi ? formatAiNoteHtml(n.text) : formatPlainNoteHtml(n.text)}</div>
     ${detailHtml}
     ${suggestionHtml}
     ${matchMarketHtml}
@@ -13606,9 +13617,12 @@ function cmpCollabComposerHtml(tab, placeholder){
     : '';
   return `<div class="cmp-note-add">
     ${chipsHtml}
-    <textarea id="cmpCollabInput_${tab}" rows="2" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
-    <div class="btn-row" style="margin:2px 0 0;">
-      <button type="button" class="btn-ghost" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')">${thinking ? 'AI Brain is thinking…' : 'Send'}</button>
+    ${thinking ? `<div class="cmp-note-brain-training-done" style="margin:0 0 2px;">AI Brain is thinking…</div>` : ''}
+    <div class="cmp-note-send-row">
+      <textarea id="cmpCollabInput_${tab}" rows="1" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
+      <button type="button" class="cmp-note-send-btn" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')" aria-label="${thinking ? 'AI Brain is thinking' : 'Send'}" title="${thinking ? 'AI Brain is thinking…' : 'Send'}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg>
+      </button>
     </div>
   </div>`;
 }
@@ -14377,7 +14391,7 @@ function cmpRenderActivityNotesPanel(key){
       ${notes.length ? notes.map(n => `
         <div class="cmp-note-row${n.isAi ? ' ai' : ''}">
           <div class="cmp-note-meta"><b>${escapeHtml(n.author || (n.isAi ? 'AI Assistant' : 'Team member'))}</b>${n.isAi ? ' <span class="cmp-note-ai-badge">AI commentary</span>' : ''} · <span>${escapeHtml(new Date(n.ts).toLocaleString())}</span></div>
-          <p class="cmp-note-text">${escapeHtml(n.text)}</p>
+          <div class="cmp-note-text">${n.isAi ? formatAiNoteHtml(n.text) : formatPlainNoteHtml(n.text)}</div>
         </div>`).join('') : `<p class="hint" style="margin:0 0 4px;">No notes yet on this stage — add context for teammates, or ask the AI assistant for a quick read on where things stand.</p>`}
       <div class="cmp-note-add">
         <textarea id="cmpNoteText_${key}" rows="2" placeholder="Add context for the team..."></textarea>
@@ -39031,7 +39045,12 @@ function cmpRenderIntakeChat(){
       <div class="cmp-team-chat-avatar" style="background:${isAi ? '#2F0D4D' : cmpAvatarColor(myName || 'me')};">${escapeHtml(isAi ? '✦' : cmpInitials(myName))}</div>
       <div class="cmp-chat-msg-body">
         <div class="cmp-chat-msg-meta"><b>${escapeHtml(author)}</b></div>
-        <div class="cmp-chat-msg-text">${escapeHtml(h.text)}</div>
+        <!-- 2026-09-22, per Todd's follow-up on the same AI Brain
+             markdown-rendering cleanup: this is the same AI Brain writing
+             the same natural **bold**/"- " markdown, so it gets the same
+             treatment as the Collaboration Center/Activity Notes bubbles
+             (formatAiNoteHtml's own comment). -->
+        <div class="cmp-chat-msg-text">${isAi ? formatAiNoteHtml(h.text) : formatPlainNoteHtml(h.text)}</div>
       </div>
     </div>`;
   }).join('') : (showWelcome ? '' : '<p class="hint" style="margin:0;">Say what you want this campaign to accomplish to start the conversation.</p>');
@@ -61009,6 +61028,50 @@ async function saveStyleAssets(approved){
 // than trust free text isn't going to contain '<'/'&'/etc.
 function escapeHtml(s){
   return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+// 2026-09-22, per Todd's direct report/follow-up ("We should clean it
+// up"): AI Brain replies (Collaboration Center, Activity Notes "Ask AI for
+// commentary") write natural markdown — **bold**, "- " bullet lists,
+// blank-line paragraph breaks — since nothing in the prompt asks it not
+// to, but every note bubble rendered that text through escapeHtml() alone,
+// so it showed up as literal asterisks and dashes instead of formatting.
+// This is a small, deliberately narrow markdown-to-HTML renderer — NOT a
+// general Markdown library — covering only what these replies actually
+// use: bold, single-level "- "/"• " bullet lists, and paragraph/line
+// breaks. Escapes the raw text FIRST (so any literal <, >, &, etc. in a
+// reply stays inert), then layers safe, hardcoded tags on top of the
+// escaped text — never trusts the model's output as raw HTML. Only ever
+// applied to AI-authored note text (isAi true); a team member's own note
+// always renders as plain escaped text (aiOnly checked by every call
+// site), so nothing a human types is ever reinterpreted as formatting.
+function formatAiNoteHtml(text){
+  const escaped = escapeHtml(text);
+  // **bold** -> <strong>. Non-greedy, no nested-bold support (this app's
+  // AI Brain prompts never ask for nested emphasis).
+  let html = escaped.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+  const lines = html.split('\n');
+  const out = [];
+  let inList = false;
+  const closeList = () => { if (inList){ out.push('</ul>'); inList = false; } };
+  lines.forEach(line => {
+    const bulletMatch = /^\s*[-•]\s+(.*)$/.exec(line);
+    if (bulletMatch){
+      if (!inList){ out.push('<ul class="cmp-note-list">'); inList = true; }
+      out.push(`<li>${bulletMatch[1]}</li>`);
+      return;
+    }
+    closeList();
+    if (line.trim() === '') return; // blank line — paragraph gap handled by <p> margins below, not an empty element
+    out.push(`<p style="margin:0 0 6px;">${line}</p>`);
+  });
+  closeList();
+  return out.join('') || '<p style="margin:0;"></p>';
+}
+// Plain (non-AI) note text — no markdown parsing (a human's literal "*" or
+// "-" stays literal), but real newlines in what they typed still need to
+// visually break lines, same as formatAiNoteHtml's paragraphs do.
+function formatPlainNoteHtml(text){
+  return `<p style="margin:0;">${escapeHtml(text).replace(/\n/g, '<br>')}</p>`;
 }
 
 // Round 22 — Competitive Positioning (Brand Foundations). Renders the
