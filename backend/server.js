@@ -5269,6 +5269,51 @@ const CHANNEL_BEST_PRACTICES = {
   }
 };
 
+// SERVER_CHANNEL_CPM / SERVER_NON_IMPRESSION_CHANNELS — 2026-09-22, per
+// Todd's direct report on CMP-mubtrp8y-872-1: "We estimated almost 37
+// million impressions... but have only identified 80,000 for direct mail.
+// The recommended channels need to generate the impressions that we
+// forecast." Root cause: generate-recommendation-from-intake only ever
+// stored a line's impressions when the model itself returned a number
+// (only genuinely inferable for Direct Mail, from stated drop count ×
+// list size — see that endpoint's own schema comment) — every other paid
+// channel line got `impressions: null`, which reads as 0 on the Campaign
+// Budget screen despite carrying real budget. This is the backend's own
+// copy of portal.html's ILLUSTRATIVE_CHANNEL_CPM/NON_IMPRESSION_CHANNELS
+// (same values, same exclusion set, same "Direct Mail/Field-ABM are priced
+// per-piece/per-contact, not per-ad-impression" reasoning — see that
+// file's own comment) so this fallback math can run server-side, where the
+// model's extraction actually happens. Kept as a deliberate, separate copy
+// rather than a shared import (this is the backend, portal.html is the
+// frontend) — if these ever need to change, change both together, same
+// discipline as every other frontend/backend-mirrored constant in this
+// codebase (see schema-identifiers.json's own standing rule).
+const SERVER_CHANNEL_CPM = {
+  'Direct Mail — Prospects': 800, 'Direct Mail — Past Guests': 710, 'Direct Mail — Inquiries': 710,
+  'Linear TV': 22, 'OTV': 26, 'CTV': 28,
+  'Paid Social': 9, 'Brand Search': 4, 'Non-Brand Search': 6,
+  'Internal Email': 1, 'Email — Remarketing': 200, 'PR': 15, 'Programmatic Display': 7, 'Partner Media': 12,
+  'Retail Media': 9, 'Field / ABM': 650,
+  'Magazines': 40, 'Newspapers': 34, 'Out-of-Home': 14, 'Radio': 18, 'Podcasts': 20,
+  'Remarketing': 10
+};
+const SERVER_DEFAULT_BLENDED_CPM = 18;
+const SERVER_NON_IMPRESSION_CHANNELS = new Set(['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries', 'Field / ABM']);
+// Real per-line CPM to estimate impressions from budget dollars, when the
+// model didn't already give a real inferred number: this channel's own
+// illustrative default, unless it's priced per-piece/per-contact rather
+// than per-ad-impression (SERVER_NON_IMPRESSION_CHANNELS) — those stay
+// null here (0 budget-implied impressions is honest; a fabricated per-
+// piece "impressions" count is not), same as they're excluded from every
+// blended-CPM computation on the frontend.
+function estimateImpressionsFromBudget(channel, budget){
+  if (SERVER_NON_IMPRESSION_CHANNELS.has(channel)) return null;
+  const amt = Number(budget) || 0;
+  if (amt <= 0) return null;
+  const cpm = SERVER_CHANNEL_CPM[channel] || SERVER_DEFAULT_BLENDED_CPM;
+  return Math.round((amt / cpm) * 1000);
+}
+
 // Round 132bz — Partner Capability Requests (buildout item #5): "extend
 // Analytics Integrations to cover partner-capability requests," the direct
 // follow-on once item #2's confidence labels start producing statements
@@ -23358,11 +23403,22 @@ Submit via the recommendation_from_intake tool.`;
       const stageBudgets = {};
       for (const c of channels){
         const lineStage = normalizeChannelPlanningStage(c.stage);
+        // 2026-09-22 fix, per Todd's direct report — see
+        // estimateImpressionsFromBudget()'s own comment. The model's own
+        // impressions figure (when it gave one — real inference from a
+        // stated drop count/list size, e.g. Direct Mail) always wins; only
+        // falls back to the budget/CPM estimate when the model returned
+        // null, so every impression-eligible channel line actually
+        // contributes to the campaign's estimated reach instead of
+        // silently reading as 0 despite carrying real budget.
+        const lineImpressions = typeof c.impressions === 'number'
+          ? c.impressions
+          : estimateImpressionsFromBudget(c.channel, c.budget);
         try {
           insertChannelPlanningRow({
             campaignId, channel: c.channel,
             budget: Number(c.budget) || 0,
-            impressions: typeof c.impressions === 'number' ? c.impressions : null,
+            impressions: lineImpressions,
             status: 'draft',
             stage: lineStage,
             detailsJson: Object.assign({}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {}, c.exactFromConversation ? { exactFromConversation: true } : {})
@@ -30538,22 +30594,3 @@ try {
 }
 
 module.exports = handleRequest;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
