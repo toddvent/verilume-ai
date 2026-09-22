@@ -11702,7 +11702,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-run-contest-chips';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-dead-field-consolidation-phase1';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -39920,7 +39920,7 @@ function cmpRenderCreativeStep0(c){
     // card the wireframe itself shows, by direct override.
     recapEl.innerHTML =
       row('Campaign Writing Style', typeLabel) +
-      row('Audiences', c.audienceTargets || '—') +
+      row('Audiences', cmpCreativeAudienceText(c) || '—') +
       `<div class="cmp-step0-recap-row">
         <span class="cmp-step0-recap-label">Same experience for all audiences?</span>
         <span class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
@@ -39931,7 +39931,7 @@ function cmpRenderCreativeStep0(c){
       row('Campaign Objective', objectiveSummary) +
       row('Product Group', c.productGroups || '—') +
       row('Creative Focus', c.creativeFocusGroups || '—') +
-      row('Approved Channels', c.channels || '—');
+      row('Approved Channels', cmpCreativeChannelsText(c) || '—');
   }
   cmpRenderStep0Headline(c);
   cmpRenderStep0DetailFields(c);
@@ -40068,6 +40068,60 @@ async function cmpSetAudienceSharedExperience(val){
   }
 }
 
+// 2026-09-22 fix — found via a direct Supabase query on a real campaign
+// (CMP-mubtrp8y-872-1) after Todd reported Audiences/Approved Channels
+// were genuinely blank in Creative even though the Campaign Budget
+// screen clearly showed both. The DB confirmed it: audienceTargets was
+// NULL and channels was '' on that row — Creative's recap was reading
+// the right fields, but those fields are ONLY ever written by
+// Performance Marketing's own "Audience targets" input and "Approve
+// Channel Plan & Continue" button (a distinct step from Campaign
+// Budget's recommendation flow). That campaign's audience data was
+// sitting in `segment` instead (set at campaign creation/intake — it's
+// what the Campaign Budget "AI Brain Recommendation" panel's "Target
+// Audiences" reads, GET pitch-summary in server.js: `audience:
+// campaign.segment`), and its channels lived only in the
+// channel_planning_details line items (mediaMixJson on the client),
+// never rolled up into the `channels` column because that specific
+// button was never clicked. Two real, independently-populated data
+// sources for the same concept, and Creative only ever looked at one
+// of them. These helpers make Creative fall back to the other source
+// instead of showing "—" when a campaign has real data sitting under
+// segment/mediaMix but hasn't separately gone through Performance
+// Marketing's own fields.
+function cmpCreativeAudienceText(c){
+  if (!c) return '';
+  if (c.audienceTargets && c.audienceTargets.trim()) return c.audienceTargets.trim();
+  if (c.segment && c.segment.trim()) return c.segment.trim();
+  return '';
+}
+function cmpCreativeChannelsText(c){
+  if (!c) return '';
+  if (c.channels && c.channels.trim()) return c.channels.trim();
+  if (c.mediaMix && Array.isArray(c.mediaMix.channels)){
+    const names = c.mediaMix.channels.filter(r => (Number(r.amount) || 0) > 0).map(r => r.channel).filter(Boolean);
+    if (names.length) return names.join(', ');
+  }
+  return '';
+}
+// 2026-09-22 — third helper of the same family, added once Todd asked
+// for the dead-field duplication to be retired everywhere, not just in
+// Creative. A full audit (grep across portal.html + server.js) found
+// campaign.objective is ALSO always '' on every real campaign — same
+// dead-column pattern as audienceTargets/channels — while the real
+// narrative objective lives in activityNotes.objectivesGoalSummary
+// (the Objectives Dialogue's own AI-written summary). NOT to be
+// confused with the separate, intentional `c.name || c.objective`
+// pattern used ~30 places as an "Untitled Campaign" display-name
+// fallback — that one is left alone; it happens to always resolve to
+// c.name in production since objective is always empty, which is fine,
+// that's what a fallback chain does.
+function cmpCreativeObjectiveText(c){
+  if (!c) return '';
+  if (c.activityNotes && c.activityNotes.objectivesGoalSummary && c.activityNotes.objectivesGoalSummary.trim()) return c.activityNotes.objectivesGoalSummary.trim();
+  if (c.objective && c.objective.trim()) return c.objective.trim();
+  return '';
+}
 // ============================================================
 // 2026-09-22 — Creative Step 1: Select Winner & Apply, built for real this
 // round. Mirrors backend/server.js's parseAudienceList()/
@@ -40077,7 +40131,9 @@ async function cmpSetAudienceSharedExperience(val){
 // per direct instruction, audiences are parsed from the same free-text
 // audienceTargets field Performance Marketing already writes; see that
 // field's ensureColumn comment and parseAudienceList()'s own comment in
-// server.js for the tradeoff this implies.
+// server.js for the tradeoff this implies. As of this same round, the
+// text handed to cmpParseAudienceList() is cmpCreativeAudienceText(c),
+// not c.audienceTargets directly — see that helper's comment above.
 // ============================================================
 function cmpParseAudienceList(text){
   if (!text || typeof text !== 'string') return [];
@@ -40131,7 +40187,7 @@ function cmpRenderStep0RunContest(c){
       <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
     return;
   }
-  const audiences = cmpParseAudienceList(c.audienceTargets);
+  const audiences = cmpParseAudienceList(cmpCreativeAudienceText(c));
   cmpStep1AudienceNames = audiences;
   if (!audiences.length){
     holder.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here to run each one's contest.</div>`;
@@ -40212,7 +40268,7 @@ function cmpRenderCreativeStep1(c){
     body.innerHTML = `<div class="cmp-step0-callout">This campaign is set to one shared creative experience — run the single campaign-wide contest in Step 0's "Run the contest" card, above, and pick its winner there; it applies to every audience at once. Switch Step 0's toggle to "No" to run a separate contest per audience instead.</div>`;
     return;
   }
-  const audiences = cmpParseAudienceList(c.audienceTargets);
+  const audiences = cmpParseAudienceList(cmpCreativeAudienceText(c));
   cmpStep1AudienceNames = audiences;
   if (!audiences.length){
     body.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here.</div>`;
@@ -44662,8 +44718,18 @@ function renderChannelsSmartDefault(fieldData, holder){
     if (selectedChannels.size === 0){
       allChannels.forEach(ch => toggleChannel(ch));
     }
+    // 2026-09-22 fix — this banner's old copy ("Verilume skipped asking")
+    // read as done/saved, same misleading pattern as audienceTargets
+    // above, but Channels can't be safely auto-saved the same way:
+    // committing it for real means calling cmpApproveChannelPlan(),
+    // which has its own required-row gate, a budget-delta confirm()
+    // dialog, and writes channelGroups — not something to fire silently
+    // off a page render. So instead of auto-saving, the copy now says
+    // plainly that these are pre-checked, not yet approved, matching
+    // what's actually true in Supabase until Approve Channel Plan &
+    // Continue is clicked.
     holder.innerHTML = `<div class="hint" style="background:var(--cx-tint, #e6f6fa);border:1px solid var(--cx, #0891b2);border-radius:8px;padding:8px 10px;">
-      <b>Filled in automatically</b> — your last ${fieldData.sourceCount} campaigns all used the same Channels, so Verilume skipped asking.
+      <b>Pre-checked from your history</b> — your last ${fieldData.sourceCount} campaigns all used the same Channels, so Verilume checked them below. Not saved yet — click "Approve Channel Plan &amp; Continue" to keep them.
       <button type="button" class="btn-ghost" style="margin-left:6px;padding:2px 10px;font-size:0.75rem;" onclick="clearChannelsSmartDefault()">Not this time — clear it</button>
     </div>`;
     return;
@@ -44760,6 +44826,23 @@ function renderCampaignSmartDefaultField(fieldKey, fieldData, holder, inputId, k
     if (el && !el.value){
       el.value = fieldData.value;
       if (opts && opts.onFill) opts.onFill();
+      // 2026-09-22 fix, per a real campaign (CMP-mubtrp8y-872-1) where
+      // Todd saw "Audience Targets" looking filled in on Performance
+      // Marketing and reasonably read that as "not blank" — a direct
+      // Supabase query showed audienceTargets was actually still NULL
+      // and pmValidatedAt (this field's own save timestamp) was NULL
+      // too. Root cause: this 'skip' banner's copy says "Verilume
+      // skipped asking" as if the question were already answered, but
+      // this branch only ever wrote the value into the input's DOM
+      // .value — nothing called saveCampaignPerformanceFields() until
+      // a person separately clicked Save. So the field could sit
+      // "visually filled, never persisted" indefinitely, which is
+      // exactly the class of bug Todd asked to be swept for generally.
+      // For audienceTargets specifically (a single plain-text field
+      // with no side-effecting gate, unlike Channels below) it's safe
+      // to just save it for real the moment it's silently filled, so
+      // "skipped asking" is true in Supabase too, not just on screen.
+      if (fieldKey === 'audienceTargets') saveCampaignPerformanceFields();
     }
     // 2026-08-22, next round (items 5-6) — genuine adaptive skip. The vision
     // doc's own language is "skipped asking," but until now this still
@@ -46898,8 +46981,9 @@ function renderOmniChannelCreativeList(jobs){
         : (j.workingCopy ? `<span class="badge weak">Draft</span>` : `<span class="badge">Not started</span>`);
       const statusClass = CREATIVE_JOB_STATUS_BADGE_CLASS[j.status] || 'status-pending';
       const campaign = findCampaign(j.campaignId);
-      const audienceTarget = campaign && campaign.audienceTargets
-        ? escapeHtml(campaign.audienceTargets)
+      const audienceTargetText = campaign ? cmpCreativeAudienceText(campaign) : '';
+      const audienceTarget = audienceTargetText
+        ? escapeHtml(audienceTargetText)
         : '<span style="color:var(--muted);">Not set yet</span>';
       const specHref = j.channel === 'Print'
         ? `print-specs.html?accountId=${encodeURIComponent(state.companyId)}`
@@ -48169,18 +48253,27 @@ async function loadMarketingOpsQueue(){
   // same as every other work-queue/dashboard list in this file.
   const real = state.campaigns.filter(c => !c.isAdHoc && !c.cancelled);
   const rows = real.map(c => {
-    const channelsSet = !!(c.channels && c.channels.trim());
+    // 2026-09-22 fix — per the account-wide audit that found c.channels
+    // and c.objective are always empty on real campaigns (data lives in
+    // c.mediaMix/c.segment and activityNotes.objectivesGoalSummary
+    // instead — see cmpCreativeChannelsText()/cmpCreativeObjectiveText()
+    // above), this whole queue's "channels" specialty and the default
+    // ("Campaign Creation & Editing") branch were permanently unable to
+    // ever mark complete, on every real campaign in the account. Now
+    // reads through the same fallback helpers Creative uses.
+    const channelsText = cmpCreativeChannelsText(c);
+    const channelsSet = !!channelsText;
     let complete, detail, focusCard;
     if (mopsQueueSpecialty === 'channels'){
       complete = channelsSet;
-      detail = channelsSet ? c.channels : 'No channels selected yet';
+      detail = channelsSet ? channelsText : 'No channels selected yet';
       focusCard = 'campaignMediaMixCard';
     } else if (mopsQueueSpecialty === 'trafficking'){
       complete = !!c.trafficSentAt;
       detail = c.trafficSentAt ? `Sent ${new Date(c.trafficSentAt).toLocaleDateString()}` : 'Not sent to trafficking yet';
       focusCard = 'campaignTraffickingCard';
     } else {
-      complete = !!(c.objective && channelsSet && c.budget != null && c.startDate);
+      complete = !!(cmpCreativeObjectiveText(c) && channelsSet && c.budget != null && c.startDate);
       detail = c.stage || '';
       focusCard = null; // Campaign Creation & Editing opens the edit form, not a detail-page card
     }
@@ -57708,7 +57801,7 @@ function cmpChannelPlanReasoningText(){
   const totalBudget = rows.reduce((s, [, r]) => s + (Number(r.budget) || 0), 0);
   const parts = [];
   parts.push(`Recommended from the brief above: this campaign's <b>${escapeHtml(campaign.stage || 'selected')}</b> Lifecycle-Loop stage${campaign.campaignType ? ` and <b>${escapeHtml(campaign.campaignType)}</b> campaign type` : ''} shaped which channels made the cut here.`);
-  if (campaign.audienceTargets) parts.push(`<b>Audience</b> — sized against ${escapeHtml(campaign.audienceTargets)}.`);
+  { const audienceText = cmpCreativeAudienceText(campaign); if (audienceText) parts.push(`<b>Audience</b> — sized against ${escapeHtml(audienceText)}.`); }
   if (campaign.primaryKpi) parts.push(`<b>Goal</b> — spend is weighted toward this campaign's Primary KPI ("${escapeHtml(campaign.primaryKpi)}")${totalBudget ? `, sized to stay within the $${totalBudget.toLocaleString()} planned below` : ''}.`);
   parts.push(`Channels: ${rows.map(([ch]) => escapeHtml(ch)).join(', ')}. Edit Spend or CPM directly above if this mix needs adjusting — nothing here locks in until you approve.`);
   return parts.join(' ');
