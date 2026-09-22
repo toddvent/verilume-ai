@@ -17029,7 +17029,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-22-marketing-calendar-wip-card-audience-stage-fields',
+        buildStamp: '2026-09-22-wip-card-impressions-match-pitch-summary',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21923,17 +21923,35 @@ Submit your response via the campaign_intake_turn tool.`;
       // information that we do have. Audience, creative market, product
       // group, impression estimates. We don't need to include channel and
       // partner, but should replace with Loop Stage") — a WIP placeholder
-      // has no channel_planning_details row yet, so it has no real
-      // channel/partner, but it DOES already have these campaign-level
-      // fields the moment they're set on Campaign Creation/Objectives:
-      // segment (Audience), productGroups, creativeFocusGroups (the
-      // calendar's "Creative Market" — note the campaigns-table column is
-      // named creativeFocusGroups, not creativeMarket), stage (Loop Stage),
-      // and plannedImpressions (the campaign's own planned-impressions
-      // target — the honest "estimate" to show here; there's no delivered/
-      // actual number yet for a campaign that hasn't been trafficked).
+      // has no channel_planning_details row with a real hitDate yet, but it
+      // DOES already have these campaign-level fields the moment they're
+      // set on Campaign Creation/Objectives: segment (Audience),
+      // productGroups, creativeFocusGroups (the calendar's "Creative
+      // Market" — note the campaigns-table column is named
+      // creativeFocusGroups, not creativeMarket), and stage (Loop Stage).
       let wipSql = 'SELECT id, name, objective, startDate, endDate, budget, createdAt, segment, productGroups, creativeFocusGroups, stage, plannedImpressions FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND (cancelled IS NULL OR cancelled = 0)';
       const wipRows = db.prepare(wipSql).all(accountId);
+      // 2026-09-22 fix, per direct report: "The campaign is estimating 36
+      // million+ impressions. The marketing calendar includes 80,000,000.
+      // They should always be identical." Root cause — this WIP card was
+      // showing campaigns.plannedImpressions, a separate, one-time,
+      // manually-entered target from Campaign Creation that never updates
+      // again. The AI Brain Recommendation screen's own "Estimated
+      // Impressions" (GET .../pitch-summary) is a different, real number —
+      // SUM(channel_planning_details.impressions) across this campaign's
+      // actual channel-plan lines, which IS being drafted/updated even
+      // before a hitDate is set (that's exactly what makes this a WIP
+      // campaign, not a campaign with no plan at all). Summing that same
+      // column here, the same way pitch-summary does, is what keeps the
+      // two screens showing one real number instead of two different ones
+      // — falling back to plannedImpressions only for a campaign whose
+      // channel plan has no impressions on any line yet, so this never
+      // regresses to blank for a campaign that hasn't started planning.
+      const cpdImpressionsByCampaign = {};
+      db.prepare('SELECT campaignId, impressions FROM channel_planning_details').all().forEach(r => {
+        if (r.impressions === null || r.impressions === undefined) return;
+        cpdImpressionsByCampaign[r.campaignId] = (cpdImpressionsByCampaign[r.campaignId] || 0) + (Number(r.impressions) || 0);
+      });
       const placeholders = [];
       wipRows.forEach(c => {
         if (campaignsWithScheduledCpd.has(c.id)) return; // already scheduled — real events only
@@ -21961,7 +21979,8 @@ Submit your response via the campaign_intake_turn tool.`;
           loopStage: c.stage || null,
           budget: c.budget === null || c.budget === undefined ? null : Number(c.budget),
           status: 'Work in progress',
-          impressions: c.plannedImpressions === null || c.plannedImpressions === undefined ? null : Number(c.plannedImpressions),
+          impressions: cpdImpressionsByCampaign[c.id] > 0 ? cpdImpressionsByCampaign[c.id]
+            : (c.plannedImpressions === null || c.plannedImpressions === undefined ? null : Number(c.plannedImpressions)),
           actualCalls: null,
           actualQrScans: null,
           actualUrlVisits: null,
@@ -30519,6 +30538,15 @@ try {
 }
 
 module.exports = handleRequest;
+
+
+
+
+
+
+
+
+
 
 
 
