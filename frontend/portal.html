@@ -8445,6 +8445,27 @@
               </div>
             </div>
           </div>
+
+          <!-- 2026-09-22 — Creative Step 1: Select Winner & Apply, built for
+               real this round per direct instruction. When Step 0's audience
+               toggle is "shared," this step points at the existing shared
+               campaign-wide copy contest (Brand Messaging, below) rather
+               than duplicating it — Todd's own correction from the earlier
+               Copy Versions round was "one shared contest, not two." When
+               "separate," each audience parsed from audienceTargets gets its
+               own real contest here (POST .../copy-interview with an
+               audience-scoped sourceKey + audience field), scored the same
+               way, with its own winner applied to campaign.audienceCopyJson.
+               Same permanently-open treatment as Step 0 — not an accordion
+               module. Steps 2-3 remain wireframe-only. -->
+          <div class="module cmp-stage" id="cmpCreativeStep1" style="margin-bottom:0;margin-top:20px;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 1</div>
+              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Select Winner &amp; Apply</div>
+              <p class="hint" style="margin:0 0 14px;">Run each audience's copy contest, then pick the winner — it applies for that audience across every asset that follows.</p>
+              <div id="cmpCreativeStep1Body"></div>
+            </div>
+          </div>
         </div>
         <div class="cmp-workspace-collab" id="cmpCreativeCollabMount"></div>
       </div>
@@ -39687,6 +39708,7 @@ function cmpOpenCreativeWorkspace(){
   // own function comment for what it renders and why it's separate from the
   // 3 relocated real sections above.
   cmpRenderCreativeStep0(campaign);
+  cmpRenderCreativeStep1(campaign);
 }
 function cmpCloseCreativeWorkspace(){
   const overlay = document.getElementById('cmpCreativeOverlay');
@@ -39932,7 +39954,180 @@ async function cmpSetStep0DetailMode(fieldKey, mode){
 }
 async function cmpSetAudienceSharedExperience(val){
   const updated = await cmpSaveCampaignField({ audienceSharedExperience: val }, { audienceSharedExperience: val });
-  if (updated) cmpRenderStep0AudienceToggle(updated);
+  if (updated){
+    cmpRenderStep0AudienceToggle(updated);
+    // Step 1's shape (one shared contest pointer vs. one card per audience)
+    // depends directly on this toggle — re-render it the moment the toggle
+    // changes, not just on next workspace open.
+    cmpRenderCreativeStep1(updated);
+  }
+}
+
+// ============================================================
+// 2026-09-22 — Creative Step 1: Select Winner & Apply, built for real this
+// round. Mirrors backend/server.js's parseAudienceList()/
+// audienceContestSourceKey() exactly (same comma-split, same sourceKey
+// shape) so the audiences and contest history this renders line up with
+// what the server actually stored. No structured audience table exists —
+// per direct instruction, audiences are parsed from the same free-text
+// audienceTargets field Performance Marketing already writes; see that
+// field's ensureColumn comment and parseAudienceList()'s own comment in
+// server.js for the tradeoff this implies.
+// ============================================================
+function cmpParseAudienceList(text){
+  if (!text || typeof text !== 'string') return [];
+  const seen = new Set();
+  const out = [];
+  text.split(',').forEach(raw => {
+    const name = raw.trim();
+    if (name && !seen.has(name)){ seen.add(name); out.push(name); }
+  });
+  return out;
+}
+function cmpAudienceContestSourceKey(name){
+  return `campaign_copy::audience::${name}`;
+}
+function cmpAudienceCopyMap(c){
+  if (!c || !c.audienceCopyJson) return {};
+  try { const parsed = JSON.parse(c.audienceCopyJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
+}
+// Index-based, not name-based: audience names are arbitrary free text and
+// unsafe to embed directly inside an onclick attribute (quotes/apostrophes
+// would break it). cmpStep1AudienceNames is rebuilt on every render in the
+// same order the cards are drawn, so `idx` in each card's onclick always
+// resolves back to the right audience.
+let cmpStep1AudienceNames = [];
+function cmpRenderCreativeStep1(c){
+  const body = document.getElementById('cmpCreativeStep1Body');
+  if (!body || !c) return;
+  const mode = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
+  if (mode === 'shared'){
+    cmpStep1AudienceNames = [];
+    body.innerHTML = `<div class="cmp-step0-callout">This campaign is set to one shared creative experience (Step 0, above) — run and pick the winner from the single campaign-wide contest on <b>Brand Messaging</b>, below; it applies to every audience at once. Switch Step 0's toggle to "No" to run a separate contest per audience here instead.</div>`;
+    return;
+  }
+  const audiences = cmpParseAudienceList(c.audienceTargets);
+  cmpStep1AudienceNames = audiences;
+  if (!audiences.length){
+    body.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here to run each one's contest.</div>`;
+    return;
+  }
+  const audienceCopyMap = cmpAudienceCopyMap(c);
+  body.innerHTML = audiences.map((name, idx) => {
+    const applied = audienceCopyMap[name];
+    return `
+    <div class="msg-card" style="margin-bottom:12px;">
+      <div class="msg-card-head">
+        <span class="msg-card-title">${escapeHtml(name)}</span>
+        <span class="badge ${applied ? 'strong' : 'weak'}">${applied ? '✓ Winner applied' : 'No winner yet'}</span>
+      </div>
+      ${applied ? `<div class="hint" style="white-space:pre-wrap;margin:6px 0 10px;">${escapeHtml(applied.copy)}</div>` : ''}
+      <button type="button" class="btn-ghost" id="cmpStep1RunBtn_${idx}" onclick="cmpRunAudienceContest(${idx})">${applied ? 'Re-run the contest' : 'Run the contest'}</button>
+      <div id="cmpStep1Panel_${idx}" style="margin-top:10px;"></div>
+    </div>`;
+  }).join('');
+}
+async function cmpRunAudienceContest(idx){
+  const audienceName = cmpStep1AudienceNames[idx];
+  const campaign = findCampaign(currentCampaignId);
+  const panel = document.getElementById(`cmpStep1Panel_${idx}`);
+  const btn = document.getElementById(`cmpStep1RunBtn_${idx}`);
+  if (!audienceName || !campaign || !panel) return;
+  const gate = cmpRequiredForGenerationGate();
+  if (!gate.ok){
+    panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;">Set ${gate.missing.join(' and ')} on Brand Messaging before running this contest.</p>`;
+    return;
+  }
+  panel.innerHTML = renderAiStatusBubble(`Drafting copy specifically for "${escapeHtml(audienceName)}" — three independent angles plus every configured vendor, then scoring each blind before ranking them.`, INTERVIEW_STATUS_TIPS);
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName })
+    });
+    const result = await resp.json();
+    if (!resp.ok){
+      panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">${escapeHtml(result.error || "Couldn't run this audience's contest — try again.")}</div>`;
+      return;
+    }
+    if (!result.available){
+      panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
+      return;
+    }
+    panel.innerHTML = renderCmpAudienceContestPanel(result, idx);
+  } catch (e){
+    panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run this contest.</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+// Same card layout as renderCmpCopyContestPanel() (the shared campaign-wide
+// contest's own panel) — kept separate rather than reused directly because
+// "Use this draft →" here must carry this audience's index through to
+// cmpSelectAudienceContestCandidate, not apply straight into #cmpLongFormCopy.
+function renderCmpAudienceContestPanel(result, idx){
+  const cards = (result.candidates || []).map(c => {
+    const isWinner = c.key === result.recommendedKey;
+    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
+    if (!c.configured){
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
+      </div>`;
+    }
+    if (!c.copy){
+      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
+      </div>`;
+    }
+    return `<div style="border:${border};border-radius:8px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+      </div>
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="cmpSelectAudienceContestCandidate('${result.interviewId}', '${c.key}', ${idx})">Use this draft →</button>
+    </div>`;
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+    <div id="cmpStep1Flag_${idx}" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+// Applies the winning candidate to campaign.audienceCopyJson (server-side,
+// via the /select endpoint's `audience` field — see its 2026-09-22
+// comment), mirrors that same shape into local campaign state, then
+// re-renders Step 1 so this audience's card flips straight to its
+// "✓ Winner applied" state — same explicit-click-only discipline as
+// cmpSelectCopyContestCandidate().
+async function cmpSelectAudienceContestCandidate(interviewId, candidateKey, idx){
+  const audienceName = cmpStep1AudienceNames[idx];
+  const campaign = findCampaign(currentCampaignId);
+  const flag = document.getElementById(`cmpStep1Flag_${idx}`);
+  if (!campaign || !audienceName) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey, audience: audienceName })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this draft — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    if (result.audienceApplied && result.copy){
+      const audienceCopyMap = cmpAudienceCopyMap(campaign);
+      audienceCopyMap[result.audienceApplied] = { copy: result.copy, interviewId, selectedAt: new Date().toISOString() };
+      campaign.audienceCopyJson = JSON.stringify(audienceCopyMap);
+    }
+    cmpRenderCreativeStep1(campaign);
+  } catch (e){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
+  }
 }
 
 // ============================================================
