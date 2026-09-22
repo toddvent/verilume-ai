@@ -731,6 +731,19 @@
   .cmp-step0-audience-toggle-opt{padding:8px 18px;font-size:0.8125rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
   .cmp-step0-audience-toggle-opt.on{background:var(--ink);color:var(--white);}
   .cmp-step0-callout{border-radius:10px;padding:11px 14px;font-size:0.75rem;line-height:1.5;background:#EAF1FB;color:#1E5FA8;margin-top:12px;}
+  /* Creative Step 1's contest-entry cards — same class names and colors as
+     Creative-Step1-SelectWinner-Desktop.dc.html's own .entry-card/.entries-grid,
+     ported directly rather than reinterpreted, per direct instruction that
+     the real code should match the wireframe. */
+  .entries-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px;}
+  @media (max-width:900px){ .entries-grid{grid-template-columns:1fr;} }
+  .entry-card{border:1px solid #E8E8ED;border-radius:14px;padding:16px 18px;background:#FBFBFC;position:relative;}
+  .entry-card.winner{border-color:#1E7A45;background:#F3FBF6;}
+  .entry-model{font-size:0.65625rem;font-weight:700;color:#6E6E73;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;}
+  .entry-headline{font-size:0.875rem;font-weight:700;color:#1D1D1F;margin-bottom:6px;line-height:1.35;white-space:pre-wrap;}
+  .entry-score{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .cmp-step1-audience-card{border:1px solid var(--line);border-radius:18px;padding:22px 24px;background:var(--white);margin-bottom:16px;}
+  .cmp-step1-audience-card:last-child{margin-bottom:0;}
   .cmp-brief-cmo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
   @media (max-width:900px){ .cmp-brief-cmo-grid{grid-template-columns:1fr;} }
   .cmp-brief-cmo-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;position:relative;}
@@ -8401,68 +8414,82 @@
       <div id="cmpCreativeBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpCreativeLeft">
-          <!-- 2026-09-22 — Creative Step 0: Recap & Assessment, per the
-               approved Creative-Desktop.dc.html restructure ("Creative now
-               runs earlier in the flow"). Static, always-present first
-               child of #cmpCreativeLeft — unlike the 3 relocated real
-               sections below it (Brand Messaging/Copy Versions/Creative
-               Asset Jobs, still moved in/out by cmpOpenCreativeWorkspace()/
-               cmpCloseCreativeWorkspace()), this card lives here permanently
-               and is just re-rendered on open via cmpRenderCreativeStep0().
-               Steps 1-3 (Select Winner & Apply / Specific Assets with Copy /
-               Send to Marketing Ops) are still wireframe-only as of this
-               round — see that doc's Decision log. -->
+          <!-- 2026-09-22 — Creative Step 0: Recap & Assessment, rebuilt to
+               match the real, approved Creative-Desktop.dc.html wireframe
+               directly (two-column recap+detail card, then the audience
+               toggle, then Run the contest) rather than a generic
+               reinterpretation of it — per Todd's direct correction: "The
+               real code is supposed [to match] the wireframe... That is why
+               we built the wireframe first." Static, always-present first
+               child of #cmpCreativeLeft, re-rendered on open via
+               cmpRenderCreativeStep0(). The wireframe's "Which asset types
+               apply?" card (per-audience, budget-gated asset-type chips) is
+               NOT built — there's no real backend data for per-audience
+               approved-asset-type/budget scoping to ground it in (flagged to
+               Todd, not silently dropped). Steps 2-3 remain wireframe-only. -->
           <div class="module cmp-stage" id="cmpCreativeStep0" style="margin-bottom:0;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
               <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 0</div>
               <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Recap &amp; Assessment</div>
               <p class="hint" style="margin:0 0 14px;">Everything below feeds copy development and the contests that follow — confirm it's right, then complete what's still needed before any contest runs.</p>
 
-              <div class="cmp-brief-recap-card" style="padding:16px 18px;margin-bottom:16px;">
-                <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);">This campaign, at a glance</div>
-                <div class="cmp-brief-recap-grid" id="cmpCreativeStep0Recap" style="grid-template-columns:repeat(2,minmax(0,1fr));"></div>
-              </div>
-
-              <div class="msg-card" style="margin-bottom:16px;">
-                <div class="msg-card-head">
-                  <span class="msg-card-title">Complete Writing Style detail</span>
-                  <span class="msg-card-sub">Every field needs a real answer — none is inferred. Headline is shared across Writing Styles; the rest are unique to this campaign's Writing Style.</span>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start;">
+                <div>
+                  <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">This campaign, at a glance</div>
+                  <div style="font-size:0.6875rem;color:#9A9AA0;margin-bottom:10px;">Already set earlier in the flow — read-only here.</div>
+                  <div class="cmp-brief-recap-grid" id="cmpCreativeStep0Recap" style="grid-template-columns:1fr;"></div>
                 </div>
-                <div id="cmpCreativeStep0Headline"></div>
-                <div id="cmpCreativeStep0DetailFields"></div>
-              </div>
-
-              <div class="msg-card">
-                <div class="msg-card-head">
-                  <span class="msg-card-title">Should all audiences' experiences be the same?</span>
-                  <span class="msg-card-sub">Applies to every contest and asset choice that follows.</span>
+                <div>
+                  <div style="font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Complete Writing Style detail</div>
+                  <p class="hint" style="margin:0 0 12px;">Every field needs a real answer — none is inferred. Headline is shared across Writing Styles; the rest are unique to this campaign's Writing Style.</p>
+                  <div id="cmpCreativeStep0Headline"></div>
+                  <div id="cmpCreativeStep0DetailFields"></div>
                 </div>
-                <div class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
-                  <div class="cmp-step0-audience-toggle-opt" data-val="shared" onclick="cmpSetAudienceSharedExperience('shared')">Yes — one shared creative experience</div>
-                  <div class="cmp-step0-audience-toggle-opt" data-val="separate" onclick="cmpSetAudienceSharedExperience('separate')">No — each audience gets its own</div>
-                </div>
-                <div class="cmp-step0-callout" id="cmpCreativeStep0AudienceCallout"></div>
               </div>
             </div>
           </div>
 
-          <!-- 2026-09-22 — Creative Step 1: Select Winner & Apply, built for
-               real this round per direct instruction. When Step 0's audience
-               toggle is "shared," this step points at the existing shared
-               campaign-wide copy contest (Brand Messaging, below) rather
-               than duplicating it — Todd's own correction from the earlier
-               Copy Versions round was "one shared contest, not two." When
-               "separate," each audience parsed from audienceTargets gets its
-               own real contest here (POST .../copy-interview with an
-               audience-scoped sourceKey + audience field), scored the same
-               way, with its own winner applied to campaign.audienceCopyJson.
-               Same permanently-open treatment as Step 0 — not an accordion
+          <div class="module cmp-stage" id="cmpCreativeStep0Audience" style="margin-bottom:0;margin-top:20px;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Should all audiences' experiences be the same?</div>
+              <p class="hint" style="margin:0 0 14px;">Applies to every contest below.</p>
+              <div class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
+                <div class="cmp-step0-audience-toggle-opt" data-val="shared" onclick="cmpSetAudienceSharedExperience('shared')">Yes — one shared creative experience</div>
+                <div class="cmp-step0-audience-toggle-opt" data-val="separate" onclick="cmpSetAudienceSharedExperience('separate')">No — each audience gets its own</div>
+              </div>
+              <div class="cmp-step0-callout" id="cmpCreativeStep0AudienceCallout" style="margin-top:12px;"></div>
+            </div>
+          </div>
+
+          <!-- 2026-09-22 — "Run the contest" — per the wireframe, running
+               each audience's contest belongs in Step 0, not Step 1. Step 1
+               (below) now ONLY shows results and lets you pick a winner —
+               it no longer has its own "Run" button. Rendered/hidden by
+               cmpRenderCreativeStep0() (only shown in "separate" mode; in
+               "shared" mode this card is empty, since the existing shared
+               Brand Messaging contest already covers that case). -->
+          <div class="module cmp-stage" id="cmpCreativeStep0RunContest" style="margin-bottom:0;margin-top:20px;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div id="cmpCreativeStep0RunContestBody"></div>
+            </div>
+          </div>
+
+          <!-- 2026-09-22 — Creative Step 1: Select Winner & Apply, rebuilt to
+               match Creative-Step1-SelectWinner-Desktop.dc.html directly —
+               one card per audience showing that audience's already-run
+               contest results as scored entry cards, "Select as winner",
+               and "Apply winner to remainder of campaign" once a winner is
+               chosen. When Step 0's audience toggle is "shared," this step
+               points at the existing shared Brand Messaging contest instead
+               of duplicating it — Todd's own correction from the Copy
+               Versions round was "one shared contest, not two." Same
+               permanently-open treatment as Step 0 — not an accordion
                module. Steps 2-3 remain wireframe-only. -->
           <div class="module cmp-stage" id="cmpCreativeStep1" style="margin-bottom:0;margin-top:20px;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
               <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 1</div>
               <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Select Winner &amp; Apply</div>
-              <p class="hint" style="margin:0 0 14px;">Run each audience's copy contest, then pick the winner — it applies for that audience across every asset that follows.</p>
+              <p class="hint" style="margin:0 0 14px;">Each audience ran its own contest in Step 0 — pick the winning entry for each, then apply it to the rest of the campaign.</p>
               <div id="cmpCreativeStep1Body"></div>
             </div>
           </div>
@@ -11590,7 +11617,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-step0-step1-real';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-wireframe-match-old-page-removed';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -39659,50 +39686,19 @@ function cmpOpenCreativeWorkspace(){
     if (m) m.innerHTML = '';
   });
   cmpRenderCollabCenter(campaign);
-  // Relocate the 3 real sections (only once — a second open while already
-  // open, e.g. a stray double-click, is a harmless no-op since they're
-  // already exactly where this function wants them).
-  if (!cmpCreativeWorkspaceBookmarks){
-    const ids = ['cmpStage-messaging', 'cmpStage-copyVersions', 'campaignCreativeJobsCard'];
-    cmpCreativeWorkspaceBookmarks = ids.map(id => {
-      const el = document.getElementById(id);
-      return el ? { id, parent: el.parentNode, next: el.nextSibling, marginTop: el.style.marginTop } : null;
-    }).filter(Boolean);
-    cmpCreativeWorkspaceBookmarks.forEach(b => {
-      const el = document.getElementById(b.id);
-      // campaignCreativeJobsCard carries an inline margin-top:26px meant for
-      // its normal spot on the legacy Campaign Detail page — this
-      // container's own flex gap already spaces it correctly here, so that
-      // inline value is cleared while mounted (restored on close below).
-      el.style.marginTop = '0';
-      left.appendChild(el);
-    });
-  }
-  cmpBindCreativeLeftClickGuard();
-  // Force both accordion modules fully open and unclipped — this workspace
-  // shows all 3 sections stacked at once (per the wireframe), not one at a
-  // time, so openCmpStage() itself (which closes every OTHER .cmp-stage)
-  // isn't used here; same 'open' class + unclipped overflow it would set,
-  // applied directly to just these two instead.
-  ['cmpStage-messaging', 'cmpStage-copyVersions'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.add('open');
-    el.style.overflow = 'visible';
-    const body = el.querySelector('.module-body');
-    if (body){ body.style.maxHeight = 'none'; body.style.overflow = 'visible'; }
-  });
-  // Same data these two stages load on a normal openCmpStage('messaging'|'copyVersions').
-  if (typeof generateCampaignBriefExpanded === 'function') generateCampaignBriefExpanded();
-  if (typeof cmpAutoDraftMessaging === 'function') cmpAutoDraftMessaging();
-  if (typeof cmpRenderCopyVersionsStage === 'function') cmpRenderCopyVersionsStage();
-  if (typeof loadCreativeJobs === 'function') loadCreativeJobs();
-  // #campaignCreativeJobsCard is also a CAMPAIGN_DETAIL_CARD_IDS entry on
-  // the legacy Campaign Detail page — a prior deep-link there
-  // (applyCampaignCardFocus()) can leave it carrying .collapsed, which
-  // would hide its body here too. Always fully shown in this workspace,
-  // matching the wireframe.
-  { const jobsCard = document.getElementById('campaignCreativeJobsCard'); if (jobsCard) jobsCard.classList.remove('collapsed'); }
+  // 2026-09-22 — the old Brand Messaging / Copy Versions / Creative Asset
+  // Jobs sections are deliberately NOT relocated into #cmpCreativeLeft
+  // anymore, per direct instruction: "The old page should not exist" / "It
+  // should be deleted. The active start page is the PDF/artifact that we
+  // created earlier." This workspace now shows only Step 0/Step 1, matching
+  // the real, approved wireframe. Nothing was deleted at the code level —
+  // #cmpStage-messaging, #cmpStage-copyVersions and
+  // #campaignCreativeJobsCard still exist and still work exactly as before
+  // on the legacy Campaign Detail page; this function simply stopped
+  // moving them in here. cmpCreativeWorkspaceBookmarks/
+  // cmpBindCreativeLeftClickGuard (above) are now unused but left in place
+  // as dead code rather than removed, in case a future round needs to
+  // bring one of those sections back into a workspace card on purpose.
   cmpRenderCreativeWorkspaceStatusBadge(campaign);
   // 2026-09-22 — Step 0 (Recap & Assessment), the new leading card; see its
   // own function comment for what it renders and why it's separate from the
@@ -39717,27 +39713,10 @@ function cmpCloseCreativeWorkspace(){
   if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
   document.body.style.overflow = '';
   cmpSyncUtilityNavBack();
-  // Put the 3 relocated sections back exactly where they came from, and
-  // collapse the two accordion modules back to their normal closed state
-  // (matching how they'd sit if this workspace had never been opened).
-  if (cmpCreativeWorkspaceBookmarks){
-    cmpCreativeWorkspaceBookmarks.forEach(b => {
-      const el = document.getElementById(b.id);
-      if (!el) return;
-      el.style.marginTop = b.marginTop || '';
-      if (b.next && b.next.parentNode === b.parent) b.parent.insertBefore(el, b.next);
-      else b.parent.appendChild(el);
-    });
-    cmpCreativeWorkspaceBookmarks = null;
-  }
-  ['cmpStage-messaging', 'cmpStage-copyVersions'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.remove('open');
-    el.style.overflow = '';
-    const body = el.querySelector('.module-body');
-    if (body){ body.style.maxHeight = '0px'; body.style.overflow = ''; }
-  });
+  // 2026-09-22 — nothing to restore here anymore: cmpOpenCreativeWorkspace()
+  // no longer relocates the old sections into this workspace, so
+  // cmpCreativeWorkspaceBookmarks is never populated and there's nothing to
+  // put back or collapse. See that function's own comment.
   cmpCollabMountId = 'cmpWorkspaceCollab';
   const creativeMount = document.getElementById('cmpCreativeCollabMount');
   if (creativeMount) creativeMount.innerHTML = '';
@@ -39833,6 +39812,7 @@ function cmpRenderCreativeStep0(c){
   cmpRenderStep0Headline(c);
   cmpRenderStep0DetailFields(c);
   cmpRenderStep0AudienceToggle(c);
+  cmpRenderStep0RunContest(c);
 }
 function cmpRenderStep0Headline(c){
   const holder = document.getElementById('cmpCreativeStep0Headline');
@@ -39860,7 +39840,7 @@ function cmpRenderStep0DetailFields(c){
   if (!holder) return;
   const def = c.campaignType ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType] : null;
   if (!def || !def.detailFields.length){
-    holder.innerHTML = `<div class="cmp-step0-hint-inline" style="margin-top:12px;">Set this campaign's Writing Style (Campaign Experience Focus, on Brand Messaging below) to see its own required fields here.</div>`;
+    holder.innerHTML = `<div class="cmp-step0-hint-inline" style="margin-top:12px;">Set this campaign's Writing Style (Campaign Experience Focus, on the Campaign Detail page) to see its own required fields here.</div>`;
     return;
   }
   const values = campaignTypeDetailsClient(c);
@@ -39997,48 +39977,62 @@ function cmpAudienceCopyMap(c){
 // same order the cards are drawn, so `idx` in each card's onclick always
 // resolves back to the right audience.
 let cmpStep1AudienceNames = [];
-function cmpRenderCreativeStep1(c){
-  const body = document.getElementById('cmpCreativeStep1Body');
-  if (!body || !c) return;
+// In-memory only (idx -> {result, selectedKey}) — holds each audience's
+// contest entries between "Run the contest" (Step 0) and picking a winner
+// (Step 1), per the real wireframe's two-step select-then-apply flow
+// (Creative-Step1-SelectWinner-Desktop.dc.html): a local "Select as winner"
+// click just marks `selectedKey` and re-renders; nothing is written
+// server-side until "Apply winner to remainder of campaign" is clicked
+// (cmpApplyAudienceWinner). Cleared implicitly on workspace re-open since
+// it's re-declared fresh each time this script block runs.
+let cmpStep1AudienceResults = {};
+// Step 0's "Run the contest" card — matches Creative-Desktop.dc.html's own
+// last card exactly: shared mode gets one button (mounts the existing
+// campaign-wide contest machinery, same one Brand Messaging's Long Form
+// Copy field uses, into ids scoped to this card); separate mode gets one
+// "Run Contest — <Audience> →" button per audience, matching the
+// wireframe's one-`wf-btn-primary`-per-audience layout. Results for
+// separate mode render in Step 1 below, not inline here — per the
+// wireframe, this card is buttons only.
+function cmpRenderStep0RunContest(c){
+  const holder = document.getElementById('cmpCreativeStep0RunContestBody');
+  if (!holder || !c) return;
   const mode = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
   if (mode === 'shared'){
     cmpStep1AudienceNames = [];
-    body.innerHTML = `<div class="cmp-step0-callout">This campaign is set to one shared creative experience (Step 0, above) — run and pick the winner from the single campaign-wide contest on <b>Brand Messaging</b>, below; it applies to every audience at once. Switch Step 0's toggle to "No" to run a separate contest per audience here instead.</div>`;
+    holder.innerHTML = `
+      <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
+      <button type="button" class="btn-primary" id="cmpStep0SharedContestBtn" onclick="cmpRunCampaignCopyContest('cmpStep0SharedContestPanel','cmpStep0SharedContestBtn','cmpStep0SharedContestFlag')">✦ Run Contest →</button>
+      <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
     return;
   }
   const audiences = cmpParseAudienceList(c.audienceTargets);
   cmpStep1AudienceNames = audiences;
   if (!audiences.length){
-    body.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here to run each one's contest.</div>`;
+    holder.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here to run each one's contest.</div>`;
     return;
   }
-  const audienceCopyMap = cmpAudienceCopyMap(c);
-  body.innerHTML = audiences.map((name, idx) => {
-    const applied = audienceCopyMap[name];
+  holder.innerHTML = audiences.map((name, idx) => {
+    const hasResult = !!cmpStep1AudienceResults[idx];
     return `
-    <div class="msg-card" style="margin-bottom:12px;">
-      <div class="msg-card-head">
-        <span class="msg-card-title">${escapeHtml(name)}</span>
-        <span class="badge ${applied ? 'strong' : 'weak'}">${applied ? '✓ Winner applied' : 'No winner yet'}</span>
-      </div>
-      ${applied ? `<div class="hint" style="white-space:pre-wrap;margin:6px 0 10px;">${escapeHtml(applied.copy)}</div>` : ''}
-      <button type="button" class="btn-ghost" id="cmpStep1RunBtn_${idx}" onclick="cmpRunAudienceContest(${idx})">${applied ? 'Re-run the contest' : 'Run the contest'}</button>
-      <div id="cmpStep1Panel_${idx}" style="margin-top:10px;"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+      <button type="button" class="btn-primary" id="cmpStep0RunBtn_${idx}" onclick="cmpRunAudienceContest(${idx})">${hasResult ? '↻ Re-run Contest' : '✦ Run Contest'} — ${escapeHtml(name)} →</button>
+      <span class="hint" id="cmpStep0RunStatus_${idx}"></span>
     </div>`;
   }).join('');
 }
 async function cmpRunAudienceContest(idx){
   const audienceName = cmpStep1AudienceNames[idx];
   const campaign = findCampaign(currentCampaignId);
-  const panel = document.getElementById(`cmpStep1Panel_${idx}`);
-  const btn = document.getElementById(`cmpStep1RunBtn_${idx}`);
-  if (!audienceName || !campaign || !panel) return;
+  const btn = document.getElementById(`cmpStep0RunBtn_${idx}`);
+  const status = document.getElementById(`cmpStep0RunStatus_${idx}`);
+  if (!audienceName || !campaign) return;
   const gate = cmpRequiredForGenerationGate();
   if (!gate.ok){
-    panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;">Set ${gate.missing.join(' and ')} on Brand Messaging before running this contest.</p>`;
+    if (status){ status.style.color = 'var(--advocacy)'; status.textContent = `Set ${gate.missing.join(' and ')} on Brand Messaging before running this contest.`; }
     return;
   }
-  panel.innerHTML = renderAiStatusBubble(`Drafting copy specifically for "${escapeHtml(audienceName)}" — three independent angles plus every configured vendor, then scoring each blind before ranking them.`, INTERVIEW_STATUS_TIPS);
+  if (status){ status.style.color = ''; status.textContent = 'Drafting copy for this audience — three independent angles plus every configured vendor…'; }
   if (btn) btn.disabled = true;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
@@ -40047,81 +40041,138 @@ async function cmpRunAudienceContest(idx){
     });
     const result = await resp.json();
     if (!resp.ok){
-      panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">${escapeHtml(result.error || "Couldn't run this audience's contest — try again.")}</div>`;
+      if (status){ status.style.color = 'var(--advocacy)'; status.textContent = result.error || "Couldn't run this audience's contest — try again."; }
       return;
     }
     if (!result.available){
-      panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
+      if (status){ status.textContent = result.note || 'Copy contest unavailable.'; }
       return;
     }
-    panel.innerHTML = renderCmpAudienceContestPanel(result, idx);
+    cmpStep1AudienceResults[idx] = { result, selectedKey: null };
+    if (status){ status.style.color = 'var(--cx)'; status.textContent = '✓ Contest run — pick the winner in Step 1, below.'; }
+    cmpRenderCreativeStep1(campaign);
   } catch (e){
-    panel.innerHTML = `<div class="hint" style="color:var(--advocacy);">Backend unreachable — couldn't run this contest.</div>`;
+    if (status){ status.style.color = 'var(--advocacy)'; status.textContent = 'Backend unreachable — try again.'; }
   } finally {
     if (btn) btn.disabled = false;
+    cmpRenderStep0RunContest(campaign);
   }
 }
-// Same card layout as renderCmpCopyContestPanel() (the shared campaign-wide
-// contest's own panel) — kept separate rather than reused directly because
-// "Use this draft →" here must carry this audience's index through to
-// cmpSelectAudienceContestCandidate, not apply straight into #cmpLongFormCopy.
-function renderCmpAudienceContestPanel(result, idx){
-  const cards = (result.candidates || []).map(c => {
-    const isWinner = c.key === result.recommendedKey;
-    const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
-    if (!c.configured){
-      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
-      </div>`;
+// Step 1: per-audience "<Audience> — contest results" card, matching
+// Creative-Step1-SelectWinner-Desktop.dc.html's real structure — an
+// .entries-grid of .entry-cards (ported class names/colors, see the CSS
+// block near .cmp-step0-callout), a local-only "Select as winner" click
+// (cmpStep1SelectLocalWinner), and a separate, dimmed-until-selected
+// "Apply winner to remainder of campaign" button (cmpApplyAudienceWinner)
+// that's the only thing that actually writes to the server. This is a
+// genuine two-step flow, not the original single-click "Use this draft".
+function cmpRenderCreativeStep1(c){
+  const body = document.getElementById('cmpCreativeStep1Body');
+  if (!body || !c) return;
+  const mode = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
+  if (mode === 'shared'){
+    cmpStep1AudienceNames = [];
+    body.innerHTML = `<div class="cmp-step0-callout">This campaign is set to one shared creative experience — run the single campaign-wide contest in Step 0's "Run the contest" card, above, and pick its winner there; it applies to every audience at once. Switch Step 0's toggle to "No" to run a separate contest per audience instead.</div>`;
+    return;
+  }
+  const audiences = cmpParseAudienceList(c.audienceTargets);
+  cmpStep1AudienceNames = audiences;
+  if (!audiences.length){
+    body.innerHTML = `<div class="cmp-step0-hint-inline">No audiences set yet — add them on Performance Marketing's Audience Targets field, then come back here.</div>`;
+    return;
+  }
+  const audienceCopyMap = cmpAudienceCopyMap(c);
+  body.innerHTML = audiences.map((name, idx) => {
+    const applied = audienceCopyMap[name];
+    const state = cmpStep1AudienceResults[idx];
+    const result = state && state.result;
+    const selectedKey = state && state.selectedKey;
+    let entriesHtml, applyBtnHtml;
+    const statusBadge = `<span class="badge ${applied ? 'strong' : (result ? 'weak' : 'weak')}">${applied ? '✓ Winner applied' : (result ? 'Pick a winner below' : 'Not run yet')}</span>`;
+    if (!result){
+      entriesHtml = applied
+        ? `<div class="hint" style="white-space:pre-wrap;margin:6px 0 0;">${escapeHtml(applied.copy)}</div>`
+        : `<div class="hint">Run this audience's contest in Step 0, above, to see entries here.</div>`;
+      applyBtnHtml = '';
+    } else {
+      entriesHtml = `<div class="entries-grid">${(result.candidates || []).map(cand => {
+        const isSelected = cand.key === selectedKey;
+        if (!cand.configured){
+          return `<div class="entry-card" style="opacity:0.6;">
+            <div class="entry-model">${escapeHtml(cand.label)}</div>
+            <div class="hint">${escapeHtml(cand.error || 'Not configured.')}</div>
+          </div>`;
+        }
+        if (!cand.copy){
+          return `<div class="entry-card">
+            <div class="entry-model">${escapeHtml(cand.label)}</div>
+            <div class="hint" style="color:var(--advocacy);">${escapeHtml(cand.error || 'Generation failed.')}</div>
+          </div>`;
+        }
+        return `<div class="entry-card ${isSelected ? 'winner' : ''}">
+          <div class="entry-model">${escapeHtml(cand.label)}${cand.key === result.recommendedKey ? ' · top scoring' : ''}</div>
+          <div class="entry-headline">${escapeHtml(cand.copy)}</div>
+          <div class="entry-score">
+            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(cand.relevanceScore)}
+            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(cand.complianceScore)}
+          </div>
+          ${cand.flags && cand.flags.length ? `<div class="hint" style="color:var(--advocacy);">${cand.flags.map(escapeHtml).join('; ')}</div>` : ''}
+          ${isSelected
+            ? `<span class="badge strong">★ Selected as winner</span>`
+            : `<button type="button" class="btn-ghost" onclick="cmpStep1SelectLocalWinner(${idx}, '${cand.key}')">Select as winner →</button>`}
+        </div>`;
+      }).join('')}</div>`;
+      applyBtnHtml = `
+        <button type="button" class="btn-primary" style="opacity:${selectedKey ? '1' : '.55'};" ${selectedKey ? '' : 'disabled'} onclick="cmpApplyAudienceWinner(${idx})">Apply winner to remainder of campaign — ${escapeHtml(name)} →</button>
+        <div id="cmpStep1Flag_${idx}" class="hint" style="margin-top:8px;"></div>`;
     }
-    if (!c.copy){
-      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
-      </div>`;
-    }
-    return `<div style="border:${border};border-radius:8px;padding:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+    return `<div class="cmp-step1-audience-card">
+      <div class="msg-card-head">
+        <span class="msg-card-title">${escapeHtml(name)} — contest results</span>
+        ${statusBadge}
       </div>
-      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
-      <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
-      </div>
-      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="cmpSelectAudienceContestCandidate('${result.interviewId}', '${c.key}', ${idx})">Use this draft →</button>
+      ${entriesHtml}
+      ${applyBtnHtml ? `<div style="margin-top:12px;">${applyBtnHtml}</div>` : ''}
     </div>`;
   }).join('');
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
-    <div id="cmpStep1Flag_${idx}" class="hint" style="margin-top:8px;"></div>
-    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
 }
-// Applies the winning candidate to campaign.audienceCopyJson (server-side,
-// via the /select endpoint's `audience` field — see its 2026-09-22
-// comment), mirrors that same shape into local campaign state, then
-// re-renders Step 1 so this audience's card flips straight to its
+// Local-only — marks this candidate as the pending winner for this
+// audience and re-renders Step 1 so the card flips to the dimmed-until-
+// selected "Apply winner" state. Nothing is written server-side here;
+// that's cmpApplyAudienceWinner's job, on an explicit second click.
+function cmpStep1SelectLocalWinner(idx, candidateKey){
+  const state = cmpStep1AudienceResults[idx];
+  if (!state) return;
+  state.selectedKey = candidateKey;
+  const campaign = findCampaign(currentCampaignId);
+  if (campaign) cmpRenderCreativeStep1(campaign);
+}
+// Applies the locally-selected winner to campaign.audienceCopyJson
+// (server-side, via the /select endpoint's `audience` field — see its
+// 2026-09-22 comment), mirrors that same shape into local campaign state,
+// then re-renders Step 1 so this audience's card flips to its
 // "✓ Winner applied" state — same explicit-click-only discipline as
-// cmpSelectCopyContestCandidate().
-async function cmpSelectAudienceContestCandidate(interviewId, candidateKey, idx){
+// cmpSelectCopyContestCandidate(). Replaces the old single-step
+// cmpSelectAudienceContestCandidate().
+async function cmpApplyAudienceWinner(idx){
   const audienceName = cmpStep1AudienceNames[idx];
   const campaign = findCampaign(currentCampaignId);
+  const state = cmpStep1AudienceResults[idx];
   const flag = document.getElementById(`cmpStep1Flag_${idx}`);
-  if (!campaign || !audienceName) return;
+  if (!campaign || !audienceName || !state || !state.selectedKey || !state.result) return;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey, audience: audienceName })
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(state.result.interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey: state.selectedKey, audience: audienceName })
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
-      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this draft — try again."; }
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this winner — try again."; }
       return;
     }
     const result = await resp.json();
     if (result.audienceApplied && result.copy){
       const audienceCopyMap = cmpAudienceCopyMap(campaign);
-      audienceCopyMap[result.audienceApplied] = { copy: result.copy, interviewId, selectedAt: new Date().toISOString() };
+      audienceCopyMap[result.audienceApplied] = { copy: result.copy, interviewId: state.result.interviewId, selectedAt: new Date().toISOString() };
       campaign.audienceCopyJson = JSON.stringify(audienceCopyMap);
     }
     cmpRenderCreativeStep1(campaign);
