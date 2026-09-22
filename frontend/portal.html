@@ -11388,7 +11388,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-21-budget-page-drops-cmo-generative-creative-assets';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-marketing-calendar-wip-card-audience-stage-fields';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -46587,20 +46587,42 @@ function mktCalOpenDetail(eventId){
   if (titleEl) titleEl.textContent = e.campaignTitle || '(untitled campaign)';
   const money = v => v === null || v === undefined || v === '' ? '—' : `$${Number(v).toLocaleString()}`;
   const num = v => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString();
-  const rows = [
-    ['Channel', e.channel || '—'],
-    ['Partner', e.partner || '—'],
-    ['Drop Date', e.dropDate || '—'],
-    ['Hit Date', e.hitDate || '—'],
-    ['End Date', e.endDate || '—'],
-    ['Product Year', e.productYear || '—'],
-    ['Product Group', e.productGroup || '—'],
-    ['Creative Market', e.creativeMarket || '—'],
-    ['Audience', e.audience || '—'],
-    ['Budget', money(e.budget)],
-    ['Impressions / Reach', num(e.impressions)],
-    ['Status', e.status || '—']
-  ];
+  // 2026-09-22, per direct instruction on the WIP card ("Need to populate
+  // the information that we do have. Audience, creative market, product
+  // group, impression estimates. We don't need to include channel and
+  // partner, but should replace with Loop Stage") — a work-in-progress
+  // placeholder has no real Channel/Partner yet (no channel_planning_details
+  // row), so those two rows are dropped in favor of Loop Stage, which IS
+  // already known from the campaign. A real, already-trafficked event keeps
+  // Channel/Partner — those are genuine per-line data there, not blanks.
+  const rows = e.workInProgress
+    ? [
+        ['Loop Stage', e.loopStage || '—'],
+        ['Drop Date', e.dropDate || '—'],
+        ['Hit Date', e.hitDate || '—'],
+        ['End Date', e.endDate || '—'],
+        ['Product Year', e.productYear || '—'],
+        ['Product Group', e.productGroup || '—'],
+        ['Creative Market', e.creativeMarket || '—'],
+        ['Audience', e.audience || '—'],
+        ['Budget', money(e.budget)],
+        ['Impressions (planned)', num(e.impressions)],
+        ['Status', e.status || '—']
+      ]
+    : [
+        ['Channel', e.channel || '—'],
+        ['Partner', e.partner || '—'],
+        ['Drop Date', e.dropDate || '—'],
+        ['Hit Date', e.hitDate || '—'],
+        ['End Date', e.endDate || '—'],
+        ['Product Year', e.productYear || '—'],
+        ['Product Group', e.productGroup || '—'],
+        ['Creative Market', e.creativeMarket || '—'],
+        ['Audience', e.audience || '—'],
+        ['Budget', money(e.budget)],
+        ['Impressions / Reach', num(e.impressions)],
+        ['Status', e.status || '—']
+      ];
   // 2026-09-13 — Project # (client reference): the client's own internal
   // Wrike job/project number, stored read-only pass-through (never used in
   // any Verilume logic — see backend's projectNumber ensureColumn comment).
