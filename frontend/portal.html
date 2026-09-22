@@ -2523,23 +2523,14 @@
   #cmpStage-messaging .msg-improve-list{margin:0;padding-left:18px;font-size:0.8125rem;line-height:1.6;color:var(--ink);}
   #cmpStage-messaging .msg-improve-list li+li{margin-top:6px;}
 
-  /* 2026-09-22 — AI Brain Copy Interview presentation, per Todd's direct
-     instruction: the Campaign Experience Focus (Writing Style) recap and
-     each per-type detail field should read as an AI Brain interview
-     dialogue, not a flat form. Wraps the SAME underlying fields/ids/save
-     logic (cmpKeyMessage, cmpTypeDetail_*, cmpSaveGenerationTypeDetails())
-     — presentational only, no data-model change. Matches the Creative
-     wireframe canvas's Brand-Messaging-Interview-Desktop.dc.html artboard. */
-  .cmp-interview-recap{display:none;align-items:center;gap:8px;margin:0 0 10px;padding:10px 14px;background:var(--cx-tint, #EAF1FB);border-radius:10px;font-size:0.8125rem;color:#1D3E6B;line-height:1.5;}
-  .cmp-interview-recap.is-active{display:flex;}
-  .cmp-interview-recap .cmp-interview-avatar{width:22px;height:22px;flex-shrink:0;}
-  .cmp-interview-bubble{display:flex;gap:10px;margin:0 0 10px;}
-  .cmp-interview-avatar{width:24px;height:24px;border-radius:50%;background:#1E2761;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-size:10px;font-weight:700;}
-  .cmp-interview-q{background:var(--paper-dim);border-radius:12px;padding:9px 13px;font-size:0.8125rem;color:var(--ink);line-height:1.5;}
-  .cmp-interview-tag{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.02em;color:#1E5FA8;margin:0 0 6px;}
-  .campaign-type-detail-field.cmp-interview-answer{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 12px 34px;}
-  .campaign-type-detail-field.cmp-interview-answer label{display:block;font-size:0.6875rem;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
-  .campaign-type-detail-field.cmp-interview-answer input{width:100%;box-sizing:border-box;}
+  /* 2026-09-22 round 2 — the static "interview bubble" presentation this
+     comment used to describe was removed per Todd's direct correction ("The
+     page should not exist. We just replaced it with the AI Dialogue page
+     based on the version that exists within the budget process"). The AI
+     Brain Copy Interview is now a real chat (#cmpMsgIntake, same .cmp-intake/
+     .cmp-intake-body/.cmp-intake-input-row/.cmp-chat-msg classes the
+     Objectives "Create Your New Program" intake chat already uses — no new
+     CSS needed here). See that markup's own comment in #cmpStage-messaging. */
 
   .cmp-stage .msg-treatment{font-size:0.6562rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;padding:3px 9px;border-radius:var(--radius-pill);flex-shrink:0;}
   .cmp-stage .msg-treatment.short{background:var(--media-tint);color:var(--media);}
@@ -9745,34 +9736,45 @@
                   <div id="cmpGenerationRequirementsStatus" style="margin-top:8px;"></div>
                 </div>
 
-                <!-- 2026-09-22 — AI Brain Copy Interview recap, per Todd's
-                     direct instruction: recap the selected Writing Style
-                     before asking anything, same as the wireframe canvas's
-                     Brand-Messaging-Interview-Desktop.dc.html artboard.
-                     Hidden until a Campaign Experience Focus is picked (see
-                     cmpRenderInterviewRecap()); text filled in from
-                     CAMPAIGN_TYPE_REGISTRY_CLIENT, never hardcoded. -->
-                <div class="cmp-interview-recap" id="cmpInterviewRecap">
-                  <span class="cmp-interview-avatar">AI</span>
-                  <span id="cmpInterviewRecapText"></span>
+                <!-- 2026-09-22 round 2 — AI Brain Copy Interview, rebuilt as
+                     a real conversation after Todd's direct correction: "The
+                     page should not exist. We just replaced it with the AI
+                     Dialogue page based on the version that exists within
+                     the budget process" (backed by a screenshot of the real
+                     Objectives "Create Your New Program" chat — You/AI Brain
+                     bubbles, free text). Round 1 (a static "Question N of M"
+                     bubble reading straight off CAMPAIGN_TYPE_REGISTRY_CLIENT,
+                     still backed by the plain form fields) was NOT this —
+                     removed. This is a real, stateful chat
+                     (cmpMsgIntakeHistory/cmpMsgIntakeExchange(), same
+                     one-call-per-turn shape as cmpIntakeExchange() above)
+                     against a new sibling endpoint, POST /api/campaigns/:id/
+                     messaging-intake (see that handler's own comment) — the
+                     AI Brain asks for the Headline (universal, every Writing
+                     Style) and then this Writing Style's real detailFields,
+                     one at a time, and each reply's extracted values get
+                     applied straight onto the real Key Message field and
+                     #cmpCampaignTypeDetailFields below via
+                     cmpApplyMessagingIntakeExtraction() — the same save path
+                     cmpSaveGenerationTypeDetails()/the Key Message autosave
+                     already use, so this chat is a second way to fill the
+                     same real fields, not a separate data model. Hidden
+                     until a Campaign Experience Focus is picked (see
+                     cmpRenderMsgIntakeChat()). -->
+                <div class="cmp-intake" id="cmpMsgIntake" style="display:none;margin:0 0 20px;">
+                  <h3 style="margin:0 0 6px;">AI Brain Copy Interview</h3>
+                  <p class="lede" id="cmpMsgIntakeLede" style="margin-bottom:12px;"></p>
+                  <div class="cmp-intake-body" id="cmpMsgIntakeBody"></div>
+                  <div class="cmp-intake-input-row">
+                    <textarea id="cmpMsgIntakeText" rows="1" placeholder="Answer the AI Brain's question…" oninput="cmpAutoGrowTeamChatInput(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpMsgIntakeSendMessage();}"></textarea>
+                    <button type="button" class="btn-primary" id="cmpMsgIntakeSendBtn" onclick="cmpMsgIntakeSendMessage()">Send</button>
+                  </div>
                 </div>
 
                 <div class="msg-card">
                   <div class="msg-card-head">
                     <span class="msg-card-title">Key Message</span>
-                    <span class="msg-card-sub">Human-authored — required, along with the Brief Builder context above, to unlock Long Form Copy below</span>
-                  </div>
-                  <!-- Question 1 — Campaign Headline. Asked identically for
-                       every Writing Style (universal component, per Todd:
-                       "Technically all campaign types have a Headline...
-                       It doesn't need to be called Offer Headline in the
-                       DB") — this IS the existing Key Message field below,
-                       just framed as the interview's first question rather
-                       than a second, duplicate field. -->
-                  <div class="cmp-interview-tag" id="cmpInterviewHeadlineTag" style="display:none;"></div>
-                  <div class="cmp-interview-bubble" id="cmpInterviewHeadlineBubble" style="display:none;">
-                    <span class="cmp-interview-avatar">AI</span>
-                    <span class="cmp-interview-q">What's the headline for this campaign — the one line it needs to lead with?</span>
+                    <span class="msg-card-sub">Human-authored — required, along with the Brief Builder context above, to unlock Long Form Copy below. Filled in automatically as you answer the AI Brain Copy Interview above, or edit it directly here.</span>
                   </div>
                   <!-- Round 132ag (2026-08-11) fix, per direct correction:
                        "We duplicated the key message free form field unless
@@ -11497,7 +11499,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-copy-interview';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-copy-interview-real-chat';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -45277,36 +45279,145 @@ function cmpRenderGenerationRequirementsCard(c){
   }
   typeSelect.value = c.campaignType || '';
   initiativeSelect.value = c.businessInitiative || '';
-  cmpRenderInterviewRecap(c.campaignType || '');
   renderCampaignTypeDetailFields(c.campaignType || '', campaignTypeDetailsClient(c), 'cmpCampaignTypeDetailFields');
   cmpRenderGenerationRequirementsStatus(c);
+  cmpRenderMsgIntakeChat();
 }
-// 2026-09-22 — shared by cmpRenderGenerationRequirementsCard() (page load /
-// campaign load) and cmpOnGenerationTypeChanged() (live selection), so the
-// AI Brain Copy Interview recap and the "Question 1 — Campaign Headline"
-// framing above Key Message always agree with whichever Writing Style is
-// actually selected. Hides everything when no type is picked yet — same
-// "nothing to interview about until there's a scenario" rule the rest of
-// this card already follows.
-function cmpRenderInterviewRecap(typeKey){
-  const recap = document.getElementById('cmpInterviewRecap');
-  const recapText = document.getElementById('cmpInterviewRecapText');
-  const headlineTag = document.getElementById('cmpInterviewHeadlineTag');
-  const headlineBubble = document.getElementById('cmpInterviewHeadlineBubble');
-  if (!recap || !recapText || !headlineTag || !headlineBubble) return;
+// ---------------------------------------------------------------------
+// 2026-09-22 round 2 — AI Brain Copy Interview, rebuilt as a real chat per
+// Todd's direct correction ("The page should not exist. We just replaced it
+// with the AI Dialogue page based on the version that exists within the
+// budget process" — backed by a screenshot of the real Objectives "Create
+// Your New Program" chat). Same shape as cmpIntakeHistory/cmpIntakeExchange()
+// above: client holds the running transcript, stateless server call per
+// turn (POST /api/campaigns/:id/messaging-intake). Deliberately NOT
+// persisted across page loads (no activityNotesJson-style save) — what
+// matters is the real fields the conversation fills in, which ARE persisted
+// immediately via cmpApplyMessagingIntakeExtraction() below; the transcript
+// itself is scoped to one open editing session per campaign, same lifespan
+// as e.g. an unsaved form draft. Keyed by campaignId so switching to a
+// different campaign (or a different Writing Style, which changes what
+// questions even apply) starts a fresh conversation rather than carrying
+// over a stale one.
+// ---------------------------------------------------------------------
+let cmpMsgIntakeHistory = [];
+let cmpMsgIntakeBusy = false;
+let cmpMsgIntakeCampaignId = null;
+let cmpMsgIntakeTypeKey = null;
+// Called on campaign load (cmpRenderGenerationRequirementsCard) and on a
+// live Writing Style switch (cmpOnGenerationTypeChanged) — resets the
+// transcript whenever the campaign or its Writing Style changes, since a
+// different Writing Style asks genuinely different questions.
+function cmpRenderMsgIntakeChat(){
+  const wrap = document.getElementById('cmpMsgIntake');
+  const lede = document.getElementById('cmpMsgIntakeLede');
+  const body = document.getElementById('cmpMsgIntakeBody');
+  if (!wrap || !lede || !body) return;
+  const c = findCampaign(currentCampaignId);
+  const typeKey = c ? (c.campaignType || '') : '';
   const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
   if (!def){
-    recap.classList.remove('is-active');
-    headlineTag.style.display = 'none';
-    headlineBubble.style.display = 'none';
+    wrap.style.display = 'none';
     return;
   }
-  const questionCount = 1 + def.detailFields.length;
-  recapText.textContent = `Before I draft campaign copy for this campaign, let's confirm what a ${def.label} needs — Writing Style: ${def.label}. ${def.detailFields.length ? `I'll ask ${questionCount} real questions, starting with the one every Writing Style needs.` : `This one just needs the headline every Writing Style asks for — nothing else required.`}`;
-  recap.classList.add('is-active');
-  headlineTag.textContent = `Question 1 of ${questionCount} — asked for every Writing Style`;
-  headlineTag.style.display = 'block';
-  headlineBubble.style.display = 'flex';
+  wrap.style.display = 'block';
+  if (cmpMsgIntakeCampaignId !== (c ? c.id : null) || cmpMsgIntakeTypeKey !== typeKey){
+    cmpMsgIntakeCampaignId = c ? c.id : null;
+    cmpMsgIntakeTypeKey = typeKey;
+    cmpMsgIntakeHistory = [];
+  }
+  lede.textContent = `Let's confirm what a ${def.label} needs — I'll ask for the Headline every Writing Style needs, then this Writing Style's own real questions.`;
+  const myName = (state.userName || '').trim();
+  const historyHtml = cmpMsgIntakeHistory.length ? cmpMsgIntakeHistory.map(h => {
+    const isAi = h.role === 'assistant';
+    const author = isAi ? 'AI Brain' : (myName || 'You');
+    return `<div class="cmp-chat-msg">
+      <div class="cmp-team-chat-avatar" style="background:${isAi ? '#2F0D4D' : cmpAvatarColor(myName || 'me')};">${escapeHtml(isAi ? '✦' : cmpInitials(myName))}</div>
+      <div class="cmp-chat-msg-body">
+        <div class="cmp-chat-msg-meta"><b>${escapeHtml(author)}</b></div>
+        <div class="cmp-chat-msg-text">${isAi ? formatAiNoteHtml(h.text) : formatPlainNoteHtml(h.text)}</div>
+      </div>
+    </div>`;
+  }).join('') : `<p class="hint" style="margin:0;">Say hello, or just answer — the AI Brain will ask its first question (the Headline) once you send anything.</p>`;
+  body.innerHTML = historyHtml;
+  body.scrollTop = body.scrollHeight;
+}
+async function cmpMsgIntakeSendMessage(){
+  const textEl = document.getElementById('cmpMsgIntakeText');
+  if (!textEl || cmpMsgIntakeBusy) return;
+  const message = textEl.value.trim();
+  if (!message) return;
+  textEl.value = '';
+  cmpMsgIntakeHistory.push({ role: 'user', text: message });
+  cmpRenderMsgIntakeChat();
+  await cmpMsgIntakeExchange(message);
+}
+async function cmpMsgIntakeExchange(message){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  cmpMsgIntakeBusy = true;
+  const sendBtn = document.getElementById('cmpMsgIntakeSendBtn');
+  if (sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Thinking…'; }
+  try {
+    const data = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/messaging-intake`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history: cmpMsgIntakeHistory.slice(0, -1) }),
+      // Same 100s/1-attempt shape as cmpIntakeExchange() above — see that
+      // call's own comment for why (Vercel's 120s function ceiling, backend
+      // already retries once internally on a genuine Anthropic failure).
+      timeoutMs: 100000
+    }, 1, 700);
+    cmpMsgIntakeHistory.push({ role: 'assistant', text: data.reply || "Sorry, I didn't get a response — try again." });
+    await cmpApplyMessagingIntakeExtraction(data);
+  } catch (e){
+    cmpMsgIntakeHistory.push({ role: 'assistant', text: 'Something went wrong reaching the AI Brain — try again.' });
+    console.warn('cmpMsgIntakeExchange failed after retries:', e);
+  } finally {
+    cmpMsgIntakeBusy = false;
+    if (sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    cmpRenderMsgIntakeChat();
+  }
+}
+// Applies one messaging-intake turn's extracted values onto the REAL
+// campaign fields — the Headline (Key Message) and this Writing Style's
+// detailFields — and persists immediately, same "no separate Save button"
+// convention cmpOnGenerationTypeChanged()/cmpSaveGenerationTypeDetails()
+// already use elsewhere on this card. The chat is a second way to fill
+// these exact fields, never a separate data model of its own.
+async function cmpApplyMessagingIntakeExtraction(data){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  let changed = false;
+  if (typeof data.headline === 'string' && data.headline.trim() && data.headline.trim() !== (c.keyMessage || '')){
+    c.keyMessage = data.headline.trim();
+    const kmEl = document.getElementById('cmpKeyMessage');
+    if (kmEl){ kmEl.value = c.keyMessage; if (typeof updateKeyMessageCounter === 'function') updateKeyMessageCounter(); }
+    changed = true;
+  }
+  const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType];
+  const details = campaignTypeDetailsClient(c);
+  if (def && data.detailFields && typeof data.detailFields === 'object'){
+    def.detailFields.forEach(f => {
+      const v = data.detailFields[f.key];
+      if (typeof v === 'string' && v.trim() && details[f.key] !== v.trim()){
+        details[f.key] = v.trim();
+        changed = true;
+      }
+    });
+  }
+  if (!changed) return;
+  c.campaignTypeDetailsJson = Object.keys(details).length ? JSON.stringify(details) : '';
+  renderCampaignTypeDetailFields(c.campaignType || '', details, 'cmpCampaignTypeDetailFields');
+  cmpRenderGenerationRequirementsStatus(c);
+  if (typeof cmpRenderAllMsgGates === 'function') cmpRenderAllMsgGates();
+  if (!c.localOnly && dataSourceLabel === 'backend'){
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyMessage: c.keyMessage, campaignTypeDetails: details })
+      });
+    } catch (e){ console.warn('cmpApplyMessagingIntakeExtraction: backend write failed, saved locally only.', e); }
+  }
 }
 // Called on either select's onchange — persists immediately (this card has
 // no separate Save button; both fields are small, single-value selects, and
@@ -45319,7 +45430,7 @@ async function cmpOnGenerationTypeChanged(){
   const initiativeKey = document.getElementById('cmpBusinessInitiativeSelect').value;
   // Switching Campaign Type: same "start the detail fields blank" rule
   // onCampaignTypeSelectChanged() already uses for the legacy card.
-  cmpRenderInterviewRecap(typeKey);
+  cmpRenderMsgIntakeChat();
   renderCampaignTypeDetailFields(typeKey, {}, 'cmpCampaignTypeDetailFields');
   c.campaignType = typeKey;
   c.businessInitiative = initiativeKey;
@@ -45508,24 +45619,14 @@ function renderCampaignTypeDetailFields(typeKey, savedValues, holderId){
   // the legacy card's inputs (idPrefix '') are unchanged — still only read at
   // Save-button time by saveCampaignTypeFields().
   const onchangeAttr = idPrefix ? ` onchange="cmpSaveGenerationTypeDetails();"` : '';
-  if (idPrefix){
-    // Brand Messaging card: present each remaining detail field as the next
-    // question in the AI Brain interview — headline (universal) is question 1,
-    // asked separately above this holder, so these are numbered starting at 2.
-    const totalQuestions = 1 + def.detailFields.length;
-    holder.innerHTML = def.detailFields.map((f, i) => `
-      <div class="cmp-interview-tag">Question ${i + 2} of ${totalQuestions} — ${def.label} only</div>
-      <div class="cmp-interview-bubble">
-        <span class="cmp-interview-avatar">AI</span>
-        <span class="cmp-interview-q">${f.label}${f.required ? ' — this one\'s required for a ' + def.label + ' campaign.' : ''}</span>
-      </div>
-      <div class="field campaign-type-detail-field cmp-interview-answer">
-        <label for="cmpTypeDetail_${idPrefix}${f.key}">${f.label}${f.required ? ' (required for this type)' : ''}</label>
-        <input type="text" id="cmpTypeDetail_${idPrefix}${f.key}" data-detail-key="${f.key}" value="${(values[f.key] || '').replace(/"/g, '&quot;')}"${onchangeAttr}>
-      </div>
-    `).join('');
-    return;
-  }
+  // 2026-09-22 round 2 — the "present as interview bubbles" branch that used
+  // to live here was removed per Todd's direct correction (see the AI Brain
+  // Copy Interview chat markup's own comment in #cmpStage-messaging): the
+  // conversational presentation now lives entirely in that real chat, and
+  // this function goes back to being one plain rendering for every holder —
+  // the Brand Messaging card's fields are filled live by the chat via
+  // cmpApplyMessagingIntakeExtraction(), but stay ordinary, directly-editable
+  // form fields underneath, same as the legacy Campaign Detail card's copy.
   holder.innerHTML = def.detailFields.map(f => `
     <div class="field campaign-type-detail-field">
       <label for="cmpTypeDetail_${idPrefix}${f.key}">${f.label}${f.required ? ' (required for this type)' : ''}</label>
