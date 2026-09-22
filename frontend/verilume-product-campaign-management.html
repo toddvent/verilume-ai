@@ -1,0 +1,344 @@
+<title>Campaign Management — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0 8px;}
+.product-card{border:1px solid var(--line);border-radius:12px;padding:20px 22px;background:var(--paper-sunk);text-decoration:none;display:block;transition:border-color .15s;}
+.product-card:hover{border-color:var(--brand);}
+.product-card.disabled{opacity:0.55;pointer-events:none;}
+.product-card .pc-group{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate-soft);margin-bottom:8px;}
+.product-card h3{font-size:17px;margin:0 0 8px;color:var(--ink);}
+.product-card p{font-size:13px;color:var(--slate);margin:0 0 12px;max-width:none;}
+</style>
+
+
+<div class="shell">
+
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Campaign Management</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+    <div class="toc-sub" style="margin-top:-14px;">Group 04 &middot; Marketing Budgets, Campaigns &amp; Analysis</div>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#lifecycle">Campaign lifecycle overview</a>
+      <a href="#perfmarketing">Performance Marketing &amp; audience (segment)</a>
+      <a href="#channelplan">Channel Plan &amp; channels</a>
+      <a href="#creative">Creative handoff (Step 0 recap)</a>
+      <a href="#objective">Objective: narrative goal vs. copy-template category</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#data-model">Data model reference</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#log">Decision log — this cycle</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Campaign Management</h1>
+      <p class="doc-dek">
+        The campaign record that every other Marketing &amp; Analysis surface
+        reads from: Performance Marketing's audience targeting, Channel
+        Plan's approved channel mix and spend, Creative's Step 0 recap, and
+        the AI copy engine's objective-driven templates all key off one
+        <code>campaigns</code> row (<code>backend/server.js</code>,
+        <code>frontend/portal.html</code>'s Campaign Detail page and
+        <code>cmp*</code> functions). This document is new as of the
+        2026-09-22 data-source-of-truth consolidation — it did not exist
+        before that cycle — and covers the campaign data model as verified
+        against the live code and Supabase on that date.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>backend/server.js</code>, <code>frontend/portal.html</code> (Campaign Detail page, <code>cmp*</code> functions)</span>
+        <span><b>Verified against</b> working tree + direct Supabase queries, 2026-09-22 (dead-field consolidation)</span>
+        <span><b>Status</b> Built and live; this is the first Product doc written for this area</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">this cycle</span></h2>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Root cause found</span>
+          <h4>Three columns duplicated real data, and were empty on every real campaign</h4>
+          <p><code>campaigns.audienceTargets</code>, <code>.channels</code>, and <code>.objective</code> (narrative use) were each shadowed by a different, genuinely-populated field. Confirmed by direct SQL against all 4 real campaigns in the account: every one of them was empty on all three dead columns.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Bug found</span>
+          <h4>A "smart default" could look saved without ever being saved</h4>
+          <p>A client-side auto-fill feature silently pre-filled form fields from account history without calling any save function, so a field could read as filled-in in the browser while Supabase still had <code>NULL</code>.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Bug found</span>
+          <h4>The ad-copy objective template lookup was silently failing on every real campaign</h4>
+          <p>Every Marketing Function Project generator (Social Batch, Email Sequence, Landing Page, Press Release/Email/Landing) resolved its objective-driven copy line by reading the dead <code>objective</code> column — always empty, so it always fell back to a generic line. Fixed by deriving the category from <code>stage</code> instead.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Resolved</span>
+          <h4>One source of truth, per field, everywhere</h4>
+          <p>Every read and write site for these three fields — frontend and backend — was migrated onto the real underlying field. See <a href="#data-model">Data model reference</a> for the final mapping.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="lifecycle">
+      <h2><span>Campaign lifecycle overview</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">A campaign moves through Media Mix recommendation → Performance Marketing validation → Channel Plan approval → Creative production, each stage reading the previous stage's real, persisted output rather than a copy of it.</p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>Recommended Mix</h4><p>An illustrative channel &amp; audience mix and spend split is generated from the campaign's stage and budget — a starting point, fully human-editable, not itself persisted as the source of truth for anything downstream.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>Performance Marketing</h4><p>Validates the buy/allocation, and sets the audience target this campaign is actually going after — written to <code>campaigns.segment</code>. Skipped entirely for Ad Hoc projects.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>Channel Plan approval</h4><p>Per-channel budget/impressions rows are approved into real <code>channel_planning_details</code> records (one row per channel, <code>status: 'approved'</code>); the campaign's <code>mediaMixJson</code> also reflects the approved per-channel dollar amounts.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Creative Asset Selection</h4><p>Opens once Channel Plan is approved. Creative's Step 0 recap reads the campaign's real audience (<code>segment</code>), channels (<code>channel_planning_details</code>/<code>mediaMixJson</code>), and objective (<code>activityNotesJson.objectivesGoalSummary</code>) — read-only from here on.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="perfmarketing">
+      <h2><span>Performance Marketing &amp; audience (segment)</span><span class="num">&sect; 02</span></h2>
+      <p>The Performance Marketing card ("Validate the buy &amp; set audience targets") is the one place a human sets this campaign's audience. As of the 2026-09-22 consolidation its Validate &amp; Save action writes into <code>campaigns.segment</code> — the field every other reader in the app (Creative, Marketing Ops, the AI Brain contribution ledger) already reads for audience.</p>
+      <div class="card card--flagged">
+        <div class="card-title">Fixed this cycle — the field used to write nowhere real</div>
+        <p>Before this cycle, Validate &amp; Save wrote to <code>campaigns.audienceTargets</code>, a column nothing downstream ever read. Supabase confirmed it was empty on all 4 real campaigns in the account even though Performance Marketing had genuinely validated buys. Todd's explicit direction was to repoint the save to the real field rather than make the card read-only, so this workflow is now the live audience of record.</p>
+      </div>
+      <p>A separate "smart default" pre-fills this same textarea from the account's recent-campaign history when the form first loads. Before this cycle that fill never triggered a save — a field could look complete in the browser with nothing in Supabase. It now calls the save action automatically the moment it silently fills the field.</p>
+    </section>
+
+    <section id="channelplan">
+      <h2><span>Channel Plan &amp; channels</span><span class="num">&sect; 03</span></h2>
+      <p>The Channel Plan's Approve action (<code>cmpApproveChannelPlan()</code>) does two things: it writes one real <code>channel_planning_details</code> row per planned channel (budget, impressions, status <code>approved</code>), and it keeps <code>campaign.channels</code>/<code>channelGroups</code> set in the browser's in-memory campaign object for the rest of that session's UI. As of this cycle it no longer writes <code>channels</code>/<code>channelGroups</code> back to Supabase — Supabase confirmed nothing reads that column back once a page reloads, so the write was pure duplication of the <code>channel_planning_details</code> rows written in the same action.</p>
+      <p>Every reader in the app that used to read <code>campaign.channels</code> directly — leaderboards, CSV exports, search/relevance scoring, the Channel Plan picker's own initial state, Creative's recap — now goes through one shared helper, <code>cmpCreativeChannelsText(c)</code>: real column first (for any pre-existing local-only data), falling back to the approved channels with budget &gt; 0 in <code>mediaMix.channels</code>.</p>
+    </section>
+
+    <section id="creative">
+      <h2><span>Creative handoff (Step 0 recap)</span><span class="num">&sect; 04</span></h2>
+      <p>Creative's Step 0 recap is the read-only summary Omni-Channel Creative sees before starting production — Audiences, Approved Channels, and Objective. This is what originally surfaced the whole consolidation: the recap showed blank Audiences/Approved Channels on a genuinely complete campaign, because it was reading the dead <code>audienceTargets</code>/<code>channels</code> columns instead of <code>segment</code> and the real channel-planning data.</p>
+      <p>Three shared helpers now back this recap and every other audience/channel/objective reader in the frontend:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Helper</th><th>Real source (checked first)</th><th>Dead-column fallback (pre-existing local-only data only)</th></tr></thead>
+          <tbody>
+            <tr><td><code>cmpCreativeAudienceText(c)</code></td><td><code>segment</code></td><td><code>audienceTargets</code></td></tr>
+            <tr><td><code>cmpCreativeChannelsText(c)</code></td><td><code>mediaMix.channels</code> where amount &gt; 0</td><td><code>channels</code></td></tr>
+            <tr><td><code>cmpCreativeObjectiveText(c)</code></td><td><code>activityNotes.objectivesGoalSummary</code></td><td><code>objective</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="objective">
+      <h2><span>Objective: narrative goal vs. copy-template category</span><span class="num">&sect; 05</span></h2>
+      <p><code>campaign.objective</code> is not a simple duplicate the way <code>audienceTargets</code>/<code>channels</code> were — it was overloaded across two genuinely different concepts sharing one column, and each needed its own fix.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Narrative business goal</div>
+          <p>Free text describing what this campaign is trying to achieve, used in AI-prompt context (content/image relevance scoring, the campaign-intake digest, CMO team messages). Now sourced from <code>activityNotesJson.objectivesGoalSummary</code> via <code>cmpCreativeObjectiveText()</code> (frontend) and <code>campaignObjectiveText()</code> (backend).</p>
+        </div>
+        <div class="card">
+          <div class="card-title">Canonical funnel-stage category</div>
+          <p>One of a fixed 5-value set (<code>Brand Awareness</code>, <code>Consideration</code>, <code>Purchase / Conversion</code>, <code>Brand Loyalty</code>, <code>Brand Advocacy</code>) that keys <code>CAMPAIGN_OBJECTIVE_COPY</code>, the pre-written ad-copy template table every Marketing Function Project generator uses. For the <em>live creation form</em> this was already correctly derived from <code>selectedStage</code> via <code>cmpCurrentObjective()</code>. For a <em>saved</em> campaign it was still reading the dead <code>objective</code> column directly — fixed this cycle with <code>cmpCampaignObjectiveCategory(campaign)</code>, deriving from <code>campaign.stage</code> the same way.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Stage</th><th>Objective category</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">Awareness</td><td>Brand Awareness</td></tr>
+            <tr><td class="mono">Consideration</td><td>Consideration</td></tr>
+            <tr><td class="mono">Purchase</td><td>Purchase / Conversion</td></tr>
+            <tr><td class="mono">Loyalty</td><td>Brand Loyalty</td></tr>
+            <tr><td class="mono">Advocacy</td><td>Brand Advocacy</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede">One deliberately untouched pattern: the <code>c.name || c.objective</code> "Untitled Campaign" display-name fallback (~28 sites in <code>portal.html</code>, ~4 in <code>server.js</code>) is a separate, intentional convention, not part of this fix.</p>
+    </section>
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">&sect; 06</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Table / field</th><th>Role</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>campaigns</code></td><td>Base table — <code>id</code>, <code>accountId</code>, <code>stage</code>, <code>segment</code>, <code>keyMessage</code>, plus dozens of columns added incrementally via <code>ensureColumn()</code></td><td>No <code>ADD COLUMN IF NOT EXISTS</code> in this stack — every added column goes through a startup migration helper</td></tr>
+            <tr><td><code>campaigns.segment</code></td><td>Real audience-of-record</td><td>Set at intake and/or by Performance Marketing's Validate &amp; Save</td></tr>
+            <tr><td><code>campaigns.mediaMixJson</code></td><td>Real per-channel dollar amounts</td><td>Parsed as <code>mediaMix.channels[]</code>, each row <code>{ channel, amount, owned }</code></td></tr>
+            <tr><td><code>channel_planning_details</code></td><td>Real approved channel plan, one row per channel</td><td><code>campaignId</code>, <code>channel</code>, <code>budget</code>, <code>impressions</code>, <code>status</code> (<code>draft</code>/<code>approved</code>), <code>detailsJson</code></td></tr>
+            <tr><td><code>campaigns.activityNotesJson</code></td><td>Narrative fields</td><td>Parsed as <code>activityNotes.objectivesGoalSummary</code> — the real narrative objective</td></tr>
+            <tr><td><code>campaigns.stage</code></td><td>Funnel stage; also the canonical objective-category source</td><td>One of <code>Awareness</code> / <code>Consideration</code> / <code>Purchase</code> / <code>Loyalty</code> / <code>Advocacy</code> — see <a href="#objective">&sect; 05</a></td></tr>
+            <tr><td><code>campaigns.audienceTargets</code></td><td class="mono">dead</td><td>Empty on every real campaign; kept only as a last-resort fallback for pre-existing local-only data</td></tr>
+            <tr><td><code>campaigns.channels</code> / <code>channelGroups</code></td><td class="mono">dead</td><td>Same — no longer written; kept as a fallback only</td></tr>
+            <tr><td><code>campaigns.objective</code></td><td class="mono">dead (narrative use) / removed (category use)</td><td>No longer the source for either of its two former uses — see <a href="#objective">&sect; 05</a></td></tr>
+            <tr><td><code>campaigns.pmValidatedAt</code> / <code>pmAssetsApprovedAt</code></td><td>Real save timestamps</td><td>The honest signal that Performance Marketing's audience save / Channel Plan approval actually happened — used to catch the "looks saved but isn't" bug this cycle</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 07 — for product awareness</span></h2>
+      <ul>
+        <li>A separate set of unrelated lowercase-duplicate columns (<code>campaigntype</code>, <code>rolestyle</code>, <code>mandatoryphrase</code>, and others) exist from an old migration and hold zero rows anywhere in the account. Flagged, out of scope — nothing reads them, so they cause no bugs, but they're dead weight in the schema.</li>
+        <li>This doc covers the campaign data model as it stood after the 2026-09-22 consolidation. Campaign Creation intake, the CMO Dashboard, and portal-wide analytics that also touch campaigns are not yet covered here — see the (not yet documented) CMO Dashboard &amp; Portal Navigation card on the home page.</li>
+      </ul>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log — this cycle</span><span class="num">&sect; 08</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Ask</th><th>Resolution</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-09-22 · R1</td><td>"audiences do not appear, approved channels do not appear."</td><td>Root-caused via direct Supabase query (not code inspection, per direct instruction) to Creative's recap reading dead <code>audienceTargets</code>/<code>channels</code> columns instead of the real <code>segment</code>/channel-planning data. Added <code>cmpCreativeAudienceText()</code>/<code>cmpCreativeChannelsText()</code> fallback helpers.</td></tr>
+            <tr><td class="mono">2026-09-22 · R2</td><td>"Performance Marketing fields are not blank."</td><td>Found the "smart default" auto-fill mechanism that could fill a field in the browser without ever calling a save function. Fixed to auto-save immediately on silent fill; corrected misleading "Verilume skipped asking" copy that implied a save had happened.</td></tr>
+            <tr><td class="mono">2026-09-22 · R3</td><td>"We're capturing campaign information that should be stored in a single table... One table should be the source of truth. Am I not understanding?"</td><td>Confirmed via SQL against all 4 real campaigns: <code>audienceTargets</code>/<code>channels</code>/<code>objective</code> (narrative use) are empty on every one. Todd chose "Retire the dead fields" — full migration of every read/write site onto the real underlying field, across 4 phases.</td></tr>
+            <tr><td class="mono">2026-09-22 · R4</td><td>How should Performance Marketing's Audience Targets card behave once its dead field is retired?</td><td>Todd's explicit choice: repoint the save to <code>segment</code> (not make the card read-only) — Performance Marketing's validation is now the live audience of record.</td></tr>
+            <tr><td class="mono">2026-09-22 · R5</td><td>"we might need to update our product group's documentation"</td><td>Audit found Campaign Management had no Product doc at all. Todd's choice: build this doc from the existing template rather than only logging the workstream.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 09</span></h2>
+      <ol>
+        <li><strong>Document Campaign Creation intake</strong> — how <code>stage</code>/<code>segment</code>/budget get set in the first place, and how the Recommended Mix illustrative split is generated. This doc starts at Performance Marketing; intake itself isn't covered yet.</li>
+        <li><strong>Consider retiring the dead columns outright</strong> (<code>audienceTargets</code>, <code>channels</code>, <code>channelGroups</code>) now that nothing writes to them — currently they're kept only as a fallback for old local-only data, which will age out on its own.</li>
+        <li><strong>Clean up the unrelated dead lowercase-duplicate columns</strong> flagged in <a href="#gaps">Known gaps</a>, separately from this cycle's work.</li>
+        <li><strong>Document the CMO Dashboard &amp; Portal Navigation</strong> card, still listed as not-yet-documented on the home page, since it's the other major consumer of campaign data in this Product group.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Reflects the state of
+      <code>backend/server.js</code> and <code>frontend/portal.html</code> as
+      verified against the working tree and direct Supabase queries on
+      2026-09-22 (dead-field consolidation). Update this document as the
+      Product changes — it's meant to be the living reference, not a
+      point-in-time snapshot.
+    </div>
+
+  </main>
+</div>
