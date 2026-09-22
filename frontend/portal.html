@@ -11702,7 +11702,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-reply-30s-ceiling';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-ai-brain-budget-rationale';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -58151,15 +58151,46 @@ async function cmpApproveChannelPlan(){
   renderCampaignsList();
   renderActiveCampaigns();
   const rows = Object.entries(cmpChannelPlanRows).map(([channel, r]) => ({ channel, ...r }));
+  // 2026-09-22, per direct instruction after a real Collaboration Center
+  // exchange: the team asked why a $90,000 Field/ABM line was included and
+  // the AI Brain — even after the placeholder-honesty fix above — had to
+  // say it couldn't tell whether the number was sized bottom-up, top-down,
+  // or from a vendor quote. That's a real gap, and a fixable one: the
+  // platform DOES know the top-down basis whenever a line's budget was
+  // seeded from (and still matches) Verilume's recommended stage-weighted
+  // split — computeRecommendedMediaMix()/cmpRecommendedMediaMixByChannel()
+  // — it just never wrote that basis down anywhere past this screen, so by
+  // the time someone asked "why," the reasoning was already gone. Computed
+  // once here, at Approve, and persisted into each line's detailsJson so
+  // POST .../ai-brain-reply's prompt (see that endpoint's own comment) can
+  // read it back and give the team a REAL answer instead of "I don't know"
+  // — or, just as importantly, say plainly when a line was hand-entered
+  // and no algorithmic basis exists for it at all.
+  const recommendedByChannel = campaign ? cmpRecommendedMediaMixByChannel(campaign, rows.map(r => r.channel)) : {};
+  const totalBudgetForRationale = typeof campaign?.budget === 'number' ? campaign.budget : null;
   if (campaign && !campaign.isAdHoc && !campaign.localOnly){
     for (const r of rows){
+      const recommendedAmount = recommendedByChannel[r.channel];
+      let recommendationRationale;
+      if (typeof recommendedAmount === 'number' && typeof r.budget === 'number' && Math.abs(r.budget - recommendedAmount) < 1){
+        const pct = totalBudgetForRationale ? Math.round((recommendedAmount / totalBudgetForRationale) * 100) : null;
+        recommendationRationale = `Verilume's recommended stage-weighted split for ${campaign.stage || 'this campaign\'s'} stage${pct != null ? ` — ${pct}% of the $${Math.round(totalBudgetForRationale).toLocaleString()} total campaign budget` : ''}. Not a bottom-up cost estimate or a vendor quote — a top-down allocation only.`;
+      } else if (typeof recommendedAmount === 'number'){
+        recommendationRationale = `Manually set by Performance Marketing at $${Math.round(r.budget || 0).toLocaleString()} — differs from Verilume's recommended $${Math.round(recommendedAmount).toLocaleString()} split for this stage. No vendor/tactic breakdown for the manual number is captured on the platform.`;
+      } else {
+        recommendationRationale = `Manually entered by Performance Marketing — this channel has no recommended-split basis on file (e.g. it's not in this stage's best-practice mix, or was hand-added). No vendor/tactic breakdown is captured on the platform.`;
+      }
       const cpdBody = {
         channel: r.channel, budget: typeof r.budget === 'number' ? r.budget : null,
         impressions: typeof r.impressions === 'number' ? r.impressions : null,
         productYear: String(new Date().getFullYear()), status: 'approved',
         // Round 132c17 — Mail Class + Postage, Direct Mail rows only (see
-        // cmpRenderChannelPlanList()'s own comment).
-        detailsJson: r.channel.startsWith('Direct Mail') ? { mailClass: r.mailClass || null, postageCost: typeof r.postageCost === 'number' ? r.postageCost : null } : {}
+        // cmpRenderChannelPlanList()'s own comment). recommendationRationale
+        // now added on every channel, per the comment above.
+        detailsJson: Object.assign(
+          r.channel.startsWith('Direct Mail') ? { mailClass: r.mailClass || null, postageCost: typeof r.postageCost === 'number' ? r.postageCost : null } : {},
+          { recommendationRationale }
+        )
       };
       try {
         if (r.entryId){
