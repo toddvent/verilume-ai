@@ -17029,7 +17029,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-21-ai-brain-reply-maxtokens-fix',
+        buildStamp: '2026-09-22-marketing-calendar-wip-card-audience-stage-fields',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -21838,7 +21838,7 @@ Submit your response via the campaign_intake_turn tool.`;
       let sql = `SELECT cpd.id, cpd.campaignId, c.name AS campaignName, c.objective AS campaignObjective,
           cpd.channel, cpd.partner, cpd.hitDate, cpd.dropDate, cpd.endDate,
           cpd.productYear, cpd.productGroup, cpd.creativeMarket, cpd.audience, cpd.budget, cpd.status,
-          cpd.impressions, cpd.actualCalls, cpd.actualQrScans, cpd.actualUrlVisits, cpd.actualLeads
+          cpd.impressions, cpd.actualCalls, cpd.actualQrScans, cpd.actualUrlVisits, cpd.actualLeads, cpd.stage
         FROM channel_planning_details cpd
         JOIN campaigns c ON c.id = cpd.campaignId
         WHERE c.accountId = ?`;
@@ -21869,6 +21869,7 @@ Submit your response via the campaign_intake_turn tool.`;
         productGroup: r.productGroup,
         creativeMarket: r.creativeMarket,
         audience: r.audience,
+        loopStage: r.stage || null,
         budget: r.budget === null ? null : Number(r.budget),
         status: r.status,
         // 2026-09-13 — carried through so the calendar's own event-detail
@@ -21918,7 +21919,20 @@ Submit your response via the campaign_intake_turn tool.`;
       const campaignsWithScheduledCpd = new Set(
         db.prepare("SELECT DISTINCT campaignId FROM channel_planning_details WHERE hitDate IS NOT NULL AND hitDate != ''").all().map(r => r.campaignId)
       );
-      let wipSql = 'SELECT id, name, objective, startDate, endDate, budget, createdAt FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND (cancelled IS NULL OR cancelled = 0)';
+      // 2026-09-22, per direct instruction ("Need to populate the
+      // information that we do have. Audience, creative market, product
+      // group, impression estimates. We don't need to include channel and
+      // partner, but should replace with Loop Stage") — a WIP placeholder
+      // has no channel_planning_details row yet, so it has no real
+      // channel/partner, but it DOES already have these campaign-level
+      // fields the moment they're set on Campaign Creation/Objectives:
+      // segment (Audience), productGroups, creativeFocusGroups (the
+      // calendar's "Creative Market" — note the campaigns-table column is
+      // named creativeFocusGroups, not creativeMarket), stage (Loop Stage),
+      // and plannedImpressions (the campaign's own planned-impressions
+      // target — the honest "estimate" to show here; there's no delivered/
+      // actual number yet for a campaign that hasn't been trafficked).
+      let wipSql = 'SELECT id, name, objective, startDate, endDate, budget, createdAt, segment, productGroups, creativeFocusGroups, stage, plannedImpressions FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND (cancelled IS NULL OR cancelled = 0)';
       const wipRows = db.prepare(wipSql).all(accountId);
       const placeholders = [];
       wipRows.forEach(c => {
@@ -21941,12 +21955,13 @@ Submit your response via the campaign_intake_turn tool.`;
           dropDate: null,
           endDate: c.endDate || null,
           productYear: null,
-          productGroup: null,
-          creativeMarket: null,
-          audience: null,
+          productGroup: c.productGroups || null,
+          creativeMarket: c.creativeFocusGroups || null,
+          audience: c.segment || null,
+          loopStage: c.stage || null,
           budget: c.budget === null || c.budget === undefined ? null : Number(c.budget),
           status: 'Work in progress',
-          impressions: null,
+          impressions: c.plannedImpressions === null || c.plannedImpressions === undefined ? null : Number(c.plannedImpressions),
           actualCalls: null,
           actualQrScans: null,
           actualUrlVisits: null,
