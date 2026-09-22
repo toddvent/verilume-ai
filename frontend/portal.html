@@ -1951,13 +1951,32 @@
      0-gap/border-top stacking (which assumed they'd never be visible at
      once). */
   #cmpCreativeLeft{display:flex;flex-direction:column;gap:18px;}
-  #cmpCreativeLeft > .module.cmp-stage{margin-bottom:0;}
+  /* 2026-09-22 fix, found via a Playwright layout repro after Todd reported
+     the live Creative workspace not matching the wireframe (cards showing
+     truncated/near-empty). Root cause: #cmpCreativeLeft IS .cmp-pitch-left
+     (same element, id + class) — a grid item bounded to a fixed height by
+     .cmp-pitch-body's own grid-template-rows:minmax(0,1fr) (so it can
+     scroll internally via its own overflow-y:auto), but ALSO a
+     flex-direction:column container for its own card children. Because the
+     container's own height is a definite, bounded value (not auto) once
+     inside that grid row, flex's default flex-shrink:1 proportionally
+     SQUISHES every card to fit that bounded height instead of letting the
+     container grow past it and .cmp-pitch-left's overflow-y:auto scroll to
+     the overflow — confirmed in a repro: all 4 Creative cards clipped to
+     ~65% of their real content height, same ratio across every card.
+     flex-shrink:0 here (and on Trafficking/Analysis below, which share the
+     identical .cmp-pitch-left + flex-column pattern) stops the shrink and
+     lets the column scroll properly instead. */
+  #cmpCreativeLeft > .module.cmp-stage{margin-bottom:0;flex-shrink:0;}
   /* 2026-09-20 — Trafficking/Analysis workspaces (cmpOpenTraffickingWorkspace()/
      cmpOpenAnalysisWorkspace()) stack their real-data cards with the same
      18px gap as Creative's #cmpCreativeLeft above — same wf-card rhythm
      Trafficking-Desktop.dc.html/Analysis-Desktop.dc.html both use. */
   #cmpTraffickingLeft, #cmpAnalysisLeft{display:flex;flex-direction:column;gap:18px;}
-  #cmpTraffickingLeft > .module.cmp-stage, #cmpAnalysisLeft > .module.cmp-stage{margin-bottom:0;}
+  /* 2026-09-22 — same flex-shrink fix as #cmpCreativeLeft above; these two
+     share the identical .cmp-pitch-left + flex-column-of-its-own-children
+     pattern, so they had the same latent clipping bug. */
+  #cmpTraffickingLeft > .module.cmp-stage, #cmpAnalysisLeft > .module.cmp-stage{margin-bottom:0;flex-shrink:0;}
   /* 2026-09-20, per Creative-Mobile.dc.html (and now Trafficking-Mobile.dc.html/
      Analysis-Mobile.dc.html, same bottom-bar convention) — the mobile
      artboard replaces the right-side Collaboration Center column with a
@@ -11617,7 +11636,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-wireframe-match-old-page-removed';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-workspace-card-clipping-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
