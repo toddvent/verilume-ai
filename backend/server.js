@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-22-ai-brain-reply-30s-ceiling (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-22-ai-brain-budget-rationale (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -17209,7 +17209,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-22-ai-brain-reply-30s-ceiling',
+        buildStamp: '2026-09-22-ai-brain-budget-rationale',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -23881,9 +23881,25 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         // real, working budget-suggestion/Apply capability that used to
         // live only in POST .../recommendation-comments now needs to live
         // here too, and applying a suggestion needs a real line item id.
-        const lines = db.prepare('SELECT id, channel, budget, impressions, status, region FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        const lines = db.prepare('SELECT id, channel, budget, impressions, status, region, detailsJson FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
+        // 2026-09-22, per direct report: asked why a $90,000 Field/ABM line
+        // was included, the AI Brain had no real answer — the platform DOES
+        // know the top-down basis whenever a line was seeded from Verilume's
+        // recommended stage-weighted split (see cmpApproveChannelPlan()'s
+        // own comment, frontend), it just was never given to this prompt.
+        // recommendationRationale is now persisted into each line's
+        // detailsJson at Approve time — read back and surfaced here so a
+        // "why was this included" question gets the real basis instead of
+        // a guess or a flat "I don't know."
         const lineText = lines.length
-          ? lines.map(l => `- id=${l.id} | ${l.channel || '(no channel)'} | ${normalizeChannelPlanningRegion(l.region)} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}`).join('\n')
+          ? lines.map(l => {
+              let rationale = '';
+              try {
+                const details = l.detailsJson ? JSON.parse(l.detailsJson) : null;
+                if (details && details.recommendationRationale) rationale = ` | basis: ${details.recommendationRationale}`;
+              } catch (e){ /* malformed/legacy detailsJson — no rationale to show, not an error */ }
+              return `- id=${l.id} | ${l.channel || '(no channel)'} | ${normalizeChannelPlanningRegion(l.region)} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}${rationale}`;
+            }).join('\n')
           : '(no channel plan lines entered yet)';
         // 2026-09-16 — per Todd's direct instruction, the AI Brain needs to
         // be able to ask about and react to campaign spend BY REGION (US /
@@ -23978,7 +23994,9 @@ Reply directly to this, grounded only in the real fields above — never invent 
 
 NEVER EXPOSE INTERNAL IDS — the \`id=...\` value on each REAL CHANNEL PLAN LINES row (and any other raw database id, table name, or record identifier anywhere in this prompt) is there only so you can fill the suggestion field's entryId correctly. The team never sees a database schema and does not know what "CPD-..." means — never quote a raw id, table name, or column name in your reply text. Refer to a line the way a person would: by its channel name, region, budget, and status (e.g. "the Field/ABM line at $90,000, still in draft" — not "line CPD-mubu5mq5-161-4").
 
-PLACEHOLDER VS. REAL EXECUTION PLAN — a channel_planning_details line's budget can come from two different places: a real, specific plan the team entered (vendor, tactics, a real impressions estimate from an actual CPM), or this platform's own recommended media-mix split of the campaign's overall budget with nothing further filled in yet (0 or missing impressions, no execution detail anywhere in what's given above). When asked what a line is "made up of," what tactics or vendors it covers, or anything similar, and there's no real execution detail on file for it (impressions are 0/missing and nothing above names a vendor, tactic, or plan), say so plainly and say what the number actually is: a placeholder — this channel's share of the recommended media mix, based on the account's best-practice split of the annual spend forecast, with no specific vendor or tactic plan attached yet. Do NOT list generic "typically includes" industry tactics as if they describe this campaign's actual plan — that reads as a real answer when it's a guess. It's fine, and preferred, to say plainly that Performance Marketing/Channel Plan hasn't entered specific execution detail for this line yet.
+PLACEHOLDER VS. REAL EXECUTION PLAN — a channel_planning_details line's budget can come from two different places: a real, specific plan the team entered (vendor, tactics, a real impressions estimate from an actual CPM), or this platform's own recommended media-mix split of the campaign's overall budget with nothing further filled in yet (0 or missing impressions, no execution detail anywhere in what's given above). Each REAL CHANNEL PLAN LINES row now carries a trailing " | basis: ..." when one is on file — that's the REAL, platform-computed answer to "why was this number chosen" (e.g. it's Verilume's recommended stage-weighted split and what % of the total budget it represents, or a note that it was hand-entered by Performance Marketing with no algorithmic basis). When asked why a line's budget is what it is, or what it's "made up of," always lead with that basis line when present — quote its substance in plain language, not the raw "basis:" label. It only ever tells you the SIZING logic (top-down split vs. manual), never vendor/tactic execution detail — for that, if there's no real execution detail on file (impressions are 0/missing and nothing above names a vendor, tactic, or plan), say so plainly rather than listing generic "typically includes" industry tactics as if they describe this campaign's actual plan — that reads as a real answer when it's a guess. It's fine, and preferred, to say plainly that Performance Marketing/Channel Plan hasn't entered specific execution detail for this line yet, and that a recommended-split number is a placeholder sizing, not a costed plan.
+
+CHANNEL/KPI FIT — when discussing a specific channel's budget or whether it should stay as-is, actively check whether that channel can actually produce what the campaign's Primary KPI is measuring, and flag it if not — don't wait to be asked. A channel like Field/ABM, Direct Mail, or Event Sponsorship doesn't generate trackable "visits" or clicks the way Non-Brand Search, Paid Social, Programmatic Display, or CTV do; if the Primary KPI or objective is visit/click/conversion-based (e.g. a cost-per-visit target) and a meaningful chunk of budget sits in a channel that can't be measured that way, say so plainly, name the mismatch, and offer to suggest reallocating toward a channel with clearer visit/conversion tracking — via the suggestion field if the team is asking for or clearly implying that change, otherwise just flag it and ask if they want that recommendation.
 
 VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) above already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and suggest adding one via a suggestion (or by naming it in your reply) rather than saying the platform has no video capability.
 
