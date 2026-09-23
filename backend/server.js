@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-23-copy-contest-blind-label-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-23-campaign-fit-brand-fit-rename-and-quality-score (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -16339,6 +16339,20 @@ function scoreComplianceHeuristically(copyText, account, campaign){
   if (campaign && campaign.mandatoryPhrase && !copyText.includes(campaign.mandatoryPhrase)){
     flags.push(`Missing this campaign's Mandatory Phrase, required verbatim: "${campaign.mandatoryPhrase}".`);
   }
+  // 2026-09-23, per direct report — "I have the headline selected to
+  // verbatim but no contestant actually used it as is." keyMessageMode
+  // ('exact', the default, vs. 'descriptive') already tells every
+  // generation prompt whether Key Message must survive word-for-word (see
+  // its own ensureColumn() comment) — but nothing ever checked the
+  // OUTPUT against that promise, unlike Mandatory Phrase directly above,
+  // which has had this exact check since 2026-08-22. Same fix, same
+  // reasoning: a Key Message the account marked exact-required that a
+  // candidate silently paraphrased away IS a compliance issue by this
+  // campaign's own definition (the client set the mode, it's required),
+  // not a relevance one.
+  if (campaign && campaign.keyMessageMode === 'exact' && campaign.keyMessage && !copyText.includes(campaign.keyMessage)){
+    flags.push(`Key Message is set to exact/verbatim mode but this draft doesn't use it word-for-word: "${campaign.keyMessage}".`);
+  }
   const complianceScore = Math.max(0, 100 - flags.length * 20);
   return { complianceScore, flags, mode: 'heuristic' };
 }
@@ -16377,7 +16391,7 @@ COMPLIANCE (0-100): how well this copy honors the brand voice guide below and av
 BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
 ${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}
-${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy — its absence is a compliance failure, flag it by name in complianceFlags if missing): "${campaign.mandatoryPhrase}"\n` : ''}
+${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy — its absence is a compliance failure, flag it by name in complianceFlags if missing): "${campaign.mandatoryPhrase}"\n` : ''}${(campaign.keyMessageMode === 'exact' && campaign.keyMessage) ? `KEY MESSAGE — EXACT/VERBATIM MODE (this account set Key Message to required-verbatim, not directional; it must appear word-for-word somewhere in the copy — if the copy only paraphrases or reworks it, that is a compliance failure, flag it by name in complianceFlags): "${campaign.keyMessage}"\n` : ''}
 
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
@@ -17372,7 +17386,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-23-copy-contest-blind-label-fix',
+        buildStamp: '2026-09-23-campaign-fit-brand-fit-rename-and-quality-score',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
