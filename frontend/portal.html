@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-legacy-casing-audit-30-columns-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-campaign-fit-brand-fit-rename-and-quality-score';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40966,8 +40966,8 @@ function cmpRenderCreativeStep1(c){
           <div class="entry-model">${escapeHtml(cand.label)}${cand.key === result.recommendedKey ? ' · top scoring' : ''}</div>
           <div class="entry-headline">${escapeHtml(cand.copy)}</div>
           <div class="entry-score">
-            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(cand.relevanceScore)}
-            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(cand.complianceScore)}
+            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(cand.relevanceScore)}
+            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(cand.complianceScore)}
           </div>
           ${cand.flags && cand.flags.length ? `<div class="hint" style="color:var(--advocacy);">${cand.flags.map(escapeHtml).join('; ')}</div>` : ''}
           ${isSelected
@@ -44264,7 +44264,7 @@ function aiThoughtDynamicPreview(letter){
     const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
     const cached = jobId ? lastDraftScoreCache[jobId] : null;
     if (cached){
-      return `This draft is at ${cached.relevanceScore ?? '—'}/100 relevance, ${cached.complianceScore ?? '—'}/100 compliance — see what's behind those numbers.`;
+      return `This draft is at ${cached.relevanceScore ?? '—'}/100 Campaign Fit, ${cached.complianceScore ?? '—'}/100 Brand Fit — see what's behind those numbers.`;
     }
     return AI_THOUGHT_PREVIEWS.O;
   }
@@ -45013,7 +45013,7 @@ function renderFaqN(){
   const score = computeCampaignRelevanceScore(c);
   const components = [
     { label: 'Channel mix vs. this campaign\'s own recommendation', pct: score.channelRelevancePct },
-    { label: 'Creative & messaging relevance to objective', pct: score.creativeMessagingRelevancePct },
+    { label: 'Creative & messaging quality (Campaign Fit / Brand Fit)', pct: score.creativeMessagingRelevancePct },
     { label: 'Budget logic coherence', pct: score.budgetRelevancePct },
     { label: 'Landing page relevance (content & imagery)', pct: score.landingPageRelevancePct },
     { label: 'Landing page performance (CTA path)', pct: score.landingPagePerformancePct },
@@ -45037,7 +45037,7 @@ function renderFaqO(){
   if (!el) return;
   const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
   const cached = jobId ? lastDraftScoreCache[jobId] : null;
-  const base = 'Draft Scoring checks the copy in the workspace against two things: Relevance (does it actually serve this campaign\'s objective, audience, and brand voice guide) and Compliance (does it trip any flagged language). ';
+  const base = 'Draft Scoring checks the copy in the workspace against two things: Campaign Fit (does it actually serve this campaign\'s objective, audience, and primary KPI) and Brand Fit (does it honor the brand voice guide and avoid flagged language). ';
   if (!cached){
     el.textContent = base + 'Open a creative job\'s copy workspace and add copy to see it scored.';
     return;
@@ -45048,7 +45048,7 @@ function renderFaqO(){
   const flagsText = (cached.flags && cached.flags.length)
     ? `Flags on this draft: ${cached.flags.join('; ')}.`
     : 'No compliance flags on this draft right now.';
-  el.textContent = `${base}Right now: Relevance ${cached.relevanceScore ?? '—'}/100, Compliance ${cached.complianceScore ?? '—'}/100. ${flagsText} ${modeText}`.trim();
+  el.textContent = `${base}Right now: Campaign Fit ${cached.relevanceScore ?? '—'}/100, Brand Fit ${cached.complianceScore ?? '—'}/100. ${flagsText} ${modeText}`.trim();
 }
 
 // 2026-08-22 — Blind Test Interview's own drawer topic. Reads
@@ -45060,7 +45060,7 @@ function renderFaqP(){
   if (!el) return;
   const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
   const cached = jobId ? lastInterviewCache[jobId] : null;
-  const base = 'The Blind Test Interview panel drafts three independent takes on this job\'s brief — direct-response, brand-story, and proof-and-trust — then scores each one with the same Relevance/Compliance scorer Draft Scoring uses, blind to which angle you might prefer, and ranks them. ';
+  const base = 'The Blind Test Interview panel drafts three independent takes on this job\'s brief — direct-response, brand-story, and proof-and-trust — then scores each one with the same Campaign Fit/Brand Fit scorer Draft Scoring uses, blind to which angle you might prefer, and ranks them. ';
   if (!cached || !cached.candidates){
     el.textContent = base + 'Click "Interview candidates" in the copy workspace to run it for this job.';
     return;
@@ -45070,7 +45070,7 @@ function renderFaqP(){
     el.textContent = base + 'The last run didn\'t produce any usable candidates — check each card above for its specific error.';
     return;
   }
-  const summary = scored.map(c => `${c.label} — Relevance ${c.relevanceScore ?? '—'}, Compliance ${c.complianceScore ?? '—'}`).join('; ');
+  const summary = scored.map(c => `${c.label} — Campaign Fit ${c.relevanceScore ?? '—'}, Brand Fit ${c.complianceScore ?? '—'}`).join('; ');
   const winner = cached.candidates.find(c => c.key === cached.recommendedKey);
   el.textContent = `${base}Last run: ${summary}.${winner ? ` "${winner.label}" scored highest and is marked top-scoring above.` : ''} Picking one is always your explicit click — nothing here gets auto-applied.`;
 }
@@ -49996,8 +49996,8 @@ function renderDraftScoreCard(result){
     : (result.mode === 'ai' ? `<div class="hint" style="margin-top:6px;">AI-scored.</div>` : '');
   return `
     <div style="display:flex;gap:24px;flex-wrap:wrap;">
-      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Relevance</div>${scorePill(result.relevanceScore)}</div>
-      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Compliance</div>${scorePill(result.complianceScore)}</div>
+      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Campaign Fit</div>${scorePill(result.relevanceScore)}</div>
+      <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Brand Fit</div>${scorePill(result.complianceScore)}</div>
     </div>
     ${result.note ? `<div class="hint" style="margin-top:6px;">${escapeHtml(result.note)}</div>` : ''}
     ${flagsHtml}
@@ -50083,8 +50083,8 @@ function renderInterviewPanel(jobId, result){
       </div>
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
       <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
       <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
@@ -50541,7 +50541,24 @@ function avg(arr){ return arr.reduce((a,b) => a + b, 0) / arr.length; }
 // number this function doesn't know about.
 function computeCampaignRelevanceScore(campaign){
   const { required, statuses } = computeFunctionCompletion(campaign);
-  const creativeMessagingRelevancePct = statuses.length ? Math.round(100 * statuses.filter(s => s.status === 'complete').length / statuses.length) : null;
+  const completionPct = statuses.length ? Math.round(100 * statuses.filter(s => s.status === 'complete').length / statuses.length) : null;
+  // 2026-09-23, per direct instruction: Campaign Fit + Brand Fit "should
+  // combined significantly impact the overall campaign relevance score" —
+  // this component now measures the actual AI-judged QUALITY of this
+  // campaign's scored copy (the same Campaign Fit/Brand Fit combined
+  // score shown on Draft Scoring / Blind Test Interview / the Campaign
+  // Copy Contest — see content_score_history), not just whether a draft
+  // exists and was approved. Read from campaign._draftQualityScore,
+  // populated by cmpLoadDraftQualityScore() (fired from
+  // renderCampaignQaPanel() below) — null (not the old completion
+  // percentage) until that fetch has actually returned at least one real
+  // score, same "no fabricated number" discipline as every other
+  // component here. completionPct is kept, unchanged, purely for the
+  // "Activated marketing functions" checklist above — it no longer feeds
+  // the composite score.
+  const creativeMessagingRelevancePct = (campaign._draftQualityScore && campaign._draftQualityScore.pct !== null)
+    ? campaign._draftQualityScore.pct
+    : null;
 
   const brandChecks = [!!state.voice.approved, !!state.styleAssets.approved, !!state.positioning.approved];
   const brandFoundationPct = Math.round(100 * brandChecks.filter(Boolean).length / brandChecks.length);
@@ -50604,11 +50621,14 @@ function computeCampaignRelevanceScore(campaign){
   const parts = [channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct].filter(v => v !== null);
   const overall = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
 
-  return { required, statuses, channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct, overall, richAudit,
+  return { required, statuses, completionPct, channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct, overall, richAudit,
     // Back-compat aliases — anything still reading the pre-132cc field
     // names (functionPct/brandPct/urlPct) keeps working rather than
-    // silently reading undefined.
-    functionPct: creativeMessagingRelevancePct, brandPct: brandFoundationPct, urlPct: landingPageRelevancePct };
+    // silently reading undefined. functionPct now points at completionPct
+    // (the literal function-completion percentage) rather than
+    // creativeMessagingRelevancePct, since that field's meaning changed
+    // 2026-09-23 to a quality score — see that field's own comment above.
+    functionPct: completionPct, brandPct: brandFoundationPct, urlPct: landingPageRelevancePct };
 }
 
 const FUNCTION_STATUS_LABEL = {
@@ -50627,10 +50647,44 @@ const FUNCTION_STATUS_ICON = { complete: '✓', 'needs-qa': '⚠', 'in-progress'
 // activated functions actually complete and QA'd" is still a real,
 // separate question worth answering plainly — it's just no longer framed
 // as the score itself.
+// 2026-09-23 — populates campaign._draftQualityScore (read by
+// computeCampaignRelevanceScore() above), fired from renderCampaignQaPanel()
+// below every time this panel opens for a backend-saved campaign that
+// hasn't loaded it yet this session. Fire-and-forget: the panel renders
+// immediately with whatever it already has (null the first time — the
+// component shows "not available yet" exactly like every other
+// not-yet-run input on this score), then this re-renders the panel once
+// the real numbers are back.
+async function cmpLoadDraftQualityScore(campaign){
+  if (!campaign || campaign.localOnly || dataSourceLabel !== 'backend') return;
+  if (campaign._draftQualityScore !== undefined) return; // already loaded, or a fetch is already in flight
+  campaign._draftQualityScore = null;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/score-history`);
+    const data = await resp.json();
+    if (!resp.ok || !Array.isArray(data.history)){ campaign._draftQualityScore = { pct: null, count: 0 }; return; }
+    // Rows arrive scoredAt DESC from the endpoint, so the first one seen
+    // per sourceKey is the latest judgment for that piece of copy — a
+    // draft rescored after edits shouldn't have its earlier, weaker (or
+    // stronger) score still counted alongside the current one.
+    const latestBySourceKey = {};
+    data.history.forEach(h => { if (!latestBySourceKey[h.sourceKey]) latestBySourceKey[h.sourceKey] = h; });
+    const combined = Object.values(latestBySourceKey)
+      .filter(h => typeof h.relevanceScore === 'number' && typeof h.complianceScore === 'number')
+      .map(h => (h.relevanceScore + h.complianceScore) / 2);
+    campaign._draftQualityScore = combined.length
+      ? { pct: Math.round(combined.reduce((a, b) => a + b, 0) / combined.length), count: combined.length }
+      : { pct: null, count: 0 };
+  } catch (e){
+    campaign._draftQualityScore = { pct: null, count: 0 };
+  }
+  renderCampaignQaPanel();
+}
 function renderCampaignQaPanel(){
   const c = findCampaign(currentCampaignId);
   const panel = document.getElementById('campaignQaPanel');
   if (!c || !panel) return;
+  cmpLoadDraftQualityScore(c);
   const score = computeCampaignRelevanceScore(c);
 
   const allComplete = score.statuses.length && score.statuses.every(s => s.status === 'complete');
@@ -50653,7 +50707,7 @@ function renderCampaignQaPanel(){
   // Grid / Priority Fix card.
   const components = [
     { label: 'Channel mix vs. this campaign\'s own recommendation', pct: score.channelRelevancePct },
-    { label: 'Creative & messaging relevance to objective', pct: score.creativeMessagingRelevancePct },
+    { label: 'Creative & messaging quality (Campaign Fit / Brand Fit)', pct: score.creativeMessagingRelevancePct },
     { label: 'Budget logic coherence', pct: score.budgetRelevancePct },
     { label: 'Landing page relevance (content & imagery)', pct: score.landingPageRelevancePct },
     { label: 'Landing page performance (CTA path)', pct: score.landingPagePerformancePct },
@@ -50677,7 +50731,7 @@ function renderCampaignQaPanel(){
       <div class="section-eyebrow" style="margin-bottom:8px;">Campaign Relevance Score${score.overall !== null ? ` — ${score.overall}%` : ''}</div>
       <p class="hint" style="margin:0 0 10px;">Measures whether this campaign's real channel mix, budget, creative/messaging, and landing page actually serve its stated objective and KPI — not whether steps are checked off.</p>
       ${scoreBar('Channel mix vs. this campaign\'s own recommendation', score.channelRelevancePct, 'no Recommended Channels captured for this campaign')}
-      ${scoreBar('Creative & messaging relevance to objective', score.creativeMessagingRelevancePct)}
+      ${scoreBar('Creative & messaging quality (Campaign Fit / Brand Fit)', score.creativeMessagingRelevancePct)}
       ${scoreBar('Budget logic coherence', score.budgetRelevancePct, 'set a Funding source and Budget on this campaign')}
       ${scoreBar('Landing page relevance (content & imagery)', score.landingPageRelevancePct, 'run "Audit URL" or the full "Landing page audit" above')}
       ${scoreBar('Landing page performance (CTA path)', score.landingPagePerformancePct, 'run the full "Landing page audit" above')}
@@ -53855,8 +53909,8 @@ async function toggleMfpScoreHistory(part){
       const when = new Date(h.scoredAt).toLocaleString();
       return `<div style="padding:4px 0;border-bottom:1px solid var(--line);font-size:0.78125rem;display:flex;gap:12px;align-items:baseline;">
         <span class="hint" style="min-width:130px;">${when}</span>
-        <span>Relevance: <b>${h.relevanceScore === null ? '—' : h.relevanceScore}</b></span>
-        <span>Compliance: <b>${h.complianceScore === null ? '—' : h.complianceScore}</b></span>
+        <span>Campaign Fit: <b>${h.relevanceScore === null ? '—' : h.relevanceScore}</b></span>
+        <span>Brand Fit: <b>${h.complianceScore === null ? '—' : h.complianceScore}</b></span>
         <span class="hint">${h.mode === 'ai' ? 'AI' : 'heuristic'}</span>
       </div>`;
     }).join('');
@@ -53920,8 +53974,8 @@ function renderMfpInterviewPanel(result){
       </div>
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
       <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
       <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
@@ -55587,8 +55641,8 @@ function renderCmpCopyContestPanel(result, flagId){
       </div>
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
       <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Relevance</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Compliance</span> ${scorePill(c.complianceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
       <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
