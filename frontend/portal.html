@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-save-reliability-and-toggle-redesign';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-detail-field-oninput-attr-escaping-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40393,6 +40393,30 @@ function cmpRenderStep0Headline(c){
       <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, "cmpSetStep0HeadlineMode('exact')", "cmpSetStep0HeadlineMode('descriptive')")}</div>
     </div>`;
 }
+// 2026-09-23 fix, per direct report ("We're not recognizing when copy is
+// added to the What makes this launch genuinely newsworthy content area")
+// — this was the REAL, still-live root cause behind every earlier version
+// of this same complaint this round, never actually fixed until now: the
+// Headline field's oninput (above, cmpRenderStep0Headline) embeds its
+// onExact/onDescriptive call-strings using single-quoted JS string
+// literals inside a double-quoted HTML attribute, which is safe. This
+// function's detail-field textareas instead ran
+// `JSON.stringify(onExact)` and interpolated the RESULT — a string that
+// JSON.stringify itself wraps in literal double quotes — straight into
+// the SAME double-quoted `oninput="..."` attribute. The browser's HTML
+// parser closes that attribute at the first unescaped `"` it sees, which
+// is the one JSON.stringify just added, right after `cmpStep0FieldLiveUpdate
+// (this,` — so the real oninput handler that ever got registered was that
+// truncated, syntactically invalid fragment, and it silently did nothing
+// on every keystroke (confirmed via Playwright: a pageerror "Unexpected
+// end of input" fires the moment you type). The onblur save path never had
+// this bug (it's a bare `cmpSaveStep0DetailFields()`, no embedded
+// arguments), which is exactly why blurring the field always DID update
+// the badge correctly and made this so easy to miss — everything looked
+// fixed the moment you clicked away. Fix: HTML-attribute-escape the
+// JSON.stringify() output (escapeHtml(), not JSON.stringify() alone) so
+// the embedded quotes survive as entities instead of terminating the
+// attribute early.
 function cmpRenderStep0DetailFields(c){
   const holder = document.getElementById('cmpCreativeStep0DetailFields');
   if (!holder) return;
@@ -40415,7 +40439,7 @@ function cmpRenderStep0DetailFields(c){
         <label>${escapeHtml(f.label)}</label>
         <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
       </div>
-      <textarea data-detail-key="${keyEsc}" rows="2" placeholder="Real, specific — required for this Writing Style." oninput="cmpStep0FieldLiveUpdate(this,${JSON.stringify(onExact)},${JSON.stringify(onDescriptive)})" onblur="cmpSaveStep0DetailFields()" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
+      <textarea data-detail-key="${keyEsc}" rows="2" placeholder="Real, specific — required for this Writing Style." oninput="cmpStep0FieldLiveUpdate(this,${escapeHtml(JSON.stringify(onExact))},${escapeHtml(JSON.stringify(onDescriptive))})" onblur="cmpSaveStep0DetailFields()" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
       <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive)}</div>
     </div>`;
   }).join('');
