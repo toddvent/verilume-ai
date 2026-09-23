@@ -11771,7 +11771,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-collab-expand-stacking-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-approved-channels-and-line-approve-removal';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40248,6 +40248,22 @@ function cmpRenderCreativeStep0(c){
     // is in flight; this then overwrites it with the real, persisted answer
     // once it resolves. Local-only demo campaigns have no backend row to
     // fetch, so they keep whatever cmpCreativeChannelsText(c) already gave.
+    //
+    // 2026-09-23 follow-up, per direct report that this still showed "—" on
+    // a real campaign whose Product Group/Creative Focus ARE populated —
+    // proof channel_planning_details rows genuinely exist for it (those two
+    // fields are only ever synced FROM those rows, see
+    // syncCampaignProductCreativeGroupsFromChannelPlanning() in server.js).
+    // Root cause: this fetch required `budget > 0` per row, but Todd
+    // confirmed clientApprovedAt/status/budget on an individual line is
+    // NOT what makes a channel "approved" here — the whole channel plan is
+    // approved as one unit at the overall Approve step (see
+    // cmpApproveChannelPlan()), and per-line editing auto-saves regardless
+    // of dollar amount. A channel added to the plan with no $ entered yet
+    // (or $0) is still a real, approved channel selection, so requiring
+    // budget > 0 was silently hiding it. Now any row with a real channel
+    // name counts, budget or not — this is "which channels are in this
+    // campaign's plan," not "which channels have spend."
     if (c.id && !c.localOnly){
       (async () => {
         let text = null;
@@ -40256,7 +40272,7 @@ function cmpRenderCreativeStep0(c){
           if (resp.ok){
             const data = await resp.json();
             const entries = Array.isArray(data.entries) ? data.entries : [];
-            const names = [...new Set(entries.filter(e => (Number(e.budget) || 0) > 0).map(e => e.channel).filter(Boolean))];
+            const names = [...new Set(entries.map(e => e.channel).filter(Boolean))];
             if (names.length) text = names.join(', ');
           }
         } catch (e){ console.warn('cmpRenderCreativeStep0: channel-planning fetch failed', e); }
@@ -41630,6 +41646,21 @@ function cmpBriefAnalyticsBody(c){
     </div>`;
 }
 
+// 2026-09-23 — the "Approve →" button that called this is removed from
+// the line-item table (see cmpRecoChannelTableHtml's rowHtml), per direct
+// instruction: "Technically, we only need the overall budget approval
+// since changes via Edit are automatically saved. The individual Approve
+// line item can probably be removed if correct." Confirmed correct —
+// clientApprovedAt/clientApprovedBy were read nowhere except this same
+// button's own ✓-Approved label and the CSV export's Approved/Pending
+// column; nothing gates on them (progression to the next stage, the
+// Approved Channels rollup, etc. all read real line rows regardless of
+// this flag). The whole channel plan is approved as one unit by
+// cmpRecoApproveOverall()/cmpApproveChannelPlan() instead. Function and
+// the backend client-approve endpoint are left in place, unused, rather
+// than deleted — same "leave the dead path in place" convention as
+// campaign.channels elsewhere in this file — in case a future round wants
+// per-line sign-off back for a specific reason.
 async function cmpRecoApproveLine(entryId){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
@@ -42255,7 +42286,6 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
         <td>${cmpRecoLineCpmHtml(l)}</td>
         <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
         <td style="white-space:nowrap;">
-          ${l.clientApprovedAt ? `✓ Approved${l.clientApprovedBy ? ' by ' + escapeHtml(l.clientApprovedBy) : ''}` : `<button type="button" class="btn-ghost" onclick="cmpRecoApproveLine('${l.id}')">Approve →</button>`}
           <button type="button" class="btn-ghost" onclick="cmpRecoStartEditLine('${l.id}')">Edit</button>
           <button type="button" class="btn-ghost" onclick="cmpRecoDeleteLine('${l.id}')">Delete</button>
         </td>
@@ -42294,7 +42324,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
     : `<p class="lede">No channel plan lines entered for this campaign yet.</p>${generateFromIntakeBtn}`;
   const table = items.length || s.addingLine ? `
     <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table cmp-reco-channel-table" style="width:100%;margin-bottom:14px;">
-      <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>CPM</th><th>Impressions</th><th>Client Approval</th></tr></thead>
+      <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>CPM</th><th>Impressions</th><th>Actions</th></tr></thead>
       <tbody>${items.map(rowHtml).join('')}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
