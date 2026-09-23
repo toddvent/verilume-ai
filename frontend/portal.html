@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-campaign-fit-brand-fit-rename-and-quality-score';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-interview-panel-creative-focus-expand';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40964,6 +40964,7 @@ function cmpRenderCreativeStep1(c){
         }
         return `<div class="entry-card ${isSelected ? 'winner' : ''}">
           <div class="entry-model">${escapeHtml(cand.label)}${cand.key === result.recommendedKey ? ' · top scoring' : ''}</div>
+          ${cand.approach ? `<div class="hint" style="font-style:italic;">Approach: ${escapeHtml(cand.approach)}</div>` : ''}
           <div class="entry-headline">${escapeHtml(cand.copy)}</div>
           <div class="entry-score">
             <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(cand.relevanceScore)}
@@ -43868,7 +43869,7 @@ const BP_FAQ_TOPICS = [
   // N in both this array and the drawer HTML — same "audit found it, add it
   // here" pattern as G-J and N before them.
   { letter: 'O', label: 'Draft Scoring', keywords: ['draft score','relevance score','compliance score','scoring','flags','heuristic','ai-scored'] },
-  { letter: 'P', label: 'Blind Test Interview', keywords: ['interview','candidates','blind test','direct-response','brand-story','proof-and-trust','recommended'] },
+  { letter: 'P', label: 'Blind Test Interview', keywords: ['interview','candidates','blind test','one response per partner','approach','long format','recommended'] },
   // 2026-08-25, per direct instruction: "build out the partner integration
   // page. Each partner should have a speech bubble linking to how to
   // connect in AI Thoughts." Six new topics, one per partner card on the
@@ -44179,7 +44180,7 @@ const AI_THOUGHT_PREVIEWS = {
   L: 'Demand Fulfillment categories are always on with budgets not allocated to a specific campaign.',
   N: 'What the score on this campaign\'s header actually measures — and which of its six inputs is dragging it down right now.',
   O: 'What Draft Scoring is actually checking in the copy above — and whether this deployment is scoring it with AI or a fallback heuristic.',
-  P: 'What the Blind Test Interview panel does: drafts three independent takes on this brief, scores each one the same way, and ranks them.',
+  P: 'What the Blind Test Interview panel does: gets one response each from every AI partner on this brief, scores each one the same way, and ranks them.',
   Q: 'What connecting Meta actually requires — and who needs to grant access.',
   R: 'What connecting Google Ads actually requires — and who needs to grant access.',
   S: 'What connecting The Trade Desk actually requires — and why it isn\'t self-serve.',
@@ -45060,7 +45061,7 @@ function renderFaqP(){
   if (!el) return;
   const jobId = (typeof openCopyWorkspaceJobId !== 'undefined') ? openCopyWorkspaceJobId : null;
   const cached = jobId ? lastInterviewCache[jobId] : null;
-  const base = 'The Blind Test Interview panel drafts three independent takes on this job\'s brief — direct-response, brand-story, and proof-and-trust — then scores each one with the same Campaign Fit/Brand Fit scorer Draft Scoring uses, blind to which angle you might prefer, and ranks them. ';
+  const base = 'The Blind Test Interview panel gets one real response from each AI partner — grounded in the same writing style, objective, KPI, brand voice, and channels — then scores each one with the same Campaign Fit/Brand Fit scorer Draft Scoring uses, blind to which partner wrote which, and ranks them. ';
   if (!cached || !cached.candidates){
     el.textContent = base + 'Click "Interview candidates" in the copy workspace to run it for this job.';
     return;
@@ -50040,7 +50041,7 @@ let lastInterviewCache = {};
 async function runCopyInterview(jobId){
   const holder = document.getElementById('copyInterviewPanel');
   if (!holder) return;
-  holder.innerHTML = renderAiStatusBubble("Drafting three independent takes on your brief — direct-response, brand-story, and proof-and-trust — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  holder.innerHTML = renderAiStatusBubble("Getting one real response from each AI partner, grounded in your brief's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
@@ -50081,13 +50082,21 @@ function renderInterviewPanel(jobId, result){
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
+      </div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <button type="button" class="btn-ghost" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
+        ${!c.longCopy ? `<button type="button" class="btn-ghost" id="cjInterviewExpandBtn-${c.key}" onclick="expandCopyInterviewCandidate('${jobId}','${c.key}')">Expand to long format →</button>` : ''}
+      </div>
     </div>`;
   }).join('');
   const editableCandidates = (result.candidates || []).filter(c => c.copy);
@@ -50152,6 +50161,33 @@ async function submitInterviewFeedback(jobId, interviewId){
     if (submitBtn && submitBtn.tagName === 'BUTTON') submitBtn.disabled = true;
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — feedback not saved."; }
+  }
+}
+async function expandCopyInterviewCandidate(jobId, candidateKey){
+  const result = lastInterviewCache[jobId];
+  const holder = document.getElementById('copyInterviewPanel');
+  if (!result || !holder) return;
+  const btn = document.getElementById(`cjInterviewExpandBtn-${candidateKey}`);
+  if (btn){ btn.disabled = true; btn.textContent = 'Expanding…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(result.interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+      const flag = document.getElementById('copyInterviewSelectFlag');
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't expand this draft — try again."; }
+      return;
+    }
+    const data = await resp.json();
+    const idx = result.candidates.findIndex(c => c.key === candidateKey);
+    if (idx !== -1 && data.candidate){ result.candidates[idx] = { ...result.candidates[idx], ...data.candidate }; }
+    holder.innerHTML = renderInterviewPanel(jobId, result);
+  } catch (e){
+    if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+    const flag = document.getElementById('copyInterviewSelectFlag');
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — couldn't expand this draft."; }
   }
 }
 async function runInterviewSelect(jobId, interviewId, candidateKey){
@@ -53931,7 +53967,7 @@ async function runMfpInterview(){
   const project = findProject(currentCampaignId, currentProjectId);
   const holder = document.getElementById('mfpInterviewPanel');
   if (!project || !holder) return;
-  holder.innerHTML = renderAiStatusBubble("Drafting three independent takes on your brief — direct-response, brand-story, and proof-and-trust — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  holder.innerHTML = renderAiStatusBubble("Getting one real response from each AI partner, grounded in your brief's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -53972,18 +54008,53 @@ function renderMfpInterviewPanel(result){
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
+      </div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <button type="button" class="btn-ghost" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
+        ${!c.longCopy ? `<button type="button" class="btn-ghost" id="mfpInterviewExpandBtn-${c.key}" onclick="expandMfpInterviewCandidate('${result.interviewId}','${c.key}')">Expand to long format →</button>` : ''}
+      </div>
     </div>`;
   }).join('');
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
     <div id="mfpInterviewSelectFlag" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+async function expandMfpInterviewCandidate(interviewId, candidateKey){
+  const result = lastMfpInterviewCache[currentProjectId];
+  const holder = document.getElementById('mfpInterviewPanel');
+  if (!result || !holder) return;
+  const btn = document.getElementById(`mfpInterviewExpandBtn-${candidateKey}`);
+  if (btn){ btn.disabled = true; btn.textContent = 'Expanding…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview/${encodeURIComponent(interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+      const flag = document.getElementById('mfpInterviewSelectFlag');
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't expand this draft — try again."; }
+      return;
+    }
+    const data = await resp.json();
+    const idx = result.candidates.findIndex(c => c.key === candidateKey);
+    if (idx !== -1 && data.candidate){ result.candidates[idx] = { ...result.candidates[idx], ...data.candidate }; }
+    holder.innerHTML = renderMfpInterviewPanel(result);
+  } catch (e){
+    if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+    const flag = document.getElementById('mfpInterviewSelectFlag');
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — couldn't expand this draft."; }
+  }
 }
 // Applies the winning candidate straight into project.masterContent — same
 // explicit-click-only discipline as runInterviewSelect() for Creative Jobs.
@@ -55551,7 +55622,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
     panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Set ${gate.missing.join(' and ')} on Brand Messaging before running the copy contest — the AI Brain needs both to write on-strategy candidates.</p>`;
     return;
   }
-  panel.innerHTML = renderAiStatusBubble("Drafting three independent takes on this campaign's Long Form Copy — direct-response, brand-story, and proof-and-trust — plus every configured vendor, then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
+  panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   if (btn) btn.disabled = true;
   try {
     // 2026-09-23 fix, same report — switched from a single authedFetch
@@ -55564,8 +55635,9 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
     // 2026-09-23 follow-up fix, per Todd's report ("signal is aborted
     // without reason") — this call was left on authedFetch's generic
     // 12000ms default, meant for quick CRUD calls. This endpoint
-    // (runCandidateInterview on the backend) runs 3 angles plus every
-    // configured vendor as real LLM generations, then scores each one —
+    // (runCandidateInterview on the backend) runs one real LLM generation
+    // per AI partner (Anthropic plus up to 4 configured vendors), then
+    // scores each one —
     // the same class of heavy multi-call AI endpoint as
     // cmpIntakeExchange()/cmpMsgIntakeExchange() above, which already use
     // a 100000ms timeout with a single attempt (retrying at a too-short
@@ -55586,13 +55658,14 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
       panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
       return;
     }
-    panel.innerHTML = renderCmpCopyContestPanel(result, flagId);
+    cmpCopyContestLastResult[panelId] = result;
+    panel.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
     // 2026-09-23 — if any candidate came back pending (still generating,
     // or a first-pass failure), fire the second pass automatically instead
     // of leaving it as a final-looking error card.
     cmpCopyContestAutoRetryPending(campaign.id, result, () => {
       const p = document.getElementById(panelId);
-      if (p) p.innerHTML = renderCmpCopyContestPanel(result, flagId);
+      if (p) p.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
     });
   } catch (e){
     panel.innerHTML = `<div class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Couldn't run the copy contest: ${escapeHtml(e.message || 'backend unreachable')}. Try again.</div>`;
@@ -55608,8 +55681,16 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
 // render function mount into either Brand Messaging's own panel or the Copy
 // Versions drawer's panel without two DOM elements sharing one id — see
 // cmpRunCampaignCopyContest()'s own comment.
-function renderCmpCopyContestPanel(result, flagId){
+// `panelId` (2026-09-23, "option to expand to a long format") lets the
+// Expand button below find its way back to cmpCopyContestLastResult and
+// re-render this same panel after a real AI call — same reasoning as
+// flagId's own comment above: this render function is mounted into more
+// than one DOM element (Brand Messaging's panel and the Copy Versions
+// drawer's panel), so the button's onclick needs to know which one it's
+// in, not assume a single well-known id.
+function renderCmpCopyContestPanel(result, flagId, panelId){
   flagId = flagId || 'cmpCopyContestSelectFlag';
+  panelId = panelId || 'cmpCopyContestPanel';
   const cards = (result.candidates || []).map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
@@ -55635,22 +55716,70 @@ function renderCmpCopyContestPanel(result, flagId){
         <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
+    // 2026-09-23 — "What is the approach from each" is the approach line
+    // right below the label, stated by the partner itself (see
+    // INTERVIEW_COPY_SCHEMA on the backend) rather than assigned by this
+    // codebase. "option to expand to a long format": the long-form
+    // expansion, once fetched, is shown stacked BELOW the original short
+    // draft rather than replacing it — simpler and less error-prone than a
+    // show/hide toggle, and it keeps both lengths visible for comparison
+    // once fetched.
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
+      </div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <button type="button" class="btn-ghost" style="margin-top:6px;" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
+        ${!c.longCopy ? `<button type="button" class="btn-ghost" id="cmpExpandBtn-${panelId}-${c.key}" onclick="cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')">Expand to long format →</button>` : ''}
+      </div>
     </div>`;
   }).join('');
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
     <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+// 2026-09-23 — keyed by panelId (same reasoning as cmpCopyContestPendingRetried
+// below) so the Expand button can find its way back to the live result
+// object and re-render in place, without this render function itself
+// owning any state.
+const cmpCopyContestLastResult = {};
+// Fires the real, on-demand long-form expansion for one candidate — never
+// for all candidates at once, since that would spend a real AI call per
+// card whether or not anyone asked to see it expanded.
+async function cmpExpandCopyContestCandidate(panelId, flagId, key){
+  const result = cmpCopyContestLastResult[panelId];
+  const panel = document.getElementById(panelId);
+  const btn = document.getElementById(`cmpExpandBtn-${panelId}-${key}`);
+  if (!result || !panel) return;
+  const campaign = cmpCurrentCampaign();
+  if (!campaign) return;
+  if (btn){ btn.disabled = true; btn.textContent = 'Expanding…'; }
+  try {
+    const data = await cmpFetchJsonWithRetry(
+      `${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(result.interviewId)}/candidate/${encodeURIComponent(key)}/expand`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } }, 1, 700
+    );
+    const idx = result.candidates.findIndex(c => c.key === key);
+    if (idx !== -1 && data.candidate){
+      result.candidates[idx] = { ...result.candidates[idx], ...data.candidate };
+    }
+    panel.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
+  } catch (e){
+    if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+    const flag = document.getElementById(flagId);
+    if (flag) flag.textContent = `Couldn't expand this draft: ${e.message || 'backend unreachable'}.`;
+  }
 }
 // 2026-09-23 — same auto-fire pattern as voiceContestAutoRetryPending()
 // (see that function's own comment): the moment any candidate comes back
