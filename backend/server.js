@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-23-campaign-fit-brand-fit-rename-and-quality-score (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-23-interview-panel-creative-focus-scope (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2613,7 +2613,7 @@ const CONTEST_TYPE_REGISTRY = {
   'Creative Job': {
     taskType: 'creative_job',
     subtypes: ['Copywriting'],
-    description: 'Per-creative-job Blind Test Interview (3 angles + configured vendors). No single-draft (non-contest) creative-job generator exists yet, so there is no dispatch consumer today — same "capture ahead of the consumer" posture as contest_rankings itself.'
+    description: 'Per-creative-job Blind Test Interview (one response per partner — Anthropic plus up to 4 configured vendors). No single-draft (non-contest) creative-job generator exists yet, so there is no dispatch consumer today — same "capture ahead of the consumer" posture as contest_rankings itself.'
   },
   'Campaign': {
     taskType: 'marketing_copy',
@@ -2785,10 +2785,6 @@ function logScoreHistory(accountId, campaignId, sourceType, sourceKey, result){
     .run(generateId('CSH'), accountId, campaignId, sourceType, sourceKey, result.relevanceScore, result.complianceScore, result.note || null, JSON.stringify(result.flags || []), result.mode, now, now);
   return now;
 }
-// Three genuinely distinct brand-voice directions — not three re-rolls of one
-// prompt, same "real subagents" discipline as INTERVIEW_SUBAGENT_ANGLES
-// above. Each is a full personality a brand could plausibly commit to, not a
-// minor wording variation of the others.
 // 2026-08-27 fix, per direct report — this used to be THREE Anthropic
 // "angle" candidates (Confident Authority / Warm Storyteller / Bold Modern)
 // competing alongside one candidate per other vendor, which meant Anthropic
@@ -2977,6 +2973,23 @@ const COPY_SCHEMA = {
   type: 'object',
   properties: { copy: { type: 'string', description: 'The full drafted copy.' } },
   required: ['copy']
+};
+// 2026-09-23, per direct instruction ("What is the approach from each") —
+// the Blind Test Interview panel's own schema, distinct from the shared
+// COPY_SCHEMA above so this addition doesn't ripple into every other
+// caller of that schema (LinkedIn posts, PR copy, etc., none of which
+// have a comparable "approach" to name). Every interview candidate — the
+// Anthropic response and every configured vendor's — now states its own
+// real strategic approach rather than being assigned one, since all 5
+// partners now work from the exact same shared brief (see
+// INTERVIEW_SHARED_BRIEF below).
+const INTERVIEW_COPY_SCHEMA = {
+  type: 'object',
+  properties: {
+    copy: { type: 'string', description: 'The full drafted copy.' },
+    approach: { type: 'string', description: 'One short sentence (roughly 10-20 words) naming the real strategic approach you actually took for this draft -- the hook, angle, or persuasion strategy used, in your own words. Not a generic label like "direct response" unless that genuinely is your approach.' }
+  },
+  required: ['copy', 'approach']
 };
 const COPY_SOURCES_SCHEMA = {
   type: 'object',
@@ -16430,20 +16443,25 @@ ${copyText.slice(0, 2000)}`;
   return { relevanceScore: rel.relevanceScore, note: rel.relevanceNote, complianceScore: comp.complianceScore, flags: comp.flags, mode: 'heuristic' };
 }
 
-// Candidate "subagent" angles for the interview panel (roadmap item 4 —
-// "run the same brief across multiple models and subagents, side by side").
-// These 3 always run on Anthropic (see INTERVIEW_VENDOR_REGISTRY below for
-// the other vendors, real the moment their env var is set), but each is a
-// genuinely distinct strategic brief a real creative team would assign
-// separately — not three re-rolls of the same prompt.
-const INTERVIEW_SUBAGENT_ANGLES = [
-  { key: 'direct-response', label: 'Direct-response angle', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
-    brief: 'Write for maximum action on the Primary KPI. Lead with the strongest concrete benefit or offer, keep sentences short, and make the call to action impossible to miss. Urgency over atmosphere.' },
-  { key: 'brand-story', label: 'Brand-story angle', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
-    brief: 'Write to build brand affinity first. Open with a sensory, specific moment grounded in the brand voice guide, and let the call to action arrive as the natural next step in the story rather than a hard pivot.' },
-  { key: 'proof-and-trust', label: 'Proof-and-trust angle', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
-    brief: 'Write to reduce hesitation. Lead with the most credible, specific proof point available in the brand/style material (a real detail, never an invented statistic), and let the call to action feel like a low-risk next step.' }
-];
+// 2026-09-23 REWRITE, per direct instruction ("Something is off... One
+// response per partner: Anthropic, Grok, Gemini, Perplexity, OpenAI in a
+// random order per contest") — this panel briefly (same day, one round
+// earlier) ran 5 Anthropic-only angle variants plus vendors on top, which
+// was the wrong shape entirely. Reworked to mirror runBrandVoiceContest's
+// own structure exactly: exactly 5 total candidates, ONE response per
+// partner (Anthropic + the 4 vendors in INTERVIEW_VENDOR_REGISTRY below),
+// every partner working from the SAME shared brief and the SAME full
+// campaign context — not five different assigned strategic postures. "What
+// is the approach from each" is now something every partner states for
+// itself (see INTERVIEW_COPY_SCHEMA's `approach` field), not something this
+// codebase assigns to them.
+const INTERVIEW_SHARED_BRIEF = 'Write the single best, most persuasive version of this campaign\'s Long Form Copy you can. Use your own best judgment on hook, structure, and tone, grounded fully in this campaign\'s defined writing style, objective, KPI, brand voice, and channels below — do not default to a generic template.';
+// The Anthropic slot's own descriptor, in the same {key,label,vendor,model}
+// shape INTERVIEW_VENDOR_REGISTRY's 4 entries use, so runCandidateInterview
+// below can build and blind-label all 5 candidates identically (same
+// pattern as BRAND_VOICE_PRIMARY_BRIEF/INTERVIEW_VENDOR_REGISTRY already
+// does for the Brand Voice contest).
+const INTERVIEW_ANTHROPIC_SLOT = { key: 'anthropic', label: 'Anthropic', vendor: 'Anthropic', model: 'claude-sonnet-4-5' };
 
 // 2026-08-22, next round — real wiring for the other 4 vendors. Todd
 // supplied real API keys for OpenAI/xAI/Gemini/Perplexity directly (never
@@ -16644,27 +16662,65 @@ function parseJsonBlock(text){
   }
   try { return JSON.parse(repaired); } catch (e){ return null; }
 }
-// Vendor-neutral brief for the copy interview panel's cross-vendor
-// candidates — deliberately NOT one of INTERVIEW_SUBAGENT_ANGLES' 3
-// angle-specific briefs. The point of the vendor half of this panel is
-// comparing VENDORS head-to-head on equal footing; giving each vendor a
-// different angle would confound vendor choice with angle choice and make
-// the comparison meaningless.
-const INTERVIEW_CROSS_VENDOR_BRIEF = 'Write the single best, most persuasive version of this campaign\'s Long Form Copy you can — your own best judgment on angle, structure, and tone, drawing fully on the brand voice and campaign context below.';
-// Shared prompt builder — both generateInterviewCandidateCopy's Anthropic
-// path and the 4 vendor paths below build from this same context, so a
-// cross-vendor comparison is actually comparing the same brief, not
-// accidentally different context depth per vendor.
-function buildInterviewPrompt(brief, campaign, account, sampleContext, audienceLabel){
+// 2026-09-23 — server-side twin of the frontend's cmpCreativeChannelsText():
+// same real-source/dead-fallback convention (mediaMix.channels where
+// amount > 0 is the real approved channel plan; the old campaigns.channels
+// column is a dead field kept only for pre-existing local-only data — see
+// verilume-product-campaign-management.html §04/§06). Added so the
+// interview panel's shared brief can name "channels that will be used" per
+// direct instruction, which it never referenced at all before this round.
+function campaignChannelsText(campaign){
+  try {
+    const mediaMix = campaign.mediaMixJson ? JSON.parse(campaign.mediaMixJson) : null;
+    if (mediaMix && Array.isArray(mediaMix.channels)){
+      const real = mediaMix.channels.filter(c => (c.amount || 0) > 0).map(c => c.channel).filter(Boolean);
+      if (real.length) return real.join(', ');
+    }
+  } catch (e){ /* fall through to the dead-column fallback below */ }
+  return campaign.channels || '';
+}
+// 2026-09-23 — per direct instruction ("we should send creative focus
+// also"): campaign.creativeFocusGroups (the round "creative-focus-tagging"
+// destination tag — see brandWritingSampleContext()'s own comment on its
+// opts.creativeMarket scope) was never being passed into the interview
+// panel's sample-scoping call, so a destination-scoped campaign (e.g.
+// "Arctic") was still drawing brand samples from the WHOLE account-wide
+// pool, including samples tagged to other destinations that don't belong
+// in this campaign's copy. This resolves a single scope value to pass
+// through: creativeFocusGroups is a comma-joined list (a campaign can span
+// more than one destination), and brandWritingSampleContext's scope is an
+// exact-match against ONE tag, so a multi-destination campaign returns null
+// here (falls back to the account-wide pool, same as before) rather than
+// risk under-scoping real destination samples out entirely.
+function campaignCreativeMarketScope(campaign){
+  const raw = (campaign && campaign.creativeFocusGroups || '').trim();
+  if (!raw) return null;
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  return parts.length === 1 ? parts[0] : null;
+}
+// Shared prompt builder — the Anthropic path and all 4 vendor paths below
+// build from this exact same function, so all 5 partners are compared on
+// identical brief-and-context depth, not accidentally different inputs.
+// 2026-09-23 REWRITE, per direct instruction — every partner now gets the
+// SAME shared brief (no more per-candidate assigned angle) and states its
+// own approach back (see INTERVIEW_COPY_SCHEMA); also added Channels to
+// CAMPAIGN CONTEXT (never referenced here before, despite being one of the
+// 5 named inputs requested) and an optional long-form expansion mode.
+function buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts){
+  opts = opts || {};
   const stageJob = MEDIA_LOOP_STAGE_JOB[campaign.stage] || 'No Loop Stage set on this campaign yet.';
   const voiceGuide = (account.voiceGuideText || '').slice(0, 2000);
   const styleNotes = (account.styleNotes || '').slice(0, 1200);
   const visionStatement = (account.visionStatement || '').trim();
   const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1000).trim();
-  return `You are a specialist copywriter working one specific strategic angle on a creative team. Write real, finished, publish-ready Long Form Copy (120-220 words, 3-5 short paragraphs) for ${industryPersonaPhrase(account)} campaign — not a summary, not a template.
+  const channelsText = campaignChannelsText(campaign);
+  const lengthInstruction = opts.longForm
+    ? 'Write real, finished, publish-ready LONG-FORM copy (400-600 words, 5-8 short paragraphs) — a genuine expansion, not padding. Keep the exact same strategic approach as your own prior short draft below; do not change direction.'
+    : 'Write real, finished, publish-ready Long Form Copy (120-220 words, 3-5 short paragraphs) — not a summary, not a template.';
+  return `You are a specialist copywriter. ${lengthInstruction} for ${industryPersonaPhrase(account)} campaign.
 
-YOUR ANGLE FOR THIS DRAFT: ${brief}
-
+YOUR BRIEF: ${INTERVIEW_SHARED_BRIEF}
+${opts.priorApproach ? `\nYOUR OWN PRIOR APPROACH FOR THIS PIECE OF COPY (stay true to this — this is an expansion of the same draft, not a fresh take): ${opts.priorApproach}\n` : ''}
 BRAND VOICE GUIDE (follow exactly):
 ${voiceGuide || '(no approved Brand Voice on file — write in a clear, direct, confident default tone)'}
 ${visionStatement ? `\nBRAND VISION STATEMENT (the north-star this voice should always feel true to): ${visionStatement}\n` : ''}${longformVoiceExample ? `\nREFERENCE LONGFORM EXAMPLE (match this voice's register and rhythm, not its specific facts):\n${longformVoiceExample}\n` : ''}${sampleContext || ''}
@@ -16677,49 +16733,59 @@ CAMPAIGN CONTEXT:
 - Audience/Segment: ${campaign.segment || '(not set)'}
 ${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n` : ''}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
-- Role/Style approach, if the account has one on file: ${campaign.roleStyle || '(none set -- follow your assigned angle above)'}
+- Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
+- Channels this copy will run on: ${channelsText || '(not yet set on this campaign -- write copy that reads naturally across channels)'}
+- Creative Focus / destination${campaign.creativeFocusGroups && campaign.creativeFocusGroups.includes(',') ? 's' : ''}, if set: ${campaign.creativeFocusGroups || '(none set)'}
 ${campaign.mandatoryPhrase ? `- MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy -- this is not optional, its absence is a compliance failure): "${campaign.mandatoryPhrase}"\n` : ''}${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
-Submit your draft via the submit_copy tool.`;
+Submit your draft via the submit_copy tool (name: "copy"; also include a one-sentence "approach" field naming the real strategic approach you actually took). If you have no tool-calling capability, reply with exactly one JSON object of the form {"copy": "...", "approach": "..."} and nothing else.`;
 }
-// One subagent angle's generation call — a lighter-weight sibling of
-// generateMessagingCopyViaAI above, sharing its brand-context inputs but
-// taking an explicit strategic brief instead of the general-purpose prompt,
-// so the candidates are honestly different drafts rather than three samples
-// of one instruction.
+// One partner's generation call (the Anthropic slot) — a lighter-weight
+// sibling of generateMessagingCopyViaAI above, sharing its brand-context
+// inputs but taking the interview panel's own shared brief instead of the
+// general-purpose prompt.
 // 2026-09-23 — optional `timeoutMs` lets POST .../retry-pending (the
 // two-pass design below) reuse this exact function for the second pass
 // with VENDOR_PASS2_TIMEOUT_MS instead of fetchWithTimeout's bare 90s
 // default, same pattern as generateVendorInterviewCopy already had.
-async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel, timeoutMs){
+async function generateInterviewCandidateCopy(slot, campaign, account, sampleContext, audienceLabel, timeoutMs, opts){
   try {
-    const prompt = buildInterviewPrompt(angle.brief, campaign, account, sampleContext, audienceLabel);
+    const prompt = buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts);
     const parsed = await callClaudeForJSON({
-      model: angle.model,
-      maxTokens: 700,
+      model: slot.model,
+      maxTokens: opts && opts.longForm ? 1200 : 700,
       content: prompt,
       toolName: 'submit_copy',
-      toolDescription: 'Submit the drafted copy.',
-      schema: COPY_SCHEMA,
+      toolDescription: 'Submit the drafted copy and the approach you took.',
+      schema: INTERVIEW_COPY_SCHEMA,
       timeoutMs
     });
-    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
+    return {
+      copy: typeof parsed.copy === 'string' ? parsed.copy : null,
+      approach: typeof parsed.approach === 'string' ? parsed.approach : null,
+      error: null
+    };
   } catch (e){
-    return { copy: null, error: 'Generation failed: ' + e.message };
+    return { copy: null, approach: null, error: 'Generation failed: ' + e.message };
   }
 }
-// A configured vendor's ONE candidate for the copy interview panel —
-// shares buildInterviewPrompt() (already ends in the {"copy": "..."}
-// instruction) with the Anthropic angles above, so this compares vendors on
-// the exact same brief-and-context depth.
-async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleContext, audienceLabel){
+// A configured vendor's ONE candidate for the copy interview panel — shares
+// buildInterviewPrompt() with the Anthropic slot above (same shared brief,
+// same campaign context, same "approach" ask), so this compares all 5
+// partners on the exact same brief-and-context depth, not accidentally
+// different inputs.
+async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleContext, audienceLabel, timeoutMs, opts){
   try {
-    const prompt = buildInterviewPrompt(INTERVIEW_CROSS_VENDOR_BRIEF, campaign, account, sampleContext, audienceLabel);
-    const text = await callVendorForText(vendorKey, prompt);
+    const prompt = buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts);
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs);
     const parsed = parseJsonBlock(text);
-    if (!parsed) return { copy: null, error: 'Generation returned no parseable JSON.' };
-    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
+    if (!parsed) return { copy: null, approach: null, error: 'Generation returned no parseable JSON.' };
+    return {
+      copy: typeof parsed.copy === 'string' ? parsed.copy : null,
+      approach: typeof parsed.approach === 'string' ? parsed.approach : null,
+      error: null
+    };
   } catch (e){
-    return { copy: null, error: 'Generation failed: ' + e.message };
+    return { copy: null, approach: null, error: 'Generation failed: ' + e.message };
   }
 }
 // A configured vendor's ONE candidate for the Brand Voice contest (a
@@ -17110,8 +17176,8 @@ Respond via the submit_competitor_synthesis tool.`;
 }
 
 // Cost-control safety net (2026-08-22) — a single "Interview candidates"
-// or "Run contest" click is up to 6 real AI calls (up to 3 parallel
-// draft-generation calls, one per angle/vendor, plus up to 3 more scoring
+// or "Run contest" click is up to 10 real AI calls (up to 5 parallel
+// draft-generation calls, one per partner, plus up to 5 more scoring
 // calls), and there was no limit anywhere on how many times an account
 // could click it. This is a simple hard rolling-7-day cap per account,
 // counted directly off the three interview tables (creative_job_interviews,
@@ -17192,26 +17258,21 @@ async function runCandidateInterview(campaign, account, audienceLabel){
   // context chain is its own separate, narrower thing (samples + creative
   // job decisions only) by standing convention, not an oversight. A
   // candidate for a future round, not this one.
-  const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
+  const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   // 2026-09-23 fix, per Todd's report ("signal is aborted... took much
   // longer this time" after the client timeout was already raised to
-  // 100s) — these two batches used to run SEQUENTIALLY (await the 3
-  // Anthropic angles, THEN await every vendor), so total wall-clock was
-  // angle-time + vendor-time even though neither batch depends on the
-  // other's output. This is the exact same bug runBrandVoiceContest() had
-  // and fixed on 2026-08-26 (see that function's own comment) — never
-  // ported here. Combined into one Promise.all so every angle AND every
-  // configured vendor call fires at once; wall-clock is now bounded by the
-  // single slowest call instead of the sum.
-  const [generated, vendorGenerated] = await Promise.all([
-    Promise.all(INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel))),
+  // 100s) — the Anthropic call and every vendor call used to run
+  // SEQUENTIALLY, so total wall-clock was the sum instead of the max. This
+  // is the exact same bug runBrandVoiceContest() had and fixed on
+  // 2026-08-26. Combined into one Promise.all so the Anthropic slot AND
+  // every configured vendor fire at once.
+  const [anthropicGenerated, vendorGenerated] = await Promise.all([
+    generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, audienceLabel),
     Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)))
   ]);
 
-  const scored = await Promise.all(
-    generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
-  );
+  const anthropicScored = anthropicGenerated.copy ? await scoreDraftCopy(anthropicGenerated.copy, campaign, account) : null;
   const vendorScored = await Promise.all(
     vendorGenerated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
   );
@@ -17224,7 +17285,7 @@ async function runCandidateInterview(campaign, account, audienceLabel){
       : null;
     return {
       key, label, vendor, model, configured: true,
-      copy: gen.copy, error: gen.error,
+      copy: gen.copy, approach: gen.approach || null, error: gen.error,
       // 2026-09-23 — pending, same two-pass design as runBrandVoiceContest
       // (see VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS's comment). A
       // candidate whose generation failed on this first pass isn't a hard
@@ -17234,20 +17295,30 @@ async function runCandidateInterview(campaign, account, audienceLabel){
       // left of this request's.
       pending: !!gen.error,
       relevanceScore, complianceScore, combinedScore,
-      note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null
+      note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null,
+      // 2026-09-23 — "option to expand to a long format" per direct
+      // instruction. Populated on demand by POST .../copy-interview/
+      // :interviewId/candidate/:key/expand, never at first-pass generation
+      // time (an unrequested long-form call for every candidate would
+      // double this endpoint's real AI-call cost for no reason).
+      longCopy: null
     };
   };
-  const liveCandidates = INTERVIEW_SUBAGENT_ANGLES.map((angle, i) => buildCandidate(angle.key, angle.label, angle.vendor, angle.model, generated[i], scored[i]));
+  const anthropicCandidate = buildCandidate(
+    INTERVIEW_ANTHROPIC_SLOT.key, INTERVIEW_ANTHROPIC_SLOT.label, INTERVIEW_ANTHROPIC_SLOT.vendor, INTERVIEW_ANTHROPIC_SLOT.model,
+    anthropicGenerated, anthropicScored
+  );
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i], vendorScored[i]));
 
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
-    copy: null, error: `${v.envVar} not configured on this deployment.`,
+    copy: null, approach: null, error: `${v.envVar} not configured on this deployment.`,
     // Never pending — a missing API key isn't retryable by a second pass.
     pending: false,
-    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
+    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null,
+    longCopy: null
   }));
-  const allLive = [...liveCandidates, ...liveVendorCandidates];
+  const allLive = [anthropicCandidate, ...liveVendorCandidates];
   const allCandidates = [...allLive, ...unconfiguredCandidates];
 
   // 2026-09-23 fix, per Todd's screenshot showing "GPT (OpenAI)", "Gemini
@@ -17315,9 +17386,13 @@ function redactCandidatesForClient(candidates){
   // fix (candidatesJson from an old run has no blindLabel field at all).
   return (candidates || []).map(c => ({
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
-    copy: c.copy, error: c.error, pending: !!c.pending,
+    copy: c.copy, approach: c.approach || null, error: c.error, pending: !!c.pending,
     relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
-    note: c.note, flags: c.flags, scoreMode: c.scoreMode
+    note: c.note, flags: c.flags, scoreMode: c.scoreMode,
+    // 2026-09-23 — "option to expand to a long format." Populated by POST
+    // .../copy-interview/:interviewId/candidate/:key/expand; null until a
+    // client explicitly asks for the long-form version of this candidate.
+    longCopy: c.longCopy || null
   }));
 }
 
@@ -17386,7 +17461,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-23-campaign-fit-brand-fit-rename-and-quality-score',
+        buildStamp: '2026-09-23-interview-panel-creative-focus-scope',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -25972,7 +26047,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
     // POST /api/campaigns/:id/copy-interview — 2026-08-22, next round (item
     // 4 continued). The Marketing Function Project workspace's equivalent
     // of POST /api/creative-jobs/:id/interview — runs the SAME
-    // runCandidateInterview() 3-subagent panel, just against a campaign
+    // runCandidateInterview() panel (one response per partner), just against a campaign
     // directly rather than through a job, and logs to
     // campaign_copy_interviews instead of creative_job_interviews (see that
     // table's comment for why a separate table). Body: { sourceKey } (same
@@ -26069,15 +26144,15 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // it isn't persisted on the interview row (see the create endpoint's
       // own comment on why the shared sample/decision context is fetched
       // once per request rather than stashed).
-      const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
+      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
       const audienceLabel = interview.audience || null;
       await Promise.all(pendingCandidates.map(async (c) => {
         try {
-          const angle = INTERVIEW_SUBAGENT_ANGLES.find(a => a.key === c.key);
-          const gen = angle
-            ? await generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS)
+          const gen = c.key === INTERVIEW_ANTHROPIC_SLOT.key
+            ? await generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS)
             : await generateVendorInterviewCopy(c.key, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS);
           c.copy = gen.copy;
+          c.approach = gen.approach || c.approach || null;
           c.error = gen.error;
           if (c.copy){
             const score = await scoreDraftCopy(c.copy, campaign, account);
@@ -26100,6 +26175,59 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, {
         interviewId, retried: true, candidates: redactCandidatesForClient(candidates), recommendedKey: pickRecommendedCopyInterviewCandidate(candidates)
       });
+    }
+
+    // POST /api/campaigns/:id/copy-interview/:interviewId/candidate/:key/expand
+    // — 2026-09-23, per direct instruction ("option to expand to a long
+    // format"). Regenerates ONE already-drafted candidate at long-form
+    // length (400-600 words vs. the initial 120-220), explicitly told to
+    // keep the SAME approach it already stated rather than taking a fresh
+    // direction — an expansion of that draft, not a different draft. Only
+    // runs on request (never automatically for all 5 candidates at
+    // generation time, which would double this panel's real AI-call cost
+    // for drafts nobody asked to see expanded). A candidate already
+    // expanded this run is a cheap no-op — re-clicking "Expand" doesn't
+    // spend a second real AI call for the same draft.
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview' && parts[5] === 'candidate' && parts[7] === 'expand'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const candidateKey = decodeURIComponent(parts[6]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const interview = db.prepare('SELECT * FROM campaign_copy_interviews WHERE id = ? AND campaignId = ?').get(interviewId, campaignId);
+      if (!interview) return sendJson(res, 404, { error: 'copy contest not found for this campaign' });
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const candidate = candidates.find(c => c.key === candidateKey);
+      if (!candidate) return sendJson(res, 404, { error: 'candidate not found on this interview' });
+      if (!candidate.copy){
+        return sendJson(res, 400, { error: 'This candidate has no draft yet to expand.' });
+      }
+      if (candidate.longCopy){
+        // Already expanded this run — cheap no-op, matching retry-pending's
+        // own "safe to call again" discipline.
+        return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
+      }
+      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+      const audienceLabel = interview.audience || null;
+      const opts = { longForm: true, priorApproach: candidate.approach || null };
+      try {
+        const gen = candidateKey === INTERVIEW_ANTHROPIC_SLOT.key
+          ? await generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS, opts)
+          : await generateVendorInterviewCopy(candidateKey, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS, opts);
+        if (gen.copy){
+          candidate.longCopy = gen.copy;
+        } else {
+          return sendJson(res, 502, { error: gen.error || 'Long-form expansion failed.' });
+        }
+      } catch (e){
+        return sendJson(res, 502, { error: 'Long-form expansion failed: ' + e.message });
+      }
+      db.prepare('UPDATE campaign_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+      return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
     }
 
     // POST /api/campaigns/:id/copy-interview/:interviewId/select — same
@@ -26396,6 +26524,53 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       db.prepare('UPDATE creative_job_interviews SET feedbackNote = ?, feedbackType = ?, feedbackBy = ?, feedbackAt = ? WHERE id = ?')
         .run(body.note.trim(), feedbackType, actorBy, now, interviewId);
       return sendJson(res, 200, { interviewId, feedbackType, feedbackNote: body.note.trim(), feedbackAt: now, workingCopy });
+    }
+
+    // POST /api/creative-jobs/:id/interview/:interviewId/candidate/:key/expand
+    // — 2026-09-23, the creative-jobs sibling of the campaign-scoped expand
+    // endpoint above (see its comment for the full rationale: same 400-600
+    // word long-form regeneration, same "stay true to your own prior
+    // approach" instruction, same cheap no-op on a re-click). Kept as its
+    // own endpoint rather than redirecting to the campaign one because this
+    // panel is scoped by jobId, not campaignId, on the client.
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'creative-jobs' && parts[3] === 'interview' && parts[5] === 'candidate' && parts[7] === 'expand'){
+      const jobId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const candidateKey = decodeURIComponent(parts[6]);
+      const job = db.prepare('SELECT * FROM creative_jobs WHERE id = ?').get(jobId);
+      if (!job) return sendJson(res, 404, { error: 'creative job not found' });
+      if (!requireAccount(req, res, job.accountId)) return;
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(job.campaignId);
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(job.accountId);
+      if (!campaign || !account) return sendJson(res, 404, { error: 'campaign or account not found for this job' });
+      const interview = db.prepare('SELECT * FROM creative_job_interviews WHERE id = ? AND jobId = ?').get(interviewId, jobId);
+      if (!interview) return sendJson(res, 404, { error: 'interview not found for this job' });
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const candidate = candidates.find(c => c.key === candidateKey);
+      if (!candidate) return sendJson(res, 404, { error: 'candidate not found on this interview' });
+      if (!candidate.copy){
+        return sendJson(res, 400, { error: 'This candidate has no draft yet to expand.' });
+      }
+      if (candidate.longCopy){
+        return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
+      }
+      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+      const opts = { longForm: true, priorApproach: candidate.approach || null };
+      try {
+        const gen = candidateKey === INTERVIEW_ANTHROPIC_SLOT.key
+          ? await generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, null, VENDOR_PASS2_TIMEOUT_MS, opts)
+          : await generateVendorInterviewCopy(candidateKey, campaign, account, sampleContext, null, VENDOR_PASS2_TIMEOUT_MS, opts);
+        if (gen.copy){
+          candidate.longCopy = gen.copy;
+        } else {
+          return sendJson(res, 502, { error: gen.error || 'Long-form expansion failed.' });
+        }
+      } catch (e){
+        return sendJson(res, 502, { error: 'Long-form expansion failed: ' + e.message });
+      }
+      db.prepare('UPDATE creative_job_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+      return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
     }
 
     // GET /api/creative-jobs/:id/interviews — history of past interview
