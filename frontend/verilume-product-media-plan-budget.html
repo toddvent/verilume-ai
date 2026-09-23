@@ -459,7 +459,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td><code>marketing_budget_line_items</code></td><td><code>uploadId</code>, <code>category</code>, <code>status</code>, <code>month</code>, <code>amount</code>, <code>annualTotal</code>, <code>verilumeCategory</code></td><td>Raw category × month; <code>verilumeCategory</code> NULL until mapped</td></tr>
             <tr><td><code>marketing_budget_category_overrides</code></td><td><code>uploadId</code>, <code>verilumeCategory</code>, <code>overrideTotal</code></td><td>Client-edited totals; also how a total-only figure is edited</td></tr>
             <tr><td><code>account_active_channels</code></td><td><code>accountId</code>, <code>channel</code></td><td>Cache of "channels with real budget behind them," replaced on each Domestic confirm</td></tr>
-            <tr><td><code>media_plans</code></td><td><code>id</code>, <code>accountId</code>, <code>year</code>, <code>totalBudget</code>, <code>grossRevenue</code>, <code>marketingBudgetPct</code>, <code>tradeMarketingPct</code>, <code>tradeMarketingBudget</code>, <code>monthlyMode</code>, <code>monthlyPctJson</code>, <code>nonWorkingMediaJson</code></td><td>One per account per year; <code>monthlyMode</code> ∈ flat | curve | manual</td></tr>
+            <tr><td><code>media_plans</code></td><td><code>id</code>, <code>accountId</code>, <code>year</code>, <code>totalBudget</code>, <code>grossRevenue</code>, <code>marketingBudgetPct</code>, <code>tradeMarketingPct</code>, <code>tradeMarketingBudget</code>, <code>monthlyMode</code>, <code>monthlyPctJson</code>, <code>nonWorkingMediaJson</code>, <code>goalBackwardSolveJson</code></td><td>One per account per year; <code>monthlyMode</code> ∈ flat | curve | manual. <code>goalBackwardSolveJson</code> holds the Media Plan Goal backward-solve state — was live-folded to <code>goalbackwardsolvejson</code> in production (legacy-casing drift); fixed 2026-09-23 via a data-preserving rename as part of a 30-column audit across 12 tables. Full feature detail not yet covered in this doc.</td></tr>
             <tr><td><code>media_plan_allocations</code> / <code>media_plan_periods</code></td><td><code>mediaPlanId</code>, <code>stage</code>, <code>channel</code>, <code>recommendedAmount</code>, <code>approvedAmount</code> / <code>allocationId</code>, <code>label</code>, <code>approvedAmount</code></td><td>Channel rows and their Jan–Dec split</td></tr>
             <tr><td><code>accounts</code> (columns)</td><td><code>stageBudgetWeightsOverrideJson</code>, <code>minViableSpendCalibrationEnabled</code>, <code>activeChannels</code></td><td>Stage split override; AOV calibration flag (no longer surfaced in the UI); Active Channels tiles</td></tr>
             <tr><td><code>VERILUME_BUDGET_CATEGORIES</code> / <code>VERILUME_TO_MMM_CHANNEL_MAP</code> (in-code)</td><td></td><td>The mapping taxonomy and its Campaign-Creation crosswalk — &sect;06</td></tr>
@@ -594,7 +594,10 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <div class="foot">
       Verilume — Internal Product Documentation. Reflects the state of
       <code>backend/server.js</code> and <code>frontend/portal.html</code> as
-      verified on 2026-09-12 (Store Trade Area — numeric wealth match). Update this document as the Product changes — it's
+      verified on 2026-09-12 (Store Trade Area — numeric wealth match), with a
+      2026-09-23 touch to &sect;10 noting the legacy-casing fix to
+      <code>media_plans.goalBackwardSolveJson</code> found during a full
+      production column audit. Update this document as the Product changes — it's
       meant to be the living reference, not a point-in-time snapshot.
     </div>
 

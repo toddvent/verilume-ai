@@ -735,6 +735,8 @@ hr.rule{border:none; border-top:1px solid var(--line); margin:40px 0;}
             <tr><td><code>trusted_devices</code></td><td><code>accountId</code>, device token</td><td>30-day lifetime, independent of session lifetime</td></tr>
             <tr><td><code>team_members</code></td><td><code>accountId</code>, <code>isAdmin</code></td><td>Owning account resolved before <code>requireAccount()</code> check; see §10 for the <code>isAdmin</code> gap</td></tr>
             <tr><td><code>phone_verifications</code></td><td><code>verificationId</code>, <code>verified</code>, <code>consumedAt</code></td><td>One-time-use gate for both signup and login MFA</td></tr>
+            <tr><td><code>account_data_access_log</code></td><td><code>actorId</code>, <code>actorType</code>, <code>actorAccountId</code>, <code>requestPath</code>, <code>recordCount</code>, <code>occurredAt</code></td><td>Real, already-live audit trail — every read/write and every denied cross-account attempt is logged here, backing §07's isolation claim with an inspectable record rather than only code review. Currently scoped to <code>account_kpi_metrics</code> only (see §12) — worth extending to other account-scoped tables generally.</td></tr>
+            <tr><td><code>account_marketable_sizes</code></td><td><code>generationKey</code>, <code>dmMarketable</code>, <code>emMarketable</code></td><td>Manual Account Management inputs — direct-mail/email marketable audience sizes, entered per generation cohort</td></tr>
           </tbody>
         </table>
       </div>
@@ -810,6 +812,7 @@ hr.rule{border:none; border-top:1px solid var(--line); margin:40px 0;}
             <tr><td class="mono">2026-08-21</td><td>Login/logout/every DB call 500ing</td><td>Column-casing migration auto-ran at cold start, exceeded Vercel's 30s function limit</td><td>Converted to on-demand admin endpoint with bulk pre-check</td></tr>
             <tr><td class="mono">2026-08-21</td><td>19 columns with duplicate old/new casing</td><td><code>ensureColumn()</code> had added fresh columns rather than renaming</td><td>Old lowercase duplicates dropped, confirmed via Todd</td></tr>
             <tr><td class="mono">2026-08-21</td><td>Admin fix-tool "Failed to fetch"</td><td>CORS preflight (<code>OPTIONS</code>) gated by the same-day Basic Auth middleware</td><td><code>OPTIONS</code> now passes through unconditionally</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>Reported as a Campaign Copy Interview insert error (<code>column "sourceKey" does not exist</code>), but a full production audit found the same legacy-casing bug class also hit this Product's own tables: <code>account_data_access_log</code> and <code>account_marketable_sizes</code></td><td>Both tables had columns created before their camelCase identifiers were registered in <code>schema-identifiers.json</code>, so Postgres had folded them to lowercase at creation (<code>actoraccountid</code>, <code>dmmarketable</code>, etc.) while queries correctly quoted the camelCase form</td><td>Confirmed directly against production via Supabase MCP, then fixed via a data-preserving <code>ALTER TABLE ... RENAME COLUMN</code> migration (both tables were empty — zero rows, zero data risk) as part of a 30-column audit-and-fix sweep across 12 tables; both tables registered in <code>LEGACY_CASING_COLUMNS</code> for the audit trail</td></tr>
           </tbody>
         </table>
       </div>
@@ -830,8 +833,11 @@ hr.rule{border:none; border-top:1px solid var(--line); margin:40px 0;}
       against <code>backend/server.js</code> and <code>frontend/*.html</code> on 2026-09-12
       after discovering this file had never actually been deployed (see meta above) — the
       <code>isAdmin</code> privilege-escalation gap it flagged was fixed 2026-08-22 and is
-      now documented as closed. Update this document as the Product changes — it's meant to
-      be the living reference, not a point-in-time snapshot.
+      now documented as closed. Re-verified again on 2026-09-23 against a direct Supabase
+      production audit (930 live columns cross-referenced against 421 known identifiers) —
+      added the <code>account_data_access_log</code> and <code>account_marketable_sizes</code>
+      data-model rows and the matching legacy-casing incident. Update this document as the
+      Product changes — it's meant to be the living reference, not a point-in-time snapshot.
     </div>
 
   </main>

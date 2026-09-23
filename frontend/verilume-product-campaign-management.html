@@ -246,6 +246,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
           </tbody>
         </table>
       </div>
+      <p class="lede"><strong>2026-09-23 addendum:</strong> a related but distinct bug also hit this recap (and every other Step 0/Brand Messaging/contest-gate read that depends on knowing which campaign is open): the rail-based Campaign Workspace Hub's <code>loadExistingCampaignIntoForm(campaignId)</code> never set the module-level <code>currentCampaignId</code> — only the older flat detail page did. Roughly 50 call sites across the rail hub silently read a stale or null campaign id as a result. Rather than patch each call site, the fix was made at the single upstream point: <code>loadExistingCampaignIntoForm()</code> now sets <code>currentCampaignId</code> itself (mirrored by <code>resetCampaignForm()</code> clearing it). Verified via Playwright.</p>
     </section>
 
     <section id="objective">
@@ -292,6 +293,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td><code>campaigns.channels</code> / <code>channelGroups</code></td><td class="mono">dead</td><td>Same — no longer written; kept as a fallback only</td></tr>
             <tr><td><code>campaigns.objective</code></td><td class="mono">dead (narrative use) / removed (category use)</td><td>No longer the source for either of its two former uses — see <a href="#objective">&sect; 05</a></td></tr>
             <tr><td><code>campaigns.pmValidatedAt</code> / <code>pmAssetsApprovedAt</code></td><td>Real save timestamps</td><td>The honest signal that Performance Marketing's audience save / Channel Plan approval actually happened — used to catch the "looks saved but isn't" bug this cycle</td></tr>
+            <tr><td><code>media_plans.goalBackwardSolveJson</code></td><td>Backward-solve goal state for the Media Plan Goal feature</td><td>Was live-folded to <code>goalbackwardsolvejson</code> in production (legacy-casing drift) — fixed 2026-09-23, see <a href="#log">§ 08</a></td></tr>
+            <tr><td><code>creative_job_decisions.jobId</code></td><td>Links a creative decision back to its generation job</td><td>Was live-folded to <code>jobid</code> — fixed 2026-09-23</td></tr>
+            <tr><td><code>campaign_recommendation_comments.authorName</code> / <code>authorRole</code> / <code>suggestionJson</code></td><td>Comment-thread metadata on a budget recommendation card</td><td>Were live-folded to <code>authorname</code> / <code>authorrole</code> / <code>suggestionjson</code> — fixed 2026-09-23</td></tr>
           </tbody>
         </table>
       </div>
@@ -316,6 +320,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td class="mono">2026-09-22 · R3</td><td>"We're capturing campaign information that should be stored in a single table... One table should be the source of truth. Am I not understanding?"</td><td>Confirmed via SQL against all 4 real campaigns: <code>audienceTargets</code>/<code>channels</code>/<code>objective</code> (narrative use) are empty on every one. Todd chose "Retire the dead fields" — full migration of every read/write site onto the real underlying field, across 4 phases.</td></tr>
             <tr><td class="mono">2026-09-22 · R4</td><td>How should Performance Marketing's Audience Targets card behave once its dead field is retired?</td><td>Todd's explicit choice: repoint the save to <code>segment</code> (not make the card read-only) — Performance Marketing's validation is now the live audience of record.</td></tr>
             <tr><td class="mono">2026-09-22 · R5</td><td>"we might need to update our product group's documentation"</td><td>Audit found Campaign Management had no Product doc at all. Todd's choice: build this doc from the existing template rather than only logging the workstream.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>"Is this not the same issue and fix that was required to fix the toggle?" — Todd identified that the rail-based Campaign Workspace Hub never sets <code>currentCampaignId</code>, unlike the older flat detail page.</td><td>Confirmed same bug class, fixed one level upstream: <code>loadExistingCampaignIntoForm()</code> now sets <code>currentCampaignId</code> directly rather than patching the ~50 downstream call sites individually. See <a href="#creative">§ 04</a>.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>Dashboard KPI stat cards — Active Campaigns, Creative in QA, Budget Pacing.</td><td>Active Campaigns and Creative in QA wired to live data. Budget Pacing remains a static placeholder pending Todd's definition of the pacing formula — not yet resolved.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>"We have a real error this time" — a Campaign Copy Interview insert failed on <code>column "sourceKey" does not exist</code>.</td><td>Root-caused to the legacy-casing bug class and fixed via live migration. Prompted a full production audit (930 live columns vs. 421 known identifiers) that found 30 drifted columns across 12 tables, including three owned by this Product (<code>media_plans</code>, <code>creative_job_decisions</code>, <code>campaign_recommendation_comments</code> — see <a href="#data-model">§ 06</a>) and the shared <code>contest_rankings</code> ledger used by every contest type. All fixed via data-preserving <code>RENAME COLUMN</code> migrations (all affected tables empty — zero data risk) and registered in <code>LEGACY_CASING_COLUMNS</code>.</td></tr>
           </tbody>
         </table>
       </div>
@@ -335,9 +342,11 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       Verilume — Internal Product Documentation. Reflects the state of
       <code>backend/server.js</code> and <code>frontend/portal.html</code> as
       verified against the working tree and direct Supabase queries on
-      2026-09-22 (dead-field consolidation). Update this document as the
-      Product changes — it's meant to be the living reference, not a
-      point-in-time snapshot.
+      2026-09-22 (dead-field consolidation), re-verified 2026-09-23 for the
+      <code>currentCampaignId</code> upstream fix, Dashboard KPI wiring, and
+      the legacy-casing audit affecting this Product's tables. Update this
+      document as the Product changes — it's meant to be the living
+      reference, not a point-in-time snapshot.
     </div>
 
   </main>
