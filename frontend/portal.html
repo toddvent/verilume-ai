@@ -9733,6 +9733,12 @@
                    cmpRenderChannelPlanTotals() so it stays live on every
                    edit the same way the totals line already does. -->
               <div id="cmpChannelPlanTargetImpressions" class="hint" style="display:none;margin:0 0 12px;padding:10px 12px;background:var(--paper-dim);border:1px solid var(--line);border-radius:8px;"></div>
+              <!-- 2026-09-22, per direct instruction ("Option 1" — proactive,
+                   campaign-level channel-gap check, before the budget ever
+                   reaches the client): cmpMissingChannelGapsNote(), rendered
+                   by cmpRenderChannelPlanList() alongside the rest of this
+                   screen's real, computed state. -->
+              <div id="cmpChannelPlanMissingGaps" class="hint" style="display:none;margin:0 0 12px;padding:10px 12px;background:var(--warning-bg, #fdf3e3);border:1px solid var(--warning, #b8791a);border-radius:8px;color:var(--warning, #b8791a);font-weight:600;"></div>
               <div id="cmpPerfMarketingAssetsList"><p class="hint">Loading this campaign's channel plan…</p></div>
               <div class="hint" id="cmpPerfMarketingChannelPlanTotals" style="margin-top:10px;font-weight:600;"></div>
               <!-- Round 132ao (2026-08-12), per direct request: "an Alert
@@ -11289,6 +11295,44 @@
       </div>
     </div>
 
+    <div class="sk-card" id="mbuWebsiteUsersCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>Website users by month</h3></div>
+        <div class="hicon">🌐</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">A manual bridge for reach and performance estimation until we can pull this in via a partner integration, Snowflake, or a Google Sheet import. Enter monthly website users for US, Canada, and International — saves as you go.</p>
+        <div class="btn-row" style="margin:0 0 10px;align-items:center;gap:10px;">
+          <label class="hint" style="margin:0;" for="mbuWebsiteUsersYear">Year</label>
+          <select id="mbuWebsiteUsersYear" onchange="mbuLoadWebsiteUsersMonthly()"></select>
+          <span class="hint" id="mbuWebsiteUsersStatus" style="margin:0;"></span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="mbuWebsiteUsersTable" style="min-width:640px;">
+            <thead><tr><th>Month</th><th>US</th><th>CAN</th><th>International</th></tr></thead>
+            <tbody id="mbuWebsiteUsersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mbuMarketableSizesCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>First-party DM &amp; EM marketable sizes</h3></div>
+        <div class="hicon">✉️</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Direct Mail and Email marketable list counts per audience category, for reach and performance estimation until this is pulled in from a partner integration, Snowflake, or a Google Sheet import. Saves as you go.</p>
+        <span class="hint" id="mbuMarketableSizesStatus" style="margin:0 0 8px;display:block;"></span>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="mbuMarketableSizesTable" style="min-width:520px;">
+            <thead><tr><th>Audience category</th><th>DM Marketable</th><th>EM Marketable</th></tr></thead>
+            <tbody id="mbuMarketableSizesBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -11714,7 +11758,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-active-channels-union-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-22-account-manual-reach-inputs';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15579,6 +15623,54 @@ function cmpChannelKpiMismatchNote(channel, campaign){
   const basis = clicksKpi && visitLanguage ? 'the Primary KPI (Clicks) and the stated objective'
     : clicksKpi ? 'the Primary KPI (Clicks)' : 'the stated objective';
   return `${channel} has no direct click/visit-level tracking, but ${basis} ${clicksKpi && visitLanguage ? 'are' : 'is'} visit/click-based — this line's performance can't be measured the same way as the campaign's other trackable channels.`;
+}
+
+// 2026-09-22 — "Option 1" per direct instruction: a proactive, code-computed
+// check for a channel MISSING from the plan entirely (the Mediterranean
+// campaign example — no Video/CTV line at all), as distinct from
+// cmpChannelKpiMismatchNote() above (which only checks a channel that IS in
+// the plan). Deliberately reuses the same STAGE_CHANNEL_WEIGHTS table
+// effectiveStageChannelWeights()/computeRecommendedMediaMix() already use
+// and the team already trusts — never a new invented heuristic, never an
+// LLM judgment call. The rule: if this campaign's own stage weight table
+// (industry-override-aware) assigns a channel — or a tightly-related group
+// of channels, like Video's Linear TV/OTV/CTV split — a combined weight
+// above CMP_MISSING_CHANNEL_GAP_THRESHOLD, and NONE of those channels are in
+// the campaign's selected channels, that's a real, material gap between
+// this stage's own best-practice mix and what's actually in the plan.
+// Grouped rather than per-channel for Video specifically because the three
+// sub-channels split one real budget line's worth of weight between them —
+// checked individually, none might individually clear the threshold even
+// though "some form of video" clearly would. Runs at Channel Plan build
+// time (cmpRenderChannelPlanList()) so it's visible BEFORE the plan is ever
+// approved or shown to the client, not only reactively in AI Brain chat.
+const CMP_MISSING_CHANNEL_GAP_THRESHOLD = 0.08;
+const CMP_CHANNEL_GROUPS_FOR_GAP_CHECK = [
+  { label: 'Video (Linear TV / OTV / CTV)', channels: ['Linear TV', 'OTV', 'CTV'] }
+];
+function cmpMissingChannelGaps(campaign, selectedChannelsSet){
+  if (!campaign || !campaign.stage || typeof effectiveStageChannelWeights !== 'function') return [];
+  const weights = effectiveStageChannelWeights(campaign.stage) || {};
+  const selected = selectedChannelsSet || new Set();
+  const grouped = new Set();
+  const gaps = [];
+  CMP_CHANNEL_GROUPS_FOR_GAP_CHECK.forEach(g => {
+    g.channels.forEach(ch => grouped.add(ch));
+    if (g.channels.some(ch => selected.has(ch))) return; // any sub-channel already in the plan covers the group
+    const combinedWeight = g.channels.reduce((s, ch) => s + (weights[ch] || 0), 0);
+    if (combinedWeight >= CMP_MISSING_CHANNEL_GAP_THRESHOLD) gaps.push({ label: g.label, weight: combinedWeight });
+  });
+  Object.entries(weights).forEach(([ch, w]) => {
+    if (grouped.has(ch) || selected.has(ch)) return;
+    if (w >= CMP_MISSING_CHANNEL_GAP_THRESHOLD) gaps.push({ label: ch, weight: w });
+  });
+  return gaps.sort((a, b) => b.weight - a.weight);
+}
+function cmpMissingChannelGapsNote(campaign, selectedChannelsSet){
+  const gaps = cmpMissingChannelGaps(campaign, selectedChannelsSet);
+  if (!gaps.length) return null;
+  const parts = gaps.map(g => `${g.label} (${Math.round(g.weight * 100)}% of ${campaign.stage} stage's recommended mix)`);
+  return `This campaign's ${campaign.stage} stage best-practice mix calls for ${parts.join(' and ')}, but ${gaps.length === 1 ? 'it isn’t' : 'neither is'} in the current channel selection.`;
 }
 
 // Round 132bx follow-on (2026-08-15), per direct instruction: a confirmed
@@ -53858,6 +53950,7 @@ function goToStep(step, arg, arg2, arg3){
     // dynamically-populated elements.
     { const tmplLink = document.getElementById('mbuTemplateDownloadLink'); if (tmplLink) tmplLink.href = `${BACKEND_URL}/api/marketing-budget-upload-template.csv`; }
     mbuRenderActiveChannels();
+    if (typeof mbuLoadReachInputs === 'function') mbuLoadReachInputs();
     document.getElementById('step-mediaplan').classList.add('active');
   } else if (step === 'campaign'){
     if (arg && arg !== '__current') currentCampaignId = arg;
@@ -58093,6 +58186,23 @@ function cmpRenderChannelPlanList(){
       : '')
     + cmpInternalEmailListSizeHtml();
   cmpRenderChannelPlanTotals();
+  cmpRenderChannelPlanMissingGaps(cmpKpiMismatchCampaign);
+}
+// 2026-09-22, per direct instruction ("Option 1" — proactive, campaign-level
+// validation, before the plan ever reaches the client): renders
+// cmpMissingChannelGapsNote() into its own banner above the channel rows.
+// Takes the already-loaded campaign as a param (cmpRenderChannelPlanList()
+// already resolved it) rather than re-resolving it, and reads live off
+// `selectedChannels` (the Set backing the channel toggles above this list)
+// so it reflects the CURRENT selection, not just what's already saved.
+function cmpRenderChannelPlanMissingGaps(campaign){
+  const el = document.getElementById('cmpChannelPlanMissingGaps');
+  if (!el) return;
+  const note = (typeof cmpMissingChannelGapsNote === 'function' && typeof selectedChannels !== 'undefined')
+    ? cmpMissingChannelGapsNote(campaign, selectedChannels)
+    : null;
+  el.style.display = note ? '' : 'none';
+  el.textContent = note ? `⚠ ${note}` : '';
 }
 // Impressions is always the computed Budget ÷ CPM readout — same convention
 // as the Media Plan grid's own #allocImpr-* box, never a directly-editable
@@ -58365,6 +58475,24 @@ async function cmpApproveChannelPlan(){
   const recommendedByChannel = campaign ? cmpRecommendedMediaMixByChannel(campaign, rows.map(r => r.channel)) : {};
   const totalBudgetForRationale = typeof campaign?.budget === 'number' ? campaign.budget : null;
   if (campaign && !campaign.isAdHoc && !campaign.localOnly){
+    // 2026-09-22 — "Option 1" per direct instruction: persist
+    // cmpMissingChannelGapsNote() (computed client-side, against
+    // STAGE_CHANNEL_WEIGHTS — see that function's own comment) at Approve
+    // time so POST .../ai-brain-reply can read the real fact back instead
+    // of reasoning about missing channels fresh each turn. Saved even when
+    // there's currently no gap (writes null), so a gap that gets closed by
+    // this Approve — e.g. the team just added the missing Video line —
+    // clears the stale note rather than leaving it stuck showing a gap that
+    // no longer exists.
+    campaign.channelGapNote = (typeof cmpMissingChannelGapsNote === 'function' && typeof selectedChannels !== 'undefined')
+      ? cmpMissingChannelGapsNote(campaign, selectedChannels)
+      : null;
+    try {
+      await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelGapNote: campaign.channelGapNote })
+      });
+    } catch (e){ console.warn('cmpApproveChannelPlan: channelGapNote save failed:', e); }
     for (const r of rows){
       const recommendedAmount = recommendedByChannel[r.channel];
       // 2026-09-22 follow-up, per direct instruction: "make sure that the
@@ -61751,6 +61879,136 @@ function mbuSetAllActiveChannels(allActive){
   state.activeChannels = allActive ? new Set(MMM_CATEGORIES) : new Set();
   mbuRenderActiveChannels();
   mbuSaveActiveChannels();
+}
+// 2026-09-22, per direct instruction (Todd) — manual bridge for website
+// users by month (US/CAN/International) and first-party DM/EM Marketable
+// list sizes per audience category, "so that we can accurately estimate
+// reach and performance until we can pull the data into the platform via a
+// partner integration, snowflake, google sheet." Same immediate-save
+// convention as Active Channels above (no page-level Save button here).
+const MBU_WEBSITE_USER_REGIONS = ['US', 'CAN', 'International'];
+const MBU_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+let mbuWebsiteUsersData = null; // { accountId, year, rows: [{month, region, users}] }
+let mbuWebsiteUsersSaveTimer = null;
+function mbuLoadReachInputs(){
+  const yearSel = document.getElementById('mbuWebsiteUsersYear');
+  if (yearSel){
+    const years = [];
+    const base = (typeof mpSelectedYear === 'number' && mpSelectedYear) ? mpSelectedYear : new Date().getFullYear();
+    for (let y = base + 1; y >= base - 4; y--) years.push(y);
+    const prevVal = yearSel.value;
+    yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+    yearSel.value = years.includes(Number(prevVal)) ? prevVal : String(base);
+  }
+  mbuLoadWebsiteUsersMonthly();
+  mbuLoadMarketableSizes();
+}
+async function mbuLoadWebsiteUsersMonthly(){
+  const body = document.getElementById('mbuWebsiteUsersBody');
+  const status = document.getElementById('mbuWebsiteUsersStatus');
+  const yearSel = document.getElementById('mbuWebsiteUsersYear');
+  if (!body || !yearSel) return;
+  const year = parseInt(yearSel.value, 10);
+  if (!Number.isFinite(year)) return;
+  let rows = [];
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-users-monthly?year=${year}`);
+      if (resp.ok){ const data = await resp.json(); rows = data.rows || []; }
+    } catch (e){ console.warn('mbuLoadWebsiteUsersMonthly: fetch failed', e); }
+  }
+  const byKey = {};
+  rows.forEach(r => { byKey[`${r.month}|${r.region}`] = r.users; });
+  mbuWebsiteUsersData = { year, rows };
+  body.innerHTML = MBU_MONTH_NAMES.map((mname, i) => {
+    const m = i + 1;
+    return `<tr><td>${mname}</td>${MBU_WEBSITE_USER_REGIONS.map(region => {
+      const v = byKey[`${m}|${region}`];
+      return `<td><input type="number" min="0" step="1" style="width:100px;" value="${v == null ? '' : v}" data-month="${m}" data-region="${region}" onchange="mbuQueueWebsiteUsersSave()"></td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  if (status) status.textContent = '';
+}
+function mbuQueueWebsiteUsersSave(){
+  const status = document.getElementById('mbuWebsiteUsersStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuWebsiteUsersSaveTimer) clearTimeout(mbuWebsiteUsersSaveTimer);
+  mbuWebsiteUsersSaveTimer = setTimeout(mbuSaveWebsiteUsersMonthly, 500);
+}
+async function mbuSaveWebsiteUsersMonthly(){
+  const status = document.getElementById('mbuWebsiteUsersStatus');
+  const yearSel = document.getElementById('mbuWebsiteUsersYear');
+  const body = document.getElementById('mbuWebsiteUsersBody');
+  if (!yearSel || !body) return;
+  const year = parseInt(yearSel.value, 10);
+  const rows = [...body.querySelectorAll('input[data-month]')].map(inp => ({
+    month: parseInt(inp.dataset.month, 10), region: inp.dataset.region,
+    users: inp.value === '' ? null : Number(inp.value)
+  }));
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-users-monthly`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, rows })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveWebsiteUsersMonthly: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+}
+let mbuMarketableSizesSaveTimer = null;
+async function mbuLoadMarketableSizes(){
+  const body = document.getElementById('mbuMarketableSizesBody');
+  const status = document.getElementById('mbuMarketableSizesStatus');
+  if (!body) return;
+  let rows = GENERATIONS.map(g => ({ generationKey: g.key, label: g.label, dmMarketable: null, emMarketable: null }));
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketable-sizes`);
+      if (resp.ok){ const data = await resp.json(); if (Array.isArray(data.rows) && data.rows.length) rows = data.rows; }
+    } catch (e){ console.warn('mbuLoadMarketableSizes: fetch failed', e); }
+  }
+  const genLabel = key => (GENERATIONS.find(g => g.key === key) || {}).label || key;
+  body.innerHTML = rows.map(r => `<tr>
+    <td>${r.label || genLabel(r.generationKey)}</td>
+    <td><input type="number" min="0" step="1" style="width:120px;" value="${r.dmMarketable == null ? '' : r.dmMarketable}" data-genkey="${r.generationKey}" data-field="dmMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
+    <td><input type="number" min="0" step="1" style="width:120px;" value="${r.emMarketable == null ? '' : r.emMarketable}" data-genkey="${r.generationKey}" data-field="emMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
+  </tr>`).join('');
+  if (status) status.textContent = '';
+}
+function mbuQueueMarketableSizesSave(){
+  const status = document.getElementById('mbuMarketableSizesStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuMarketableSizesSaveTimer) clearTimeout(mbuMarketableSizesSaveTimer);
+  mbuMarketableSizesSaveTimer = setTimeout(mbuSaveMarketableSizes, 500);
+}
+async function mbuSaveMarketableSizes(){
+  const status = document.getElementById('mbuMarketableSizesStatus');
+  const body = document.getElementById('mbuMarketableSizesBody');
+  if (!body) return;
+  const byKey = {};
+  body.querySelectorAll('input[data-genkey]').forEach(inp => {
+    const key = inp.dataset.genkey;
+    if (!byKey[key]) byKey[key] = { generationKey: key, dmMarketable: null, emMarketable: null };
+    byKey[key][inp.dataset.field] = inp.value === '' ? null : Number(inp.value);
+  });
+  const rows = Object.values(byKey);
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketable-sizes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveMarketableSizes: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
 }
 // Round 132zz (2026-08-11) — Partners list add/remove, same simple pattern
 // as the rest of Company Profile's account-setup fields.
