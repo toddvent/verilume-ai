@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-toggles-event-delegation-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-active-campaigns-creative-qa-live-kpis';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -21767,19 +21767,58 @@ const STAT_CARD_META = {
     { label: 'KPI Actuals vs. Target', value: '104%', delta: '▲ Ahead of target', good: true, bars: [0,0,0,1,0,1,0] }
   ]
 };
+// 2026-09-23 fix, per direct instruction: "wire up our Active campaigns,
+// creative in QA and Budget pacing reports to look at actual client id
+// platform data." Active Campaigns and Creative in QA now read real,
+// already-computed campaign signals instead of the static demo numbers
+// above — same honest-live-data pattern activeCampaignCount() and
+// computeStageStatuses()'s own qaStatus already established elsewhere on
+// this Dashboard (see computeWorkstreamAlert()'s comment block). Budget
+// Pacing is NOT wired here — no budget-pacing formula exists anywhere in
+// this build yet (computeWorkstreamAlert()'s 'experienceManagement' case
+// hits the exact same gap and honestly renders 0 rather than a fabricated
+// number, per Todd's own earlier direct instruction on that one) — flagged
+// back to Todd to define the formula rather than inventing one here.
+// cmpLiveStatCardOverride() only swaps in a live value for labels it
+// explicitly recognizes; every other STAT_CARD_META card (Budget Pacing
+// included) still renders its static placeholder value untouched.
+function cmpCreativeInQaCount(){
+  return state.campaigns.filter(c => !c.isAdHoc && !c.cancelled).filter(c => {
+    const qaStage = computeStageStatuses(c).find(s => s.key === 'qa');
+    return qaStage && qaStage.status === 'in-progress';
+  }).length;
+}
+function cmpLiveStatCardOverride(label){
+  if (label === 'Active Campaigns'){
+    const total = activeCampaignCount();
+    const inMarket = state.campaigns.filter(c => !c.isAdHoc && !c.cancelled && c.status === 'In Market').length;
+    return { value: String(total), delta: inMarket ? `• ${inMarket} in market now` : '• None in market yet', good: total > 0 };
+  }
+  if (label === 'Creative in QA'){
+    const n = cmpCreativeInQaCount();
+    return { value: String(n), delta: n ? '• Awaiting approval' : '• Nothing pending', good: n === 0 };
+  }
+  return null;
+}
 function renderStatCards(){
   const el = document.getElementById('tabStatCardGrid');
   if (!el) return;
   const tab = activePrimaryTab || 'dailyBrief';
   const cards = STAT_CARD_META[tab];
   if (!cards){ el.innerHTML = ''; return; }
-  el.innerHTML = cards.map(c => `
+  el.innerHTML = cards.map(c => {
+    const live = cmpLiveStatCardOverride(c.label);
+    const value = live ? live.value : c.value;
+    const delta = live ? live.delta : c.delta;
+    const good = live ? live.good : c.good;
+    return `
     <div class="stat-card">
       <div class="sc-label">${escapeHtml(c.label)}</div>
-      <div class="sc-value">${escapeHtml(c.value)}</div>
-      <div class="sc-delta ${c.good ? 'good' : 'neutral'}">${escapeHtml(c.delta)}</div>
+      <div class="sc-value">${escapeHtml(value)}</div>
+      <div class="sc-delta ${good ? 'good' : 'neutral'}">${escapeHtml(delta)}</div>
       <div class="sc-spark">${c.bars.map(b => `<span class="${b ? 'hi' : ''}" style="height:${8 + b * 12}px;"></span>`).join('')}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // 2026-08-24 (round 17) — Curated News restyled as a 3-card grid for
