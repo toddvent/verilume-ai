@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-23-copy-contest-two-pass-pending-retry-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-23-legacy-casing-audit-30-columns-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -11978,7 +11978,59 @@ const LEGACY_CASING_COLUMNS = [
   // just adding these two entries here does nothing on its own until that
   // action is actually triggered once against production.
   ['account_voice_interviews', 'contentType'],
-  ['accounts', 'videoStrategyText']
+  ['accounts', 'videoStrategyText'],
+  // 2026-09-23 — found via a full live-production audit (every camelCase
+  // identifier in schema-identifiers.json cross-referenced against every
+  // real column in every table, via the Supabase MCP connector directly),
+  // prompted by a genuine production error on campaign_copy_interviews'
+  // sourceKey column (the first entry below) — that INSERT had never
+  // actually reached production before today (blocked by the separately-
+  // fixed currentCampaignId bug), so this specific drift was invisible
+  // until the gate that hid it got fixed. Same audit found 29 MORE
+  // columns across 11 other tables with the exact same silent drift,
+  // several inside the contest_rankings ledger itself (contestType,
+  // contestSubtype, isWinner, rankBasis, sourceTable) — meaning the
+  // cross-contest ranking/priority-model system this whole registry
+  // exists to support had this same bug live, just never yet exercised
+  // enough to surface it. All 30 renamed directly against production via
+  // a single Supabase migration the same day (all-empty tables except
+  // corporate_comms' 1 row — a RENAME never touches data either way).
+  // Registered here purely for this list's own bookkeeping/audit-trail
+  // convention — the live rename already happened; this doesn't need a
+  // fix-legacy-casing run to take effect, but keeps this list an honest,
+  // complete record of every casing fix ever applied, matching every
+  // other entry's own convention.
+  ['campaign_copy_interviews', 'sourceKey'],
+  ['content_score_history', 'complianceFlagsJson'],
+  ['content_score_history', 'complianceScore'],
+  ['content_score_history', 'relevanceScore'],
+  ['content_score_history', 'scoredAt'],
+  ['content_score_history', 'sourceKey'],
+  ['creative_job_decisions', 'jobId'],
+  ['contest_rankings', 'contestSubtype'],
+  ['contest_rankings', 'contestType'],
+  ['contest_rankings', 'isWinner'],
+  ['contest_rankings', 'rankBasis'],
+  ['contest_rankings', 'sourceTable'],
+  ['media_plans', 'goalBackwardSolveJson'],
+  ['account_data_access_log', 'actorAccountId'],
+  ['account_data_access_log', 'actorId'],
+  ['account_data_access_log', 'actorType'],
+  ['account_data_access_log', 'occurredAt'],
+  ['account_data_access_log', 'recordCount'],
+  ['account_data_access_log', 'requestPath'],
+  ['account_marketable_sizes', 'dmMarketable'],
+  ['account_marketable_sizes', 'emMarketable'],
+  ['account_marketable_sizes', 'generationKey'],
+  ['campaign_recommendation_comments', 'authorName'],
+  ['campaign_recommendation_comments', 'authorRole'],
+  ['campaign_recommendation_comments', 'suggestionJson'],
+  ['corporate_comms', 'approvedAt'],
+  ['corporate_comms', 'createdBy'],
+  ['editorial_pitches', 'createdBy'],
+  ['editorial_pitches', 'sentDate'],
+  ['press_releases', 'createdBy'],
+  ['press_releases', 'distributedDate']
 ];
 // 2026-08-21, later same day — this used to run automatically at module
 // load (`fixLegacyColumnCasing();` right here, on every cold start), doing
@@ -17282,7 +17334,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-23-copy-contest-two-pass-pending-retry-fix',
+        buildStamp: '2026-09-23-legacy-casing-audit-30-columns-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
