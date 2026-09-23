@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-currentcampaignid-null-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-loadexistingcampaign-currentcampaignid-upstream-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -38840,6 +38840,21 @@ function loadExistingCampaignIntoForm(campaignId){
   const c = state.campaigns.find(x => x.id === campaignId);
   const hiddenField = document.getElementById('cmpExistingCampaign');
   if (hiddenField) hiddenField.value = campaignId;
+  // 2026-09-23 root-cause fix — this is the single real entry point that
+  // loads a campaign into the rail-based Campaign Workspace Hub (called
+  // from the existing-campaign selector, campaign creation, both "pick up
+  // existing campaign" flows, and job-id deep links — see the
+  // loadExistingCampaignIntoForm( grep list in the comment above this
+  // function). Until now it never set currentCampaignId, which is what
+  // findCampaign(currentCampaignId) reads throughout Brand Messaging, Step
+  // 0, Copy Versions, and the Run Campaign Copy Contest gate — every one of
+  // those silently no-opped or showed a false "not set" gate on this page,
+  // because currentCampaignId stayed null. The legacy single-campaign
+  // detail page already sets currentCampaignId itself (goToStep()'s
+  // 'campaign' branch, see the comment near cmpManageExistingCampaign
+  // above) — setting it here too just makes the rail hub agree with that,
+  // so this is additive and doesn't change the legacy page's behavior.
+  currentCampaignId = campaignId;
   if (!c) return;
   const searchField = document.getElementById('cmpExistingCampaignSearch');
   if (searchField) searchField.value = `${c.name || c.objective} — ${c.id}`;
@@ -43708,6 +43723,12 @@ function resetCampaignForm(){
   // briefly re-showing whatever was loaded a moment ago.
   const hiddenField = document.getElementById('cmpExistingCampaign');
   if (hiddenField) hiddenField.value = '';
+  // 2026-09-23 — mirrors the currentCampaignId set in
+  // loadExistingCampaignIntoForm() above; clear it back out on reset so a
+  // blank "Create Campaign" form doesn't keep pointing every
+  // findCampaign(currentCampaignId) call site at whatever campaign was
+  // loaded a moment ago.
+  currentCampaignId = null;
   const searchField = document.getElementById('cmpExistingCampaignSearch');
   if (searchField) searchField.value = '';
   cmpFormTouched = false;
