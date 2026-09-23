@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-detail-field-oninput-attr-escaping-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-toggles-event-delegation-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40260,8 +40260,8 @@ function cmpRenderCreativeStep0(c){
       `<div class="cmp-step0-recap-row">
         <span class="cmp-step0-recap-label">Same experience for all audiences?</span>
         <span class="cmp-step0-audience-toggle-row" id="cmpCreativeStep0AudienceToggle">
-          <span class="cmp-step0-audience-toggle-opt" data-val="shared" onclick="cmpSetAudienceSharedExperience('shared')">Yes</span>
-          <span class="cmp-step0-audience-toggle-opt" data-val="separate" onclick="cmpSetAudienceSharedExperience('separate')">No</span>
+          <span class="cmp-step0-audience-toggle-opt" data-val="shared">Yes</span>
+          <span class="cmp-step0-audience-toggle-opt" data-val="separate">No</span>
         </span>
       </div>` +
       row('Campaign Objective', objectiveSummary) +
@@ -40350,17 +40350,39 @@ function cmpRenderCreativeStep0(c){
 // all) and a reserved-height hint line explains why; the hint line stays
 // in the DOM either way (just hidden via visibility, not display) so its
 // own space never collapses/reappears either.
-function cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive){
+// 2026-09-23 fix, per direct report: build stamp confirmed current, tested
+// in Incognito (rules out a normal browser extension), and a raw
+// `outerHTML` dump from the live site STILL showed every toggle option
+// missing its `onclick` attribute entirely — even ones whose data plainly
+// called for it (class="...on" present, meaning hasValue was true and this
+// exact source line should have written `onclick="..."`). Something
+// between this file leaving the server and the DOM Todd's browser actually
+// runs is stripping inline `on*` attributes from dynamically-inserted
+// (innerHTML-assigned) markup specifically — most likely corporate
+// network/security tooling doing content rewriting, which would explain
+// why it survives Incognito (that only disables extensions, not a
+// network-level proxy) and produces zero JS console error (the browser
+// never sees the attribute to begin with, so there's nothing to fail).
+// Since we can't fix or debug Todd's network stack from here, the durable
+// fix is to stop shipping these as inline string attributes at all: no
+// onclick/oninput/onblur anywhere in this card's markup below. Instead,
+// every interactive element just carries data-* attributes, and ONE set
+// of delegated addEventListener listeners (registered once, see
+// cmpStep0InitDelegatedEvents() at the bottom of this block) reads those
+// data attributes at event time. Nothing here depends on inline handler
+// attributes surviving whatever is stripping them.
+function cmpStep0ToggleHolderHtml(hasValue, mode, fieldType, fieldKey){
+  const fieldAttr = `data-toggle-field="${escapeHtml(fieldType)}"${fieldKey ? ` data-toggle-key="${escapeHtml(fieldKey)}"` : ''}`;
   return `
       <span class="cmp-step0-mini-toggle-label">Use exactly as written in the copy?</span>
       <div class="cmp-step0-mini-toggle-row${hasValue ? '' : ' disabled'}">
-        <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}"${hasValue ? ` onclick="${onExact}"` : ''}>Yes — verbatim</div>
-        <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}"${hasValue ? ` onclick="${onDescriptive}"` : ''}>No — treat as guidance</div>
+        <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}" ${fieldAttr} data-toggle-mode="exact">Yes — verbatim</div>
+        <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}" ${fieldAttr} data-toggle-mode="descriptive">No — treat as guidance</div>
       </div>
       <div class="cmp-step0-hint-inline"${hasValue ? ' style="visibility:hidden;"' : ''}>Enable once this field has an answer.</div>
     `;
 }
-function cmpStep0FieldLiveUpdate(el, onExact, onDescriptive){
+function cmpStep0FieldLiveUpdate(el, fieldType, fieldKey){
   const field = el.closest('.cmp-step0-field');
   if (!field) return;
   const hasValue = !!(el.value && el.value.trim());
@@ -40376,8 +40398,54 @@ function cmpStep0FieldLiveUpdate(el, onExact, onDescriptive){
   // appears, matching the backend's own default-to-'exact' behavior.
   const currentlyOn = field.querySelector('.cmp-step0-mini-toggle-opt.on');
   const mode = currentlyOn && currentlyOn.textContent.indexOf('guidance') !== -1 ? 'descriptive' : 'exact';
-  if (toggleHolder) toggleHolder.innerHTML = cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive);
+  if (toggleHolder) toggleHolder.innerHTML = cmpStep0ToggleHolderHtml(hasValue, mode, fieldType, fieldKey);
 }
+// Single delegated listener, registered once, for every interactive
+// element in the Step 0 card — see the long comment above
+// cmpStep0ToggleHolderHtml for why this exists. Delegation also means
+// none of these listeners need re-attaching after any innerHTML re-render,
+// which every render function in this card does constantly.
+let cmpStep0DelegatedEventsBound = false;
+function cmpStep0InitDelegatedEvents(){
+  if (cmpStep0DelegatedEventsBound) return;
+  cmpStep0DelegatedEventsBound = true;
+  document.addEventListener('click', (e) => {
+    const toggleOpt = e.target.closest('.cmp-step0-mini-toggle-opt');
+    if (toggleOpt && !toggleOpt.closest('.cmp-step0-mini-toggle-row.disabled')){
+      const fieldType = toggleOpt.getAttribute('data-toggle-field');
+      const mode = toggleOpt.getAttribute('data-toggle-mode');
+      if (fieldType === 'headline') cmpSetStep0HeadlineMode(mode);
+      else if (fieldType === 'detail') cmpSetStep0DetailMode(toggleOpt.getAttribute('data-toggle-key'), mode);
+      return;
+    }
+    const audienceOpt = e.target.closest('.cmp-step0-audience-toggle-opt');
+    if (audienceOpt){
+      cmpSetAudienceSharedExperience(audienceOpt.getAttribute('data-val'));
+      return;
+    }
+    const sharedContestBtn = e.target.closest('#cmpStep0SharedContestBtn');
+    if (sharedContestBtn){
+      cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag');
+      return;
+    }
+    const contestChip = e.target.closest('.cmp-step0-contest-chip[data-audience-idx]');
+    if (contestChip && !contestChip.disabled){
+      cmpRunAudienceContest(parseInt(contestChip.getAttribute('data-audience-idx'), 10));
+      return;
+    }
+  });
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'cmpStep0HeadlineInput') cmpStep0FieldLiveUpdate(e.target, 'headline', null);
+    else if (e.target.matches('#cmpCreativeStep0DetailFields [data-detail-key]')) cmpStep0FieldLiveUpdate(e.target, 'detail', e.target.getAttribute('data-detail-key'));
+  });
+  // blur doesn't bubble; focusout is its bubbling equivalent, which is
+  // required for event delegation to catch it at the document level.
+  document.addEventListener('focusout', (e) => {
+    if (e.target.id === 'cmpStep0HeadlineInput') cmpSaveStep0Headline();
+    else if (e.target.matches('#cmpCreativeStep0DetailFields [data-detail-key]')) cmpSaveStep0DetailFields();
+  });
+}
+cmpStep0InitDelegatedEvents();
 function cmpRenderStep0Headline(c){
   const holder = document.getElementById('cmpCreativeStep0Headline');
   if (!holder) return;
@@ -40389,8 +40457,8 @@ function cmpRenderStep0Headline(c){
         <label>Headline</label>
         <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
       </div>
-      <input type="text" id="cmpStep0HeadlineInput" value="${escapeHtml(c.keyMessage || '')}" placeholder="e.g., Reconnect past guests — Antarctica's first private charter returns." oninput="cmpStep0FieldLiveUpdate(this,'cmpSetStep0HeadlineMode(\\'exact\\')','cmpSetStep0HeadlineMode(\\'descriptive\\')')" onblur="cmpSaveStep0Headline()" style="width:100%;box-sizing:border-box;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">
-      <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, "cmpSetStep0HeadlineMode('exact')", "cmpSetStep0HeadlineMode('descriptive')")}</div>
+      <input type="text" id="cmpStep0HeadlineInput" value="${escapeHtml(c.keyMessage || '')}" placeholder="e.g., Reconnect past guests — Antarctica's first private charter returns." style="width:100%;box-sizing:border-box;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">
+      <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, 'headline', null)}</div>
     </div>`;
 }
 // 2026-09-23 fix, per direct report ("We're not recognizing when copy is
@@ -40431,16 +40499,14 @@ function cmpRenderStep0DetailFields(c){
     const hasValue = !!val.trim();
     const mode = cmpStep0DetailMode(c, f.key);
     const keyEsc = escapeHtml(f.key);
-    const onExact = `cmpSetStep0DetailMode('${keyEsc}','exact')`;
-    const onDescriptive = `cmpSetStep0DetailMode('${keyEsc}','descriptive')`;
     return `
     <div class="cmp-step0-field">
       <div class="cmp-step0-field-head">
         <label>${escapeHtml(f.label)}</label>
         <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
       </div>
-      <textarea data-detail-key="${keyEsc}" rows="2" placeholder="Real, specific — required for this Writing Style." oninput="cmpStep0FieldLiveUpdate(this,${escapeHtml(JSON.stringify(onExact))},${escapeHtml(JSON.stringify(onDescriptive))})" onblur="cmpSaveStep0DetailFields()" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
-      <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive)}</div>
+      <textarea data-detail-key="${keyEsc}" rows="2" placeholder="Real, specific — required for this Writing Style." style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
+      <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, 'detail', f.key)}</div>
     </div>`;
   }).join('');
 }
@@ -40683,7 +40749,7 @@ function cmpRenderStep0RunContest(c){
     cmpStep1AudienceNames = [];
     holder.innerHTML = `
       <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
-      <button type="button" class="btn-primary" id="cmpStep0SharedContestBtn" onclick="cmpRunCampaignCopyContest('cmpStep0SharedContestPanel','cmpStep0SharedContestBtn','cmpStep0SharedContestFlag')">✦ Run Campaign Copy Contest →</button>
+      <button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">✦ Run Campaign Copy Contest →</button>
       <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
     return;
   }
@@ -40708,7 +40774,7 @@ function cmpRenderStep0RunContest(c){
       const hasResult = !!cmpStep1AudienceResults[idx];
       return `
       <div style="display:flex;flex-direction:column;gap:4px;">
-        <button type="button" class="cmp-step0-contest-chip${hasResult ? ' has-result' : ''}" id="cmpStep0RunBtn_${idx}" onclick="cmpRunAudienceContest(${idx})">${hasResult ? '↻' : '✦'} ${escapeHtml(name)}</button>
+        <button type="button" class="cmp-step0-contest-chip${hasResult ? ' has-result' : ''}" id="cmpStep0RunBtn_${idx}" data-audience-idx="${idx}">${hasResult ? '↻' : '✦'} ${escapeHtml(name)}</button>
         <span class="hint" id="cmpStep0RunStatus_${idx}" style="display:block;max-width:280px;"></span>
       </div>`;
     }).join('') +
