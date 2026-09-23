@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-22-channel-kpi-mismatch-signal (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-22-account-manual-reach-inputs (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -261,6 +261,7 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   audiencecopyjson: 'audienceCopyJson',
   briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
   businessinitiative: 'businessInitiative',
+  channelgapnote: 'channelGapNote',
   campaigntypedetailsjson: 'campaignTypeDetailsJson',
   campaigntypedetailmodesjson: 'campaignTypeDetailModesJson',
   cmoanalyticsbrief: 'cmoAnalyticsBrief',
@@ -1258,6 +1259,40 @@ createTableIfNeeded(`
 // need a home too (average is derived, never stored).
 ensureColumn('account_year_results', 'plannedRevenue', 'REAL');
 ensureColumn('account_year_results', 'transactions', 'INTEGER');
+// 2026-09-22, per direct instruction (Todd) — manual bridge for reach/
+// performance estimation inputs until these can be pulled in via a partner
+// integration, Snowflake, or a Google Sheet import. Two tables, same
+// composite-key + explicit upsert pattern as account_year_results above:
+// website users by month, split US/Canada/International (account_website_
+// users_monthly), and first-party DM/EM Marketable list sizes per audience
+// generation category (account_marketable_sizes, one row per GENERATIONS
+// key — see GENERATION_LABELS_FOR_COPY for the canonical 9-entry list).
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_website_users_monthly (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    region TEXT NOT NULL,
+    users INTEGER,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, month, region),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_marketable_sizes (
+    accountId TEXT NOT NULL,
+    generationKey TEXT NOT NULL,
+    dmMarketable INTEGER,
+    emMarketable INTEGER,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, generationKey),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+// Canonical region set for the website-users-monthly grid, per Todd's own
+// wording ("US, CAN and international markets identified").
+const ACCOUNT_WEBSITE_USER_REGIONS = ['US', 'CAN', 'International'];
 ensureColumn('media_plans', 'nonWorkingMediaJson', 'TEXT');
 ensureColumn('media_plans', 'monthlyMode', "TEXT DEFAULT 'flat'");
 ensureColumn('media_plans', 'monthlyPctJson', 'TEXT');
@@ -2042,6 +2077,13 @@ ensureColumn('campaigns', 'createdByUser', 'TEXT');
 // once" pattern this build already uses for other AI Brain suggestions.
 ensureColumn('campaigns', 'matchMarketSuggestionJson', 'TEXT');
 ensureColumn('campaigns', 'matchMarketSuggestionAttachedAt', 'TEXT');
+// 2026-09-22 — "Option 1" per direct instruction: the proactive, code-
+// computed missing-channel gap note (cmpMissingChannelGapsNote(), frontend
+// — see that function's own comment) is computed client-side against
+// STAGE_CHANNEL_WEIGHTS (no server-side equivalent table), saved here at
+// Channel Plan build time via the general POST /api/campaigns/:id merge
+// endpoint, and read back into the ai-brain-reply prompt.
+ensureColumn('campaigns', 'channelGapNote', 'TEXT');
 
 // Round 64 — Creative Jobs (grouping & prioritizing creative requests).
 // Per direct instruction: a Campaign ID already exists (campaigns.id,
@@ -17209,7 +17251,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-22-channel-kpi-mismatch-signal',
+        buildStamp: '2026-09-22-account-manual-reach-inputs',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -22763,7 +22805,17 @@ Submit your response via the campaign_intake_turn tool.`;
         cmoCopywriterBriefEditedByHuman: body.cmoCopywriterBriefEditedByHuman !== undefined ? (body.cmoCopywriterBriefEditedByHuman ? 1 : 0) : existing.cmoCopywriterBriefEditedByHuman,
         cmoAnalyticsBriefEditedByHuman: body.cmoAnalyticsBriefEditedByHuman !== undefined ? (body.cmoAnalyticsBriefEditedByHuman ? 1 : 0) : existing.cmoAnalyticsBriefEditedByHuman,
         cmoCopywriterBriefUpstreamHash: body.cmoCopywriterBriefUpstreamHash !== undefined ? body.cmoCopywriterBriefUpstreamHash : existing.cmoCopywriterBriefUpstreamHash,
-        cmoAnalyticsBriefUpstreamHash: body.cmoAnalyticsBriefUpstreamHash !== undefined ? body.cmoAnalyticsBriefUpstreamHash : existing.cmoAnalyticsBriefUpstreamHash
+        cmoAnalyticsBriefUpstreamHash: body.cmoAnalyticsBriefUpstreamHash !== undefined ? body.cmoAnalyticsBriefUpstreamHash : existing.cmoAnalyticsBriefUpstreamHash,
+        // 2026-09-22 — "Option 1" per direct instruction: cmpMissingChannelGapsNote()
+        // (frontend) is computed against STAGE_CHANNEL_WEIGHTS, which only
+        // exists client-side (see that function's own comment) — so the
+        // Channel Plan screen computes it and saves the resulting text here,
+        // the same "frontend computes off its own real data, backend just
+        // reads the fact back" convention recommendationRationale/
+        // kpiMismatchNote (channel_planning_details.detailsJson) already use.
+        // Read back into the ai-brain-reply prompt so a "why isn't video in
+        // the plan" question gets the real, precomputed answer.
+        channelGapNote: body.channelGapNote !== undefined ? body.channelGapNote : existing.channelGapNote
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -22866,6 +22918,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('cmoAnalyticsBriefEditedByHuman', body.cmoAnalyticsBriefEditedByHuman !== undefined, merged.cmoAnalyticsBriefEditedByHuman);
       addCol('cmoCopywriterBriefUpstreamHash', body.cmoCopywriterBriefUpstreamHash !== undefined, merged.cmoCopywriterBriefUpstreamHash);
       addCol('cmoAnalyticsBriefUpstreamHash', body.cmoAnalyticsBriefUpstreamHash !== undefined, merged.cmoAnalyticsBriefUpstreamHash);
+      addCol('channelGapNote', body.channelGapNote !== undefined, merged.channelGapNote);
       if (setCols.length){
         setVals.push(campaignId);
         db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
@@ -23981,6 +24034,7 @@ Cancelled: ${campaign.cancelled ? 'yes' : 'no'}
 
 REAL CHANNEL PLAN LINES (channel | region | budget | impressions | status):
 ${lineText}
+${campaign.channelGapNote ? `\nMISSING CHANNEL GAP (code-computed against this campaign's own stage weight table, not a guess): ${campaign.channelGapNote}` : ''}
 
 SPEND BY REGION (US / Canada / International — precomputed, use these numbers exactly, do not recompute):
 ${regionText}
@@ -24005,24 +24059,45 @@ NEVER EXPOSE INTERNAL IDS — the \`id=...\` value on each REAL CHANNEL PLAN LIN
 
 PLACEHOLDER VS. REAL EXECUTION PLAN — a channel_planning_details line's budget can come from two different places: a real, specific plan the team entered (vendor, tactics, a real impressions estimate from an actual CPM), or this platform's own recommended media-mix split of the campaign's overall budget with nothing further filled in yet (0 or missing impressions, no execution detail anywhere in what's given above). Each REAL CHANNEL PLAN LINES row now carries a trailing " | basis: ..." when one is on file — that's the REAL, platform-computed answer to "why was this number chosen" (e.g. it's Verilume's recommended stage-weighted split and what % of the total budget it represents, or a note that it was hand-entered by Performance Marketing with no algorithmic basis). When asked why a line's budget is what it is, or what it's "made up of," always lead with that basis line when present — quote its substance in plain language, not the raw "basis:" label. It only ever tells you the SIZING logic (top-down split vs. manual), never vendor/tactic execution detail — for that, if there's no real execution detail on file (impressions are 0/missing and nothing above names a vendor, tactic, or plan), say so plainly rather than listing generic "typically includes" industry tactics as if they describe this campaign's actual plan — that reads as a real answer when it's a guess. It's fine, and preferred, to say plainly that Performance Marketing/Channel Plan hasn't entered specific execution detail for this line yet, and that a recommended-split number is a placeholder sizing, not a costed plan.
 
-CHANNEL/KPI FIT — a REAL CHANNEL PLAN LINES row now carries a trailing " | flag: ..." whenever this platform's own code has already determined that line's channel can't be measured the way the campaign's Primary KPI or stated objective calls for (e.g. Field/ABM or Direct Mail sitting under a visit/click-based KPI, with no direct visit/click tracking of its own). This is a code-computed fact, not something to re-derive — when a line carries that flag, proactively surface it (don't wait to be asked) by stating its substance in plain language, and offer to suggest reallocating toward a channel with clearer visit/conversion tracking via the suggestion field if the team is asking for or clearly implying that change, otherwise just flag it and ask if they want that recommendation. If a line carries no flag, don't invent a mismatch for it — the check has already run.
+CHANNEL/KPI FIT — a REAL CHANNEL PLAN LINES row now carries a trailing " | flag: ..." whenever this platform's own code has already determined that line's channel can't be measured the way the campaign's Primary KPI or stated objective calls for (e.g. Field/ABM or Direct Mail sitting under a visit/click-based KPI, with no direct visit/click tracking of its own). This is a code-computed fact, not something to re-derive — when a line carries that flag, proactively surface it (don't wait to be asked) by stating its substance in plain language, and offer to suggest reallocating toward a channel with clearer visit/conversion tracking. If the team is asking for or clearly implying that change: if the better channel ALREADY has a line in REAL CHANNEL PLAN LINES, propose it as an existing-line change (entryId + newBudget on the flagged line, and entryId + newBudget on the better-tracked line too, if you're proposing to move budget between two existing lines); if it does NOT have a line yet (e.g. moving into Video/CTV, see VIDEO CHANNELS below), use newLineChannel + newLineBudget for it alongside entryId + newBudget reducing the flagged line — never rename the flagged line to the new channel. Otherwise just flag it and ask if they want that recommendation. If a line carries no flag, don't invent a mismatch for it — the check has already run.
 
-VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) above already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and suggest adding one via a suggestion (or by naming it in your reply) rather than saying the platform has no video capability.
+VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) above already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and, if the team is asking for or clearly implying adding one, propose it via newLineChannel + newLineBudget (paired with entryId + newBudget on whichever existing line you're proposing to fund it from, if any) rather than saying the platform has no video capability. If a MISSING CHANNEL GAP line is present above, it already answers "is video missing and does it matter for this stage" with a real number — lead with that instead of reasoning it out fresh, and proactively raise it (don't wait to be asked) the same way the CHANNEL/KPI FIT flag above does.
 
-BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report above (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget reallocation to one existing line, propose it via the suggestion field with a real id from the REAL CHANNEL PLAN LINES list above; otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
+BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report above (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget change, propose it via the suggestion field: use entryId + newBudget for a change to an EXISTING line (a real id from the REAL CHANNEL PLAN LINES list above), and/or newLineChannel + newLineBudget when the recommendation requires a channel that has NO existing line yet — for example, "shift $30k from Programmatic Display into a new CTV line" is BOTH parts at once (entryId/newBudget on the real Programmatic Display line reducing it, AND newLineChannel/newLineBudget creating the new CTV line), never entryId alone with the new channel's name stuffed into the channel field — that would only rename the old line's label without moving any budget or creating anything. Otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
 
 Submit your response via the ai_brain_reply tool.`;
+        // 2026-09-22 fix, per direct report: applying a suggestion that read
+        // "Shift $30k from Programmatic Display into a new CTV line" only
+        // ever reduced Programmatic Display — no CTV line was created, so
+        // the campaign's total budget silently dropped by $30k instead of
+        // being reallocated. Root cause was this schema: it can only
+        // describe changing the budget on ONE existing line (entryId +
+        // newBudget); there was no way to say "and also create this new
+        // line," so the model put the new channel's name in `channel` while
+        // entryId still pointed at the real Programmatic Display row — the
+        // UI displayed the new channel name as if applying would create
+        // that line, but the apply action only ever PATCHed the old row's
+        // budget. Fixed by giving the suggestion two independent parts: an
+        // EXISTING-line change (entryId + newBudget, unchanged) and a
+        // NEW-line creation (newLineChannel + newLineBudget) — either or
+        // both may be present, so "shift from A to a new B" sets both parts,
+        // and "add new budget without cutting elsewhere" sets only the new-
+        // line part. See this endpoint's validation just below and
+        // cmpRecoApplySuggestion() (frontend) for how both parts get
+        // applied.
         const AI_BRAIN_REPLY_SCHEMA = {
           type: 'object',
           properties: {
             reply: { type: 'string', description: 'Your reply — specific to this campaign\'s real fields, never generic filler.' },
             suggestion: {
               type: ['object', 'null'],
-              description: 'A concrete budget reallocation you are proposing, or null if you are not proposing one right now.',
+              description: 'A concrete budget change you are proposing, or null if you are not proposing one right now. Two independent parts — either or both may be present, at least one must be: reducing/changing an EXISTING line (entryId + newBudget), and/or creating a BRAND-NEW line for a channel that has no row in REAL CHANNEL PLAN LINES yet (newLineChannel + newLineBudget). NEVER invent a new channel by putting its name in `channel` against an existing entryId — that only renames the label shown for the OLD line in the UI, it does not create a new line or move budget anywhere; the real channel being reduced silently loses budget with nothing added elsewhere. If you are proposing to fund a channel that is not already one of the REAL CHANNEL PLAN LINES, you MUST use newLineChannel/newLineBudget for it.',
               properties: {
-                entryId: { type: 'string', description: 'The id of the existing channel_planning_details line item to change — must be one of the real ids given above, never invented.' },
-                channel: { type: 'string' },
-                newBudget: { type: 'number' },
+                entryId: { type: 'string', description: 'The id of an EXISTING channel_planning_details line item to change the budget on — must be one of the real ids given above, never invented. Omit entirely if you are not changing an existing line\'s budget.' },
+                channel: { type: 'string', description: 'The channel name of the EXISTING line at entryId — must match that real line\'s actual current channel, never a different/new channel name.' },
+                newBudget: { type: 'number', description: 'Required whenever entryId is set: the proposed new budget for that existing line.' },
+                newLineChannel: { type: 'string', description: 'If proposing to ADD a channel that is not already in REAL CHANNEL PLAN LINES, its real taxonomy channel name (e.g. one of the Video/OTV/CTV group per the VIDEO CHANNELS note below). Omit entirely if you are not proposing a new line.' },
+                newLineBudget: { type: 'number', description: 'Required whenever newLineChannel is set: the proposed budget for that new line.' },
                 rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
               }
             }
@@ -24068,12 +24143,25 @@ Submit your response via the ai_brain_reply tool.`;
             schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 8000
           });
         }
-        // Validate the suggestion's entryId is a real line before returning
-        // it — the model is instructed not to invent one, but this is the
+        // Validate each independent part of the suggestion separately — the
+        // model is instructed not to invent an entryId, but this is the
         // actual enforcement (same pattern as recommendation-comments' own
-        // suggestion validation).
+        // suggestion validation). 2026-09-22 fix: this used to null out the
+        // WHOLE suggestion whenever entryId wasn't a real line — which also
+        // discarded a perfectly valid new-line-only proposal (no entryId at
+        // all, per the new newLineChannel/newLineBudget shape above), since
+        // `lines.some(l => l.id === undefined)` is always false. Now each
+        // part is validated on its own and only a part that fails its own
+        // check gets dropped; the whole suggestion is null only when NEITHER
+        // part survives.
         let suggestion = parsed.suggestion || null;
-        if (suggestion && !lines.some(l => l.id === suggestion.entryId)) suggestion = null;
+        if (suggestion){
+          const hasExistingChange = !!suggestion.entryId && lines.some(l => l.id === suggestion.entryId) && typeof suggestion.newBudget === 'number';
+          const hasNewLine = typeof suggestion.newLineChannel === 'string' && suggestion.newLineChannel.trim() && typeof suggestion.newLineBudget === 'number';
+          if (!hasExistingChange){ suggestion.entryId = null; suggestion.newBudget = null; }
+          if (!hasNewLine){ suggestion.newLineChannel = null; suggestion.newLineBudget = null; }
+          if (!hasExistingChange && !hasNewLine) suggestion = null;
+        }
         // The structured pairs card is only sent to the frontend when it's
         // actually relevant to THIS reply: newly attached this turn (so it
         // always shows once, per "with or without the client asking"), or
@@ -29767,6 +29855,103 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (existing) db.prepare('UPDATE account_year_results SET grossRevenue = ?, "plannedRevenue" = ?, transactions = ?, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ?').run(next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now, accountId, year);
       else db.prepare('INSERT INTO account_year_results (accountId, year, grossRevenue, "plannedRevenue", transactions, notes, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, year, next.grossRevenue, next.plannedRevenue, next.transactions, next.notes, now);
       return sendJson(res, 200, Object.assign({ accountId, year, updatedAt: now }, next));
+    }
+
+    // GET /api/accounts/:id/website-users-monthly?year=YYYY — 2026-09-22, per
+    // direct instruction (Todd): a manual bridge so reach/performance can be
+    // estimated until website users can be pulled in via a partner
+    // integration, Snowflake, or a Google Sheet import. Returns all 12
+    // months x 3 regions for the year, filled with null where nothing has
+    // been entered yet, so the frontend always has a complete grid to render.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-users-monthly'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const year = parseInt(url.searchParams.get('year'), 10);
+      if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
+      const rows = db.prepare('SELECT month, region, users, updatedAt FROM account_website_users_monthly WHERE accountId = ? AND year = ?').all(accountId, year);
+      const byKey = {};
+      rows.forEach(r => { byKey[`${r.month}|${r.region}`] = r; });
+      const grid = [];
+      for (let m = 1; m <= 12; m++){
+        ACCOUNT_WEBSITE_USER_REGIONS.forEach(region => {
+          const r = byKey[`${m}|${region}`];
+          grid.push({ month: m, region, users: r ? r.users : null, updatedAt: r ? r.updatedAt : null });
+        });
+      }
+      return sendJson(res, 200, { accountId, year, regions: ACCOUNT_WEBSITE_USER_REGIONS, rows: grid });
+    }
+    // POST /api/accounts/:id/website-users-monthly — batch upsert.
+    // { year, rows: [{ month, region, users }, ...] }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-users-monthly'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const year = parseInt(body.year, 10);
+      if (!Number.isFinite(year) || year < 2000 || year > 2100) return sendJson(res, 400, { error: 'year is required' });
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      for (const row of rowsIn){
+        const month = parseInt(row.month, 10);
+        const region = String(row.region || '').trim();
+        if (!Number.isInteger(month) || month < 1 || month > 12) return sendJson(res, 400, { error: `invalid month: ${row.month}` });
+        if (!ACCOUNT_WEBSITE_USER_REGIONS.includes(region)) return sendJson(res, 400, { error: `region must be one of ${ACCOUNT_WEBSITE_USER_REGIONS.join(', ')}` });
+        let users = null;
+        if (row.users !== null && row.users !== undefined && row.users !== ''){
+          const n = Number(row.users);
+          if (!(Number.isFinite(n) && n >= 0 && Number.isInteger(n))) return sendJson(res, 400, { error: `users must be a non-negative whole number or blank (month ${month}, ${region})` });
+          users = n;
+        }
+        const existing = db.prepare('SELECT 1 FROM account_website_users_monthly WHERE accountId = ? AND year = ? AND month = ? AND region = ?').get(accountId, year, month, region);
+        if (existing) db.prepare('UPDATE account_website_users_monthly SET users = ?, updatedAt = ? WHERE accountId = ? AND year = ? AND month = ? AND region = ?').run(users, now, accountId, year, month, region);
+        else db.prepare('INSERT INTO account_website_users_monthly (accountId, year, month, region, users, updatedAt) VALUES (?, ?, ?, ?, ?, ?)').run(accountId, year, month, region, users, now);
+      }
+      return sendJson(res, 200, { accountId, year, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/marketable-sizes — first-party DM/EM Marketable
+    // list sizes per audience generation category. 2026-09-22, per direct
+    // instruction (Todd) — same manual-bridge purpose as website-users-
+    // monthly above. Always returns one row per GENERATIONS category (see
+    // GENERATION_LABELS_FOR_COPY), null where nothing has been entered yet.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketable-sizes'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT "generationKey", "dmMarketable", "emMarketable", updatedAt FROM account_marketable_sizes WHERE accountId = ?').all(accountId);
+      const byKey = {};
+      rows.forEach(r => { byKey[r.generationKey] = r; });
+      const out = Object.keys(GENERATION_LABELS_FOR_COPY).map(key => {
+        const r = byKey[key];
+        return { generationKey: key, label: GENERATION_LABELS_FOR_COPY[key], dmMarketable: r ? r.dmMarketable : null, emMarketable: r ? r.emMarketable : null, updatedAt: r ? r.updatedAt : null };
+      });
+      return sendJson(res, 200, { accountId, rows: out });
+    }
+    // POST /api/accounts/:id/marketable-sizes — batch upsert.
+    // { rows: [{ generationKey, dmMarketable, emMarketable }, ...] }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketable-sizes'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      const numOrNull = (v, label) => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = Number(v);
+        if (!(Number.isFinite(n) && n >= 0 && Number.isInteger(n))) throw new Error(`${label} must be a non-negative whole number or blank`);
+        return n;
+      };
+      for (const row of rowsIn){
+        const generationKey = String(row.generationKey || '').trim();
+        if (!GENERATION_LABELS_FOR_COPY[generationKey]) return sendJson(res, 400, { error: `unknown generationKey: ${row.generationKey}` });
+        let dm, em;
+        try { dm = numOrNull(row.dmMarketable, 'dmMarketable'); em = numOrNull(row.emMarketable, 'emMarketable'); }
+        catch (e){ return sendJson(res, 400, { error: e.message }); }
+        const existing = db.prepare('SELECT 1 FROM account_marketable_sizes WHERE accountId = ? AND "generationKey" = ?').get(accountId, generationKey);
+        if (existing) db.prepare('UPDATE account_marketable_sizes SET "dmMarketable" = ?, "emMarketable" = ?, updatedAt = ? WHERE accountId = ? AND "generationKey" = ?').run(dm, em, now, accountId, generationKey);
+        else db.prepare('INSERT INTO account_marketable_sizes (accountId, "generationKey", "dmMarketable", "emMarketable", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, generationKey, dm, em, now);
+      }
+      return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
 
     // GET /api/accounts/:id/marketing-budget-uploads — history, most recent
