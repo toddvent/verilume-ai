@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-interview-panel-creative-focus-expand';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-interview-panel-use-this-draft-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -50205,10 +50205,17 @@ async function runInterviewSelect(jobId, interviewId, candidateKey){
     const job = findCreativeJob(jobId);
     if (job) job.workingCopy = result.workingCopy;
     const textEl = document.getElementById('copyWorkspaceText');
-    if (textEl){
-      textEl.value = result.workingCopy;
-      textEl.dispatchEvent(new Event('input'));
+    // 2026-09-23 fix, per Todd's report ("Use this draft does not work") —
+    // same "claims success unconditionally" bug as
+    // cmpSelectCopyContestCandidate: this used to say "Applied" even when
+    // #copyWorkspaceText wasn't found on the page, so a real failure to
+    // apply looked identical to success.
+    if (!textEl){
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Selected, but couldn't find this job's copy box on the page to apply it to — try again from the job's workspace."; }
+      return;
     }
+    textEl.value = result.workingCopy;
+    textEl.dispatchEvent(new Event('input'));
     if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to the copy box above — save when ready.'; }
     scoreCurrentDraft(jobId, result.workingCopy);
   } catch (e){
@@ -54079,6 +54086,10 @@ async function runMfpInterviewSelect(interviewId, candidateKey){
       return;
     }
     const result = await resp.json();
+    if (!result.copy){
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Selected, but no copy came back from the server to apply.'; }
+      return;
+    }
     if (project.fields){
       project.fields.lead = result.copy;
       project.masterContent = composeMasterFromFields(project.projectType, project.fields);
@@ -54086,6 +54097,21 @@ async function runMfpInterviewSelect(interviewId, candidateKey){
       project.masterContent = result.copy;
     }
     renderProjectDetail();
+    // 2026-09-23 fix, per Todd's report ("Use this draft does not work") —
+    // renderProjectDetail() rebuilds #mfpInterviewPanel as an EMPTY shell
+    // every time (it's a static placeholder div in that function's own
+    // template, above) — so this used to silently wipe the just-shown
+    // candidate cards the instant the click succeeded, with nothing else
+    // confirming the apply. That's indistinguishable from the button doing
+    // nothing. Re-render the panel from the cached result (still available
+    // after renderProjectDetail's rebuild) so the cards reappear, and
+    // surface an explicit confirmation — same discipline the other two
+    // "Use this draft" surfaces already have.
+    const cached = lastMfpInterviewCache[currentProjectId];
+    const holder = document.getElementById('mfpInterviewPanel');
+    if (cached && holder) holder.innerHTML = renderMfpInterviewPanel(cached);
+    const freshFlag = document.getElementById('mfpInterviewSelectFlag');
+    if (freshFlag){ freshFlag.style.color = 'var(--cx)'; freshFlag.textContent = 'Applied to the master content above.'; }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — draft not applied.'; }
   }
@@ -55837,12 +55863,32 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
     }
     const result = await resp.json();
     const longformEl = document.getElementById('cmpLongFormCopy');
-    if (longformEl && result.copy){
-      longformEl.value = result.copy;
-      cmpUnapproveMsgField('longform');
-      cmpRenderAllMsgGates();
+    // 2026-09-23 fix, per Todd's report ("Use this draft does not work") —
+    // this used to claim "Applied to Long Form Copy above" unconditionally,
+    // even when longformEl was missing or result.copy was empty, so a
+    // real failure here looked identical to success. Now only claims
+    // success when the write actually happened, and separately calls out
+    // the one real silent-looking case: the field writes fine but is still
+    // LOCKED (disabled) because Key Message/Brief Builder aren't complete
+    // yet, which is easy to miss since the text still appears, just dimmed
+    // and non-editable — same gate cmpLongFormLockNote already describes.
+    if (!longformEl){
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Selected, but couldn't find the Long Form Copy field on this page to apply it to — open Brand Messaging and try again."; }
+      return;
     }
-    if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = 'Applied to Long Form Copy above.'; }
+    if (!result.copy){
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Selected, but no copy came back from the server to apply.'; }
+      return;
+    }
+    longformEl.value = result.copy;
+    cmpUnapproveMsgField('longform');
+    cmpRenderAllMsgGates();
+    if (flag){
+      flag.style.color = 'var(--cx)';
+      flag.textContent = longformEl.disabled
+        ? 'Applied to Long Form Copy above — that field is locked until Key Message and the Brief Builder context above it are both filled in, so it\'ll look dimmed until then. The applied text is saved either way.'
+        : 'Applied to Long Form Copy above.';
+    }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
   }
