@@ -729,9 +729,26 @@
      transform), just without the recap's flex-shrink. */
   .cmp-step0-field-head label{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;margin:0;}
   .cmp-step0-hint-inline{font-size:0.6875rem;color:#9A9AA0;margin-top:6px;}
+  /* 2026-09-23 fix, per direct report: "Toggles and contest buttons are not
+     selectable" — screenshots showed the browser's native text-selection
+     highlight running across the recap column instead of the toggle
+     actually flipping. Root cause: the Yes/No audience toggle
+     (.cmp-step0-audience-toggle-opt) and the verbatim-use toggle
+     (.cmp-step0-mini-toggle-opt) are plain <span>/<div> elements, not real
+     <button>s — a real <button> gets user-select:none from the browser's
+     own UA stylesheet, but these never did. A click that starts a fraction
+     of a pixel off-target (or drags at all, as trackpad clicks often do)
+     was landing as a text-selection drag through the neighboring recap
+     text instead of a click on the toggle, so nothing visibly happened.
+     Added user-select:none (+ -webkit- for Safari) to the toggle rows,
+     their options, and the contest chip buttons alongside them so a click
+     anywhere in that group always registers as a click, never a selection.
+     onclick handlers themselves were verified working via Playwright
+     (direct .click() and the real campaign field both updated correctly)
+     — this was purely a hit-testing/selection issue, not a broken handler. */
   .cmp-step0-mini-toggle-label{font-size:0.6875rem;color:var(--muted);margin-top:8px;margin-right:8px;display:inline-block;}
-  .cmp-step0-mini-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-top:8px;}
-  .cmp-step0-mini-toggle-opt{padding:5px 12px;font-size:0.6875rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
+  .cmp-step0-mini-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-top:8px;user-select:none;-webkit-user-select:none;}
+  .cmp-step0-mini-toggle-opt{padding:5px 12px;font-size:0.6875rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);user-select:none;-webkit-user-select:none;}
   .cmp-step0-mini-toggle-opt.on{background:var(--ink);color:var(--white);}
   /* 2026-09-22 — per-audience contest chips, replacing the heavy black
      .btn-primary buttons Todd flagged as "still awful and not consistent
@@ -739,12 +756,12 @@
      used elsewhere in this file (.collab-role-chip) rather than the
      app-wide solid CTA button, which reads as a giant billboard next to
      this page's otherwise light recap rows and text-only fields. */
-  .cmp-step0-contest-chip{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:0.8125rem;font-weight:600;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color 0.15s ease,background 0.15s ease,color 0.15s ease;}
+  .cmp-step0-contest-chip{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:0.8125rem;font-weight:600;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color 0.15s ease,background 0.15s ease,color 0.15s ease;user-select:none;-webkit-user-select:none;}
   .cmp-step0-contest-chip:hover:not(:disabled){border-color:var(--cx);color:var(--cx);}
   .cmp-step0-contest-chip:disabled{opacity:0.5;cursor:not-allowed;}
   .cmp-step0-contest-chip.has-result{background:#EAF6F1;border-color:#8FCDB0;color:#1E7A45;}
-  .cmp-step0-audience-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;}
-  .cmp-step0-audience-toggle-opt{padding:6px 16px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);}
+  .cmp-step0-audience-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;user-select:none;-webkit-user-select:none;}
+  .cmp-step0-audience-toggle-opt{padding:6px 16px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);user-select:none;-webkit-user-select:none;}
   .cmp-step0-audience-toggle-opt.on{background:var(--ink);color:var(--white);}
   .cmp-step0-callout{border-radius:10px;padding:11px 14px;font-size:0.75rem;line-height:1.5;background:#EAF1FB;color:#1E5FA8;margin-top:12px;}
   /* 2026-09-22 — recap rows rebuilt to match Creative-Desktop.dc.html's own
@@ -11771,7 +11788,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-approved-channels-and-line-approve-removal';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-toggle-selectability-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
