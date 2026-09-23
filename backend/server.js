@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-23-contest-timeout-100s-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-23-copy-contest-two-pass-pending-retry-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -16620,7 +16620,11 @@ Submit your draft via the submit_copy tool.`;
 // taking an explicit strategic brief instead of the general-purpose prompt,
 // so the candidates are honestly different drafts rather than three samples
 // of one instruction.
-async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel){
+// 2026-09-23 — optional `timeoutMs` lets POST .../retry-pending (the
+// two-pass design below) reuse this exact function for the second pass
+// with VENDOR_PASS2_TIMEOUT_MS instead of fetchWithTimeout's bare 90s
+// default, same pattern as generateVendorInterviewCopy already had.
+async function generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel, timeoutMs){
   try {
     const prompt = buildInterviewPrompt(angle.brief, campaign, account, sampleContext, audienceLabel);
     const parsed = await callClaudeForJSON({
@@ -16629,7 +16633,8 @@ async function generateInterviewCandidateCopy(angle, campaign, account, sampleCo
       content: prompt,
       toolName: 'submit_copy',
       toolDescription: 'Submit the drafted copy.',
-      schema: COPY_SCHEMA
+      schema: COPY_SCHEMA,
+      timeoutMs
     });
     return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
   } catch (e){
@@ -17122,11 +17127,21 @@ async function runCandidateInterview(campaign, account, audienceLabel){
   // job decisions only) by standing convention, not an oversight. A
   // candidate for a future round, not this one.
   const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
-  const generated = await Promise.all(
-    INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel))
-  );
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const vendorGenerated = await Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)));
+  // 2026-09-23 fix, per Todd's report ("signal is aborted... took much
+  // longer this time" after the client timeout was already raised to
+  // 100s) — these two batches used to run SEQUENTIALLY (await the 3
+  // Anthropic angles, THEN await every vendor), so total wall-clock was
+  // angle-time + vendor-time even though neither batch depends on the
+  // other's output. This is the exact same bug runBrandVoiceContest() had
+  // and fixed on 2026-08-26 (see that function's own comment) — never
+  // ported here. Combined into one Promise.all so every angle AND every
+  // configured vendor call fires at once; wall-clock is now bounded by the
+  // single slowest call instead of the sum.
+  const [generated, vendorGenerated] = await Promise.all([
+    Promise.all(INTERVIEW_SUBAGENT_ANGLES.map(angle => generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel))),
+    Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)))
+  ]);
 
   const scored = await Promise.all(
     generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
@@ -17144,6 +17159,14 @@ async function runCandidateInterview(campaign, account, audienceLabel){
     return {
       key, label, vendor, model, configured: true,
       copy: gen.copy, error: gen.error,
+      // 2026-09-23 — pending, same two-pass design as runBrandVoiceContest
+      // (see VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS's comment). A
+      // candidate whose generation failed on this first pass isn't a hard
+      // failure yet — the client auto-fires POST
+      // .../copy-interview/:id/retry-pending immediately after, which gets
+      // its own fresh Vercel budget instead of squeezing into whatever was
+      // left of this request's.
+      pending: !!gen.error,
       relevanceScore, complianceScore, combinedScore,
       note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null
     };
@@ -17154,16 +17177,24 @@ async function runCandidateInterview(campaign, account, audienceLabel){
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
     copy: null, error: `${v.envVar} not configured on this deployment.`,
+    // Never pending — a missing API key isn't retryable by a second pass.
+    pending: false,
     relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
   }));
   const allLive = [...liveCandidates, ...liveVendorCandidates];
-  const ranked = [...allLive].sort((a, b) => {
+  const recommendedKey = pickRecommendedCopyInterviewCandidate(allLive);
+  return { available: true, note: null, recommendedKey, candidates: [...allLive, ...unconfiguredCandidates] };
+}
+// Shared ranking logic — used both by the first pass above and by POST
+// .../copy-interview/:id/retry-pending (the second pass) so a candidate
+// that only succeeded on retry can still become the recommended winner.
+function pickRecommendedCopyInterviewCandidate(candidates){
+  const ranked = [...(candidates || [])].sort((a, b) => {
     if (a.combinedScore == null) return 1;
     if (b.combinedScore == null) return -1;
     return b.combinedScore - a.combinedScore;
   });
-  const recommendedKey = (ranked[0] && ranked[0].combinedScore != null) ? ranked[0].key : null;
-  return { available: true, note: null, recommendedKey, candidates: [...allLive, ...unconfiguredCandidates] };
+  return (ranked[0] && ranked[0].combinedScore != null) ? ranked[0].key : null;
 }
 
 // 2026-08-22, per direct instruction: "we will never reveal the actual
@@ -17180,7 +17211,7 @@ async function runCandidateInterview(campaign, account, audienceLabel){
 function redactCandidatesForClient(candidates){
   return (candidates || []).map(c => ({
     key: c.key, label: c.label, configured: c.configured,
-    copy: c.copy, error: c.error,
+    copy: c.copy, error: c.error, pending: !!c.pending,
     relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
     note: c.note, flags: c.flags, scoreMode: c.scoreMode
   }));
@@ -17251,7 +17282,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-23-contest-timeout-100s-fix',
+        buildStamp: '2026-09-23-copy-contest-two-pass-pending-retry-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -25895,6 +25926,75 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now, audienceLabel);
       return sendJson(res, 200, {
         available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now, audience: audienceLabel
+      });
+    }
+
+    // POST /api/campaigns/:id/copy-interview/:interviewId/retry-pending —
+    // 2026-09-23, second pass of the same two-pass timeout design as
+    // POST /api/accounts/:id/voice-contest/:interviewId/retry-pending (see
+    // VENDOR_PASS1_TIMEOUT_MS/VENDOR_PASS2_TIMEOUT_MS's comment). Called
+    // automatically by the client immediately after the create endpoint
+    // returns any candidate with pending:true — a genuinely SEPARATE HTTP
+    // request with its own fresh Vercel 120s ceiling, so a candidate that
+    // was still generating (or a vendor that failed) on the first pass gets
+    // a real full-budget second try instead of squeezing into whatever was
+    // left of the first request's. Regenerates ONLY the candidates still
+    // marked pending — every already-successful candidate is left
+    // untouched. This is the LAST attempt: pending is always cleared to
+    // false regardless of outcome, so the client never has a reason to call
+    // this a third time for the same candidate.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview' && parts[5] === 'retry-pending'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const interview = db.prepare('SELECT * FROM campaign_copy_interviews WHERE id = ? AND campaignId = ?').get(interviewId, campaignId);
+      if (!interview) return sendJson(res, 404, { error: 'copy contest not found for this campaign' });
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      const pendingCandidates = candidates.filter(c => c.pending);
+      if (!pendingCandidates.length){
+        // Cheap no-op — safe to call even if the client's own pending check
+        // raced with an earlier retry-pending call for this same interview.
+        return sendJson(res, 200, { interviewId, retried: false, candidates: redactCandidatesForClient(candidates), recommendedKey: pickRecommendedCopyInterviewCandidate(candidates) });
+      }
+      // Same context chain the create endpoint used — recomputed here since
+      // it isn't persisted on the interview row (see the create endpoint's
+      // own comment on why the shared sample/decision context is fetched
+      // once per request rather than stashed).
+      const sampleContext = (await brandWritingSampleContext(account.accountId)) + (await creativeJobDecisionContext(account.accountId));
+      const audienceLabel = interview.audience || null;
+      await Promise.all(pendingCandidates.map(async (c) => {
+        try {
+          const angle = INTERVIEW_SUBAGENT_ANGLES.find(a => a.key === c.key);
+          const gen = angle
+            ? await generateInterviewCandidateCopy(angle, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS)
+            : await generateVendorInterviewCopy(c.key, campaign, account, sampleContext, audienceLabel, VENDOR_PASS2_TIMEOUT_MS);
+          c.copy = gen.copy;
+          c.error = gen.error;
+          if (c.copy){
+            const score = await scoreDraftCopy(c.copy, campaign, account);
+            c.relevanceScore = score ? score.relevanceScore : null;
+            c.complianceScore = score ? score.complianceScore : null;
+            c.combinedScore = (typeof c.relevanceScore === 'number' && typeof c.complianceScore === 'number')
+              ? Math.round((c.relevanceScore + c.complianceScore) / 2) : null;
+            c.note = score ? score.note : null;
+            c.flags = score ? score.flags : [];
+            c.scoreMode = score ? score.mode : null;
+          }
+        } catch (e){
+          c.error = 'Generation failed: ' + e.message;
+        }
+        // Final attempt regardless of outcome — never left pending for a
+        // third pass.
+        c.pending = false;
+      }));
+      db.prepare('UPDATE campaign_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+      return sendJson(res, 200, {
+        interviewId, retried: true, candidates: redactCandidatesForClient(candidates), recommendedKey: pickRecommendedCopyInterviewCandidate(candidates)
       });
     }
 
