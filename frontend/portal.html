@@ -11758,7 +11758,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-account-manual-reach-inputs';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-creative-step0-badge-and-channels-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40179,12 +40179,88 @@ function cmpRenderCreativeStep0(c){
       row('Campaign Objective', objectiveSummary) +
       row('Product Group', c.productGroups || '—') +
       row('Creative Focus', c.creativeFocusGroups || '—') +
-      row('Approved Channels', cmpCreativeChannelsText(c) || '—');
+      `<div class="cmp-step0-recap-row">
+        <span class="cmp-step0-recap-label">Approved Channels</span>
+        <span class="cmp-step0-recap-val" id="cmpCreativeStep0ChannelsVal">${escapeHtml(cmpCreativeChannelsText(c) || '—')}</span>
+      </div>`;
+    // 2026-09-23 fix, per direct report (Todd): "Approved Channels" was
+    // reading campaign.channels/c.mediaMix, but those are legacy/dead
+    // fields for a campaign built through the current Channel Plan flow —
+    // see cmpApproveChannelPlan()'s own 2026-09-22 comment: the backend
+    // write to campaigns.channels was deliberately dropped there because
+    // "Supabase confirmed the campaigns.channels column is never read back
+    // by anything once a page reloads," with channel_planning_details named
+    // as the real source of truth. That was true until this card started
+    // reading campaign.channels too — this fetch makes Approved Channels
+    // read the real source instead. cmpCreativeChannelsText(c) above still
+    // paints something immediately (this session's in-memory c.channels, or
+    // the older mediaMix rollup) so the row is never blank while the fetch
+    // is in flight; this then overwrites it with the real, persisted answer
+    // once it resolves. Local-only demo campaigns have no backend row to
+    // fetch, so they keep whatever cmpCreativeChannelsText(c) already gave.
+    if (c.id && !c.localOnly){
+      (async () => {
+        let text = null;
+        try {
+          const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/channel-planning`);
+          if (resp.ok){
+            const data = await resp.json();
+            const entries = Array.isArray(data.entries) ? data.entries : [];
+            const names = [...new Set(entries.filter(e => (Number(e.budget) || 0) > 0).map(e => e.channel).filter(Boolean))];
+            if (names.length) text = names.join(', ');
+          }
+        } catch (e){ console.warn('cmpRenderCreativeStep0: channel-planning fetch failed', e); }
+        const el = document.getElementById('cmpCreativeStep0ChannelsVal');
+        if (el && text) el.textContent = text;
+      })();
+    }
   }
   cmpRenderStep0Headline(c);
   cmpRenderStep0DetailFields(c);
   cmpRenderStep0AudienceToggle(c);
   cmpRenderStep0RunContest(c);
+}
+// 2026-09-23 fix, per direct report (Todd): "Entering copy in the Headline
+// and [launchHighlights] fields does not remove the Needs An Answer
+// label." Root cause: the badge and the verbatim toggle only ever
+// recomputed on save (onblur → cmpSaveStep0Headline()/
+// cmpSaveStep0DetailFields() → full innerHTML re-render). Typing alone
+// never touched them, so anyone glancing at the field mid-edit — before
+// clicking away — saw a stuck "Needs an answer" and no toggle, which reads
+// exactly like a bug even though the state WOULD have been correct after
+// blur. Fix: a lightweight oninput handler (cmpStep0FieldLiveUpdate) now
+// updates just the badge text/class and swaps the hint for the toggle (or
+// back) on every keystroke, scoped to the single field via closest('.cmp-
+// step0-field') — it never touches the input/textarea itself, so focus and
+// cursor position are untouched while typing. The onblur save path is
+// unchanged (still what actually persists the value); this only fixes the
+// visual feedback being stuck between keystroke and blur.
+function cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive){
+  return hasValue ? `
+      <span class="cmp-step0-mini-toggle-label">Use exactly as written in the copy?</span>
+      <div class="cmp-step0-mini-toggle-row">
+        <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}" onclick="${onExact}">Yes — verbatim</div>
+        <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}" onclick="${onDescriptive}">No — treat as guidance</div>
+      </div>
+    ` : `<div class="cmp-step0-hint-inline">Verbatim-use toggle appears once this has an answer.</div>`;
+}
+function cmpStep0FieldLiveUpdate(el, onExact, onDescriptive){
+  const field = el.closest('.cmp-step0-field');
+  if (!field) return;
+  const hasValue = !!(el.value && el.value.trim());
+  const badge = field.querySelector('.badge');
+  if (badge){
+    badge.classList.toggle('strong', hasValue);
+    badge.classList.toggle('weak', !hasValue);
+    badge.textContent = hasValue ? '✓ Set' : 'Needs an answer';
+  }
+  const toggleHolder = field.querySelector('.cmp-step0-toggle-holder');
+  // Keep whatever mode is already selected (exact/descriptive) if the
+  // toggle is already showing; default to 'exact' the moment a value first
+  // appears, matching the backend's own default-to-'exact' behavior.
+  const currentlyOn = field.querySelector('.cmp-step0-mini-toggle-opt.on');
+  const mode = currentlyOn && currentlyOn.textContent.indexOf('guidance') !== -1 ? 'descriptive' : 'exact';
+  if (toggleHolder) toggleHolder.innerHTML = cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive);
 }
 function cmpRenderStep0Headline(c){
   const holder = document.getElementById('cmpCreativeStep0Headline');
@@ -40197,14 +40273,8 @@ function cmpRenderStep0Headline(c){
         <label>Headline</label>
         <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
       </div>
-      <input type="text" id="cmpStep0HeadlineInput" value="${escapeHtml(c.keyMessage || '')}" placeholder="e.g., Reconnect past guests — Antarctica's first private charter returns." onblur="cmpSaveStep0Headline()" style="width:100%;box-sizing:border-box;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">
-      ${hasValue ? `
-        <span class="cmp-step0-mini-toggle-label">Use exactly as written in the copy?</span>
-        <div class="cmp-step0-mini-toggle-row">
-          <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}" onclick="cmpSetStep0HeadlineMode('exact')">Yes — verbatim</div>
-          <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}" onclick="cmpSetStep0HeadlineMode('descriptive')">No — treat as guidance</div>
-        </div>
-      ` : `<div class="cmp-step0-hint-inline">Verbatim-use toggle appears once this has an answer.</div>`}
+      <input type="text" id="cmpStep0HeadlineInput" value="${escapeHtml(c.keyMessage || '')}" placeholder="e.g., Reconnect past guests — Antarctica's first private charter returns." oninput="cmpStep0FieldLiveUpdate(this,'cmpSetStep0HeadlineMode(\\'exact\\')','cmpSetStep0HeadlineMode(\\'descriptive\\')')" onblur="cmpSaveStep0Headline()" style="width:100%;box-sizing:border-box;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">
+      <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, "cmpSetStep0HeadlineMode('exact')", "cmpSetStep0HeadlineMode('descriptive')")}</div>
     </div>`;
 }
 function cmpRenderStep0DetailFields(c){
@@ -40220,20 +40290,17 @@ function cmpRenderStep0DetailFields(c){
     const val = values[f.key] || '';
     const hasValue = !!val.trim();
     const mode = cmpStep0DetailMode(c, f.key);
+    const keyEsc = escapeHtml(f.key);
+    const onExact = `cmpSetStep0DetailMode('${keyEsc}','exact')`;
+    const onDescriptive = `cmpSetStep0DetailMode('${keyEsc}','descriptive')`;
     return `
     <div class="cmp-step0-field">
       <div class="cmp-step0-field-head">
         <label>${escapeHtml(f.label)}</label>
         <span class="badge ${hasValue ? 'strong' : 'weak'}">${hasValue ? '✓ Set' : 'Needs an answer'}</span>
       </div>
-      <textarea data-detail-key="${escapeHtml(f.key)}" rows="2" placeholder="Real, specific — required for this Writing Style." onblur="cmpSaveStep0DetailFields()" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
-      ${hasValue ? `
-        <span class="cmp-step0-mini-toggle-label">Use exactly as written in the copy?</span>
-        <div class="cmp-step0-mini-toggle-row">
-          <div class="cmp-step0-mini-toggle-opt ${mode === 'exact' ? 'on' : ''}" onclick="cmpSetStep0DetailMode('${escapeHtml(f.key)}','exact')">Yes — verbatim</div>
-          <div class="cmp-step0-mini-toggle-opt ${mode === 'descriptive' ? 'on' : ''}" onclick="cmpSetStep0DetailMode('${escapeHtml(f.key)}','descriptive')">No — treat as guidance</div>
-        </div>
-      ` : `<div class="cmp-step0-hint-inline">Verbatim-use toggle appears once this has an answer.</div>`}
+      <textarea data-detail-key="${keyEsc}" rows="2" placeholder="Real, specific — required for this Writing Style." oninput="cmpStep0FieldLiveUpdate(this,${JSON.stringify(onExact)},${JSON.stringify(onDescriptive)})" onblur="cmpSaveStep0DetailFields()" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line-hairline);background:var(--paper-dim);border-radius:10px;padding:10px 12px;font-family:inherit;">${escapeHtml(val)}</textarea>
+      <div class="cmp-step0-toggle-holder">${cmpStep0ToggleHolderHtml(hasValue, mode, onExact, onDescriptive)}</div>
     </div>`;
   }).join('');
 }
