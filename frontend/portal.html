@@ -1191,6 +1191,19 @@
   .cmp-collab-expand-backdrop{position:fixed;inset:0;background:rgba(20,20,20,0.45);z-index:900;}
   .cmp-collab.expanded{position:fixed;top:5vh;left:50%;transform:translateX(-50%);width:min(720px,92vw);height:90vh;z-index:901;display:flex;flex-direction:column;}
   .cmp-collab.expanded .cmp-collab-body{flex:1;max-height:none;}
+  /* 2026-09-23 fix — the expand backdrop/panel above render into
+     #cmpCollabExpandedPortal (a direct <body> child, created on demand by
+     cmpCollabExpandedPortalEl()) rather than staying nested inside whichever
+     Collaboration Center mount is currently active. Every one of those
+     mounts is `position: sticky` for its own unrelated layout reasons, and
+     browsers give sticky elements their own stacking context regardless of
+     z-index — which was trapping this panel's z-index:901 inside that
+     sticky ancestor's context, so it lost to page elements elsewhere (like
+     the sticky campaign header, z-index:30) that never should have out-
+     ranked it. The portal itself needs no layout styling: it holds nothing
+     while collapsed, and its only children (the backdrop/panel above) are
+     already position:fixed. */
+  #cmpCollabExpandedPortal:empty{display:none;}
   /* 2026-09-19 — Todd flagged the Collaboration Center reading as a
      small floating card instead of a full-height sidebar when it's
      mounted inside the fixed Objectives/Recommendation modal panels
@@ -11758,7 +11771,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-creative-step0-badge-and-channels-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-collab-expand-stacking-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13537,11 +13550,48 @@ function cmpToggleCollabExpanded(){
   cmpCollabExpanded = !cmpCollabExpanded;
   cmpRenderCollabCenter(cmpRailLoadedCampaign());
 }
+// 2026-09-23 fix, per direct report (Todd, screenshot): the expanded
+// Collaboration Center was rendering BEHIND the sticky campaign header
+// (z-index 30) despite the expanded panel/backdrop's own z-index (901)
+// being far higher. Root cause, confirmed by inspecting real computed
+// styles: every mount this component ever renders into (#cmpWorkspaceCollab
+// normally, plus the per-overlay mounts) is itself `position: sticky` —
+// and per how browsers implement CSS stacking, a sticky-positioned element
+// ALWAYS creates its own stacking context, even with no z-index set. A
+// `position: fixed` descendant (the expanded panel/backdrop) still escapes
+// to the VIEWPORT for layout, but for PAINT ORDER it stays captured inside
+// its nearest DOM ancestor's stacking context — so its z-index:901 was only
+// ever being compared against its own siblings inside that sticky mount,
+// never against the campaign header sitting in a completely different part
+// of the page. The mount's own context, having no z-index set, painted at
+// the default level — below the header's explicit z-index:30 — so
+// everything inside it, expanded panel included, lost.
+// Fix: when expanded, portal the backdrop + panel out to a dedicated
+// fixed-position child of <body> (#cmpCollabExpandedPortal, created once,
+// z-index left in place via .cmp-collab-expand-backdrop/.cmp-collab.expanded
+// as before) so it participates in the ROOT stacking context directly,
+// instead of one trapped inside a sticky ancestor. The original mount goes
+// back to holding nothing while expanded; collapsing tears the portal back
+// down and re-renders inline as before. #cmpCollabBody/#cmpCollabTabs/etc.
+// are looked up by id elsewhere in this file, not by a fixed parent, so
+// which physical container currently holds them doesn't matter.
+function cmpCollabExpandedPortalEl(){
+  let portal = document.getElementById('cmpCollabExpandedPortal');
+  if (!portal){
+    portal = document.createElement('div');
+    portal.id = 'cmpCollabExpandedPortal';
+    document.body.appendChild(portal);
+  }
+  return portal;
+}
 function cmpRenderCollabCenter(campaign){
   const el = document.getElementById(cmpCollabMountId);
   if (!el) return;
   if (campaign && cmpPreCampaignCollabHistory.length) cmpPreCampaignCollabHistory = [];
-  el.innerHTML = `
+  const portal = cmpCollabExpandedPortalEl();
+  const target = cmpCollabExpanded ? portal : el;
+  if (cmpCollabExpanded) el.innerHTML = ''; else portal.innerHTML = '';
+  target.innerHTML = `
     ${cmpCollabExpanded ? `<div class="cmp-collab-expand-backdrop" onclick="cmpToggleCollabExpanded()"></div>` : ''}
     <div class="cmp-collab${cmpCollabExpanded ? ' expanded' : ''}">
       <div class="cmp-collab-head">
