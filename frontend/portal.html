@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-active-campaigns-creative-qa-live-kpis';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-step0-currentcampaignid-null-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40583,8 +40583,29 @@ function cmpRenderStep0AudienceToggle(c){
 // error only if that also fails") and — new — visibly flags the field via
 // cmpFlashStep0SaveError() if every retry still fails, instead of only
 // logging to the console.
+// 2026-09-23 fix — the actual root cause behind every "nothing happens
+// when I click" report this whole round: toggles, Save, and Run Campaign
+// Copy Contest all silently no-opped via `if (!c) return`, with zero
+// error, because every one of them read currentCampaignId — a global that
+// only the OLDER single-campaign detail page's own navigation path
+// (goToStep()'s 'campaign' branch) ever sets. It stays permanently null on
+// the newer rail-based Campaign Workspace Hub, where Creative Step 0
+// actually lives. Confirmed live in Todd's own console: currentCampaignId
+// was null and findCampaign(currentCampaignId) was false, while the click
+// handler itself was firing correctly (the event-delegation rework earlier
+// today was real and correct, just not the actual bug). cmpRailLoadedCampaign()
+// — already used to open this workspace in the first place — is the hub
+// page's real source of truth: it reads the loaded campaign straight from
+// the #cmpExistingCampaign select's value. This helper tries the legacy
+// variable first, so the older single-campaign page (which does set
+// currentCampaignId) keeps working exactly as before, and falls back to
+// the hub's own lookup for this page — rather than swapping one working
+// path for another that would break it.
+function cmpCurrentCampaign(){
+  return findCampaign(currentCampaignId) || cmpRailLoadedCampaign();
+}
 function cmpApplyCampaignFieldLocal(extraLocalAssign){
-  const c = findCampaign(currentCampaignId);
+  const c = cmpCurrentCampaign();
   if (!c) return null;
   Object.assign(c, extraLocalAssign || {});
   return c;
@@ -40638,7 +40659,7 @@ async function cmpSetStep0HeadlineMode(mode){
 }
 async function cmpSaveStep0DetailFields(){
   const holder = document.getElementById('cmpCreativeStep0DetailFields');
-  const existing = findCampaign(currentCampaignId);
+  const existing = cmpCurrentCampaign();
   if (!holder || !existing) return;
   const details = {};
   holder.querySelectorAll('[data-detail-key]').forEach(el => {
@@ -40650,7 +40671,7 @@ async function cmpSaveStep0DetailFields(){
   await cmpPersistCampaignField(c, { campaignTypeDetails: details }, 'Writing Style detail fields');
 }
 async function cmpSetStep0DetailMode(fieldKey, mode){
-  const existing = findCampaign(currentCampaignId);
+  const existing = cmpCurrentCampaign();
   if (!existing) return;
   const modes = campaignTypeDetailModesClient(existing);
   modes[fieldKey] = mode;
@@ -40821,7 +40842,7 @@ function cmpRenderStep0RunContest(c){
 }
 async function cmpRunAudienceContest(idx){
   const audienceName = cmpStep1AudienceNames[idx];
-  const campaign = findCampaign(currentCampaignId);
+  const campaign = cmpCurrentCampaign();
   const btn = document.getElementById(`cmpStep0RunBtn_${idx}`);
   const status = document.getElementById(`cmpStep0RunStatus_${idx}`);
   if (!audienceName || !campaign) return;
@@ -55419,7 +55440,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
   panelId = panelId || 'cmpCopyContestPanel';
   btnId = btnId || 'cmpCopyContestBtn';
   flagId = flagId || 'cmpCopyContestSelectFlag';
-  const campaign = findCampaign(currentCampaignId);
+  const campaign = cmpCurrentCampaign();
   const panel = document.getElementById(panelId);
   const btn = document.getElementById(btnId);
   if (!campaign || !panel) return;
@@ -55512,7 +55533,7 @@ function renderCmpCopyContestPanel(result, flagId){
 // applies to the same field and the same campaign_copy_interviews history.
 async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
   flagId = flagId || 'cmpCopyContestSelectFlag';
-  const campaign = findCampaign(currentCampaignId);
+  const campaign = cmpCurrentCampaign();
   const flag = document.getElementById(flagId);
   if (!campaign) return;
   try {
