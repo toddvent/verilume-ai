@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-23-legacy-casing-audit-30-columns-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-23-copy-contest-blind-label-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -17234,8 +17234,40 @@ async function runCandidateInterview(campaign, account, audienceLabel){
     relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
   }));
   const allLive = [...liveCandidates, ...liveVendorCandidates];
+  const allCandidates = [...allLive, ...unconfiguredCandidates];
+
+  // 2026-09-23 fix, per Todd's screenshot showing "GPT (OpenAI)", "Gemini
+  // (Google) — top scoring", "Grok (xAI)", "Perplexity" as card headers —
+  // this panel was never brought into line with the 2026-08-27 direct
+  // instruction ("You should never list the source of the output") that
+  // Brand Voice, Voice Contest, PR/Corporate Comm, and the other contest
+  // surfaces all already follow. The client-facing label defaulted straight
+  // to `label` (the real vendor/style name, e.g. "GPT (OpenAI)") because
+  // this function never assigned a `blindLabel` in the first place — same
+  // bug class as the sequential-batches and missing-pending-retry gaps
+  // found earlier this session, just never reported until now. Fixed the
+  // same way as runBrandVoiceContest(): every candidate — including
+  // unconfigured slots — gets a randomized "Option N" label assigned fresh
+  // per run, persisted on the stored candidate for consistent history
+  // re-views, then the array itself is sorted by that number so cards
+  // always render left-to-right as Option 1..N (only the vendor-to-number
+  // assignment is randomized; display order is not). `label`/`vendor`/
+  // `model` stay on the record for the ops-only view; redactCandidatesForClient()
+  // below is the only place the client-facing choice is made.
+  const shuffled = [...allCandidates];
+  for (let i = shuffled.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
+  allCandidates.sort((a, b) => {
+    const na = parseInt(String(a.blindLabel).replace(/\D/g, ''), 10) || 0;
+    const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
+    return na - nb;
+  });
+
   const recommendedKey = pickRecommendedCopyInterviewCandidate(allLive);
-  return { available: true, note: null, recommendedKey, candidates: [...allLive, ...unconfiguredCandidates] };
+  return { available: true, note: null, recommendedKey, candidates: allCandidates };
 }
 // Shared ranking logic — used both by the first pass above and by POST
 // .../copy-interview/:id/retry-pending (the second pass) so a candidate
@@ -17261,8 +17293,14 @@ function pickRecommendedCopyInterviewCandidate(candidates){
 // though the on-screen label only ever says something like "Direct-response
 // angle."
 function redactCandidatesForClient(candidates){
+  // 2026-09-23 — `blindLabel || label` fallback, matching
+  // redactBrandVoiceCandidatesForClient()'s own comment: blindLabel is the
+  // ONLY label this sends to the client once runCandidateInterview() has
+  // assigned one; the `|| c.label` fallback only protects a
+  // pre-2026-09-23 stored interview record that predates the blind-label
+  // fix (candidatesJson from an old run has no blindLabel field at all).
   return (candidates || []).map(c => ({
-    key: c.key, label: c.label, configured: c.configured,
+    key: c.key, label: c.blindLabel || c.label, configured: c.configured,
     copy: c.copy, error: c.error, pending: !!c.pending,
     relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
     note: c.note, flags: c.flags, scoreMode: c.scoreMode
@@ -17334,7 +17372,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-23-legacy-casing-audit-30-columns-fix',
+        buildStamp: '2026-09-23-copy-contest-blind-label-fix',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
