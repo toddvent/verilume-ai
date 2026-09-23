@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-loadexistingcampaign-currentcampaignid-upstream-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-copy-contest-two-pass-pending-retry-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40872,10 +40872,17 @@ async function cmpRunAudienceContest(idx){
     // 2026-09-23 fix — same silent-retry convention as
     // cmpRunCampaignCopyContest()'s own fix, applied here too so a slow
     // round trip to the real backend doesn't read as a dead chip.
+    //
+    // 2026-09-23 follow-up fix — same "signal is aborted without reason"
+    // bug and same fix as cmpRunCampaignCopyContest()'s own follow-up
+    // comment: this hits the identical heavy copy-interview endpoint, so
+    // it needs the same 100000ms/single-attempt treatment, not the generic
+    // 12000ms default.
     const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName })
-    });
+      body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName }),
+      timeoutMs: 100000
+    }, 1, 700);
     if (!result.available){
       if (status){ status.textContent = result.note || 'Copy contest unavailable.'; }
       return;
@@ -40883,6 +40890,10 @@ async function cmpRunAudienceContest(idx){
     cmpStep1AudienceResults[idx] = { result, selectedKey: null };
     if (status){ status.style.color = 'var(--cx)'; status.textContent = '✓ Contest run — pick the winner in Step 1, below.'; }
     cmpRenderCreativeStep1(campaign);
+    // 2026-09-23 — same auto-retry as cmpRunCampaignCopyContest() above;
+    // re-renders Step 1's own entries-grid (not renderCmpCopyContestPanel)
+    // once the second pass fills in whatever was pending.
+    cmpCopyContestAutoRetryPending(campaign.id, result, () => cmpRenderCreativeStep1(cmpCurrentCampaign()));
   } catch (e){
     if (status){ status.style.color = 'var(--advocacy)'; status.textContent = 'Backend unreachable — try again.'; }
   } finally {
@@ -40933,6 +40944,16 @@ function cmpRenderCreativeStep1(c){
           return `<div class="entry-card" style="opacity:0.6;">
             <div class="entry-model">${escapeHtml(cand.label)}</div>
             <div class="hint">${escapeHtml(cand.error || 'Not configured.')}</div>
+          </div>`;
+        }
+        if (cand.pending){
+          // 2026-09-23 — same temporary state as renderCmpCopyContestPanel's
+          // own pending card; cmpCopyContestAutoRetryPending() fires the
+          // second pass automatically and re-renders this whole card once
+          // it resolves.
+          return `<div class="entry-card">
+            <div class="entry-model">${escapeHtml(cand.label)}</div>
+            <div class="hint">Still thinking — retrying automatically…</div>
           </div>`;
         }
         if (!cand.copy){
@@ -55485,15 +55506,40 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
     // Step 0's field saves) so a slow/flaky round trip to the real backend
     // doesn't read as a dead button; it throws with the server's own
     // error/detail text on final failure, caught below.
+    //
+    // 2026-09-23 follow-up fix, per Todd's report ("signal is aborted
+    // without reason") — this call was left on authedFetch's generic
+    // 12000ms default, meant for quick CRUD calls. This endpoint
+    // (runCandidateInterview on the backend) runs 3 angles plus every
+    // configured vendor as real LLM generations, then scores each one —
+    // the same class of heavy multi-call AI endpoint as
+    // cmpIntakeExchange()/cmpMsgIntakeExchange() above, which already use
+    // a 100000ms timeout with a single attempt (retrying at a too-short
+    // timeout just re-hits the same wall three times instead of once —
+    // see those calls' own comments). This endpoint never got the same
+    // treatment, so it was aborting on real runs regardless of whether any
+    // individual contestant succeeded — each candidate's own generation is
+    // already isolated in its own try/catch server-side
+    // (generateInterviewCandidateCopy/generateVendorInterviewCopy), so one
+    // model failing was never going to take the others down with it; the
+    // client-side timeout was.
     const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY })
-    });
+      body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY }),
+      timeoutMs: 100000
+    }, 1, 700);
     if (!result.available){
       panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
       return;
     }
     panel.innerHTML = renderCmpCopyContestPanel(result, flagId);
+    // 2026-09-23 — if any candidate came back pending (still generating,
+    // or a first-pass failure), fire the second pass automatically instead
+    // of leaving it as a final-looking error card.
+    cmpCopyContestAutoRetryPending(campaign.id, result, () => {
+      const p = document.getElementById(panelId);
+      if (p) p.innerHTML = renderCmpCopyContestPanel(result, flagId);
+    });
   } catch (e){
     panel.innerHTML = `<div class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Couldn't run the copy contest: ${escapeHtml(e.message || 'backend unreachable')}. Try again.</div>`;
   } finally {
@@ -55519,6 +55565,16 @@ function renderCmpCopyContestPanel(result, flagId){
         <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
       </div>`;
     }
+    if (c.pending){
+      // 2026-09-23 — this candidate's first pass either failed or is
+      // still being retried; copyContestAutoRetryPending() fires the
+      // second pass automatically the moment any candidate comes back
+      // pending, so this is a genuinely temporary state, not a final one.
+      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
+        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
+        <div class="hint" style="margin-top:4px;">Still thinking — retrying automatically…</div>
+      </div>`;
+    }
     if (!c.copy){
       return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
@@ -55541,6 +55597,36 @@ function renderCmpCopyContestPanel(result, flagId){
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
     <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+}
+// 2026-09-23 — same auto-fire pattern as voiceContestAutoRetryPending()
+// (see that function's own comment): the moment any candidate comes back
+// pending:true, fire the second pass automatically rather than making
+// Todd click a retry button. Fires at most once per interview
+// (cmpCopyContestPendingRetried tracks which interview ids have already
+// been retried this session) — POST .../retry-pending is itself the LAST
+// attempt (see its own comment on the backend), so there's never a reason
+// to call it twice for the same run. `onUpdated` is a caller-supplied
+// re-render callback (rather than this function owning a fixed DOM target)
+// since this is shared by two genuinely different render paths:
+// cmpRunCampaignCopyContest()'s single shared panel (renderCmpCopyContestPanel
+// straight into a #panelId) and cmpRunAudienceContest()'s per-audience Step
+// 1 entries-grid (cmpRenderCreativeStep1(), a whole different layout that
+// reads cmpStep1AudienceResults itself rather than taking a result object).
+const cmpCopyContestPendingRetried = new Set();
+async function cmpCopyContestAutoRetryPending(campaignId, result, onUpdated){
+  if (!result || !result.interviewId || !Array.isArray(result.candidates)) return;
+  if (!result.candidates.some(c => c.pending)) return;
+  if (cmpCopyContestPendingRetried.has(result.interviewId)) return;
+  cmpCopyContestPendingRetried.add(result.interviewId);
+  try {
+    const data = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}/copy-interview/${encodeURIComponent(result.interviewId)}/retry-pending`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }
+    }, 1, 700);
+    if (!Array.isArray(data.candidates)) return;
+    result.candidates = data.candidates;
+    result.recommendedKey = data.recommendedKey;
+    if (typeof onUpdated === 'function') onUpdated();
+  } catch (e){ /* leave the "still thinking" cards as-is — a manual re-run is still available */ }
 }
 // Applies the winning candidate straight into #cmpLongFormCopy — same
 // explicit-click-only discipline as runMfpInterviewSelect()/runInterviewSelect().
