@@ -11832,7 +11832,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-campaign-contest-review';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-silent-retry';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40899,13 +40899,17 @@ async function cmpRunAudienceContest(idx){
     // 2026-09-23 follow-up fix — same "signal is aborted without reason"
     // bug and same fix as cmpRunCampaignCopyContest()'s own follow-up
     // comment: this hits the identical heavy copy-interview endpoint, so
-    // it needs the same 100000ms/single-attempt treatment, not the generic
-    // 12000ms default.
+    // it needs the same 100000ms treatment, not the generic 12000ms
+    // default.
+    //
+    // 2026-09-24 — same 1→2 maxAttempts fix as cmpRunCampaignCopyContest()
+    // (see its comment): a single 100s window isn't always enough for all 5
+    // AI partners to finish, but a silent second attempt reliably clears it.
     const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName }),
       timeoutMs: 100000
-    }, 1, 700);
+    }, 2, 700);
     if (!result.available){
       if (status){ status.textContent = result.note || 'Copy contest unavailable.'; }
       return;
@@ -54001,15 +54005,18 @@ async function runMfpInterview(){
   if (!project || !holder) return;
   holder.innerHTML = renderAiStatusBubble("Getting one real response from each AI partner, grounded in your brief's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview`, {
+    // 2026-09-24 fix — this hits the identical heavy copy-interview
+    // endpoint as cmpRunCampaignCopyContest()/the Step 1 audience contest
+    // (5 AI partners fanned out in parallel), but was left on plain
+    // authedFetch with its generic 12000ms default and no retry — the same
+    // "signal is aborted without reason" bug those two already got fixed
+    // for, just not yet reported from this panel. Matched to the same
+    // 100000ms timeout / 2-attempt silent-retry treatment.
+    const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceKey: mfpSourceKey(project, 'master') })
-    });
-    if (!resp.ok){
-      holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't run the interview — try again.</div>`;
-      return;
-    }
-    const result = await resp.json();
+      body: JSON.stringify({ sourceKey: mfpSourceKey(project, 'master') }),
+      timeoutMs: 100000
+    }, 2, 700);
     if (!result.available){
       holder.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Interview panel unavailable.')}</div>`;
       return;
@@ -55702,11 +55709,25 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
     // (generateInterviewCandidateCopy/generateVendorInterviewCopy), so one
     // model failing was never going to take the others down with it; the
     // client-side timeout was.
+    //
+    // 2026-09-24 follow-up fix, per Todd's report that the SAME "signal is
+    // aborted without reason" error still recurred even with the 100000ms
+    // timeout in place, but clicking the button again immediately succeeded
+    // — proving the single 100s window isn't always enough headroom (this
+    // endpoint fans out to 5 AI partners in parallel; the slowest one sets
+    // the pace) but a second attempt reliably clears it. maxAttempts was 1
+    // (no retry) specifically because retrying at the OLD too-short 12000ms
+    // default was pointless — three quick attempts all hit the same wall.
+    // That reasoning doesn't apply now that each attempt gets the full
+    // 100000ms: a second attempt is a genuine second chance, not a repeat
+    // of a doomed one. Bumped to 2 attempts so this gets the same silent
+    // auto-retry every other heavy AI call on this page already gets,
+    // instead of making Todd manually click "Run" a second time.
     const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY }),
       timeoutMs: 100000
-    }, 1, 700);
+    }, 2, 700);
     if (!result.available){
       panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
       return;
