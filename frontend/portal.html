@@ -11832,7 +11832,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-collapsed-cards-usedraft-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-approve-edit-replace';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -56091,11 +56091,25 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
     longformEl.value = result.copy;
     cmpUnapproveMsgField('longform');
     cmpRenderAllMsgGates();
+    // 2026-09-24, per direct instruction — "give users the opportunity to
+    // Approve, Edit or Replace the winner's copy as the next step." That
+    // step already exists on this field: Long Form Copy has its own
+    // Approve/lock gate (CMP_MSG_FIELD_META.longform — the "Approve Long
+    // Form Copy →" button, cmpApproveMsgField('longform')) which is exactly
+    // an approve-as-is/edit/replace textarea, the same shape as the Voice
+    // Contest's own edit-then-save step (selectContestWinner() populating
+    // #voiceVisionStatement/#voiceLongformExample for the user to edit
+    // before an explicit save). So rather than building a second, separate
+    // edit surface, this just points the user at the one that's already
+    // there instead of the old flat "Applied to Long Form Copy above."
+    // confirmation — which is retired per direct instruction now that the
+    // winning copy is visible directly in the field below.
+    if (longformEl.scrollIntoView) longformEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (flag){
-      flag.style.color = 'var(--cx)';
-      flag.textContent = longformEl.disabled
-        ? 'Applied to Long Form Copy above — that field is locked until Key Message and the Brief Builder context above it are both filled in, so it\'ll look dimmed until then. The applied text is saved either way.'
-        : 'Applied to Long Form Copy above.';
+      flag.style.color = '';
+      flag.innerHTML = longformEl.disabled
+        ? `<div class="ai-status-bubble"><div style="font-weight:700;">Approve as is, Edit or Replace the winner with your final version</div><div style="margin-top:4px;">The final version is the master that will be parsed based on campaign assets selected. This field is locked until Key Message and the Brief Builder context above it are both filled in — the winning draft is saved either way and unlocks for editing once those are complete.</div></div>`
+        : `<div class="ai-status-bubble"><div style="font-weight:700;">Approve as is, Edit or Replace the winner with your final version</div><div style="margin-top:4px;">The final version is the master that will be parsed based on campaign assets selected. Edit the draft above if you'd like to change anything, then click "Approve Long Form Copy →" once it's ready.</div></div>`;
     }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
