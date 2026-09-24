@@ -8651,6 +8651,7 @@
           <div class="cmp-step0-jumpnav" id="cmpCreativeStepJumpNav">
             <a href="#cmpCreativeStep0" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0')">Step 0 — Recap &amp; Assessment</a>
             <a href="#cmpCreativeStep0RunContest" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0RunContest')">Step 0 — Run Campaign Copy Contest</a>
+            <a href="#cmpCreativeStep2" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep2')">Step 2 — Creative Asset Selection</a>
           </div>
 
           <div class="module cmp-stage" id="cmpCreativeStep0" style="margin-bottom:0;">
@@ -8703,20 +8704,57 @@
             </div>
           </div>
 
+          <!-- 2026-09-24 — "Add the creative asset selection page/s," per
+               direct instruction, confirmed via clarifying question to mean
+               surfacing the real, already-working Partner/Format/Size matrix
+               (Performance Marketing's #cmpCreativeAssetWrap —
+               cmpRenderCreativeAssetMatrix()/cmpSubmitCreativeRequestToBrand(),
+               built round 132aq) inside this workspace, right after Run
+               Contest — not building the wireframe's separate, never-real
+               Step 2 "Specific Assets with Copy" screen from scratch (that
+               needs per-audience winner selection reinstated first — see the
+               gap noted below — and copy auto-fit to a chosen size, neither
+               of which exists anywhere in this app today).
+               #cmpCreativeAssetWrap is relocated into #cmpCreativeStep2Body
+               below (same DOM-node-relocation technique as the three
+               sections this workspace used to relocate before the
+               2026-09-22 simplification — see cmpOpenCreativeWorkspace()'s
+               own comment) rather than duplicated, so there's still exactly
+               one live copy of this grid and its state
+               (cmpCreativeAssetGridRows/cmpCreativeAssetRequests) anywhere in
+               the app. See cmpOpenCreativeAssetSelectionInWorkspace()/
+               cmpCloseCreativeAssetSelectionFromWorkspace() for the
+               relocate/restore mechanics, and cmpAssetSelectionInWorkspace()
+               for the "which context is this grid currently rendered in"
+               check the empty-state message and Submit button both use. -->
+          <div class="module cmp-stage" id="cmpCreativeStep2" style="margin-bottom:0;margin-top:20px;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div class="cmp-step0-card-head" onclick="cmpToggleCreativeStepCard('cmpCreativeStep2Body','cmpCreativeStep2Chevron')">
+                <div>
+                  <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 2</div>
+                  <div style="font-size:1.125rem;font-weight:700;color:var(--ink);">Creative Asset Selection</div>
+                </div>
+                <span class="cmp-step0-card-chevron" id="cmpCreativeStep2Chevron">▾</span>
+              </div>
+              <div id="cmpCreativeStep2Body"></div>
+            </div>
+          </div>
+
           <!-- 2026-09-24 — Creative Step 1 ("Select Winner & Apply") removed
                entirely, per direct instruction, now that the shared Brand
                Messaging contest's own inline Approve/Edit/Replace card
                (cmpSelectCopyContestCandidate()) covers that job for the
-               "shared creative experience" case. Known, accepted gap per
-               that same instruction: a campaign running SEPARATE per-
+               "shared creative experience" case. Known, accepted gap,
+               STILL OPEN as of the 2026-09-24 Creative Asset Selection round
+               above (that round deliberately scoped to just the Partner/
+               Format/Size matrix, confirmed via clarifying question, not a
+               winner-selection rebuild): a campaign running SEPARATE per-
                audience contests (c.audienceSharedExperience === 'separate')
-               no longer has any UI to pick/apply each audience's winner —
+               still has no UI to pick/apply each audience's winner —
                cmpStep1SelectLocalWinner()/cmpApplyAudienceWinner() and their
                backing state (cmpStep1AudienceResults) are left in place,
-               unused by this workspace, since the planned Creative Asset
-               Selection build (next phase, per the same instruction) is
-               expected to be where per-audience winner selection lives
-               going forward — not rebuilt here. cmpRenderCreativeStep1()
+               unused by this workspace, for whenever that gap is actually
+               tackled. cmpRenderCreativeStep1()
                itself is left defined (its existing `if (!body) return;`
                guard makes every call to it, still present elsewhere in
                this file, a safe no-op now that #cmpCreativeStep1Body no
@@ -11891,7 +11929,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-remove-asset-types-feature';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-creative-asset-selection-in-workspace';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40316,6 +40354,10 @@ function cmpOpenCreativeWorkspace(){
   // 3 relocated real sections above.
   cmpRenderCreativeStep0(campaign);
   cmpRenderCreativeStep1(campaign);
+  // 2026-09-24 — Creative Asset Selection (Step 2): relocates the real
+  // Partner/Format/Size matrix in from Performance Marketing — see
+  // cmpOpenCreativeAssetSelectionInWorkspace()'s own comment.
+  cmpOpenCreativeAssetSelectionInWorkspace(campaign);
 }
 function cmpCloseCreativeWorkspace(){
   const overlay = document.getElementById('cmpCreativeOverlay');
@@ -40328,6 +40370,10 @@ function cmpCloseCreativeWorkspace(){
   // no longer relocates the old sections into this workspace, so
   // cmpCreativeWorkspaceBookmarks is never populated and there's nothing to
   // put back or collapse. See that function's own comment.
+  // 2026-09-24 — EXCEPT #cmpCreativeAssetWrap (Creative Asset Selection,
+  // Step 2), which this workspace does relocate again as of that day's
+  // round — put it back on the legacy Campaign Detail page it came from.
+  cmpCloseCreativeAssetSelectionFromWorkspace();
   cmpCollabMountId = 'cmpWorkspaceCollab';
   const creativeMount = document.getElementById('cmpCreativeCollabMount');
   if (creativeMount) creativeMount.innerHTML = '';
@@ -41218,6 +41264,64 @@ async function cmpApplyAudienceWinner(idx){
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
   }
+}
+
+// 2026-09-24 — Creative Asset Selection (Step 2), per direct instruction
+// ("Go ahead and add the creative asset selection page/s"), confirmed via
+// clarifying question to mean the real Partner/Format/Size matrix —
+// #cmpCreativeAssetWrap, Performance Marketing's own Step 2 (round 132aq) —
+// surfaced inside the Creative workspace, not a from-scratch build of the
+// wireframe's separate, never-real Step 2 screen. Same bookmark/restore
+// relocation pattern as Trafficking's #campaignTraffickingCard just below
+// (and Creative's own pre-2026-09-22 relocations) — exactly one live copy
+// of this grid/its state (cmpCreativeAssetGridRows, cmpCreativeAssetRequests)
+// exists anywhere in the app; it just moves between the legacy Campaign
+// Detail page and this workspace, never duplicated.
+let cmpCreativeAssetSelectionBookmark = null;
+// True while #cmpCreativeAssetWrap is currently relocated into this
+// workspace — used by cmpRenderCreativeAssetMatrix()'s empty-state message
+// (which otherwise says "approve the Channel Plan above," meaningless
+// here — there's no channel-plan editor in this workspace to be "above")
+// and by cmpSubmitCreativeRequestToBrand() (which otherwise ends by jumping
+// to the legacy accordion's Brand Messaging stage — wrong destination from
+// inside this full-screen overlay, since Brand Messaging here is Step 0's
+// Run Campaign Copy Contest, not a separate accordion stage).
+function cmpAssetSelectionInWorkspace(){
+  return !!cmpCreativeAssetSelectionBookmark;
+}
+// Relocates the wrap and unconditionally reveals it (bypassing
+// cmpChannelAllocationApproved's normal "re-approve every session" gate —
+// see that flag's own comment: right for the Performance Marketing stage's
+// own review workflow, not for a convenience surface of the same, already-
+// real, already-durable data elsewhere). Refreshes state first
+// (cmpLoadPerfMarketingChannelPlan() — safe to call regardless of where
+// #cmpCreativeAssetMatrix currently lives; it only needs
+// #cmpPerfMarketingAssetsList and the campaign, neither of which moves) so
+// the grid reflects this campaign's real approved channels and previously
+// saved assets, not stale state left over from a different campaign.
+function cmpOpenCreativeAssetSelectionInWorkspace(campaign){
+  const targetBody = document.getElementById('cmpCreativeStep2Body');
+  const wrap = document.getElementById('cmpCreativeAssetWrap');
+  if (!targetBody || !wrap || !campaign) return;
+  if (!cmpCreativeAssetSelectionBookmark){
+    cmpCreativeAssetSelectionBookmark = { parent: wrap.parentNode, next: wrap.nextSibling, display: wrap.style.display };
+  }
+  if (wrap.parentNode !== targetBody) targetBody.appendChild(wrap);
+  wrap.style.display = '';
+  cmpLoadPerfMarketingChannelPlan();
+}
+function cmpCloseCreativeAssetSelectionFromWorkspace(){
+  const wrap = document.getElementById('cmpCreativeAssetWrap');
+  if (!wrap || !cmpCreativeAssetSelectionBookmark) return;
+  const b = cmpCreativeAssetSelectionBookmark;
+  if (b.next && b.next.parentNode === b.parent) b.parent.insertBefore(wrap, b.next);
+  else b.parent.appendChild(wrap);
+  cmpCreativeAssetSelectionBookmark = null;
+  // Restore real Performance Marketing gating now that the node is back —
+  // cmpChannelAllocationApproved was never touched by the open above
+  // (deliberately — see that function's comment), so this reflects
+  // whatever it actually is, same as if this workspace had never opened.
+  if (typeof cmpRenderChannelAllocationApproveUI === 'function') cmpRenderChannelAllocationApproveUI();
 }
 
 // ============================================================
@@ -59945,7 +60049,13 @@ function cmpRenderCreativeAssetMatrix(){
   if (!el) return;
   const channels = cmpCreativeAssetApprovedChannels();
   if (!channels.length){
-    el.innerHTML = '<p class="hint" style="margin:0;">No approved channels yet — approve the Channel Plan above first.</p>';
+    // 2026-09-24 — context-aware empty state: "approve the Channel Plan
+    // above" is meaningless from inside the Creative workspace (there's no
+    // channel-plan editor "above" this grid there — see
+    // cmpAssetSelectionInWorkspace()'s own comment).
+    el.innerHTML = cmpAssetSelectionInWorkspace()
+      ? '<p class="hint" style="margin:0;">No approved channels yet — approve this campaign\'s Channel Plan on Performance Marketing first, then come back here.</p>'
+      : '<p class="hint" style="margin:0;">No approved channels yet — approve the Channel Plan above first.</p>';
     cmpRenderCreativeAssetCoverageNote();
     return;
   }
@@ -60141,7 +60251,16 @@ async function cmpSubmitCreativeRequestToBrand(){
     }
   }
   cmpApprovePerfMarketing();
-  openCmpStage('messaging');
+  // 2026-09-24 — skip the jump to the legacy accordion's Brand Messaging
+  // stage when this Submit was clicked from inside the Creative workspace
+  // (cmpAssetSelectionInWorkspace()) — that stage-jump is right for this
+  // function's original home on the legacy Campaign Detail page, but wrong
+  // from inside this full-screen overlay: Brand Messaging here is Step 0's
+  // Run Campaign Copy Contest, not a separate accordion stage to navigate
+  // to, and jumping to a hidden background page's stage would just silently
+  // reflow content the person can't see. Leave them in the workspace with
+  // the submitted-note confirmation already shown above.
+  if (!cmpAssetSelectionInWorkspace()) openCmpStage('messaging');
 }
 
 let cmpPerfMarketingApproved = false;
