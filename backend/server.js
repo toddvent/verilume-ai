@@ -1513,6 +1513,25 @@ ensureColumn('campaigns', 'audienceSharedExperience', "TEXT DEFAULT 'shared'");
 // winner" default every other additive field here uses.
 ensureColumn('campaigns', 'audienceCopyJson', 'TEXT');
 
+// audienceAssetTypesJson — 2026-09-24, the real "Which asset types apply?"
+// card (Creative-Desktop.dc.html, between the audience toggle and "Run the
+// contest"). Per Todd's explicit scoping decisions this round: (1) uses the
+// wireframe's own fixed 9-item taxonomy (Direct Mail, Email, Print
+// Magazines, Video, Social, Display Ads, OOH, Radio, Landing Page) rather
+// than the app's real granular channel list — see ASSET_TYPE_CHANNEL_MAP
+// below for how those 9 map onto real approved channels; (2) NO real
+// per-audience budget gating — the schema has no audience×channel dollar
+// split anywhere (mediaMixJson.channels is campaign-wide; mediaMixJson.audience
+// is a weight with no dollar tie to channels), so a type is available
+// whenever it maps to at least one of this campaign's approved channels
+// (campaign.channels), not budget-gated per audience; (3) selection is
+// "included in the contest" — see POST .../copy-interview below, which
+// narrows the drafting prompt's "Channels this copy will run on" line to
+// the selected types' mapped channels when running one audience's contest.
+// Same shape/precedent as audienceCopyJson: one JSON object keyed by the
+// exact parsed audience name -> array of selected asset-type strings.
+ensureColumn('campaigns', 'audienceAssetTypesJson', 'TEXT');
+
 // Added 2026-09-17 — Business Initiative, per direct instruction: "make sure
 // the key campaign type (e.g. launch) and business initiative is clear and
 // passed to the AI Brain for analysis before we recommend campaign copy."
@@ -16669,6 +16688,48 @@ function parseJsonBlock(text){
 // verilume-product-campaign-management.html §04/§06). Added so the
 // interview panel's shared brief can name "channels that will be used" per
 // direct instruction, which it never referenced at all before this round.
+// 2026-09-24 — the wireframe's fixed "Which asset types apply?" taxonomy
+// mapped onto this app's real, fine-grained approved-channel names (the
+// same strings the Audience & Channels picker writes into campaign.channels
+// — see CHANNEL_GROUPS in portal.html for the picker's own grouping, which
+// this deliberately does NOT reuse verbatim since it doesn't match the
+// wireframe's 9 buckets one-to-one). Interpretive mapping, not given by any
+// spec — flagged to Todd as an assumption, not a confirmed 1:1 source:
+// - "Video" maps to the TV channels (Linear TV/OTV/CTV), matching the
+//   wireframe's own usage (a launch campaign's "Video" asset is a spot).
+// - "Radio" is paired with Podcasts (both spoken-audio placements).
+// - "Landing Page" has NO real paid-channel equivalent — it's owned media,
+//   not something Audience & Channels approves — so it's exempted from the
+//   channel-approval gate entirely in the frontend rather than mapped here.
+// This must be kept in sync with CMP_ASSET_TYPE_CHANNEL_MAP in portal.html
+// (duplicated, not shared, since the two run in different processes).
+const ASSET_TYPE_CHANNEL_MAP = {
+  'Direct Mail': ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
+  'Email': ['Internal Email', 'Email — Remarketing'],
+  'Print Magazines': ['Magazines', 'Newspapers'],
+  'Video': ['Linear TV', 'OTV', 'CTV'],
+  'Social': ['Paid Social'],
+  'Display Ads': ['Programmatic Display', 'Partner Media', 'Retail Media', 'Remarketing'],
+  'OOH': ['Out-of-Home'],
+  'Radio': ['Radio', 'Podcasts'],
+  'Landing Page': []
+};
+// Real approved channels (campaign.channels) that this audience's selected
+// asset types actually cover — used to narrow the copy-interview prompt's
+// "Channels this copy will run on" line to just those types when a
+// per-audience contest is scoped by assetTypes (see POST .../copy-interview
+// below). Returns '' when nothing maps (e.g. only "Landing Page" selected,
+// or assetTypes is empty) so callers fall back to the campaign-wide list.
+function assetTypesToApprovedChannelsText(assetTypes, campaign){
+  if (!Array.isArray(assetTypes) || !assetTypes.length) return '';
+  const approved = new Set((campaign.channels || '').split(',').map(s => s.trim()).filter(Boolean));
+  const mapped = new Set();
+  assetTypes.forEach(t => {
+    (ASSET_TYPE_CHANNEL_MAP[t] || []).forEach(ch => { if (approved.has(ch)) mapped.add(ch); });
+    if (t === 'Landing Page') mapped.add('Landing Page');
+  });
+  return Array.from(mapped).join(', ');
+}
 function campaignChannelsText(campaign){
   try {
     const mediaMix = campaign.mediaMixJson ? JSON.parse(campaign.mediaMixJson) : null;
@@ -22968,6 +23029,12 @@ Submit your response via the campaign_intake_turn tool.`;
           ? (() => { try { return typeof body.campaignTypeDetailModes === 'object' ? JSON.stringify(body.campaignTypeDetailModes) : existing.campaignTypeDetailModesJson; } catch (e){ return existing.campaignTypeDetailModesJson; } })()
           : existing.campaignTypeDetailModesJson,
         audienceSharedExperience: body.audienceSharedExperience !== undefined ? (body.audienceSharedExperience === 'separate' ? 'separate' : 'shared') : existing.audienceSharedExperience,
+        // 2026-09-24 — audienceAssetTypesJson, same merge-update convention
+        // as audienceSharedExperience/campaignTypeDetailModesJson above.
+        // See the ensureColumn() comment.
+        audienceAssetTypesJson: body.audienceAssetTypes !== undefined
+          ? (() => { try { return typeof body.audienceAssetTypes === 'object' ? JSON.stringify(body.audienceAssetTypes) : existing.audienceAssetTypesJson; } catch (e){ return existing.audienceAssetTypesJson; } })()
+          : existing.audienceAssetTypesJson,
         // 2026-09-17 — businessInitiative, same merge-update convention as
         // campaignType above. See the ensureColumn() comment and
         // BUSINESS_INITIATIVE_REGISTRY for the full context.
@@ -23117,6 +23184,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('campaignTypeDetailsJson', body.campaignTypeDetails !== undefined, merged.campaignTypeDetailsJson);
       addCol('campaignTypeDetailModesJson', body.campaignTypeDetailModes !== undefined, merged.campaignTypeDetailModesJson);
       addCol('audienceSharedExperience', body.audienceSharedExperience !== undefined, merged.audienceSharedExperience);
+      addCol('audienceAssetTypesJson', body.audienceAssetTypes !== undefined, merged.audienceAssetTypesJson);
       addCol('businessInitiative', body.businessInitiative !== undefined, merged.businessInitiative);
       addCol('stage', body.stage !== undefined, merged.stage);
       addCol('segment', body.segment !== undefined, merged.segment);
@@ -26075,6 +26143,22 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // (the interview and any already-applied winner are historical
       // record, not invalidated by a later edit elsewhere).
       const audienceLabel = typeof body.audience === 'string' && body.audience.trim() ? body.audience.trim() : null;
+      // 2026-09-24 — "Which asset types apply?" is now real and, per direct
+      // instruction, is meant to be "included in the contest": when this
+      // audience has asset types selected, scope the drafting prompt's
+      // channels line to just those types' mapped real channels instead of
+      // the whole campaign's approved list. Only meaningful alongside
+      // audienceLabel — the shared, campaign-wide contest never receives
+      // assetTypes. A shallow clone (not the original `campaign` row) is
+      // passed to runCandidateInterview so the DB row/insert below stay
+      // untouched by this prompt-only override.
+      const requestedAssetTypes = Array.isArray(body.assetTypes) ? body.assetTypes.filter(t => typeof t === 'string' && t.trim()) : [];
+      const campaignForPrompt = (audienceLabel && requestedAssetTypes.length)
+        ? (() => {
+            const scopedChannels = assetTypesToApprovedChannelsText(requestedAssetTypes, campaign);
+            return scopedChannels ? Object.assign({}, campaign, { channels: scopedChannels, mediaMixJson: null }) : campaign;
+          })()
+        : campaign;
       // 2026-09-17 — same required gate as messaging-ai-draft (see its own
       // comment): this endpoint is real AI campaign-copy generation too
       // (the campaign-level copy contest), so it's covered by the same
@@ -26093,7 +26177,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }
       const capCheck2 = checkInterviewWeeklyCap(campaign.accountId);
       if (capCheck2) return sendJson(res, 429, capCheck2);
-      const result = await runCandidateInterview(campaign, account, audienceLabel);
+      const result = await runCandidateInterview(campaignForPrompt, account, audienceLabel);
       if (!result.available){
         return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
       }
