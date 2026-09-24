@@ -11832,7 +11832,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-approve-edit-replace';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-inline-edit-save-card-anchor-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -50108,20 +50108,24 @@ function renderInterviewPanel(jobId, result){
     const idBase = `cjCopy-${jobId}-${c.key}`;
     const expandLink = !c.longCopy ? cmpExpandLinkHtml(`cjInterviewExpandBtn-${c.key}`, `expandCopyInterviewCandidate('${jobId}','${c.key}')`) : '';
     const sections = cmpRenderCardSections(c, idBase, expandLink);
-    return `<div style="border:${border};border-radius:8px;padding:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+    // 2026-09-24 — same bottom-anchored, centered action row fix as the
+    // Campaign panel's card (see its comment).
+    return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+        </div>
+        <div style="display:flex;gap:16px;margin:6px 0;">
+          <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+          <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
+        </div>
+        ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+        ${sections.draftHtml}
+        ${sections.assessHtml}
       </div>
-      <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
-      </div>
-      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
-      ${sections.draftHtml}
-      ${sections.assessHtml}
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
+      <div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;align-items:center;gap:8px;">
         <button type="button" class="btn-ghost" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
-        ${sections.linksHtml}
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">${sections.linksHtml}</div>
       </div>
     </div>`;
   }).join('');
@@ -54053,20 +54057,24 @@ function renderMfpInterviewPanel(result){
     const idBase = `mfpCopy-${result.interviewId}-${c.key}`;
     const mfpExpandLink = !c.longCopy ? cmpExpandLinkHtml(`mfpInterviewExpandBtn-${c.key}`, `expandMfpInterviewCandidate('${result.interviewId}','${c.key}')`) : '';
     const mfpSections = cmpRenderCardSections(c, idBase, mfpExpandLink);
-    return `<div style="border:${border};border-radius:8px;padding:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+    // 2026-09-24 — same bottom-anchored, centered action row fix as the
+    // Campaign panel's card (see its comment).
+    return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+        </div>
+        <div style="display:flex;gap:16px;margin:6px 0;">
+          <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+          <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
+        </div>
+        ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+        ${mfpSections.draftHtml}
+        ${mfpSections.assessHtml}
       </div>
-      <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
-      </div>
-      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
-      ${mfpSections.draftHtml}
-      ${mfpSections.assessHtml}
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
+      <div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;align-items:center;gap:8px;">
         <button type="button" class="btn-ghost" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
-        ${mfpSections.linksHtml}
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">${mfpSections.linksHtml}</div>
       </div>
     </div>`;
   }).join('');
@@ -55951,20 +55959,32 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
     const idBase = `cmpCopy-${panelId}-${c.key}`;
     const cmpExpandLink = !c.longCopy ? cmpExpandLinkHtml(`cmpExpandBtn-${panelId}-${c.key}`, `cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')`) : '';
     const cmpSections = cmpRenderCardSections(c, idBase, cmpExpandLink);
-    return `<div style="border:${border};border-radius:8px;padding:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+    // 2026-09-24 fix, per Todd's report ("Use this Draft button is above
+    // the two text links instead of being anchored to the bottom center
+    // of the card") — cards vary in height (approach length, whether a
+    // section is expanded), so a button placed in normal document flow
+    // lands at a different y position per card. Same fix as the Voice
+    // Contest card's own rating row (voiceContestAlignmentSectionHtml's
+    // sibling above): flex-column card + margin-top:auto on the action
+    // block pins it to the bottom, and grid's default align-items:stretch
+    // on the card row keeps every card the same height so those bottoms
+    // line up across the row.
+    return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+        </div>
+        <div style="display:flex;gap:16px;margin:6px 0;">
+          <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+          <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
+        </div>
+        ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+        ${cmpSections.draftHtml}
+        ${cmpSections.assessHtml}
       </div>
-      <div style="display:flex;gap:16px;margin:6px 0;">
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
-        <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
-      </div>
-      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
-      ${cmpSections.draftHtml}
-      ${cmpSections.assessHtml}
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
+      <div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;align-items:center;gap:8px;">
         <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
-        ${cmpSections.linksHtml}
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">${cmpSections.linksHtml}</div>
       </div>
     </div>`;
   }).join('');
@@ -56091,29 +56111,70 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
     longformEl.value = result.copy;
     cmpUnapproveMsgField('longform');
     cmpRenderAllMsgGates();
-    // 2026-09-24, per direct instruction — "give users the opportunity to
-    // Approve, Edit or Replace the winner's copy as the next step." That
-    // step already exists on this field: Long Form Copy has its own
-    // Approve/lock gate (CMP_MSG_FIELD_META.longform — the "Approve Long
-    // Form Copy →" button, cmpApproveMsgField('longform')) which is exactly
-    // an approve-as-is/edit/replace textarea, the same shape as the Voice
-    // Contest's own edit-then-save step (selectContestWinner() populating
-    // #voiceVisionStatement/#voiceLongformExample for the user to edit
-    // before an explicit save). So rather than building a second, separate
-    // edit surface, this just points the user at the one that's already
-    // there instead of the old flat "Applied to Long Form Copy above."
-    // confirmation — which is retired per direct instruction now that the
-    // winning copy is visible directly in the field below.
-    if (longformEl.scrollIntoView) longformEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 2026-09-24 rework, per Todd's follow-up — the first pass of this fix
+    // just pointed the user at the existing Long Form Copy field/Approve
+    // button elsewhere on the Brand Messaging card and scrolled to it, but
+    // that field can be off-screen in a collapsed section, so nothing
+    // visibly appeared here: "I received this message but there is no
+    // place to actually edit, save or replace like we do after the brand
+    // voice contest." Now builds a real inline edit-and-save card right in
+    // this panel, the same shape as the Voice Contest's own
+    // selectContestWinner() step (populate a textarea, let the user edit,
+    // then an explicit Save button) — cmpSaveCopyContestWinnerEdit() below
+    // does the save, still writing through to the real #cmpLongFormCopy
+    // field so it stays the actual campaign master.
     if (flag){
       flag.style.color = '';
-      flag.innerHTML = longformEl.disabled
-        ? `<div class="ai-status-bubble"><div style="font-weight:700;">Approve as is, Edit or Replace the winner with your final version</div><div style="margin-top:4px;">The final version is the master that will be parsed based on campaign assets selected. This field is locked until Key Message and the Brief Builder context above it are both filled in — the winning draft is saved either way and unlocks for editing once those are complete.</div></div>`
-        : `<div class="ai-status-bubble"><div style="font-weight:700;">Approve as is, Edit or Replace the winner with your final version</div><div style="margin-top:4px;">The final version is the master that will be parsed based on campaign assets selected. Edit the draft above if you'd like to change anything, then click "Approve Long Form Copy →" once it's ready.</div></div>`;
+      const editId = `${flagId}-winnerEdit`;
+      const saveFlagId = `${flagId}-winnerSaveFlag`;
+      flag.innerHTML = `<div class="ai-status-bubble">
+          <div style="font-weight:700;">Approve as is, Edit or Replace the winner with your final version</div>
+          <div style="margin-top:4px;">The final version is the master that will be parsed based on campaign assets selected.</div>
+        </div>
+        <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;">
+          <textarea id="${editId}" rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:8px;border:1px solid var(--line);border-radius:6px;">${escapeHtml(result.copy)}</textarea>
+          <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-primary" onclick="cmpSaveCopyContestWinnerEdit('${editId}','${saveFlagId}')">Save →</button>
+          </div>
+          <div id="${saveFlagId}" class="hint" style="margin-top:6px;"></div>
+        </div>`;
     }
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
   }
+}
+// 2026-09-24 — the explicit Save action for the inline winner-edit card
+// built in cmpSelectCopyContestCandidate() above (approve-as-is/edit/
+// replace, then Save — same shape as Voice Contest's saveVisionLongformEdits()).
+// Writes through to the real #cmpLongFormCopy field (whatever the user
+// left in the textarea — untouched, lightly edited, or fully replaced all
+// read the same way here) so it stays the actual campaign master, then
+// approves it immediately, same as clicking "Approve Long Form Copy →"
+// directly — clicking this Save button IS the explicit finalize action,
+// so it shouldn't need a second click on a different button elsewhere on
+// the page to actually count as approved.
+function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
+  const editEl = document.getElementById(editId);
+  const saveFlag = document.getElementById(saveFlagId);
+  const longformEl = document.getElementById('cmpLongFormCopy');
+  if (!editEl) return;
+  if (!longformEl){
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = "Couldn't find the Long Form Copy field on this page to save to — open Brand Messaging and try again."; }
+    return;
+  }
+  longformEl.value = editEl.value;
+  cmpUnapproveMsgField('longform');
+  cmpRenderAllMsgGates();
+  // Same lock gate as Key Message/Brief Builder elsewhere — a field that's
+  // still locked can't be approved yet, but the edit is saved into it
+  // either way and will be sitting there, ready to approve, once those
+  // upstream fields are complete.
+  if (longformEl.disabled){
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = "Saved — but Long Form Copy is locked until Key Message and the Brief Builder context above it are both filled in. It'll be sitting there ready to approve once those are complete."; }
+    return;
+  }
+  cmpApproveMsgField('longform');
+  if (saveFlag){ saveFlag.style.color = 'var(--cx)'; saveFlag.textContent = `Saved and approved ${new Date().toLocaleTimeString()} — this is now the campaign's master Long Form Copy.`; }
 }
 // 2026-09-24 — "View Previous Contests" for Campaign Copy Contest, per
 // direct instruction ("include one section to the client workspace for
