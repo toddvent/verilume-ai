@@ -8563,7 +8563,6 @@
           <div class="cmp-step0-jumpnav" id="cmpCreativeStepJumpNav">
             <a href="#cmpCreativeStep0" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0')">Step 0 — Recap &amp; Assessment</a>
             <a href="#cmpCreativeStep0RunContest" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0RunContest')">Step 0 — Run Campaign Copy Contest</a>
-            <a href="#cmpCreativeStep1" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep1')">Step 1 — Select Winner &amp; Apply</a>
           </div>
 
           <div class="module cmp-stage" id="cmpCreativeStep0" style="margin-bottom:0;">
@@ -8616,31 +8615,27 @@
             </div>
           </div>
 
-          <!-- 2026-09-22 — Creative Step 1: Select Winner & Apply, rebuilt to
-               match Creative-Step1-SelectWinner-Desktop.dc.html directly —
-               one card per audience showing that audience's already-run
-               contest results as scored entry cards, "Select as winner",
-               and "Apply winner to remainder of campaign" once a winner is
-               chosen. When Step 0's audience toggle is "shared," this step
-               points at the existing shared Brand Messaging contest instead
-               of duplicating it — Todd's own correction from the Copy
-               Versions round was "one shared contest, not two." Steps 2-3
-               remain wireframe-only. -->
-          <div class="module cmp-stage" id="cmpCreativeStep1" style="margin-bottom:0;margin-top:20px;">
-            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
-              <div class="cmp-step0-card-head" onclick="cmpToggleCreativeStepCard('cmpCreativeStep1Wrap','cmpCreativeStep1Chevron')">
-                <div>
-                  <div style="font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--media);margin-bottom:4px;">Creative — Step 1</div>
-                  <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:4px;">Select Winner &amp; Apply</div>
-                </div>
-                <span class="cmp-step0-card-chevron" id="cmpCreativeStep1Chevron">▾</span>
-              </div>
-              <div id="cmpCreativeStep1Wrap">
-                <p class="hint" style="margin:0 0 14px;">Each audience ran its own contest in Step 0 — pick the winning entry for each, then apply it to the rest of the campaign.</p>
-                <div id="cmpCreativeStep1Body"></div>
-              </div>
-            </div>
-          </div>
+          <!-- 2026-09-24 — Creative Step 1 ("Select Winner & Apply") removed
+               entirely, per direct instruction, now that the shared Brand
+               Messaging contest's own inline Approve/Edit/Replace card
+               (cmpSelectCopyContestCandidate()) covers that job for the
+               "shared creative experience" case. Known, accepted gap per
+               that same instruction: a campaign running SEPARATE per-
+               audience contests (c.audienceSharedExperience === 'separate')
+               no longer has any UI to pick/apply each audience's winner —
+               cmpStep1SelectLocalWinner()/cmpApplyAudienceWinner() and their
+               backing state (cmpStep1AudienceResults) are left in place,
+               unused by this workspace, since the planned Creative Asset
+               Selection build (next phase, per the same instruction) is
+               expected to be where per-audience winner selection lives
+               going forward — not rebuilt here. cmpRenderCreativeStep1()
+               itself is left defined (its existing `if (!body) return;`
+               guard makes every call to it, still present elsewhere in
+               this file, a safe no-op now that #cmpCreativeStep1Body no
+               longer exists in the DOM) rather than ripped out, so a future
+               round doesn't have to reconstruct its per-audience rendering
+               logic from scratch if a "separate contests" replacement UI
+               needs it as a starting point. -->
         </div>
         <div class="cmp-workspace-collab" id="cmpCreativeCollabMount"></div>
       </div>
@@ -11832,7 +11827,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-inline-edit-save-card-anchor-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-creative-step1-removed';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
