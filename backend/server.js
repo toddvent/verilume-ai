@@ -1513,24 +1513,33 @@ ensureColumn('campaigns', 'audienceSharedExperience', "TEXT DEFAULT 'shared'");
 // winner" default every other additive field here uses.
 ensureColumn('campaigns', 'audienceCopyJson', 'TEXT');
 
-// audienceAssetTypesJson — 2026-09-24, the real "Which asset types apply?"
-// card (Creative-Desktop.dc.html, between the audience toggle and "Run the
-// contest"). Per Todd's explicit scoping decisions this round: (1) uses the
-// wireframe's own fixed 9-item taxonomy (Direct Mail, Email, Print
-// Magazines, Video, Social, Display Ads, OOH, Radio, Landing Page) rather
-// than the app's real granular channel list — see ASSET_TYPE_CHANNEL_MAP
-// below for how those 9 map onto real approved channels; (2) NO real
-// per-audience budget gating — the schema has no audience×channel dollar
-// split anywhere (mediaMixJson.channels is campaign-wide; mediaMixJson.audience
-// is a weight with no dollar tie to channels), so a type is available
-// whenever it maps to at least one of this campaign's approved channels
-// (campaign.channels), not budget-gated per audience; (3) selection is
-// "included in the contest" — see POST .../copy-interview below, which
-// narrows the drafting prompt's "Channels this copy will run on" line to
-// the selected types' mapped channels when running one audience's contest.
-// Same shape/precedent as audienceCopyJson: one JSON object keyed by the
-// exact parsed audience name -> array of selected asset-type strings.
+// audienceAssetTypesJson — 2026-09-24, the first cut of "Which asset types
+// apply?" (Creative-Desktop.dc.html's card, between the audience toggle and
+// "Run the contest"), built as its own gated Step-0 card, per-audience,
+// shown only in "separate" audience mode. SUPERSEDED the same day, per
+// direct instruction ("Selecting the Asset is not a step. It's an optional
+// question that can be added next to Approved Channels" — reported after
+// Todd couldn't reach the card at all, since his campaign was in "shared"
+// mode, where it never rendered): replaced by campaignAssetTypesJson below,
+// one flat campaign-wide list, no audience keying, no gating, shown inline
+// in the Step 0 recap next to Approved Channels regardless of shared/
+// separate mode. Column left in place (unused, no longer written by the
+// frontend) rather than dropped — SQLite has no cheap column drop and nothing
+// still reads it.
 ensureColumn('campaigns', 'audienceAssetTypesJson', 'TEXT');
+
+// campaignAssetTypesJson — replaces audienceAssetTypesJson above, per the
+// 2026-09-24 follow-up instruction. Same fixed 9-item taxonomy (Direct Mail,
+// Email, Print Magazines, Video, Social, Display Ads, OOH, Radio, Landing
+// Page — see ASSET_TYPE_CHANNEL_MAP below) and same "available whenever it
+// maps to at least one of this campaign's approved channels" rule as before,
+// but now ONE flat array for the whole campaign — no per-audience split, no
+// gate on running the contest (it's explicitly optional: "an optional
+// question," not a required step). Selection is still "included in the
+// contest" when present — see POST .../copy-interview below, which narrows
+// the drafting prompt's channels line to the selected types' mapped channels
+// whenever any are selected, shared or per-audience contest alike.
+ensureColumn('campaigns', 'campaignAssetTypesJson', 'TEXT');
 
 // Added 2026-09-17 — Business Initiative, per direct instruction: "make sure
 // the key campaign type (e.g. launch) and business initiative is clear and
@@ -23121,12 +23130,15 @@ Submit your response via the campaign_intake_turn tool.`;
           ? (() => { try { return typeof body.campaignTypeDetailModes === 'object' ? JSON.stringify(body.campaignTypeDetailModes) : existing.campaignTypeDetailModesJson; } catch (e){ return existing.campaignTypeDetailModesJson; } })()
           : existing.campaignTypeDetailModesJson,
         audienceSharedExperience: body.audienceSharedExperience !== undefined ? (body.audienceSharedExperience === 'separate' ? 'separate' : 'shared') : existing.audienceSharedExperience,
-        // 2026-09-24 — audienceAssetTypesJson, same merge-update convention
-        // as audienceSharedExperience/campaignTypeDetailModesJson above.
-        // See the ensureColumn() comment.
-        audienceAssetTypesJson: body.audienceAssetTypes !== undefined
-          ? (() => { try { return typeof body.audienceAssetTypes === 'object' ? JSON.stringify(body.audienceAssetTypes) : existing.audienceAssetTypesJson; } catch (e){ return existing.audienceAssetTypesJson; } })()
-          : existing.audienceAssetTypesJson,
+        // 2026-09-24 — audienceAssetTypesJson is superseded (see its
+        // ensureColumn() comment) — no longer written; left read-only so an
+        // old saved value isn't silently wiped.
+        // campaignAssetTypesJson, same merge-update convention as
+        // audienceSharedExperience/campaignTypeDetailModesJson above. See
+        // the ensureColumn() comment.
+        campaignAssetTypesJson: body.campaignAssetTypes !== undefined
+          ? (() => { try { return Array.isArray(body.campaignAssetTypes) ? JSON.stringify(body.campaignAssetTypes) : existing.campaignAssetTypesJson; } catch (e){ return existing.campaignAssetTypesJson; } })()
+          : existing.campaignAssetTypesJson,
         // 2026-09-17 — businessInitiative, same merge-update convention as
         // campaignType above. See the ensureColumn() comment and
         // BUSINESS_INITIATIVE_REGISTRY for the full context.
@@ -23276,7 +23288,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('campaignTypeDetailsJson', body.campaignTypeDetails !== undefined, merged.campaignTypeDetailsJson);
       addCol('campaignTypeDetailModesJson', body.campaignTypeDetailModes !== undefined, merged.campaignTypeDetailModesJson);
       addCol('audienceSharedExperience', body.audienceSharedExperience !== undefined, merged.audienceSharedExperience);
-      addCol('audienceAssetTypesJson', body.audienceAssetTypes !== undefined, merged.audienceAssetTypesJson);
+      addCol('campaignAssetTypesJson', body.campaignAssetTypes !== undefined, merged.campaignAssetTypesJson);
       addCol('businessInitiative', body.businessInitiative !== undefined, merged.businessInitiative);
       addCol('stage', body.stage !== undefined, merged.stage);
       addCol('segment', body.segment !== undefined, merged.segment);
@@ -26236,16 +26248,19 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // record, not invalidated by a later edit elsewhere).
       const audienceLabel = typeof body.audience === 'string' && body.audience.trim() ? body.audience.trim() : null;
       // 2026-09-24 — "Which asset types apply?" is now real and, per direct
-      // instruction, is meant to be "included in the contest": when this
-      // audience has asset types selected, scope the drafting prompt's
-      // channels line to just those types' mapped real channels instead of
-      // the whole campaign's approved list. Only meaningful alongside
-      // audienceLabel — the shared, campaign-wide contest never receives
-      // assetTypes. A shallow clone (not the original `campaign` row) is
-      // passed to runCandidateInterview so the DB row/insert below stay
-      // untouched by this prompt-only override.
+      // instruction, is meant to be "included in the contest": when asset
+      // types are selected, scope the drafting prompt's channels line to
+      // just those types' mapped real channels instead of the whole
+      // campaign's approved list. Follow-up the same day, per direct
+      // instruction ("it's an optional question," not audience-gated):
+      // this is now a single campaign-wide selection, sent (or not) the
+      // same way whether the request is the shared, campaign-wide contest
+      // or one audience's — no longer conditioned on audienceLabel being
+      // set. A shallow clone (not the original `campaign` row) is passed to
+      // runCandidateInterview so the DB row/insert below stay untouched by
+      // this prompt-only override.
       const requestedAssetTypes = Array.isArray(body.assetTypes) ? body.assetTypes.filter(t => typeof t === 'string' && t.trim()) : [];
-      const campaignForPrompt = (audienceLabel && requestedAssetTypes.length)
+      const campaignForPrompt = requestedAssetTypes.length
         ? (() => {
             const scopedChannels = assetTypesToApprovedChannelsText(requestedAssetTypes, campaign);
             return scopedChannels ? Object.assign({}, campaign, { channels: scopedChannels, mediaMixJson: null }) : campaign;
