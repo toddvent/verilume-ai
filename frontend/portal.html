@@ -11832,7 +11832,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-silent-retry';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-copy-contest-collapsed-cards-usedraft-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -50106,24 +50106,22 @@ function renderInterviewPanel(jobId, result){
       </div>`;
     }
     const idBase = `cjCopy-${jobId}-${c.key}`;
+    const expandLink = !c.longCopy ? cmpExpandLinkHtml(`cjInterviewExpandBtn-${c.key}`, `expandCopyInterviewCandidate('${jobId}','${c.key}')`) : '';
+    const sections = cmpRenderCardSections(c, idBase, expandLink);
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
-      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
-      ${cmpRenderTruncatedCopy(c.copy, idBase)}
-      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-        ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
-      </div>` : ''}
-      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;">
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+      ${sections.draftHtml}
+      ${sections.assessHtml}
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
         <button type="button" class="btn-ghost" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
-        ${!c.longCopy ? cmpExpandLinkHtml(`cjInterviewExpandBtn-${c.key}`, `expandCopyInterviewCandidate('${jobId}','${c.key}')`) : ''}
+        ${sections.linksHtml}
       </div>
     </div>`;
   }).join('');
@@ -54000,9 +53998,18 @@ async function toggleMfpScoreHistory(part){
 // visible in this workspace directly rather than only in the Ops Console.
 let lastMfpInterviewCache = {};
 async function runMfpInterview(){
-  const project = findProject(currentCampaignId, currentProjectId);
+  // 2026-09-24 — same raw-`currentCampaignId` exposure fixed in
+  // runMfpInterviewSelect()/expandMfpInterviewCandidate() below (see their
+  // comments): resolve through cmpCurrentCampaign() so this doesn't
+  // silently no-op on the rail hub the same way "Use this draft" did.
+  const campaign = cmpCurrentCampaign();
+  const project = campaign ? findProject(campaign.id, currentProjectId) : null;
   const holder = document.getElementById('mfpInterviewPanel');
-  if (!project || !holder) return;
+  if (!holder) return;
+  if (!project){
+    holder.innerHTML = `<div class="hint" style="color:var(--advocacy);">Couldn't find this project on the campaign — try reopening it, then run the interview again.</div>`;
+    return;
+  }
   holder.innerHTML = renderAiStatusBubble("Getting one real response from each AI partner, grounded in your brief's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   try {
     // 2026-09-24 fix — this hits the identical heavy copy-interview
@@ -54012,7 +54019,7 @@ async function runMfpInterview(){
     // "signal is aborted without reason" bug those two already got fixed
     // for, just not yet reported from this panel. Matched to the same
     // 100000ms timeout / 2-attempt silent-retry treatment.
-    const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview`, {
+    const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceKey: mfpSourceKey(project, 'master') }),
       timeoutMs: 100000
@@ -54044,24 +54051,22 @@ function renderMfpInterviewPanel(result){
       </div>`;
     }
     const idBase = `mfpCopy-${result.interviewId}-${c.key}`;
+    const mfpExpandLink = !c.longCopy ? cmpExpandLinkHtml(`mfpInterviewExpandBtn-${c.key}`, `expandMfpInterviewCandidate('${result.interviewId}','${c.key}')`) : '';
+    const mfpSections = cmpRenderCardSections(c, idBase, mfpExpandLink);
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
-      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
-      ${cmpRenderTruncatedCopy(c.copy, idBase)}
-      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-        ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
-      </div>` : ''}
-      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;">
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+      ${mfpSections.draftHtml}
+      ${mfpSections.assessHtml}
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
         <button type="button" class="btn-ghost" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
-        ${!c.longCopy ? cmpExpandLinkHtml(`mfpInterviewExpandBtn-${c.key}`, `expandMfpInterviewCandidate('${result.interviewId}','${c.key}')`) : ''}
+        ${mfpSections.linksHtml}
       </div>
     </div>`;
   }).join('');
@@ -54076,8 +54081,19 @@ async function expandMfpInterviewCandidate(interviewId, candidateKey){
   const btn = document.getElementById(`mfpInterviewExpandBtn-${candidateKey}`);
   if (btn && btn.getAttribute('aria-disabled') === 'true') return; // already in flight
   cmpSetExpandLinkBusy(btn, true);
+  // 2026-09-24 — same raw-`currentCampaignId` exposure as
+  // runMfpInterviewSelect() above (see its comment); routed through
+  // cmpCurrentCampaign() so this doesn't silently 404/fail on the rail hub
+  // the same way that select bug did.
+  const campaign = cmpCurrentCampaign();
+  if (!campaign){
+    cmpSetExpandLinkBusy(btn, false);
+    const flag = document.getElementById('mfpInterviewSelectFlag');
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't find the campaign for this page — try reopening it, then expand again."; }
+    return;
+  }
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview/${encodeURIComponent(interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }
     });
     if (!resp.ok){
@@ -54107,11 +54123,31 @@ async function expandMfpInterviewCandidate(interviewId, candidateKey){
 // object with one flat string; a plain-textarea project (One-Pager,
 // Analytics Brief) replaces masterContent directly.
 async function runMfpInterviewSelect(interviewId, candidateKey){
-  const project = findProject(currentCampaignId, currentProjectId);
   const flag = document.getElementById('mfpInterviewSelectFlag');
-  if (!project) return;
+  // 2026-09-24 fix, per Todd's report ("Use Draft button did not work —
+  // is this another area impacted by campaignId not populated") — yes,
+  // same bug class. This used to resolve the project via the raw
+  // `currentCampaignId` global directly, and the fetch URL below used
+  // that same raw global too — on the rail-based Campaign Workspace Hub,
+  // that global can be unset even while a campaign is genuinely loaded
+  // (see cxmedia-currentcampaignid-rail-hub-root-cause-fix-2026-09-23.md),
+  // so both silently failed with no error shown: `if (!project) return;`
+  // gave zero feedback, indistinguishable from the button doing nothing.
+  // Now resolves through cmpCurrentCampaign() (which falls back to the
+  // rail's own loaded-campaign lookup) and surfaces an explicit message
+  // when that still comes back empty.
+  const campaign = cmpCurrentCampaign();
+  if (!campaign){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't find the campaign for this page — try reopening it from the campaign list, then use this draft again."; }
+    return;
+  }
+  const project = findProject(campaign.id, currentProjectId);
+  if (!project){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't find this project on the campaign — try reopening it, then use this draft again."; }
+    return;
+  }
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
     });
     if (!resp.ok){
@@ -55780,13 +55816,22 @@ function cmpRenderTruncatedCopy(text, idBase){
     <div id="${restId}" style="display:none;font-size:0.8125rem;margin:-2px 0 6px;white-space:pre-wrap;">${escapeHtml(rest)}</div>
     <a href="javascript:void(0)" onclick="cmpToggleShowMore('${restId}', this)" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">Show more →</a>`;
 }
-// A text-link version of the "Expand to long format" trigger — same guard
+// A text-link version of the AI long-form-expansion trigger — same guard
 // logic a disabled button would give (prevents a second click mid-request),
 // implemented via aria-disabled/pointer-events since <a> has no real
 // `.disabled` property the way <button> does. Callers pass their own onclick
 // handler name; this just renders the markup consistently everywhere.
+//
+// 2026-09-24 relabel, per Todd's cosmetic round ("only show the Approach,
+// then the option to view the long format or our assessment") — "long
+// format" is now the name of the *reveal-the-draft* toggle below
+// (cmpToggleCardSection), since the destination field this whole panel
+// drafts for is literally called "Long Form Copy." Kept this AI-expansion
+// trigger's own label as "Generate longer version" so the two no longer
+// collide — this one still fires a real second AI call for a longer
+// version, the toggle below just shows/hides copy already in hand.
 function cmpExpandLinkHtml(id, onclickCall){
-  return `<a href="javascript:void(0)" id="${id}" onclick="${onclickCall}" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">Expand to long format →</a>`;
+  return `<a href="javascript:void(0)" id="${id}" onclick="${onclickCall}" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">Generate longer version →</a>`;
 }
 function cmpSetExpandLinkBusy(linkEl, busy, label){
   if (!linkEl) return;
@@ -55794,13 +55839,63 @@ function cmpSetExpandLinkBusy(linkEl, busy, label){
     linkEl.setAttribute('aria-disabled', 'true');
     linkEl.style.pointerEvents = 'none';
     linkEl.style.opacity = '0.55';
-    linkEl.textContent = 'Expanding…';
+    linkEl.textContent = 'Generating…';
   } else {
     linkEl.removeAttribute('aria-disabled');
     linkEl.style.pointerEvents = '';
     linkEl.style.opacity = '';
-    linkEl.textContent = label || 'Expand to long format →';
+    linkEl.textContent = label || 'Generate longer version →';
   }
+}
+// 2026-09-24 — collapsed-by-default card sections ("View long format" /
+// "View our assessment" below), per the same cosmetic round: the card's
+// default view is now just the score + Approach line, with the draft copy
+// and our scoring rationale both tucked behind explicit reveal links.
+// State is tracked here (by DOM id), not just toggled on the element,
+// so a section stays open across this panel's own re-renders — e.g.
+// clicking "Generate longer version" inside an open draft section
+// re-renders the whole panel, and without this the section would
+// silently collapse back shut the moment the new longer version arrived.
+const cmpCardSectionOpenState = {};
+function cmpToggleCardSection(id, linkEl, showLabel, hideLabel){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const nextShowing = el.style.display === 'none';
+  el.style.display = nextShowing ? 'block' : 'none';
+  cmpCardSectionOpenState[id] = nextShowing;
+  if (linkEl) linkEl.textContent = nextShowing ? hideLabel : showLabel;
+}
+// Renders the two card sections shared by all three candidate-card
+// renderers: the collapsible draft (short copy + long-form expansion) and
+// the collapsible "our assessment" (relevance rationale + compliance
+// flags), plus the pair of reveal links that control them. `idBase` must
+// be unique per candidate/card (same value callers already pass to
+// cmpRenderTruncatedCopy); `expandLinkHtml` is the caller's own
+// cmpExpandLinkHtml(...) markup for the "Generate longer version" action,
+// since that onclick handler differs per surface (Campaign/Creative
+// Job/MFP each have their own expand function).
+function cmpRenderCardSections(c, idBase, expandLinkHtml){
+  const draftId = `${idBase}-draftbox`;
+  const assessId = `${idBase}-assessbox`;
+  const draftOpen = !!cmpCardSectionOpenState[draftId];
+  const assessOpen = !!cmpCardSectionOpenState[assessId];
+  const draftHtml = `<div id="${draftId}" style="display:${draftOpen ? 'block' : 'none'};margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+    ${cmpRenderTruncatedCopy(c.copy, idBase)}
+    ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+      <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+      ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
+    </div>` : expandLinkHtml}
+  </div>`;
+  const hasNote = !!c.note;
+  const hasFlags = !!(c.flags && c.flags.length);
+  const assessHtml = `<div id="${assessId}" style="display:${assessOpen ? 'block' : 'none'};margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+    ${hasNote ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.note)}</div>` : ''}
+    ${hasFlags ? `<div class="hint" style="color:var(--advocacy);margin-top:${hasNote ? '4px' : '0'};">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+    ${(!hasNote && !hasFlags) ? '<div class="hint">No issues flagged.</div>' : ''}
+  </div>`;
+  const linksHtml = `<a href="javascript:void(0)" onclick="cmpToggleCardSection('${draftId}', this, 'View long format →', 'Hide long format')" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">${draftOpen ? 'Hide long format' : 'View long format →'}</a>
+    <a href="javascript:void(0)" onclick="cmpToggleCardSection('${assessId}', this, 'View our assessment →', 'Hide our assessment')" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">${assessOpen ? 'Hide our assessment' : 'View our assessment →'}</a>`;
+  return { draftHtml, assessHtml, linksHtml };
 }
 // Same card layout as renderMfpInterviewPanel() (Marketing Function
 // Projects' own contest panel) — kept as a separate function rather than
@@ -55854,24 +55949,22 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
     // show/hide toggle, and it keeps both lengths visible for comparison
     // once fetched.
     const idBase = `cmpCopy-${panelId}-${c.key}`;
+    const cmpExpandLink = !c.longCopy ? cmpExpandLinkHtml(`cmpExpandBtn-${panelId}-${c.key}`, `cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')`) : '';
+    const cmpSections = cmpRenderCardSections(c, idBase, cmpExpandLink);
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
-      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
-      ${cmpRenderTruncatedCopy(c.copy, idBase)}
-      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-        ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
-      </div>` : ''}
-      ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;">
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+      ${cmpSections.draftHtml}
+      ${cmpSections.assessHtml}
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
         <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
-        ${!c.longCopy ? cmpExpandLinkHtml(`cmpExpandBtn-${panelId}-${c.key}`, `cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')`) : ''}
+        ${cmpSections.linksHtml}
       </div>
     </div>`;
   }).join('');
@@ -55956,7 +56049,17 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
   flagId = flagId || 'cmpCopyContestSelectFlag';
   const campaign = cmpCurrentCampaign();
   const flag = document.getElementById(flagId);
-  if (!campaign) return;
+  // 2026-09-24 fix, per Todd's report ("Use Draft button did not work —
+  // is this another area impacted by campaignId not populated") — this
+  // used to return silently here with zero feedback whenever
+  // cmpCurrentCampaign() came back empty, which is indistinguishable from
+  // the button doing nothing. Same root-cause class documented in
+  // cxmedia-currentcampaignid-rail-hub-root-cause-fix-2026-09-23.md — now
+  // surfaces an explicit message instead of a silent no-op.
+  if (!campaign){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Couldn't find the campaign for this page — try reopening it from the campaign list, then use this draft again."; }
+    return;
+  }
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey })
