@@ -2030,7 +2030,22 @@
      non-scrolling shell (nothing for "sticky" to stick against). Below the
      header sits a slim, light secondary row (.cmp-pitch-subrow) naming
      which screen this is — the same title/close content the old dark bar
-     carried, restyled to match — and then the breadcrumb, unchanged. */
+     carried, restyled to match — and then the breadcrumb, unchanged.
+     2026-09-24, per direct instruction ("eliminate AI BRAIN RECOMMENDS and
+     BUDGET & RECOMMENDATION in blue with the X. Pull the working area and
+     collab center up closer to the header") — .cmp-pitch-subrow's markup
+     is removed from all 6 overlays (same shared component, same redundancy
+     everywhere: the title/badge duplicated what the breadcrumb — now living
+     in the header itself, see .cch-breadcrumb-row — already shows for the
+     active step). Its rules are kept below, unused, rather than deleted,
+     matching this file's convention for an element with real removal
+     history; nothing currently references them. Each overlay's backdrop
+     click (.cmp-pitch-overlay's own onclick) still closes it — that was
+     always the close button's alternate path, confirmed as sufficient on
+     its own now that the button itself is gone. Removing the row's ~56px
+     (8px top padding + 48px height) already pulls .cmp-pitch-body up much
+     closer to the header; .cmp-pitch-left/.cmp-pitch-right-body's own top
+     padding (below) was trimmed further for the same "pull up closer" ask. */
   .cch-panel-mount{padding:18px 28px 0;flex-shrink:0;}
   .cmp-pitch-panel .cmp-campaign-header{position:static;top:auto;}
   .cmp-pitch-subrow{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:8px 28px 0;}
@@ -2083,7 +2098,11 @@
      is what makes both columns' own scroll/height rules actually engage. */
   .cmp-pitch-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:minmax(0,1fr);}
   @media (max-width:1000px){ .cmp-pitch-body{grid-template-columns:1fr;overflow-y:auto;} }
-  .cmp-pitch-left{overflow-y:auto;padding:24px 28px;border-right:1px solid var(--line);}
+  /* 2026-09-24 — top padding trimmed 24px -> 16px, per direct instruction
+     ("pull the working area... up closer to the header"), now that
+     .cmp-pitch-subrow no longer sits above this and takes up its own
+     vertical space (see that rule's own comment for the full history). */
+  .cmp-pitch-left{overflow-y:auto;padding:16px 28px 24px;border-right:1px solid var(--line);}
   /* 2026-09-20 — Creative workspace's #cmpCreativeLeft holds the three real
      stages relocated into it (see cmpOpenCreativeWorkspace()'s own
      comment); stack them with the same 18px gap Creative-Desktop.dc.html
@@ -2143,7 +2162,10 @@
   .cmp-wf-qa-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;}
   .cmp-wf-qa-item{display:flex;align-items:center;gap:8px;font-size:0.8125rem;color:var(--ink);}
   .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
-  .cmp-pitch-right-body{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;}
+  /* 2026-09-24 — top padding trimmed 20px -> 16px, same "pull the...
+     collab center up closer to the header" instruction and reasoning as
+     .cmp-pitch-left's own comment just above. */
+  .cmp-pitch-right-body{flex:1;overflow-y:auto;padding:16px 22px 20px;display:flex;flex-direction:column;gap:14px;}
   .cmp-pitch-right-input{border-top:1px solid var(--line);padding:14px 22px 18px;background:var(--white);}
   /* Round 132bx follow-up, per direct instruction: "rail completely goes
      away and content working area expands into that space to give it a
@@ -8465,13 +8487,6 @@
     <div class="cmp-pitch-overlay" id="cmpObjectivesOverlay" onclick="cmpCloseObjectivesIntake()"></div>
     <div class="cmp-pitch-panel" id="cmpObjectivesPanel">
       <div class="cch-panel-mount" id="cmpObjectivesHeaderMount"></div>
-      <div class="cmp-pitch-subrow">
-        <h2>Objectives</h2>
-        <div class="cmp-pitch-subrow-right">
-          <span class="cmp-pitch-subrow-badge">Objectives</span>
-          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseObjectivesIntake()" aria-label="Close" title="Close">✕</button>
-        </div>
-      </div>
       <!-- 2026-09-16, per Objectives-Desktop.dc.html read directly (not
            guessed at): the wireframe is two columns — the dialogue on the
            left, the Collaboration Center on the right, same width (340px)
@@ -8550,13 +8565,6 @@
     <div class="cmp-pitch-overlay" id="cmpPitchOverlay" onclick="cmpCloseRecommendationPitch()"></div>
     <div class="cmp-pitch-panel" id="cmpPitchPanel">
       <div class="cch-panel-mount" id="cmpPitchHeaderMount"></div>
-      <div class="cmp-pitch-subrow">
-        <h2>AI Brain Recommendation</h2>
-        <div class="cmp-pitch-subrow-right">
-          <span class="cmp-pitch-subrow-badge">Budget &amp; Recommendation</span>
-          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseRecommendationPitch()" aria-label="Close" title="Close">✕</button>
-        </div>
-      </div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
         <div class="cmp-workspace-collab" id="cmpPitchCollabMount"></div>
@@ -8593,13 +8601,6 @@
     <div class="cmp-pitch-overlay" id="cmpCreativeOverlay" onclick="cmpCloseCreativeWorkspace()"></div>
     <div class="cmp-pitch-panel" id="cmpCreativePanel">
       <div class="cch-panel-mount" id="cmpCreativeHeaderMount"></div>
-      <div class="cmp-pitch-subrow">
-        <h2>Creative</h2>
-        <div class="cmp-pitch-subrow-right">
-          <span class="cmp-pitch-subrow-badge" id="cmpCreativeStatusBadge">Creative</span>
-          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseCreativeWorkspace()" aria-label="Close" title="Close">✕</button>
-        </div>
-      </div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpCreativeLeft">
           <!-- 2026-09-22, third pass — per direct feedback: (1) recap
@@ -8754,13 +8755,6 @@
     <div class="cmp-pitch-overlay" id="cmpTraffickingOverlay" onclick="cmpCloseTraffickingWorkspace()"></div>
     <div class="cmp-pitch-panel" id="cmpTraffickingPanel">
       <div class="cch-panel-mount" id="cmpTraffickingHeaderMount"></div>
-      <div class="cmp-pitch-subrow">
-        <h2>Trafficking</h2>
-        <div class="cmp-pitch-subrow-right">
-          <span class="cmp-pitch-subrow-badge" id="cmpTraffickingStatusBadge">Trafficking</span>
-          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseTraffickingWorkspace()" aria-label="Close" title="Close">✕</button>
-        </div>
-      </div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpTraffickingLeft">
           <div class="module cmp-stage open" id="cmpTraffickingQrUtmCard" style="overflow:visible;">
@@ -8801,13 +8795,6 @@
     <div class="cmp-pitch-overlay" id="cmpAnalysisOverlay" onclick="cmpCloseAnalysisWorkspace()"></div>
     <div class="cmp-pitch-panel" id="cmpAnalysisPanel">
       <div class="cch-panel-mount" id="cmpAnalysisHeaderMount"></div>
-      <div class="cmp-pitch-subrow">
-        <h2>Analysis</h2>
-        <div class="cmp-pitch-subrow-right">
-          <span class="cmp-pitch-subrow-badge" id="cmpAnalysisStatusBadge">Analysis</span>
-          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseAnalysisWorkspace()" aria-label="Close" title="Close">✕</button>
-        </div>
-      </div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpAnalysisLeft">
           <div class="module cmp-stage open" id="cmpAnalysisMarketCard" style="overflow:visible;">
@@ -8853,13 +8840,6 @@
     <div class="cmp-pitch-overlay" id="cmpCxVisionOverlay" onclick="cmpCloseCxVisionWorkspace()"></div>
     <div class="cmp-pitch-panel" id="cmpCxVisionPanel">
       <div class="cch-panel-mount" id="cmpCxVisionHeaderMount"></div>
-      <div class="cmp-pitch-subrow">
-        <h2>Media + CX Vision</h2>
-        <div class="cmp-pitch-subrow-right">
-          <span class="cmp-pitch-subrow-badge" id="cmpCxVisionStatusBadge">Media + CX Vision</span>
-          <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseCxVisionWorkspace()" aria-label="Close" title="Close">✕</button>
-        </div>
-      </div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpCxVisionLeft"></div>
         <div class="cmp-workspace-collab" id="cmpCxVisionCollabMount"></div>
@@ -11903,7 +11883,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-hide-pending-contest-cards-too';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-eliminate-pitch-subrow';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
