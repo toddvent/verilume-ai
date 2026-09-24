@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-09-23-interview-panel-creative-focus-scope (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-09-24-campaign-contest-review (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -17461,7 +17461,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-23-interview-panel-creative-focus-scope',
+        buildStamp: '2026-09-24-campaign-contest-review',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -26661,6 +26661,56 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       });
       const productTypes = Object.entries(INTERVIEW_PRODUCT_TYPES).map(([key, v]) => ({ key, ...v }));
       return sendJson(res, 200, { accountId, productTypes, interviews });
+    }
+
+    // GET /api/ops/accounts/:id/campaign-contests — 2026-09-24, per direct
+    // instruction: "add the campaign contest participant lookup to the ops
+    // console just like voice." Same pattern as
+    // GET /api/ops/accounts/:id/voice-contests and .../interviews above:
+    // staff-only, ADMIN_API_TOKEN-gated, UNREDACTED (real vendor/model per
+    // candidate — the client never sees this, only the blind Option N
+    // label via redactCandidatesForClient). Covers campaign_copy_interviews
+    // specifically (the Campaign Copy Contest — Brand Messaging's shared
+    // Long Form Copy contest, Step 1's per-audience contests, and every MFP
+    // project's own "Interview candidates" run all write to this one
+    // table), which had no ops-console visibility at all until now — unlike
+    // Voice Contest (3 fixed contest types with a clean "current
+    // selection per type" summary), campaign contests don't have a small
+    // fixed type set (sourceKey varies per audience/project), so this
+    // returns the most recent N runs account-wide instead, newest first,
+    // each carrying its campaign name and sourceKey/audience so staff can
+    // tell them apart without cross-referencing by hand. Optional
+    // ?campaignId= narrows to one campaign (same idea as the interviews
+    // endpoint's ?productType= filter).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'campaign-contests'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const accountId = decodeURIComponent(parts[3]);
+      const campaignIdFilter = url.searchParams.get('campaignId') || '';
+      const rows = campaignIdFilter
+        ? db.prepare('SELECT * FROM campaign_copy_interviews WHERE accountId = ? AND campaignId = ? ORDER BY createdAt DESC LIMIT 25').all(accountId, campaignIdFilter)
+        : db.prepare('SELECT * FROM campaign_copy_interviews WHERE accountId = ? ORDER BY createdAt DESC LIMIT 25').all(accountId);
+      const campaignNameCache = {};
+      const interviews = rows.map(r => {
+        let candidates = [];
+        try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+        if (!(r.campaignId in campaignNameCache)){
+          const c = db.prepare('SELECT name FROM campaigns WHERE id = ?').get(r.campaignId);
+          campaignNameCache[r.campaignId] = c ? c.name : null;
+        }
+        return {
+          id: r.id, campaignId: r.campaignId, campaignName: campaignNameCache[r.campaignId],
+          sourceKey: r.sourceKey, audience: r.audience || null, requestedBy: r.requestedBy,
+          candidates, // unredacted — real vendor/model included, staff-only
+          selectedCandidateKey: r.selectedCandidateKey, selectedBy: r.selectedBy, selectedAt: r.selectedAt,
+          createdAt: r.createdAt
+        };
+      });
+      // Every campaign this account has, so the Ops Console can offer a
+      // "narrow to this campaign" dropdown without a second round trip.
+      const campaigns = db.prepare('SELECT id, name FROM campaigns WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      return sendJson(res, 200, { accountId, campaigns, interviews });
     }
 
     // POST /api/campaigns/:id/send-to-trafficking — round 73, per direct
