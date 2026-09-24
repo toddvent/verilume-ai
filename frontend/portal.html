@@ -11809,7 +11809,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-interview-panel-use-this-draft-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-23-interview-panel-mobile-cards';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -50078,24 +50078,25 @@ function renderInterviewPanel(jobId, result){
         <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
+    const idBase = `cjCopy-${jobId}-${c.key}`;
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
       ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
-      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
-      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
-      </div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
+      ${cmpRenderTruncatedCopy(c.copy, idBase)}
+      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+        ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
+      </div>` : ''}
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;">
         <button type="button" class="btn-ghost" onclick="runInterviewSelect('${jobId}', '${result.interviewId}', '${c.key}')">Use this draft →</button>
-        ${!c.longCopy ? `<button type="button" class="btn-ghost" id="cjInterviewExpandBtn-${c.key}" onclick="expandCopyInterviewCandidate('${jobId}','${c.key}')">Expand to long format →</button>` : ''}
+        ${!c.longCopy ? cmpExpandLinkHtml(`cjInterviewExpandBtn-${c.key}`, `expandCopyInterviewCandidate('${jobId}','${c.key}')`) : ''}
       </div>
     </div>`;
   }).join('');
@@ -50168,14 +50169,15 @@ async function expandCopyInterviewCandidate(jobId, candidateKey){
   const holder = document.getElementById('copyInterviewPanel');
   if (!result || !holder) return;
   const btn = document.getElementById(`cjInterviewExpandBtn-${candidateKey}`);
-  if (btn){ btn.disabled = true; btn.textContent = 'Expanding…'; }
+  if (btn && btn.getAttribute('aria-disabled') === 'true') return; // already in flight
+  cmpSetExpandLinkBusy(btn, true);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(result.interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
-      if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+      cmpSetExpandLinkBusy(btn, false);
       const flag = document.getElementById('copyInterviewSelectFlag');
       if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't expand this draft — try again."; }
       return;
@@ -50185,7 +50187,7 @@ async function expandCopyInterviewCandidate(jobId, candidateKey){
     if (idx !== -1 && data.candidate){ result.candidates[idx] = { ...result.candidates[idx], ...data.candidate }; }
     holder.innerHTML = renderInterviewPanel(jobId, result);
   } catch (e){
-    if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+    cmpSetExpandLinkBusy(btn, false);
     const flag = document.getElementById('copyInterviewSelectFlag');
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — couldn't expand this draft."; }
   }
@@ -54011,24 +54013,25 @@ function renderMfpInterviewPanel(result){
         <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
+    const idBase = `mfpCopy-${result.interviewId}-${c.key}`;
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
       ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
-      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
-      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
-      </div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
+      ${cmpRenderTruncatedCopy(c.copy, idBase)}
+      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+        ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
+      </div>` : ''}
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;">
         <button type="button" class="btn-ghost" onclick="runMfpInterviewSelect('${result.interviewId}', '${c.key}')">Use this draft →</button>
-        ${!c.longCopy ? `<button type="button" class="btn-ghost" id="mfpInterviewExpandBtn-${c.key}" onclick="expandMfpInterviewCandidate('${result.interviewId}','${c.key}')">Expand to long format →</button>` : ''}
+        ${!c.longCopy ? cmpExpandLinkHtml(`mfpInterviewExpandBtn-${c.key}`, `expandMfpInterviewCandidate('${result.interviewId}','${c.key}')`) : ''}
       </div>
     </div>`;
   }).join('');
@@ -54041,14 +54044,15 @@ async function expandMfpInterviewCandidate(interviewId, candidateKey){
   const holder = document.getElementById('mfpInterviewPanel');
   if (!result || !holder) return;
   const btn = document.getElementById(`mfpInterviewExpandBtn-${candidateKey}`);
-  if (btn){ btn.disabled = true; btn.textContent = 'Expanding…'; }
+  if (btn && btn.getAttribute('aria-disabled') === 'true') return; // already in flight
+  cmpSetExpandLinkBusy(btn, true);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(currentCampaignId)}/copy-interview/${encodeURIComponent(interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
-      if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+      cmpSetExpandLinkBusy(btn, false);
       const flag = document.getElementById('mfpInterviewSelectFlag');
       if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't expand this draft — try again."; }
       return;
@@ -54058,7 +54062,7 @@ async function expandMfpInterviewCandidate(interviewId, candidateKey){
     if (idx !== -1 && data.candidate){ result.candidates[idx] = { ...result.candidates[idx], ...data.candidate }; }
     holder.innerHTML = renderMfpInterviewPanel(result);
   } catch (e){
-    if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+    cmpSetExpandLinkBusy(btn, false);
     const flag = document.getElementById('mfpInterviewSelectFlag');
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Backend unreachable — couldn't expand this draft."; }
   }
@@ -55699,6 +55703,61 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
     if (btn) btn.disabled = false;
   }
 }
+// 2026-09-23 — mobile-friendly cosmetic pass on every candidate card, per
+// direct instruction: (1) scores move up under the label, (2) the draft
+// collapses to its first paragraph with a "Show more" text link instead of
+// dumping the whole draft inline, and (3) "Expand to long format" becomes a
+// text link instead of a button — only "Use this draft" stays a button, as
+// the one primary action on the card. Shared by all three candidate-card
+// renderers (renderCmpCopyContestPanel, renderInterviewPanel,
+// renderMfpInterviewPanel) so the mobile treatment is identical everywhere,
+// not re-invented per surface.
+function cmpFirstParagraph(text){
+  if (!text) return { first: '', rest: '' };
+  const parts = String(text).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  if (parts.length <= 1) return { first: text, rest: '' };
+  return { first: parts[0], rest: parts.slice(1).join('\n\n') };
+}
+function cmpToggleShowMore(id, linkEl){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const showing = el.style.display !== 'none';
+  el.style.display = showing ? 'none' : 'block';
+  if (linkEl) linkEl.textContent = showing ? 'Show more →' : 'Show less';
+}
+// idBase must be unique per candidate/card on the page (callers compose it
+// from panelId/jobId/interviewId + the candidate key).
+function cmpRenderTruncatedCopy(text, idBase){
+  const { first, rest } = cmpFirstParagraph(text);
+  const firstHtml = `<div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(first)}</div>`;
+  if (!rest) return firstHtml;
+  const restId = `${idBase}-rest`;
+  return `${firstHtml}
+    <div id="${restId}" style="display:none;font-size:0.8125rem;margin:-2px 0 6px;white-space:pre-wrap;">${escapeHtml(rest)}</div>
+    <a href="javascript:void(0)" onclick="cmpToggleShowMore('${restId}', this)" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">Show more →</a>`;
+}
+// A text-link version of the "Expand to long format" trigger — same guard
+// logic a disabled button would give (prevents a second click mid-request),
+// implemented via aria-disabled/pointer-events since <a> has no real
+// `.disabled` property the way <button> does. Callers pass their own onclick
+// handler name; this just renders the markup consistently everywhere.
+function cmpExpandLinkHtml(id, onclickCall){
+  return `<a href="javascript:void(0)" id="${id}" onclick="${onclickCall}" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">Expand to long format →</a>`;
+}
+function cmpSetExpandLinkBusy(linkEl, busy, label){
+  if (!linkEl) return;
+  if (busy){
+    linkEl.setAttribute('aria-disabled', 'true');
+    linkEl.style.pointerEvents = 'none';
+    linkEl.style.opacity = '0.55';
+    linkEl.textContent = 'Expanding…';
+  } else {
+    linkEl.removeAttribute('aria-disabled');
+    linkEl.style.pointerEvents = '';
+    linkEl.style.opacity = '';
+    linkEl.textContent = label || 'Expand to long format →';
+  }
+}
 // Same card layout as renderMfpInterviewPanel() (Marketing Function
 // Projects' own contest panel) — kept as a separate function rather than
 // reused directly because "Use this draft →" here applies straight into
@@ -55750,24 +55809,25 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
     // draft rather than replacing it — simpler and less error-prone than a
     // show/hide toggle, and it keeps both lengths visible for comparison
     // once fetched.
+    const idBase = `cmpCopy-${panelId}-${c.key}`;
     return `<div style="border:${border};border-radius:8px;padding:10px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
       </div>
       ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
-      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
-      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
-      </div>` : ''}
       <div style="display:flex;gap:16px;margin:6px 0;">
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
         <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
       </div>
+      ${cmpRenderTruncatedCopy(c.copy, idBase)}
+      ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
+        ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
+      </div>` : ''}
       ${c.flags && c.flags.length ? `<div class="hint" style="color:var(--advocacy);">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;">
         <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
-        ${!c.longCopy ? `<button type="button" class="btn-ghost" id="cmpExpandBtn-${panelId}-${c.key}" onclick="cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')">Expand to long format →</button>` : ''}
+        ${!c.longCopy ? cmpExpandLinkHtml(`cmpExpandBtn-${panelId}-${c.key}`, `cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')`) : ''}
       </div>
     </div>`;
   }).join('');
@@ -55790,7 +55850,8 @@ async function cmpExpandCopyContestCandidate(panelId, flagId, key){
   if (!result || !panel) return;
   const campaign = cmpCurrentCampaign();
   if (!campaign) return;
-  if (btn){ btn.disabled = true; btn.textContent = 'Expanding…'; }
+  if (btn && btn.getAttribute('aria-disabled') === 'true') return; // already in flight
+  cmpSetExpandLinkBusy(btn, true);
   try {
     const data = await cmpFetchJsonWithRetry(
       `${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(result.interviewId)}/candidate/${encodeURIComponent(key)}/expand`,
@@ -55802,7 +55863,7 @@ async function cmpExpandCopyContestCandidate(panelId, flagId, key){
     }
     panel.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
   } catch (e){
-    if (btn){ btn.disabled = false; btn.textContent = 'Expand to long format →'; }
+    cmpSetExpandLinkBusy(btn, false);
     const flag = document.getElementById(flagId);
     if (flag) flag.textContent = `Couldn't expand this draft: ${e.message || 'backend unreachable'}.`;
   }
