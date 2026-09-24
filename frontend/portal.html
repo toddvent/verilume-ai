@@ -781,6 +781,16 @@
   .cmp-step0-audience-toggle-opt{padding:6px 16px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);user-select:none;-webkit-user-select:none;}
   .cmp-step0-audience-toggle-opt.on{background:var(--cx);color:var(--white);}
   .cmp-step0-callout{border-radius:10px;padding:11px 14px;font-size:0.75rem;line-height:1.5;background:#EAF1FB;color:#1E5FA8;margin-top:12px;}
+  /* 2026-09-24 — "Which asset types apply?" chip states, matching the
+     wireframe's asset-chip pattern (on / plain-available / off-budget) —
+     "off-budget" here means "no approved channel maps to this type," per
+     the v1 scoping decision to gate on real campaign-approved channels
+     rather than invented per-audience budget numbers. */
+  .cmp-asset-type-chip{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:0.75rem;font-weight:600;padding:7px 13px;border-radius:999px;border:1px solid var(--line);color:var(--ink);background:var(--white);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;user-select:none;-webkit-user-select:none;}
+  .cmp-asset-type-chip:hover{border-color:var(--cx);color:var(--cx);}
+  .cmp-asset-type-chip.on{background:#EAF1FB;border-color:#1E5FA8;color:#1E5FA8;}
+  .cmp-asset-type-chip.off-budget{opacity:0.4;border-style:dashed;cursor:not-allowed;}
+  .cmp-asset-type-chip.off-budget:hover{border-color:var(--line);color:var(--ink);}
   /* 2026-09-22 — recap rows rebuilt to match Creative-Desktop.dc.html's own
      .recap-row/.recap-label/.recap-value exactly (label left, value
      right-aligned, same row) — the pre-existing .cmp-brief-recap-item used
@@ -8557,11 +8567,16 @@
                and (6) "Run the contest" renamed "Run Campaign Copy Contest"
                per direct instruction. Static, always-present, re-rendered on
                open via cmpRenderCreativeStep0()/cmpRenderCreativeStep1().
-               The wireframe's own "Which asset types apply?" card is still
-               NOT built — no real backend data to ground it in (flagged to
-               Todd, not silently dropped). Steps 2-3 remain wireframe-only. -->
+               2026-09-24 — the wireframe's own "Which asset types apply?"
+               card is now real (cmpRenderStep0AssetTypes()), matching the
+               wireframe's own card order: Recap -> Which asset types apply?
+               -> Run the contest. Only shown in "separate" audience mode —
+               see that function's comment for the v1 scope Todd chose
+               (fixed 9-item taxonomy, no real per-audience budget gating).
+               Steps 2-3 remain wireframe-only. -->
           <div class="cmp-step0-jumpnav" id="cmpCreativeStepJumpNav">
             <a href="#cmpCreativeStep0" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0')">Step 0 — Recap &amp; Assessment</a>
+            <a href="#cmpCreativeStep0AssetTypes" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0AssetTypes')">Step 0 — Which Asset Types Apply</a>
             <a href="#cmpCreativeStep0RunContest" onclick="cmpScrollToCreativeStep(event,'cmpCreativeStep0RunContest')">Step 0 — Run Campaign Copy Contest</a>
           </div>
 
@@ -8595,6 +8610,25 @@
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- 2026-09-24 — "Which asset types apply?", real per Todd's
+               direct instruction. Only rendered in "separate" audience mode
+               (cmpRenderStep0AssetTypes() empties/hides this card entirely
+               in "shared" mode — matching the wireframe, which only shows
+               this card when "No — each audience gets its own" is
+               selected). Selections gate that audience's "Run Contest"
+               button below and are passed into the contest request so the
+               draft is scoped to those asset types' real channels — see
+               cmpRunAudienceContest()'s comment. -->
+          <div class="module cmp-stage" id="cmpCreativeStep0AssetTypes" style="margin-bottom:0;margin-top:20px;display:none;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div class="cmp-step0-card-head" onclick="cmpToggleCreativeStepCard('cmpCreativeStep0AssetTypesBody','cmpCreativeStep0AssetTypesChevron')">
+                <div style="font-size:1.125rem;font-weight:700;color:var(--ink);">Which Asset Types Apply</div>
+                <span class="cmp-step0-card-chevron" id="cmpCreativeStep0AssetTypesChevron">▾</span>
+              </div>
+              <div id="cmpCreativeStep0AssetTypesBody"></div>
             </div>
           </div>
 
@@ -11827,7 +11861,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-creative-step1-removed';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-creative-asset-types-card';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15857,6 +15891,39 @@ const RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT = ['Brand Search', 'Internal Email
 // cleanly fit Print/Direct Mail/TV — bucketed into Digital as the most
 // defensible catch-all rather than inventing a 5th group the audit didn't
 // ask for. Flagged here, not silently decided.
+// 2026-09-24 — Creative Step 0's "Which asset types apply?" card. Fixed
+// taxonomy from the wireframe (Creative-Desktop.dc.html), per Todd's direct
+// scoping decision — NOT the same list as CHANNEL_GROUPS above (that's a
+// 4-group picker for Audience & Channels; this is the wireframe's own
+// 9-item list, used only here). CMP_ASSET_TYPE_CHANNEL_MAP must be kept in
+// sync with ASSET_TYPE_CHANNEL_MAP in backend/server.js (duplicated, not
+// shared — different processes); see that constant's comment for the
+// mapping assumptions (Video->TV channels, Radio+Podcasts together,
+// Landing Page has no real paid-channel equivalent and is exempted from
+// the approved-channel gate below rather than mapped).
+const CMP_ASSET_TYPES = ['Direct Mail', 'Email', 'Print Magazines', 'Video', 'Social', 'Display Ads', 'OOH', 'Radio', 'Landing Page'];
+const CMP_ASSET_TYPE_CHANNEL_MAP = {
+  'Direct Mail': ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
+  'Email': ['Internal Email', 'Email — Remarketing'],
+  'Print Magazines': ['Magazines', 'Newspapers'],
+  'Video': ['Linear TV', 'OTV', 'CTV'],
+  'Social': ['Paid Social'],
+  'Display Ads': ['Programmatic Display', 'Partner Media', 'Retail Media', 'Remarketing'],
+  'OOH': ['Out-of-Home'],
+  'Radio': ['Radio', 'Podcasts'],
+  'Landing Page': []
+};
+// Per Todd's explicit v1 decision: no real per-audience budget exists to
+// gate on (mediaMixJson.channels is campaign-wide; mediaMixJson.audience is
+// a weight with no dollar tie to channels) — so "available" here just means
+// "this asset type maps to at least one of this CAMPAIGN's approved
+// channels" (campaign.channels), the same for every audience. Landing Page
+// is always available (owned media, no approved-channel equivalent).
+function cmpAssetTypeAvailable(assetType, c){
+  if (assetType === 'Landing Page') return true;
+  const approved = new Set(cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean));
+  return (CMP_ASSET_TYPE_CHANNEL_MAP[assetType] || []).some(ch => approved.has(ch));
+}
 const CHANNEL_GROUPS = [
   { key: 'Print Publications', members: ['Magazines', 'Newspapers'] },
   { key: 'Direct Mail', members: ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'] },
@@ -40394,6 +40461,7 @@ function cmpRenderCreativeStep0(c){
   cmpRenderStep0Headline(c);
   cmpRenderStep0DetailFields(c);
   cmpRenderStep0AudienceToggle(c);
+  cmpRenderStep0AssetTypes(c);
   cmpRenderStep0RunContest(c);
 }
 // 2026-09-23 fix, per direct report (Todd): "Entering copy in the Headline
@@ -40717,12 +40785,14 @@ async function cmpSetAudienceSharedExperience(val){
   const c = cmpApplyCampaignFieldLocal({ audienceSharedExperience: val });
   if (!c) return;
   cmpRenderStep0AudienceToggle(c);
-  // Step 1's shape (one shared contest pointer vs. one card per audience)
-  // and the "Run Campaign Copy Contest" card's own buttons (one shared vs.
-  // one per audience) both depend directly on this toggle — re-render both
-  // the moment the toggle changes, not just on next workspace open. All
-  // three renders happen immediately, before the network write below.
+  // Step 1's shape (one shared contest pointer vs. one card per audience),
+  // "Which Asset Types Apply" (shown only in separate mode), and the "Run
+  // Campaign Copy Contest" card's own buttons (one shared vs. one per
+  // audience) all depend directly on this toggle — re-render every one the
+  // moment the toggle changes, not just on next workspace open. All renders
+  // happen immediately, before the network write below.
   cmpRenderCreativeStep1(c);
+  cmpRenderStep0AssetTypes(c);
   cmpRenderStep0RunContest(c);
   await cmpPersistCampaignField(c, { audienceSharedExperience: val }, 'Same experience for all audiences toggle');
 }
@@ -40826,6 +40896,65 @@ let cmpStep1AudienceNames = [];
 // (cmpApplyAudienceWinner). Cleared implicitly on workspace re-open since
 // it's re-declared fresh each time this script block runs.
 let cmpStep1AudienceResults = {};
+// 2026-09-24 — "Which asset types apply?", real per Todd's direct
+// instruction and scoping decisions (see CMP_ASSET_TYPES/
+// CMP_ASSET_TYPE_CHANNEL_MAP above and the audienceAssetTypesJson
+// ensureColumn() comment in server.js for the full reasoning). In-memory
+// state, seeded from the campaign's own saved value on every render —
+// idx-keyed to match cmpStep1AudienceNames' index-based onclick convention
+// (audience names are arbitrary free text, unsafe to embed directly in an
+// attribute). {audienceName: ['Direct Mail','Email',...]}.
+let cmpStep0AssetTypesByAudience = {};
+function cmpAudienceAssetTypesMap(c){
+  if (!c || !c.audienceAssetTypesJson) return {};
+  try { const parsed = JSON.parse(c.audienceAssetTypesJson); return (parsed && typeof parsed === 'object') ? parsed : {}; } catch (e){ return {}; }
+}
+// Only shown in "separate" mode, per the wireframe (this card only appears
+// once "No — each audience gets its own" is selected) — hidden entirely,
+// not just empty, in "shared" mode.
+function cmpRenderStep0AssetTypes(c){
+  const cardEl = document.getElementById('cmpCreativeStep0AssetTypes');
+  const holder = document.getElementById('cmpCreativeStep0AssetTypesBody');
+  if (!cardEl || !holder || !c) return;
+  const mode = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
+  if (mode !== 'separate'){ cardEl.style.display = 'none'; return; }
+  const audiences = cmpParseAudienceList(cmpCreativeAudienceText(c));
+  if (!audiences.length){ cardEl.style.display = 'none'; return; }
+  cardEl.style.display = '';
+  const saved = cmpAudienceAssetTypesMap(c);
+  // Re-seed from the saved campaign value every render, but keep any
+  // in-memory selection already made this session for an audience not yet
+  // in the saved map (avoids clobbering an unsaved click mid-request).
+  audiences.forEach(name => {
+    if (!cmpStep0AssetTypesByAudience[name]) cmpStep0AssetTypesByAudience[name] = Array.isArray(saved[name]) ? saved[name].slice() : [];
+  });
+  holder.innerHTML = `
+    <p class="hint" style="margin:0 0 14px;">Options are limited to this campaign's approved channels (Audience &amp; Channels) — greyed-out types have no approved channel on this campaign. Specific dimensions (size, format) are chosen after Long Form Copy is final, in a later step.</p>` +
+    audiences.map((name, idx) => {
+      const selected = cmpStep0AssetTypesByAudience[name] || [];
+      const chips = CMP_ASSET_TYPES.map(t => {
+        const available = cmpAssetTypeAvailable(t, c);
+        const on = selected.includes(t);
+        const cls = !available ? 'cmp-asset-type-chip off-budget' : (on ? 'cmp-asset-type-chip on' : 'cmp-asset-type-chip');
+        return `<span class="${cls}" ${available ? `onclick="cmpToggleStep0AssetType(${idx},'${escapeHtml(t).replace(/'/g, "\\'")}')"` : 'title="No approved channel for this asset type on this campaign"'}>${on ? '✓ ' : ''}${escapeHtml(t)}</span>`;
+      }).join('');
+      return `
+      <div class="cmp-audience-block" style="border:1px solid var(--line-hairline);border-radius:14px;padding:16px 18px;background:var(--paper-dim);margin-bottom:12px;">
+        <div style="font-weight:700;font-size:0.84375rem;color:var(--ink);margin-bottom:10px;">${escapeHtml(name)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${chips}</div>
+      </div>`;
+    }).join('');
+}
+async function cmpToggleStep0AssetType(idx, assetType){
+  const name = cmpStep1AudienceNames[idx];
+  const c = cmpCurrentCampaign();
+  if (!name || !c) return;
+  const list = cmpStep0AssetTypesByAudience[name] || (cmpStep0AssetTypesByAudience[name] = []);
+  const at = list.indexOf(assetType);
+  if (at >= 0) list.splice(at, 1); else list.push(assetType);
+  cmpRenderStep0AssetTypes(c);
+  await cmpPersistCampaignField(c, { audienceAssetTypes: cmpStep0AssetTypesByAudience }, 'Which asset types apply');
+}
 // Step 0's "Run the contest" card — matches Creative-Desktop.dc.html's own
 // last card exactly: shared mode gets one button (mounts the existing
 // campaign-wide contest machinery, same one Brand Messaging's Long Form
@@ -40884,6 +41013,17 @@ async function cmpRunAudienceContest(idx){
     if (status){ status.style.color = 'var(--advocacy)'; status.textContent = `Set ${gate.missing.join(' and ')} on Brand Messaging before running this contest.`; }
     return;
   }
+  // 2026-09-24 — "Asset Types should be before the contest and included in
+  // the contest" (direct instruction): require at least one asset type
+  // selected above for this audience before running its contest, and pass
+  // the selection along so the backend scopes the drafting prompt's
+  // channels to just those types — see assetTypesToApprovedChannelsText()
+  // in server.js.
+  const selectedAssetTypes = cmpStep0AssetTypesByAudience[audienceName] || [];
+  if (!selectedAssetTypes.length){
+    if (status){ status.style.color = 'var(--advocacy)'; status.textContent = 'Select at least one asset type for this audience above before running its contest.'; }
+    return;
+  }
   if (status){ status.style.color = ''; status.textContent = 'Drafting copy for this audience — three independent angles plus every configured vendor…'; }
   if (btn) btn.disabled = true;
   try {
@@ -40902,7 +41042,7 @@ async function cmpRunAudienceContest(idx){
     // AI partners to finish, but a silent second attempt reliably clears it.
     const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName }),
+      body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName, assetTypes: selectedAssetTypes }),
       timeoutMs: 100000
     }, 2, 700);
     if (!result.available){
