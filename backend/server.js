@@ -21091,6 +21091,98 @@ async function handleRequest(req, res) {
       });
     }
 
+    // GET /api/ops/partner-reliability — staff-only, per direct instruction:
+    // "only show contest panels that return a result... I would want a
+    // report in ops console to monitor to make sure we don't have a
+    // problem with a specific partner." Hiding a no-result candidate card
+    // client-side (renderCmpCopyContestPanel/renderInterviewPanel/
+    // renderMfpInterviewPanel/renderBrandVoiceContestPanel — see their own
+    // 2026-09-24 comments) makes a failure invisible to the client, which
+    // means staff need their own way to see it — this is that. Scans every
+    // real *_interviews table's candidatesJson directly (not
+    // contest_rankings, which only logs at /select time and would miss any
+    // interview nobody ever picked a winner from — the exact runs most
+    // likely to be silent partner failures) across the platform, not one
+    // account, since a broken partner is a platform-wide problem. Every
+    // candidate across these 4 tables shares the same vendor pool
+    // (INTERVIEW_ANTHROPIC_SLOT/INTERVIEW_VENDOR_REGISTRY — see that
+    // registry's own comment), so aggregating by `vendor` is meaningful
+    // across tables. "Not configured" candidates (no API key set for that
+    // vendor on this deployment) are excluded entirely — that's an
+    // intentional deployment state, not a partner reliability signal.
+    // pending (mid-retry) candidates are excluded from THIS call's window
+    // too — they haven't reached a final state yet; retry-pending always
+    // writes pending:false back to candidatesJson once it resolves (see
+    // that endpoint's own comment), so a real failure still gets counted
+    // here on the next report load. ?days= (default 14, clamped 1-90)
+    // narrows the lookback; ?accountId= optionally narrows to one account
+    // for spot-checking rather than the platform-wide default view.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'partner-reliability'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const daysRaw = parseInt(url.searchParams.get('days'), 10);
+      const days = Number.isFinite(daysRaw) ? Math.min(90, Math.max(1, daysRaw)) : 14;
+      const accountIdFilter = url.searchParams.get('accountId');
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      // Fixed, hardcoded table/label pairs — never built from request input.
+      const PARTNER_RELIABILITY_SOURCES = [
+        { table: 'campaign_copy_interviews', label: 'Campaign Copy (Campaign / MFP / Audience contests)' },
+        { table: 'creative_job_interviews', label: 'Creative Job' },
+        { table: 'account_voice_interviews', label: 'Brand Voice / Video Strategy / Video Script' },
+        { table: 'pr_copy_interviews', label: 'PR Copy' }
+      ];
+      const rows = [];
+      PARTNER_RELIABILITY_SOURCES.forEach(src => {
+        const sql = accountIdFilter
+          ? `SELECT id, accountId, candidatesJson, createdAt FROM ${src.table} WHERE createdAt >= ? AND accountId = ?`
+          : `SELECT id, accountId, candidatesJson, createdAt FROM ${src.table} WHERE createdAt >= ?`;
+        const args = accountIdFilter ? [cutoff, accountIdFilter] : [cutoff];
+        const recs = db.prepare(sql).all(...args);
+        recs.forEach(r => {
+          let candidates = [];
+          try { candidates = JSON.parse(r.candidatesJson) || []; } catch (e){ candidates = []; }
+          candidates.forEach(c => {
+            if (!c || !c.configured || c.pending) return;
+            // A candidate "returned a result" if it produced real content —
+            // copy (every copy-panel shape) or visionStatement+longformExample
+            // (the Brand Voice/Video shape) — matching exactly what the
+            // client-facing panels now treat as "has a result" client-side.
+            const succeeded = !!c.copy || !!(c.visionStatement && c.longformExample);
+            rows.push({
+              source: src.label, accountId: r.accountId, createdAt: r.createdAt,
+              vendor: c.vendor || c.label || c.key || 'Unknown',
+              succeeded, error: c.error || null
+            });
+          });
+        });
+      });
+      const byVendor = {};
+      rows.forEach(r => {
+        const v = byVendor[r.vendor] || (byVendor[r.vendor] = { vendor: r.vendor, attempts: 0, failures: 0, lastFailureAt: null, lastFailureError: null, lastFailureAccountId: null, bySource: {} });
+        v.attempts++;
+        if (!r.succeeded){
+          v.failures++;
+          if (!v.lastFailureAt || r.createdAt > v.lastFailureAt){
+            v.lastFailureAt = r.createdAt; v.lastFailureError = r.error; v.lastFailureAccountId = r.accountId;
+          }
+        }
+        const s = v.bySource[r.source] || (v.bySource[r.source] = { attempts: 0, failures: 0 });
+        s.attempts++;
+        if (!r.succeeded) s.failures++;
+      });
+      const summary = Object.values(byVendor).map(v => ({
+        vendor: v.vendor, attempts: v.attempts, failures: v.failures,
+        failureRate: v.attempts ? Math.round((v.failures / v.attempts) * 100) : 0,
+        lastFailureAt: v.lastFailureAt, lastFailureError: v.lastFailureError, lastFailureAccountId: v.lastFailureAccountId,
+        bySource: Object.entries(v.bySource).map(([source, s]) => ({
+          source, attempts: s.attempts, failures: s.failures,
+          failureRate: s.attempts ? Math.round((s.failures / s.attempts) * 100) : 0
+        }))
+      })).sort((a, b) => b.failureRate - a.failureRate || b.attempts - a.attempts);
+      return sendJson(res, 200, { days, accountId: accountIdFilter || null, summary, generatedAt: new Date().toISOString() });
+    }
+
     // POST /api/accounts/:id/profile — round 19, Brand Foundations (Company
     // Profile). Edits industry/footprint/audience/wealth after the fact —
     // these normally arrive once from the assessment handoff, but a team
