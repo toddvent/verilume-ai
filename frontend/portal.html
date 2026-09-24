@@ -785,7 +785,14 @@
      wireframe's asset-chip pattern (on / plain-available / off-budget) —
      "off-budget" here means "no approved channel maps to this type," per
      the v1 scoping decision to gate on real campaign-approved channels
-     rather than invented per-audience budget numbers. */
+     rather than invented per-audience budget numbers.
+     2026-09-24 follow-up — per direct report the chip row read as almost
+     entirely unselectable (only Landing Page ever had an approved channel
+     behind it on a real campaign), this row was rebuilt as a checkbox-
+     dropdown (.cd-select — see cmpRenderCampaignAssetTypesRow()'s own
+     comment) instead. Rules kept below, unused, matching this file's
+     convention for an element with real removal history; nothing
+     currently references .cmp-asset-type-chip. */
   .cmp-asset-type-chip{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:0.75rem;font-weight:600;padding:7px 13px;border-radius:999px;border:1px solid var(--line);color:var(--ink);background:var(--white);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;user-select:none;-webkit-user-select:none;}
   .cmp-asset-type-chip:hover{border-color:var(--cx);color:var(--cx);}
   .cmp-asset-type-chip.on{background:#EAF1FB;border-color:#1E5FA8;color:#1E5FA8;}
@@ -11883,7 +11890,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-eliminate-pitch-subrow';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-asset-types-checkbox-dropdown';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -40456,12 +40463,21 @@ function cmpRenderCreativeStep0(c){
       // 2026-09-24 — "Which Asset Types Apply," per direct instruction:
       // "It's an optional question that can be added next to Approved
       // Channels" (not a separate gated step — see cmpRenderCampaignAssetTypesRow()'s
-      // own comment for the full history). Chips render into
-      // #cmpCreativeAssetTypesVal below via that function, called at the
-      // bottom of this render pass once the row exists in the DOM.
+      // own comment for the full history). Renders into #cmpCreativeAssetTypesVal
+      // below via that function, called at the bottom of this render pass
+      // once the row exists in the DOM.
+      // 2026-09-24 follow-up, per direct report: the chip row's dashed/
+      // disabled chips read as "nothing here is selectable" (only Landing
+      // Page ever had an approved channel behind it, so every other chip
+      // was permanently greyed-out) — converted to the same reusable
+      // checkbox-dropdown multi-select ("cd-select") already used for
+      // Campaign Audiences/Product Group/Creative Focus Group, per Todd's
+      // direct instruction ("Add as a multi-select drop-down below the
+      // toggles"). See cmpRenderCampaignAssetTypesRow()'s own comment for
+      // how the dropdown is populated.
       `<div class="cmp-step0-recap-row" style="align-items:flex-start;">
         <span class="cmp-step0-recap-label" style="padding-top:2px;">Which Asset Types Apply <span style="font-weight:400;color:#9A9AA0;">(optional)</span></span>
-        <span class="cmp-step0-recap-val" id="cmpCreativeAssetTypesVal"></span>
+        <div class="cd-select" id="cmpCreativeAssetTypesVal" style="max-width:280px;"></div>
       </div>`;
     // 2026-09-23 fix, per direct report (Todd): "Approved Channels" was
     // reading campaign.channels/c.mediaMix, but those are legacy/dead
@@ -40979,6 +40995,26 @@ function cmpCampaignAssetTypesFromSaved(c){
 // differs from the one cmpCampaignAssetTypes currently holds; otherwise
 // keeps any in-memory selection already made this session so a click
 // mid-request isn't clobbered by a stale reload.
+// 2026-09-24 follow-up, per direct report ("The list on the website does
+// not include selectable items today... Landing Page is the only one that
+// actually works. Add as a multi-select drop-down"): every asset type
+// except Landing Page had no approved channel behind it on Todd's test
+// campaign, so the old chip row read as almost entirely broken/unselectable
+// rather than as "not applicable to this campaign's channel plan" — the
+// chips' own disabled/dashed styling wasn't making that distinction
+// legible. Rebuilt on the same reusable checkbox-dropdown multi-select
+// ("cd-select") already used for Campaign Audiences/Product Group/Creative
+// Focus Group (see cmpRenderCdSelect() and its own 2026-09-20 comment) —
+// same disabled-with-tooltip treatment for an unavailable type, but now
+// inside a closed-by-default dropdown with a live summary, consistent with
+// how every other multi-select in this app already reads. Kept a real Set
+// (cmpCampaignAssetTypesSelectedSet) alongside the existing
+// cmpCampaignAssetTypes array — cmpRenderCdSelect needs Set.has(), the
+// server payload and cmpAudienceContestSourceKey() call sites elsewhere in
+// this file still read the array — the two are kept in sync on every
+// toggle rather than picking one representation and converting at every
+// call site.
+let cmpCampaignAssetTypesSelectedSet = new Set();
 function cmpRenderCampaignAssetTypesRow(c){
   const holder = document.getElementById('cmpCreativeAssetTypesVal');
   if (!holder || !c) return;
@@ -40987,20 +41023,20 @@ function cmpRenderCampaignAssetTypesRow(c){
     cmpCampaignAssetTypes = cmpCampaignAssetTypesFromSaved(c);
     cmpCampaignAssetTypesForId = cId;
   }
-  const chips = CMP_ASSET_TYPES.map(t => {
+  cmpCampaignAssetTypesSelectedSet = new Set(cmpCampaignAssetTypes);
+  const options = CMP_ASSET_TYPES.map(t => {
     const available = cmpAssetTypeAvailable(t, c);
-    const on = cmpCampaignAssetTypes.includes(t);
-    const cls = !available ? 'cmp-asset-type-chip off-budget' : (on ? 'cmp-asset-type-chip on' : 'cmp-asset-type-chip');
-    return `<span class="${cls}" ${available ? `onclick="cmpToggleCampaignAssetType('${escapeHtml(t).replace(/'/g, "\'")}')"` : 'title="No approved channel for this asset type on this campaign"'}>${on ? '✓ ' : ''}${escapeHtml(t)}</span>`;
-  }).join('');
-  holder.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>`;
+    return { value: t, label: t, disabled: !available, title: available ? '' : 'No approved channel for this asset type on this campaign' };
+  });
+  cmpRenderCdSelect('cmpCreativeAssetTypesVal', options, cmpCampaignAssetTypesSelectedSet, 'cmpToggleCampaignAssetType', 'Select asset type(s)');
 }
 async function cmpToggleCampaignAssetType(assetType){
   const c = cmpCurrentCampaign();
   if (!c) return;
   const at = cmpCampaignAssetTypes.indexOf(assetType);
   if (at >= 0) cmpCampaignAssetTypes.splice(at, 1); else cmpCampaignAssetTypes.push(assetType);
-  cmpRenderCampaignAssetTypesRow(c);
+  cmpCampaignAssetTypesSelectedSet = new Set(cmpCampaignAssetTypes);
+  if (cmpCdSelectRenderers['cmpCreativeAssetTypesVal']) cmpCdSelectRenderers['cmpCreativeAssetTypesVal']();
   await cmpPersistCampaignField(c, { campaignAssetTypes: cmpCampaignAssetTypes }, 'Which asset types apply');
 }
 // Step 0's "Run the contest" card — matches Creative-Desktop.dc.html's own
