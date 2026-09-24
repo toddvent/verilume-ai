@@ -1863,7 +1863,12 @@
      approved artboard) — a small caption sits below the circle again,
      naming what the number is without the circle needing its own text
      label. Kept short and muted so it doesn't compete with the circle
-     itself. */
+     itself.
+     2026-09-24, per direct instruction ("Remove Campaign Relevance Score
+     label under score") — removed from the markup again (third reversal on
+     this same element; see the two comments above). Rule kept here, unused,
+     rather than deleted, given that history — nothing currently references
+     .cch-score-caption. */
   .cch-score-caption{font-size:0.6875rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;text-align:center;white-space:nowrap;background:var(--paper);padding:1px 6px;border-radius:6px;}
   /* Round 132bx follow-up — a thin white ring plus a deeper, more diffused
      shadow (in place of the flatter var(--shadow-lg)) so the circle reads
@@ -1930,7 +1935,12 @@
      top/bottom without colliding with .cch-top above or .cch-meta below;
      .cch-progress itself gets padding-right so its pills stop short of
      the circle instead of running underneath its label text. */
-  .cch-progress-row{position:relative;margin:34px 0;}
+  .cch-progress-row{position:relative;margin:34px 0 14px;}
+  /* Holds the relocated workspace breadcrumb — see its own CSS comment
+     above (.cmp-breadcrumb) for the full history. Sits directly under
+     .cch-progress-row with a small top gap, reading as one continuous
+     block rather than a separate bar. */
+  .cch-breadcrumb-row{margin:0 0 8px;}
   /* 2026-09-19 — restyled from labeled pill buttons to a thin, unlabeled
      multi-segment track per the updated CampaignHeader.dc.html wireframe
      (Todd's latest design-review round). The underlying data/behavior is
@@ -2033,14 +2043,34 @@
      move between steps without closing out back to the Hub first, since
      "the cards are not separate stage experiences. They jump to a single
      campaign experience workflow including all steps once you are in."
-     See cmpRenderWorkspaceBreadcrumb(). */
+     See cmpRenderWorkspaceBreadcrumb().
+     2026-09-24, per direct instruction ("Move primary campaign navigation
+     into header aligned with the progress bar. Color code the step label to
+     indicate active status.") — this used to be its own full-width bar
+     (padding/background/border-bottom below) sitting under each overlay's
+     title subrow, outside the header card entirely. It now renders inside
+     #cmpCampaignHeader, directly below .cch-progress-row (see
+     .cch-breadcrumb-row and its own markup comment) — the
+     .cch-breadcrumb-row override just below strips the old bar chrome
+     (padding/background/border) so it reads as part of the header card, not
+     a separate section under it. Non-active steps are now color-coded by
+     each card's real status (cmpWorkspaceCardStatus() — same
+     not-started/in-progress/complete palette as .cch-progress-seg above),
+     not just plain ink; the active step's navy pill treatment is unchanged
+     and still wins visually (see the .active rule's source order below).
+     Font size bumped 12px -> 14px per direct instruction, now that it's a
+     primary nav element in the header rather than a secondary bar under it. */
   .cmp-breadcrumb{display:flex;align-items:center;gap:8px;padding:10px 28px;background:var(--paper-dim);border-bottom:1px solid var(--line);flex-shrink:0;flex-wrap:wrap;}
-  .cmp-breadcrumb-step{font-size:0.75rem;font-weight:600;color:var(--muted);padding:3px 10px;border-radius:var(--radius-pill);}
-  .cmp-breadcrumb-step:not(.disabled){cursor:pointer;color:var(--ink);}
-  .cmp-breadcrumb-step:not(.disabled):hover{background:var(--white);}
+  .cch-breadcrumb-row .cmp-breadcrumb{padding:0;background:transparent;border-bottom:none;gap:6px;}
+  .cmp-breadcrumb-step{font-size:0.875rem;font-weight:600;color:var(--muted);padding:3px 10px;border-radius:var(--radius-pill);}
+  .cmp-breadcrumb-step:not(.disabled):not(.active){cursor:pointer;}
+  .cmp-breadcrumb-step:not(.disabled):not(.active):hover{background:var(--white);}
+  .cmp-breadcrumb-step.status-not-started{color:var(--muted);}
+  .cmp-breadcrumb-step.status-in-progress{color:var(--media);}
+  .cmp-breadcrumb-step.status-complete{color:var(--cx);}
   .cmp-breadcrumb-step.active{background:#1E2761;color:#FFFFFF;}
   .cmp-breadcrumb-step.disabled{color:var(--line);cursor:default;}
-  .cmp-breadcrumb-sep{color:var(--line);font-size:0.75rem;}
+  .cmp-breadcrumb-sep{color:var(--line);font-size:0.875rem;}
   /* 2026-09-21 fix, per direct report: couldn't scroll to the bottom of the
      Objectives overlay's left column. Root cause — this grid had no
      grid-template-rows, so its single implicit row sized to CONTENT height
@@ -8255,6 +8285,12 @@
           <div class="cch-name-row">
             <div class="cch-name" id="cchName">—</div>
             <span class="cch-status-pill" id="cchStatusPill">—</span>
+            <!-- 2026-09-24, per direct instruction ("tighten up the campaign
+                 header"): moved out of .cch-meta (where it sat left-justified
+                 on its own row below In Market) to right here, directly next
+                 to the status pill — same element/id/handler, just relocated
+                 for a tighter header. -->
+            <a class="cch-cancel-link" id="cchCancelLink" onclick="cmpToggleCancelConfirm()" style="display:none;">Cancel campaign</a>
           </div>
           <div class="cch-inmarket" id="cchStartDate">—</div>
         </div>
@@ -8277,12 +8313,38 @@
       <div class="cch-progress-row">
         <div class="cch-progress" id="cchProgress"></div>
         <div class="cch-score-marker">
+          <!-- 2026-09-24, per direct instruction ("Remove Campaign Relevance
+               Score label under score"): the .cch-score-caption label below
+               the circle is removed again (it was added back 2026-09-19 per
+               the wireframe round, reversing an earlier 2026-08-15 removal —
+               see the CSS comment above .cch-score-marker for that history).
+               The circle's own title="Campaign Relevance Score" still
+               carries the same info on hover. -->
           <div class="cch-score-circle" id="cchScoreCircle" title="Campaign Relevance Score">—</div>
-          <div class="cch-score-caption">Campaign Relevance Score</div>
         </div>
       </div>
+      <!-- 2026-09-24, per direct instruction ("Move primary campaign
+           navigation into header aligned with the progress bar"): the
+           workspace breadcrumb (cmpRenderWorkspaceBreadcrumb()) used to
+           render into a separate mount inside each overlay's own subrow
+           (below the header, below the "Objectives"/"Creative"/etc. title
+           bar — see cmpOpenObjectivesIntake() and its siblings' own
+           comments). Since #cmpCampaignHeader is already the one shared DOM
+           node moved between every overlay's mount point
+           (cmpMountCampaignHeaderInto()), the breadcrumb now lives inside it
+           too — one shared mount instead of six separate per-overlay divs —
+           directly below the progress row so it reads as "aligned with the
+           progress bar," not as a separate title-bar element. Each
+           cmpOpenXWorkspace() function still calls
+           cmpRenderWorkspaceBreadcrumb(activeKey) exactly as before; only the
+           target element id changed, from the overlay's own
+           cmpXBreadcrumb to this single cmpCampaignHeaderBreadcrumb. Step
+           labels are now color-coded by each card's real status
+           (cmpWorkspaceCardStatus() — same not-started/in-progress/complete
+           source of truth as the progress bar above), not just active vs.
+           not — see cmpRenderWorkspaceBreadcrumb()'s own comment. -->
+      <div class="cch-breadcrumb-row" id="cmpCampaignHeaderBreadcrumb"></div>
       <div class="cch-meta">
-        <a class="cch-cancel-link" id="cchCancelLink" onclick="cmpToggleCancelConfirm()" style="display:none;">Cancel campaign</a>
         <!-- 2026-09-15, per direct instruction: "Team Collaboration: Link
              to View Comments should be available opening a chat looking
              type interface." Campaign-wide (not per-stage) comment thread —
@@ -8410,7 +8472,6 @@
           <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseObjectivesIntake()" aria-label="Close" title="Close">✕</button>
         </div>
       </div>
-      <div id="cmpObjectivesBreadcrumb"></div>
       <!-- 2026-09-16, per Objectives-Desktop.dc.html read directly (not
            guessed at): the wireframe is two columns — the dialogue on the
            left, the Collaboration Center on the right, same width (340px)
@@ -8496,7 +8557,6 @@
           <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseRecommendationPitch()" aria-label="Close" title="Close">✕</button>
         </div>
       </div>
-      <div id="cmpPitchBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
         <div class="cmp-workspace-collab" id="cmpPitchCollabMount"></div>
@@ -8540,7 +8600,6 @@
           <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseCreativeWorkspace()" aria-label="Close" title="Close">✕</button>
         </div>
       </div>
-      <div id="cmpCreativeBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpCreativeLeft">
           <!-- 2026-09-22, third pass — per direct feedback: (1) recap
@@ -8702,7 +8761,6 @@
           <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseTraffickingWorkspace()" aria-label="Close" title="Close">✕</button>
         </div>
       </div>
-      <div id="cmpTraffickingBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpTraffickingLeft">
           <div class="module cmp-stage open" id="cmpTraffickingQrUtmCard" style="overflow:visible;">
@@ -8750,7 +8808,6 @@
           <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseAnalysisWorkspace()" aria-label="Close" title="Close">✕</button>
         </div>
       </div>
-      <div id="cmpAnalysisBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpAnalysisLeft">
           <div class="module cmp-stage open" id="cmpAnalysisMarketCard" style="overflow:visible;">
@@ -8803,7 +8860,6 @@
           <button type="button" class="cmp-pitch-subrow-close" onclick="cmpCloseCxVisionWorkspace()" aria-label="Close" title="Close">✕</button>
         </div>
       </div>
-      <div id="cmpCxVisionBreadcrumb"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpCxVisionLeft"></div>
         <div class="cmp-workspace-collab" id="cmpCxVisionCollabMount"></div>
@@ -11847,7 +11903,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-asset-types-optional-recap-row';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-campaign-header-tightened';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13452,12 +13508,21 @@ function cmpWorkspaceCardOpen(cardKey){
 // same cmpWorkspaceCardOpen() router the Workspace Hub cards already use,
 // so this is never a second, diverging navigation path.
 const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'cxVision', 'creative', 'trafficking', 'analysis']);
+// 2026-09-24, per direct instruction ("Color code the step label to indicate
+// active status"): each non-active step now also carries a
+// status-not-started/status-in-progress/status-complete class, driven by
+// cmpWorkspaceCardStatus(card) — the exact same real per-card status the
+// Workspace Hub cards already show, never a second, diverging computation.
+// The active step keeps its existing navy-pill treatment regardless of its
+// own status (see .cmp-breadcrumb-step.active's source order in the CSS —
+// it's declared after the status rules so it always wins).
 function cmpRenderWorkspaceBreadcrumb(activeKey){
   return `<div class="cmp-breadcrumb">${CMP_WORKSPACE_CARDS.map(card => {
     const built = CMP_BREADCRUMB_BUILT_CARDS.has(card.key);
     const active = card.key === activeKey;
     if (!built) return `<span class="cmp-breadcrumb-step disabled" title="Not built yet">${escapeHtml(card.label)}</span>`;
-    return `<span class="cmp-breadcrumb-step${active ? ' active' : ''}" ${active ? '' : `onclick="cmpBreadcrumbGoTo('${card.key}')"`}>${escapeHtml(card.label)}</span>`;
+    const statusCls = `status-${cmpWorkspaceCardStatus(card)}`;
+    return `<span class="cmp-breadcrumb-step ${statusCls}${active ? ' active' : ''}" ${active ? '' : `onclick="cmpBreadcrumbGoTo('${card.key}')"`}>${escapeHtml(card.label)}</span>`;
   }).join('<span class="cmp-breadcrumb-sep">›</span>')}</div>`;
 }
 // Closes whichever full-screen overlay is currently open before routing to
@@ -14303,6 +14368,18 @@ cmpUpdateStickyOffsets();
 function cmpMountCampaignHeaderInto(mountId){
   const header = document.getElementById('cmpCampaignHeader');
   const mount = document.getElementById(mountId);
+  // 2026-09-24 — the workspace breadcrumb (#cmpCampaignHeaderBreadcrumb) now
+  // lives inside this same header node (see its own markup comment), so it
+  // travels with the header on every move, including back to the Workspace
+  // Hub. The Hub shows all 5 workstream cards as peers — none of them is
+  // "active" there — so whichever step was last active in an overlay must
+  // be cleared here, or it'd keep showing (e.g. a navy "Creative" pill) on
+  // the Hub itself. Cleared unconditionally on every Hub mount, even when
+  // the header's already there, so this can't go stale.
+  if (mountId === 'cmpHubHeaderMount'){
+    const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
+    if (breadcrumb) breadcrumb.innerHTML = '';
+  }
   if (!header || !mount || header.parentElement === mount) return;
   mount.appendChild(header);
 }
@@ -39155,7 +39232,7 @@ function cmpOpenObjectivesIntake(){
   document.body.style.overflow = 'hidden';
   cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpObjectivesHeaderMount');
-  const breadcrumb = document.getElementById('cmpObjectivesBreadcrumb');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('objectives');
   renderCmpPickupStage();
   renderCmpStageRail();
@@ -40129,7 +40206,7 @@ async function cmpOpenRecommendationPitch(){
   document.body.style.overflow = 'hidden';
   cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpPitchHeaderMount');
-  const breadcrumb = document.getElementById('cmpPitchBreadcrumb');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('budget');
   cmpCollabMountId = 'cmpPitchCollabMount';
   const hubMount = document.getElementById('cmpWorkspaceCollab');
@@ -40220,7 +40297,7 @@ function cmpOpenCreativeWorkspace(){
   document.body.style.overflow = 'hidden';
   cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpCreativeHeaderMount');
-  const breadcrumb = document.getElementById('cmpCreativeBreadcrumb');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('creative');
   // Same Collaboration Center hand-off every other full-screen workspace
   // overlay does (see cmpRenderCollabCenter()'s own comment) — clear every
@@ -41277,7 +41354,7 @@ function cmpOpenTraffickingWorkspace(){
   document.body.style.overflow = 'hidden';
   cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpTraffickingHeaderMount');
-  const breadcrumb = document.getElementById('cmpTraffickingBreadcrumb');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('trafficking');
   cmpCollabMountId = 'cmpTraffickingCollabMount';
   ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpCxVisionCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
@@ -41475,7 +41552,7 @@ function cmpOpenAnalysisWorkspace(){
   document.body.style.overflow = 'hidden';
   cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpAnalysisHeaderMount');
-  const breadcrumb = document.getElementById('cmpAnalysisBreadcrumb');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('analysis');
   cmpCollabMountId = 'cmpAnalysisCollabMount';
   ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpCxVisionCollabMount', 'cmpTraffickingCollabMount'].forEach(id => {
@@ -41535,7 +41612,7 @@ function cmpOpenCxVisionWorkspace(){
   document.body.style.overflow = 'hidden';
   cmpSyncUtilityNavBack();
   cmpMountCampaignHeaderInto('cmpCxVisionHeaderMount');
-  const breadcrumb = document.getElementById('cmpCxVisionBreadcrumb');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('cxVision');
   cmpCollabMountId = 'cmpCxVisionCollabMount';
   ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpTraffickingCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
