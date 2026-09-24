@@ -453,6 +453,38 @@
       </div>
     </div>
 
+    <!-- 2026-09-24 — Campaign Copy Contest Review, per direct instruction:
+         "add the campaign contest participant lookup to the ops console
+         just like voice." Same non-negotiable as Brand Voice Contest Review
+         above: the client never sees real vendor/model, only the blind
+         Option N label — see redactCandidatesForClient() in server.js.
+         This is the one place the real vendor/model for a Campaign Copy
+         Contest run is visible, gated the same ADMIN_API_TOKEN way. Reads
+         the new GET /api/ops/accounts/:id/campaign-contests, which never
+         redacts. Unlike Voice Contest (3 fixed contest types with a clean
+         "current selection per type" summary), campaign_copy_interviews
+         covers every campaign on the account at once — Brand Messaging's
+         shared Long Form Copy contest, Step 1's per-audience contests, and
+         every Marketing Function Project's own "Interview candidates" run
+         all write to this one table — so this shows the most recent 25
+         runs account-wide by default, with an optional per-campaign filter
+         once a lookup returns the account's campaign list. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Campaign Copy Contest Review <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Real vendor/model per candidate, each candidate's stated approach, the blind-label order, and who selected what — for the most recent 25 Campaign Copy Contest runs on this account, across every campaign. The client's own workspace only ever shows "Option N," never the real vendor.</p>
+      <div class="field-row" id="campaignContestAuthRow">
+        <div>
+          <label>Account ID</label>
+          <input type="text" id="campaignContestLookupAccountId" placeholder="e.g. ACC-... or CXM-...">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkCampaignContestReview()">Look up →</button>
+        </div>
+      </div>
+      <div id="campaignContestReviewError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="campaignContestReviewResult"></div>
+    </div>
+
     <!-- 2026-09-14 — Internal Testing: run/rate/select a Voice Contest
          against ANY account, no portal session required. Per direct
          instruction: "Voice contests today are running from account
@@ -912,7 +944,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-22-creative-step0-step1-real';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-campaign-contest-review';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -2223,6 +2255,92 @@ async function checkVoiceContestReview(){
     errEl.textContent = 'Could not reach the backend to look up voice contests.';
     errEl.style.display = 'block';
   }
+}
+
+// 2026-09-24 — Campaign Copy Contest Review, "just like voice" per direct
+// instruction. Reads GET /api/ops/accounts/:id/campaign-contests (see its
+// own comment in server.js) — the campaign-contest sibling of
+// checkVoiceContestReview() above, same Account ID + ADMIN_API_TOKEN gate,
+// same real-vendor/model-never-redacted staff view. Unlike Voice Contest's
+// fixed 3-type "current selection" summary, this shows a per-campaign
+// filter dropdown instead, since campaign_copy_interviews spans every
+// campaign on the account rather than a small fixed contest-type set.
+let campaignContestLastData = null;
+async function checkCampaignContestReview(campaignIdFilter){
+  const accountId = document.getElementById('campaignContestLookupAccountId').value.trim();
+  const token = document.getElementById('opsAdminToken').value.trim();
+  const errEl = document.getElementById('campaignContestReviewError');
+  const resultEl = document.getElementById('campaignContestReviewResult');
+  errEl.style.display = 'none';
+  resultEl.innerHTML = '';
+  if (!accountId){
+    errEl.textContent = 'Enter an account ID to look up.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const qs = campaignIdFilter ? `?campaignId=${encodeURIComponent(campaignIdFilter)}` : '';
+    const resp = await fetch(`${BACKEND_URL}/api/ops/accounts/${encodeURIComponent(accountId)}/campaign-contests${qs}`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't look up campaign contests (${resp.status}).`;
+      errEl.style.display = 'block';
+      return;
+    }
+    campaignContestLastData = data;
+    const filterHtml = campaignContestFilterHtml(data, campaignIdFilter || '');
+    if (!data.interviews || !data.interviews.length){
+      resultEl.innerHTML = filterHtml + `<div class="empty-note">No Campaign Copy Contest runs on file for ${interviewEscapeHtml(accountId)}${campaignIdFilter ? ' on this campaign' : ''} yet.</div>`;
+      return;
+    }
+    const runsHtml = data.interviews.map(iv => `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div style="font-weight:700;">${interviewEscapeHtml(iv.campaignName || iv.campaignId)}</div>
+          <div class="empty-note" style="font-style:normal;">${new Date(iv.createdAt).toLocaleString()}</div>
+        </div>
+        <div class="empty-note" style="font-style:normal;margin-top:2px;">${interviewEscapeHtml(iv.sourceKey || '')}${iv.audience ? ` — audience: ${interviewEscapeHtml(iv.audience)}` : ''} · Requested by ${interviewEscapeHtml(iv.requestedBy || 'unknown')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+          ${(iv.candidates || []).map(c => `
+            <div style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:0.8125rem;${c.key === iv.selectedCandidateKey ? 'background:rgba(26,122,76,0.08);' : ''}">
+              <b>${interviewEscapeHtml(c.blindLabel || c.label || '?')}</b>
+              ${c.configured ? ` — ${interviewEscapeHtml(c.vendor || '—')} · <code>${interviewEscapeHtml(c.model || '—')}</code>` : ''}
+              ${c.key === iv.selectedCandidateKey ? `<span class="badge status-configured" style="margin-left:6px;">Selected</span>` : ''}
+              ${c.approach ? `<div class="empty-note" style="font-style:italic;margin-top:2px;">${interviewEscapeHtml(c.approach)}</div>` : ''}
+              ${c.error ? `<div class="empty-note" style="font-style:normal;color:var(--danger);margin-top:2px;">${interviewEscapeHtml(c.error)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        ${iv.selectedCandidateKey ? `<div class="empty-note" style="font-style:normal;margin-top:6px;">Selected by ${interviewEscapeHtml(iv.selectedBy || 'unknown')} · ${iv.selectedAt ? new Date(iv.selectedAt).toLocaleString() : ''}</div>` : ''}
+      </div>
+    `).join('');
+    resultEl.innerHTML = filterHtml + runsHtml;
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to look up campaign contests.';
+    errEl.style.display = 'block';
+  }
+}
+function campaignContestFilterHtml(data, currentFilter){
+  if (!data || !data.campaigns || !data.campaigns.length) return '';
+  const options = data.campaigns.map(c =>
+    `<option value="${interviewEscapeHtml(c.id)}"${currentFilter === c.id ? ' selected' : ''}>${interviewEscapeHtml(c.name || c.id)}</option>`
+  ).join('');
+  return `<div class="field-row" style="margin-bottom:10px;">
+    <div>
+      <label>Narrow to one campaign</label>
+      <select onchange="checkCampaignContestReview(this.value)">
+        <option value=""${currentFilter ? '' : ' selected'}>All campaigns — most recent 25</option>
+        ${options}
+      </select>
+    </div>
+  </div>`;
 }
 
 // 2026-09-12 — Clear Voice Guide Memory, per Task D2. Reuses the exact same

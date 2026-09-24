@@ -10202,6 +10202,29 @@
                   </div>
                   <div id="cmpAiDraftPanel" style="display:none;margin-top:8px;padding:10px 12px;background:var(--paper-dim);border-radius:6px;"></div>
                   <div id="cmpCopyContestPanel" style="display:none;margin-top:8px;padding:10px 12px;background:var(--paper-dim);border-radius:6px;"></div>
+                  <!-- 2026-09-24 — "View Previous Contests" for Campaign
+                       Copy Contest, per direct instruction ("include one
+                       section to the client workspace for contest lookups
+                       with a drop-down including existing contests") —
+                       same pattern as the Voice Contest page's own
+                       #voiceContestHistoryTile (see its comment): a
+                       dropdown of this campaign's past contest runs, newest
+                       first, reusing the client-facing GET
+                       .../copy-interviews this app already has rather than
+                       a new endpoint — it already returns every run
+                       blind-labeled/redacted (never vendor/model). Covers
+                       every contest sourceKey this campaign has run
+                       (the shared Long Form Copy contest and any
+                       per-audience Step 1 contests), not just this card's
+                       own — a run picked from an audience contest still
+                       renders its full card set here for reference. -->
+                  <div class="msg-subfield" style="margin-top:10px;">
+                    <label for="cmpCopyContestHistorySelect">View a previous contest</label>
+                    <select id="cmpCopyContestHistorySelect" onchange="cmpOnCopyContestHistorySelectChange()">
+                      <option value="">Select a completed contest…</option>
+                    </select>
+                  </div>
+                  <div id="cmpCopyContestHistoryDetail"></div>
                   <!-- Round 132ao (2026-08-12) — live alert when Long Form
                        Copy/Key Message drift from this campaign's Objective
                        or Primary KPI; see cmpRenderMessagingConsistencyAlert(). -->
@@ -11809,7 +11832,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-23-interview-panel-mobile-cards';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-campaign-contest-review';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14678,7 +14701,7 @@ function openCmpStage(key){
     if (c) cmpRenderCollabCenter(c);
   }
   if (key === 'lifecycle') generateCampaignBrief();
-  if (key === 'messaging'){ generateCampaignBriefExpanded(); cmpAutoDraftMessaging(); }
+  if (key === 'messaging'){ generateCampaignBriefExpanded(); cmpAutoDraftMessaging(); cmpLoadCopyContestHistoryList(); }
   if (key === 'copyVersions') cmpRenderCopyVersionsStage();
   if (key === 'perfMarketing'){ renderCmpPerfMarketingStage(); cmpLoadPerfMarketingChannelPlan(); }
   if (key === 'briefAnalytics') cmpOpenBriefAnalyticsStage();
@@ -55953,6 +55976,52 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
   }
+}
+// 2026-09-24 — "View Previous Contests" for Campaign Copy Contest, per
+// direct instruction ("include one section to the client workspace for
+// contest lookups with a drop-down including existing contests"). Reuses
+// the existing client-facing GET /api/campaigns/:id/copy-interviews — no
+// new backend route needed, since it already returns every run for this
+// campaign, redacted/blind-labeled, newest first. Label convention matches
+// Voice Contest's own history dropdown ("what it was for — date").
+let cmpCopyContestHistoryList = [];
+async function cmpLoadCopyContestHistoryList(){
+  const sel = document.getElementById('cmpCopyContestHistorySelect');
+  const campaign = cmpCurrentCampaign();
+  if (!sel || !campaign) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interviews`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    cmpCopyContestHistoryList = data.interviews || [];
+    const options = cmpCopyContestHistoryList.map(iv => {
+      const whatFor = iv.audience ? `Audience: ${iv.audience}` : 'Campaign-wide';
+      const dateLabel = iv.createdAt ? new Date(iv.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const label = [whatFor, dateLabel].filter(Boolean).join(' — ');
+      return `<option value="${escapeHtml(iv.id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    sel.innerHTML = `<option value="">Select a completed contest…</option>${options}`;
+  } catch (e){ /* leave the dropdown showing just the placeholder */ }
+}
+// Reuses renderCmpCopyContestPanel() as-is — same card layout, same
+// mobile-friendly truncation/text-link treatment, same "Use this draft"
+// button (still live: picking an older contest's winner is a legitimate
+// thing to do, not just a read-only lookup) — so this history view never
+// drifts out of sync with the live run panel's look. A past run has no
+// `recommendedKey` from the server (only a live run computes one), so this
+// derives an equivalent "top scoring" badge from whichever candidate has
+// the highest combinedScore, same tie-break the server itself uses.
+function cmpOnCopyContestHistorySelectChange(){
+  const sel = document.getElementById('cmpCopyContestHistorySelect');
+  const detailEl = document.getElementById('cmpCopyContestHistoryDetail');
+  if (!sel || !detailEl) return;
+  const iv = cmpCopyContestHistoryList.find(x => x.id === sel.value);
+  if (!iv){ detailEl.innerHTML = ''; return; }
+  const scored = (iv.candidates || []).filter(c => typeof c.combinedScore === 'number');
+  const recommendedKey = scored.length ? scored.reduce((best, c) => (c.combinedScore > best.combinedScore ? c : best)).key : null;
+  const result = { interviewId: iv.id, recommendedKey, candidates: iv.candidates || [] };
+  cmpCopyContestLastResult['cmpCopyContestHistoryDetail'] = result;
+  detailEl.innerHTML = renderCmpCopyContestPanel(result, 'cmpCopyContestHistorySelectFlag', 'cmpCopyContestHistoryDetail');
 }
 
 // Round 132[aov-poc] (2026-08-17) — Business Outcome Relevance: real AI
