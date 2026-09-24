@@ -11903,7 +11903,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-campaign-header-tightened';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-hide-pending-contest-cards-too';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -50294,7 +50294,11 @@ function renderInterviewPanel(jobId, result){
   // 2026-09-24, per direct instruction — see renderCmpCopyContestPanel()'s
   // comment: a partner with no result (not configured, or failed) just
   // isn't shown, rather than rendering as its own error-looking panel.
-  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.copy));
+  // 2026-09-24 follow-up, same report — pending candidates are excluded
+  // too now, not just not-configured/failed ones: a column must never
+  // appear without real content. See renderCmpCopyContestPanel()'s comment
+  // for the full reasoning.
+  const visibleCandidates = (result.candidates || []).filter(c => c.configured && c.copy);
   const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
@@ -54235,7 +54239,11 @@ function renderMfpInterviewPanel(result){
   // 2026-09-24, per direct instruction — see renderCmpCopyContestPanel()'s
   // comment: a partner with no result (not configured, or failed) just
   // isn't shown, rather than rendering as its own error-looking panel.
-  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.copy));
+  // 2026-09-24 follow-up, same report — pending candidates are excluded
+  // too now, not just not-configured/failed ones: a column must never
+  // appear without real content. See renderCmpCopyContestPanel()'s comment
+  // for the full reasoning.
+  const visibleCandidates = (result.candidates || []).filter(c => c.configured && c.copy);
   const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
@@ -56116,27 +56124,25 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
   // result (not configured, or generation failed even after the automatic
   // retry) no longer shows as its own visible, error-looking panel; it's
   // just not in the grid, same as if that partner never existed for this
-  // run. A "still thinking — retrying automatically" candidate stays
-  // visible since that's a genuinely temporary state, not a final one —
-  // cmpCopyContestAutoRetryPending() re-renders this panel the moment the
-  // retry resolves, at which point it either gets real copy or drops out
-  // here. Nothing is lost: every attempt (including failures and the exact
-  // error) is still stored in candidatesJson server-side — see the new
-  // Partner Reliability report in the Ops Console for monitoring that.
-  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.copy));
+  // run. Nothing is lost: every attempt (including failures and the exact
+  // error) is still stored in candidatesJson server-side — see the Partner
+  // Reliability report in the Ops Console for monitoring that.
+  // 2026-09-24 follow-up, per direct report ("We're still showing the
+  // column. It should never appear w/o the content."): a "still thinking —
+  // retrying automatically" candidate used to stay visible as its own
+  // placeholder card, on the reasoning that it was a temporary state. Todd
+  // reported that placeholder card itself is exactly the problem — a column
+  // must never appear without real content, pending or not. Pending
+  // candidates are now excluded from the grid entirely, same as
+  // not-configured/failed ones; cmpCopyContestAutoRetryPending() still
+  // polls in the background against the raw result.candidates (not this
+  // filtered list — see that function's own comment), so a candidate that
+  // resolves just appears once it has real copy, with no placeholder
+  // shown in the meantime.
+  const visibleCandidates = (result.candidates || []).filter(c => c.configured && c.copy);
   const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
-    if (c.pending){
-      // 2026-09-23 — this candidate's first pass either failed or is
-      // still being retried; copyContestAutoRetryPending() fires the
-      // second pass automatically the moment any candidate comes back
-      // pending, so this is a genuinely temporary state, not a final one.
-      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">Still thinking — retrying automatically…</div>
-      </div>`;
-    }
     // 2026-09-23 — "What is the approach from each" is the approach line
     // right below the label, stated by the partner itself (see
     // INTERVIEW_COPY_SCHEMA on the backend) rather than assigned by this
@@ -61391,26 +61397,21 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
 function renderBrandVoiceContestPanel(result){
   // 2026-09-24, per direct instruction — see renderCmpCopyContestPanel()'s
   // comment: a partner with no result (not configured, or failed) just
-  // isn't shown, rather than rendering as its own error-looking panel. A
-  // "still thinking" candidate stays visible — genuinely temporary, not
-  // final.
-  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.visionStatement && c.longformExample));
+  // isn't shown, rather than rendering as its own error-looking panel.
+  // 2026-09-24 follow-up, per direct report ("We're still showing the
+  // column. It should never appear w/o the content.") — a "still thinking"
+  // candidate used to stay visible as its own placeholder card; that
+  // placeholder is exactly what Todd flagged. Pending candidates are now
+  // excluded from the grid entirely, same as not-configured/failed ones —
+  // voiceContestAutoRetryPending() still polls in the background against
+  // the raw result.candidates (not this filtered list), so a candidate
+  // that resolves just appears once it has real content, no placeholder
+  // shown in the meantime.
+  const visibleCandidates = (result.candidates || []).filter(c => c.configured && c.visionStatement && c.longformExample);
   const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
     const safeId = String(c.key).replace(/[^a-zA-Z0-9_-]/g, '');
-    // 2026-09-15 — pending, per Todd's two-pass design: this candidate
-    // failed its first attempt but hasn't been given a final verdict yet —
-    // voiceContestAutoRetryPending() (see rerenderVoiceContestPanel) is
-    // about to fire a second, full-budget attempt as a separate request.
-    // Shown distinctly from a real failure so a client doesn't read "still
-    // working on it" as "broken."
-    if (c.pending){
-      return `<div style="display:flex;flex-direction:column;height:100%;border:1px dashed var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
-      </div>`;
-    }
     // 2026-08-27 rework, per direct instruction — two alignment fixes: (1)
     // the rating row sits bottom-centered in every card via margin-top:auto
     // on its own wrapper (the card is a column flexbox filling the full
