@@ -485,6 +485,43 @@
       <div id="campaignContestReviewResult"></div>
     </div>
 
+    <!-- 2026-09-24 — Partner Reliability Report, per direct instruction:
+         once a contest panel with no result stops showing itself client-side
+         (renderCmpCopyContestPanel/renderInterviewPanel/
+         renderMfpInterviewPanel/renderBrandVoiceContestPanel), a real vendor
+         outage or a broken integration becomes invisible to the client —
+         staff need their own way to see it, "to monitor to make sure we
+         don't have a problem with a specific partner." Reads the new GET
+         /api/ops/partner-reliability, which scans every real interview
+         table's candidatesJson directly (not contest_rankings, which only
+         logs at /select time and would miss a run nobody ever picked a
+         winner from). Platform-wide by default — a broken partner affects
+         every account, not one. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Partner Reliability Report <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">How often each AI partner (Anthropic plus every configured vendor — OpenAI, xAI, Gemini, Perplexity) actually returns usable copy vs. fails, across every contest surface (Campaign Copy, Creative Job, Brand Voice/Video, PR Copy), platform-wide. The client never sees a failed candidate anymore — its panel just doesn't show up — so this is the one place a partner outage or broken integration is visible.</p>
+      <div class="field-row" id="partnerReliabilityAuthRow">
+        <div>
+          <label>Lookback window</label>
+          <select id="partnerReliabilityDays">
+            <option value="7">Last 7 days</option>
+            <option value="14" selected>Last 14 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <div>
+          <label>Account ID <span class="empty-note" style="font-style:normal;">(optional — leave blank for platform-wide)</span></label>
+          <input type="text" id="partnerReliabilityAccountId" placeholder="e.g. ACC-... or CXM-...">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkPartnerReliability()">Run report →</button>
+        </div>
+      </div>
+      <div id="partnerReliabilityError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="partnerReliabilityResult"></div>
+    </div>
+
     <!-- 2026-09-14 — Internal Testing: run/rate/select a Voice Contest
          against ANY account, no portal session required. Per direct
          instruction: "Voice contests today are running from account
@@ -944,7 +981,7 @@
 // the browser console (logged below), rather than guessing from behavior
 // or trusting a GitHub upload / deploy dashboard alone. See
 // cxmedia-delivery-file-format-convention.md for why this exists.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-campaign-contest-review';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-partner-reliability-report';
 console.log('[CXMedia.AI] ops-console.html build:', CXMEDIA_BUILD_STAMP);
 
 // 2026-08-20 — this file's first real backend call (Platform Integration
@@ -2341,6 +2378,83 @@ function campaignContestFilterHtml(data, currentFilter){
       </select>
     </div>
   </div>`;
+}
+
+// 2026-09-24 — Partner Reliability Report, per direct instruction (see the
+// module's own comment above). Uses the shared #opsAdminToken field like
+// every other Staff Only panel here.
+function partnerReliabilityFailureBadge(rate){
+  // Same badge classes the rest of this file already uses (status-overdue/
+  // status-due/status-active — see the .badge CSS rules near the top),
+  // reused rather than inventing new severity colors.
+  if (rate >= 30) return `<span class="badge status-overdue">${rate}% failing</span>`;
+  if (rate >= 10) return `<span class="badge status-due">${rate}% failing</span>`;
+  return `<span class="badge status-active">${rate}% failing</span>`;
+}
+async function checkPartnerReliability(){
+  const token = document.getElementById('opsAdminToken').value.trim();
+  const days = document.getElementById('partnerReliabilityDays').value;
+  const accountId = document.getElementById('partnerReliabilityAccountId').value.trim();
+  const errEl = document.getElementById('partnerReliabilityError');
+  const resultEl = document.getElementById('partnerReliabilityResult');
+  errEl.style.display = 'none';
+  resultEl.innerHTML = '';
+  if (!token){
+    errEl.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const qs = new URLSearchParams({ days });
+    if (accountId) qs.set('accountId', accountId);
+    const resp = await fetch(`${BACKEND_URL}/api/ops/partner-reliability?${qs.toString()}`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      errEl.textContent = data.error || `Couldn't run the partner reliability report (${resp.status}).`;
+      errEl.style.display = 'block';
+      return;
+    }
+    if (!data.summary || !data.summary.length){
+      resultEl.innerHTML = `<div class="empty-note">No configured-partner contest attempts in the last ${interviewEscapeHtml(String(data.days))} day(s)${accountId ? ` for ${interviewEscapeHtml(accountId)}` : ''}.</div>`;
+      return;
+    }
+    const rowsHtml = data.summary.map(v => `
+      <tr>
+        <td><b>${interviewEscapeHtml(v.vendor)}</b></td>
+        <td>${v.attempts}</td>
+        <td>${v.failures}</td>
+        <td>${partnerReliabilityFailureBadge(v.failureRate)}</td>
+        <td>${v.lastFailureAt ? `${new Date(v.lastFailureAt).toLocaleString()}${v.lastFailureAccountId ? ` — ${interviewEscapeHtml(v.lastFailureAccountId)}` : ''}` : '—'}</td>
+        <td style="max-width:280px;">${v.lastFailureError ? `<span class="empty-note" style="font-style:normal;color:var(--danger);">${interviewEscapeHtml(v.lastFailureError)}</span>` : '—'}</td>
+      </tr>
+      <tr>
+        <td colspan="6" style="padding-top:0;padding-bottom:12px;">
+          <div class="empty-note" style="font-style:normal;">By source: ${v.bySource.map(s => `${interviewEscapeHtml(s.source)} (${s.failures}/${s.attempts}, ${s.failureRate}%)`).join(' · ')}</div>
+        </td>
+      </tr>
+    `).join('');
+    resultEl.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+        <thead>
+          <tr style="text-align:left;border-bottom:1px solid var(--line);">
+            <th style="padding:6px 8px 6px 0;">Partner</th>
+            <th style="padding:6px 8px;">Attempts</th>
+            <th style="padding:6px 8px;">Failures</th>
+            <th style="padding:6px 8px;">Failure rate</th>
+            <th style="padding:6px 8px;">Last failure</th>
+            <th style="padding:6px 8px;">Last error</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div class="empty-note" style="margin-top:6px;">Generated ${new Date(data.generatedAt).toLocaleString()} · window: last ${data.days} day(s)${data.accountId ? ` · account: ${interviewEscapeHtml(data.accountId)}` : ' · platform-wide'}. "Not configured" vendors (no API key on this deployment) are excluded — this only counts partners that were actually asked to generate copy.</div>
+    `;
+  } catch (e){
+    errEl.textContent = 'Could not reach the backend to run the partner reliability report.';
+    errEl.style.display = 'block';
+  }
 }
 
 // 2026-09-12 — Clear Voice Guide Memory, per Task D2. Reuses the exact same

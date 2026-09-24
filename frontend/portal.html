@@ -11861,7 +11861,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-creative-asset-types-card';
+const CXMEDIA_BUILD_STAMP = '2026-09-24-hide-no-result-contest-cards';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -50225,21 +50225,13 @@ async function runCopyInterview(jobId){
   }
 }
 function renderInterviewPanel(jobId, result){
-  const cards = (result.candidates || []).map(c => {
+  // 2026-09-24, per direct instruction — see renderCmpCopyContestPanel()'s
+  // comment: a partner with no result (not configured, or failed) just
+  // isn't shown, rather than rendering as its own error-looking panel.
+  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.copy));
+  const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
-    if (!c.configured){
-      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
-      </div>`;
-    }
-    if (!c.copy){
-      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
-      </div>`;
-    }
     const idBase = `cjCopy-${jobId}-${c.key}`;
     const expandLink = !c.longCopy ? cmpExpandLinkHtml(`cjInterviewExpandBtn-${c.key}`, `expandCopyInterviewCandidate('${jobId}','${c.key}')`) : '';
     const sections = cmpRenderCardSections(c, idBase, expandLink);
@@ -54174,21 +54166,13 @@ async function runMfpInterview(){
   }
 }
 function renderMfpInterviewPanel(result){
-  const cards = (result.candidates || []).map(c => {
+  // 2026-09-24, per direct instruction — see renderCmpCopyContestPanel()'s
+  // comment: a partner with no result (not configured, or failed) just
+  // isn't shown, rather than rendering as its own error-looking panel.
+  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.copy));
+  const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
-    if (!c.configured){
-      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
-      </div>`;
-    }
-    if (!c.copy){
-      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
-      </div>`;
-    }
     const idBase = `mfpCopy-${result.interviewId}-${c.key}`;
     const mfpExpandLink = !c.longCopy ? cmpExpandLinkHtml(`mfpInterviewExpandBtn-${c.key}`, `expandMfpInterviewCandidate('${result.interviewId}','${c.key}')`) : '';
     const mfpSections = cmpRenderCardSections(c, idBase, mfpExpandLink);
@@ -56058,15 +56042,21 @@ function cmpRenderCardSections(c, idBase, expandLinkHtml){
 function renderCmpCopyContestPanel(result, flagId, panelId){
   flagId = flagId || 'cmpCopyContestSelectFlag';
   panelId = panelId || 'cmpCopyContestPanel';
-  const cards = (result.candidates || []).map(c => {
+  // 2026-09-24, per direct instruction — a partner that never returns a
+  // result (not configured, or generation failed even after the automatic
+  // retry) no longer shows as its own visible, error-looking panel; it's
+  // just not in the grid, same as if that partner never existed for this
+  // run. A "still thinking — retrying automatically" candidate stays
+  // visible since that's a genuinely temporary state, not a final one —
+  // cmpCopyContestAutoRetryPending() re-renders this panel the moment the
+  // retry resolves, at which point it either gets real copy or drops out
+  // here. Nothing is lost: every attempt (including failures and the exact
+  // error) is still stored in candidatesJson server-side — see the new
+  // Partner Reliability report in the Ops Console for monitoring that.
+  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.copy));
+  const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
-    if (!c.configured){
-      return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not configured.')}</div>
-      </div>`;
-    }
     if (c.pending){
       // 2026-09-23 — this candidate's first pass either failed or is
       // still being retried; copyContestAutoRetryPending() fires the
@@ -56075,12 +56065,6 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
       return `<div style="border:1px dashed var(--line);border-radius:8px;padding:10px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">Still thinking — retrying automatically…</div>
-      </div>`;
-    }
-    if (!c.copy){
-      return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
     // 2026-09-23 — "What is the approach from each" is the approach line
@@ -61335,16 +61319,16 @@ async function recoverBrandVoiceContestAfterTimeout(clickStartedAt){
 // gets "a final focused review before it's added to their client database"
 // rather than a one-click apply straight into their brand data.
 function renderBrandVoiceContestPanel(result){
-  const cards = (result.candidates || []).map(c => {
+  // 2026-09-24, per direct instruction — see renderCmpCopyContestPanel()'s
+  // comment: a partner with no result (not configured, or failed) just
+  // isn't shown, rather than rendering as its own error-looking panel. A
+  // "still thinking" candidate stays visible — genuinely temporary, not
+  // final.
+  const visibleCandidates = (result.candidates || []).filter(c => c.pending || (c.configured && c.visionStatement && c.longformExample));
+  const cards = visibleCandidates.map(c => {
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
     const safeId = String(c.key).replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!c.configured){
-      return `<div style="display:flex;flex-direction:column;height:100%;border:1px dashed var(--line);border-radius:8px;padding:10px;opacity:0.6;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;">${escapeHtml(c.error || 'Not available for this contest.')}</div>
-      </div>`;
-    }
     // 2026-09-15 — pending, per Todd's two-pass design: this candidate
     // failed its first attempt but hasn't been given a final verdict yet —
     // voiceContestAutoRetryPending() (see rerenderVoiceContestPanel) is
@@ -61355,12 +61339,6 @@ function renderBrandVoiceContestPanel(result){
       return `<div style="display:flex;flex-direction:column;height:100%;border:1px dashed var(--line);border-radius:8px;padding:10px;">
         <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
         <div class="hint" style="margin-top:4px;">Still thinking — trying again now…</div>
-      </div>`;
-    }
-    if (!c.visionStatement || !c.longformExample){
-      return `<div style="display:flex;flex-direction:column;height:100%;border:1px solid var(--line);border-radius:8px;padding:10px;">
-        <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}</div>
-        <div class="hint" style="margin-top:4px;color:var(--advocacy);">${escapeHtml(c.error || 'Generation failed.')}</div>
       </div>`;
     }
     // 2026-08-27 rework, per direct instruction — two alignment fixes: (1)
