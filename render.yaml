@@ -1,0 +1,15 @@
+# Render.com blueprint — equivalent of railway.json for a Render deploy.
+services:
+  - type: web
+    name: verilume-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEB_CONCURRENCY
+        value: "2"
+      # Set DATABASE_URL, ANTHROPIC_API_KEY and the rest in the Render dashboard
+      # (same values as the Vercel project) — never commit them here.
