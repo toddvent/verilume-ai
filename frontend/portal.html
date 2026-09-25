@@ -11933,7 +11933,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-25-creative-asset-publisher-catalog';
+const CXMEDIA_BUILD_STAMP = '2026-09-25-creative-asset-channels-from-plan';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -59364,6 +59364,17 @@ async function cmpLoadPerfMarketingChannelPlan(){
   // cmpBuildCreativeAssetGridRows()).
   cmpCreativeAssetGridRows = {};
   if (typeof cmpRenderCreativeAssetMatrix === 'function') cmpRenderCreativeAssetMatrix();
+  // 2026-09-25 — the Creative Asset Selection grid validates against the
+  // real saved channel plan (see cmpCreativeAssetApprovedChannels()'s own
+  // comment). Fetched fresh every open; the matrix re-renders once the real
+  // list is in, so the grid never shows a channel the plan doesn't have.
+  cmpLoadApprovedChannelsFromPlan(campaign).then(names => {
+    if (!names) return;
+    const still = cmpRailLoadedCampaign();
+    if (!still || still.id !== campaign.id) return;
+    cmpCreativeAssetGridRows = {};
+    if (typeof cmpRenderCreativeAssetMatrix === 'function') cmpRenderCreativeAssetMatrix();
+  });
   // Round 132ai (2026-08-11) fix, per direct correction: "No channels
   // appear even when a recommended channel appeared during the previous
   // step." selectedChannels only ever got seeded from
@@ -60116,8 +60127,58 @@ function cmpCreativeAssetChannelSlug(channel){
 // (Brand Search, Remarketing, Internal Email) are on this campaign but
 // never get a $ row, per direct instruction "we do need them for
 // messaging."
+// 2026-09-25, per direct report (Todd, with the Recap's Approved Channels row
+// alongside the grid): "We need to validate what we show against the
+// approved campaign channels. We included magazines and newspapers. We did
+// not include programmatic display or brand search. All channels including
+// brand fulfillment should show up." Root cause: this grid was built from
+// selectedChannels — the legacy tile picker, seeded from Recommended
+// Channels / campaign.channels — while the Recap's Approved Channels row
+// reads channel_planning_details (the real source of truth since the
+// 2026-09-22/23 consolidation, see that row's own comment). The two drifted:
+// the picker still carried recommended-but-never-planned channels
+// (Magazines, Newspapers) and lacked channels that ARE in the saved plan
+// (Programmatic Display, Brand Search). The grid now reads the same real
+// plan lines the Recap does (cmpApprovedChannelsFromPlan, loaded by
+// cmpLoadApprovedChannelsFromPlan() every time the workspace/stage opens),
+// so the two can never disagree again. Demand-fulfillment channels (Brand
+// Search, Internal Email, Remarketing) have real plan rows too, so they're
+// included by the same rule — no special case. Ordered as MMM_CATEGORIES so
+// the grid reads consistently. Local-only demo campaigns (no backend row)
+// fall back to the legacy in-memory sets, same as before.
+let cmpApprovedChannelsFromPlan = { campaignId: null, channels: null };
 function cmpCreativeAssetApprovedChannels(){
+  const c = cmpRailLoadedCampaign();
+  if (c && cmpApprovedChannelsFromPlan.campaignId === c.id && Array.isArray(cmpApprovedChannelsFromPlan.channels)){
+    return cmpApprovedChannelsFromPlan.channels;
+  }
   return [...Object.keys(cmpChannelPlanRows), ...cmpDemandFulfillmentChannelsInPlan];
+}
+function cmpSortChannelsByTaxonomy(names){
+  const order = new Map(MMM_CATEGORIES.map((c, i) => [c, i]));
+  return names.slice().sort((a, b) => (order.has(a) ? order.get(a) : 999) - (order.has(b) ? order.get(b) : 999) || a.localeCompare(b));
+}
+async function cmpLoadApprovedChannelsFromPlan(campaign){
+  if (!campaign || !campaign.id || campaign.localOnly || campaign.isAdHoc || dataSourceLabel !== 'backend'){
+    cmpApprovedChannelsFromPlan = { campaignId: null, channels: null };
+    return null;
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    // Same rule as the Recap row: any line with a real channel name counts,
+    // budget or not — "which channels are in this campaign's plan," not
+    // "which channels have spend."
+    const names = cmpSortChannelsByTaxonomy([...new Set(entries.map(e => (e.channel || '').trim()).filter(Boolean))]);
+    cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: names };
+    return names;
+  } catch (e){
+    console.warn('cmpLoadApprovedChannelsFromPlan failed (grid falls back to in-memory channel sets):', e && e.message);
+    cmpApprovedChannelsFromPlan = { campaignId: null, channels: null };
+    return null;
+  }
 }
 function cmpAssetFormatOptions(channel){
   // filtered to this channel's own real creative types where this file
@@ -60385,7 +60446,10 @@ function cmpRemoveCreativeAssetRow(channel, rowIndex){
 // (cmpChannelPlanRows' $ channels plus cmpDemandFulfillmentChannelsInPlan —
 // see cmpRenderCreativeAssetChannelSelect()).
 function cmpMissingCreativeAssetChannels(){
-  const approvedChannels = [...Object.keys(cmpChannelPlanRows), ...cmpDemandFulfillmentChannelsInPlan];
+  // 2026-09-25 — same real-plan source as the grid itself, so "every
+  // approved channel needs an asset before Submit" checks the same list
+  // the person is looking at (see cmpCreativeAssetApprovedChannels()).
+  const approvedChannels = cmpCreativeAssetApprovedChannels();
   const coveredChannels = new Set(cmpCreativeAssetRequests.map(a => a.channel));
   return approvedChannels.filter(ch => !coveredChannels.has(ch));
 }
