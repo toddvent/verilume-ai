@@ -2,12 +2,14 @@
   "name": "verilume-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "Verilume AI / CXMedia.AI platform — Vercel deployment. Static marketing/portal frontend in frontend/, API served from api/[...path].js (wraps backend/server.js), data persisted in Supabase Postgres via backend/pg-sync-bridge.js.",
+  "description": "Verilume AI / CXMedia.AI platform \u2014 Vercel deployment. Static marketing/portal frontend in frontend/, API served from api/[...path].js (wraps backend/server.js), data persisted in Supabase Postgres via backend/pg-sync-bridge.js.",
   "engines": {
     "node": ">=22.5.0"
   },
   "scripts": {
-    "check-style": "node tools/check-style.js"
+    "check-style": "node tools/check-style.js",
+    "start": "node backend/serve.js",
+    "start:dev": "node backend/server.js"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
