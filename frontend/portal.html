@@ -11933,7 +11933,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-25-creative-asset-partners-per-channel';
+const CXMEDIA_BUILD_STAMP = '2026-09-25-creative-asset-publisher-catalog';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57658,7 +57658,7 @@ function creativeTypesForChannel(channel){ return CREATIVE_TYPES_BY_CHANNEL[chan
 // behind the Creative Messaging Collection's Add Requirement form and
 // creativeChannelUsesPrintSpecs()) rather than the starter static library.
 function channelUsesPublisherSpecTable(channel){
-  return channel === 'Direct Mail — Prospects' || channel === 'Direct Mail — Past Guests' || channel === 'Direct Mail — Inquiries' || channel === 'Magazines';
+  return channel === 'Direct Mail — Prospects' || channel === 'Direct Mail — Past Guests' || channel === 'Direct Mail — Inquiries' || channel === 'Magazines' || channel === 'Newspapers';
 }
 // Starter size library for every Function NOT on a real live publisher spec
 // table yet — per direct instruction: "recommend a wireframe initially and
@@ -57722,27 +57722,47 @@ function adUnitSpecsFor(channel){
 // publisher spec table on file today (Direct Mail, Magazines). Parses each
 // format's dimensions into a wireframe aspect ratio the same way
 // guessWireframeAspect() does for Creative Jobs.
+// 2026-09-25 fix, found while wiring per-channel Partners: this read
+// `data.publications` off GET /api/print-specs/global, but that endpoint has
+// only ever returned `{ specs: [...] }` (flat rows: publication, publisher,
+// mediumType 'Magazine'|'Newspaper', adFormat, trim/bleed/live inches) — so
+// the "live publisher catalog" branch silently returned [] every time and
+// Magazine/Direct Mail sizes always fell back to the static starter library.
+// Now reads the real shapes: print-specs (global + this account's own
+// custom additions) for Magazines/Newspapers, and direct-mail-specs/global
+// for the three Direct Mail channels. Each option carries `publication` so
+// the Size list can be narrowed to the Partner (publication) chosen on the
+// same row. Responses are cached per page load.
+const cmpSpecCatalogCache = {};
+function cmpFetchSpecCatalog(path){
+  if (cmpSpecCatalogCache[path]) return cmpSpecCatalogCache[path];
+  cmpSpecCatalogCache[path] = authedFetch(`${BACKEND_URL}${path}`).then(r => r.ok ? r.json() : { specs: [] }).catch(() => ({ specs: [] }));
+  return cmpSpecCatalogCache[path];
+}
+function cmpPrintSpecsForChannel(channel){
+  const medium = channel === 'Newspapers' ? 'Newspaper' : 'Magazine';
+  const acct = state.companyId ? cmpFetchSpecCatalog(`/api/accounts/${encodeURIComponent(state.companyId)}/print-specs`) : Promise.resolve({ specs: [] });
+  return Promise.all([cmpFetchSpecCatalog('/api/print-specs/global'), acct]).then(([g, a]) =>
+    [...(g.specs || []), ...(a.specs || [])].filter(r => String(r.mediumType || '').toLowerCase() === medium.toLowerCase()));
+}
 async function loadPublisherSizesForChannel(channel){
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/print-specs/global`);
-    const data = resp.ok ? await resp.json() : { publications: [] };
     const opts = [];
-    (data.publications || []).forEach(pub => (pub.formats || []).forEach(fmt => {
-      const dims = fmt.dimensions || fmt.trimSize || '';
-      const label = `${pub.name} — ${fmt.name || fmt.label || ''} (${dims})`.replace(/\s+/g, ' ').trim();
-      const m = String(dims).match(/(\d+(?:\.\d+)?)\s*(?:x|:|×)\s*(\d+(?:\.\d+)?)/i);
-      const ratio = m && parseFloat(m[1]) > 0 && parseFloat(m[2]) > 0 ? parseFloat(m[1]) / parseFloat(m[2]) : 8.5 / 11;
-      // Round 132m — real publisher formats (magazine pages, direct mail
-      // pieces) are large format, so their copy renders as stacked
-      // Headline/Body/CTA blocks, same as the static large-format specs
-      // below, rather than one flat paragraph.
-      // Round 132as — real publisher formats are Direct Mail/Magazines, both
-      // physical print pieces, not digital ads — flagged print:true so
-      // cmpDrawWireframeBox() gives them the paper-toned treatment instead
-      // of the digital-banner stripe pattern. Per direct feedback:
-      // "Newspaper and direct mail wireframe looks like a digital ad."
-      opts.push({ label, ratio, hasImage: true, stacked: true, print: true, fromPublisherCatalog: true });
-    }));
+    const dims = (w, h) => (w && h) ? `${w} x ${h} in` : '';
+    const ratioOf = (w, h) => (w > 0 && h > 0) ? w / h : 8.5 / 11;
+    if (channel === 'Magazines' || channel === 'Newspapers'){
+      const rows = await cmpPrintSpecsForChannel(channel);
+      rows.forEach(r => {
+        const label = `${r.publication} — ${r.adFormat || ''}${dims(r.trimWidthIn, r.trimHeightIn) ? ` (${dims(r.trimWidthIn, r.trimHeightIn)} trim)` : ''}`.replace(/\s+/g, ' ').trim();
+        opts.push({ label, ratio: ratioOf(Number(r.trimWidthIn), Number(r.trimHeightIn)), hasImage: true, stacked: true, print: true, fromPublisherCatalog: true, publication: r.publication });
+      });
+    } else {
+      const data = await cmpFetchSpecCatalog('/api/direct-mail-specs/global');
+      (data.specs || []).forEach(r => {
+        const label = `${r.formatName || ''}${r.bindingFoldStyle ? ` — ${r.bindingFoldStyle}` : ''}`.replace(/\s+/g, ' ').trim();
+        opts.push({ label, ratio: ratioOf(Number(r.trimWidthIn), Number(r.trimHeightIn)), hasImage: true, stacked: true, print: true, fromPublisherCatalog: true });
+      });
+    }
     return opts;
   } catch (e){ return []; }
 }
@@ -60148,8 +60168,17 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
     rows.forEach((row, i) => { const sel = document.getElementById(`cmpCAG_${slug}_${i}_size`); if (sel) sel.innerHTML = `<option value="">Loading sizes…</option>`; });
     loadPublisherSizesForChannel(channel).then(opts => {
       if (!cmpCreativeAssetGridRows[channel]) return; // channel set changed before this resolved
-      const labels = (opts.length ? opts : adUnitSpecsFor(channel)).map(o => o.label);
-      applyLabels(labels);
+      const all = opts.length ? opts : adUnitSpecsFor(channel);
+      // Magazines/Newspapers: once a publication is chosen as the Partner on
+      // a row, that row's Size list shows only that publication's formats.
+      rows.forEach((row, i) => {
+        const sel = document.getElementById(`cmpCAG_${slug}_${i}_size`);
+        if (!sel) return;
+        const scoped = row.partner ? all.filter(o => !o.publication || o.publication === row.partner) : all;
+        const labels = (scoped.length ? scoped : all).map(o => o.label);
+        const withSaved = (row.size && !labels.includes(row.size)) ? [...labels, row.size] : labels;
+        sel.innerHTML = cmpOptionsHtmlSelected(withSaved, 'Select a size…', row.size);
+      });
     });
   } else {
     applyLabels(adUnitSpecsFor(channel).map(o => o.label));
@@ -60202,20 +60231,20 @@ function cmpInHousePartnerLabel(){
 function cmpAccountCustomPartners(){
   return (state.partners || []).filter(p => typeof p === 'string' && p.trim() && !CMP_SEEDED_PLATFORM_PARTNERS.has(p.trim())).map(p => p.trim());
 }
-let cmpPublisherNamesCache = null;
-function cmpLoadPublisherNames(){
-  if (cmpPublisherNamesCache) return Promise.resolve(cmpPublisherNamesCache);
-  return authedFetch(`${BACKEND_URL}/api/print-specs/global`)
-    .then(r => r.ok ? r.json() : { publications: [] })
-    .then(data => { cmpPublisherNamesCache = Array.from(new Set((data.publications || []).map(p => (p.name || '').trim()).filter(Boolean))); return cmpPublisherNamesCache; })
-    .catch(() => []);
+const cmpPublisherNamesByMedium = {}; // 'Magazines'|'Newspapers' -> [names], filled by cmpLoadPublisherNames
+function cmpLoadPublisherNames(channel){
+  if (cmpPublisherNamesByMedium[channel]) return Promise.resolve(cmpPublisherNamesByMedium[channel]);
+  return cmpPrintSpecsForChannel(channel).then(rows => {
+    cmpPublisherNamesByMedium[channel] = Array.from(new Set(rows.map(r => (r.publication || '').trim()).filter(Boolean)));
+    return cmpPublisherNamesByMedium[channel];
+  });
 }
 function cmpPartnerOptionsForChannel(channel, savedValue){
   const out = [];
   const push = (v) => { if (v && !out.includes(v)) out.push(v); };
   if (CMP_IN_HOUSE_CHANNELS.has(channel)) push(cmpInHousePartnerLabel());
   (CMP_PARTNERS_BY_CHANNEL[channel] || []).forEach(push);
-  if ((channel === 'Magazines' || channel === 'Newspapers') && cmpPublisherNamesCache) cmpPublisherNamesCache.forEach(push);
+  if (cmpPublisherNamesByMedium[channel]) cmpPublisherNamesByMedium[channel].forEach(push);
   cmpAccountCustomPartners().forEach(push);
   if (!CMP_IN_HOUSE_CHANNELS.has(channel)) push(cmpInHousePartnerLabel());
   if (savedValue) push(savedValue);
@@ -60225,7 +60254,7 @@ function cmpPartnerOptionsForChannel(channel, savedValue){
 // re-fill just those Partner selects once the catalog is loaded.
 function cmpFillPublisherPartnerSelects(channel){
   if (channel !== 'Magazines' && channel !== 'Newspapers') return;
-  cmpLoadPublisherNames().then(() => {
+  cmpLoadPublisherNames(channel).then(() => {
     const rows = cmpCreativeAssetGridRows[channel] || [];
     const slug = cmpCreativeAssetChannelSlug(channel);
     rows.forEach((row, i) => {
@@ -60331,6 +60360,8 @@ function cmpCreativeAssetRowFieldChanged(channel, rowIndex, field, value){
   if (!cmpCreativeAssetGridRows[channel][rowIndex]) cmpCreativeAssetGridRows[channel][rowIndex] = { partner: '', mediaType: '', size: '' };
   cmpCreativeAssetGridRows[channel][rowIndex][field] = value;
   cmpSyncCreativeAssetRequestsFromGrid();
+  // A new publication on a Magazines/Newspapers row narrows that row's sizes.
+  if (field === 'partner' && (channel === 'Magazines' || channel === 'Newspapers')) cmpPopulateCreativeAssetSizeSelectsForChannel(channel);
 }
 function cmpAddCreativeAssetRow(channel){
   if (!cmpCreativeAssetGridRows[channel]) cmpCreativeAssetGridRows[channel] = [];
