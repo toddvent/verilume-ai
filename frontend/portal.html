@@ -1714,6 +1714,8 @@
   .cmp-note-meta{font-size:0.75rem;color:var(--muted);margin-bottom:2px;}
   .cmp-note-ai-badge{display:inline-block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--media);background:var(--white);border-radius:var(--radius-pill);padding:1px 7px;margin-left:4px;}
   .cmp-note-text{margin:0;font-size:0.8438rem;color:var(--ink);}
+.cmp-note-cursor{display:inline-block;width:7px;height:1em;margin-left:2px;vertical-align:-2px;background:currentColor;opacity:.55;animation:cmpNoteCursorBlink 1s steps(2,start) infinite;}
+@keyframes cmpNoteCursorBlink{to{visibility:hidden;}}
   .cmp-note-list{margin:0 0 6px;padding-left:20px;}
   .cmp-note-list li{margin:0 0 3px;}
   .cmp-note-brain-training{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
@@ -11929,7 +11931,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-24-creative-asset-selection-in-workspace';
+const CXMEDIA_BUILD_STAMP = '2026-09-25-ai-brain-streaming-precompute';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13997,29 +13999,59 @@ async function cmpCollabSendPreCampaign(text){
     cmpRenderCollabBody(null);
   }
 }
+// 2026-09-25 REBUILD — streaming. Per Todd's directive after a live turn
+// died at the client's 30.0s abort ("Our internal AI Brain can never time
+// out and needs to be as fast as possible. We don't have a product without
+// it."): the reply is now streamed from POST .../ai-brain-reply as server-
+// sent events (Accept: text/event-stream — see that endpoint's 2026-09-25
+// comment) and rendered word by word into a live bubble as it arrives, so
+// the person sees the first words in a few seconds and a long answer is
+// never cut off for being long. The fixed 30s cap is gone on purpose — it
+// was killing answers that were arriving — replaced by what a stream
+// actually needs: a watchdog that only fires when NOTHING has been heard
+// from the server for a while (the server pings every 4s while the model
+// is still thinking, so a live connection never trips it). A server that
+// answers with plain JSON (an older deploy, a proxy that strips streaming)
+// still works: the same function falls back to reading the whole body.
+// Every turn's server-side timings land in the console (`[ai-brain]`) so
+// a slow turn can be diagnosed from the Network/Console tab, not guessed.
+let cmpCollabStreamingText = null;   // live reply text while a stream is in flight (null = none)
+let cmpCollabStreamingStartedAt = 0;
+const CMP_AI_BRAIN_SILENCE_MS = 25000;    // once the stream is flowing: abort only after this long with no bytes at all
+const CMP_AI_BRAIN_FIRST_BYTE_MS = 90000; // before any byte: generous on purpose — if the host buffers the stream, the whole answer lands at once, and it must not be thrown away
+function cmpCollabStreamingNoteHtml(){
+  return cmpCollabNoteRowHtml({ id: null, author: 'AI Assistant', text: cmpCollabStreamingText || '', isAi: true, ts: cmpCollabStreamingStartedAt || Date.now(), streaming: true });
+}
+function cmpCollabPaintStreamingText(){
+  const el = document.querySelector('#cmpCollabStreamingNote .cmp-note-text');
+  if (el){
+    el.innerHTML = formatAiNoteHtml(cmpCollabStreamingText || '') + '<span class="cmp-note-cursor" aria-hidden="true"></span>';
+    const body = document.getElementById('cmpCollabBody');
+    if (body) body.scrollTop = body.scrollHeight;
+    return;
+  }
+  const c = cmpRailLoadedCampaign();
+  cmpRenderCollabBody(c);
+}
 async function cmpCollabRequestAiReply(message){
   if (cmpCollabAiBusy) return;
   const c = cmpRailLoadedCampaign();
   if (!c) return;
   cmpCollabAiBusy = true;
+  cmpCollabStreamingText = null;
+  cmpCollabStreamingStartedAt = Date.now();
   cmpRenderCollabBody(c);
+  const tSend = performance.now();
   try {
-    const priorNotes = cmpCollabNotesFor(c, 'ai').slice(-10).map(n => ({ author: n.author, text: n.text, isAi: n.isAi }));
-    // 2026-09-22 round 3 fix, per Todd's hard ceiling: "More than 30
-    // seconds is too long. We'll lose users. Humans think faster." Round 2
-    // (above, kept for history) raised this to 100000ms because the
-    // backend's own retry-after-timeout could legitimately run to ~41s and
-    // still be genuinely working. That backend retry-on-timeout is now
-    // removed (see POST .../ai-brain-reply's own comment) — its single
-    // attempt is capped at 27s specifically so the whole request resolves
-    // well inside 30s. Tightened to match: 30000ms gives a small margin
-    // over the backend's own 27s budget for real network/JSON overhead,
-    // and a request that's still running past that is failing, not just
-    // slow — waiting longer for it doesn't serve the person waiting.
-    const resp = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/ai-brain-reply`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, priorNotes }), timeoutMs: 30000
-    }, 1, 700);
+    const priorNotes = cmpCollabNotesFor(c, 'ai').slice(-10).map(n => ({ author: n.author, text: n.text, isAi: n.isAi, hasSuggestion: !!(n.suggestion && (n.suggestion.entryId || n.suggestion.newLineChannel)) }));
+    const resp = await cmpAiBrainStream(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/ai-brain-reply`, { message, priorNotes }, {
+      onStart: (evt) => { console.log('[ai-brain] server started', evt.model, evt.timings); },
+      onFirst: (evt) => { console.log(`[ai-brain] first token after ${Math.round(performance.now() - tSend)}ms (model TTFT ${evt.firstTokenMs}ms)`); },
+      onDelta: (text) => { cmpCollabStreamingText = (cmpCollabStreamingText || '') + text; cmpCollabPaintStreamingText(); },
+      onReset: () => { cmpCollabStreamingText = ''; cmpCollabPaintStreamingText(); }
+    });
+    console.log(`[ai-brain] done in ${Math.round(performance.now() - tSend)}ms`, resp.timings || '(no timings)');
+    cmpCollabStreamingText = null;
     cmpCollabAddNote('ai', resp.reply || "Sorry, I didn't get a response — try again.", true, resp.suggestion || null, null, (!resp.matchMarketNewlyAttached && resp.matchMarketSuggestion) || null);
     // 2026-09-20, per Todd's direct instruction: a newly-attached Match
     // Market recommendation publishes as its OWN thought-and-question
@@ -14032,24 +14064,124 @@ async function cmpCollabRequestAiReply(message){
       const mm = resp.matchMarketSuggestion;
       cmpCollabAddNote('ai', `${mm.thought} ${mm.question}`, true, null, null, mm);
       c.matchMarketSuggestion = mm;
-      // Only re-render the Hub's card grid (for the Analysis card's new
-      // insight, see renderCmpWorkspaceHub()) when the Hub is actually the
-      // visible screen right now — calling it while the Objectives or Pitch
-      // overlay is open would needlessly rebuild the Hub underneath it.
-      // Those overlays now refresh it themselves on close instead (see
-      // cmpCloseObjectivesIntake()/cmpCloseRecommendationPitch()'s own
-      // comments), against the same campaign object updated just above.
+      // Only re-render the Hub's card grid when the Hub is actually the
+      // visible screen right now — the Objectives/Pitch overlays refresh
+      // it themselves on close (see their own comments).
       const pitchOpen = document.getElementById('cmpPitchOverlay') && document.getElementById('cmpPitchOverlay').classList.contains('open');
       const objOpen = document.getElementById('cmpObjectivesOverlay') && document.getElementById('cmpObjectivesOverlay').classList.contains('open');
       if (!pitchOpen && !objOpen) renderCmpWorkspaceHub(c);
     }
   } catch (e){
     console.warn('cmpCollabRequestAiReply failed:', e);
-    cmpCollabAddNote('ai', 'Something went wrong reaching the AI Brain — try again in a moment.', true);
+    // If the stream had already delivered real text before it failed, keep
+    // it — the person read it, and it is the AI Brain's actual answer so
+    // far — and say plainly that it was cut short rather than replacing it
+    // with a generic error.
+    const partial = (cmpCollabStreamingText || '').trim();
+    cmpCollabStreamingText = null;
+    if (partial.length > 40){
+      cmpCollabAddNote('ai', partial + '\n\n(The connection dropped before this answer finished — ask again for the rest.)', true);
+    } else {
+      cmpCollabAddNote('ai', 'Something went wrong reaching the AI Brain — try again in a moment.', true);
+    }
   } finally {
     cmpCollabAiBusy = false;
+    cmpCollabStreamingText = null;
     cmpRenderCollabBody(c);
   }
+}
+// Streams one AI Brain turn. Resolves with the same JSON object the
+// non-streaming endpoint returns (the `done` event's payload). Falls back
+// transparently when the response isn't an event stream.
+async function cmpAiBrainStream(url, bodyObj, handlers){
+  const controller = new AbortController();
+  let silenceTimer = null;
+  let gotFirstByte = false;
+  const tOpen = performance.now();
+  const armSilence = () => {
+    if (silenceTimer) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => controller.abort(), gotFirstByte ? CMP_AI_BRAIN_SILENCE_MS : CMP_AI_BRAIN_FIRST_BYTE_MS);
+  };
+  armSilence();
+  let resp;
+  try {
+    resp = await authedFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      body: JSON.stringify(bodyObj),
+      signal: controller.signal
+    });
+  } catch (e){
+    if (silenceTimer) clearTimeout(silenceTimer);
+    if (e.name === 'AbortError') throw new Error(`No response from the AI Brain for ${CMP_AI_BRAIN_FIRST_BYTE_MS / 1000}s`);
+    throw e;
+  }
+  const ctype = (resp.headers.get('content-type') || '').toLowerCase();
+  if (!resp.ok){
+    if (silenceTimer) clearTimeout(silenceTimer);
+    let detail = '';
+    try { const body = await resp.json(); detail = [body.error, body.detail].filter(Boolean).join(' — '); } catch (parseErr) { /* not JSON */ }
+    throw new Error(detail || `HTTP ${resp.status}`);
+  }
+  if (!ctype.includes('text/event-stream') || !resp.body || !resp.body.getReader){
+    // Plain JSON fallback — whole body at once.
+    try { return await resp.json(); } finally { if (silenceTimer) clearTimeout(silenceTimer); }
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let done = null;
+  try {
+    while (true){
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      if (!gotFirstByte){
+        gotFirstByte = true;
+        const firstByteMs = Math.round(performance.now() - tOpen);
+        if (firstByteMs > 8000) console.warn(`[ai-brain] first byte took ${firstByteMs}ms — the host may be buffering the stream instead of passing it through`);
+      }
+      armSilence();
+      buf += decoder.decode(chunk.value, { stream: true });
+      let sep;
+      while ((sep = buf.indexOf('\n\n')) !== -1){
+        const raw = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const dataLines = raw.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());
+        if (!dataLines.length) continue; // a ": ping" comment — keeps the watchdog fed, nothing to render
+        let evt = null;
+        try { evt = JSON.parse(dataLines.join('\n')); } catch (e){ continue; }
+        if (evt.type === 'start' && handlers.onStart) handlers.onStart(evt);
+        else if (evt.type === 'first' && handlers.onFirst) handlers.onFirst(evt);
+        else if (evt.type === 'delta' && handlers.onDelta) handlers.onDelta(evt.text || '');
+        else if (evt.type === 'reset' && handlers.onReset) handlers.onReset();
+        else if (evt.type === 'done') done = evt;
+        else if (evt.type === 'error') throw new Error([evt.error, evt.detail].filter(Boolean).join(' — ') || 'AI Brain error');
+      }
+    }
+  } catch (e){
+    if (e.name === 'AbortError') throw new Error(`The AI Brain went silent for ${CMP_AI_BRAIN_SILENCE_MS / 1000}s mid-answer`);
+    throw e;
+  } finally {
+    if (silenceTimer) clearTimeout(silenceTimer);
+  }
+  if (!done) throw new Error('The AI Brain stream ended without a final answer');
+  return done;
+}
+// Warm-up (2026-09-25): the moment a campaign is loaded into the Workspace,
+// ask the backend to build and cache the account-level context the AI
+// Brain will need (top markets, budget headroom + history, monthly KPIs —
+// the expensive, rarely-changing inputs). By the time the person has read
+// the screen and typed a question, the first reply only pays for the
+// model. Fire-and-forget: a failure here changes nothing (the reply
+// endpoint builds live on a cache miss), so it never surfaces to the user.
+const cmpAiBrainWarmed = new Set();
+function cmpWarmAiBrainContext(campaignId){
+  if (!campaignId || dataSourceLabel !== 'backend' || cmpAiBrainWarmed.has(campaignId)) return;
+  cmpAiBrainWarmed.add(campaignId);
+  authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}/ai-brain-warm`, { method: 'POST', timeoutMs: 60000 })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && j.timings) console.log('[ai-brain] context warmed', j.timings); })
+    .catch(e => { cmpAiBrainWarmed.delete(campaignId); console.debug('[ai-brain] warm-up skipped:', e && e.message); });
 }
 // 2026-09-16 — "Ask AI Brain →" removed. It was a second, redundant path
 // to the exact same thing Send already does on this tab (typing anything
@@ -14205,7 +14337,7 @@ function cmpCollabComposerHtml(tab, placeholder, hasHistory){
     : '';
   return `<div class="cmp-note-add">
     ${chipsHtml}
-    ${thinking ? `<div class="cmp-note-brain-training-done" style="margin:0 0 2px;">AI Brain is thinking…</div>` : ''}
+    ${thinking ? `<div class="cmp-note-brain-training-done" style="margin:0 0 2px;">${(tab === 'ai' && cmpCollabStreamingText) ? 'AI Brain is writing…' : 'AI Brain is thinking…'}</div>` : ''}
     <div class="cmp-note-send-row">
       <textarea id="cmpCollabInput_${tab}" rows="1" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
       <button type="button" class="cmp-note-send-btn" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')" aria-label="${thinking ? 'AI Brain is thinking' : 'Send'}" title="${thinking ? 'AI Brain is thinking…' : 'Send'}">
@@ -14232,8 +14364,14 @@ function cmpRenderCollabBody(campaign){
   }
   if (cmpCollabActiveTab === 'ai'){
     const notes = cmpCollabNotesFor(campaign, 'ai');
-    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : `<div class="cmp-collab-empty">No AI Brain notes yet — send it a question about this campaign to start.</div>`)
+    // 2026-09-25 — while a reply is streaming, a live bubble sits below the
+    // history and fills in word by word (see cmpCollabPaintStreamingText).
+    const streamingHtml = (cmpCollabAiBusy && cmpCollabStreamingText !== null)
+      ? `<div id="cmpCollabStreamingNote">${cmpCollabStreamingNoteHtml()}</div>` : '';
+    body.innerHTML = (notes.length ? notes.map(cmpCollabNoteRowHtml).join('') : (streamingHtml ? '' : `<div class="cmp-collab-empty">No AI Brain notes yet — send it a question about this campaign to start.</div>`))
+      + streamingHtml
       + cmpCollabComposerHtml('ai', 'Ask the AI Brain about this campaign…', notes.length > 0);
+    if (streamingHtml) cmpCollabPaintStreamingText();
     return;
   }
   // Team tab — Feedback tab removed 2026-09-16 (see cmpCollabNoteRowHtml's
@@ -39014,6 +39152,7 @@ function loadExistingCampaignIntoForm(campaignId){
   const c = state.campaigns.find(x => x.id === campaignId);
   const hiddenField = document.getElementById('cmpExistingCampaign');
   if (hiddenField) hiddenField.value = campaignId;
+  cmpWarmAiBrainContext(campaignId); // 2026-09-25 — see its own comment
   // 2026-09-23 root-cause fix — this is the single real entry point that
   // loads a campaign into the rail-based Campaign Workspace Hub (called
   // from the existing-campaign selector, campaign creation, both "pick up
