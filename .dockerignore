@@ -1,0 +1,7 @@
+node_modules
+backend/*.db
+backend/*.db-journal
+backend/server.js.txt
+*.pdf
+*.zip
+.git
