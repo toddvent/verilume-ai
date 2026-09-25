@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- API host override — leave empty to call /api/* on this same origin (Vercel proxies it to the API service). Set to the service's https URL only if streamed AI Brain replies arrive all-at-once through the proxy. See BACKEND_URL in the script below. -->
+<meta name="verilume-backend-url" content="">
 <title>Verilume — Client Portal</title>
 <meta name="description" content="Verilume Client Portal: the CMO Dashboard and marketing-function activation workspace, picking up where the free assessment leaves off.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11931,7 +11933,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-25-ai-brain-streaming-precompute';
+const CXMEDIA_BUILD_STAMP = '2026-09-25-api-service-host-override';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -19288,9 +19290,20 @@ MOCK_INTAKE_SNAPSHOT[cellKey('Loyalty','Product Delivery')] = 1.5;
 // Same-origin in production (frontend and API are served from the same
 // Vercel domain), local backend when opened directly as a file:// page
 // during local dev (unchanged behavior from before).
-const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
-  ? ''
-  : 'http://localhost:8787';
+// 2026-09-25 — the API can now run as its own long-lived service (see
+// backend/serve.js and the deploy runbook). Default stays same-origin
+// (Vercel proxies /api/* to that service via vercel.json's rewrite, so the
+// site-wide gate in middleware.js still fronts every API call). If the
+// proxy ever buffers the AI Brain's streamed replies, set the meta tag
+// <meta name="verilume-backend-url" content="https://api.yourhost"> in the
+// <head> to call the service directly instead (CORS is already open on the
+// backend); an empty/missing tag means same-origin, exactly as before.
+const BACKEND_URL = (() => {
+  if (typeof window === 'undefined' || !window.location || window.location.protocol === 'file:') return 'http://localhost:8787';
+  const meta = document.querySelector('meta[name="verilume-backend-url"]');
+  const override = meta && (meta.getAttribute('content') || '').trim().replace(/\/+$/, '');
+  return override || '';
+})();
 
 // ---------- Round 60 — authentication (Deliverable 14) ----------
 // Every backend call in this file goes through authedFetch() instead of a
