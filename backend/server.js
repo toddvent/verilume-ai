@@ -259,6 +259,8 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   activitynotesjson: 'activityNotesJson',
   audiencesharedexperience: 'audienceSharedExperience',
   audiencecopyjson: 'audienceCopyJson',
+  audiencemessagingchannelsjson: 'audienceMessagingChannelsJson',
+  approvedcreativeassetsjson: 'approvedCreativeAssetsJson',
   briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
   businessinitiative: 'businessInitiative',
   channelgapnote: 'channelGapNote',
@@ -1512,6 +1514,28 @@ ensureColumn('campaigns', 'audienceSharedExperience', "TEXT DEFAULT 'shared'");
 // winner yet, same "nothing changes until someone actually picks a
 // winner" default every other additive field here uses.
 ensureColumn('campaigns', 'audienceCopyJson', 'TEXT');
+
+// 2026-09-25 — Creative Asset Selection with copy, per Todd's two
+// decisions after the Step 2 wireframe review:
+//   (1) "Create Audience Specific Messaging Yes | No" after the master
+//       Long Form Copy is saved, with an "Apply to Approved Channels"
+//       multi-select beside it. Yes/No reuses audienceSharedExperience
+//       above ('separate' == Yes) so the Creative recap's own "Same
+//       experience for all audiences?" toggle and this one can never
+//       disagree; the channel subset is new: audienceMessagingChannelsJson,
+//       a JSON array of real approved channel names the audience-specific
+//       copy applies to (every other approved channel keeps the one
+//       campaign-wide version).
+//   (2) The Partner/Format/Size grid now carries each row's fitted copy
+//       version(s) — per audience where (1) applies — with Edit/Approve.
+//       That grid was never persisted server-side before: the frontend
+//       has POSTed approvedCreativeAssetsJson on Submit since round 132ao,
+//       but no column or merge-update branch existed, so the write was
+//       silently dropped and every reload emptied the grid (only the
+//       Creative Job records survived). Real column now, read back by the
+//       frontend on workspace open (see cmpLoadPerfMarketingChannelPlan).
+ensureColumn('campaigns', 'audienceMessagingChannelsJson', 'TEXT');
+ensureColumn('campaigns', 'approvedCreativeAssetsJson', 'TEXT');
 
 // audienceAssetTypesJson — 2026-09-24, the first cut of "Which asset types
 // apply?" (Creative-Desktop.dc.html's card, between the audience toggle and
@@ -17969,7 +17993,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-25-ai-brain-streaming-precompute',
+        buildStamp: '2026-09-25-creative-asset-copy-versions',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -23568,6 +23592,13 @@ Submit your response via the campaign_intake_turn tool.`;
           ? (() => { try { return typeof body.campaignTypeDetailModes === 'object' ? JSON.stringify(body.campaignTypeDetailModes) : existing.campaignTypeDetailModesJson; } catch (e){ return existing.campaignTypeDetailModesJson; } })()
           : existing.campaignTypeDetailModesJson,
         audienceSharedExperience: body.audienceSharedExperience !== undefined ? (body.audienceSharedExperience === 'separate' ? 'separate' : 'shared') : existing.audienceSharedExperience,
+        // 2026-09-25 — see the ensureColumn() comments for both.
+        audienceMessagingChannelsJson: body.audienceMessagingChannels !== undefined
+          ? (Array.isArray(body.audienceMessagingChannels) ? JSON.stringify(body.audienceMessagingChannels.filter(x => typeof x === 'string').slice(0, 60)) : existing.audienceMessagingChannelsJson)
+          : existing.audienceMessagingChannelsJson,
+        approvedCreativeAssetsJson: body.approvedCreativeAssetsJson !== undefined
+          ? (() => { try { const parsed = typeof body.approvedCreativeAssetsJson === 'string' ? JSON.parse(body.approvedCreativeAssetsJson) : body.approvedCreativeAssetsJson; return Array.isArray(parsed) ? JSON.stringify(parsed.slice(0, 400)) : existing.approvedCreativeAssetsJson; } catch (e){ return existing.approvedCreativeAssetsJson; } })()
+          : existing.approvedCreativeAssetsJson,
         // 2026-09-24 — audienceAssetTypesJson is superseded (see its
         // ensureColumn() comment) — no longer written; left read-only so an
         // old saved value isn't silently wiped.
@@ -23726,6 +23757,8 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('campaignTypeDetailsJson', body.campaignTypeDetails !== undefined, merged.campaignTypeDetailsJson);
       addCol('campaignTypeDetailModesJson', body.campaignTypeDetailModes !== undefined, merged.campaignTypeDetailModesJson);
       addCol('audienceSharedExperience', body.audienceSharedExperience !== undefined, merged.audienceSharedExperience);
+      addCol('audienceMessagingChannelsJson', body.audienceMessagingChannels !== undefined, merged.audienceMessagingChannelsJson);
+      addCol('approvedCreativeAssetsJson', body.approvedCreativeAssetsJson !== undefined, merged.approvedCreativeAssetsJson);
       addCol('campaignAssetTypesJson', body.campaignAssetTypes !== undefined, merged.campaignAssetTypesJson);
       addCol('businessInitiative', body.businessInitiative !== undefined, merged.businessInitiative);
       addCol('stage', body.stage !== undefined, merged.stage);
