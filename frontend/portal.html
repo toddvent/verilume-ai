@@ -11933,7 +11933,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-25-api-service-host-override';
+const CXMEDIA_BUILD_STAMP = '2026-09-25-creative-asset-partners-per-channel';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -60155,6 +60155,85 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
     applyLabels(adUnitSpecsFor(channel).map(o => o.label));
   }
 }
+// 2026-09-25, per direct report on the Creative Asset Selection grid: "The
+// drop downs aren't populating per channel. Direct Mail as an example should
+// be the client name. Atlas in this account." The Partner select used to
+// render the same flat account-level list (state.partners — seeded 'Meta',
+// 'Google Ads', 'The Trade Desk') for every channel, so a Direct Mail row
+// offered three ad platforms and never the client itself. Partners are now
+// resolved PER CHANNEL:
+//   - owned/direct channels (Direct Mail, Internal Email, Email —
+//     Remarketing, PR, Field / ABM): the client's own company name
+//     (state.company, shown as "<Company> (in-house)") comes first;
+//   - paid platforms get the platforms that actually run that channel
+//     (Paid Social -> Meta/TikTok/LinkedIn/Pinterest; Search -> Google Ads/
+//     Microsoft Ads; programmatic/CTV/retail -> The Trade Desk/DV360/Amazon);
+//   - Magazines/Newspapers pull the real publication names from the Print
+//     Ad Specs catalog (same /api/print-specs/global the Size list already
+//     uses), filled in asynchronously after the first paint;
+//   - every channel also lists any partner/vendor the account added itself
+//     in Company Profile -> Partners & Vendors (addPartner()), minus the
+//     three seeded platform names, so an ADMIN addition (a mail house, a TV
+//     rep firm, an OOH vendor) shows up everywhere without a code change.
+// A previously saved value that isn't in today's list is kept as an option
+// so an old row never silently loses its partner.
+const CMP_PARTNERS_BY_CHANNEL = {
+  'Paid Social': ['Meta', 'TikTok', 'LinkedIn', 'Pinterest', 'Snap', 'X'],
+  'Brand Search': ['Google Ads', 'Microsoft Ads'],
+  'Non-Brand Search': ['Google Ads', 'Microsoft Ads'],
+  'Programmatic Display': ['The Trade Desk', 'Google DV360', 'Amazon DSP'],
+  'Remarketing': ['The Trade Desk', 'Google Ads', 'Meta', 'Criteo'],
+  'Retail Media': ['Amazon Ads', 'Walmart Connect', 'Instacart Ads', 'The Trade Desk'],
+  'Partner Media': ['The Trade Desk', 'Google DV360'],
+  'CTV': ['The Trade Desk', 'Google DV360', 'Amazon DSP', 'Roku', 'Hulu / Disney'],
+  'OTV': ['The Trade Desk', 'Google DV360', 'YouTube'],
+  'Linear TV': [],
+  'Radio': ['iHeartMedia', 'Audacy', 'Cumulus'],
+  'Podcasts': ['Spotify Ads', 'SiriusXM Media', 'Acast'],
+  'Out-of-Home': ['Clear Channel Outdoor', 'Outfront', 'Lamar'],
+  'Magazines': [],   // filled from the Print Ad Specs catalog
+  'Newspapers': []   // filled from the Print Ad Specs catalog
+};
+const CMP_IN_HOUSE_CHANNELS = new Set(['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries', 'Internal Email', 'Email — Remarketing', 'PR', 'Field / ABM', 'Linear TV']);
+const CMP_SEEDED_PLATFORM_PARTNERS = new Set(['Meta', 'Google Ads', 'The Trade Desk']);
+function cmpInHousePartnerLabel(){
+  return `${state.company || 'This account'} (in-house)`;
+}
+function cmpAccountCustomPartners(){
+  return (state.partners || []).filter(p => typeof p === 'string' && p.trim() && !CMP_SEEDED_PLATFORM_PARTNERS.has(p.trim())).map(p => p.trim());
+}
+let cmpPublisherNamesCache = null;
+function cmpLoadPublisherNames(){
+  if (cmpPublisherNamesCache) return Promise.resolve(cmpPublisherNamesCache);
+  return authedFetch(`${BACKEND_URL}/api/print-specs/global`)
+    .then(r => r.ok ? r.json() : { publications: [] })
+    .then(data => { cmpPublisherNamesCache = Array.from(new Set((data.publications || []).map(p => (p.name || '').trim()).filter(Boolean))); return cmpPublisherNamesCache; })
+    .catch(() => []);
+}
+function cmpPartnerOptionsForChannel(channel, savedValue){
+  const out = [];
+  const push = (v) => { if (v && !out.includes(v)) out.push(v); };
+  if (CMP_IN_HOUSE_CHANNELS.has(channel)) push(cmpInHousePartnerLabel());
+  (CMP_PARTNERS_BY_CHANNEL[channel] || []).forEach(push);
+  if ((channel === 'Magazines' || channel === 'Newspapers') && cmpPublisherNamesCache) cmpPublisherNamesCache.forEach(push);
+  cmpAccountCustomPartners().forEach(push);
+  if (!CMP_IN_HOUSE_CHANNELS.has(channel)) push(cmpInHousePartnerLabel());
+  if (savedValue) push(savedValue);
+  return out;
+}
+// Magazines/Newspapers: the publication names arrive after the first paint —
+// re-fill just those Partner selects once the catalog is loaded.
+function cmpFillPublisherPartnerSelects(channel){
+  if (channel !== 'Magazines' && channel !== 'Newspapers') return;
+  cmpLoadPublisherNames().then(() => {
+    const rows = cmpCreativeAssetGridRows[channel] || [];
+    const slug = cmpCreativeAssetChannelSlug(channel);
+    rows.forEach((row, i) => {
+      const sel = document.getElementById(`cmpCAG_${slug}_${i}_partner`);
+      if (sel) sel.innerHTML = cmpOptionsHtmlSelected(cmpPartnerOptionsForChannel(channel, row.partner), 'Select a partner…', row.partner);
+    });
+  });
+}
 function cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, showRemove){
   const partnerId = `cmpCAG_${slug}_${i}_partner`;
   const formatId = `cmpCAG_${slug}_${i}_format`;
@@ -60163,7 +60242,7 @@ function cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, showRemov
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
       <div style="flex:1 1 150px;">
         <label class="hint" style="display:block;margin-bottom:3px;">Partner</label>
-        <select id="${partnerId}" onchange='cmpCreativeAssetRowFieldChanged(${JSON.stringify(channel)}, ${i}, "partner", this.value)'>${cmpOptionsHtmlSelected(state.partners || [], 'Select a partner…', row.partner)}</select>
+        <select id="${partnerId}" onchange='cmpCreativeAssetRowFieldChanged(${JSON.stringify(channel)}, ${i}, "partner", this.value)'>${cmpOptionsHtmlSelected(cmpPartnerOptionsForChannel(channel, row.partner), 'Select a partner…', row.partner)}</select>
       </div>
       <div style="flex:1 1 150px;">
         <label class="hint" style="display:block;margin-bottom:3px;">Asset (Creative Format)</label>
@@ -60216,7 +60295,7 @@ function cmpRenderCreativeAssetMatrix(){
   // fully inline at its only call site; given a real rule (below, near
   // the other .cmp-* card patterns) instead.
   el.innerHTML = channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
-  channels.forEach(channel => cmpPopulateCreativeAssetSizeSelectsForChannel(channel));
+  channels.forEach(channel => { cmpPopulateCreativeAssetSizeSelectsForChannel(channel); cmpFillPublisherPartnerSelects(channel); });
   cmpSyncCreativeAssetRequestsFromGrid();
 }
 function cmpRenderCreativeAssetMatrixChannelGroup(channel){
@@ -60224,6 +60303,7 @@ function cmpRenderCreativeAssetMatrixChannelGroup(channel){
   if (!groupEl) return;
   groupEl.innerHTML = cmpCreativeAssetChannelGroupInnerHtml(channel);
   cmpPopulateCreativeAssetSizeSelectsForChannel(channel);
+  cmpFillPublisherPartnerSelects(channel);
 }
 // Auto-save on every field change — no separate per-asset Save click.
 // Flattens the whole grid back into cmpCreativeAssetRequests (the shape
