@@ -2984,6 +2984,243 @@ async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, 
   }
   return toolUse.input;
 }
+// ---------- Streaming structured-output helper (2026-09-25) ----------
+// Built for the AI Brain's "never time out, as fast as possible" directive
+// (Todd, 2026-09-25: "Our internal AI Brain can never time out and needs to
+// be as fast as possible. We don't have a product without it."). Same
+// tool-use/input_schema contract as callClaudeForJSON above — the model is
+// still forced into a structured tool call, so nothing downstream changes
+// shape — but the request is made with `stream: true`, and as the model
+// emits its tool input JSON token by token, the `reply` string is decoded
+// out of the partial JSON and handed to `onReplyDelta(appendedText)` so the
+// caller can push it to the browser immediately. The first words reach the
+// person in a few seconds instead of after the whole 900-token answer is
+// finished. Timeout semantics are also different from fetchWithTimeout's
+// single absolute cap, which is the wrong tool for a stream: `firstByteMs`
+// bounds the wait for the model to START answering, `idleMs` bounds any
+// silent gap once it has, and `maxMs` is the hard ceiling (kept under
+// Vercel's 120s function limit). A slow-but-flowing answer is never killed
+// just because it's long.
+//
+// `system` may be a string or an array of content blocks (so callers can
+// attach `cache_control` to the static instruction block — see
+// AI_BRAIN_REPLY_SYSTEM's own comment for why that matters for latency).
+async function callClaudeToolStream({ model, maxTokens, system, messages, schema, toolName, toolDescription, onReplyDelta, onFirstToken, firstByteMs = 20000, idleMs = 15000, maxMs = 110000 }){
+  const controller = new AbortController();
+  let phase = 'connect';
+  let idleTimer = null;
+  const hardTimer = setTimeout(() => { phase = 'max'; controller.abort(); }, maxMs);
+  const armIdle = (ms) => { if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => { controller.abort(); }, ms); };
+  armIdle(firstByteMs);
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    stream: true,
+    messages,
+    tools: [{ name: toolName, description: toolDescription || 'Submit the requested structured result.', input_schema: schema }],
+    tool_choice: { type: 'tool', name: toolName }
+  };
+  if (system) body.system = system;
+  let resp;
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (e){
+    clearTimeout(hardTimer); if (idleTimer) clearTimeout(idleTimer);
+    if (e.name === 'AbortError') throw new Error(`Anthropic stream timed out before responding (${phase === 'max' ? maxMs : firstByteMs}ms)`);
+    throw e;
+  }
+  if (!resp.ok){
+    clearTimeout(hardTimer); if (idleTimer) clearTimeout(idleTimer);
+    const bodyText = await resp.text();
+    const err = new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 300)}`);
+    err.httpStatus = resp.status;
+    throw err;
+  }
+  const decoder = new TextDecoder();
+  const reader = resp.body.getReader();
+  let sseBuf = '';
+  let jsonBuf = '';          // the tool input JSON as streamed so far
+  let replySent = '';        // the portion of `reply` already handed to onReplyDelta
+  let sawFirstToken = false;
+  let usage = null;
+  let stopReason = null;
+  let inToolBlock = false;
+  const handleEvent = (evt) => {
+    if (!evt) return;
+    if (evt.type === 'content_block_start' && evt.content_block && evt.content_block.type === 'tool_use' && evt.content_block.name === toolName){
+      inToolBlock = true;
+    } else if (evt.type === 'content_block_delta' && inToolBlock && evt.delta && evt.delta.type === 'input_json_delta'){
+      jsonBuf += evt.delta.partial_json || '';
+      if (!sawFirstToken){ sawFirstToken = true; if (onFirstToken) onFirstToken(); }
+      if (onReplyDelta){
+        const decoded = extractPartialJsonStringField(jsonBuf, 'reply');
+        if (decoded !== null && decoded.length > replySent.length){
+          const appended = decoded.slice(replySent.length);
+          replySent = decoded;
+          onReplyDelta(appended);
+        }
+      }
+    } else if (evt.type === 'content_block_stop'){
+      inToolBlock = false;
+    } else if (evt.type === 'message_delta'){
+      if (evt.delta && evt.delta.stop_reason) stopReason = evt.delta.stop_reason;
+      if (evt.usage) usage = Object.assign(usage || {}, evt.usage);
+    } else if (evt.type === 'message_start' && evt.message && evt.message.usage){
+      usage = Object.assign({}, evt.message.usage);
+    } else if (evt.type === 'error'){
+      throw new Error(`Anthropic stream error: ${(evt.error && evt.error.message) || 'unknown'}`);
+    }
+  };
+  try {
+    while (true){
+      const { value, done } = await reader.read();
+      if (done) break;
+      phase = sawFirstToken ? 'stream' : 'first-byte';
+      armIdle(sawFirstToken ? idleMs : firstByteMs);
+      sseBuf += decoder.decode(value, { stream: true });
+      let sep;
+      while ((sep = sseBuf.indexOf('\n\n')) !== -1){
+        const rawEvent = sseBuf.slice(0, sep);
+        sseBuf = sseBuf.slice(sep + 2);
+        const dataLines = rawEvent.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());
+        if (!dataLines.length) continue;
+        let evt = null;
+        try { evt = JSON.parse(dataLines.join('\n')); } catch (e){ continue; }
+        handleEvent(evt);
+      }
+    }
+  } catch (e){
+    if (e.name === 'AbortError'){
+      const which = phase === 'max' ? `hard ceiling ${maxMs}ms` : (sawFirstToken ? `no tokens for ${idleMs}ms mid-answer` : `no first token within ${firstByteMs}ms`);
+      throw new Error(`Anthropic stream timed out (${which})`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(hardTimer); if (idleTimer) clearTimeout(idleTimer);
+  }
+  let input;
+  try { input = JSON.parse(jsonBuf); }
+  catch (e){
+    // A max_tokens cut mid-JSON is the realistic way to land here. Salvage
+    // the reply text we already streamed so the person keeps what they saw.
+    const salvaged = extractPartialJsonStringField(jsonBuf, 'reply');
+    if (salvaged) return { reply: salvaged, suggestion: null, _truncated: true, _usage: usage, _stopReason: stopReason };
+    throw new Error('model stream ended without a parseable structured tool call');
+  }
+  if (!input || typeof input !== 'object') throw new Error('model stream did not include the expected structured tool call');
+  input._usage = usage; input._stopReason = stopReason;
+  return input;
+}
+// Decodes the value of a top-level string field out of a PARTIAL JSON
+// object as it's being streamed — returns whatever of the string has
+// arrived so far (with JSON escapes resolved), or null if the field's
+// opening quote hasn't arrived yet. Only needs to be right for the shape
+// the tool schema produces (an object whose `key` is a string); a trailing
+// incomplete escape sequence is held back until it completes.
+function extractPartialJsonStringField(buf, key){
+  const marker = `"${key}"`;
+  const at = buf.indexOf(marker);
+  if (at === -1) return null;
+  let i = at + marker.length;
+  while (i < buf.length && /[\s:]/.test(buf[i])) i++;
+  if (i >= buf.length || buf[i] !== '"') return null;
+  i++;
+  let out = '';
+  while (i < buf.length){
+    const ch = buf[i];
+    if (ch === '"') return out;
+    if (ch === '\\'){
+      const nxt = buf[i + 1];
+      if (nxt === undefined) return out;         // escape not complete yet
+      if (nxt === 'u'){
+        const hex = buf.slice(i + 2, i + 6);
+        if (hex.length < 4) return out;           // \uXXXX not complete yet
+        out += String.fromCharCode(parseInt(hex, 16)); i += 6; continue;
+      }
+      const map = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' };
+      out += (map[nxt] !== undefined ? map[nxt] : nxt); i += 2; continue;
+    }
+    out += ch; i++;
+  }
+  return out;
+}
+
+// ---------- AI Brain (Collaboration Center) static instructions ----------
+// 2026-09-25 — split out of the ai-brain-reply prompt body so it can be sent
+// as a `system` block with cache_control (part 3 of that endpoint's
+// rebuild). This text is identical on every turn for every campaign, so
+// Anthropic's prompt cache reuses its processed form across turns instead
+// of re-reading ~2,000 tokens of instructions each time — shorter time to
+// first token, lower cost. Content is the same six instruction paragraphs
+// that lived inline before, plus one new ANSWER LENGTH rule (part 5): the
+// person is in a chat, not reading a report, and a 900-token essay was the
+// single biggest reason a turn ran past 30 seconds.
+const AI_BRAIN_REPLY_SYSTEM = `You are the AI Brain, a marketing operations assistant embedded in a real campaign's Workspace hub, having a real back-and-forth conversation with the team — not writing a one-shot report. The user turn gives you the campaign's real current data (CAMPAIGN, REAL CHANNEL PLAN LINES, SPEND BY REGION, TOP MARKETS / DMA INDEXING, MATCH MARKET TEST, ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE, THIS ACCOUNT'S TARGETING DATA, THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), the conversation so far, and what the team just said.
+
+ANSWER LENGTH — this is a chat. Answer in 2-5 short sentences, or a short list of at most 4 brief points. Lead with the answer, then the one or two numbers that support it. Go longer ONLY when the team explicitly asks for a full plan, a full recommendation, or "all the detail" — and even then, stay tight. Never pad, never restate the data back, never open with a preamble.
+
+GROUNDING — reply grounded only in the real fields given — never invent a number, channel, region, or status not shown. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown when relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given).
+
+NEVER EXPOSE INTERNAL IDS — the \`id=...\` value on each REAL CHANNEL PLAN LINES row (and any other raw database id, table name, or record identifier anywhere in the data) is there only so you can fill the suggestion field's entryId correctly. The team never sees a database schema and does not know what "CPD-..." means — never quote a raw id, table name, or column name in your reply text. Refer to a line the way a person would: by its channel name, region, budget, and status (e.g. "the Field/ABM line at $90,000, still in draft" — not "line CPD-mubu5mq5-161-4").
+
+PLACEHOLDER VS. REAL EXECUTION PLAN — a channel plan line's budget can come from two different places: a real, specific plan the team entered (vendor, tactics, a real impressions estimate from an actual CPM), or this platform's own recommended media-mix split of the campaign's overall budget with nothing further filled in yet (0 or missing impressions, no execution detail anywhere in what's given). Each REAL CHANNEL PLAN LINES row carries a trailing " | basis: ..." when one is on file — that's the REAL, platform-computed answer to "why was this number chosen" (e.g. it's Verilume's recommended stage-weighted split and what % of the total budget it represents, or a note that it was hand-entered by Performance Marketing with no algorithmic basis). When asked why a line's budget is what it is, or what it's "made up of," always lead with that basis line when present — quote its substance in plain language, not the raw "basis:" label. It only ever tells you the SIZING logic (top-down split vs. manual), never vendor/tactic execution detail — for that, if there's no real execution detail on file (impressions are 0/missing and nothing names a vendor, tactic, or plan), say so plainly rather than listing generic "typically includes" industry tactics as if they describe this campaign's actual plan — that reads as a real answer when it's a guess. It's fine, and preferred, to say plainly that Performance Marketing/Channel Plan hasn't entered specific execution detail for this line yet, and that a recommended-split number is a placeholder sizing, not a costed plan.
+
+CHANNEL/KPI FIT — a REAL CHANNEL PLAN LINES row carries a trailing " | flag: ..." whenever this platform's own code has already determined that line's channel can't be measured the way the campaign's Primary KPI or stated objective calls for (e.g. Field/ABM or Direct Mail sitting under a visit/click-based KPI, with no direct visit/click tracking of its own). This is a code-computed fact, not something to re-derive — when a line carries that flag, proactively surface it (don't wait to be asked) by stating its substance in plain language, and offer to suggest reallocating toward a channel with clearer visit/conversion tracking. If the team is asking for or clearly implying that change: if the better channel ALREADY has a line in REAL CHANNEL PLAN LINES, propose it as an existing-line change (entryId + newBudget on the flagged line, and entryId + newBudget on the better-tracked line too, if you're proposing to move budget between two existing lines); if it does NOT have a line yet (e.g. moving into Video/CTV, see VIDEO CHANNELS below), use newLineChannel + newLineBudget for it alongside entryId + newBudget reducing the flagged line — never rename the flagged line to the new channel. Otherwise just flag it and ask if they want that recommendation. If a line carries no flag, don't invent a mismatch for it — the check has already run.
+
+VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and, if the team is asking for or clearly implying adding one, propose it via newLineChannel + newLineBudget (paired with entryId + newBudget on whichever existing line you're proposing to fund it from, if any) rather than saying the platform has no video capability. If a MISSING CHANNEL GAP line is present, it already answers "is video missing and does it matter for this stage" with a real number — lead with that instead of reasoning it out fresh, and proactively raise it (don't wait to be asked) the same way the CHANNEL/KPI FIT flag does.
+
+BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget change, propose it via the suggestion field: use entryId + newBudget for a change to an EXISTING line (a real id from the REAL CHANNEL PLAN LINES list), and/or newLineChannel + newLineBudget when the recommendation requires a channel that has NO existing line yet — for example, "shift $30k from Programmatic Display into a new CTV line" is BOTH parts at once (entryId/newBudget on the real Programmatic Display line reducing it, AND newLineChannel/newLineBudget creating the new CTV line), never entryId alone with the new channel's name stuffed into the channel field — that would only rename the old line's label without moving any budget or creating anything. Otherwise leave suggestion null. Never invent a line item, channel, or number not shown. Keep it conversational, not a report.`;
+// 2026-09-22 fix, per direct report: a suggestion that read "Shift $30k
+// from Programmatic Display into a new CTV line" only ever reduced
+// Programmatic Display — no CTV line was created. The schema now has two
+// independent parts: an EXISTING-line change (entryId + newBudget) and a
+// NEW-line creation (newLineChannel + newLineBudget); either or both may be
+// present. `reply` is listed first on purpose: the streaming path decodes
+// it out of the partial tool JSON as it arrives (see callClaudeToolStream),
+// and models emit properties in schema order.
+const AI_BRAIN_REPLY_SCHEMA = {
+  type: 'object',
+  properties: {
+    reply: { type: 'string', description: 'Your reply — specific to this campaign\'s real fields, never generic filler. Short: 2-5 sentences unless a full plan was explicitly requested.' },
+    suggestion: {
+      type: ['object', 'null'],
+      description: 'A concrete budget change you are proposing, or null if you are not proposing one right now. Two independent parts — either or both may be present, at least one must be: reducing/changing an EXISTING line (entryId + newBudget), and/or creating a BRAND-NEW line for a channel that has no row in REAL CHANNEL PLAN LINES yet (newLineChannel + newLineBudget). NEVER invent a new channel by putting its name in `channel` against an existing entryId — that only renames the label shown for the OLD line in the UI, it does not create a new line or move budget anywhere. If you are proposing to fund a channel that is not already one of the REAL CHANNEL PLAN LINES, you MUST use newLineChannel/newLineBudget for it.',
+      properties: {
+        entryId: { type: 'string', description: 'The id of an EXISTING channel plan line to change the budget on — must be one of the real ids given, never invented. Omit entirely if you are not changing an existing line\'s budget.' },
+        channel: { type: 'string', description: 'The channel name of the EXISTING line at entryId — must match that real line\'s actual current channel, never a different/new channel name.' },
+        newBudget: { type: 'number', description: 'Required whenever entryId is set: the proposed new budget for that existing line.' },
+        newLineChannel: { type: 'string', description: 'If proposing to ADD a channel that is not already in REAL CHANNEL PLAN LINES, its real taxonomy channel name (e.g. one of the Video/OTV/CTV group per the VIDEO CHANNELS note). Omit entirely if you are not proposing a new line.' },
+        newLineBudget: { type: 'number', description: 'Required whenever newLineChannel is set: the proposed budget for that new line.' },
+        rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
+      }
+    }
+  },
+  required: ['reply']
+};
+// (4) Right-sized model per turn. Per Todd's 2026-09-20 instruction to
+// "adjust the model based on the complexity of the task blending Sonnet
+// and other Anthropic models": a factual lookup against data already in
+// the prompt ("how much is in Canada?", "when does this start?", "which
+// lines are still in draft?") needs no reasoning tier and runs on Haiku
+// 4.5 in a fraction of the time; anything advisory — a recommendation, a
+// "should we", a shift/reallocate/add, a why, a plan — stays on Sonnet
+// 4.5, since that's where a wrong answer costs real dollars. Also stays on
+// Sonnet when the previous AI turn proposed a change (the person is likely
+// negotiating it) — continuity matters more than a second of latency there.
+const MODEL_FAST = 'claude-haiku-4-5';
+const AI_BRAIN_ADVISORY_RE = /\b(recommend|suggest|should|advis|plan|planning|optimi|improv|shift|realloc|allocat|move|increase|decrease|reduce|cut|add|drop|replace|swap|why|how (do|should|can|would|could|might)|what (do|would|should|could) (you|we|i)|idea|strateg|mix|prioriti|worth|better|best|compare|versus|vs\.?|instead|risk|concern|help me)\b/i;
+function pickAiBrainReplyModel(message, priorNotes){
+  if (AI_BRAIN_ADVISORY_RE.test(message || '')) return MODEL_STANDARD;
+  const lastAi = Array.isArray(priorNotes) ? priorNotes.slice().reverse().find(n => n && n.isAi) : null;
+  if (lastAi && (lastAi.suggestion || lastAi.hasSuggestion)) return MODEL_STANDARD;
+  if ((message || '').length > 240) return MODEL_STANDARD; // a long, composed message is rarely a quick lookup
+  return MODEL_FAST;
+}
 // Shared shape for the several 0-100 score + one-sentence rationale call
 // sites above (content relevance, imagery relevance) — one schema, reused,
 // instead of a copy hand-typed at each site.
@@ -10465,6 +10702,194 @@ function buildAccountTopMarketsContextForPrompt(accountId){
   };
 }
 
+// ---------- AI Brain precomputed context cache (2026-09-25) ----------
+// Why this exists: on production (Supabase Postgres through pg-sync-bridge,
+// where every db.prepare().get/all() is a full sequential network round
+// trip) one Collaboration Center turn was spending its 30-second budget
+// mostly BEFORE the model was even called. Measured by reading the code
+// paths, not guessed: ai-brain-reply built its prompt from ~11-17 queries
+// with no Match Market upload on file — and with a real zip-level Match
+// Market upload, buildAccountTopMarketsContextForPrompt() alone re-ran
+// computeMarketUploadAnalysis() from scratch (per-DMA population lookups,
+// per-attribute demographic queries, two unbounded joins): 100-300+
+// sequential round trips, every single chat turn, for data that only
+// changes when someone uploads a new customer file. None of that depends
+// on the message the person just typed.
+//
+// Shape: a small key/value table (plus a per-instance in-memory front) that
+// holds the already-built prompt blocks for the ACCOUNT-level inputs the
+// AI Brain reads — top markets / DMA indexing, the marketing-budget
+// headroom + historical performance block, and the monthly KPI report.
+// Campaign-level rows (the campaign itself, its channel plan lines) are
+// still read live every turn: they're one query each and they're exactly
+// what the person is editing while they chat, so they must never be stale.
+//
+// Invalidation is by key PREFIX per account (`acct:<accountId>:`), fired
+// from handleRequest() after any successful write under the routes that
+// can change these inputs (see aiBrainContextInvalidationForRequest()
+// below for the exact list — derived from a full map of every INSERT/
+// UPDATE/DELETE against the tables these blocks read). Each entry also
+// carries a max age as a backstop, so even a write path this list misses
+// can only ever be stale for minutes, never indefinitely. Column names are
+// deliberately all-lowercase: Postgres folds unquoted identifiers, and
+// this table is new, so there is no camelCase legacy to preserve (see
+// CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS's own comment for the bug that
+// convention avoids).
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ai_brain_context_cache (
+    cachekey TEXT PRIMARY KEY,
+    valuejson TEXT NOT NULL,
+    builtat TEXT NOT NULL
+  );
+`);
+const aiBrainCtxMem = new Map(); // cachekey -> { value, builtAtMs } (this instance only)
+const AI_BRAIN_CTX_MEM_MAX = 500;
+function aiBrainCtxGet(key, maxAgeMs){
+  const now = Date.now();
+  const mem = aiBrainCtxMem.get(key);
+  if (mem && (now - mem.builtAtMs) < maxAgeMs) return mem.value;
+  let row = null;
+  try { row = db.prepare('SELECT valuejson, builtat FROM ai_brain_context_cache WHERE cachekey = ?').get(key); }
+  catch (e){ console.warn('[ai-brain-cache] read failed (building live instead):', e.message); return null; }
+  if (!row) return null;
+  const builtAtMs = Date.parse(row.builtat || row.builtAt || '') || 0;
+  if ((now - builtAtMs) >= maxAgeMs) return null;
+  let value;
+  try { value = JSON.parse(row.valuejson || row.valueJson); } catch (e){ return null; }
+  aiBrainCtxMem.set(key, { value, builtAtMs });
+  return value;
+}
+function aiBrainCtxSet(key, value){
+  const builtAt = new Date().toISOString();
+  if (aiBrainCtxMem.size >= AI_BRAIN_CTX_MEM_MAX) aiBrainCtxMem.delete(aiBrainCtxMem.keys().next().value);
+  aiBrainCtxMem.set(key, { value, builtAtMs: Date.now() });
+  try {
+    db.prepare('INSERT INTO ai_brain_context_cache (cachekey, valuejson, builtat) VALUES (?,?,?) ON CONFLICT(cachekey) DO UPDATE SET valuejson = excluded.valuejson, builtat = excluded.builtat')
+      .run(key, JSON.stringify(value), builtAt);
+  } catch (e){ console.warn('[ai-brain-cache] write failed (memory copy kept):', e.message); }
+}
+function aiBrainCtxInvalidatePrefix(prefix){
+  for (const k of Array.from(aiBrainCtxMem.keys())) if (k.startsWith(prefix)) aiBrainCtxMem.delete(k);
+  try { db.prepare('DELETE FROM ai_brain_context_cache WHERE cachekey LIKE ?').run(prefix + '%'); }
+  catch (e){ console.warn('[ai-brain-cache] invalidate failed:', e.message); }
+}
+const AI_BRAIN_CTX_MAX_AGE = {
+  topMarkets: 24 * 60 * 60 * 1000, // keyed by upload id + createdAt, so a new upload misses on its own
+  budgetPerf: 10 * 60 * 1000,
+  monthlyKpi: 10 * 60 * 1000
+};
+// Cached fronts for the three account-level prompt-block builders. Each
+// returns exactly what the uncached function returns (plain JSON data), so
+// callers are unchanged apart from the name. `timings` (optional) gets a
+// per-block ms + hit/miss so the endpoint can report where its time went.
+function buildAccountTopMarketsContextForPromptCached(accountId, timings){
+  const t = Date.now();
+  const upload = db.prepare('SELECT id, createdAt FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId);
+  const key = `acct:${accountId}:topMarkets:${upload ? `${upload.id}:${upload.createdAt || upload.createdat || ''}` : 'none'}`;
+  let value = aiBrainCtxGet(key, AI_BRAIN_CTX_MAX_AGE.topMarkets);
+  const hit = !!value;
+  if (!value){ value = buildAccountTopMarketsContextForPrompt(accountId); aiBrainCtxSet(key, value); }
+  if (timings) timings.topMarkets = { ms: Date.now() - t, cache: hit ? 'hit' : 'miss' };
+  return value;
+}
+function buildAccountBudgetAndPerformanceContextForPromptCached(accountId, campaign, timings){
+  const t = Date.now();
+  const year = (campaign.startDate ? new Date(campaign.startDate).getFullYear() : null) || new Date().getFullYear();
+  // The block excludes THIS campaign from the historical list, so the key
+  // carries the campaign id — a cheap per-campaign entry, not one shared
+  // block that would show a campaign its own numbers as "history".
+  const key = `acct:${accountId}:budgetPerf:${year}:${campaign.id || ''}`;
+  let value = aiBrainCtxGet(key, AI_BRAIN_CTX_MAX_AGE.budgetPerf);
+  const hit = !!value;
+  if (!value){ value = buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign); aiBrainCtxSet(key, value); }
+  if (timings) timings.budgetPerf = { ms: Date.now() - t, cache: hit ? 'hit' : 'miss' };
+  return value;
+}
+function buildAccountMonthlyKpiContextForPromptCached(accountId, timings){
+  const t = Date.now();
+  const key = `acct:${accountId}:monthlyKpi:all`;
+  let value = aiBrainCtxGet(key, AI_BRAIN_CTX_MAX_AGE.monthlyKpi);
+  const hit = !!value;
+  if (!value){ value = buildAccountMonthlyKpiContextForPrompt(accountId); aiBrainCtxSet(key, value); }
+  else {
+    // The uncached builder writes an 'ai_brain read' audit row every time it
+    // runs; a cache hit is still the AI Brain reading this account's data,
+    // so the audit trail stays complete either way.
+    logAccountDataAccess({ accountId, resource: 'account_kpi_metrics', action: 'read', actorType: 'ai_brain', actorId: 'ai_brain_reply', detail: { cached: true } });
+  }
+  if (timings) timings.monthlyKpi = { ms: Date.now() - t, cache: hit ? 'hit' : 'miss' };
+  return value;
+}
+// Warm-up: builds (and therefore caches) every account-level block the AI
+// Brain will need for this campaign. Called by POST
+// /api/campaigns/:id/ai-brain-warm the moment the frontend loads a campaign
+// into the Workspace (loadExistingCampaignIntoForm) — so by the time the
+// person has read the screen and typed a first question, the expensive
+// inputs are already sitting in cache and the turn only pays for the model.
+function warmAiBrainContextForCampaign(campaign){
+  const timings = {};
+  const t0 = Date.now();
+  buildAccountTopMarketsContextForPromptCached(campaign.accountId, timings);
+  buildAccountBudgetAndPerformanceContextForPromptCached(campaign.accountId, campaign, timings);
+  buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
+  timings.totalMs = Date.now() - t0;
+  return timings;
+}
+// Which requests can change the inputs above. Evaluated in handleRequest()
+// on every non-GET request; the actual invalidation runs on the response's
+// 'finish' event and only when the write succeeded (status < 400), so a
+// concurrent AI Brain turn can't re-cache pre-write data in the gap.
+// Account-scoped resources map 1:1 to the tables the blocks read:
+//   marketing-budget-uploads, media-plan, campaigns(+mbu-draws) -> budgetPerf
+//   kpi-metrics -> monthlyKpi;  stores, market-customer-uploads -> topMarkets
+//   profile -> audience/wealth (read live, but cheap to clear alongside)
+// Campaign-scoped writes (POST /api/campaigns/:id merge, channel-planning
+// create/patch/delete/approve, approve-budget-overall, recommendation
+// generation, mmm-line-items, DELETE campaign) change the historical-
+// performance list or budget draws, so they clear the owning account's
+// prefix too — the account id is looked up once, on the write only.
+// Shared reference-table uploads (zip centroids, DMA/demographic/population
+// masters) feed every account's Match Market analysis, so they clear all.
+// Each resource clears only the block(s) that read its table — a campaign
+// field save (which happens on every Team note) must never force the
+// 100-300 round-trip Match Market rebuild, only the cheap budget/history one.
+const AI_BRAIN_ACCOUNT_WRITE_RESOURCES = {
+  'marketing-budget-uploads': ['budgetPerf'], 'media-plan': ['budgetPerf'], 'campaigns': ['budgetPerf'], 'channel-planning': ['budgetPerf'],
+  'kpi-metrics': ['monthlyKpi'],
+  'stores': ['topMarkets'], 'market-customer-uploads': ['topMarkets']
+};
+const AI_BRAIN_CAMPAIGN_WRITE_SUBRESOURCES = new Set(['channel-planning', 'approve-budget-overall', 'generate-recommendation-from-intake', 'mmm-line-items']);
+const AI_BRAIN_GLOBAL_REFERENCE_RESOURCES = new Set(['market-zip-centroids', 'market-dma-master', 'market-demographic-master', 'market-population-master']);
+function aiBrainContextInvalidationForRequest(method, parts){
+  if (method === 'GET' || method === 'OPTIONS' || parts[0] !== 'api') return null;
+  if (parts[1] === 'accounts' && parts[2]){
+    if (AI_BRAIN_GLOBAL_REFERENCE_RESOURCES.has(parts[3])) return () => aiBrainCtxInvalidatePrefixes(['acct:'], 'topMarkets');
+    const blocks = AI_BRAIN_ACCOUNT_WRITE_RESOURCES[parts[3]];
+    if (blocks) return () => blocks.forEach(b => aiBrainCtxInvalidatePrefix(`acct:${parts[2]}:${b}:`));
+    return null;
+  }
+  if (parts[1] === 'campaigns' && parts[2] && (parts.length === 3 || AI_BRAIN_CAMPAIGN_WRITE_SUBRESOURCES.has(parts[3]))){
+    // Looked up NOW (before the handler runs) rather than on finish, so a
+    // DELETE /api/campaigns/:id still knows which account to clear after
+    // the row is gone. One extra round trip, on writes only.
+    let accountId = null;
+    try {
+      const row = db.prepare('SELECT accountId FROM campaigns WHERE id = ?').get(decodeURIComponent(parts[2]));
+      accountId = row && row.accountId;
+    } catch (e){ console.warn('[ai-brain-cache] campaign-write invalidation lookup failed:', e.message); }
+    if (!accountId) return null;
+    return () => aiBrainCtxInvalidatePrefix(`acct:${accountId}:budgetPerf:`);
+  }
+  return null;
+}
+// Clears every account's entry for one block type (shared reference-table
+// uploads change the Match Market analysis for everyone).
+function aiBrainCtxInvalidatePrefixes(prefixes, block){
+  for (const k of Array.from(aiBrainCtxMem.keys())) if (prefixes.some(p => k.startsWith(p)) && k.includes(`:${block}:`)) aiBrainCtxMem.delete(k);
+  try { db.prepare('DELETE FROM ai_brain_context_cache WHERE cachekey LIKE ?').run(`%:${block}:%`); }
+  catch (e){ console.warn('[ai-brain-cache] invalidate failed:', e.message); }
+}
+
 // 2026-09-20 — "does this campaign justify a Match Market test?", per
 // Todd's direct instruction: "recommend and attach Match Market testing
 // recommendations should a campaign justify the analytics approach with or
@@ -17515,6 +17940,19 @@ async function handleRequest(req, res) {
     // request) rather than needing the process-wide net to catch it.
     const url = new URL(req.url, `http://${req.headers.host}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','accounts','CXM-...']
+    // 2026-09-25 — AI Brain precomputed-context invalidation. Any write
+    // that can change what the AI Brain reads clears that account's cached
+    // prompt blocks once the response has been sent successfully (see
+    // aiBrainContextInvalidationForRequest's own comment for the exact
+    // route list and why it runs on 'finish' rather than before the write).
+    const aiBrainInvalidate = aiBrainContextInvalidationForRequest(req.method, parts);
+    if (aiBrainInvalidate){
+      res.once('finish', () => {
+        if (res.statusCode < 400){
+          try { aiBrainInvalidate(); } catch (e){ console.warn('[ai-brain-cache] invalidation failed:', e.message); }
+        }
+      });
+    }
     // GET /api/health — buildStamp added round 132bx follow-on #3
     // (2026-08-15), matching CXMEDIA_BUILD_STAMP in portal.html, so it's
     // possible to confirm which copy of the code is actually running on
@@ -17531,7 +17969,7 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, {
         ok: !PRODUCTION_DB_MISCONFIGURED,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-24-campaign-contest-review',
+        buildStamp: '2026-09-25-ai-brain-streaming-precompute',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
@@ -24236,6 +24674,27 @@ Submit your response via the recommendation_dialogue_reply tool.`;
       }
     }
 
+    // POST /api/campaigns/:id/ai-brain-warm — 2026-09-25. Fired by the
+    // frontend the moment a campaign is loaded into the Workspace (see
+    // cmpWarmAiBrainContext() in portal.html), so the account-level prompt
+    // blocks (top markets, budget headroom + history, monthly KPIs) are
+    // built and cached BEFORE the person types a first question. Returns
+    // the per-block timings so a slow warm-up is visible in the Network
+    // tab rather than silently pushing that cost onto the first reply.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'ai-brain-warm'){
+      const campaignId = decodeURIComponent(parts[2]);
+      try {
+        const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+        if (!requireAccount(req, res, campaign.accountId)) return;
+        const timings = warmAiBrainContextForCampaign(campaign);
+        return sendJson(res, 200, { ok: true, timings });
+      } catch (e){
+        console.error(`[POST /api/campaigns/:id/ai-brain-warm] campaignId=${campaignId}:`, e);
+        return sendJson(res, 500, { error: 'Could not warm the AI Brain context.', detail: e.message });
+      }
+    }
+
     // POST /api/campaigns/:id/ai-brain-reply — 2026-09-16, per direct
     // correction on the Campaign Workspace Hub's Collaboration Center:
     // "I don't understand the purpose. Collaboration is the purpose so
@@ -24244,28 +24703,58 @@ Submit your response via the recommendation_dialogue_reply tool.`;
     // or posted the same canned, computed status string every time ("Ask
     // AI Brain →") — no reply, no memory of what was actually asked. This
     // gives it a real reply, grounded in this campaign's actual current
-    // fields and channel plan (same callClaudeForJSON()/one-retry
-    // convention as recommendation-comments above), given the message just
-    // sent and the recent thread for context. Deliberately does NOT persist
-    // its own copy of the thread — the frontend still owns and persists the
-    // Collaboration Center's notes via the existing
-    // activityNotesJson/cmpPersistActivityNotesToCampaign() mechanism (see
-    // that endpoint's own comment); this endpoint is stateless, called once
-    // per turn with whatever recent history the frontend already has,
-    // exactly like campaign-intake above.
+    // fields and channel plan, given the message just sent and the recent
+    // thread for context. Deliberately does NOT persist its own copy of the
+    // thread — the frontend still owns the Collaboration Center's notes
+    // (see cmpPersistActivityNotesToCampaign's comment); this endpoint is
+    // stateless, called once per turn with whatever recent history the
+    // frontend already has, exactly like campaign-intake above.
     //
-    // 2026-09-16 UPDATE — this endpoint now also carries the Recommendation
-    // screen's AI Brain conversation, verified against the real
+    // 2026-09-16 UPDATE — this endpoint also carries the Recommendation
+    // screen's AI Brain conversation (verified against the real
     // Recommendation-Desktop.dc.html wireframe: that screen's right panel
-    // is this same shared Collaboration Center, not a separate bespoke
-    // dialogue with its own backend (POST .../recommendation-comments,
-    // still present but no longer called from the frontend). So the real,
-    // working budget-suggestion/Apply capability that lived only in that
-    // separate endpoint moved here too — see the `suggestion` field on
-    // AI_BRAIN_REPLY_SCHEMA below, same shape RECO_DIALOGUE_REPLY_SCHEMA
-    // above already used and validated the same way (real entryId or null).
+    // is this same shared Collaboration Center), so the real budget-
+    // suggestion/Apply capability lives here — see the `suggestion` field
+    // on AI_BRAIN_REPLY_SCHEMA below.
+    //
+    // 2026-09-25 REBUILD — per Todd's directive after a live turn ("Need
+    // help planning my campaign. what do you suggest?") hit the client's
+    // 30s abort at exactly 30.0s: "Our internal AI Brain can never time
+    // out and needs to be as fast as possible. We don't have a product
+    // without it." Every prior round here moved timeouts around (20s ->
+    // 45s -> 100s -> 27s); none removed the reasons a turn is slow. This
+    // rebuild does, in five parts, each marked below:
+    //   (1) STREAMING — when the browser asks for text/event-stream, the
+    //       reply is pushed word by word as the model writes it (see
+    //       callClaudeToolStream); the person sees the first words in a
+    //       few seconds, and a long answer is never cut off for being
+    //       long. The plain-JSON path is kept for any caller that doesn't
+    //       ask for a stream.
+    //   (2) PRECOMPUTED CONTEXT — the account-level prompt blocks come
+    //       from ai_brain_context_cache (warmed when the campaign loads),
+    //       instead of 11-300+ sequential Postgres round trips per turn.
+    //   (3) PROMPT CACHING — the long, static instruction block is sent
+    //       as a `system` block with cache_control, so Anthropic reuses it
+    //       across turns instead of re-reading it every time.
+    //   (4) RIGHT-SIZED MODEL — a plain factual question ("what's the
+    //       Canada spend?") runs on Haiku 4.5, which answers in a fraction
+    //       of the time; anything advisory (recommend / should / shift /
+    //       plan / why) stays on Sonnet 4.5, per Todd's 2026-09-20
+    //       tiering instruction. See pickAiBrainReplyModel().
+    //   (5) RIGHT-SIZED ANSWER — the instructions now say to answer in a
+    //       few sentences unless the team asks for a full plan; the
+    //       900-token ceiling stays as a cap, not a target.
+    //   Every turn also reports `timings` (context build, per-block cache
+    //   hit/miss, model time-to-first-token and total) in its response and
+    //   as a Server-Timing header — the one thing every earlier round
+    //   lacked when it had to guess where 30 seconds went.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'ai-brain-reply'){
       const campaignId = decodeURIComponent(parts[2]);
+      const tStart = Date.now();
+      const timings = {};
+      const wantsStream = /text\/event-stream/i.test(req.headers['accept'] || '');
+      let streamOpen = false;
+      const sse = (obj) => { if (streamOpen) res.write(`data: ${JSON.stringify(obj)}\n\n`); };
       try {
         const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
         if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
@@ -24277,55 +24766,29 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         // 2026-09-20, per Todd's direct correction on a real budget-
         // recommendation turn: the AI Brain asked the team to supply target
         // CPM/cost-per-visit benchmarks, expected frequency, and DMA
-        // population size — all data this platform already has (or has a
-        // real default for) and never should have asked the team for. Two
-        // real, already-built data sources were simply never read by THIS
-        // endpoint: (1) buildAccountBudgetAndPerformanceContextForPrompt()
-        // (account-wide budget headroom, the account's own Media Plan mix,
-        // and this account's real historical campaign performance —
-        // already built for generate-recommendation-from-intake above, same
-        // "say so plainly when data is missing" discipline reused here),
-        // and (2) this account's generation/wealth-tier targeting from its
-        // Verilume assessment (account.audience/account.wealth — same
-        // fields Company Overview/Assessment already surface, see
-        // humanizeAudienceKeys() above), which support segmented
-        // recommendations. Population/DMA data was already wired in below
-        // via topMarkets — that gap was already closed 2026-09-20 earlier
-        // today (see buildAccountTopMarketsContextForPrompt's own comment);
-        // this closes the remaining two.
+        // population size — all data this platform already has. The three
+        // account-level blocks below (budget headroom + history, targeting,
+        // monthly KPI report) and topMarkets close that gap; since
+        // 2026-09-25 they come through the precomputed cache (part 2).
         const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
-        const { promptBlock: acctBudgetPerfBlock, hasPerformanceData } = buildAccountBudgetAndPerformanceContextForPrompt(campaign.accountId, campaign);
+        const { promptBlock: acctBudgetPerfBlock } = buildAccountBudgetAndPerformanceContextForPromptCached(campaign.accountId, campaign, timings);
         const audienceLabel = account ? humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) : '';
         const wealthLabel = account ? humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) : '';
         const segmentationBlock = `THIS ACCOUNT'S TARGETING DATA (from its Verilume assessment — already loaded, supports segmented recommendations without asking the team for it):
 - Target generation(s): ${audienceLabel || '(not set — assume a broad, general audience)'}
 - Net-worth / wealth tier(s): ${wealthLabel || '(not set — assume a general, mixed-income audience)'}`;
-        // 2026-09-20 — per the governing principle recorded in
-        // cxmedia-ai-brain-platform-unification-scoping-2026-09-16.md
-        // ("every metric on the site is also an input the AI Brain should
-        // be reading"): the CMO Dashboard's real monthly account report
-        // now has a real per-account backend home (account_kpi_metrics —
-        // see its own comment above) and is read here too.
-        const { promptBlock: monthlyKpiBlock } = buildAccountMonthlyKpiContextForPrompt(campaign.accountId);
+        const { promptBlock: monthlyKpiBlock } = buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
         const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
-        // 2026-09-16 — `id` added to this SELECT: per the real
-        // Recommendation-Desktop.dc.html wireframe (extracted and read, not
-        // assumed), the Recommendation screen's right panel is this same
-        // Collaboration Center, not a separate bespoke dialogue — so the
-        // real, working budget-suggestion/Apply capability that used to
-        // live only in POST .../recommendation-comments now needs to live
-        // here too, and applying a suggestion needs a real line item id.
+        // Channel plan lines are read LIVE every turn (one query) — they're
+        // exactly what the person is editing while they chat, so they must
+        // never come from a cache. `id` is needed so a budget suggestion can
+        // name a real line; recommendationRationale / kpiMismatchNote are
+        // the code-computed "why was this included" / "channel can't be
+        // measured this way" facts persisted at Approve time (2026-09-22).
+        const tLines = Date.now();
         const lines = db.prepare('SELECT id, channel, budget, impressions, status, region, detailsJson FROM channel_planning_details WHERE campaignId = ? ORDER BY createdAt ASC').all(campaignId);
-        // 2026-09-22, per direct report: asked why a $90,000 Field/ABM line
-        // was included, the AI Brain had no real answer — the platform DOES
-        // know the top-down basis whenever a line was seeded from Verilume's
-        // recommended stage-weighted split (see cmpApproveChannelPlan()'s
-        // own comment, frontend), it just was never given to this prompt.
-        // recommendationRationale is now persisted into each line's
-        // detailsJson at Approve time — read back and surfaced here so a
-        // "why was this included" question gets the real basis instead of
-        // a guess or a flat "I don't know."
+        timings.channelLines = { ms: Date.now() - tLines };
         const lineText = lines.length
           ? lines.map(l => {
               let rationale = '';
@@ -24333,26 +24796,13 @@ Submit your response via the recommendation_dialogue_reply tool.`;
               try {
                 const details = l.detailsJson ? JSON.parse(l.detailsJson) : null;
                 if (details && details.recommendationRationale) rationale = ` | basis: ${details.recommendationRationale}`;
-                // 2026-09-22 — per Todd's direct instruction to "proactively
-                // highlight inconsistencies between media asked for and
-                // objective" as "a core foundation piece for the relevance
-                // score": this flag is now CODE-COMPUTED at Approve time
-                // (cmpChannelKpiMismatchNote(), frontend) rather than left for
-                // the model to reason out fresh each turn — read back here so
-                // the model states it as a known fact, not a guess.
                 if (details && details.kpiMismatchNote) kpiFlag = ` | flag: ${details.kpiMismatchNote}`;
               } catch (e){ /* malformed/legacy detailsJson — no rationale to show, not an error */ }
               return `- id=${l.id} | ${l.channel || '(no channel)'} | ${normalizeChannelPlanningRegion(l.region)} | $${Math.round(Number(l.budget) || 0).toLocaleString()} | ${Math.round(Number(l.impressions) || 0).toLocaleString()} impressions | ${l.status || 'planned'}${rationale}${kpiFlag}`;
             }).join('\n')
           : '(no channel plan lines entered yet)';
-        // 2026-09-16 — per Todd's direct instruction, the AI Brain needs to
-        // be able to ask about and react to campaign spend BY REGION (US /
-        // Canada / International) and how it's distributed, the same three
-        // regions the Recommendation & Budget pitch screen's new region
-        // toggle filters by (see channel-planning region ensureColumn
-        // comment above). Precomputed here rather than left for the model
-        // to add up itself, so the totals it states are always exactly
-        // right, never an LLM arithmetic guess.
+        // Spend by region is precomputed in code so the totals the model
+        // states are always exactly right, never an LLM arithmetic guess.
         const regionTotals = CHANNEL_PLANNING_REGIONS.map(region => {
           const regionLines = lines.filter(l => normalizeChannelPlanningRegion(l.region) === region);
           const total = regionLines.reduce((sum, l) => sum + (Number(l.budget) || 0), 0);
@@ -24362,23 +24812,14 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const regionText = lines.length
           ? regionTotals.map(r => `- ${r.region}: $${Math.round(r.total).toLocaleString()} across ${r.count} line item${r.count === 1 ? '' : 's'}${grandTotal ? ` (${Math.round((r.total / grandTotal) * 100)}% of total spend)` : ''}`).join('\n')
           : '(no channel plan lines entered yet, so no regional distribution to report)';
-        // 2026-09-20, per Todd's direct question — see
-        // buildAccountTopMarketsContextForPrompt's own comment. This is the
-        // real, already-built Match Market Builder data (DMA/zip indexing),
-        // not previously wired into this conversation.
-        const topMarkets = buildAccountTopMarketsContextForPrompt(campaign.accountId);
+        // Match Market Builder data (DMA/zip indexing) — the most expensive
+        // block to build and the one that never depends on the campaign;
+        // cached per upload since 2026-09-25 (see cache-helper comments).
+        const topMarkets = buildAccountTopMarketsContextForPromptCached(campaign.accountId, timings);
         const topMarketsBlock = topMarkets.promptBlock;
-        // 2026-09-20 — Match Market test eligibility + attach-once, per
-        // Todd's direct instruction: "recommend and attach Match Market
-        // testing recommendations should a campaign justify the analytics
-        // approach with or without the client asking." Eligibility and the
-        // suggestion itself are computed in CODE (see
-        // computeMatchMarketTestEligibility()/buildMatchMarketSuggestion()'s
-        // own comments) — the model only narrates it, never invents the
-        // pairing. "Attach" here means persisted to this campaign row the
-        // first time it becomes eligible, so it isn't regenerated or
-        // re-announced unprompted on every later turn — only the turn it
-        // first attaches, or afterward if the team asks.
+        // Match Market test eligibility + attach-once (2026-09-20): computed
+        // in CODE, the model only narrates it; persisted the first time the
+        // campaign becomes eligible so it isn't re-announced every turn.
         let matchMarketSuggestion = null;
         let matchMarketNewlyAttached = false;
         let matchMarketPromptSection = '';
@@ -24400,9 +24841,11 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         } else if (!mmEligibility.eligible){
           matchMarketPromptSection = `\nMATCH MARKET TEST: not yet recommended for this campaign (${mmEligibility.reason}). Only mention this if the team specifically asks about Match Market or geo testing for this campaign — do not bring it up unprompted.`;
         }
-        const prompt = `You are the AI Brain, a marketing operations assistant embedded in this real campaign's Workspace hub, having a real back-and-forth conversation with the team — not writing a one-shot report.
-
-CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
+        // The campaign data block — everything that is specific to THIS
+        // campaign and account. It changes only when the plan changes, so it
+        // gets its own cache_control breakpoint: turn N+1 of the same
+        // conversation reuses turn N's processed prefix (part 3).
+        const campaignDataBlock = `CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Audience: ${campaign.segment || '(not set)'}
@@ -24428,139 +24871,137 @@ ${acctBudgetPerfBlock}
 
 ${segmentationBlock}
 
-${monthlyKpiBlock}
-
-CONVERSATION SO FAR:
+${monthlyKpiBlock}`;
+        const turnBlock = `CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
 The team just said: "${message}"
 
-Reply directly to this, grounded only in the real fields above — never invent a number, channel, region, or status not shown here. If asked about spend by region, which region a channel is running in, or how budget is distributed across US/Canada/International, answer from the SPEND BY REGION section above. If asked about top markets, DMA performance, or geo/market indexing, answer from the TOP MARKETS / DMA INDEXING section above — if it says no data is on file, say so plainly and point to Match Market Builder in Account Management as where to run that upload, rather than saying the platform doesn't have this capability at all. Follow the MATCH MARKET TEST RECOMMENDATION section's own Status instruction exactly — proactively surface it only when it says newly attached this turn, otherwise only if asked. Always weigh the campaign dates and total length shown above when it's relevant — timing, whether the campaign has started, and how much runway is left all affect a good recommendation. If asked about something this data doesn't cover, say so plainly rather than guessing (never say you can't see the dates — they're given above).
-
-NEVER EXPOSE INTERNAL IDS — the \`id=...\` value on each REAL CHANNEL PLAN LINES row (and any other raw database id, table name, or record identifier anywhere in this prompt) is there only so you can fill the suggestion field's entryId correctly. The team never sees a database schema and does not know what "CPD-..." means — never quote a raw id, table name, or column name in your reply text. Refer to a line the way a person would: by its channel name, region, budget, and status (e.g. "the Field/ABM line at $90,000, still in draft" — not "line CPD-mubu5mq5-161-4").
-
-PLACEHOLDER VS. REAL EXECUTION PLAN — a channel_planning_details line's budget can come from two different places: a real, specific plan the team entered (vendor, tactics, a real impressions estimate from an actual CPM), or this platform's own recommended media-mix split of the campaign's overall budget with nothing further filled in yet (0 or missing impressions, no execution detail anywhere in what's given above). Each REAL CHANNEL PLAN LINES row now carries a trailing " | basis: ..." when one is on file — that's the REAL, platform-computed answer to "why was this number chosen" (e.g. it's Verilume's recommended stage-weighted split and what % of the total budget it represents, or a note that it was hand-entered by Performance Marketing with no algorithmic basis). When asked why a line's budget is what it is, or what it's "made up of," always lead with that basis line when present — quote its substance in plain language, not the raw "basis:" label. It only ever tells you the SIZING logic (top-down split vs. manual), never vendor/tactic execution detail — for that, if there's no real execution detail on file (impressions are 0/missing and nothing above names a vendor, tactic, or plan), say so plainly rather than listing generic "typically includes" industry tactics as if they describe this campaign's actual plan — that reads as a real answer when it's a guess. It's fine, and preferred, to say plainly that Performance Marketing/Channel Plan hasn't entered specific execution detail for this line yet, and that a recommended-split number is a placeholder sizing, not a costed plan.
-
-CHANNEL/KPI FIT — a REAL CHANNEL PLAN LINES row now carries a trailing " | flag: ..." whenever this platform's own code has already determined that line's channel can't be measured the way the campaign's Primary KPI or stated objective calls for (e.g. Field/ABM or Direct Mail sitting under a visit/click-based KPI, with no direct visit/click tracking of its own). This is a code-computed fact, not something to re-derive — when a line carries that flag, proactively surface it (don't wait to be asked) by stating its substance in plain language, and offer to suggest reallocating toward a channel with clearer visit/conversion tracking. If the team is asking for or clearly implying that change: if the better channel ALREADY has a line in REAL CHANNEL PLAN LINES, propose it as an existing-line change (entryId + newBudget on the flagged line, and entryId + newBudget on the better-tracked line too, if you're proposing to move budget between two existing lines); if it does NOT have a line yet (e.g. moving into Video/CTV, see VIDEO CHANNELS below), use newLineChannel + newLineBudget for it alongside entryId + newBudget reducing the flagged line — never rename the flagged line to the new channel. Otherwise just flag it and ask if they want that recommendation. If a line carries no flag, don't invent a mismatch for it — the check has already run.
-
-VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) above already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and, if the team is asking for or clearly implying adding one, propose it via newLineChannel + newLineBudget (paired with entryId + newBudget on whichever existing line you're proposing to fund it from, if any) rather than saying the platform has no video capability. If a MISSING CHANNEL GAP line is present above, it already answers "is video missing and does it matter for this stage" with a real number — lead with that instead of reasoning it out fresh, and proactively raise it (don't wait to be asked) the same way the CHANNEL/KPI FIT flag above does.
-
-BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given above in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance above (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report above (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data above, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget change, propose it via the suggestion field: use entryId + newBudget for a change to an EXISTING line (a real id from the REAL CHANNEL PLAN LINES list above), and/or newLineChannel + newLineBudget when the recommendation requires a channel that has NO existing line yet — for example, "shift $30k from Programmatic Display into a new CTV line" is BOTH parts at once (entryId/newBudget on the real Programmatic Display line reducing it, AND newLineChannel/newLineBudget creating the new CTV line), never entryId alone with the new channel's name stuffed into the channel field — that would only rename the old line's label without moving any budget or creating anything. Otherwise leave suggestion null. Never invent a line item, channel, or number not shown above. Keep it conversational, not a report.
-
-Submit your response via the ai_brain_reply tool.`;
-        // 2026-09-22 fix, per direct report: applying a suggestion that read
-        // "Shift $30k from Programmatic Display into a new CTV line" only
-        // ever reduced Programmatic Display — no CTV line was created, so
-        // the campaign's total budget silently dropped by $30k instead of
-        // being reallocated. Root cause was this schema: it can only
-        // describe changing the budget on ONE existing line (entryId +
-        // newBudget); there was no way to say "and also create this new
-        // line," so the model put the new channel's name in `channel` while
-        // entryId still pointed at the real Programmatic Display row — the
-        // UI displayed the new channel name as if applying would create
-        // that line, but the apply action only ever PATCHed the old row's
-        // budget. Fixed by giving the suggestion two independent parts: an
-        // EXISTING-line change (entryId + newBudget, unchanged) and a
-        // NEW-line creation (newLineChannel + newLineBudget) — either or
-        // both may be present, so "shift from A to a new B" sets both parts,
-        // and "add new budget without cutting elsewhere" sets only the new-
-        // line part. See this endpoint's validation just below and
-        // cmpRecoApplySuggestion() (frontend) for how both parts get
-        // applied.
-        const AI_BRAIN_REPLY_SCHEMA = {
-          type: 'object',
-          properties: {
-            reply: { type: 'string', description: 'Your reply — specific to this campaign\'s real fields, never generic filler.' },
-            suggestion: {
-              type: ['object', 'null'],
-              description: 'A concrete budget change you are proposing, or null if you are not proposing one right now. Two independent parts — either or both may be present, at least one must be: reducing/changing an EXISTING line (entryId + newBudget), and/or creating a BRAND-NEW line for a channel that has no row in REAL CHANNEL PLAN LINES yet (newLineChannel + newLineBudget). NEVER invent a new channel by putting its name in `channel` against an existing entryId — that only renames the label shown for the OLD line in the UI, it does not create a new line or move budget anywhere; the real channel being reduced silently loses budget with nothing added elsewhere. If you are proposing to fund a channel that is not already one of the REAL CHANNEL PLAN LINES, you MUST use newLineChannel/newLineBudget for it.',
-              properties: {
-                entryId: { type: 'string', description: 'The id of an EXISTING channel_planning_details line item to change the budget on — must be one of the real ids given above, never invented. Omit entirely if you are not changing an existing line\'s budget.' },
-                channel: { type: 'string', description: 'The channel name of the EXISTING line at entryId — must match that real line\'s actual current channel, never a different/new channel name.' },
-                newBudget: { type: 'number', description: 'Required whenever entryId is set: the proposed new budget for that existing line.' },
-                newLineChannel: { type: 'string', description: 'If proposing to ADD a channel that is not already in REAL CHANNEL PLAN LINES, its real taxonomy channel name (e.g. one of the Video/OTV/CTV group per the VIDEO CHANNELS note below). Omit entirely if you are not proposing a new line.' },
-                newLineBudget: { type: 'number', description: 'Required whenever newLineChannel is set: the proposed budget for that new line.' },
-                rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
-              }
-            }
-          },
-          required: ['reply']
+Reply directly to this, following the instructions you were given. Submit your response via the ai_brain_reply tool.`;
+        timings.contextMs = Date.now() - tStart;
+        const model = pickAiBrainReplyModel(message, priorNotes);
+        timings.model = model;
+        const request = {
+          model, maxTokens: 900,
+          system: [{ type: 'text', text: AI_BRAIN_REPLY_SYSTEM, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: [
+            { type: 'text', text: campaignDataBlock, cache_control: { type: 'ephemeral' } },
+            { type: 'text', text: turnBlock }
+          ] }],
+          toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
+          schema: AI_BRAIN_REPLY_SCHEMA
         };
-        let parsed;
-        // 2026-09-22, per Todd's direct, hard ceiling: "More than 30 seconds
-        // is too long. We'll lose users. Humans think faster." The old
-        // shape here (20s timeout, then ALWAYS retry — even after our own
-        // timeout aborted the first attempt — with a fresh 20s timeout) had
-        // a real worst case around 20000 + 800 + 20000 = ~40.8s: a retry
-        // triggered by a TIMEOUT just repeats the same slow prompt/model
-        // call and is very likely to take about as long again, so it was
-        // doubling the wait for the exact cases most likely to already be
-        // slow. Fixed shape: one attempt gets nearly the whole 30s budget
-        // (27s, leaving ~3s of headroom for the context-building queries
-        // above and JSON/network overhead so the endpoint's own total stays
-        // under 30s even in the worst case) — and a retry only fires for a
-        // genuine non-timeout failure (a fast-failing 4xx/5xx or a parse
-        // error), which resolves in a couple seconds in practice, not
-        // another 27s wait. maxTokens stays 900 — that's the 2026-09-21 fix
-        // for truncated replies, unrelated to this timing change and not
-        // worth reopening that bug to shave a few seconds.
-        try {
-          parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 900, content: prompt,
-            toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
-            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 27000
-          });
-        } catch (firstErr){
-          if (/timed out/i.test(firstErr.message || '')){
-            // A retry after our own timeout just repeats the same slow
-            // call — propagate immediately so the whole request still
-            // resolves near the 27s mark, not ~55s later.
-            throw firstErr;
-          }
-          console.warn('[POST /api/campaigns/:id/ai-brain-reply] first attempt failed (non-timeout), retrying once:', firstErr.message);
-          await new Promise(r => setTimeout(r, 800));
-          parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 900, content: prompt,
-            toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
-            schema: AI_BRAIN_REPLY_SCHEMA, timeoutMs: 8000
-          });
-        }
-        // Validate each independent part of the suggestion separately — the
-        // model is instructed not to invent an entryId, but this is the
-        // actual enforcement (same pattern as recommendation-comments' own
-        // suggestion validation). 2026-09-22 fix: this used to null out the
-        // WHOLE suggestion whenever entryId wasn't a real line — which also
-        // discarded a perfectly valid new-line-only proposal (no entryId at
-        // all, per the new newLineChannel/newLineBudget shape above), since
-        // `lines.some(l => l.id === undefined)` is always false. Now each
-        // part is validated on its own and only a part that fails its own
-        // check gets dropped; the whole suggestion is null only when NEITHER
-        // part survives.
-        let suggestion = parsed.suggestion || null;
-        if (suggestion){
+        // Suggestion validation — the model is instructed not to invent an
+        // entryId; this is the enforcement (each part validated on its own,
+        // per the 2026-09-22 fix, so a valid new-line-only proposal isn't
+        // discarded just because there's no entryId).
+        const validateSuggestion = (raw) => {
+          let suggestion = raw || null;
+          if (!suggestion) return null;
           const hasExistingChange = !!suggestion.entryId && lines.some(l => l.id === suggestion.entryId) && typeof suggestion.newBudget === 'number';
           const hasNewLine = typeof suggestion.newLineChannel === 'string' && suggestion.newLineChannel.trim() && typeof suggestion.newLineBudget === 'number';
           if (!hasExistingChange){ suggestion.entryId = null; suggestion.newBudget = null; }
           if (!hasNewLine){ suggestion.newLineChannel = null; suggestion.newLineBudget = null; }
           if (!hasExistingChange && !hasNewLine) suggestion = null;
-        }
-        // The structured pairs card is only sent to the frontend when it's
-        // actually relevant to THIS reply: newly attached this turn (so it
-        // always shows once, per "with or without the client asking"), or
-        // the team's own message plainly asked about it. A simple keyword
-        // check, not model judgment — deliberately conservative so the card
-        // doesn't pop up on unrelated turns just because a suggestion
-        // exists on the campaign.
+          return suggestion;
+        };
         const askedAboutMatchMarket = /match\s*market|geo[\s-]?test|dma\b|hold\s*out|holdout|test\s*\/?\s*control/i.test(message);
-        const showMatchMarketCard = matchMarketSuggestion && (matchMarketNewlyAttached || askedAboutMatchMarket);
-        return sendJson(res, 200, {
-          reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion,
-          matchMarketSuggestion: showMatchMarketCard ? matchMarketSuggestion : null,
-          matchMarketNewlyAttached
-        });
+        const finishPayload = (parsed) => {
+          const suggestion = validateSuggestion(parsed.suggestion);
+          const showMatchMarketCard = matchMarketSuggestion && (matchMarketNewlyAttached || askedAboutMatchMarket);
+          timings.totalMs = Date.now() - tStart;
+          if (parsed._usage) timings.usage = parsed._usage;
+          if (parsed._truncated) timings.truncated = true;
+          return {
+            reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion,
+            matchMarketSuggestion: showMatchMarketCard ? matchMarketSuggestion : null,
+            matchMarketNewlyAttached,
+            timings
+          };
+        };
+        const serverTimingHeader = () => `context;dur=${timings.contextMs}${timings.topMarkets ? `, topmarkets;dur=${timings.topMarkets.ms};desc="${timings.topMarkets.cache}"` : ''}`;
+
+        if (wantsStream){
+          // (1) STREAMING PATH — headers go out immediately, then a `start`
+          // event with the context timings, then `delta` events as the
+          // reply text arrives, then one `done` event carrying the exact
+          // JSON the non-stream path would have returned. A `: ping`
+          // comment every few seconds keeps proxies from idling the
+          // connection while the model is still thinking. Errors after
+          // headers are sent become an `error` event (an HTTP status can't
+          // change once streaming has begun).
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'Server-Timing': serverTimingHeader(),
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
+          });
+          if (typeof res.flushHeaders === 'function') res.flushHeaders();
+          streamOpen = true;
+          sse({ type: 'start', model, timings: { contextMs: timings.contextMs, topMarkets: timings.topMarkets, budgetPerf: timings.budgetPerf, monthlyKpi: timings.monthlyKpi } });
+          const ping = setInterval(() => { try { if (streamOpen) res.write(': ping\n\n'); } catch (e){ /* client gone */ } }, 4000);
+          const tModel = Date.now();
+          let parsed;
+          try {
+            parsed = await callClaudeToolStream(Object.assign({}, request, {
+              onFirstToken: () => { timings.modelFirstTokenMs = Date.now() - tModel; sse({ type: 'first', firstTokenMs: timings.modelFirstTokenMs }); },
+              onReplyDelta: (text) => sse({ type: 'delta', text })
+            }));
+          } catch (firstErr){
+            // Retry ONLY a fast, genuine failure (4xx/5xx/parse) — never a
+            // timeout, which would just repeat the same slow call. The
+            // retry streams too, so a partial first answer is replaced
+            // cleanly by a `reset` event before the new text arrives.
+            if (/timed out/i.test(firstErr.message || '')) { clearInterval(ping); throw firstErr; }
+            console.warn('[POST /api/campaigns/:id/ai-brain-reply] stream attempt failed (non-timeout), retrying once:', firstErr.message);
+            sse({ type: 'reset' });
+            await new Promise(r => setTimeout(r, 600));
+            try {
+              parsed = await callClaudeToolStream(Object.assign({}, request, {
+                onFirstToken: () => { timings.modelFirstTokenMs = Date.now() - tModel; sse({ type: 'first', firstTokenMs: timings.modelFirstTokenMs }); },
+                onReplyDelta: (text) => sse({ type: 'delta', text })
+              }));
+            } catch (secondErr){ clearInterval(ping); throw secondErr; }
+          }
+          clearInterval(ping);
+          timings.modelMs = Date.now() - tModel;
+          const payload = finishPayload(parsed);
+          console.log(`[ai-brain-reply] campaign=${campaignId} model=${model} context=${timings.contextMs}ms firstToken=${timings.modelFirstTokenMs || '?'}ms model=${timings.modelMs}ms total=${timings.totalMs}ms cache=${['topMarkets','budgetPerf','monthlyKpi'].map(k => timings[k] ? `${k}:${timings[k].cache}` : '').filter(Boolean).join(',')}`);
+          sse(Object.assign({ type: 'done' }, payload));
+          return res.end();
+        }
+
+        // Plain JSON path (no Accept: text/event-stream) — same request,
+        // same model routing, same cached context; still streamed from
+        // Anthropic internally (so a long answer is never cut off by a
+        // single absolute timeout), just delivered whole.
+        const tModel = Date.now();
+        let parsed;
+        try {
+          parsed = await callClaudeToolStream(Object.assign({}, request, { onFirstToken: () => { timings.modelFirstTokenMs = Date.now() - tModel; } }));
+        } catch (firstErr){
+          if (/timed out/i.test(firstErr.message || '')) throw firstErr;
+          console.warn('[POST /api/campaigns/:id/ai-brain-reply] first attempt failed (non-timeout), retrying once:', firstErr.message);
+          await new Promise(r => setTimeout(r, 600));
+          parsed = await callClaudeToolStream(Object.assign({}, request, { onFirstToken: () => { timings.modelFirstTokenMs = Date.now() - tModel; } }));
+        }
+        timings.modelMs = Date.now() - tModel;
+        const payload = finishPayload(parsed);
+        console.log(`[ai-brain-reply] campaign=${campaignId} model=${model} context=${timings.contextMs}ms firstToken=${timings.modelFirstTokenMs || '?'}ms model=${timings.modelMs}ms total=${timings.totalMs}ms (json path)`);
+        res.setHeader('Server-Timing', `${serverTimingHeader()}, model;dur=${timings.modelMs}, total;dur=${timings.totalMs}`);
+        return sendJson(res, 200, payload);
       } catch (e){
         console.error(`[POST /api/campaigns/:id/ai-brain-reply] campaignId=${campaignId}:`, e);
-        return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message });
+        timings.totalMs = Date.now() - tStart;
+        if (streamOpen){
+          sse({ type: 'error', error: 'Could not reach the AI Brain right now.', detail: e.message, timings });
+          return res.end();
+        }
+        return sendJson(res, 500, { error: 'Could not reach the AI Brain right now.', detail: e.message, timings });
       }
     }
 
