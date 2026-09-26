@@ -6,63 +6,193 @@
     }
   },
   "crons": [
-    { "path": "/api/cron/refresh-intelligence", "schedule": "0 13 * * 1" },
-    { "path": "/api/cron/sync-snowflake", "schedule": "0 9 * * *" }
+    {
+      "path": "/api/cron/refresh-intelligence",
+      "schedule": "0 13 * * 1"
+    },
+    {
+      "path": "/api/cron/sync-snowflake",
+      "schedule": "0 9 * * *"
+    }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/[...path]" },
-    { "source": "/", "destination": "/frontend/index.html" },
-    { "source": "/index.html", "destination": "/frontend/index.html" },
-    { "source": "/account.html", "destination": "/frontend/account.html" },
-    { "source": "/login.html", "destination": "/frontend/login.html" },
-    { "source": "/forgot-password.html", "destination": "/frontend/forgot-password.html" },
-    { "source": "/assessment-framework.html", "destination": "/frontend/assessment-framework.html" },
-    { "source": "/assessment.html", "destination": "/frontend/assessment.html" },
-    { "source": "/customer-journey.html", "destination": "/frontend/customer-journey.html" },
-    { "source": "/human-ai-agents.html", "destination": "/frontend/human-ai-agents.html" },
-    { "source": "/industry-solutions.html", "destination": "/frontend/industry-solutions.html" },
-    { "source": "/licensing.html", "destination": "/frontend/licensing.html" },
-    { "source": "/marketing-performance.html", "destination": "/frontend/marketing-performance.html" },
-    { "source": "/onboarding.html", "destination": "/frontend/onboarding.html" },
-    { "source": "/ooh-specs.html", "destination": "/frontend/ooh-specs.html" },
-    { "source": "/ops-console.html", "destination": "/frontend/ops-console.html" },
-    { "source": "/vendor-blind-panel.html", "destination": "/frontend/vendor-blind-panel.html" },
-    { "source": "/website-category-scan.html", "destination": "/frontend/website-category-scan.html" },
-    { "source": "/portal.html", "destination": "/frontend/portal.html" },
-    { "source": "/sample-assessment.html", "destination": "/frontend/sample-assessment.html" },
-    { "source": "/print-specs.html", "destination": "/frontend/print-specs.html" },
-    { "source": "/select-tier.html", "destination": "/frontend/select-tier.html" },
-    { "source": "/solution-luxury-cruises.html", "destination": "/frontend/solution-luxury-cruises.html" },
-    { "source": "/solution-mass-market-cruises.html", "destination": "/frontend/solution-mass-market-cruises.html" },
-    { "source": "/solution-retail-apparel.html", "destination": "/frontend/solution-retail-apparel.html" },
-    { "source": "/solution-sporting-goods.html", "destination": "/frontend/solution-sporting-goods.html" },
-    { "source": "/solution-wine-spirits.html", "destination": "/frontend/solution-wine-spirits.html" },
-    { "source": "/terms.html", "destination": "/frontend/terms.html" },
-    { "source": "/docs/", "destination": "/frontend/verilume-product-docs.html" },
-    { "source": "/docs/media-plan-budget", "destination": "/frontend/verilume-product-media-plan-budget.html" },
-    { "source": "/docs/copywriting", "destination": "/frontend/verilume-product-copywriting.html" },
-    { "source": "/docs/licensed-integrations", "destination": "/frontend/verilume-product-licensed-integrations.html" },
-    { "source": "/docs/registration-account-management", "destination": "/docs/registrationaccountmanagementproduct.html" },
-    { "source": "/docs/free-assessment", "destination": "/docs/verilume-product-free-assessment.html" },
-    { "source": "/docs/continuous-monitoring", "destination": "/docs/verilume-product-continuous-monitoring.html" },
-    { "source": "/docs/team-experiences", "destination": "/docs/verilume-product-team-experiences.html" },
-    { "source": "/docs/public-sample-assessment", "destination": "/docs/verilume-product-public-sample-assessment.html" },
-    { "source": "/docs/:file(.+\\.html)", "destination": "/frontend/:file" }
+    {
+      "source": "/api/(.*)",
+      "destination": "https://verilume-api-production.up.railway.app/api/$1"
+    },
+    {
+      "source": "/",
+      "destination": "/frontend/index.html"
+    },
+    {
+      "source": "/index.html",
+      "destination": "/frontend/index.html"
+    },
+    {
+      "source": "/account.html",
+      "destination": "/frontend/account.html"
+    },
+    {
+      "source": "/login.html",
+      "destination": "/frontend/login.html"
+    },
+    {
+      "source": "/forgot-password.html",
+      "destination": "/frontend/forgot-password.html"
+    },
+    {
+      "source": "/assessment-framework.html",
+      "destination": "/frontend/assessment-framework.html"
+    },
+    {
+      "source": "/assessment.html",
+      "destination": "/frontend/assessment.html"
+    },
+    {
+      "source": "/customer-journey.html",
+      "destination": "/frontend/customer-journey.html"
+    },
+    {
+      "source": "/human-ai-agents.html",
+      "destination": "/frontend/human-ai-agents.html"
+    },
+    {
+      "source": "/industry-solutions.html",
+      "destination": "/frontend/industry-solutions.html"
+    },
+    {
+      "source": "/licensing.html",
+      "destination": "/frontend/licensing.html"
+    },
+    {
+      "source": "/marketing-performance.html",
+      "destination": "/frontend/marketing-performance.html"
+    },
+    {
+      "source": "/onboarding.html",
+      "destination": "/frontend/onboarding.html"
+    },
+    {
+      "source": "/ooh-specs.html",
+      "destination": "/frontend/ooh-specs.html"
+    },
+    {
+      "source": "/ops-console.html",
+      "destination": "/frontend/ops-console.html"
+    },
+    {
+      "source": "/vendor-blind-panel.html",
+      "destination": "/frontend/vendor-blind-panel.html"
+    },
+    {
+      "source": "/website-category-scan.html",
+      "destination": "/frontend/website-category-scan.html"
+    },
+    {
+      "source": "/portal.html",
+      "destination": "/frontend/portal.html"
+    },
+    {
+      "source": "/sample-assessment.html",
+      "destination": "/frontend/sample-assessment.html"
+    },
+    {
+      "source": "/print-specs.html",
+      "destination": "/frontend/print-specs.html"
+    },
+    {
+      "source": "/select-tier.html",
+      "destination": "/frontend/select-tier.html"
+    },
+    {
+      "source": "/solution-luxury-cruises.html",
+      "destination": "/frontend/solution-luxury-cruises.html"
+    },
+    {
+      "source": "/solution-mass-market-cruises.html",
+      "destination": "/frontend/solution-mass-market-cruises.html"
+    },
+    {
+      "source": "/solution-retail-apparel.html",
+      "destination": "/frontend/solution-retail-apparel.html"
+    },
+    {
+      "source": "/solution-sporting-goods.html",
+      "destination": "/frontend/solution-sporting-goods.html"
+    },
+    {
+      "source": "/solution-wine-spirits.html",
+      "destination": "/frontend/solution-wine-spirits.html"
+    },
+    {
+      "source": "/terms.html",
+      "destination": "/frontend/terms.html"
+    },
+    {
+      "source": "/docs/",
+      "destination": "/frontend/verilume-product-docs.html"
+    },
+    {
+      "source": "/docs/media-plan-budget",
+      "destination": "/frontend/verilume-product-media-plan-budget.html"
+    },
+    {
+      "source": "/docs/copywriting",
+      "destination": "/frontend/verilume-product-copywriting.html"
+    },
+    {
+      "source": "/docs/licensed-integrations",
+      "destination": "/frontend/verilume-product-licensed-integrations.html"
+    },
+    {
+      "source": "/docs/registration-account-management",
+      "destination": "/docs/registrationaccountmanagementproduct.html"
+    },
+    {
+      "source": "/docs/free-assessment",
+      "destination": "/docs/verilume-product-free-assessment.html"
+    },
+    {
+      "source": "/docs/continuous-monitoring",
+      "destination": "/docs/verilume-product-continuous-monitoring.html"
+    },
+    {
+      "source": "/docs/team-experiences",
+      "destination": "/docs/verilume-product-team-experiences.html"
+    },
+    {
+      "source": "/docs/public-sample-assessment",
+      "destination": "/docs/verilume-product-public-sample-assessment.html"
+    },
+    {
+      "source": "/docs/:file(.+\\.html)",
+      "destination": "/frontend/:file"
+    }
   ],
   "redirects": [
-    { "source": "/docs", "destination": "/docs/", "permanent": false }
+    {
+      "source": "/docs",
+      "destination": "/docs/",
+      "permanent": false
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
       ]
     },
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        }
       ]
     }
   ]
