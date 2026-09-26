@@ -47,14 +47,28 @@ if (IS_PROD && !process.env.DATABASE_URL){
 if (cluster.isPrimary){
   console.log(`[serve] primary ${process.pid}: starting ${WORKERS} worker${WORKERS === 1 ? '' : 's'} on port ${PORT} (cpus=${cpuCount}, prod=${IS_PROD})`);
   let shuttingDown = false;
-  for (let i = 0; i < WORKERS; i++) cluster.fork();
+  // Respawn with exponential backoff. server.js runs ~350 schema checks
+  // against Postgres at module load, so if the database rejects us (wrong
+  // password, paused project, network) every worker dies at require() time.
+  // Re-forking every second then means hundreds of failed logins a minute —
+  // enough to trip Supabase's pooler circuit breaker ("ECIRCUITBREAKER: too
+  // many authentication failures") and lock out even a corrected password
+  // (2026-09-26, seen during the Railway cut-over). Back off 2s → 4s → … →
+  // 60s, and reset once a worker has stayed up for a minute.
+  const bornAt = new Map();
+  let backoffMs = 2000;
+  const forkWorker = () => { const w = cluster.fork(); bornAt.set(w.id, Date.now()); return w; };
+  for (let i = 0; i < WORKERS; i++) forkWorker();
   cluster.on('exit', (worker, code, signal) => {
     if (shuttingDown) return;
-    // A worker that dies (an out-of-memory kill, a native crash) is replaced
-    // after a short pause — the other workers keep serving in the meantime,
-    // so a single bad request can't take the API down.
-    console.error(`[serve] worker ${worker.process.pid} exited (code=${code} signal=${signal}) — replacing in 1s`);
-    setTimeout(() => { if (!shuttingDown) cluster.fork(); }, 1000);
+    const lived = Date.now() - (bornAt.get(worker.id) || Date.now());
+    bornAt.delete(worker.id);
+    if (lived > 60000) backoffMs = 2000; else backoffMs = Math.min(backoffMs * 2, 60000);
+    // A worker that dies (an out-of-memory kill, a native crash, a failed
+    // startup) is replaced after the pause — the other workers keep serving
+    // in the meantime, so a single bad request can't take the API down.
+    console.error(`[serve] worker ${worker.process.pid} exited after ${Math.round(lived / 1000)}s (code=${code} signal=${signal}) — replacing in ${backoffMs / 1000}s`);
+    setTimeout(() => { if (!shuttingDown) forkWorker(); }, backoffMs);
   });
   const shutdown = (sig) => {
     if (shuttingDown) return;
