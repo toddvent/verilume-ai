@@ -17990,10 +17990,28 @@ async function handleRequest(req, res) {
     // fine; this field just never reflected it. Now reports which one is
     // genuinely in use.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'health'){
+      // 2026-09-26 — a real database probe, not just "is DATABASE_URL set".
+      // The Railway cut-over passed this check while login was failing on
+      // every request (the DATABASE_URL pointed at Supabase's IPv6-only
+      // direct host, unreachable from Railway) — "healthy" meant only that
+      // the variable existed. Now runs SELECT 1 through the same bridge
+      // every real request uses and reports the result + latency. Status
+      // stays 200 either way so a transient DB blip never fails a
+      // platform healthcheck and restarts a working container; the fields
+      // are what to read.
+      let dbReachable = false, dbError = null, dbMs = null;
+      if (!PRODUCTION_DB_MISCONFIGURED){
+        const t = Date.now();
+        try { const row = db.prepare('SELECT 1 AS ok').get(); dbReachable = !!(row && Number(row.ok) === 1); }
+        catch (e){ dbError = String(e && e.message || e).slice(0, 200); }
+        dbMs = Date.now() - t;
+      }
       return sendJson(res, 200, {
-        ok: !PRODUCTION_DB_MISCONFIGURED,
+        ok: !PRODUCTION_DB_MISCONFIGURED && dbReachable,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
-        buildStamp: '2026-09-25-creative-asset-copy-versions',
+        dbReachable, dbMs, ...(dbError ? { dbError } : {}),
+        dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
+        buildStamp: '2026-09-26-health-db-probe',
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
