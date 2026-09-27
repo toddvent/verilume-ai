@@ -12008,7 +12008,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-cta-override-propagation';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-wireframe-orientation-width-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -58633,7 +58633,20 @@ function cmpCopyBestPracticeNote(channel){
 // same renderer works for both without id collisions.
 function cmpDrawWireframeBox(wf, spec, copyData, channel, idPrefix, align){
   if (!wf || !spec) return;
-  const width = 320;
+  // 2026-09-27 fix, per direct report: "Horizontal should shift the
+  // wireframe into a landscape orientation. They are both letter format
+  // regardless of what you select." Root cause — this box's width was a
+  // hardcoded 320 that never varied; only height ever moved with the
+  // orientation-adjusted ratio (cmpAssetCopyDrawWireframe flips spec.ratio
+  // when Horizontal/Vertical is toggled, but nothing downstream ever read
+  // that into a width). For the large-format/print channels the
+  // Horizontal/Vertical toggle applies to (cmpAssetWireframeCanRotate —
+  // Direct Mail, Magazines, Newspapers, Field/ABM), the box's long side and
+  // short side now swap places with spec.ratio, so Horizontal genuinely
+  // reads wider-than-tall and Vertical taller-than-wide. Every other
+  // wireframe (digital ad units, which never rotate) keeps the exact old
+  // fixed-320-width formula untouched.
+  const canRotate = (typeof cmpAssetWireframeCanRotate === 'function') && cmpAssetWireframeCanRotate(channel, spec);
   // Round 132as fix — a wide-short flat unit (e.g. Leaderboard, 728×90) used
   // to compute to a true-ratio ~40px, clamped to a flat 60px floor that was
   // still too short to hold the copy overlay's own min-height textarea
@@ -58642,7 +58655,18 @@ function cmpDrawWireframeBox(wf, spec, copyData, channel, idPrefix, align){
   // — narrow no-image units (Search, Radio) are unaffected since they were
   // never the problem.
   const heightFloor = spec.hasImage ? 110 : 60;
-  const height = Math.max(heightFloor, Math.min(420, Math.round(width / spec.ratio)));
+  const longSide = 320;
+  let width, height;
+  if (canRotate && spec.ratio < 1){
+    // Vertical/portrait — the box's TALL side is now the capped one.
+    height = Math.min(420, longSide);
+    width = Math.max(140, Math.round(height * spec.ratio));
+  } else {
+    // Horizontal/landscape (or a non-rotating unit) — same formula as
+    // before: width is the capped side, height derives from the ratio.
+    width = longSide;
+    height = Math.max(heightFloor, Math.min(420, Math.round(width / spec.ratio)));
+  }
 
   if (spec.frames > 1){
     // Round 132p, per direct feedback: "copy changes per frame or
@@ -58662,6 +58686,7 @@ function cmpDrawWireframeBox(wf, spec, copyData, channel, idPrefix, align){
     const moodPreset = CMP_VOICE_MOOD_PRESETS[moodKey];
     const isEnterprise = cmpIsEnterpriseTier();
     wf.style.height = 'auto';
+    wf.style.width = '';
     wf.innerHTML = `
       <div class="wireframe-filmstrip" id="${idPrefix}_filmstrip" data-frame-count="${spec.frames}">
         ${Array.from({ length: spec.frames }).map((_, i) => `
@@ -58705,6 +58730,7 @@ function cmpDrawWireframeBox(wf, spec, copyData, channel, idPrefix, align){
     const parts = (copyData && typeof copyData === 'object') ? copyData : cmpSplitCopyIntoBlocks(typeof copyData === 'string' ? copyData : '');
     const mediaHeight = spec.hasImage ? Math.min(Math.round(height * 0.4), height - 150) : 0;
     wf.style.height = `${Math.max(height, 260)}px`;
+    wf.style.width = canRotate ? `${width}px` : '';
     wf.classList.toggle('print-format', !!spec.print);
     // Round 132as — the ▶ play icon used to render on every large-format
     // media block regardless of channel; none of these (OOH, Field/ABM,
@@ -58740,6 +58766,7 @@ function cmpDrawWireframeBox(wf, spec, copyData, channel, idPrefix, align){
   // keeps the old fill-the-canvas behavior.
   const flat = typeof copyData === 'string' ? copyData : '';
   const alignClass = `wf-align-${align === 'top' || align === 'center' ? align : 'bottom'}`;
+  wf.style.width = canRotate ? `${width}px` : '';
   wf.innerHTML = `
     <div class="wireframe-canvas" style="height:${height}px;">
       ${spec.hasImage ? `<div class="wireframe-canvas-media"></div>` : ''}
