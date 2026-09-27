@@ -1597,6 +1597,13 @@ ensureColumn('campaigns', 'campaignAssetTypesJson', 'TEXT');
 // stays honest and typed rather than a second free-text field competing
 // with Key Message/Creative Brief.
 ensureColumn('campaigns', 'businessInitiative', 'TEXT');
+// 2026-09-27 — campaign-level CTA override, free text. Set the first time a
+// person edits any creative asset's Call to Action field away from its
+// AI-recommended default; from then on it outranks Media Science Primary
+// Focus/Primary KPI/Lifecycle-Loop Stage as the campaign's real recommended
+// CTA. See cmpRecommendedCtaAngle()/cmpApplyCtaOverrideAcrossAssets() in
+// frontend/portal.html.
+ensureColumn('campaigns', 'ctaOverride', 'TEXT');
 
 // Added 2026-07-25 (round 53) — org_model (team/solo), per the Media Plan
 // scoping doc's solo/local-business flow folded in as a parallel track, not
@@ -23658,6 +23665,15 @@ Submit your response via the campaign_intake_turn tool.`;
         // campaignType above. See the ensureColumn() comment and
         // BUSINESS_INITIATIVE_REGISTRY for the full context.
         businessInitiative: body.businessInitiative !== undefined ? body.businessInitiative : existing.businessInitiative,
+        // 2026-09-27 — ctaOverride, same merge-update convention. Set by
+        // cmpApplyCtaOverrideAcrossAssets() (frontend) the moment a person
+        // edits any creative asset's own Call to Action field away from the
+        // AI-recommended default — from then on it outranks Media Science
+        // Primary Focus/Primary KPI/Lifecycle-Loop Stage everywhere this
+        // campaign's CTA is drafted or QA-checked (see
+        // cmpRecommendedCtaAngle() on the frontend). See the ensureColumn()
+        // comment just below server startup for the column itself.
+        ctaOverride: body.ctaOverride !== undefined ? body.ctaOverride : existing.ctaOverride,
         // 2026-09-16 — Loop Stage previously had NO update path after
         // creation at all (set once at creation only, same original gap
         // keyMessage/startDate/endDate had before their own rounds closed
