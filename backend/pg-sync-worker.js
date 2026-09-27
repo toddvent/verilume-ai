@@ -75,12 +75,41 @@ function isRetryableConnectionError(err) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+// 2026-09-26 auth fuse — when Postgres rejects the password (or Supabase's
+// pooler has tripped its circuit breaker), every query would otherwise open
+// a fresh connection and fail again: server.js runs ~350 schema checks at
+// startup, so one worker with a bad DATABASE_URL produced hundreds of failed
+// logins a minute, which is exactly what trips (and keeps re-tripping) the
+// pooler's "ECIRCUITBREAKER: too many authentication failures" lock — even
+// after the password was corrected. After one such failure, fail fast for
+// 60s without touching the network, then try once more.
+let authBlockedUntil = 0;
+let authBlockedReason = '';
+function isAuthFailure(err) {
+  if (!err) return false;
+  if (err.code === '28P01' || err.code === '28000') return true;
+  const msg = (err.message || '').toLowerCase();
+  return msg.includes('password authentication failed') ||
+         msg.includes('ecircuitbreaker') ||
+         msg.includes('too many authentication failures');
+}
 async function queryWithRetry(pgSql, params, attempt = 1) {
   const MAX_ATTEMPTS = 3;
   const BACKOFF_MS = [500, 2000]; // delay before attempt 2, then attempt 3
+  if (Date.now() < authBlockedUntil){
+    const e = new Error(`(auth fuse) ${authBlockedReason} — not retrying for ${Math.ceil((authBlockedUntil - Date.now()) / 1000)}s; check DATABASE_URL`);
+    e.code = 'EAUTHFUSE';
+    throw e;
+  }
   try {
     return await pool.query(pgSql, params);
   } catch (err) {
+    if (isAuthFailure(err)){
+      authBlockedUntil = Date.now() + 60000;
+      authBlockedReason = err.message;
+      console.error(`[pg-sync-worker] authentication failure — pausing all DB connection attempts for 60s: ${err.message}`);
+      throw err;
+    }
     if (attempt >= MAX_ATTEMPTS || !isRetryableConnectionError(err)) throw err;
     console.error(`[pg-sync-worker] connection-class error on attempt ${attempt}/${MAX_ATTEMPTS}, retrying: ${err.message}`);
     await sleep(BACKOFF_MS[attempt - 1]);
