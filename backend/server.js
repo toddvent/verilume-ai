@@ -18030,19 +18030,32 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-09-27-health-integrations',
+        buildStamp: '2026-09-27-health-integrations-full',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
         // /api/ops/integration-status route. `twilio` false = SMS codes are
         // shown on screen (interim mode) instead of texted.
+        // Every credential server.js reads, grouped by what it powers.
         integrations: {
-          twilio: TWILIO_CONFIGURED,
-          postmark: !!(process.env.POSTMARK_SERVER_TOKEN && process.env.POSTMARK_FROM_EMAIL),
-          anthropic: !!process.env.ANTHROPIC_API_KEY,
-          hubspot: !!process.env.HUBSPOT_ACCESS_TOKEN,
-          cronSecret: !!process.env.CRON_SECRET
+          anthropic: !!process.env.ANTHROPIC_API_KEY,            // AI Brain, copywriting, scoring
+          openai: !!process.env.OPENAI_API_KEY,                  // copy-contest vendor
+          gemini: !!process.env.GEMINI_API_KEY,                  // copy-contest vendor
+          xai: !!process.env.XAI_API_KEY,                        // copy-contest vendor
+          perplexity: !!process.env.PERPLEXITY_API_KEY,          // copy-contest vendor / research
+          twilio: TWILIO_CONFIGURED,                             // SMS verification (needs all 3 vars)
+          postmark: !!(process.env.POSTMARK_SERVER_TOKEN && process.env.POSTMARK_FROM_EMAIL), // email codes (not implemented for the site yet)
+          hubspot: !!process.env.HUBSPOT_ACCESS_TOKEN,           // CRM sync
+          census: !!process.env.CENSUS_API_KEY,                  // demographics
+          cloudmersive: !!process.env.CLOUDMERSIVE_API_KEY,      // upload virus/PII scan
+          ga4: !!process.env.GA4_SERVICE_ACCOUNT_KEY_JSON,       // Google Analytics inbound
+          snowflake: !!(process.env.SNOWFLAKE_ACCOUNT_IDENTIFIER && process.env.SNOWFLAKE_USERNAME && process.env.SNOWFLAKE_PRIVATE_KEY),
+          adminApiToken: !!process.env.ADMIN_API_TOKEN,          // ops endpoints
+          cronSecret: !!process.env.CRON_SECRET                  // scheduled jobs
         },
+        // Read by the frontend only (the ElevenLabs voice agent is embedded
+        // client-side with a public agent id) — no server-side key is used,
+        // so an ELEVENLABS_API_KEY variable here is unused by this service.
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
