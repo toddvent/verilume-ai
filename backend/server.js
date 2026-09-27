@@ -18030,7 +18030,19 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-09-26-health-db-probe',
+        buildStamp: '2026-09-27-health-integrations',
+        // 2026-09-27 — which vendor integrations this running instance has
+        // credentials for (booleans only, never the values). Lets a deploy be
+        // checked from a browser after moving hosts, without the admin-token
+        // /api/ops/integration-status route. `twilio` false = SMS codes are
+        // shown on screen (interim mode) instead of texted.
+        integrations: {
+          twilio: TWILIO_CONFIGURED,
+          postmark: !!(process.env.POSTMARK_SERVER_TOKEN && process.env.POSTMARK_FROM_EMAIL),
+          anthropic: !!process.env.ANTHROPIC_API_KEY,
+          hubspot: !!process.env.HUBSPOT_ACCESS_TOKEN,
+          cronSecret: !!process.env.CRON_SECRET
+        },
         ...(PRODUCTION_DB_MISCONFIGURED ? {
           dbMisconfigured: true,
           warning: 'Running on Vercel but DATABASE_URL is not set — every other API route is returning 503 until this is fixed. Set DATABASE_URL in Vercel project settings (delete and re-add if it already looks set — see cxmedia-verilume-deploy-runbook-2026-08-21.md) and redeploy.'
