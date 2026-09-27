@@ -12008,7 +12008,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-media-science-cta-recommendation';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-cta-override-propagation';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -47594,8 +47594,8 @@ function cmpRenderGenerationRequirementsStatus(c){
   // drives it is set, not just baked silently into generated drafts.
   const ctaMount = document.getElementById('cmpGenerationRecommendedCta');
   if (ctaMount && c){
-    const angle = cmpRecommendedCtaAngle(c.businessInitiative, c.primaryKpi, c.stage);
-    const sourceLabel = angle.source === 'businessInitiative' ? 'Media Science Primary Focus' : (angle.source === 'primaryKpi' ? 'Primary KPI' : 'Lifecycle-Loop Stage (fallback — set Media Science Primary Focus above for a more specific recommendation)');
+    const angle = cmpRecommendedCtaAngle(c.ctaOverride, c.businessInitiative, c.primaryKpi, c.stage);
+    const sourceLabel = angle.source === 'override' ? 'a manual edit made on one of this campaign’s creative assets' : angle.source === 'businessInitiative' ? 'Media Science Primary Focus' : (angle.source === 'primaryKpi' ? 'Primary KPI' : 'Lifecycle-Loop Stage (fallback — set Media Science Primary Focus above for a more specific recommendation)');
     ctaMount.innerHTML = `<div class="hint" style="margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--paper-dim);border:1px solid var(--line);"><b>Recommended CTA:</b> "${escapeHtml(angle.ask)}" — grounded in ${escapeHtml(sourceLabel)} (${escapeHtml(angle.label)}).</div>`;
   }
 }
@@ -52093,13 +52093,23 @@ function sharedContextClause(){
 
     const styleKey = campaign.roleStyle || campaign.longformStyle || 'Storytelling';
     const style = LONGFORM_ROLE_STYLE[styleKey] || LONGFORM_ROLE_STYLE['Storytelling'];
-    // 2026-09-27 — Media Science Primary Focus (campaign.businessInitiative)
-    // now outranks Primary KPI/Stage when choosing what the CTA asks for;
-    // see cmpRecommendedCtaAngle()'s own comment for the full precedence.
-    const askText = cmpRecommendedCtaAngle(campaign.businessInitiative, campaign.primaryKpi, campaign.stage).ask;
-    ctaText = style && style.cta ? style.cta(askText) : `${askText}.`;
-    const messageType = campaign.messageType || '';
-    if (messageType && MESSAGE_TYPE_CUE[messageType]) ctaText = MESSAGE_TYPE_CUE[messageType].ctaSuffix(ctaText);
+    // 2026-09-27 — a human-set campaign.ctaOverride now outranks Media
+    // Science Primary Focus/Primary KPI/Stage; see cmpRecommendedCtaAngle()'s
+    // own comment for the full precedence. An override is used verbatim
+    // (it's already exact, human-authored CTA text, e.g. "Visit
+    // AtlasOceanVoyages.com") rather than run through style.cta()'s
+    // "short ask -> styled sentence" templating, which is built for the
+    // short generic asks (PRIMARY_KPI_ANGLE/BUSINESS_INITIATIVE_ANGLE's own
+    // 'ask' strings), not a complete sentence someone already wrote.
+    const ctaAngle = cmpRecommendedCtaAngle(campaign.ctaOverride, campaign.businessInitiative, campaign.primaryKpi, campaign.stage);
+    if (ctaAngle.source === 'override'){
+      ctaText = ctaAngle.ask;
+    } else {
+      const askText = ctaAngle.ask;
+      ctaText = style && style.cta ? style.cta(askText) : `${askText}.`;
+      const messageType = campaign.messageType || '';
+      if (messageType && MESSAGE_TYPE_CUE[messageType]) ctaText = MESSAGE_TYPE_CUE[messageType].ctaSuffix(ctaText);
+    }
   }
 
   return { campaign, toneClause, objectiveLine, objectiveShort, keyMessageForCopy, keyMessageIsDescriptive, audienceLine, ctaText };
@@ -54354,15 +54364,15 @@ function buildContentChecks(text, campaign){
   // 2026-09-27 — Media Science Primary Focus (campaign.businessInitiative)
   // now outranks Primary KPI here too, same precedence as
   // cmpRecommendedCtaAngle()/cmpKpiCtaMismatch() use everywhere else.
-  const ctaAngle = cmpRecommendedCtaAngle(campaign.businessInitiative, campaign.primaryKpi, campaign.stage);
-  const kpiCtaIssue = cmpKpiCtaMismatch(campaign.primaryKpi, draftLower, campaign.businessInitiative, campaign.stage);
+  const ctaAngle = cmpRecommendedCtaAngle(campaign.ctaOverride, campaign.businessInitiative, campaign.primaryKpi, campaign.stage);
+  const kpiCtaIssue = cmpKpiCtaMismatch(campaign.primaryKpi, draftLower, campaign.businessInitiative, campaign.stage, campaign.ctaOverride);
   checks.push({
     label: 'Call to action matches Media Science Primary Focus / Primary KPI',
     pass: !kpiCtaIssue,
     detail: kpiCtaIssue
       ? kpiCtaIssue
       : (ctaAngle.source !== 'stage'
-        ? `This campaign is measured on ${ctaAngle.source === 'businessInitiative' ? 'Media Science Primary Focus' : 'Primary KPI'} "${ctaAngle.label}" (${ctaAngle.mechanism}) — the draft's call to action is aligned with "${ctaAngle.ask}" rather than a generic "learn more"/"buy now." None of the 4 Atlas Ocean Voyages reference examples had a real measured metric to write toward; this campaign does, so its copy is held to that higher bar.`
+        ? `This campaign is measured on ${ctaAngle.source === 'override' ? 'a manually-set call to action' : ctaAngle.source === 'businessInitiative' ? 'Media Science Primary Focus' : 'Primary KPI'} "${ctaAngle.label}" (${ctaAngle.mechanism}) — the draft's call to action is aligned with "${ctaAngle.ask}" rather than a generic "learn more"/"buy now." None of the 4 Atlas Ocean Voyages reference examples had a real measured metric to write toward; this campaign does, so its copy is held to that higher bar.`
         : `No Media Science Primary Focus or Primary KPI set yet — set one so the call to action can be checked against what this campaign is actually optimizing for.`)
   });
 
@@ -55297,7 +55307,13 @@ function cmpBriefContext(){
   // CTA in it. See BUSINESS_INITIATIVE_ANGLE/cmpRecommendedCtaAngle().
   const businessInitiativeEl = document.getElementById('cmpBusinessInitiativeSelect') || document.getElementById('cmpCreationBusinessInitiativeSelect');
   const businessInitiative = businessInitiativeEl ? businessInitiativeEl.value : '';
-  return { objective, name, segments, channels, tones, productGroups, creativeFocusGroups, stage, startDate, endDate, primaryKpi, kpiGoal, businessInitiative };
+  // 2026-09-27 — campaign.ctaOverride isn't a form field (nothing on this
+  // page lets someone type it directly); it's set only when a person edits
+  // a creative asset's own 'cta' field (see cmpAssetCopyFieldChanged()), so
+  // it's read straight off the loaded campaign, not the DOM.
+  const loadedForCta = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  const ctaOverride = loadedForCta ? (loadedForCta.ctaOverride || '') : '';
+  return { objective, name, segments, channels, tones, productGroups, creativeFocusGroups, stage, startDate, endDate, primaryKpi, kpiGoal, businessInitiative, ctaOverride };
 }
 // Round 132e follow-on (2026-08-09) — YYYY-MM-DD (the <input type="date">
 // value) read back out in the "Sep 1, 2026" form the Brief Builder copy
@@ -55601,12 +55617,23 @@ const BUSINESS_INITIATIVE_ANGLE = {
 // Single source of truth for "what should this campaign's CTA actually
 // ask for" — used everywhere a call to action is drafted or checked
 // (cmpMessagingElements()/the messaging-elements draft above, and
-// cmpKpiCtaMismatch()'s QA check). Precedence: Media Science Primary Focus
-// (the most specific, campaign-level measured metric) beats Primary KPI
-// (a broader, curated 6-option list) beats the Lifecycle-Loop Stage's own
-// generic funnel-stage ask (the last-resort fallback when neither of the
-// other two is set yet).
-function cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage){
+// cmpKpiCtaMismatch()'s QA check). Precedence: a human-set campaign-level
+// override (below) beats Media Science Primary Focus (the most specific,
+// campaign-level measured metric) beats Primary KPI (a broader, curated
+// 6-option list) beats the Lifecycle-Loop Stage's own generic funnel-stage
+// ask (the last-resort fallback when nothing else is set yet).
+// 2026-09-27, per direct instruction: when someone edits the CTA on one
+// creative asset away from its default, that becomes this campaign's own
+// recommended CTA going forward — campaign.ctaOverride, set by
+// cmpAssetCopyFieldChanged() the moment a person edits a schema's 'cta'
+// field (see that function's own comment). ctaOverride is verbatim,
+// human-authored text, so callers that get an 'override' angle back should
+// use angle.ask as-is rather than running it through the templated
+// "short ask -> styled CTA sentence" pipeline the auto-recommended asks
+// are designed for (see cmpMessagingElements()/cmpAssembleLongFormCopy's
+// own callers).
+function cmpRecommendedCtaAngle(ctaOverride, businessInitiative, primaryKpi, stage){
+  if (ctaOverride) return { source: 'override', label: 'Manual override', ask: ctaOverride, mechanism: 'a human set this campaign’s call to action directly on a creative asset, overriding the automatic recommendation' };
   const biInfo = businessInitiative ? BUSINESS_INITIATIVE_ANGLE[businessInitiative] : null;
   if (biInfo) return Object.assign({ source: 'businessInitiative', label: (BUSINESS_INITIATIVE_REGISTRY_CLIENT[businessInitiative] || {}).label || businessInitiative }, biInfo);
   const kpiInfo = primaryKpi ? PRIMARY_KPI_ANGLE[primaryKpi] : null;
@@ -56048,7 +56075,7 @@ function cmpBrandContextProfile(){
   };
 }
 function cmpMessagingElements(){
-  const { objective, segments, productGroups, creativeFocusGroups, stage, primaryKpi, businessInitiative } = cmpBriefContext();
+  const { objective, segments, productGroups, creativeFocusGroups, stage, primaryKpi, businessInitiative, ctaOverride } = cmpBriefContext();
   const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || '').trim();
   const mandatoryPhrase = ((document.getElementById('cmpMandatoryPhrase') || {}).value || '').trim();
   const styleKey = ((document.getElementById('cmpLongformStyle') || {}).value || '').trim() || 'Storytelling';
@@ -56105,16 +56132,22 @@ function cmpMessagingElements(){
   // above, never opening the draft \u2014 the one rule every reference example
   // agreed on ("we're selling the return, not shouting SALE").
   const offerLine = mandatoryPhrase ? mandatoryPhrase : '';
-  // 6) ACTION -- the CTA reads Media Science Primary Focus first (the most
-  // specific, actually-measured metric), falling back to Primary KPI, then
-  // the funnel Stage's generic ask -- see cmpRecommendedCtaAngle().
-  const askText = cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage).ask;
-  let cta = style.cta(askText);
-  // Message Type (replacement for the removed Tone Notes field) shapes the
-  // CTA's closing register, layered on top of whatever Role/Style already
-  // produced.
-  const messageType = document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '';
-  if (messageType && MESSAGE_TYPE_CUE[messageType]) cta = MESSAGE_TYPE_CUE[messageType].ctaSuffix(cta);
+  // 6) ACTION -- reads a human-set campaign.ctaOverride first (used
+  // verbatim, since it's already exact CTA text someone wrote on a
+  // creative asset), then Media Science Primary Focus, then Primary KPI,
+  // then the funnel Stage's generic ask -- see cmpRecommendedCtaAngle().
+  const ctaAngle = cmpRecommendedCtaAngle(ctaOverride, businessInitiative, primaryKpi, stage);
+  let cta;
+  if (ctaAngle.source === 'override'){
+    cta = ctaAngle.ask;
+  } else {
+    cta = style.cta(ctaAngle.ask);
+    // Message Type (replacement for the removed Tone Notes field) shapes the
+    // CTA's closing register, layered on top of whatever Role/Style already
+    // produced.
+    const messageType = document.getElementById('cmpKeyMessageType') ? document.getElementById('cmpKeyMessageType').value : '';
+    if (messageType && MESSAGE_TYPE_CUE[messageType]) cta = MESSAGE_TYPE_CUE[messageType].ctaSuffix(cta);
+  }
 
   return { objective, primaryKpi, focus, company, headline, headlineSource, claimLine, audienceLine, stageLine, brandStoryLine, brandStorySources: { productFact, positioningLine, websiteFact }, offerLine, cta, avoidWords: cmpBrandVoiceAvoidWords() };
 }
@@ -56162,11 +56195,11 @@ function cmpAssembleLongFormCopy(){
 // unprompted -- showing the reasoning behind a copy recommendation, not
 // just handing over the output.
 function cmpLongFormRationale(){
-  const { objective, segments, stage, primaryKpi, businessInitiative } = cmpBriefContext();
+  const { objective, segments, stage, primaryKpi, businessInitiative, ctaOverride } = cmpBriefContext();
   const styleKey = ((document.getElementById('cmpLongformStyle') || {}).value || '').trim() || 'Storytelling';
   const stageInfo = MEDIA_LOOP_STAGE_ANGLE[stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
   const audience = cmpAudienceAngle(segments);
-  const ctaAngle = cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage);
+  const ctaAngle = cmpRecommendedCtaAngle(ctaOverride, businessInitiative, primaryKpi, stage);
   const items = [];
   // Round 132bg (2026-08-13) briefly made this a website-phrase disclosure;
   // round 132bh (2026-08-13) direct correction reversed the mechanism it
@@ -57078,7 +57111,7 @@ function cmpRenderMessagingConsistencyAlert(){
   const messageType = (document.getElementById('cmpKeyMessageType') || {}).value || '';
   // 2026-09-27 — same Media Science Primary Focus precedence as everywhere
   // else this file recommends/checks a CTA (see cmpRecommendedCtaAngle()).
-  const ctaAngle = campaign ? cmpRecommendedCtaAngle(campaign.businessInitiative, campaign.primaryKpi, campaign.stage) : null;
+  const ctaAngle = campaign ? cmpRecommendedCtaAngle(campaign.ctaOverride, campaign.businessInitiative, campaign.primaryKpi, campaign.stage) : null;
   const objective = campaign ? campaign.objective : '';
   const warnings = [];
   const styleConflict = cmpStyleMessageTypeConflict(styleKey, messageType);
@@ -57091,7 +57124,7 @@ function cmpRenderMessagingConsistencyAlert(){
     return;
   }
   if (ctaAngle && ctaAngle.source !== 'stage' && lf.trim() && !lf.toLowerCase().includes(ctaAngle.ask.toLowerCase())){
-    const sourceLabel = ctaAngle.source === 'businessInitiative' ? 'Media Science Primary Focus' : 'Primary KPI';
+    const sourceLabel = ctaAngle.source === 'override' ? 'manually-set call to action' : ctaAngle.source === 'businessInitiative' ? 'Media Science Primary Focus' : 'Primary KPI';
     warnings.push(`This copy's call to action doesn't look aligned with your ${sourceLabel} ("${escapeHtml(ctaAngle.label)}" — expects a CTA close to "${escapeHtml(ctaAngle.ask)}"). Consider revising the closing line or regenerating from Long Form Copy above.`);
   }
   if (objective && lf.trim() && lf.toLowerCase().includes(objective.toLowerCase())){
@@ -57443,11 +57476,11 @@ function cmpStageOutcomeMismatch(stage, copyText){
 // caller not yet updated to pass it just gets undefined, which
 // cmpRecommendedCtaAngle() treats the same as not-set and falls back to
 // Primary KPI/Stage exactly as this function already did.
-function cmpKpiCtaMismatch(primaryKpi, copyText, businessInitiative, stage){
-  const angle = cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage);
+function cmpKpiCtaMismatch(primaryKpi, copyText, businessInitiative, stage, ctaOverride){
+  const angle = cmpRecommendedCtaAngle(ctaOverride, businessInitiative, primaryKpi, stage);
   if (angle.source === 'stage') return null; // no curated Media Science Primary Focus or Primary KPI set -- nothing to check against
   if (copyText.toLowerCase().includes(angle.ask.toLowerCase())) return null;
-  const measuredOn = angle.source === 'businessInitiative' ? `Media Science Primary Focus "${angle.label}"` : `Primary KPI "${angle.label}"`;
+  const measuredOn = angle.source === 'override' ? 'a manually-set call to action' : angle.source === 'businessInitiative' ? `Media Science Primary Focus "${angle.label}"` : `Primary KPI "${angle.label}"`;
   return `This campaign is measured on ${measuredOn} (${angle.mechanism}), so the call to action should read like "${angle.ask}" -- the drafted copy doesn't contain that ask (or a clear equivalent). A generic "learn more"/"book now" close doesn't earn credit here; this campaign has a real measured mechanism to write toward.`;
 }
 
@@ -57566,7 +57599,8 @@ function computeMessagingQaScore(){
   // else this check runs (see cmpRecommendedCtaAngle()).
   const businessInitiativeForScoreEl = document.getElementById('cmpBusinessInitiativeSelect') || document.getElementById('cmpCreationBusinessInitiativeSelect');
   const businessInitiativeForScore = businessInitiativeForScoreEl ? businessInitiativeForScoreEl.value : '';
-  const kpiCtaMismatch = cmpKpiCtaMismatch(primaryKpiForScore, copyText, businessInitiativeForScore, stageForScore);
+  const campaignForCtaScore = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  const kpiCtaMismatch = cmpKpiCtaMismatch(primaryKpiForScore, copyText, businessInitiativeForScore, stageForScore, campaignForCtaScore ? campaignForCtaScore.ctaOverride : '');
   if (!kpiCtaMismatch) score += 14;
   else notes.push({ pts: 14, text: kpiCtaMismatch });
 
@@ -61147,6 +61181,21 @@ function cmpAssetCopyRefreshBadge(r){
     if (row){ const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-ghost'; b.textContent = 'Reset to best-practice draft'; b.setAttribute('onclick', `cmpAssetCopyResetDraft('${r.slug}', ${r.i}, '${r.keyId}')`); row.appendChild(b); }
   }
 }
+// 2026-09-27, per direct instruction, answering "how do we update the AI
+// Brain and/or client account when they change the CTA from the default":
+// editing a schema's 'cta' field on ANY one creative asset now becomes this
+// campaign's own recommended CTA going forward (campaign.ctaOverride —
+// see cmpRecommendedCtaAngle(), the single place every CTA draft/check in
+// this file already reads from). It's saved to the campaign record itself
+// (cmpPersistCampaignField(), same real backend write every other campaign
+// field uses), and cascaded immediately to every OTHER creative asset in
+// this campaign whose own cta field hasn't been individually hand-edited
+// (v.ctaEdited) — see cmpApplyCtaOverrideAcrossAssets() below. An asset
+// someone already customized on purpose is left untouched; every future
+// draft (a newly added asset, "Reset to best-practice draft", or a fresh
+// Long Form Copy generation) picks up the override automatically too,
+// since cmpMessagingElements()/cmpAssetCopyDraftFields() both resolve
+// through the same cmpRecommendedCtaAngle() precedence chain.
 function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
   const r = cmpAssetCopyResolve(slug, i, keyId);
   if (!r) return;
@@ -61155,8 +61204,47 @@ function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
   else v.fields[fieldKey] = value;
   v.edited = true;
   if (v.approved){ v.approved = false; v.approvedAt = null; }
+  if (fieldKey === 'cta'){
+    v.ctaEdited = true;
+    cmpApplyCtaOverrideAcrossAssets(r.c, value, r.row, r.key);
+    return; // the cascade above already re-renders the whole grid + badges
+  }
   cmpAssetCopyRefreshBadge(r);
   if (cmpAssetWireframeOpen[r.kid]) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
+  cmpSyncCreativeAssetRequestsFromGrid();
+}
+// Persists the new campaign-level CTA and pushes it into every other
+// creative asset's own 'cta' field that hasn't itself been individually
+// hand-edited (v.ctaEdited) — the asset the person just typed into
+// (skipRow/skipKey) is left as-is, it already has the exact text.
+// Un-approves any asset it touches, since its copy just changed underneath
+// it. Assets on a schema with no direct 'cta' field (Search/RSA bakes the
+// call to action into headlines/descriptions instead) pick up the override
+// the next time they're actually redrafted, rather than being rewritten
+// here — forcing new headlines into an already-approved RSA set out from
+// under a human isn't the same kind of safe, additive change.
+function cmpApplyCtaOverrideAcrossAssets(c, newCta, skipRow, skipKey){
+  const trimmed = (newCta || '').trim();
+  c.ctaOverride = trimmed;
+  cmpPersistCampaignField(c, { ctaOverride: trimmed }, 'Call to action');
+  Object.keys(cmpCreativeAssetGridRows).forEach(channel => {
+    (cmpCreativeAssetGridRows[channel] || []).forEach(row => {
+      if (!row.copyVersions) return;
+      Object.keys(row.copyVersions).forEach(key => {
+        if (row === skipRow && key === skipKey) return;
+        const v = row.copyVersions[key];
+        if (!v || !v.fields || v.ctaEdited || !('cta' in v.fields)) return;
+        const spec = cmpSpecForRowSize(channel, row.size);
+        const schema = cmpAssetCopySchema(channel, spec, row);
+        const ctaField = schema.fields.find(fd => fd.key === 'cta');
+        v.fields.cta = ctaField ? cmpFit(trimmed, ctaField.max) : trimmed;
+        v.edited = true;
+        if (v.approved){ v.approved = false; v.approvedAt = null; }
+      });
+    });
+  });
+  cmpRerenderCreativeAssetCopyPanels();
+  if (typeof cmpRenderGenerationRequirementsStatus === 'function') cmpRenderGenerationRequirementsStatus(c);
   cmpSyncCreativeAssetRequestsFromGrid();
 }
 function cmpAssetCopyAddItem(slug, i, keyId, fieldKey){
