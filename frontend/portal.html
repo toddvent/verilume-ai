@@ -9986,6 +9986,11 @@
                    before sending to brand for copy." Live coverage check
                    against the approved Channel Plan — see
                    cmpRenderCreativeAssetCoverageNote(). -->
+              <!-- 2026-09-27, per Todd: "We're not reinforcing that a copy
+                   contest ran, winner selected and now ready for creative
+                   assets to be selected." Status strip fed by the real
+                   copy-interview history — see cmpRenderCreativeAssetContestStatus(). -->
+              <div id="cmpCreativeAssetContestStatus" style="display:none;margin:0 0 12px;"></div>
               <div id="cmpCreativeAssetCoverageNote" class="hint" style="display:none;margin:0 0 12px;padding:8px 10px;border-radius:6px;"></div>
               <div id="cmpCreativeAssetMatrix"></div>
               <div class="hint" id="cmpCreativeAssetError" style="margin-top:6px;"></div>
@@ -11951,7 +11956,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-api-direct-to-railway';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-creative-asset-copy-refresh';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -56601,6 +56606,8 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
     return;
   }
   cmpApproveMsgField('longform');
+  { const cc = cmpRailLoadedCampaign(); if (cc) delete cmpContestStatusCache[cc.id]; } // 2026-09-27 — refresh the asset grid's contest-status strip
+  if (typeof cmpRerenderCreativeAssetCopyPanels === 'function') cmpRerenderCreativeAssetCopyPanels(); // fitted copy now comes from this master
   if (saveFlag){ saveFlag.style.color = 'var(--cx)'; saveFlag.textContent = `Saved and approved ${new Date().toLocaleTimeString()} — this is now the campaign's master Long Form Copy.`; }
   // 2026-09-25 — the audience-segmentation question follows the master
   // copy save (see cmpRenderAudienceMessagingControls's own comment).
@@ -60420,6 +60427,22 @@ function cmpAssetCopyInitialText(c, channel, spec, key){
       return cmpAssetCopyDataToText(spec, (spec && spec.stacked) ? cmpSplitCopyIntoBlocks(sized) : (spec && spec.frames > 1) ? cmpFrameCopyArray(sized, spec.frames) : sized);
     }
   }
+  // 2026-09-27, per Todd's report that the fitted copy wasn't reflecting the
+  // contest — the campaign-wide draft used to come only from
+  // cmpDraftNativeCopy() (Key Message + brief context), ignoring the Long
+  // Form Copy the contest winner was saved into. That saved winner is the
+  // master ("the final version is the master that will be parsed based on
+  // campaign assets selected"), so when it exists it's what gets sized to
+  // the channel's treatment, exactly like an audience winner is. The
+  // Key-Message-only draft stays as the fallback when no long-form copy is
+  // on file yet.
+  const longform = (((document.getElementById('cmpLongFormCopy') || {}).value) || c.longformCopy || '').trim();
+  if (longform){
+    const treatment = CHANNEL_COPY_TREATMENT[channel] || 'medium';
+    const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || c.keyMessage || '').trim();
+    const sized = copyVersionForTreatment(treatment, keyMessage, longform);
+    return cmpAssetCopyDataToText(spec, (spec && spec.stacked) ? cmpSplitCopyIntoBlocks(sized) : (spec && spec.frames > 1) ? cmpFrameCopyArray(sized, spec.frames) : sized);
+  }
   const draft = cmpDraftNativeCopy(channel, spec);
   const data = (spec && spec.frames > 1) ? draft.frameCopy : (spec && spec.stacked) ? draft.copyParts : draft.copy;
   return cmpAssetCopyDataToText(spec, data);
@@ -60657,8 +60680,26 @@ function cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, showRemov
       </div>
       ${showRemove ? `<button type="button" class="btn-ghost" style="padding:6px 10px;font-size:0.75rem;" onclick='cmpRemoveCreativeAssetRow(${JSON.stringify(channel)}, ${i})'>Remove</button>` : ''}
     </div>
-    ${cmpAssetCopyPanelHtml(channel, slug, i, row)}
+    <div id="cmpCAG_${slug}_${i}_copy">${cmpAssetCopyPanelHtml(channel, slug, i, row)}</div>
     </div>`;
+}
+// 2026-09-27 fix, per Todd's report ("Creative Assets are not recognizing
+// the partner, creative asset and format has been selected") — the copy
+// panel under each row was only rendered when the whole row was built, and
+// cmpCreativeAssetRowFieldChanged() updated the row data without ever
+// re-rendering it, so a row that became complete kept showing "Choose
+// Partner, Format and Size to fit the copy" until something else happened
+// to redraw the channel group. Now the panel alone is re-rendered (the
+// selects keep their values and focus) and its wireframes drawn.
+function cmpRefreshAssetCopyPanel(channel, i){
+  const slug = cmpCreativeAssetChannelSlug(channel);
+  const holder = document.getElementById(`cmpCAG_${slug}_${i}_copy`);
+  const row = (cmpCreativeAssetGridRows[channel] || [])[i];
+  if (!holder || !row) return;
+  holder.innerHTML = cmpAssetCopyPanelHtml(channel, slug, i, row);
+  const c = cmpRailLoadedCampaign();
+  if (!c || !(row.partner && row.mediaType && row.size)) return;
+  cmpAssetCopyKeys(c, channel).forEach(key => cmpAssetCopyDrawWireframe(channel, row, key, `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`));
 }
 function cmpCreativeAssetChannelGroupInnerHtml(channel){
   const slug = cmpCreativeAssetChannelSlug(channel);
@@ -60680,9 +60721,59 @@ function cmpCreativeAssetChannelGroupInnerHtml(channel){
 // Full matrix render — one group per approved channel (Column A). Called
 // whenever the approved-channel set changes (Channel Plan approved, a
 // category added/removed) or this stage is (re)opened.
+// 2026-09-27 — the strip above the asset grid that says where the copy came
+// from. Reads the campaign's real copy-interview history (same GET the
+// "View Previous Contests" dropdown uses) and the Long Form Copy on file:
+//   ✓ contest complete + winner selected (with date, and per audience when
+//     audience-specific messaging is on) — the winner is what gets fitted
+//     into each asset below;
+//   ● long-form copy on file but no contest winner — fitted from that;
+//   ⚠ nothing yet — assets can still be picked, but no fitted copy appears
+//     until Step 0's contest is run.
+const cmpContestStatusCache = {};
+async function cmpRenderCreativeAssetContestStatus(){
+  const el = document.getElementById('cmpCreativeAssetContestStatus');
+  const c = cmpRailLoadedCampaign();
+  if (!el || !c) return;
+  const longform = (((document.getElementById('cmpLongFormCopy') || {}).value) || c.longformCopy || '').trim();
+  const paint = (interviews) => {
+    const selected = (interviews || []).filter(iv => iv.selectedCandidateKey);
+    const shared = selected.find(iv => !iv.audience);
+    const perAud = selected.filter(iv => iv.audience);
+    const when = (iv) => iv.selectedAt ? new Date(iv.selectedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+    let tone, html;
+    if (shared || perAud.length){
+      tone = 'ok';
+      const parts = [];
+      if (shared) parts.push(`campaign-wide winner selected${when(shared) ? ' ' + when(shared) : ''}`);
+      if (perAud.length) parts.push(`audience winners: ${perAud.map(iv => `${escapeHtml(iv.audience)}${when(iv) ? ' (' + when(iv) + ')' : ''}`).join(', ')}`);
+      html = `<strong>✓ Copy contest complete — ${parts.join('; ')}.</strong> Ready for creative asset selection: choose a Partner, Format and Size on each row and the winning copy is fitted to that asset with a wireframe preview, ready to edit or approve.`;
+    } else if (longform){
+      tone = 'info';
+      html = `<strong>● Long Form Copy is on file, but no contest winner has been selected.</strong> Assets below are fitted from the Long Form Copy as saved. To pick a winner, run the Campaign Copy Contest in Step 0 and press Save on the draft you choose.`;
+    } else {
+      tone = 'warn';
+      html = `<strong>⚠ No campaign copy yet.</strong> Run the Campaign Copy Contest in Step 0 and save a winner first — you can select assets now, but no fitted copy will appear until there is copy to fit.`;
+    }
+    const colors = tone === 'ok' ? 'background:#EAF7EF;border:1px solid #BFE3CC;color:#1F6B3A;' : tone === 'info' ? 'background:#EAF1FB;border:1px solid #BFD4F1;color:#1E5FA8;' : 'background:#FFF4E0;border:1px solid #F3D9A6;color:#8A5A0A;';
+    el.style.display = '';
+    el.innerHTML = `<div style="${colors}border-radius:8px;padding:10px 12px;font-size:0.8125rem;line-height:1.45;">${html}</div>`;
+  };
+  if (cmpContestStatusCache[c.id]){ paint(cmpContestStatusCache[c.id]); }
+  else paint(null);
+  if (c.localOnly || dataSourceLabel !== 'backend') return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/copy-interviews`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    cmpContestStatusCache[c.id] = data.interviews || [];
+    paint(cmpContestStatusCache[c.id]);
+  } catch (e){ /* keep whatever was painted */ }
+}
 function cmpRenderCreativeAssetMatrix(){
   const el = document.getElementById('cmpCreativeAssetMatrix');
   if (!el) return;
+  cmpRenderCreativeAssetContestStatus();
   const channels = cmpCreativeAssetApprovedChannels();
   if (!channels.length){
     // 2026-09-24 — context-aware empty state: "approve the Channel Plan
@@ -60737,6 +60828,7 @@ function cmpCreativeAssetRowFieldChanged(channel, rowIndex, field, value){
   if (!cmpCreativeAssetGridRows[channel][rowIndex]) cmpCreativeAssetGridRows[channel][rowIndex] = { partner: '', mediaType: '', size: '' };
   cmpCreativeAssetGridRows[channel][rowIndex][field] = value;
   cmpSyncCreativeAssetRequestsFromGrid();
+  cmpRefreshAssetCopyPanel(channel, rowIndex);
   // A new publication on a Magazines/Newspapers row narrows that row's sizes.
   if (field === 'partner' && (channel === 'Magazines' || channel === 'Newspapers')) cmpPopulateCreativeAssetSizeSelectsForChannel(channel);
 }
