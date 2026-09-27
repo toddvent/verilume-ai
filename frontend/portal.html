@@ -9155,6 +9155,7 @@
               <select id="cmpCreationBusinessInitiativeSelect" onchange="cmpOnCreationTypeInitiativeChanged();">
                 <option value="">— Select a media science primary focus —</option>
               </select>
+              <div class="hint">The metric this campaign is optimized and measured against — also drives the Recommended CTA on the Brand Messaging card below. The quantifiable numeric goal (Primary KPI + Target) is still set downstream, once Lifecycle-Loop Stage is picked, in Lifecycle Stage &amp; Goals.</div>
             </div>
             <!-- Round 132gg (2026-08-10), per direct instruction: "Start
                  Date and End Date are required." Both fields no longer read
@@ -10180,6 +10181,7 @@
                     </select>
                   </div>
                   <div id="cmpGenerationRequirementsStatus" style="margin-top:8px;"></div>
+                  <div id="cmpGenerationRecommendedCta"></div>
                 </div>
 
                 <!-- 2026-09-22 round 2 — AI Brain Copy Interview, rebuilt as
@@ -12006,7 +12008,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-brief-recap-inline-edit';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-media-science-cta-recommendation';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -47585,6 +47587,17 @@ function cmpRenderGenerationRequirementsStatus(c){
   statusEl.innerHTML = gate.ok
     ? `<span class="hint" style="color:var(--cx);">✓ Both set — the AI Brain will use this Campaign Experience Focus and Media Science Primary Focus when drafting or contesting copy below.</span>`
     : `<span class="hint" style="color:var(--advocacy);font-weight:600;">⚠ Set ${gate.missing.join(' and ')} before generating or contesting campaign copy below — required as of this round.</span>`;
+  // 2026-09-27, per direct instruction: "connect that [Media Science
+  // Primary Focus] to a CTA that we recommend per campaign." Surfaces the
+  // same recommendation cmpMessagingElements()/cmpKpiCtaMismatch() already
+  // use to draft and QA copy, so it's visible right where the field that
+  // drives it is set, not just baked silently into generated drafts.
+  const ctaMount = document.getElementById('cmpGenerationRecommendedCta');
+  if (ctaMount && c){
+    const angle = cmpRecommendedCtaAngle(c.businessInitiative, c.primaryKpi, c.stage);
+    const sourceLabel = angle.source === 'businessInitiative' ? 'Media Science Primary Focus' : (angle.source === 'primaryKpi' ? 'Primary KPI' : 'Lifecycle-Loop Stage (fallback — set Media Science Primary Focus above for a more specific recommendation)');
+    ctaMount.innerHTML = `<div class="hint" style="margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--paper-dim);border:1px solid var(--line);"><b>Recommended CTA:</b> "${escapeHtml(angle.ask)}" — grounded in ${escapeHtml(sourceLabel)} (${escapeHtml(angle.label)}).</div>`;
+  }
 }
 // Saves the new Brand Messaging card's Campaign Type detail-field inputs
 // (offer details, launch highlights, etc. — same fields the legacy Campaign
@@ -52080,9 +52093,10 @@ function sharedContextClause(){
 
     const styleKey = campaign.roleStyle || campaign.longformStyle || 'Storytelling';
     const style = LONGFORM_ROLE_STYLE[styleKey] || LONGFORM_ROLE_STYLE['Storytelling'];
-    const kpiInfo = campaign.primaryKpi ? PRIMARY_KPI_ANGLE[campaign.primaryKpi] : null;
-    const stageInfo = MEDIA_LOOP_STAGE_ANGLE[campaign.stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
-    const askText = kpiInfo ? kpiInfo.ask : stageInfo.ask;
+    // 2026-09-27 — Media Science Primary Focus (campaign.businessInitiative)
+    // now outranks Primary KPI/Stage when choosing what the CTA asks for;
+    // see cmpRecommendedCtaAngle()'s own comment for the full precedence.
+    const askText = cmpRecommendedCtaAngle(campaign.businessInitiative, campaign.primaryKpi, campaign.stage).ask;
     ctaText = style && style.cta ? style.cta(askText) : `${askText}.`;
     const messageType = campaign.messageType || '';
     if (messageType && MESSAGE_TYPE_CUE[messageType]) ctaText = MESSAGE_TYPE_CUE[messageType].ctaSuffix(ctaText);
@@ -54337,16 +54351,19 @@ function buildContentChecks(text, campaign){
   // able to drift out of agreement since only this one had the signal;
   // now there is exactly one implementation of "does the CTA match the
   // Primary KPI," called from both scoring surfaces.
-  const kpiInfo = campaign.primaryKpi ? PRIMARY_KPI_ANGLE[campaign.primaryKpi] : null;
-  const kpiCtaIssue = cmpKpiCtaMismatch(campaign.primaryKpi, draftLower);
+  // 2026-09-27 — Media Science Primary Focus (campaign.businessInitiative)
+  // now outranks Primary KPI here too, same precedence as
+  // cmpRecommendedCtaAngle()/cmpKpiCtaMismatch() use everywhere else.
+  const ctaAngle = cmpRecommendedCtaAngle(campaign.businessInitiative, campaign.primaryKpi, campaign.stage);
+  const kpiCtaIssue = cmpKpiCtaMismatch(campaign.primaryKpi, draftLower, campaign.businessInitiative, campaign.stage);
   checks.push({
-    label: 'Call to action matches Primary KPI',
+    label: 'Call to action matches Media Science Primary Focus / Primary KPI',
     pass: !kpiCtaIssue,
     detail: kpiCtaIssue
       ? kpiCtaIssue
-      : (kpiInfo
-        ? `This campaign is measured on "${campaign.primaryKpi}" (${kpiInfo.mechanism}) — the draft's call to action is aligned with "${kpiInfo.ask}" rather than a generic "learn more"/"buy now." None of the 4 Atlas Ocean Voyages reference examples had a real Primary KPI to write toward; this campaign does, so its copy is held to that higher bar.`
-        : (campaign.primaryKpi ? `Primary KPI "${campaign.primaryKpi}" isn't in the curated PRIMARY_KPI_ANGLE map yet, so this check is automatically satisfied.` : `No Primary KPI set on Lifecycle Stage & Goals yet — set one so the call to action can be checked against what this campaign is actually optimizing for.`))
+      : (ctaAngle.source !== 'stage'
+        ? `This campaign is measured on ${ctaAngle.source === 'businessInitiative' ? 'Media Science Primary Focus' : 'Primary KPI'} "${ctaAngle.label}" (${ctaAngle.mechanism}) — the draft's call to action is aligned with "${ctaAngle.ask}" rather than a generic "learn more"/"buy now." None of the 4 Atlas Ocean Voyages reference examples had a real measured metric to write toward; this campaign does, so its copy is held to that higher bar.`
+        : `No Media Science Primary Focus or Primary KPI set yet — set one so the call to action can be checked against what this campaign is actually optimizing for.`)
   });
 
   // 2026-08-22 -- new. Mandatory Phrase (campaign.mandatoryPhrase) is real,
@@ -55269,7 +55286,18 @@ function cmpBriefContext(){
   // the KPI's name. See generateCampaignBriefExpanded() below.
   const kpiGoalEl = document.getElementById('cmpKpiGoal');
   const kpiGoal = kpiGoalEl && kpiGoalEl.value !== '' ? Number(kpiGoalEl.value) : null;
-  return { objective, name, segments, channels, tones, productGroups, creativeFocusGroups, stage, startDate, endDate, primaryKpi, kpiGoal };
+  // 2026-09-27, per direct instruction: "We still need the media science
+  // object and then connect that to a CTA that we recommend per campaign."
+  // Read off whichever of the two mirrored Media Science Primary Focus
+  // selects is actually present/populated (Brand Messaging's own card,
+  // #cmpBusinessInitiativeSelect, falling back to Campaign Creation's copy,
+  // #cmpCreationBusinessInitiativeSelect — same "one value, two surfaces"
+  // mirror cmpOnCreationTypeInitiativeChanged()/cmpOnGenerationTypeChanged()
+  // already keep in sync) so cmpMessagingElements() below can ground its
+  // CTA in it. See BUSINESS_INITIATIVE_ANGLE/cmpRecommendedCtaAngle().
+  const businessInitiativeEl = document.getElementById('cmpBusinessInitiativeSelect') || document.getElementById('cmpCreationBusinessInitiativeSelect');
+  const businessInitiative = businessInitiativeEl ? businessInitiativeEl.value : '';
+  return { objective, name, segments, channels, tones, productGroups, creativeFocusGroups, stage, startDate, endDate, primaryKpi, kpiGoal, businessInitiative };
 }
 // Round 132e follow-on (2026-08-09) — YYYY-MM-DD (the <input type="date">
 // value) read back out in the "Sep 1, 2026" form the Brief Builder copy
@@ -55550,6 +55578,42 @@ const PRIMARY_KPI_ANGLE = {
   'Video Views': { ask: 'Watch now', mechanism: 'video views - the ask should promise a payoff worth pressing play for' },
   'Transactions': { ask: 'Reserve now', mechanism: 'direct conversion - the ask should be unambiguous and immediate' }
 };
+// 2026-09-27, per direct instruction: "We still need the media science
+// object and then connect that to a CTA that we recommend per campaign."
+// Same shape/role as PRIMARY_KPI_ANGLE above, keyed on
+// BUSINESS_INITIATIVE_REGISTRY_CLIENT's own keys (campaign.businessInitiative
+// — Media Science Primary Focus). This is the more specific of the two
+// signals a campaign carries toward its CTA — see cmpRecommendedCtaAngle()
+// just below for how the two combine (Media Science Primary Focus wins when
+// set, since it's the metric this campaign is actually being measured
+// against; Primary KPI and Lifecycle-Loop Stage stay the fallbacks they
+// already were).
+const BUSINESS_INITIATIVE_ANGLE = {
+  acquisition_cost: { ask: 'Get your best price today', mechanism: 'cost-efficient acquisition — the ask should make the value-per-dollar the reason to act now, not a generic offer' },
+  roas: { ask: 'Shop the offer', mechanism: 'return on ad spend — the ask should drive straight to a purchase-intent action, not a soft browse' },
+  website_visits: { ask: 'Visit the site', mechanism: 'website visits — the ask should give a specific, concrete reason to click through, not a vague "learn more"' },
+  website_engagement: { ask: 'Explore more', mechanism: 'on-site engagement — the ask should invite deeper browsing once they land, not a single-click close' },
+  qualified_leads: { ask: 'Request more information', mechanism: 'qualified lead capture — the ask should route to a real contact point that actually qualifies the interest' },
+  total_registrations: { ask: 'Register now', mechanism: 'registration volume — the ask should be a direct, low-friction sign-up prompt' },
+  net_promoter_score: { ask: 'Share your experience', mechanism: 'advocacy and satisfaction — the ask should invite feedback or referral, not a sale' },
+  brand_recognition: { ask: 'Discover the brand', mechanism: 'brand recognition — the ask should build familiarity and recall rather than push a transaction' }
+};
+// Single source of truth for "what should this campaign's CTA actually
+// ask for" — used everywhere a call to action is drafted or checked
+// (cmpMessagingElements()/the messaging-elements draft above, and
+// cmpKpiCtaMismatch()'s QA check). Precedence: Media Science Primary Focus
+// (the most specific, campaign-level measured metric) beats Primary KPI
+// (a broader, curated 6-option list) beats the Lifecycle-Loop Stage's own
+// generic funnel-stage ask (the last-resort fallback when neither of the
+// other two is set yet).
+function cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage){
+  const biInfo = businessInitiative ? BUSINESS_INITIATIVE_ANGLE[businessInitiative] : null;
+  if (biInfo) return Object.assign({ source: 'businessInitiative', label: (BUSINESS_INITIATIVE_REGISTRY_CLIENT[businessInitiative] || {}).label || businessInitiative }, biInfo);
+  const kpiInfo = primaryKpi ? PRIMARY_KPI_ANGLE[primaryKpi] : null;
+  if (kpiInfo) return Object.assign({ source: 'primaryKpi', label: primaryKpi }, kpiInfo);
+  const stageInfo = MEDIA_LOOP_STAGE_ANGLE[stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
+  return Object.assign({ source: 'stage', label: stage || 'Awareness' }, stageInfo);
+}
 const ACCOUNT_SEGMENT_ANGLE = {
   'Past Customers': 'people who already know this brand \u2014 skip the introduction, go straight to what changed',
   'Hand-Raisers': 'people who already raised a hand \u2014 meet the interest they already showed, don\u2019t restart the pitch from zero',
@@ -55984,7 +56048,7 @@ function cmpBrandContextProfile(){
   };
 }
 function cmpMessagingElements(){
-  const { objective, segments, productGroups, creativeFocusGroups, stage, primaryKpi } = cmpBriefContext();
+  const { objective, segments, productGroups, creativeFocusGroups, stage, primaryKpi, businessInitiative } = cmpBriefContext();
   const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || '').trim();
   const mandatoryPhrase = ((document.getElementById('cmpMandatoryPhrase') || {}).value || '').trim();
   const styleKey = ((document.getElementById('cmpLongformStyle') || {}).value || '').trim() || 'Storytelling';
@@ -55993,7 +56057,6 @@ function cmpMessagingElements(){
   const stageInfo = MEDIA_LOOP_STAGE_ANGLE[stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
   const objectiveCopyLine = (CAMPAIGN_OBJECTIVE_COPY[objective] || (f => f ? `${f.charAt(0).toUpperCase()}${f.slice(1)} is worth your attention right now.` : `This is worth your attention right now.`))(focus);
   const audience = cmpAudienceAngle(segments);
-  const kpiInfo = PRIMARY_KPI_ANGLE[primaryKpi] || null;
   const company = state.company || 'us';
 
   // 1) HOOK \u2014 the opening line, in priority order: the human's Key
@@ -56042,11 +56105,10 @@ function cmpMessagingElements(){
   // above, never opening the draft \u2014 the one rule every reference example
   // agreed on ("we're selling the return, not shouting SALE").
   const offerLine = mandatoryPhrase ? mandatoryPhrase : '';
-  // 6) ACTION \u2014 the CTA reads the campaign's actual Primary KPI, not just
-  // its funnel Stage, so the ask matches what this campaign is really
-  // optimizing for (a Lead Generation KPI asks for contact; a Reach KPI
-  // asks for nothing but attention; a Conversion KPI asks for the booking).
-  const askText = kpiInfo ? kpiInfo.ask : stageInfo.ask;
+  // 6) ACTION -- the CTA reads Media Science Primary Focus first (the most
+  // specific, actually-measured metric), falling back to Primary KPI, then
+  // the funnel Stage's generic ask -- see cmpRecommendedCtaAngle().
+  const askText = cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage).ask;
   let cta = style.cta(askText);
   // Message Type (replacement for the removed Tone Notes field) shapes the
   // CTA's closing register, layered on top of whatever Role/Style already
@@ -56100,11 +56162,11 @@ function cmpAssembleLongFormCopy(){
 // unprompted -- showing the reasoning behind a copy recommendation, not
 // just handing over the output.
 function cmpLongFormRationale(){
-  const { objective, segments, stage, primaryKpi } = cmpBriefContext();
+  const { objective, segments, stage, primaryKpi, businessInitiative } = cmpBriefContext();
   const styleKey = ((document.getElementById('cmpLongformStyle') || {}).value || '').trim() || 'Storytelling';
   const stageInfo = MEDIA_LOOP_STAGE_ANGLE[stage] || MEDIA_LOOP_STAGE_ANGLE.Awareness;
   const audience = cmpAudienceAngle(segments);
-  const kpiInfo = PRIMARY_KPI_ANGLE[primaryKpi] || null;
+  const ctaAngle = cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage);
   const items = [];
   // Round 132bg (2026-08-13) briefly made this a website-phrase disclosure;
   // round 132bh (2026-08-13) direct correction reversed the mechanism it
@@ -56125,7 +56187,7 @@ function cmpLongFormRationale(){
   items.push({ label: 'Audience arc', detail: segments.length ? `${audience.text} -- arc: ${audience.arc}` : 'No audience selected yet on Lifecycle Stage & Goals -- defaulting to a neutral introduction.' });
   items.push({ label: 'Funnel stage', detail: stage ? `${stage} -- ${stageInfo.angle}.` : 'No Lifecycle-Loop Stage set yet -- defaulting to Awareness.' });
   items.push({ label: 'Objective', detail: objective ? `${objective} -- leaning on ${CAMPAIGN_OBJECTIVE_ANGLE[objective] || 'a general reason to pay attention'}.` : 'No Objective set yet on Lifecycle Stage & Goals -- the draft above is a placeholder shape until one is chosen.' });
-  items.push({ label: 'Primary KPI \u2192 call to action', detail: kpiInfo ? `${primaryKpi} -- this campaign is measured on ${kpiInfo.mechanism}, so the ask reads "${kpiInfo.ask}" instead of a generic CTA.` : 'No Primary KPI set yet on Lifecycle Stage & Goals -- the call to action above falls back to the funnel Stage\u2019s generic ask rather than a KPI-specific one. Setting a Primary KPI is what separates this draft from the 4 external reference examples, which never had a real measured mechanism to write toward.' });
+  items.push({ label: 'Media Science Primary Focus / Primary KPI \u2192 call to action', detail: ctaAngle.source !== 'stage' ? `${ctaAngle.label} -- this campaign is measured on ${ctaAngle.mechanism}, so the ask reads "${ctaAngle.ask}" instead of a generic CTA.` : 'No Media Science Primary Focus or Primary KPI set yet -- the call to action above falls back to the funnel Stage\u2019s generic ask instead of a measured-metric-specific one. Setting either is what separates this draft from the 4 external reference examples, which never had a real measured mechanism to write toward.' });
   // Round 132[aov-poc] (2026-08-17) -- discloses exactly which real brand
   // sources fed the new Brand Story paragraph, and names each source that
   // came up empty so a human knows what to add to get a richer draft, per
@@ -57014,8 +57076,9 @@ function cmpRenderMessagingConsistencyAlert(){
   const lf = (document.getElementById('cmpLongFormCopy') || {}).value || '';
   const styleKey = (document.getElementById('cmpLongformStyle') || {}).value || '';
   const messageType = (document.getElementById('cmpKeyMessageType') || {}).value || '';
-  const primaryKpi = campaign ? campaign.primaryKpi : '';
-  const kpiInfo = (primaryKpi && typeof PRIMARY_KPI_ANGLE !== 'undefined') ? PRIMARY_KPI_ANGLE[primaryKpi] : null;
+  // 2026-09-27 — same Media Science Primary Focus precedence as everywhere
+  // else this file recommends/checks a CTA (see cmpRecommendedCtaAngle()).
+  const ctaAngle = campaign ? cmpRecommendedCtaAngle(campaign.businessInitiative, campaign.primaryKpi, campaign.stage) : null;
   const objective = campaign ? campaign.objective : '';
   const warnings = [];
   const styleConflict = cmpStyleMessageTypeConflict(styleKey, messageType);
@@ -57027,8 +57090,9 @@ function cmpRenderMessagingConsistencyAlert(){
     else { alertEl.style.display = 'none'; alertEl.innerHTML = ''; }
     return;
   }
-  if (kpiInfo && lf.trim() && !lf.toLowerCase().includes(kpiInfo.ask.toLowerCase())){
-    warnings.push(`This copy's call to action doesn't look aligned with your Primary KPI ("${escapeHtml(primaryKpi)}" — expects a CTA close to "${escapeHtml(kpiInfo.ask)}"). Consider revising the closing line or regenerating from Long Form Copy above.`);
+  if (ctaAngle && ctaAngle.source !== 'stage' && lf.trim() && !lf.toLowerCase().includes(ctaAngle.ask.toLowerCase())){
+    const sourceLabel = ctaAngle.source === 'businessInitiative' ? 'Media Science Primary Focus' : 'Primary KPI';
+    warnings.push(`This copy's call to action doesn't look aligned with your ${sourceLabel} ("${escapeHtml(ctaAngle.label)}" — expects a CTA close to "${escapeHtml(ctaAngle.ask)}"). Consider revising the closing line or regenerating from Long Form Copy above.`);
   }
   if (objective && lf.trim() && lf.toLowerCase().includes(objective.toLowerCase())){
     warnings.push(`This copy recaps the internal Objective label ("${escapeHtml(objective)}") verbatim instead of writing to its intent — that usually reads as a leaked internal field to a consumer, not real copy.`);
@@ -57372,11 +57436,19 @@ function cmpStageOutcomeMismatch(stage, copyText){
 // benefited from it. One function now, called from both places, so they
 // can never independently drift out of agreement about what "the CTA
 // matches what this campaign is measured on" means.
-function cmpKpiCtaMismatch(primaryKpi, copyText){
-  const kpiInfo = primaryKpi ? PRIMARY_KPI_ANGLE[primaryKpi] : null;
-  if (!kpiInfo) return null; // no curated Primary KPI set -- nothing to check against
-  if (copyText.toLowerCase().includes(kpiInfo.ask.toLowerCase())) return null;
-  return `This campaign is measured on "${primaryKpi}" (${kpiInfo.mechanism}), so the call to action should read like "${kpiInfo.ask}" -- the drafted copy doesn't contain that ask (or a clear equivalent). A generic "learn more"/"book now" close doesn't earn credit here; this campaign has a real measured mechanism to write toward.`;
+// 2026-09-27 — businessInitiative (Media Science Primary Focus) param added
+// so this check grounds itself in the same, more specific signal
+// cmpRecommendedCtaAngle() now prefers when set, instead of only ever
+// checking against the broader Primary KPI list. Backward compatible: any
+// caller not yet updated to pass it just gets undefined, which
+// cmpRecommendedCtaAngle() treats the same as not-set and falls back to
+// Primary KPI/Stage exactly as this function already did.
+function cmpKpiCtaMismatch(primaryKpi, copyText, businessInitiative, stage){
+  const angle = cmpRecommendedCtaAngle(businessInitiative, primaryKpi, stage);
+  if (angle.source === 'stage') return null; // no curated Media Science Primary Focus or Primary KPI set -- nothing to check against
+  if (copyText.toLowerCase().includes(angle.ask.toLowerCase())) return null;
+  const measuredOn = angle.source === 'businessInitiative' ? `Media Science Primary Focus "${angle.label}"` : `Primary KPI "${angle.label}"`;
+  return `This campaign is measured on ${measuredOn} (${angle.mechanism}), so the call to action should read like "${angle.ask}" -- the drafted copy doesn't contain that ask (or a clear equivalent). A generic "learn more"/"book now" close doesn't earn credit here; this campaign has a real measured mechanism to write toward.`;
 }
 
 function computeMessagingQaScore(){
@@ -57490,7 +57562,11 @@ function computeMessagingQaScore(){
   // that never actually asks for this stage's real business outcome, the
   // exact gap QA Goal 3 named.
   const primaryKpiForScore = (document.getElementById('cmpPrimaryKpi') || {}).value || '';
-  const kpiCtaMismatch = cmpKpiCtaMismatch(primaryKpiForScore, copyText);
+  // 2026-09-27 — same Media Science Primary Focus precedence as everywhere
+  // else this check runs (see cmpRecommendedCtaAngle()).
+  const businessInitiativeForScoreEl = document.getElementById('cmpBusinessInitiativeSelect') || document.getElementById('cmpCreationBusinessInitiativeSelect');
+  const businessInitiativeForScore = businessInitiativeForScoreEl ? businessInitiativeForScoreEl.value : '';
+  const kpiCtaMismatch = cmpKpiCtaMismatch(primaryKpiForScore, copyText, businessInitiativeForScore, stageForScore);
   if (!kpiCtaMismatch) score += 14;
   else notes.push({ pts: 14, text: kpiCtaMismatch });
 
