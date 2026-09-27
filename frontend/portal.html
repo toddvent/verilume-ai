@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- API host override — leave empty to call /api/* on this same origin (Vercel proxies it to the API service). Set to the service's https URL only if streamed AI Brain replies arrive all-at-once through the proxy. See BACKEND_URL in the script below. -->
-<meta name="verilume-backend-url" content="">
+<meta name="verilume-backend-url" content="https://verilume-api-production.up.railway.app">
 <title>Verilume — Client Portal</title>
 <meta name="description" content="Verilume Client Portal: the CMO Dashboard and marketing-function activation workspace, picking up where the free assessment leaves off.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -779,6 +779,24 @@
   .cmp-step0-contest-chip:hover:not(:disabled){border-color:var(--cx);color:var(--cx);}
   .cmp-step0-contest-chip:disabled{opacity:0.5;cursor:not-allowed;}
   .cmp-step0-contest-chip.has-result{background:#EAF6F1;border-color:#8FCDB0;color:#1E7A45;}
+  /* 2026-09-25 — Creative Asset Selection with fitted copy (see cmpAssetCopyPanelHtml) */
+  .cmp-asset-row-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper-dim,#FBFBFC);margin-bottom:10px;}
+  .cmp-asset-copy-pending{margin-top:2px;}
+  .cmp-asset-copy-block{border-top:1px dashed var(--line);padding-top:10px;margin-top:6px;}
+  .cmp-asset-copy-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+  .cmp-asset-copy-title{font-weight:700;font-size:0.8438rem;}
+  .cmp-asset-copy-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start;}
+  @media (max-width:900px){.cmp-asset-copy-grid{grid-template-columns:1fr;}}
+  .cmp-asset-copy-text textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.5;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--white);}
+  .cmp-asset-copy-text textarea[readonly]{background:var(--paper);color:var(--ink);}
+  .wf-badge-ok{display:inline-flex;align-items:center;gap:5px;font-size:0.6875rem;font-weight:700;padding:4px 10px;border-radius:980px;background:#E7F5EC;color:#1E7A45;}
+  .wf-badge-warn{display:inline-flex;align-items:center;gap:5px;font-size:0.6875rem;font-weight:700;padding:4px 10px;border-radius:980px;background:#FFF6E5;color:#9A6A0E;}
+  .cmp-aud-msg-wrap{margin-top:12px;}
+  .cmp-aud-msg-row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper-dim,#FBFBFC);}
+  .cmp-aud-msg-label{flex:1 1 260px;font-size:0.8438rem;}
+  .cmp-aud-msg-channels{flex:1 1 260px;margin-left:auto;}
+  .cmp-aud-msg-channels-label{font-size:0.6875rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;}
+  .cmp-aud-msg-channels.is-disabled{opacity:.45;pointer-events:none;}
   .cmp-step0-audience-toggle-row{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;user-select:none;-webkit-user-select:none;}
   .cmp-step0-audience-toggle-opt{padding:6px 16px;font-size:0.75rem;font-weight:700;color:var(--muted);cursor:pointer;background:var(--paper);user-select:none;-webkit-user-select:none;}
   .cmp-step0-audience-toggle-opt.on{background:var(--cx);color:var(--white);}
@@ -9972,7 +9990,7 @@
               <div id="cmpCreativeAssetMatrix"></div>
               <div class="hint" id="cmpCreativeAssetError" style="margin-top:6px;"></div>
               <div class="btn-row" style="margin-top:16px;">
-                <button type="button" class="btn-primary" onclick="cmpSubmitCreativeRequestToBrand()">Submit Request to Brand →</button>
+                <button type="button" class="btn-primary" onclick="cmpSubmitCreativeRequestToBrand()">Send Assets to Creative Team →</button>
               </div>
               <div class="hint" id="cmpCreativeAssetSubmittedNote" style="display:none;margin-top:6px;"></div>
             </div>
@@ -11933,7 +11951,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-25-creative-asset-channels-from-plan';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-api-direct-to-railway';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -56545,6 +56563,7 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
             <button type="button" class="btn-primary" onclick="cmpSaveCopyContestWinnerEdit('${editId}','${saveFlagId}')">Save →</button>
           </div>
           <div id="${saveFlagId}" class="hint" style="margin-top:6px;"></div>
+          <div id="${saveFlagId}-aud" class="cmp-aud-msg-wrap"></div>
         </div>`;
     }
   } catch (e){
@@ -56583,6 +56602,9 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
   }
   cmpApproveMsgField('longform');
   if (saveFlag){ saveFlag.style.color = 'var(--cx)'; saveFlag.textContent = `Saved and approved ${new Date().toLocaleTimeString()} — this is now the campaign's master Long Form Copy.`; }
+  // 2026-09-25 — the audience-segmentation question follows the master
+  // copy save (see cmpRenderAudienceMessagingControls's own comment).
+  cmpRenderAudienceMessagingControls(`${saveFlagId}-aud`);
 }
 // 2026-09-24 — "View Previous Contests" for Campaign Copy Contest, per
 // direct instruction ("include one section to the client workspace for
@@ -59357,6 +59379,12 @@ async function cmpLoadPerfMarketingChannelPlan(){
   // just below already follows (a real saved entry always wins; only
   // unsaved, never-submitted edits are lost on reopen, matching that same
   // row's behavior).
+  // 2026-09-25 — the grid is persisted for real now (approvedCreativeAssetsJson,
+  // see the backend ensureColumn comment); hydrate from it when this
+  // session hasn't built the in-memory array yet (e.g. right after a reload).
+  if (!(Array.isArray(campaign.approvedCreativeAssets) && campaign.approvedCreativeAssets.length) && campaign.approvedCreativeAssetsJson){
+    try { const parsed = JSON.parse(campaign.approvedCreativeAssetsJson); if (Array.isArray(parsed)) campaign.approvedCreativeAssets = parsed; } catch (e){ /* malformed — start empty */ }
+  }
   cmpCreativeAssetRequests = Array.isArray(campaign.approvedCreativeAssets) ? campaign.approvedCreativeAssets.map(a => ({ ...a })) : [];
   // Round 132aq (2026-08-12) — reset the matrix's working rows too, so they
   // rebuild fresh from the reseeded cmpCreativeAssetRequests above (a real
@@ -60197,7 +60225,7 @@ function cmpBuildCreativeAssetGridRows(){
   const channels = cmpCreativeAssetApprovedChannels();
   const grid = {};
   channels.forEach(channel => {
-    const existing = cmpCreativeAssetRequests.filter(a => a.channel === channel).map(a => ({ partner: a.partner || '', mediaType: a.mediaType || '', size: a.size || '' }));
+    const existing = cmpCreativeAssetRequests.filter(a => a.channel === channel).map(a => ({ partner: a.partner || '', mediaType: a.mediaType || '', size: a.size || '', copyVersions: (a.copyVersions && typeof a.copyVersions === 'object') ? a.copyVersions : {} }));
     if (existing.length){ grid[channel] = existing; return; }
     const def = cmpCreativeAssetDefaultsByChannel[channel];
     grid[channel] = [def ? { ...def } : { partner: '', mediaType: '', size: '' }];
@@ -60230,6 +60258,7 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
     loadPublisherSizesForChannel(channel).then(opts => {
       if (!cmpCreativeAssetGridRows[channel]) return; // channel set changed before this resolved
       const all = opts.length ? opts : adUnitSpecsFor(channel);
+      cmpCreativeAssetSizeOptionsByChannel[channel] = all;
       // Magazines/Newspapers: once a publication is chosen as the Partner on
       // a row, that row's Size list shows only that publication's formats.
       rows.forEach((row, i) => {
@@ -60240,11 +60269,294 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
         const withSaved = (row.size && !labels.includes(row.size)) ? [...labels, row.size] : labels;
         sel.innerHTML = cmpOptionsHtmlSelected(withSaved, 'Select a size…', row.size);
       });
+      cmpAssetCopyDrawAllForChannel(channel);
     });
   } else {
+    cmpCreativeAssetSizeOptionsByChannel[channel] = adUnitSpecsFor(channel);
     applyLabels(adUnitSpecsFor(channel).map(o => o.label));
+    cmpAssetCopyDrawAllForChannel(channel);
   }
 }
+// ---------- 2026-09-25 — Creative Asset Selection with fitted copy ----------
+// Per Todd's two decisions after the Step 2 wireframe review
+// (Creative-Step2-AssetsWithCopy-Desktop.dc.html, read from the canvas):
+//   (1) "Let's add the audience segmentation after saving the final
+//       longform copy. Create Audience Specific Messaging Yes | No. Apply
+//       to Approved Channels = Multi-Select Drop Down listed next to
+//       toggle positioned to right. Apply to Approved Channels not
+//       selectable if answer is [No]."
+//   (2) "The wire frame we built that included the drop-downs with
+//       partner, asset type, and dimensions. Wire frame within the card and
+//       real campaign copy version placed to right with Edit and Approve
+//       option."
+// Yes/No is the existing audienceSharedExperience field ('separate' == Yes)
+// so this toggle and the Creative recap's "Same experience for all
+// audiences?" toggle are one and the same setting; the channel subset is
+// the new audienceMessagingChannelsJson (backend, same round).
+
+// ---- (1) Audience Specific Messaging controls ----
+function cmpAudienceMessagingChannels(c){
+  if (!c || !c.audienceMessagingChannelsJson) return [];
+  try { const parsed = JSON.parse(c.audienceMessagingChannelsJson); return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string') : []; } catch (e){ return []; }
+}
+function cmpAudienceMessagingAppliesTo(c, channel){
+  return !!c && c.audienceSharedExperience === 'separate' && cmpAudienceMessagingChannels(c).includes(channel);
+}
+let cmpAudienceMessagingContainerId = null;
+function cmpRenderAudienceMessagingControls(containerId){
+  const el = document.getElementById(containerId);
+  const c = cmpCurrentCampaign();
+  if (!el || !c) return;
+  cmpAudienceMessagingContainerId = containerId;
+  const yes = c.audienceSharedExperience === 'separate';
+  const channels = cmpCreativeAssetApprovedChannels();
+  const selected = new Set(cmpAudienceMessagingChannels(c).filter(ch => channels.includes(ch)));
+  el.innerHTML = `
+    <div class="cmp-aud-msg-row">
+      <div class="cmp-aud-msg-label">
+        <div style="font-weight:700;">Create Audience Specific Messaging</div>
+        <div class="hint" style="margin:2px 0 0;">Yes = each audience (${escapeHtml(cmpParseAudienceList(c.audienceTargets).join(', ') || 'none named yet')}) gets its own copy version on the channels you pick; No = one campaign-wide version everywhere.</div>
+      </div>
+      <div class="cmp-step0-audience-toggle-row" role="group" aria-label="Create Audience Specific Messaging">
+        <button type="button" class="cmp-step0-audience-toggle-opt${yes ? ' on' : ''}" onclick="cmpSetAudienceMessagingYesNo(true)">Yes</button>
+        <button type="button" class="cmp-step0-audience-toggle-opt${!yes ? ' on' : ''}" onclick="cmpSetAudienceMessagingYesNo(false)">No</button>
+      </div>
+      <div class="cmp-aud-msg-channels${yes ? '' : ' is-disabled'}" title="${yes ? '' : 'Select Yes to choose channels'}">
+        <div class="cmp-aud-msg-channels-label">Apply to Approved Channels</div>
+        <div id="${containerId}-cd"></div>
+      </div>
+    </div>`;
+  cmpRenderCdSelect(`${containerId}-cd`, channels.map(ch => ({ value: ch, label: ch })), selected, 'cmpToggleAudienceMessagingChannel', channels.length ? 'Select channels…' : 'No approved channels yet');
+  // The approved-channel list comes from the real channel plan; if it isn't
+  // loaded yet for this campaign, fetch it and paint again.
+  if (!channels.length && c.id && !c.localOnly){
+    cmpLoadApprovedChannelsFromPlan(c).then(names => { if (names && names.length && document.getElementById(containerId)) cmpRenderAudienceMessagingControls(containerId); });
+  }
+}
+async function cmpSetAudienceMessagingYesNo(yes){
+  const val = yes ? 'separate' : 'shared';
+  const c = cmpApplyCampaignFieldLocal({ audienceSharedExperience: val });
+  if (!c) return;
+  if (cmpAudienceMessagingContainerId) cmpRenderAudienceMessagingControls(cmpAudienceMessagingContainerId);
+  // Same field the Creative recap toggle edits — keep its own renders in step.
+  if (typeof cmpRenderStep0AudienceToggle === 'function') cmpRenderStep0AudienceToggle(c);
+  if (typeof cmpRenderCreativeStep1 === 'function') cmpRenderCreativeStep1(c);
+  if (typeof cmpRenderStep0RunContest === 'function') cmpRenderStep0RunContest(c);
+  cmpRerenderCreativeAssetCopyPanels();
+  await cmpPersistCampaignField(c, { audienceSharedExperience: val }, 'Create Audience Specific Messaging');
+}
+async function cmpToggleAudienceMessagingChannel(channel){
+  const existing = cmpCurrentCampaign();
+  if (!existing) return;
+  const list = cmpAudienceMessagingChannels(existing);
+  const next = list.includes(channel) ? list.filter(x => x !== channel) : [...list, channel];
+  const c = cmpApplyCampaignFieldLocal({ audienceMessagingChannelsJson: JSON.stringify(next) });
+  if (!c) return;
+  if (cmpAudienceMessagingContainerId) cmpRenderAudienceMessagingControls(cmpAudienceMessagingContainerId);
+  cmpRerenderCreativeAssetCopyPanels();
+  await cmpPersistCampaignField(c, { audienceMessagingChannels: next }, 'Apply to Approved Channels');
+}
+
+// ---- (2) Fitted copy per asset row: wireframe left, copy version right ----
+// Each grid row (channel × Partner/Format/Size) carries
+// row.copyVersions = { "<audience>" | "_all": { text, approved, approvedAt, edited } }.
+// The text on the right is the source of truth; the wireframe on the left
+// is drawn from it (stacked blocks for print/direct mail/email, frames for
+// video, one flat line for a banner) and stays read-only.
+const CMP_ASSET_COPY_ALL_KEY = '_all';
+let cmpCreativeAssetSizeOptionsByChannel = {}; // channel -> [{label, ratio, hasImage, stacked, frames, ...}]
+let cmpCreativeAssetCopyEditing = {};          // "<slug>_<i>_<key>" -> true while Edit is on
+function cmpAssetCopyKeys(c, channel){
+  if (cmpAudienceMessagingAppliesTo(c, channel)){
+    const audiences = cmpParseAudienceList(c.audienceTargets);
+    if (audiences.length) return audiences;
+  }
+  return [CMP_ASSET_COPY_ALL_KEY];
+}
+function cmpAssetCopyKeyId(key){
+  return String(key).replace(/[^a-zA-Z0-9]+/g, '_');
+}
+function cmpSpecForRowSize(channel, sizeLabel){
+  const fromCatalog = (cmpCreativeAssetSizeOptionsByChannel[channel] || []).find(o => o.label === sizeLabel);
+  if (fromCatalog) return fromCatalog;
+  const fromLibrary = adUnitSpecsFor(channel).find(o => o.label === sizeLabel);
+  if (fromLibrary) return fromLibrary;
+  return sizeLabel ? { label: sizeLabel, ratio: 4 / 3, hasImage: true } : null;
+}
+// Text <-> the shape cmpDrawWireframeBox() expects for this spec.
+function cmpAssetCopyDataToText(spec, data){
+  if (!data) return '';
+  if (spec && spec.frames > 1 && Array.isArray(data)) return data.map((f, i) => `Frame ${i + 1}: ${f || ''}`).join('\n\n');
+  if (spec && spec.stacked && typeof data === 'object') return [data.headline, data.body, data.cta].filter(Boolean).join('\n\n');
+  return typeof data === 'string' ? data : '';
+}
+function cmpAssetCopyTextToData(spec, text){
+  const t = (text || '').trim();
+  if (spec && spec.frames > 1){
+    const parts = t.split(/\n\s*\n/).map(p => p.replace(/^Frame\s+\d+:\s*/i, '').trim());
+    return cmpFrameCopyArray(parts.length > 1 ? parts : t, spec.frames);
+  }
+  if (spec && spec.stacked){
+    const paras = t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+    if (paras.length >= 3) return { headline: paras[0], body: paras.slice(1, -1).join(' '), cta: paras[paras.length - 1] };
+    if (paras.length === 2) return { headline: paras[0], body: paras[1] };
+    return cmpSplitCopyIntoBlocks(t);
+  }
+  return t;
+}
+// The starting draft for one row × audience. Campaign-wide: the same
+// per-channel native rewrite the Copy Versions stage uses (cmpDraftNativeCopy,
+// built from the approved Key Message / Long Form Copy). Audience-specific:
+// that audience's own contest winner (audienceCopyJson), sized to the
+// channel's treatment — or, if no winner has been applied for that
+// audience yet, the campaign-wide draft with a note saying so.
+function cmpAssetCopyInitialText(c, channel, spec, key){
+  if (key !== CMP_ASSET_COPY_ALL_KEY){
+    const winner = cmpAudienceCopyMap(c)[key];
+    if (winner && winner.copy){
+      const treatment = CHANNEL_COPY_TREATMENT[channel] || 'medium';
+      const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || c.keyMessage || '').trim();
+      const sized = copyVersionForTreatment(treatment, keyMessage, winner.copy);
+      return cmpAssetCopyDataToText(spec, (spec && spec.stacked) ? cmpSplitCopyIntoBlocks(sized) : (spec && spec.frames > 1) ? cmpFrameCopyArray(sized, spec.frames) : sized);
+    }
+  }
+  const draft = cmpDraftNativeCopy(channel, spec);
+  const data = (spec && spec.frames > 1) ? draft.frameCopy : (spec && spec.stacked) ? draft.copyParts : draft.copy;
+  return cmpAssetCopyDataToText(spec, data);
+}
+function cmpAssetCopyVersion(c, channel, row, key){
+  if (!row.copyVersions) row.copyVersions = {};
+  const spec = cmpSpecForRowSize(channel, row.size);
+  if (!row.copyVersions[key] || !row.copyVersions[key].text){
+    row.copyVersions[key] = { text: cmpAssetCopyInitialText(c, channel, spec, key), approved: false, approvedAt: null, edited: false, sizeLabel: row.size };
+  } else if (row.copyVersions[key].sizeLabel !== row.size && !row.copyVersions[key].edited){
+    // Size changed and the person never edited this draft — refit it.
+    row.copyVersions[key] = { text: cmpAssetCopyInitialText(c, channel, spec, key), approved: false, approvedAt: null, edited: false, sizeLabel: row.size };
+  }
+  return row.copyVersions[key];
+}
+function cmpAssetCopyPanelHtml(channel, slug, i, row){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return '';
+  const complete = !!(row.partner && row.mediaType && row.size);
+  if (!complete){
+    return `<div class="cmp-asset-copy-pending"><span class="wf-badge-warn">Choose Partner, Format and Size to fit the copy</span></div>`;
+  }
+  const spec = cmpSpecForRowSize(channel, row.size);
+  const keys = cmpAssetCopyKeys(c, channel);
+  const winners = cmpAudienceCopyMap(c);
+  return keys.map(key => {
+    const v = cmpAssetCopyVersion(c, channel, row, key);
+    const kid = `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`;
+    const editing = !!cmpCreativeAssetCopyEditing[kid];
+    const isAud = key !== CMP_ASSET_COPY_ALL_KEY;
+    const noWinner = isAud && !(winners[key] && winners[key].copy);
+    const badge = v.approved
+      ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(v.approvedAt).toLocaleString())}</span>`
+      : `<span class="wf-badge-ok" style="background:#EAF1FB;color:#1E5FA8;">✓ Copy fit to ${escapeHtml(row.size)}</span>`;
+    return `
+      <div class="cmp-asset-copy-block" id="${kid}_block">
+        <div class="cmp-asset-copy-head">
+          <span class="cmp-asset-copy-title">${isAud ? escapeHtml(key) : 'Campaign copy'} — ${escapeHtml(row.mediaType)}</span>
+          ${badge}
+        </div>
+        ${noWinner ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">No contest winner applied for ${escapeHtml(key)} yet — showing the campaign-wide copy until one is selected on Brand Messaging.</p>` : ''}
+        <div class="cmp-asset-copy-grid">
+          <div class="cmp-asset-copy-wf"><div id="${kid}_wf" class="wireframe"></div></div>
+          <div class="cmp-asset-copy-text">
+            <textarea id="${kid}_text" rows="8" ${editing ? '' : 'readonly'} oninput="cmpAssetCopyTextChanged('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}', this.value)">${escapeHtml(v.text)}</textarea>
+            <div class="btn-row" style="margin-top:8px;gap:8px;">
+              <button type="button" class="btn-ghost" onclick="cmpAssetCopyToggleEdit('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}')">${editing ? 'Done editing' : 'Edit'}</button>
+              <button type="button" class="btn-primary" ${v.approved ? 'disabled' : ''} onclick="cmpAssetCopyApprove('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}')">${v.approved ? 'Approved' : 'Approve'}</button>
+              ${v.edited ? `<button type="button" class="btn-ghost" onclick="cmpAssetCopyResetDraft('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}')">Reset to draft</button>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+// Row/key lookups by the ids baked into the markup (slug and key id are
+// filename-safe; the real channel and key are recovered from the grid).
+function cmpAssetCopyResolve(slug, i, keyId){
+  const channel = Object.keys(cmpCreativeAssetGridRows).find(ch => cmpCreativeAssetChannelSlug(ch) === slug);
+  const row = channel ? (cmpCreativeAssetGridRows[channel] || [])[i] : null;
+  const c = cmpRailLoadedCampaign();
+  if (!channel || !row || !c) return null;
+  const key = cmpAssetCopyKeys(c, channel).find(k => cmpAssetCopyKeyId(k) === keyId) || CMP_ASSET_COPY_ALL_KEY;
+  return { c, channel, row, key, kid: `cmpCAG_${slug}_${i}_${keyId}` };
+}
+function cmpAssetCopyDrawWireframe(channel, row, key, kid){
+  const wf = document.getElementById(`${kid}_wf`);
+  if (!wf) return;
+  const spec = cmpSpecForRowSize(channel, row.size);
+  const v = row.copyVersions && row.copyVersions[key];
+  if (!spec || !v){ wf.innerHTML = ''; return; }
+  cmpDrawWireframeBox(wf, spec, cmpAssetCopyTextToData(spec, v.text), channel, `${kid}_wfx`, 'bottom');
+  // The wireframe is a preview here — the copy on the right is what's edited.
+  wf.querySelectorAll('textarea, input').forEach(t => { t.readOnly = true; t.tabIndex = -1; });
+}
+function cmpAssetCopyDrawAllForChannel(channel){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  const slug = cmpCreativeAssetChannelSlug(channel);
+  (cmpCreativeAssetGridRows[channel] || []).forEach((row, i) => {
+    if (!(row.partner && row.mediaType && row.size)) return;
+    cmpAssetCopyKeys(c, channel).forEach(key => cmpAssetCopyDrawWireframe(channel, row, key, `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`));
+  });
+}
+function cmpAssetCopyTextChanged(slug, i, keyId, value){
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  if (!r) return;
+  const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
+  v.text = value; v.edited = true;
+  if (v.approved){ v.approved = false; v.approvedAt = null; } // an edit after approval needs a fresh approval
+  cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
+  cmpSyncCreativeAssetRequestsFromGrid();
+}
+function cmpAssetCopyToggleEdit(slug, i, keyId){
+  const kid = `cmpCAG_${slug}_${i}_${keyId}`;
+  cmpCreativeAssetCopyEditing[kid] = !cmpCreativeAssetCopyEditing[kid];
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  if (r) cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
+  if (cmpCreativeAssetCopyEditing[kid]){ const t = document.getElementById(`${kid}_text`); if (t) t.focus(); }
+}
+function cmpAssetCopyApprove(slug, i, keyId){
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  if (!r) return;
+  const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
+  v.approved = true; v.approvedAt = new Date().toISOString();
+  delete cmpCreativeAssetCopyEditing[r.kid];
+  cmpSyncCreativeAssetRequestsFromGrid();
+  cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
+}
+function cmpAssetCopyResetDraft(slug, i, keyId){
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  if (!r) return;
+  if (r.row.copyVersions) delete r.row.copyVersions[r.key];
+  delete cmpCreativeAssetCopyEditing[r.kid];
+  cmpSyncCreativeAssetRequestsFromGrid();
+  cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
+}
+function cmpRerenderCreativeAssetCopyPanels(){
+  Object.keys(cmpCreativeAssetGridRows).forEach(ch => cmpRenderCreativeAssetMatrixChannelGroup(ch));
+}
+// Debounced server write of the whole grid (rows + copy versions) — the
+// column is real as of this round (approvedCreativeAssetsJson); before it,
+// the grid only ever lived in memory and emptied on reload.
+let cmpCreativeAssetPersistTimer = null;
+function cmpPersistCreativeAssetsToServer(){
+  const c = cmpRailLoadedCampaign();
+  if (!c || c.isAdHoc || c.localOnly || dataSourceLabel !== 'backend') return;
+  if (cmpCreativeAssetPersistTimer) clearTimeout(cmpCreativeAssetPersistTimer);
+  cmpCreativeAssetPersistTimer = setTimeout(() => {
+    cmpCreativeAssetPersistTimer = null;
+    authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvedCreativeAssetsJson: JSON.stringify(c.approvedCreativeAssets || []) })
+    }).catch(e => console.warn('creative asset grid save failed (kept locally):', e && e.message));
+  }, 600);
+}
+
 // 2026-09-25, per direct report on the Creative Asset Selection grid: "The
 // drop downs aren't populating per channel. Direct Mail as an example should
 // be the client name. Atlas in this account." The Partner select used to
@@ -60329,6 +60641,7 @@ function cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, showRemov
   const formatId = `cmpCAG_${slug}_${i}_format`;
   const sizeId = `cmpCAG_${slug}_${i}_size`;
   return `
+    <div class="cmp-asset-row-card">
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
       <div style="flex:1 1 150px;">
         <label class="hint" style="display:block;margin-bottom:3px;">Partner</label>
@@ -60343,6 +60656,8 @@ function cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, showRemov
         <select id="${sizeId}" onchange='cmpCreativeAssetRowFieldChanged(${JSON.stringify(channel)}, ${i}, "size", this.value)'><option value="">Select a size…</option></select>
       </div>
       ${showRemove ? `<button type="button" class="btn-ghost" style="padding:6px 10px;font-size:0.75rem;" onclick='cmpRemoveCreativeAssetRow(${JSON.stringify(channel)}, ${i})'>Remove</button>` : ''}
+    </div>
+    ${cmpAssetCopyPanelHtml(channel, slug, i, row)}
     </div>`;
 }
 function cmpCreativeAssetChannelGroupInnerHtml(channel){
@@ -60405,13 +60720,14 @@ function cmpSyncCreativeAssetRequestsFromGrid(){
   Object.keys(cmpCreativeAssetGridRows).forEach(channel => {
     (cmpCreativeAssetGridRows[channel] || []).forEach(row => {
       if (row.partner && row.mediaType && row.size){
-        flattened.push({ channel, partner: row.partner, mediaType: row.mediaType, size: row.size });
+        flattened.push({ channel, partner: row.partner, mediaType: row.mediaType, size: row.size, copyVersions: row.copyVersions || {} });
         cmpCreativeAssetDefaultsByChannel[channel] = { partner: row.partner, mediaType: row.mediaType, size: row.size };
       }
     });
   });
   cmpCreativeAssetRequests = flattened;
   cmpPersistCreativeAssetRequestsToCampaign();
+  cmpPersistCreativeAssetsToServer(); // 2026-09-25 — real column now; see its own comment
   const errEl = document.getElementById('cmpCreativeAssetError');
   if (errEl) errEl.textContent = '';
   cmpRenderCreativeAssetCoverageNote();
