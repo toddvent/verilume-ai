@@ -696,6 +696,23 @@
   .cmp-brief-recap-item{display:flex;flex-direction:column;gap:3px;}
   .cmp-brief-recap-label{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;}
   .cmp-brief-recap-val{font-size:0.8125rem;color:var(--ink);font-weight:600;}
+  /* 2026-09-27 — inline "edit within the card" affordance per Todd's direct
+     instruction ("We don't really need to take the user anywhere. They
+     should just edit within the cards that show the selections."),
+     replacing the old single "Edit →" button that routed into the legacy
+     accordion rail. Each recap value is now its own click target; clicking
+     swaps the static span for a small inline form (select/date/text/number
+     as the field calls for) with Save/Cancel, styled to match this app's
+     existing form controls rather than introducing a new visual language. */
+  .cmp-brief-recap-val-btn{background:none;border:none;padding:0;margin:0;font:inherit;font-size:0.8125rem;color:var(--ink);font-weight:600;text-align:left;cursor:pointer;border-radius:4px;}
+  .cmp-brief-recap-val-btn:hover{color:var(--advocacy);text-decoration:underline;}
+  .cmp-brief-recap-edit{display:flex;flex-direction:column;gap:6px;}
+  .cmp-brief-recap-edit select,.cmp-brief-recap-edit input{font-family:inherit;font-size:0.8125rem;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--white);color:var(--ink);width:100%;box-sizing:border-box;}
+  .cmp-brief-recap-edit-row{display:flex;gap:6px;}
+  .cmp-brief-recap-edit-actions{display:flex;gap:8px;margin-top:2px;}
+  .cmp-brief-recap-edit-actions button{font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;}
+  .cmp-brief-recap-edit-save{background:var(--advocacy);border:1px solid var(--advocacy);color:#fff;}
+  .cmp-brief-recap-edit-cancel{background:none;border:1px solid var(--line);color:var(--muted);}
   /* 2026-09-19 — CampaignBrief-Mobile.dc.html combines Start Date + End
      Date into one "Dates" field; CampaignBrief-Desktop.dc.html keeps the
      6 separate fields. Desktop-default: show the two date fields, hide the
@@ -811,8 +828,6 @@
      asset" button below. */
   .cmp-asset-wf{padding-bottom:4px;}
   .cmp-wf-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px;}
-  .cmp-wf-orient{border:1px solid var(--line);background:var(--white);border-radius:var(--radius-pill);padding:3px 10px;font-size:0.75rem;cursor:pointer;color:var(--muted);}
-  .cmp-wf-orient.on{background:var(--ink);color:var(--white);border-color:var(--ink);}
   .cmp-wf-sides{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
   .cmp-wf-side{flex:1 1 320px;max-width:340px;}
   .cmp-wf-side-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin:0 0 4px;}
@@ -11991,7 +12006,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-asset-wireframe-orientation-two-sided';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-brief-recap-inline-edit';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -42142,7 +42157,7 @@ async function cmpRecoGenerateNarrative(){
 // wireframe's "no Regenerate control" promise intact: there's still no
 // button that blows away a human edit without them asking for it, and the
 // AI-managed cards still refresh with zero buttons at all.
-let cmpBriefState = { campaignId: null, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter' };
+let cmpBriefState = { campaignId: null, summary: null, copyLoading: false, analyticsLoading: false, copyError: null, analyticsError: null, mobileTab: 'copywriter', recapEdit: null };
 // 2026-09-22 — Media + CX Vision full-screen workspace (cmpOpenCxVisionWorkspace()
 // below). Per direct correction: "Selecting Media Science & CX takes users
 // to the workstream cards. There is no workstream for this. It's a simple
@@ -42332,9 +42347,131 @@ function cmpBriefCmoCardBody(audience, campaign){
   if (value) return `<div class="cmp-brief-cmo-body" id="${bodyId}" contenteditable="true" onblur="cmpBriefOnBlur('${audience}', this)">${escapeHtml(value)}</div>`;
   return `<button type="button" class="btn-ghost" onclick="cmpBriefGenerate('${audience}')">Draft this message →</button>`;
 }
+// 2026-09-27 — inline "edit within the card" system for the Campaign brief
+// recap grid. Per Todd's direct instruction after reporting Goal showed
+// "(not set)" and Edit → routed into "an old expired design": "We don't
+// really need to take the user anywhere. They should just edit within the
+// cards that show the selections." Replaces the single Edit → button
+// (openCmpStage('lifecycle')) with a per-field click-to-edit affordance,
+// reusing the same cmpApplyCampaignFieldLocal()/cmpPersistCampaignField()
+// local-first save pattern the rest of this file already uses (see
+// cmpSaveStep0Headline() etc. above). recapEdit holds the single field key
+// currently in edit mode so only one field swaps to its input at a time.
+const CMP_BRIEF_RECAP_FIELDS = {
+  stage: { label: 'Loop Stage', type: 'select', options: () => MEDIA_LOOP_STAGES },
+  segment: { label: 'Audience', type: 'text' },
+  campaignType: {
+    label: 'Campaign Type', type: 'select',
+    options: () => (typeof CAMPAIGN_TYPE_REGISTRY_CLIENT !== 'undefined' ? Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).map(k => ({ value: k, label: CAMPAIGN_TYPE_REGISTRY_CLIENT[k].label })) : [])
+  },
+  startDate: { label: 'Start Date', type: 'date' },
+  endDate: { label: 'End Date', type: 'date' },
+  goal: { label: 'Goal', type: 'goal' },
+  productGroups: { label: 'Campaign Product Group', type: 'text' },
+  creativeFocusGroups: { label: 'Creative Focus Group', type: 'text' }
+};
+function cmpBriefRecapDisplayVal(c, key){
+  if (key === 'campaignType'){
+    const def = (typeof CAMPAIGN_TYPE_REGISTRY_CLIENT !== 'undefined' && c.campaignType) ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType] : null;
+    return def ? def.label : (c.campaignType || null);
+  }
+  if (key === 'goal'){
+    const goalParts = [c.kpiGoal ? Number(c.kpiGoal).toLocaleString() : null, c.primaryKpi].filter(Boolean);
+    return goalParts.length ? goalParts.join(' ') : null;
+  }
+  return c[key] || null;
+}
+function cmpBriefRecapEditActionsHtml(key){
+  return `<div class="cmp-brief-recap-edit-actions"><button type="button" class="cmp-brief-recap-edit-save" onclick="cmpBriefRecapSave('${key}')">Save</button><button type="button" class="cmp-brief-recap-edit-cancel" onclick="cmpBriefRecapCancel()">Cancel</button></div>`;
+}
+function cmpBriefRecapEditHtml(c, key, field){
+  if (field.type === 'select'){
+    const opts = field.options();
+    const optsHtml = opts.map(o => {
+      const value = typeof o === 'string' ? o : o.value;
+      const optLabel = typeof o === 'string' ? o : o.label;
+      return `<option value="${escapeHtml(value)}"${(c[key] || '') === value ? ' selected' : ''}>${escapeHtml(optLabel)}</option>`;
+    }).join('');
+    return `<div class="cmp-brief-recap-edit"><select id="cmpBriefRecapInput_${key}"><option value=""${!c[key] ? ' selected' : ''}>—</option>${optsHtml}</select>${cmpBriefRecapEditActionsHtml(key)}</div>`;
+  }
+  if (field.type === 'date'){
+    return `<div class="cmp-brief-recap-edit"><input type="date" id="cmpBriefRecapInput_${key}" value="${escapeHtml(c[key] || '')}">${cmpBriefRecapEditActionsHtml(key)}</div>`;
+  }
+  if (field.type === 'goal'){
+    const kpiOpts = PRIMARY_KPI_OPTIONS.map(o => `<option value="${escapeHtml(o)}"${c.primaryKpi === o ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
+    return `<div class="cmp-brief-recap-edit">
+      <select id="cmpBriefRecapInput_goal_kpi"><option value=""${!c.primaryKpi ? ' selected' : ''}>Primary KPI —</option>${kpiOpts}</select>
+      <input type="number" min="0" step="1" id="cmpBriefRecapInput_goal_target" placeholder="Target (e.g. 500)" value="${c.kpiGoal != null ? escapeHtml(String(c.kpiGoal)) : ''}">
+      ${cmpBriefRecapEditActionsHtml('goal')}
+    </div>`;
+  }
+  return `<div class="cmp-brief-recap-edit"><input type="text" id="cmpBriefRecapInput_${key}" value="${escapeHtml(c[key] || '')}">${cmpBriefRecapEditActionsHtml(key)}</div>`;
+}
+function cmpBriefRecapItemHtml(c, key, extraClass){
+  const field = CMP_BRIEF_RECAP_FIELDS[key];
+  const editing = cmpBriefState.recapEdit === key;
+  const inner = editing
+    ? cmpBriefRecapEditHtml(c, key, field)
+    : (() => { const display = cmpBriefRecapDisplayVal(c, key); return `<button type="button" class="cmp-brief-recap-val-btn" onclick="cmpBriefRecapStartEdit('${key}')" title="Click to edit">${display ? escapeHtml(String(display)) : '(not set)'}</button>`; })();
+  return `<div class="cmp-brief-recap-item${extraClass ? ' ' + extraClass : ''}"><span class="cmp-brief-recap-label">${escapeHtml(field.label)}</span>${inner}</div>`;
+}
+function cmpBriefRecapGridHtml(c){
+  return `<div class="cmp-brief-recap-grid">
+    ${cmpBriefRecapItemHtml(c, 'stage')}
+    ${cmpBriefRecapItemHtml(c, 'segment')}
+    ${cmpBriefRecapItemHtml(c, 'campaignType')}
+    ${cmpBriefRecapItemHtml(c, 'startDate', 'cmp-brief-recap-startend')}
+    ${cmpBriefRecapItemHtml(c, 'endDate', 'cmp-brief-recap-startend')}
+    <div class="cmp-brief-recap-item cmp-brief-recap-dates-mobile"><span class="cmp-brief-recap-label">Dates</span><span class="cmp-brief-recap-val">${escapeHtml(cmpFmtDateRangeMobile(c.startDate, c.endDate))}</span></div>
+    ${cmpBriefRecapItemHtml(c, 'goal')}
+    ${cmpBriefRecapItemHtml(c, 'productGroups')}
+    ${cmpBriefRecapItemHtml(c, 'creativeFocusGroups')}
+  </div>`;
+}
+// Re-renders every mounted copy of this recap grid in place — it can be
+// mounted twice at once (the accordion module via renderCmpDownstreamStages()
+// and the full-screen CX Vision workspace via cmpRenderCxVisionLeft()), and
+// a click or save in one needs to show up in both, not just wherever the
+// click happened.
+function cmpBriefRerenderRecapCard(){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  document.querySelectorAll('.cmp-brief-recap-grid').forEach(grid => { grid.outerHTML = cmpBriefRecapGridHtml(c); });
+}
+function cmpBriefRecapStartEdit(key){
+  cmpBriefState.recapEdit = key;
+  cmpBriefRerenderRecapCard();
+  setTimeout(() => {
+    const el = document.getElementById(key === 'goal' ? 'cmpBriefRecapInput_goal_kpi' : `cmpBriefRecapInput_${key}`);
+    if (el) el.focus();
+  }, 0);
+}
+function cmpBriefRecapCancel(){
+  cmpBriefState.recapEdit = null;
+  cmpBriefRerenderRecapCard();
+}
+async function cmpBriefRecapSave(key){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  let localAssign = {};
+  const fieldLabel = (CMP_BRIEF_RECAP_FIELDS[key] || {}).label || key;
+  if (key === 'goal'){
+    const kpiEl = document.getElementById('cmpBriefRecapInput_goal_kpi');
+    const targetEl = document.getElementById('cmpBriefRecapInput_goal_target');
+    const primaryKpi = kpiEl ? kpiEl.value : '';
+    const kpiGoalRaw = targetEl ? targetEl.value : '';
+    localAssign = { primaryKpi: primaryKpi || '', kpiGoal: kpiGoalRaw ? Number(kpiGoalRaw) : null };
+  } else {
+    const inputEl = document.getElementById(`cmpBriefRecapInput_${key}`);
+    localAssign[key] = inputEl ? inputEl.value : '';
+  }
+  cmpBriefState.recapEdit = null;
+  cmpApplyCampaignFieldLocal(localAssign);
+  cmpBriefRerenderRecapCard();
+  await cmpPersistCampaignField(c, localAssign, fieldLabel);
+}
 function cmpBriefAnalyticsBody(c){
   const s = cmpBriefState;
-  const goalParts = [c.kpiGoal ? Number(c.kpiGoal).toLocaleString() : null, c.primaryKpi].filter(Boolean);
   const dashboardsHtml = s.summary ? `
     <div class="exec-chart-grid three-up" style="margin-top:16px;">
       <div class="exec-chart-card"><h4 style="margin:0 0 10px;">Loop Stage Distribution</h4>${cmpRecoMeterRows(cmpRecoLoopStageRows(s.summary))}</div>
@@ -42345,47 +42482,9 @@ function cmpBriefAnalyticsBody(c){
     <div class="cmp-brief-recap-card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="font-size:1rem;font-weight:700;color:var(--ink);">Campaign brief recap</div>
-        <!-- 2026-09-22 fix — this page now also opens as its own full-screen
-             workspace (cmpOpenCxVisionWorkspace()), which sits visually
-             above the accordion Lifecycle stage this button targets; without
-             closing the overlay first, the click silently changed state
-             behind it with nothing visibly happening. Still a harmless
-             no-op when this body is rendered inside the accordion module
-             itself (cmpCloseCxVisionWorkspace() is a no-op there since the
-             overlay is already closed). -->
-        <button type="button" class="btn-ghost" onclick="if(typeof cmpCloseCxVisionWorkspace==='function')cmpCloseCxVisionWorkspace();openCmpStage('lifecycle')">Edit →</button>
       </div>
-      <p class="cmp-stage-note" style="padding:6px 0 0;">Carried forward from Lifecycle Stage &amp; Goals so the messages below can be checked against it at a glance — edited there, not here.</p>
-      <div class="cmp-brief-recap-grid">
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Loop Stage</span><span class="cmp-brief-recap-val">${escapeHtml(c.stage || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Audience</span><span class="cmp-brief-recap-val">${escapeHtml(c.segment || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Type</span><span class="cmp-brief-recap-val">${escapeHtml(c.campaignType || 'General')}</span></div>
-        <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">Start Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.startDate || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item cmp-brief-recap-startend"><span class="cmp-brief-recap-label">End Date</span><span class="cmp-brief-recap-val">${escapeHtml(c.endDate || '(not set)')}</span></div>
-        <!-- 2026-09-19 — CampaignBrief-Mobile.dc.html merges Start Date +
-             End Date into one "Dates" field ("Oct 6 – Nov 14, 2026") to save
-             horizontal space; CampaignBrief-Desktop.dc.html keeps them
-             separate. Rendered always and toggled by the
-             .cmp-brief-recap-startend / .cmp-brief-recap-dates-mobile CSS
-             pair below (≤900px, same breakpoint this stage's tab bar and
-             recap-grid already switch on) rather than branching this
-             template on viewport, matching the .copyver-asset-count-mobile
-             convention used for CopyVersions' mobile-only asset count. -->
-        <div class="cmp-brief-recap-item cmp-brief-recap-dates-mobile"><span class="cmp-brief-recap-label">Dates</span><span class="cmp-brief-recap-val">${escapeHtml(cmpFmtDateRangeMobile(c.startDate, c.endDate))}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Goal</span><span class="cmp-brief-recap-val">${goalParts.length ? escapeHtml(goalParts.join(' ')) : '(not set)'}</span></div>
-        <!-- 2026-09-22 — restored per the same "reproduce every wireframe
-             field literally" standard the 2026-09-19 fix above already
-             applied to this exact card: Campaign-Brief-Analytics-
-             Requirements-Desktop.dc.html's real recap grid is 8 fields, not
-             6 — these two (Campaign Product Group, Creative Focus Group)
-             were missing. Sourced from the same campaign fields Objectives/
-             Campaign Creation and this app's other recap cards already use
-             (campaign.productGroups, campaign.creativeFocusGroups — see
-             cmpRenderPerformanceMarketingRecap() and the Budget &
-             Recommendation brief recap for the same two fields). -->
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Campaign Product Group</span><span class="cmp-brief-recap-val">${escapeHtml(c.productGroups || '(not set)')}</span></div>
-        <div class="cmp-brief-recap-item"><span class="cmp-brief-recap-label">Creative Focus Group</span><span class="cmp-brief-recap-val">${escapeHtml(c.creativeFocusGroups || '(not set)')}</span></div>
-      </div>
+      <p class="cmp-stage-note" style="padding:6px 0 0;">Carried forward from Lifecycle Stage &amp; Goals so the messages below can be checked against it at a glance — click any value below to edit it right here.</p>
+      ${cmpBriefRecapGridHtml(c)}
     </div>
     <!-- 2026-09-19 — restored per the CampaignBrief-Desktop/Mobile.dc.html
          wireframe, which was missed on the original 2026-09-18 build: this
@@ -60880,7 +60979,13 @@ function cmpAssetCopyDrawWireframe(channel, row, key, kid){
   const v = row.copyVersions && row.copyVersions[key];
   if (!spec || !v || !v.fields){ wrap.innerHTML = ''; return; }
   const schema = cmpAssetCopySchema(channel, spec, row);
-  const [slug, i, keyId] = [kid.split('_')[1], Number(kid.split('_')[2]), kid.split('_').slice(3).join('_')];
+  // 2026-09-27 fix — the first cut recovered slug/row/key by splitting the
+  // element id on "_", but channel slugs themselves contain underscores
+  // ("Direct_Mail_Prospects"), so the Horizontal/Vertical buttons resolved
+  // to nothing and never redrew. Derived from the real channel/row/key now.
+  const slug = cmpCreativeAssetChannelSlug(channel);
+  const i = Math.max(0, (cmpCreativeAssetGridRows[channel] || []).indexOf(row));
+  const keyId = cmpAssetCopyKeyId(key);
   const canRotate = cmpAssetWireframeCanRotate(channel, spec);
   const orient = cmpAssetWireframeOrientFor(channel, spec, kid);
   const r0 = spec.ratio || 1;
@@ -60889,8 +60994,10 @@ function cmpAssetCopyDrawWireframe(channel, row, key, kid){
   const toolbar = canRotate ? `
     <div class="cmp-wf-toolbar">
       <span class="hint" style="margin:0;">Layout</span>
-      <button type="button" class="cmp-wf-orient${orient === 'landscape' ? ' on' : ''}" onclick="cmpAssetWireframeSetOrient('${slug}', ${i}, '${keyId}', 'landscape')">Horizontal</button>
-      <button type="button" class="cmp-wf-orient${orient === 'portrait' ? ' on' : ''}" onclick="cmpAssetWireframeSetOrient('${slug}', ${i}, '${keyId}', 'portrait')">Vertical</button>
+      <div class="cmp-step0-audience-toggle-row" role="group" aria-label="Wireframe layout">
+        <button type="button" class="cmp-step0-audience-toggle-opt${orient === 'landscape' ? ' on' : ''}" onclick="cmpAssetWireframeSetOrient('${slug}', ${i}, '${keyId}', 'landscape')">Horizontal</button>
+        <button type="button" class="cmp-step0-audience-toggle-opt${orient === 'portrait' ? ' on' : ''}" onclick="cmpAssetWireframeSetOrient('${slug}', ${i}, '${keyId}', 'portrait')">Vertical</button>
+      </div>
       ${postcard ? `<span class="hint" style="margin:0 0 0 6px;">Two-sided — front is the visual + headline, back is the detail.</span>` : ''}
     </div>` : '';
   if (postcard){
