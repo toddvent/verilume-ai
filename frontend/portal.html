@@ -785,17 +785,24 @@
   .cmp-asset-copy-block{border-top:1px dashed var(--line);padding-top:10px;margin-top:6px;}
   .cmp-asset-copy-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
   .cmp-asset-copy-title{font-weight:700;font-size:0.8438rem;}
-  .cmp-copy-note{font-size:0.75rem;line-height:1.45;color:var(--muted);margin:0 0 10px;padding:8px 10px;background:var(--paper-dim);border-radius:6px;}
-  .cmp-copy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px 16px;}
+  .cmp-copy-note{font-size:0.75rem;line-height:1.45;color:var(--muted);margin:0 0 8px;padding:6px 10px;background:var(--paper-dim);border-radius:6px;}
+  /* 2026-09-27, per Todd ("we have whitespace to work with — spread copy out
+     to reduce scrolling"): short fields sit 3–4 across on a wide card, mid-
+     length ones take two columns, long body copy takes the full width, and
+     repeatable lists (RSA headlines/descriptions, frames) flow in columns. */
+  .cmp-copy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px;}
   .cmp-copy-field{min-width:0;}
-  .cmp-copy-field-multi{grid-column:1 / -1;}
+  .cmp-copy-field-mid{grid-column:span 2;}
+  .cmp-copy-field-wide,.cmp-copy-field-multi{grid-column:1 / -1;}
+  .cmp-copy-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 16px;}
+  @media (max-width:640px){.cmp-copy-field-mid{grid-column:auto;}.cmp-copy-items{grid-template-columns:1fr;}}
   .cmp-copy-field-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:3px;}
   .cmp-copy-field-head label{font-size:0.75rem;font-weight:600;color:var(--ink);}
   .cmp-copy-field input[type=text],.cmp-copy-field textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.45;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--white);}
   .cmp-copy-count{font-size:0.6875rem;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap;}
   .cmp-copy-count.near{color:#9A6A0E;}
   .cmp-copy-count.over{color:#B42318;font-weight:700;}
-  .cmp-copy-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;margin-bottom:6px;}
+  .cmp-copy-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;margin-bottom:4px;}
   .cmp-copy-item-label{font-size:0.6875rem;color:var(--muted);white-space:nowrap;min-width:78px;}
   .cmp-copy-item-remove{border:1px solid var(--line);background:var(--white);border-radius:6px;width:24px;height:24px;line-height:1;cursor:pointer;color:var(--muted);}
   /* 2026-09-27 — inside an asset card the preview grows with its content: the
@@ -803,6 +810,13 @@
      Versions stage, which here let the dims line spill over the "+ Add another
      asset" button below. */
   .cmp-asset-wf{padding-bottom:4px;}
+  .cmp-wf-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px;}
+  .cmp-wf-orient{border:1px solid var(--line);background:var(--white);border-radius:var(--radius-pill);padding:3px 10px;font-size:0.75rem;cursor:pointer;color:var(--muted);}
+  .cmp-wf-orient.on{background:var(--ink);color:var(--white);border-color:var(--ink);}
+  .cmp-wf-sides{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+  .cmp-wf-side{flex:1 1 320px;max-width:340px;}
+  .cmp-wf-side-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin:0 0 4px;}
+  .cmp-wf-address{display:flex;justify-content:space-between;gap:10px;margin:8px 8px 4px;padding:8px;border:1px dashed var(--line-strong);border-radius:4px;font-size:0.625rem;color:var(--muted);}
   .cmp-asset-wf .wireframe{margin:0;height:auto !important;min-height:0 !important;overflow:visible;}
   .cmp-asset-wf .wireframe .wireframe-stacked{flex:none;}
   .cmp-asset-wf .wireframe-dims{margin:8px 0 0 !important;padding:0 8px 8px;}
@@ -11977,7 +11991,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-asset-wireframe-overflow-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-asset-wireframe-orientation-two-sided';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -60781,13 +60795,13 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
         return `
           <div class="cmp-copy-field cmp-copy-field-multi">
             <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)} <span class="hint" style="font-weight:400;">${fd.fixed ? `${fd.limit} × ≤ ${fd.max} characters` : `${fd.min}–${fd.limit}, each ≤ ${fd.max} characters`}</span></label></div>
-            ${arr.map((val, idx) => `
+            <div class="cmp-copy-items">${arr.map((val, idx) => `
               <div class="cmp-copy-item">
                 <span class="cmp-copy-item-label">${escapeHtml(fd.itemLabel)} ${idx + 1}</span>
                 <input type="text" id="${kid}_${fd.key}_${idx}" maxlength="${fd.max + 40}" value="${escapeHtml(val || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, idx)}, this.value)">
                 ${counter(val, fd.max)}
                 ${canRemove ? `<button type="button" class="cmp-copy-item-remove" title="Remove" onclick="cmpAssetCopyRemoveItem(${args(fd.key, idx)})">×</button>` : ''}
-              </div>`).join('')}
+              </div>`).join('')}</div>
             ${canAdd ? `<button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;margin-top:4px;" onclick="cmpAssetCopyAddItem(${args(fd.key, -1)})">+ Add ${escapeHtml(fd.itemLabel.toLowerCase())}</button>` : ''}
           </div>`;
       }
@@ -60795,8 +60809,9 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
       const input = fd.rows > 1
         ? `<textarea id="${kid}_${fd.key}" rows="${fd.rows}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)">${escapeHtml(val)}</textarea>`
         : `<input type="text" id="${kid}_${fd.key}" placeholder="${escapeHtml(fd.placeholder || '')}" value="${escapeHtml(val)}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)">`;
+      const widthClass = fd.rows >= 4 ? ' cmp-copy-field-wide' : fd.rows >= 2 ? ' cmp-copy-field-mid' : '';
       return `
-        <div class="cmp-copy-field">
+        <div class="cmp-copy-field${widthClass}">
           <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)}${fd.optional ? ' <span class="hint" style="font-weight:400;">optional</span>' : ''}</label>${counter(val, fd.max)}</div>
           ${input}
         </div>`;
@@ -60816,7 +60831,7 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
           <button type="button" class="btn-ghost" onclick="cmpAssetCopyToggleWireframe('${slug}', ${i}, '${keyId}')">${wfOpen ? 'Hide wireframe' : 'View wireframe'}</button>
           ${v.edited ? `<button type="button" class="btn-ghost" onclick="cmpAssetCopyResetDraft('${slug}', ${i}, '${keyId}')">Reset to best-practice draft</button>` : ''}
         </div>
-        <div class="cmp-asset-wf" id="${kid}_wfwrap" style="display:${wfOpen ? '' : 'none'};margin-top:12px;"><div id="${kid}_wf" class="wireframe"></div></div>
+        <div class="cmp-asset-wf" id="${kid}_wfwrap" style="display:${wfOpen ? '' : 'none'};margin-top:12px;"></div>
       </div>`;
   }).join('');
 }
@@ -60830,16 +60845,85 @@ function cmpAssetCopyResolve(slug, i, keyId){
 }
 // The wireframe is a PREVIEW of the fields above it — dimensions, layout and
 // the copy in place — drawn read-only so there is exactly one place to edit.
+// 2026-09-27, per Todd: "We should have a view by horizontal and vertical
+// wireframe option after showing the content. Postcards are typically
+// landscape and two-sided. The front is image heavy with the title and
+// abstract similar to a magazine ad. The back as the detail. All postcards
+// should default to horizontal layouts. Magazines and direct mail multi-
+// page pieces can be [either]." So: print/mail previews carry a Horizontal
+// | Vertical switch (postcards default horizontal, everything else keeps
+// its catalog orientation), and a postcard draws as two sides — Front
+// (visual + headline + subhead as the abstract) and Back (body, offer,
+// call to action, address panel).
+let cmpAssetWireframeOrient = {};
+function cmpAssetWireframeCanRotate(channel, spec){
+  return !!(spec && (spec.stacked || spec.print)) && (channel.startsWith('Direct Mail') || channel === 'Magazines' || channel === 'Newspapers' || channel === 'Field / ABM');
+}
+function cmpAssetWireframeIsPostcard(channel, spec){
+  return channel.startsWith('Direct Mail') && /postcard|4x6|4×6|5x7|5×7|6x9|6×9|6x11|6×11/i.test((spec && spec.label) || '');
+}
+function cmpAssetWireframeOrientFor(channel, spec, kid){
+  if (cmpAssetWireframeOrient[kid]) return cmpAssetWireframeOrient[kid];
+  if (cmpAssetWireframeIsPostcard(channel, spec)) return 'landscape';
+  return (spec && spec.ratio >= 1) ? 'landscape' : 'portrait';
+}
+function cmpAssetWireframeSetOrient(slug, i, keyId, orient){
+  const kid = `cmpCAG_${slug}_${i}_${keyId}`;
+  cmpAssetWireframeOrient[kid] = orient;
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  if (r) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, kid);
+}
 function cmpAssetCopyDrawWireframe(channel, row, key, kid){
-  const wf = document.getElementById(`${kid}_wf`);
-  if (!wf) return;
+  const wrap = document.getElementById(`${kid}_wfwrap`);
+  if (!wrap) return;
   const spec = cmpSpecForRowSize(channel, row.size);
   const v = row.copyVersions && row.copyVersions[key];
-  if (!spec || !v || !v.fields){ wf.innerHTML = ''; return; }
+  if (!spec || !v || !v.fields){ wrap.innerHTML = ''; return; }
   const schema = cmpAssetCopySchema(channel, spec, row);
-  cmpDrawWireframeBox(wf, spec, cmpAssetCopyFieldsToWireframe(schema, v.fields), channel, `${kid}_wfx`, 'bottom');
-  wf.querySelectorAll('textarea, input').forEach(t => { t.readOnly = true; t.tabIndex = -1; });
-  wf.querySelectorAll('.wireframe-enterprise-lock, .wireframe-motion-controls .btn-ghost:not(:first-child)').forEach(n => { n.style.display = 'none'; });
+  const [slug, i, keyId] = [kid.split('_')[1], Number(kid.split('_')[2]), kid.split('_').slice(3).join('_')];
+  const canRotate = cmpAssetWireframeCanRotate(channel, spec);
+  const orient = cmpAssetWireframeOrientFor(channel, spec, kid);
+  const r0 = spec.ratio || 1;
+  const ratio = canRotate ? (orient === 'landscape' ? Math.max(r0, 1 / r0) : Math.min(r0, 1 / r0)) : r0;
+  const postcard = cmpAssetWireframeIsPostcard(channel, spec);
+  const toolbar = canRotate ? `
+    <div class="cmp-wf-toolbar">
+      <span class="hint" style="margin:0;">Layout</span>
+      <button type="button" class="cmp-wf-orient${orient === 'landscape' ? ' on' : ''}" onclick="cmpAssetWireframeSetOrient('${slug}', ${i}, '${keyId}', 'landscape')">Horizontal</button>
+      <button type="button" class="cmp-wf-orient${orient === 'portrait' ? ' on' : ''}" onclick="cmpAssetWireframeSetOrient('${slug}', ${i}, '${keyId}', 'portrait')">Vertical</button>
+      ${postcard ? `<span class="hint" style="margin:0 0 0 6px;">Two-sided — front is the visual + headline, back is the detail.</span>` : ''}
+    </div>` : '';
+  if (postcard){
+    const f = v.fields || {};
+    wrap.innerHTML = `${toolbar}
+      <div class="cmp-wf-sides">
+        <div class="cmp-wf-side"><div class="cmp-wf-side-label">Front</div><div id="${kid}_wf" class="wireframe"></div></div>
+        <div class="cmp-wf-side"><div class="cmp-wf-side-label">Back</div><div id="${kid}_wf2" class="wireframe"></div></div>
+      </div>`;
+    const front = { label: `${spec.label} — front`, ratio, hasImage: true, stacked: true, print: true, front: true };
+    const back = { label: `${spec.label} — back`, ratio, hasImage: false, stacked: true, print: true };
+    cmpDrawWireframeBox(document.getElementById(`${kid}_wf`), front, { headline: f.headline || '', body: f.subhead || '', cta: '' }, channel, `${kid}_wfx`, 'bottom');
+    cmpDrawWireframeBox(document.getElementById(`${kid}_wf2`), back, { headline: '', body: [f.body, f.offer].filter(Boolean).join('\n\n'), cta: f.cta || '' }, channel, `${kid}_wfx2`, 'bottom');
+    const backEl = document.getElementById(`${kid}_wf2`);
+    if (backEl){
+      const hl = backEl.querySelector('.wireframe-block-headline'); if (hl) hl.style.display = 'none';
+      const stacked = backEl.querySelector('.wireframe-stacked');
+      if (stacked) stacked.insertAdjacentHTML('beforeend', `<div class="cmp-wf-address"><span>Indicia / postage</span><span>Recipient address block</span></div>`);
+      const dims = backEl.querySelector('.wireframe-dims'); if (dims) dims.textContent = `${spec.label} — back: body, offer, call to action, address panel.`;
+    }
+    const frontEl = document.getElementById(`${kid}_wf`);
+    if (frontEl){
+      const cta = frontEl.querySelector('.wireframe-block-cta'); if (cta) cta.style.display = 'none';
+      const dims = frontEl.querySelector('.wireframe-dims'); if (dims) dims.textContent = `${spec.label} — front: visual, headline and abstract (like a magazine ad).`;
+      const bodyLabel = frontEl.querySelector('.wireframe-block-body .wireframe-block-label'); if (bodyLabel) bodyLabel.textContent = 'Abstract';
+    }
+  } else {
+    wrap.innerHTML = `${toolbar}<div id="${kid}_wf" class="wireframe"></div>`;
+    const drawSpec = canRotate ? Object.assign({}, spec, { ratio }) : spec;
+    cmpDrawWireframeBox(document.getElementById(`${kid}_wf`), drawSpec, cmpAssetCopyFieldsToWireframe(schema, v.fields), channel, `${kid}_wfx`, 'bottom');
+  }
+  wrap.querySelectorAll('textarea, input').forEach(t => { t.readOnly = true; t.tabIndex = -1; });
+  wrap.querySelectorAll('.wireframe-enterprise-lock, .wireframe-motion-controls .btn-ghost:not(:first-child)').forEach(n => { n.style.display = 'none'; });
 }
 function cmpAssetCopyDrawAllForChannel(channel){
   const c = cmpRailLoadedCampaign();
