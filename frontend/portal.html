@@ -12008,7 +12008,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-dm-letter-ps-full-label';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-cta-field-typing-scroll-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -61066,9 +61066,16 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
           </div>`;
       }
       const val = v.fields[fd.key] || '';
+      // 2026-09-27 fix, per direct report: "Each keystroke in the CTA field
+      // scrolls user to top of card preventing additional text changes."
+      // The blur handler flushes cmpAssetCopyFieldChanged()'s new debounce
+      // (see there) the moment the field loses focus, so leaving the field
+      // still saves/cascades immediately rather than waiting out the full
+      // debounce window.
+      const blurAttr = fd.key === 'cta' ? ` onblur="cmpAssetCopyFieldBlur(${args(fd.key, -1)})"` : '';
       const input = fd.rows > 1
-        ? `<textarea id="${kid}_${fd.key}" rows="${fd.rows}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)">${escapeHtml(val)}</textarea>`
-        : `<input type="text" id="${kid}_${fd.key}" placeholder="${escapeHtml(fd.placeholder || '')}" value="${escapeHtml(val)}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)">`;
+        ? `<textarea id="${kid}_${fd.key}" rows="${fd.rows}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}>${escapeHtml(val)}</textarea>`
+        : `<input type="text" id="${kid}_${fd.key}" placeholder="${escapeHtml(fd.placeholder || '')}" value="${escapeHtml(val)}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}>`;
       const widthClass = fd.rows >= 4 ? ' cmp-copy-field-wide' : fd.rows >= 2 ? ' cmp-copy-field-mid' : '';
       return `
         <div class="cmp-copy-field${widthClass}">
@@ -61247,6 +61254,25 @@ function cmpAssetCopyRefreshBadge(r){
 // Long Form Copy generation) picks up the override automatically too,
 // since cmpMessagingElements()/cmpAssetCopyDraftFields() both resolve
 // through the same cmpRecommendedCtaAngle() precedence chain.
+// 2026-09-27 fix, per direct report: "Each keystroke in the CTA field
+// scrolls user to top of card preventing additional text changes." Root
+// cause — cmpApplyCtaOverrideAcrossAssets() used to run on every single
+// keystroke (this field's oninput), and it ends in
+// cmpRerenderCreativeAssetCopyPanels(), a full innerHTML rebuild of the
+// whole creative-asset grid. Destroying and recreating the very input the
+// person was mid-keystroke in drops focus, and the browser scrolls the
+// freshly-rebuilt DOM back into view — so typing more than one character
+// into a CTA field was effectively impossible. The cascade to every other
+// asset + the backend persist now debounce to 600ms after the last
+// keystroke (cmpCtaOverrideDebounce/cmpCtaOverridePending below) instead of
+// firing on every one, and cmpAssetCopyFieldBlur() flushes it immediately
+// the moment the field loses focus so leaving the field still saves right
+// away rather than waiting out the rest of the window. The field's own
+// typed value is unaffected either way — v.fields[fieldKey] is set above on
+// every keystroke regardless, and a plain uncontrolled <input>/<textarea>
+// keeps whatever was typed with no rerender needed to "see" it.
+let cmpCtaOverrideDebounce = null;
+let cmpCtaOverridePending = null;
 function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
   const r = cmpAssetCopyResolve(slug, i, keyId);
   if (!r) return;
@@ -61257,12 +61283,37 @@ function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
   if (v.approved){ v.approved = false; v.approvedAt = null; }
   if (fieldKey === 'cta'){
     v.ctaEdited = true;
-    cmpApplyCtaOverrideAcrossAssets(r.c, value, r.row, r.key);
-    return; // the cascade above already re-renders the whole grid + badges
+    cmpCtaOverridePending = { c: r.c, cta: value, row: r.row, key: r.key };
+    clearTimeout(cmpCtaOverrideDebounce);
+    // Auto-flush after a pause skips the grid-wide rerender (true below) —
+    // see cmpAssetCopyFlushCtaOverride()'s comment for why.
+    cmpCtaOverrideDebounce = setTimeout(() => cmpAssetCopyFlushCtaOverride(true), 600);
+    return; // the cascade (debounced/flushed above) re-renders the whole grid + badges
   }
   cmpAssetCopyRefreshBadge(r);
   if (cmpAssetWireframeOpen[r.kid]) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
   cmpSyncCreativeAssetRequestsFromGrid();
+}
+// skipGridRerender=true (only ever passed by the debounce timer firing
+// while the field may still be focused) applies the cascade's data
+// immediately — other assets' cta values update, the campaign-level
+// override persists to the backend — but skips the grid-wide DOM rebuild,
+// since rebuilding the very input the person may still be typing into
+// would steal its focus right back out from under them (the original bug).
+// cmpAssetCopyFieldBlur() always flushes with skipGridRerender=false, since
+// focus is leaving the field either way at that point, so the visual
+// refresh of every other card is safe to run there.
+function cmpAssetCopyFlushCtaOverride(skipGridRerender){
+  clearTimeout(cmpCtaOverrideDebounce);
+  cmpCtaOverrideDebounce = null;
+  if (!cmpCtaOverridePending) return;
+  const { c, cta, row, key } = cmpCtaOverridePending;
+  cmpCtaOverridePending = null;
+  cmpApplyCtaOverrideAcrossAssets(c, cta, row, key, !skipGridRerender);
+}
+function cmpAssetCopyFieldBlur(slug, i, keyId, fieldKey){
+  if (fieldKey !== 'cta') return;
+  if (cmpCtaOverrideDebounce) cmpAssetCopyFlushCtaOverride(false);
 }
 // Persists the new campaign-level CTA and pushes it into every other
 // creative asset's own 'cta' field that hasn't itself been individually
@@ -61274,7 +61325,7 @@ function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
 // the next time they're actually redrafted, rather than being rewritten
 // here — forcing new headlines into an already-approved RSA set out from
 // under a human isn't the same kind of safe, additive change.
-function cmpApplyCtaOverrideAcrossAssets(c, newCta, skipRow, skipKey){
+function cmpApplyCtaOverrideAcrossAssets(c, newCta, skipRow, skipKey, doGridRerender){
   const trimmed = (newCta || '').trim();
   c.ctaOverride = trimmed;
   cmpPersistCampaignField(c, { ctaOverride: trimmed }, 'Call to action');
@@ -61294,7 +61345,10 @@ function cmpApplyCtaOverrideAcrossAssets(c, newCta, skipRow, skipKey){
       });
     });
   });
-  cmpRerenderCreativeAssetCopyPanels();
+  // doGridRerender defaults true — every existing caller (and the blur
+  // flush) wants the visual refresh; only the debounce timer's mid-edit
+  // auto-flush passes false. See cmpAssetCopyFlushCtaOverride() above.
+  if (doGridRerender !== false) cmpRerenderCreativeAssetCopyPanels();
   if (typeof cmpRenderGenerationRequirementsStatus === 'function') cmpRenderGenerationRequirementsStatus(c);
   cmpSyncCreativeAssetRequestsFromGrid();
 }
