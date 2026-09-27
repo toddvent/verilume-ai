@@ -12008,7 +12008,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-wireframe-orientation-width-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-dm-letter-ps-full-label';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -19602,10 +19602,17 @@ async function loadAccountData(){
       state.analyticsGa4AccountId = record.account.analyticsGa4AccountId || '';
       state.analyticsGa4PropertyId = record.account.analyticsGa4PropertyId || '';
       state.analyticsRequestedAt = record.account.analyticsRequestedAt || '';
-      // Round 71 — Master UTM Configuration.
+      // Round 71 — Master UTM Configuration. 2026-09-27 fix, per direct
+      // instruction: "We should default to the most common 8." An account
+      // that has never saved a selection here (utmMasterElementsJson is
+      // null — never a real, explicit "[]" the user saved after clearing
+      // every chip) now starts on DEFAULT_UTM_ELEMENTS instead of a blank
+      // screen with nothing checked.
       if (record.account.utmMasterElementsJson){
         try { state.utmMasterElements = JSON.parse(record.account.utmMasterElementsJson); }
         catch (e){ console.warn('loadAccountData: could not parse utmMasterElementsJson', e); }
+      } else {
+        state.utmMasterElements = DEFAULT_UTM_ELEMENTS.slice();
       }
       // Round 72 — auto-inserted Contact ID (email) / GCLID (Google Ads).
       state.utmAutoContactIdEnabled = !!record.account.utmAutoContactIdEnabled;
@@ -38572,6 +38579,19 @@ const UTM_ELEMENT_LIBRARY = [
   { key: 'cx_flight', param: 'cx_flight', label: 'Flight date', source: 'Today\'s date, at build time' }
 ];
 const UTM_MAX_ELEMENTS = 8;
+// 2026-09-27 addition, per direct instruction: "We should default to the
+// most common 8." Previously a brand-new account's utmMasterElements
+// started as a flat empty array (nothing pre-selected on the Master UTM
+// Configuration screen) — this is the actual default now applied the
+// first time an account is loaded with no saved selection (see
+// loadAccountData()). Chosen set: the 5 standard UTM parameters every
+// external analytics tool (GA4, Meta, Google Ads, etc.) already reads
+// out of the box, plus the 3 CX-specific fields most useful for joining
+// tracking-link traffic back to a real campaign/creative record
+// internally. Order matters here too — it's applied via the same
+// library-order filter toggleUtmElement() uses, so this isn't read
+// directly as the query-string order.
+const DEFAULT_UTM_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'cx_campaign_id', 'cx_creative_id', 'cx_channel'];
 
 function slugify(text){
   return (text || '').toString().toLowerCase().trim()
@@ -60780,9 +60800,13 @@ function cmpAssetCopySchema(channel, spec, row){
     return {
       id: letter ? 'letter' : 'mailer', kind: 'stacked',
       note: letter
-        ? `${label}: a letter earns a longer read. Salutation, a one-line hook, 3–5 short paragraphs (150–250 words), the offer restated once, a P.S. — the most-read line after the headline.`
+        ? `${label}: a letter earns a longer read. Salutation, a one-line hook, 3–5 short paragraphs (150–250 words), the offer restated once, a postscript (P.S.) — the most-read line after the headline.`
         : `${label}: self-mailer or brochure — a cover headline under 10 words, an inside headline, 80–150 words of body in short paragraphs, the offer stated once with its deadline, and a call to action panel with URL and phone.`,
-      fields: [ F('headline', letter ? 'Opening hook' : 'Cover headline (≤ 10 words)', 70), F('subhead', letter ? 'Salutation' : 'Inside headline', 90, { optional: true }), F('body', letter ? 'Body (150–250 words)' : 'Body (80–150 words)', letter ? 1500 : 900, { rows: 7 }), F('offer', 'Offer + deadline', 120), F('cta', 'Call to action + URL / phone', 70), F('ps', letter ? 'P.S.' : 'Back panel line (optional)', 140, { optional: true }) ],
+      // 2026-09-27 fix, per direct feedback ("What does P.S. mean for DM? We
+      // should use the full label"): the bare abbreviation read as unclear
+      // out of context — spelled out as "Postscript (P.S.)" so the field's
+      // purpose is clear without needing the note above for context.
+      fields: [ F('headline', letter ? 'Opening hook' : 'Cover headline (≤ 10 words)', 70), F('subhead', letter ? 'Salutation' : 'Inside headline', 90, { optional: true }), F('body', letter ? 'Body (150–250 words)' : 'Body (80–150 words)', letter ? 1500 : 900, { rows: 7 }), F('offer', 'Offer + deadline', 120), F('cta', 'Call to action + URL / phone', 70), F('ps', letter ? 'Postscript (P.S.)' : 'Back panel line (optional)', 140, { optional: true }) ],
       toWireframe: f => ({ headline: f.headline || '', body: [f.subhead, f.body, f.offer, f.ps].filter(Boolean).join('\n\n'), cta: f.cta || '' })
     };
   }
