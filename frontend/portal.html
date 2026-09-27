@@ -785,6 +785,20 @@
   .cmp-asset-copy-block{border-top:1px dashed var(--line);padding-top:10px;margin-top:6px;}
   .cmp-asset-copy-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
   .cmp-asset-copy-title{font-weight:700;font-size:0.8438rem;}
+  .cmp-copy-note{font-size:0.75rem;line-height:1.45;color:var(--muted);margin:0 0 10px;padding:8px 10px;background:var(--paper-dim);border-radius:6px;}
+  .cmp-copy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px 16px;}
+  .cmp-copy-field{min-width:0;}
+  .cmp-copy-field-multi{grid-column:1 / -1;}
+  .cmp-copy-field-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:3px;}
+  .cmp-copy-field-head label{font-size:0.75rem;font-weight:600;color:var(--ink);}
+  .cmp-copy-field input[type=text],.cmp-copy-field textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.45;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--white);}
+  .cmp-copy-count{font-size:0.6875rem;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap;}
+  .cmp-copy-count.near{color:#9A6A0E;}
+  .cmp-copy-count.over{color:#B42318;font-weight:700;}
+  .cmp-copy-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;margin-bottom:6px;}
+  .cmp-copy-item-label{font-size:0.6875rem;color:var(--muted);white-space:nowrap;min-width:78px;}
+  .cmp-copy-item-remove{border:1px solid var(--line);background:var(--white);border-radius:6px;width:24px;height:24px;line-height:1;cursor:pointer;color:var(--muted);}
+  .cmp-asset-wf .wireframe{margin:0;}
   .cmp-asset-copy-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start;}
   @media (max-width:900px){.cmp-asset-copy-grid{grid-template-columns:1fr;}}
   .cmp-asset-copy-text textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.5;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--white);}
@@ -2850,7 +2864,7 @@
      box (see cmpDrawWireframeBox()) rather than in a separate textarea next
      to a read-only preview — there is only one representation of the copy
      on screen now, and it's the one inside the layout. */
-  #cmpStage-copyVersions .wireframe{width:320px;max-width:100%;margin:0 auto;border:1.5px dashed var(--line-strong);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;background:var(--white);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe{width:320px;max-width:100%;margin:0 auto;border:1.5px dashed var(--line-strong);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;background:var(--white);}
   /* Round 132as (2026-08-12) fix, per direct feedback: "Don't add the video
      icon to wires not video. People will ask." The ▶ play icon used to render
      unconditionally on every .wireframe-media box (the `stacked` large-format
@@ -2860,17 +2874,17 @@
      the icon was a standing bug, not a real signal. Removed entirely; a
      labeled .wireframe-media-label (see cmpDrawWireframeBox()) now explains
      what the placeholder actually is instead of an icon implying motion. */
-  #cmpStage-copyVersions .wireframe-media{background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 6px, var(--paper) 6px, var(--paper) 12px);flex-shrink:0;position:relative;display:flex;align-items:flex-end;padding:6px;box-sizing:border-box;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-media{background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 6px, var(--paper) 6px, var(--paper) 12px);flex-shrink:0;position:relative;display:flex;align-items:flex-end;padding:6px;box-sizing:border-box;}
   /* Round 132as — print/mail formats (Newspapers, Direct Mail, Magazines) get
      a visually distinct placeholder — a warmer paper tone with fine
      horizontal ruling (reads as a printed page) instead of the diagonal
      digital-banner stripe pattern — plus a warmer stacked-block background,
      per direct feedback: "Newspaper and direct mail wireframe looks like a
      digital ad." */
-  #cmpStage-copyVersions .wireframe-media.print-media{background-image:repeating-linear-gradient(0deg, var(--line-hairline), var(--line-hairline) 1px, #FBF8F1 1px, #FBF8F1 4px);}
-  #cmpStage-copyVersions .wireframe-media-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;letter-spacing:0.03em;color:var(--muted);background:rgba(255,255,255,0.82);border-radius:3px;padding:2px 6px;}
-  #cmpStage-copyVersions .wireframe-text{padding:9px 10px;background:var(--paper-dim);flex:1;overflow:hidden;min-height:0;display:flex;}
-  #cmpStage-copyVersions .wireframe-dims{text-align:center;font-size:0.6875rem;color:var(--muted);margin-top:4px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-media.print-media{background-image:repeating-linear-gradient(0deg, var(--line-hairline), var(--line-hairline) 1px, #FBF8F1 1px, #FBF8F1 4px);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-media-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.625rem;letter-spacing:0.03em;color:var(--muted);background:rgba(255,255,255,0.82);border-radius:3px;padding:2px 6px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-text{padding:9px 10px;background:var(--paper-dim);flex:1;overflow:hidden;min-height:0;display:flex;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-dims{text-align:center;font-size:0.6875rem;color:var(--muted);margin-top:4px;}
   /* Round 132as, per direct feedback: "Add the best practices to the top of
      page so they are not lost. Check the fonts... they look like terms and
      conditions." Replaced the small italic/muted .hint treatment with a real
@@ -2883,11 +2897,11 @@
   /* Editable fields living directly inside the wireframe — blended into the
      layout (no visible input chrome until focused) so what's typed reads
      as part of the mockup, not a form bolted onto it. */
-  #cmpStage-copyVersions .wireframe-edit{width:100%;box-sizing:border-box;border:1px dashed transparent;border-radius:4px;background:transparent;font:inherit;color:inherit;resize:vertical;padding:2px 4px;transition:border-color 0.15s ease,background 0.15s ease;}
-  #cmpStage-copyVersions .wireframe-edit:hover{border-color:var(--line-strong);}
-  #cmpStage-copyVersions .wireframe-edit:focus{outline:none;border-color:var(--media);background:var(--white);}
-  #cmpStage-copyVersions .wireframe-edit-flat{flex:1;font-weight:700;font-size:0.75rem;color:var(--ink);line-height:1.35;min-height:60px;}
-  #cmpStage-copyVersions .wireframe-edit-cta{text-align:center;font-weight:700;font-size:0.6875rem;color:var(--white);background:transparent;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-edit{width:100%;box-sizing:border-box;border:1px dashed transparent;border-radius:4px;background:transparent;font:inherit;color:inherit;resize:vertical;padding:2px 4px;transition:border-color 0.15s ease,background 0.15s ease;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-edit:hover{border-color:var(--line-strong);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-edit:focus{outline:none;border-color:var(--media);background:var(--white);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-edit-flat{flex:1;font-weight:700;font-size:0.75rem;color:var(--ink);line-height:1.35;min-height:60px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-edit-cta{text-align:center;font-weight:700;font-size:0.6875rem;color:var(--white);background:transparent;}
 
   /* Round 132p (2026-08-10), per direct feedback: "current copy modules are
      always bottom of the wire. Allow the user to bottom, center, top align."
@@ -2906,15 +2920,15 @@
      overflow:hidden. overflow stays visible now so nothing is ever silently
      cut off; the height floor itself is raised in cmpDrawWireframeBox() for
      hasImage specs specifically (see that function's comment). */
-  #cmpStage-copyVersions .wireframe-canvas{position:relative;width:100%;overflow:visible;border-radius:4px;}
-  #cmpStage-copyVersions .wireframe-canvas-media{position:absolute;inset:0;background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 6px, var(--paper) 6px, var(--paper) 12px);}
-  #cmpStage-copyVersions .wireframe-copy-overlay{position:absolute;left:0;right:0;padding:9px 10px;box-sizing:border-box;background:rgba(255,255,255,0.88);}
-  #cmpStage-copyVersions .wireframe-copy-overlay.no-media{position:static;height:100%;display:flex;background:var(--paper-dim);}
-  #cmpStage-copyVersions .wireframe-copy-overlay.no-media .wireframe-edit-flat{flex:1;}
-  #cmpStage-copyVersions .wireframe-copy-overlay.wf-align-top{top:0;}
-  #cmpStage-copyVersions .wireframe-copy-overlay.wf-align-center{top:50%;transform:translateY(-50%);}
-  #cmpStage-copyVersions .wireframe-copy-overlay.wf-align-bottom{bottom:0;}
-  #cmpStage-copyVersions .wireframe-align-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-canvas{position:relative;width:100%;overflow:visible;border-radius:4px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-canvas-media{position:absolute;inset:0;background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 6px, var(--paper) 6px, var(--paper) 12px);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-copy-overlay{position:absolute;left:0;right:0;padding:9px 10px;box-sizing:border-box;background:rgba(255,255,255,0.88);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-copy-overlay.no-media{position:static;height:100%;display:flex;background:var(--paper-dim);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-copy-overlay.no-media .wireframe-edit-flat{flex:1;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-copy-overlay.wf-align-top{top:0;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-copy-overlay.wf-align-center{top:50%;transform:translateY(-50%);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-copy-overlay.wf-align-bottom{bottom:0;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-align-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
   #cmpStage-copyVersions .align-btn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:600;border:1px solid var(--line-strong);background:var(--white);color:var(--muted);border-radius:var(--radius-pill);padding:4px 12px;cursor:pointer;}
   #cmpStage-copyVersions .align-btn.selected{background:var(--ink);color:var(--white);border-color:var(--ink);}
 
@@ -2922,45 +2936,45 @@
      most likely be animated so we may need to show multiple frames" — a
      filmstrip of N mini frames instead of one static box, since real motion
      doesn't exist at the wireframe stage. */
-  #cmpStage-copyVersions .wireframe-filmstrip{display:flex;gap:4px;padding:8px;justify-content:center;}
-  #cmpStage-copyVersions .wireframe-frame{position:relative;display:flex;flex-direction:column;border:1px dashed var(--line-strong);border-radius:4px;overflow:hidden;background:var(--white);flex-shrink:0;}
-  #cmpStage-copyVersions .wireframe-frame-media{flex:1;background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 5px, var(--paper) 5px, var(--paper) 10px);}
-  #cmpStage-copyVersions .wireframe-frame-label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:0.5625rem;color:var(--muted);background:rgba(255,255,255,0.85);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-filmstrip{display:flex;gap:4px;padding:8px;justify-content:center;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame{position:relative;display:flex;flex-direction:column;border:1px dashed var(--line-strong);border-radius:4px;overflow:hidden;background:var(--white);flex-shrink:0;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame-media{flex:1;background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 5px, var(--paper) 5px, var(--paper) 10px);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame-label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:0.5625rem;color:var(--muted);background:rgba(255,255,255,0.85);}
   /* Round 132p — per-frame/per-transition copy, replacing the single shared
      script field, plus a lightweight "play through the frames" preview
      (cmpPlayWireframeMotion()) — an honest slideshow of frame + its copy,
      not real motion/video, since real animation doesn't exist at this
      stage. */
-  #cmpStage-copyVersions .wireframe-frame-copy-list{padding:0 8px 8px;display:flex;flex-direction:column;gap:6px;}
-  #cmpStage-copyVersions .wireframe-frame-copy-row{display:flex;flex-direction:column;gap:2px;}
-  #cmpStage-copyVersions .wireframe-frame-copy-label{font-size:0.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);}
-  #cmpStage-copyVersions .wireframe-frame-copy-input{min-height:36px;background:var(--paper-dim);}
-  #cmpStage-copyVersions .wireframe-motion-controls{padding:0 8px;}
-  #cmpStage-copyVersions .wireframe-motion-stage{display:none;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;}
-  #cmpStage-copyVersions .wireframe-motion-stage.playing{display:flex;}
-  #cmpStage-copyVersions .wireframe-motion-frame{width:220px;height:124px;border-radius:6px;background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 6px, var(--paper) 6px, var(--paper) 12px);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;color:var(--muted);}
-  #cmpStage-copyVersions .wireframe-motion-caption{font-size:0.8125rem;font-weight:600;color:var(--ink);text-align:center;max-width:280px;margin:0;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame-copy-list{padding:0 8px 8px;display:flex;flex-direction:column;gap:6px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame-copy-row{display:flex;flex-direction:column;gap:2px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame-copy-label{font-size:0.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-frame-copy-input{min-height:36px;background:var(--paper-dim);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-motion-controls{padding:0 8px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-motion-stage{display:none;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-motion-stage.playing{display:flex;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-motion-frame{width:220px;height:124px;border-radius:6px;background-image:repeating-linear-gradient(45deg, var(--line-hairline), var(--line-hairline) 6px, var(--paper) 6px, var(--paper) 12px);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;color:var(--muted);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-motion-caption{font-size:0.8125rem;font-weight:600;color:var(--ink);text-align:center;max-width:280px;margin:0;}
   /* Round 132q — Enterprise-only lock treatment for Listen (script + mood
      cue): visible and explained, not hidden, per cxmedia-portal-tier-gating-
      and-usage-metering-2026-08-08.md §1.1 — dimmed card, one-line
      description, a way to see what's behind it, never a blocking alert(). */
-  #cmpStage-copyVersions .wireframe-enterprise-lock{display:flex;align-items:flex-start;gap:10px;margin:8px 8px 0;padding:10px 12px;background:var(--paper-dim);border:1px dashed var(--line-strong);border-radius:8px;font-size:0.8125rem;color:var(--muted);}
-  #cmpStage-copyVersions .wireframe-enterprise-lock .lock-icon{font-size:1rem;flex-shrink:0;opacity:0.6;}
-  #cmpStage-copyVersions .wireframe-enterprise-lock b{color:var(--ink);}
-  #cmpStage-copyVersions .wireframe-enterprise-lock a{color:var(--media);font-weight:600;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-enterprise-lock{display:flex;align-items:flex-start;gap:10px;margin:8px 8px 0;padding:10px 12px;background:var(--paper-dim);border:1px dashed var(--line-strong);border-radius:8px;font-size:0.8125rem;color:var(--muted);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-enterprise-lock .lock-icon{font-size:1rem;flex-shrink:0;opacity:0.6;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-enterprise-lock b{color:var(--ink);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-enterprise-lock a{color:var(--media);font-weight:600;}
 
   /* Round 132m — "magazine or large format ads are going to scale into the
      copy blocks... stack copy" — Headline/Body/CTA rendered as their own
      labeled blocks (see cmpSplitCopyIntoBlocks()) rather than one flattened
      paragraph, for large-format specs (spec.stacked). */
-  #cmpStage-copyVersions .wireframe-stacked{padding:9px 10px;background:var(--paper-dim);flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;}
-  #cmpStage-copyVersions .wireframe-stacked.print-stacked{background:#FBF8F1;}
-  #cmpStage-copyVersions .wireframe.print-format{background:#FEFDFA;border-style:solid;}
-  #cmpStage-copyVersions .wireframe-block{border-radius:6px;padding:6px 8px;overflow:hidden;}
-  #cmpStage-copyVersions .wireframe-block-label{display:block;font-size:0.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:2px;}
-  #cmpStage-copyVersions .wireframe-block-headline{background:var(--white);font-weight:700;font-size:0.75rem;color:var(--ink);border:1px solid var(--line-hairline);}
-  #cmpStage-copyVersions .wireframe-block-body{background:var(--white);font-size:0.6875rem;color:var(--muted);line-height:1.4;border:1px solid var(--line-hairline);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
-  #cmpStage-copyVersions .wireframe-block-cta{background:var(--ink);color:var(--white);font-weight:700;font-size:0.6875rem;text-align:center;border-radius:var(--radius-pill);padding:6px 10px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-stacked{padding:9px 10px;background:var(--paper-dim);flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-stacked.print-stacked{background:#FBF8F1;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe.print-format{background:#FEFDFA;border-style:solid;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-block{border-radius:6px;padding:6px 8px;overflow:hidden;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-block-label{display:block;font-size:0.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:2px;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-block-headline{background:var(--white);font-weight:700;font-size:0.75rem;color:var(--ink);border:1px solid var(--line-hairline);}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-block-body{background:var(--white);font-size:0.6875rem;color:var(--muted);line-height:1.4;border:1px solid var(--line-hairline);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
+  :is(#cmpStage-copyVersions, .cmp-asset-wf) .wireframe-block-cta{background:var(--ink);color:var(--white);font-weight:700;font-size:0.6875rem;text-align:center;border-radius:var(--radius-pill);padding:6px 10px;}
 
   /* Round 132at (2026-08-12), per direct feedback: "allow the user to scroll
      through a document that includes all of the creative assets with copy
@@ -11956,7 +11970,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-creative-asset-copy-refresh';
+const CXMEDIA_BUILD_STAMP = '2026-09-27-creative-asset-best-practice-copy';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -60411,53 +60425,323 @@ function cmpAssetCopyTextToData(spec, text){
   }
   return t;
 }
-// The starting draft for one row × audience. Campaign-wide: the same
-// per-channel native rewrite the Copy Versions stage uses (cmpDraftNativeCopy,
-// built from the approved Key Message / Long Form Copy). Audience-specific:
-// that audience's own contest winner (audienceCopyJson), sized to the
-// channel's treatment — or, if no winner has been applied for that
-// audience yet, the campaign-wide draft with a note saying so.
-function cmpAssetCopyInitialText(c, channel, spec, key){
+// ---------- 2026-09-27 — Creative Asset Selection: best-practice structured copy per asset ----------
+// Per Todd's review of the first fitted-copy build: (1) the wireframe's own
+// inputs and a separate blob textarea duplicated each other, with no context;
+// (2) everything was one text field instead of frame-by-frame / field-by-
+// field; (3) the copy should be BEST-PRACTICE copy — the wireframe reflecting
+// the unit's dimensions and layout, and the copy respecting each field's real
+// best-practice length; (4) a "View wireframe" option inside each asset card
+// is enough — it doesn't need to be open all the time; (5) Search and
+// Postcard copy ran far too long — Search must follow how Google and
+// Microsoft actually assemble an ad (responsive search ads: 30-character
+// headlines, 90-character descriptions, up to 3 headlines + 2 descriptions
+// shown at once).
+//
+// So each asset row × audience now carries a SCHEMA — the ordered list of
+// copy fields that unit really has, each with a character budget — and the
+// copy lives as `fields` (one value per field, arrays for repeatable
+// fields), never as one blob. The draft is fitted from the campaign's
+// master copy (the contest winner saved into Long Form Copy, or an
+// audience's own winner) into those budgets. The wireframe is a preview
+// drawn from the same fields, opened on demand.
+
+// One place for the budgets. Numbers are the platforms' published limits
+// where a hard limit exists (Google/Microsoft RSA, Meta) and widely-used
+// creative best practice where it doesn't (print, mail, OOH, audio).
+function cmpAssetCopySchema(channel, spec, row){
+  const label = (spec && spec.label) || (row && row.size) || '';
+  const lc = label.toLowerCase();
+  const F = (key, lbl, max, opts) => Object.assign({ key, label: lbl, max, rows: max > 120 ? Math.min(8, Math.ceil(max / 110)) : 1 }, opts || {});
+  const isSearch = channel === 'Brand Search' || channel === 'Non-Brand Search';
+  if (isSearch){
+    const engine = /microsoft|bing/i.test((row && row.partner) || '') ? 'Microsoft Advertising' : 'Google Ads';
+    return {
+      id: 'rsa', kind: 'search',
+      note: `${engine} responsive search ad: headlines ≤ 30 characters, descriptions ≤ 90. The engine mixes and matches — it shows up to 3 headlines and 2 descriptions at a time, so every headline must stand on its own and none may depend on another. Include the brand in at least one headline and a call to action in at least one.`,
+      fields: [
+        F('headlines', 'Headlines', 30, { multi: true, min: 3, limit: 15, itemLabel: 'Headline' }),
+        F('descriptions', 'Descriptions', 90, { multi: true, min: 2, limit: 4, itemLabel: 'Description' }),
+        F('path', 'Display path (optional, 2 × 15)', 31, { optional: true, placeholder: 'e.g. mediterranean/2027' })
+      ],
+      toWireframe: f => [ (f.headlines || []).filter(Boolean).slice(0, 3).join(' | '), (f.descriptions || []).filter(Boolean).slice(0, 2).join(' ') ].filter(Boolean).join('\n')
+    };
+  }
+  if (spec && spec.frames > 1){
+    const n = spec.frames;
+    const isVideo = /spot|:15|:30/.test(lc) || ['Linear TV', 'OTV', 'CTV'].includes(channel);
+    const perFrame = isVideo ? (/:30/.test(lc) ? 110 : 70) : (channel === 'Paid Social' ? 60 : 40);
+    return {
+      id: 'frames', kind: 'frames',
+      note: isVideo
+        ? `${label}: ${n} beats. On-screen text stays short — a viewer reads about 3 words per second, so a :15 carries roughly 35 spoken words in total. Open on the hook, develop in the middle, close on offer + call to action.`
+        : channel === 'Paid Social'
+          ? `${label}: ${n} frames, each on screen for about 2 seconds. Keep text to one line per frame and put the call to action on the last frame; Meta recommends text covering less than 20% of the visual.`
+          : `${label}: animated unit, ${n} frames. One idea per frame, about 5–7 words; the last frame carries the offer and the call to action, which must also be legible when the animation stops.`,
+      fields: [
+        F('frames', 'Frames', perFrame, { multi: true, min: n, limit: n, itemLabel: 'Frame', fixed: true }),
+        F('cta', 'Call to action (button / end card)', 20)
+      ],
+      toWireframe: f => cmpFrameCopyArray((f.frames || []).map((t, i, arr) => i === arr.length - 1 && f.cta ? `${t || ''} ${f.cta}`.trim() : (t || '')), n)
+    };
+  }
+  if (channel === 'Paid Social' || channel === 'Retail Media' || channel === 'Remarketing'){
+    const meta = /meta|facebook|instagram/i.test((row && row.partner) || '');
+    return {
+      id: 'social', kind: 'stacked',
+      note: meta
+        ? `${label}: Meta shows about 125 characters of primary text before "See more", a 40-character headline and a 30-character description; the button label is chosen from Meta's list (Learn More, Book Now, Shop Now…).`
+        : `${label}: short primary text (≈125 characters before truncation), a 40-character headline and a one-line description; the button label follows the platform's fixed list.`,
+      fields: [
+        F('primary', 'Primary text', 125, { rows: 3 }),
+        F('headline', 'Headline', 40),
+        F('description', 'Description', 30, { optional: true }),
+        F('cta', 'Button label', 20, { placeholder: 'Learn More' })
+      ],
+      toWireframe: f => ({ headline: f.headline || '', body: f.primary || '', cta: f.cta || 'Learn More' })
+    };
+  }
+  if (channel === 'Out-of-Home'){
+    return {
+      id: 'ooh', kind: 'stacked',
+      note: `${label}: read from a moving vehicle in about 5 seconds — 7 words or fewer in the headline, one supporting line at most, brand and call to action large. No body copy.`,
+      fields: [ F('headline', 'Headline (≤ 7 words)', 42), F('support', 'Supporting line (optional)', 55, { optional: true }), F('cta', 'Brand / call to action', 24) ],
+      toWireframe: f => ({ headline: f.headline || '', body: f.support || '', cta: f.cta || '' })
+    };
+  }
+  if (channel.startsWith('Direct Mail')){
+    const postcard = /postcard|4x6|4×6|5x7|5×7|6x9|6×9|6x11|6×11/.test(lc);
+    const letter = /letter|#10|envelope/.test(lc);
+    if (postcard){
+      return {
+        id: 'postcard', kind: 'stacked',
+        note: `${label}: a postcard is read in the hand for 2–3 seconds. Headline under 8 words, a single benefit paragraph of 40–60 words, the offer stated once with its deadline, and a call to action with the URL or phone number. No second paragraph.`,
+        fields: [ F('headline', 'Headline (≤ 8 words)', 55), F('subhead', 'Subhead (optional)', 80, { optional: true }), F('body', 'Body (40–60 words)', 320, { rows: 4 }), F('offer', 'Offer + deadline', 90), F('cta', 'Call to action + URL / phone', 60) ],
+        toWireframe: f => ({ headline: f.headline || '', body: [f.subhead, f.body, f.offer].filter(Boolean).join('\n\n'), cta: f.cta || '' })
+      };
+    }
+    return {
+      id: letter ? 'letter' : 'mailer', kind: 'stacked',
+      note: letter
+        ? `${label}: a letter earns a longer read. Salutation, a one-line hook, 3–5 short paragraphs (150–250 words), the offer restated once, a P.S. — the most-read line after the headline.`
+        : `${label}: self-mailer or brochure — a cover headline under 10 words, an inside headline, 80–150 words of body in short paragraphs, the offer stated once with its deadline, and a call to action panel with URL and phone.`,
+      fields: [ F('headline', letter ? 'Opening hook' : 'Cover headline (≤ 10 words)', 70), F('subhead', letter ? 'Salutation' : 'Inside headline', 90, { optional: true }), F('body', letter ? 'Body (150–250 words)' : 'Body (80–150 words)', letter ? 1500 : 900, { rows: 7 }), F('offer', 'Offer + deadline', 120), F('cta', 'Call to action + URL / phone', 70), F('ps', letter ? 'P.S.' : 'Back panel line (optional)', 140, { optional: true }) ],
+      toWireframe: f => ({ headline: f.headline || '', body: [f.subhead, f.body, f.offer, f.ps].filter(Boolean).join('\n\n'), cta: f.cta || '' })
+    };
+  }
+  if (channel === 'Magazines' || channel === 'Newspapers'){
+    const half = /half|1\/2|quarter|1\/4|third|1\/3/.test(lc);
+    return {
+      id: 'print', kind: 'stacked',
+      note: `${label}: a reader gives a print ad 1–2 seconds before turning the page. Headline under 10 words that works with the visual, an optional subhead, ${half ? '30–60' : '50–100'} words of body, and a clear call to action with URL. The brand appears once, large.`,
+      fields: [ F('headline', 'Headline (≤ 10 words)', 70), F('subhead', 'Subhead (optional)', 110, { optional: true }), F('body', half ? 'Body (30–60 words)' : 'Body (50–100 words)', half ? 380 : 620, { rows: 5 }), F('cta', 'Call to action + URL', 60) ],
+      toWireframe: f => ({ headline: f.headline || '', body: [f.subhead, f.body].filter(Boolean).join('\n\n'), cta: f.cta || '' })
+    };
+  }
+  if (channel === 'Email — Remarketing' || channel === 'Internal Email'){
+    return {
+      id: 'email', kind: 'stacked',
+      note: `${label}: subject lines are cut around 50 characters on phones; the preheader (≈ 90) is the second line the inbox shows. Inside: one headline, 60–120 words in short paragraphs, one button. One message per email.`,
+      fields: [ F('subject', 'Subject line', 50), F('preheader', 'Preheader', 90), F('headline', 'Headline', 60), F('body', 'Body (60–120 words)', 760, { rows: 6 }), F('cta', 'Button label', 25) ],
+      toWireframe: f => ({ headline: f.headline || f.subject || '', body: f.body || '', cta: f.cta || '' })
+    };
+  }
+  if (channel === 'Radio' || channel === 'Podcasts'){
+    const thirty = /:30|30/.test(lc);
+    return {
+      id: 'audio', kind: 'flat',
+      note: `${label}: spoken at a natural pace, a :15 holds about 35–40 words and a :30 about 70–80. Say the brand twice, the offer once, and end on the call to action. Podcasts: write it as the host would say it.`,
+      fields: [ F('script', thirty ? 'Script (70–80 words)' : 'Script (35–40 words)', thirty ? 520 : 260, { rows: thirty ? 6 : 4 }) ],
+      toWireframe: f => f.script || ''
+    };
+  }
+  if (channel === 'PR'){
+    return {
+      id: 'pr', kind: 'flat',
+      note: `${label}: journalists decide in the headline and first paragraph. Headline under 80 characters, a subhead that adds the news angle, a lead paragraph that answers who/what/when/where/why in 3–4 sentences, then supporting paragraphs with one quote.`,
+      fields: [ F('headline', 'Headline', 80), F('subhead', 'Subhead', 120), F('lead', 'Lead paragraph', 450, { rows: 4 }), F('body', 'Supporting paragraphs + quote', 1400, { rows: 8 }), F('boilerplate', 'About the company (boilerplate)', 400, { rows: 3, optional: true }) ],
+      toWireframe: f => [f.headline, f.subhead, f.lead, f.body].filter(Boolean).join('\n\n')
+    };
+  }
+  if (channel === 'Field / ABM'){
+    return {
+      id: 'onepager', kind: 'stacked',
+      note: `${label}: skimmed in a meeting, not read. Headline under 10 words, three benefit lines a sales rep can say out loud, 60–100 words of proof, and a call to action with a contact.`,
+      fields: [ F('headline', 'Headline (≤ 10 words)', 70), F('bullets', 'Three benefit lines', 60, { multi: true, min: 3, limit: 3, itemLabel: 'Benefit', fixed: true }), F('body', 'Proof (60–100 words)', 620, { rows: 5 }), F('cta', 'Call to action + contact', 80) ],
+      toWireframe: f => ({ headline: f.headline || '', body: [(f.bullets || []).filter(Boolean).map(b => `• ${b}`).join('\n'), f.body].filter(Boolean).join('\n\n'), cta: f.cta || '' })
+    };
+  }
+  // Static display / partner banner and anything unlisted.
+  return {
+    id: 'banner', kind: 'stacked',
+    note: `${label}: a banner is glanced at, not read — a headline of 5–7 words, one supporting line, and a button. If the offer is the point, the offer is the headline.`,
+    fields: [ F('headline', 'Headline (5–7 words)', 40), F('support', 'Supporting line', 70, { optional: true }), F('cta', 'Button label', 18) ],
+    toWireframe: f => ({ headline: f.headline || '', body: f.support || '', cta: f.cta || '' })
+  };
+}
+
+// Fits the campaign's master copy into a schema's budgets. Source material,
+// in order: the audience's own contest winner (audience-specific rows), the
+// campaign's Long Form Copy (the campaign-wide contest winner as saved),
+// and the theme elements Long Form Copy itself is built from
+// (cmpMessagingElements — hook, claim, audience, stage, offer, CTA).
+function cmpAssetCopyMaster(c, key){
+  let text = '';
   if (key !== CMP_ASSET_COPY_ALL_KEY){
     const winner = cmpAudienceCopyMap(c)[key];
-    if (winner && winner.copy){
-      const treatment = CHANNEL_COPY_TREATMENT[channel] || 'medium';
-      const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || c.keyMessage || '').trim();
-      const sized = copyVersionForTreatment(treatment, keyMessage, winner.copy);
-      return cmpAssetCopyDataToText(spec, (spec && spec.stacked) ? cmpSplitCopyIntoBlocks(sized) : (spec && spec.frames > 1) ? cmpFrameCopyArray(sized, spec.frames) : sized);
+    if (winner && winner.copy) text = winner.copy;
+  }
+  if (!text) text = (((document.getElementById('cmpLongFormCopy') || {}).value) || c.longformCopy || '').trim();
+  return text;
+}
+function cmpSentences(text){
+  return (text || '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+}
+function cmpFit(text, max){
+  const t = (text || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  if (t.length <= max) return t;
+  // Prefer whole sentences under the budget, then a clean word-boundary trim.
+  const sents = cmpSentences(t);
+  let out = '';
+  for (const s of sents){ if ((out + (out ? ' ' : '') + s).length <= max) out = out ? `${out} ${s}` : s; else break; }
+  if (out.length >= Math.floor(max * 0.45)) return out;
+  return cmpTrimDangling(cmpTightenSentence(t, max).replace(/…$/, '').trim());
+}
+// A word-boundary cut can end on a connective ("…with fewer than", "Atlas |")
+// — drop trailing stop words and punctuation so a short field reads as a line.
+const CMP_DANGLING_WORDS = new Set(['with','and','or','a','an','the','of','to','for','in','on','at','by','from','than','that','when','where','who','which','you','your','our','as','is','are','be','but','so','if','into','onto','up','down','over','under','per','via','fewer','more','less','most','very','just','only','not','no','&','|','-','—','–']);
+function cmpTrimDangling(text){
+  let w = (text || '').trim().replace(/[,;:|&\-—–\s]+$/, '').split(/\s+/).filter(Boolean);
+  while (w.length > 1 && CMP_DANGLING_WORDS.has(w[w.length - 1].toLowerCase())) w.pop();
+  return w.join(' ').replace(/[,;:|&\-—–\s]+$/, '');
+}
+function cmpWordsCap(text, maxWords){
+  const w = (text || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  return w.length <= maxWords ? w.join(' ') : w.slice(0, maxWords).join(' ').replace(/[,;:]$/, '');
+}
+function cmpAssetCopyDraftFields(c, channel, spec, key, schema){
+  const els = cmpMessagingElements();
+  const master = cmpAssetCopyMaster(c, key);
+  const paras = master.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const sents = cmpSentences(master);
+  const hook = paras[0] ? cmpSentences(paras[0])[0] : (els.headline || '');
+  const claim = longformClaimLine(master) || els.claimLine || hook;
+  const bodyPool = sents.slice(1).length ? sents.slice(1) : sents;
+  const company = state.company || els.company || '';
+  const cta = els.cta || 'Learn More';
+  const offer = els.offerLine || '';
+  const pick = (n) => bodyPool.slice(0, n).join(' ');
+  const f = {};
+  switch (schema.id){
+    case 'rsa': {
+      const hl = [];
+      const push = (t) => { const v = cmpWordsCap(cmpFit(t, 30), 6); if (v && !hl.some(h => h.toLowerCase() === v.toLowerCase())) hl.push(v); };
+      push(els.headline || hook);
+      push(claim);
+      push(company ? (`${company} | Official Site`.length <= 30 ? `${company} | Official Site` : company) : '');
+      push(offer);
+      push(cta.replace(/[→\s]+$/, ''));
+      push(els.audienceLine || '');
+      f.headlines = hl.slice(0, Math.max(3, Math.min(hl.length, 5)));
+      while (f.headlines.length < 3) f.headlines.push('');
+      f.descriptions = [cmpFit(`${claim} ${cta}`.trim(), 90), cmpFit(pick(2) || els.stageLine || '', 90)].map(d => d || '');
+      f.path = '';
+      break;
     }
+    case 'frames': {
+      const n = spec.frames;
+      const beats = [cmpFit(hook, schema.fields[0].max)];
+      const pool = [claim, els.audienceLine, els.stageLine, ...bodyPool].filter(Boolean);
+      for (let i = 1; i < n - 1; i++) beats.push(cmpFit(pool[i - 1] || claim, schema.fields[0].max));
+      beats.push(cmpFit(offer || claim, schema.fields[0].max));
+      f.frames = beats.slice(0, n);
+      f.cta = cmpFit(cta, 20);
+      break;
+    }
+    case 'social':
+      f.primary = cmpFit(`${claim} ${offer}`.trim(), 125);
+      f.headline = cmpFit(els.headline || hook, 40);
+      f.description = cmpFit(offer || els.stageLine || '', 30);
+      f.cta = /book|reserve/i.test(cta) ? 'Book Now' : /shop|buy/i.test(cta) ? 'Shop Now' : 'Learn More';
+      break;
+    case 'ooh':
+      f.headline = cmpWordsCap(cmpFit(els.headline || hook, 42), 7);
+      f.support = cmpFit(offer || claim, 55);
+      f.cta = cmpFit(company || cta, 24);
+      break;
+    case 'postcard':
+      f.headline = cmpWordsCap(cmpFit(els.headline || hook, 55), 8);
+      f.subhead = cmpFit(claim !== hook ? claim : '', 80);
+      f.body = cmpFit(pick(4), 320);
+      f.offer = cmpFit(offer, 90);
+      f.cta = cmpFit(cta, 60);
+      break;
+    case 'letter': case 'mailer':
+      f.headline = cmpWordsCap(cmpFit(els.headline || hook, 70), 10);
+      f.subhead = schema.id === 'letter' ? 'Dear Guest,' : cmpFit(claim, 90);
+      f.body = cmpFit(paras.slice(0, 4).join('\n\n') || master, schema.fields.find(x => x.key === 'body').max);
+      f.offer = cmpFit(offer, 120);
+      f.cta = cmpFit(cta, 70);
+      f.ps = schema.id === 'letter' ? cmpFit(offer ? `P.S. ${offer}` : '', 140) : '';
+      break;
+    case 'print':
+      f.headline = cmpWordsCap(cmpFit(els.headline || hook, 70), 10);
+      f.subhead = cmpFit(claim !== hook ? claim : '', 110);
+      f.body = cmpFit(pick(6), schema.fields.find(x => x.key === 'body').max);
+      f.cta = cmpFit(cta, 60);
+      break;
+    case 'email':
+      f.subject = cmpFit(claim || hook, 50);
+      f.preheader = cmpFit(offer || els.audienceLine || pick(1), 90);
+      f.headline = cmpFit(els.headline || hook, 60);
+      f.body = cmpFit(paras.slice(0, 3).join('\n\n') || master, 760);
+      f.cta = cmpFit(cta, 25);
+      break;
+    case 'audio':
+      f.script = cmpFit([hook, claim, els.audienceLine, offer, `${company ? company + '. ' : ''}${cta}`].filter(Boolean).join(' '), schema.fields[0].max);
+      break;
+    case 'pr':
+      f.headline = cmpFit(hook, 80);
+      f.subhead = cmpFit(claim, 120);
+      f.lead = cmpFit(pick(4), 450);
+      f.body = cmpFit(paras.slice(1).join('\n\n'), 1400);
+      f.boilerplate = '';
+      break;
+    case 'onepager':
+      f.headline = cmpWordsCap(cmpFit(els.headline || hook, 70), 10);
+      f.bullets = [claim, els.audienceLine, offer || els.stageLine].map(b => cmpFit(b || '', 60));
+      f.body = cmpFit(pick(5), 620);
+      f.cta = cmpFit(cta, 80);
+      break;
+    default:
+      f.headline = cmpWordsCap(cmpFit(offer || els.headline || hook, 40), 7);
+      f.support = cmpFit(offer ? claim : (els.audienceLine || ''), 70);
+      f.cta = cmpFit(cta, 18);
   }
-  // 2026-09-27, per Todd's report that the fitted copy wasn't reflecting the
-  // contest — the campaign-wide draft used to come only from
-  // cmpDraftNativeCopy() (Key Message + brief context), ignoring the Long
-  // Form Copy the contest winner was saved into. That saved winner is the
-  // master ("the final version is the master that will be parsed based on
-  // campaign assets selected"), so when it exists it's what gets sized to
-  // the channel's treatment, exactly like an audience winner is. The
-  // Key-Message-only draft stays as the fallback when no long-form copy is
-  // on file yet.
-  const longform = (((document.getElementById('cmpLongFormCopy') || {}).value) || c.longformCopy || '').trim();
-  if (longform){
-    const treatment = CHANNEL_COPY_TREATMENT[channel] || 'medium';
-    const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || c.keyMessage || '').trim();
-    const sized = copyVersionForTreatment(treatment, keyMessage, longform);
-    return cmpAssetCopyDataToText(spec, (spec && spec.stacked) ? cmpSplitCopyIntoBlocks(sized) : (spec && spec.frames > 1) ? cmpFrameCopyArray(sized, spec.frames) : sized);
-  }
-  const draft = cmpDraftNativeCopy(channel, spec);
-  const data = (spec && spec.frames > 1) ? draft.frameCopy : (spec && spec.stacked) ? draft.copyParts : draft.copy;
-  return cmpAssetCopyDataToText(spec, data);
+  // Every schema field present, arrays padded to their minimum.
+  schema.fields.forEach(fd => {
+    if (fd.multi){ const arr = Array.isArray(f[fd.key]) ? f[fd.key].slice(0, fd.limit) : []; while (arr.length < fd.min) arr.push(''); f[fd.key] = arr; }
+    else if (typeof f[fd.key] !== 'string') f[fd.key] = '';
+  });
+  return f;
 }
 function cmpAssetCopyVersion(c, channel, row, key){
   if (!row.copyVersions) row.copyVersions = {};
   const spec = cmpSpecForRowSize(channel, row.size);
-  if (!row.copyVersions[key] || !row.copyVersions[key].text){
-    row.copyVersions[key] = { text: cmpAssetCopyInitialText(c, channel, spec, key), approved: false, approvedAt: null, edited: false, sizeLabel: row.size };
-  } else if (row.copyVersions[key].sizeLabel !== row.size && !row.copyVersions[key].edited){
-    // Size changed and the person never edited this draft — refit it.
-    row.copyVersions[key] = { text: cmpAssetCopyInitialText(c, channel, spec, key), approved: false, approvedAt: null, edited: false, sizeLabel: row.size };
+  const schema = cmpAssetCopySchema(channel, spec, row);
+  const v = row.copyVersions[key];
+  const stale = !v || !v.fields || v.schemaId !== schema.id || (v.sizeLabel !== row.size && !v.edited);
+  if (stale){
+    row.copyVersions[key] = { fields: cmpAssetCopyDraftFields(c, channel, spec, key, schema), approved: false, approvedAt: null, edited: false, sizeLabel: row.size, schemaId: schema.id };
   }
   return row.copyVersions[key];
 }
+function cmpAssetCopyFieldsToWireframe(schema, fields){ return schema.toWireframe(fields || {}); }
+function cmpAssetCopyOverBudget(schema, fields){
+  return schema.fields.some(fd => fd.multi ? (fields[fd.key] || []).some(v => (v || '').length > fd.max) : ((fields[fd.key] || '').length > fd.max));
+}
+let cmpAssetWireframeOpen = {};
 function cmpAssetCopyPanelHtml(channel, slug, i, row){
   const c = cmpRailLoadedCampaign();
   if (!c) return '';
@@ -60466,57 +60750,89 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
     return `<div class="cmp-asset-copy-pending"><span class="wf-badge-warn">Choose Partner, Format and Size to fit the copy</span></div>`;
   }
   const spec = cmpSpecForRowSize(channel, row.size);
+  const schema = cmpAssetCopySchema(channel, spec, row);
   const keys = cmpAssetCopyKeys(c, channel);
   const winners = cmpAudienceCopyMap(c);
+  const counter = (val, max) => { const n = (val || '').length; return `<span class="cmp-copy-count${n > max ? ' over' : (n > max * 0.9 ? ' near' : '')}">${n}/${max}</span>`; };
   return keys.map(key => {
     const v = cmpAssetCopyVersion(c, channel, row, key);
-    const kid = `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`;
-    const editing = !!cmpCreativeAssetCopyEditing[kid];
+    const keyId = cmpAssetCopyKeyId(key);
+    const kid = `cmpCAG_${slug}_${i}_${keyId}`;
     const isAud = key !== CMP_ASSET_COPY_ALL_KEY;
     const noWinner = isAud && !(winners[key] && winners[key].copy);
+    const over = cmpAssetCopyOverBudget(schema, v.fields);
     const badge = v.approved
       ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(v.approvedAt).toLocaleString())}</span>`
-      : `<span class="wf-badge-ok" style="background:#EAF1FB;color:#1E5FA8;">✓ Copy fit to ${escapeHtml(row.size)}</span>`;
+      : over ? `<span class="wf-badge-warn">Over budget — shorten the fields marked red</span>`
+      : `<span class="wf-badge-ok" style="background:#EAF1FB;color:#1E5FA8;">✓ Best-practice fit for ${escapeHtml(row.size)}</span>`;
+    const args = (fk, idx) => `'${slug}', ${i}, '${keyId}', '${fk}', ${idx}`;
+    const fieldHtml = schema.fields.map(fd => {
+      if (fd.multi){
+        const arr = v.fields[fd.key] || [];
+        const canAdd = !fd.fixed && arr.length < fd.limit;
+        const canRemove = !fd.fixed && arr.length > fd.min;
+        return `
+          <div class="cmp-copy-field cmp-copy-field-multi">
+            <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)} <span class="hint" style="font-weight:400;">${fd.fixed ? `${fd.limit} × ≤ ${fd.max} characters` : `${fd.min}–${fd.limit}, each ≤ ${fd.max} characters`}</span></label></div>
+            ${arr.map((val, idx) => `
+              <div class="cmp-copy-item">
+                <span class="cmp-copy-item-label">${escapeHtml(fd.itemLabel)} ${idx + 1}</span>
+                <input type="text" id="${kid}_${fd.key}_${idx}" maxlength="${fd.max + 40}" value="${escapeHtml(val || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, idx)}, this.value)">
+                ${counter(val, fd.max)}
+                ${canRemove ? `<button type="button" class="cmp-copy-item-remove" title="Remove" onclick="cmpAssetCopyRemoveItem(${args(fd.key, idx)})">×</button>` : ''}
+              </div>`).join('')}
+            ${canAdd ? `<button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;margin-top:4px;" onclick="cmpAssetCopyAddItem(${args(fd.key, -1)})">+ Add ${escapeHtml(fd.itemLabel.toLowerCase())}</button>` : ''}
+          </div>`;
+      }
+      const val = v.fields[fd.key] || '';
+      const input = fd.rows > 1
+        ? `<textarea id="${kid}_${fd.key}" rows="${fd.rows}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)">${escapeHtml(val)}</textarea>`
+        : `<input type="text" id="${kid}_${fd.key}" placeholder="${escapeHtml(fd.placeholder || '')}" value="${escapeHtml(val)}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)">`;
+      return `
+        <div class="cmp-copy-field">
+          <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)}${fd.optional ? ' <span class="hint" style="font-weight:400;">optional</span>' : ''}</label>${counter(val, fd.max)}</div>
+          ${input}
+        </div>`;
+    }).join('');
+    const wfOpen = !!cmpAssetWireframeOpen[kid];
     return `
       <div class="cmp-asset-copy-block" id="${kid}_block">
         <div class="cmp-asset-copy-head">
-          <span class="cmp-asset-copy-title">${isAud ? escapeHtml(key) : 'Campaign copy'} — ${escapeHtml(row.mediaType)}</span>
+          <span class="cmp-asset-copy-title">${isAud ? escapeHtml(key) : 'Campaign copy'} — ${escapeHtml(row.mediaType)} · ${escapeHtml(row.size)}</span>
           ${badge}
         </div>
-        ${noWinner ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">No contest winner applied for ${escapeHtml(key)} yet — showing the campaign-wide copy until one is selected on Brand Messaging.</p>` : ''}
-        <div class="cmp-asset-copy-grid">
-          <div class="cmp-asset-copy-wf"><div id="${kid}_wf" class="wireframe"></div></div>
-          <div class="cmp-asset-copy-text">
-            <textarea id="${kid}_text" rows="8" ${editing ? '' : 'readonly'} oninput="cmpAssetCopyTextChanged('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}', this.value)">${escapeHtml(v.text)}</textarea>
-            <div class="btn-row" style="margin-top:8px;gap:8px;">
-              <button type="button" class="btn-ghost" onclick="cmpAssetCopyToggleEdit('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}')">${editing ? 'Done editing' : 'Edit'}</button>
-              <button type="button" class="btn-primary" ${v.approved ? 'disabled' : ''} onclick="cmpAssetCopyApprove('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}')">${v.approved ? 'Approved' : 'Approve'}</button>
-              ${v.edited ? `<button type="button" class="btn-ghost" onclick="cmpAssetCopyResetDraft('${slug}', ${i}, '${cmpAssetCopyKeyId(key)}')">Reset to draft</button>` : ''}
-            </div>
-          </div>
+        ${noWinner ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">No contest winner applied for ${escapeHtml(key)} yet — fitted from the campaign-wide copy until one is selected on Brand Messaging.</p>` : ''}
+        <p class="cmp-copy-note">${escapeHtml(schema.note)}</p>
+        <div class="cmp-copy-fields">${fieldHtml}</div>
+        <div class="btn-row" style="margin-top:10px;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn-primary" ${v.approved || over ? 'disabled' : ''} onclick="cmpAssetCopyApprove('${slug}', ${i}, '${keyId}')">${v.approved ? 'Approved' : 'Approve copy'}</button>
+          <button type="button" class="btn-ghost" onclick="cmpAssetCopyToggleWireframe('${slug}', ${i}, '${keyId}')">${wfOpen ? 'Hide wireframe' : 'View wireframe'}</button>
+          ${v.edited ? `<button type="button" class="btn-ghost" onclick="cmpAssetCopyResetDraft('${slug}', ${i}, '${keyId}')">Reset to best-practice draft</button>` : ''}
         </div>
+        <div class="cmp-asset-wf" id="${kid}_wfwrap" style="display:${wfOpen ? '' : 'none'};margin-top:12px;"><div id="${kid}_wf" class="wireframe"></div></div>
       </div>`;
   }).join('');
 }
-// Row/key lookups by the ids baked into the markup (slug and key id are
-// filename-safe; the real channel and key are recovered from the grid).
 function cmpAssetCopyResolve(slug, i, keyId){
   const channel = Object.keys(cmpCreativeAssetGridRows).find(ch => cmpCreativeAssetChannelSlug(ch) === slug);
   const row = channel ? (cmpCreativeAssetGridRows[channel] || [])[i] : null;
   const c = cmpRailLoadedCampaign();
   if (!channel || !row || !c) return null;
   const key = cmpAssetCopyKeys(c, channel).find(k => cmpAssetCopyKeyId(k) === keyId) || CMP_ASSET_COPY_ALL_KEY;
-  return { c, channel, row, key, kid: `cmpCAG_${slug}_${i}_${keyId}` };
+  return { c, channel, row, key, kid: `cmpCAG_${slug}_${i}_${keyId}`, slug, i, keyId };
 }
+// The wireframe is a PREVIEW of the fields above it — dimensions, layout and
+// the copy in place — drawn read-only so there is exactly one place to edit.
 function cmpAssetCopyDrawWireframe(channel, row, key, kid){
   const wf = document.getElementById(`${kid}_wf`);
   if (!wf) return;
   const spec = cmpSpecForRowSize(channel, row.size);
   const v = row.copyVersions && row.copyVersions[key];
-  if (!spec || !v){ wf.innerHTML = ''; return; }
-  cmpDrawWireframeBox(wf, spec, cmpAssetCopyTextToData(spec, v.text), channel, `${kid}_wfx`, 'bottom');
-  // The wireframe is a preview here — the copy on the right is what's edited.
+  if (!spec || !v || !v.fields){ wf.innerHTML = ''; return; }
+  const schema = cmpAssetCopySchema(channel, spec, row);
+  cmpDrawWireframeBox(wf, spec, cmpAssetCopyFieldsToWireframe(schema, v.fields), channel, `${kid}_wfx`, 'bottom');
   wf.querySelectorAll('textarea, input').forEach(t => { t.readOnly = true; t.tabIndex = -1; });
+  wf.querySelectorAll('.wireframe-enterprise-lock, .wireframe-motion-controls .btn-ghost:not(:first-child)').forEach(n => { n.style.display = 'none'; });
 }
 function cmpAssetCopyDrawAllForChannel(channel){
   const c = cmpRailLoadedCampaign();
@@ -60524,39 +60840,95 @@ function cmpAssetCopyDrawAllForChannel(channel){
   const slug = cmpCreativeAssetChannelSlug(channel);
   (cmpCreativeAssetGridRows[channel] || []).forEach((row, i) => {
     if (!(row.partner && row.mediaType && row.size)) return;
-    cmpAssetCopyKeys(c, channel).forEach(key => cmpAssetCopyDrawWireframe(channel, row, key, `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`));
+    cmpAssetCopyKeys(c, channel).forEach(key => { const kid = `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`; if (cmpAssetWireframeOpen[kid]) cmpAssetCopyDrawWireframe(channel, row, key, kid); });
   });
 }
-function cmpAssetCopyTextChanged(slug, i, keyId, value){
+function cmpAssetCopyRefreshBadge(r){
+  // Re-render just this block's chrome (badge, buttons, counters) without
+  // rebuilding the inputs the person is typing in.
+  const block = document.getElementById(`${r.kid}_block`);
+  if (!block) return;
+  const spec = cmpSpecForRowSize(r.channel, r.row.size);
+  const schema = cmpAssetCopySchema(r.channel, spec, r.row);
+  const v = r.row.copyVersions[r.key];
+  const over = cmpAssetCopyOverBudget(schema, v.fields);
+  const head = block.querySelector('.cmp-asset-copy-head');
+  if (head){
+    const badge = head.querySelector('.wf-badge-ok, .wf-badge-warn');
+    if (badge) badge.outerHTML = v.approved
+      ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(v.approvedAt).toLocaleString())}</span>`
+      : over ? `<span class="wf-badge-warn">Over budget — shorten the fields marked red</span>`
+      : `<span class="wf-badge-ok" style="background:#EAF1FB;color:#1E5FA8;">✓ Best-practice fit for ${escapeHtml(r.row.size)}</span>`;
+  }
+  const approveBtn = block.querySelector('.btn-primary');
+  if (approveBtn){ approveBtn.disabled = v.approved || over; approveBtn.textContent = v.approved ? 'Approved' : 'Approve copy'; }
+  schema.fields.forEach(fd => {
+    const paint = (el, val) => { const cnt = el && el.parentElement && el.parentElement.querySelector('.cmp-copy-count'); if (!cnt) return; const n = (val || '').length; cnt.textContent = `${n}/${fd.max}`; cnt.className = `cmp-copy-count${n > fd.max ? ' over' : (n > fd.max * 0.9 ? ' near' : '')}`; };
+    if (fd.multi) (v.fields[fd.key] || []).forEach((val, idx) => paint(document.getElementById(`${r.kid}_${fd.key}_${idx}`), val));
+    else paint(document.getElementById(`${r.kid}_${fd.key}`), v.fields[fd.key]);
+  });
+  if (!v.edited) return;
+  if (!block.querySelector('[onclick^="cmpAssetCopyResetDraft"]')){
+    const row = block.querySelector('.btn-row');
+    if (row){ const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-ghost'; b.textContent = 'Reset to best-practice draft'; b.setAttribute('onclick', `cmpAssetCopyResetDraft('${r.slug}', ${r.i}, '${r.keyId}')`); row.appendChild(b); }
+  }
+}
+function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
   const r = cmpAssetCopyResolve(slug, i, keyId);
   if (!r) return;
   const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
-  v.text = value; v.edited = true;
-  if (v.approved){ v.approved = false; v.approvedAt = null; } // an edit after approval needs a fresh approval
-  cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
+  if (idx >= 0){ if (!Array.isArray(v.fields[fieldKey])) v.fields[fieldKey] = []; v.fields[fieldKey][idx] = value; }
+  else v.fields[fieldKey] = value;
+  v.edited = true;
+  if (v.approved){ v.approved = false; v.approvedAt = null; }
+  cmpAssetCopyRefreshBadge(r);
+  if (cmpAssetWireframeOpen[r.kid]) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
   cmpSyncCreativeAssetRequestsFromGrid();
 }
-function cmpAssetCopyToggleEdit(slug, i, keyId){
-  const kid = `cmpCAG_${slug}_${i}_${keyId}`;
-  cmpCreativeAssetCopyEditing[kid] = !cmpCreativeAssetCopyEditing[kid];
+function cmpAssetCopyAddItem(slug, i, keyId, fieldKey){
   const r = cmpAssetCopyResolve(slug, i, keyId);
-  if (r) cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
-  if (cmpCreativeAssetCopyEditing[kid]){ const t = document.getElementById(`${kid}_text`); if (t) t.focus(); }
+  if (!r) return;
+  const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
+  if (!Array.isArray(v.fields[fieldKey])) v.fields[fieldKey] = [];
+  v.fields[fieldKey].push('');
+  v.edited = true;
+  cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
+  const el = document.getElementById(`${r.kid}_${fieldKey}_${v.fields[fieldKey].length - 1}`); if (el) el.focus();
+}
+function cmpAssetCopyRemoveItem(slug, i, keyId, fieldKey, idx){
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  if (!r) return;
+  const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
+  if (Array.isArray(v.fields[fieldKey])) v.fields[fieldKey].splice(idx, 1);
+  v.edited = true;
+  if (v.approved){ v.approved = false; v.approvedAt = null; }
+  cmpSyncCreativeAssetRequestsFromGrid();
+  cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
+}
+function cmpAssetCopyToggleWireframe(slug, i, keyId){
+  const kid = `cmpCAG_${slug}_${i}_${keyId}`;
+  cmpAssetWireframeOpen[kid] = !cmpAssetWireframeOpen[kid];
+  const r = cmpAssetCopyResolve(slug, i, keyId);
+  const wrap = document.getElementById(`${kid}_wfwrap`);
+  const btn = document.querySelector(`#${kid}_block [onclick^="cmpAssetCopyToggleWireframe"]`);
+  if (wrap) wrap.style.display = cmpAssetWireframeOpen[kid] ? '' : 'none';
+  if (btn) btn.textContent = cmpAssetWireframeOpen[kid] ? 'Hide wireframe' : 'View wireframe';
+  if (r && cmpAssetWireframeOpen[kid]) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, kid);
 }
 function cmpAssetCopyApprove(slug, i, keyId){
   const r = cmpAssetCopyResolve(slug, i, keyId);
   if (!r) return;
   const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
+  const spec = cmpSpecForRowSize(r.channel, r.row.size);
+  if (cmpAssetCopyOverBudget(cmpAssetCopySchema(r.channel, spec, r.row), v.fields)) return;
   v.approved = true; v.approvedAt = new Date().toISOString();
-  delete cmpCreativeAssetCopyEditing[r.kid];
   cmpSyncCreativeAssetRequestsFromGrid();
-  cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
+  cmpAssetCopyRefreshBadge(r);
 }
 function cmpAssetCopyResetDraft(slug, i, keyId){
   const r = cmpAssetCopyResolve(slug, i, keyId);
   if (!r) return;
   if (r.row.copyVersions) delete r.row.copyVersions[r.key];
-  delete cmpCreativeAssetCopyEditing[r.kid];
   cmpSyncCreativeAssetRequestsFromGrid();
   cmpRenderCreativeAssetMatrixChannelGroup(r.channel);
 }
