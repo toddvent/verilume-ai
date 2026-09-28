@@ -2260,6 +2260,9 @@
   .cmp-summary-badge.target{background:#EAF1FB;color:#1E5FA8;}
   .cmp-summary-badge.primary{background:var(--cx);color:#fff;}
   @media (max-width:640px){ .cmp-summary-strip{grid-template-columns:1fr 1fr;} }
+  .cmp-summary-table td{vertical-align:top;font-variant-numeric:tabular-nums;}
+  .cmp-summary-table td .cmp-summary-note{font-size:0.71875rem;color:var(--muted);margin-top:4px;line-height:1.35;font-weight:400;}
+  .cmp-summary-table td .cmp-summary-badge{margin-left:6px;vertical-align:middle;}
   .cmp-wf-qa-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;}
   .cmp-wf-qa-item{display:flex;align-items:center;gap:8px;font-size:0.8125rem;color:var(--ink);}
   .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
@@ -8974,7 +8977,7 @@
                model it reads; nothing here is a placeholder number. -->
           <div class="module cmp-stage open" id="cmpAnalysisSummaryCard" style="overflow:visible;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
-              <h2 style="margin:0 0 4px;">Campaign Summary</h2>
+              <h2 style="margin:0 0 4px;">Campaign Summary — Target · Actual · Variance</h2>
               <p class="lede" id="cmpAnalysisSummaryLede" style="margin:0 0 14px;"></p>
               <div id="cmpAnalysisSummary"></div>
             </div>
@@ -11830,6 +11833,87 @@
       </div>
     </div>
 
+    <!-- 2026-09-28 — Website engagement (GA4 export), per direct
+         instruction with AOV_ENGAGEMENT.xlsx: "The AOV Engagement rate by
+         session is attached for 2026. This might be good to add manually
+         until integrations are done. Upload is easier but can add
+         manually." Upload the GA4 "Session default channel group"
+         engagement report (.xlsx/.csv, header row found automatically —
+         the export has a title row above it and blank leading columns) or
+         type rows. Feeds the Campaign Summary's Website Engagement tile
+         (session-weighted avg engagement time + engagement rate for the
+         campaign's year). See account_website_engagement (backend). -->
+    <div class="sk-card" id="mbuEngagementCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Manual bridge — until GA4 is integrated</div><h3>Website engagement by channel group (GA4 export)</h3></div>
+        <div class="hicon">⏱</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">GA4 → Reports → Acquisition → Traffic acquisition, by Session default channel group: Sessions, Engaged sessions, Engagement rate, Average engagement time per engaged session (minutes). One set per year (whole-year / YTD) or per month. Upload the export or type rows; either way it saves to this account and drives the Website Engagement tile.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+          <label for="mbuEngagementYear" style="margin:0;">Year</label>
+          <select id="mbuEngagementYear" class="tbl-select" onchange="mbuLoadEngagement()"></select>
+          <label for="mbuEngagementMonth" style="margin:0;">Period</label>
+          <select id="mbuEngagementMonth" class="tbl-select" onchange="mbuLoadEngagement()">
+            <option value="0">Whole year / YTD</option>
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload GA4 export (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleEngagementFile(event)"></label>
+          <button type="button" class="btn-ghost" onclick="mbuAddEngagementRow()">+ Add channel group</button>
+          <span class="hint" id="mbuEngagementStatus" style="margin:0;"></span>
+        </div>
+        <div id="mbuEngagementPreview"></div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="min-width:680px;">
+            <thead><tr><th>Channel group</th><th>Sessions</th><th>Engaged sessions</th><th>Engagement rate</th><th>Avg engagement time (min)</th><th></th></tr></thead>
+            <tbody id="mbuEngagementBody"></tbody>
+          </table>
+        </div>
+        <p class="hint" id="mbuEngagementSummary" style="margin:8px 0 0;"></p>
+      </div>
+    </div>
+
+    <!-- 2026-09-28 — Leads by type by month, per direct instruction:
+         "I can also upload or manually add leads by type by month with the
+         high value or registration designation. Just need to find a home
+         for the data. Columns would be Source (e.g., website, Meta, coreg,
+         transaction), Lead Type (High Value, Registration), Form Name,
+         Count of Email. Uploading is easier." This is that home. Upload a
+         .xlsx/.csv with those columns (Year/Month columns optional — the
+         selected month is used when they're absent) or add rows. High
+         Value / Registration totals become the ACTUALS behind the Campaign
+         Summary's High-Value Leads and Registrations tiles for a campaign's
+         in-market months. See account_lead_counts (backend). -->
+    <div class="sk-card" id="mbuLeadCountsCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Manual bridge — until CRM / form integrations</div><h3>Leads by type, by month</h3></div>
+        <div class="hicon">📇</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Source (website, Meta, coreg, transaction…) × Lead Type (High Value or Registration) × Form Name, count of emails, per month. High Value = the annual model's value leads (talk to expert / quote / request info); Registration = growth leads (subscribe / brochure / popup / share / contact).</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+          <label for="mbuLeadYear" style="margin:0;">Year</label>
+          <select id="mbuLeadYear" class="tbl-select" onchange="mbuLoadLeadCounts()"></select>
+          <label for="mbuLeadMonth" style="margin:0;">Month</label>
+          <select id="mbuLeadMonth" class="tbl-select" onchange="mbuLoadLeadCounts()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload leads (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleLeadFile(event)"></label>
+          <button type="button" class="btn-ghost" onclick="mbuAddLeadRow()">+ Add row</button>
+          <span class="hint" id="mbuLeadStatus" style="margin:0;"></span>
+        </div>
+        <div id="mbuLeadPreview"></div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="min-width:640px;">
+            <thead><tr><th>Source</th><th>Lead type</th><th>Form name</th><th>Count of email</th><th></th></tr></thead>
+            <tbody id="mbuLeadBody"></tbody>
+          </table>
+        </div>
+        <p class="hint" id="mbuLeadSummary" style="margin:8px 0 0;"></p>
+        <div id="mbuLeadYearTotals" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -12262,7 +12346,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-campaign-targets-from-approved-budget-stage';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-analysis-target-actual-variance-tables';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -42612,13 +42696,19 @@ async function cmpLoadCampaignSummaryContext(){
   const annualByYear = {};
   let timingByCategory = {};
   let demandFulfillment = null;
+  let engagementSummaries = [];
+  let leadTotals = [];
   if (dataSourceLabel === 'backend'){
     const acct = encodeURIComponent(state.companyId);
-    const [planResp, timingResp, dfResp] = await Promise.all([
+    const [planResp, timingResp, dfResp, engResp, leadResp] = await Promise.all([
       authedFetch(`${BACKEND_URL}/api/accounts/${acct}/annual-plan`).catch(() => null),
       authedFetch(`${BACKEND_URL}/api/accounts/${acct}/channel-timing`).catch(() => null),
-      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/demand-fulfillment`).catch(() => null)
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/demand-fulfillment`).catch(() => null),
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/website-engagement`).catch(() => null),
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/lead-counts`).catch(() => null)
     ]);
+    try { if (engResp && engResp.ok){ const data = await engResp.json(); engagementSummaries = data.summaries || []; } } catch (e){ console.warn('cmpLoadCampaignSummaryContext: engagement parse failed', e); }
+    try { if (leadResp && leadResp.ok){ const data = await leadResp.json(); leadTotals = data.totals || []; } } catch (e){ console.warn('cmpLoadCampaignSummaryContext: lead counts parse failed', e); }
     try {
       if (planResp && planResp.ok){
         const data = await planResp.json();
@@ -42635,7 +42725,7 @@ async function cmpLoadCampaignSummaryContext(){
       if (dfResp && dfResp.ok){ demandFulfillment = await dfResp.json(); }
     } catch (e){ console.warn('cmpLoadCampaignSummaryContext: demand fulfillment parse failed', e); }
   }
-  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear, timingByCategory, demandFulfillment };
+  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear, timingByCategory, demandFulfillment, engagementSummaries, leadTotals };
   return cmpSummaryCtxCache;
 }
 // 2026-09-28 — expected impact timing for one campaign off the resolved
@@ -42872,16 +42962,65 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
   m.tracking = hasAnyActual ? chain(m.actual.spend != null ? m.actual.spend : m.target.spend, m.actual.impressions != null ? m.actual.impressions : m.target.impressions) : {};
   if (m.actual.transactions != null) m.tracking.transactions = m.actual.transactions;
 
+  // 2026-09-28 — manual-bridge actuals (see account_website_engagement /
+  // account_lead_counts): Website Engagement for the campaign's year
+  // (the whole-year/YTD row when one exists, else session-weighted across
+  // the months on file); High-Value Leads / Registrations = Σ counts for
+  // the campaign's in-market months (start → end, capped at today).
+  m.engagement = null;
+  if (m.year && Array.isArray(ctx.engagementSummaries)){
+    const yr = ctx.engagementSummaries.filter(e => e.year === m.year);
+    const whole = yr.find(e => e.month === 0);
+    if (whole){ m.engagement = { avgEngagementTimeMin: whole.avgEngagementTimeMin, engagementRate: whole.engagementRate, sessions: whole.sessions, source: `${m.year} GA4 export (whole year / YTD)` }; }
+    else if (yr.length){
+      let sess = 0, eng = 0, tw = 0, w = 0;
+      yr.forEach(e => { sess += e.sessions || 0; eng += e.engagedSessions || 0; if (e.avgEngagementTimeMin != null && e.engagedSessions > 0){ tw += e.avgEngagementTimeMin * e.engagedSessions; w += e.engagedSessions; } });
+      m.engagement = { avgEngagementTimeMin: w > 0 ? tw / w : null, engagementRate: sess > 0 ? eng / sess : null, sessions: sess, source: `${m.year} GA4 export, ${yr.length} month${yr.length === 1 ? '' : 's'}` };
+    }
+  }
+  m.actual.leads = null; m.actual.registrations = null; m.leadActualNote = '';
+  if (campaign.startDate && Array.isArray(ctx.leadTotals) && ctx.leadTotals.length){
+    const start = new Date(campaign.startDate);
+    const endRaw = campaign.endDate ? new Date(campaign.endDate) : new Date();
+    const end = endRaw > new Date() ? new Date() : endRaw;
+    const inWindow = t => { const d = new Date(t.year, t.month - 1, 1); const dEnd = new Date(t.year, t.month, 0); return dEnd >= new Date(start.getFullYear(), start.getMonth(), 1) && d <= end; };
+    const rows = ctx.leadTotals.filter(inWindow);
+    if (rows.length){
+      const hv = rows.filter(t => t.leadType === 'High Value').reduce((a, t) => a + (t.count || 0), 0);
+      const reg = rows.filter(t => t.leadType === 'Registration').reduce((a, t) => a + (t.count || 0), 0);
+      const months = [...new Set(rows.map(t => `${t.year}-${t.month}`))].length;
+      if (rows.some(t => t.leadType === 'High Value')) m.actual.leads = hv;
+      if (rows.some(t => t.leadType === 'Registration')) m.actual.registrations = reg;
+      m.leadActualNote = `Σ logged leads across ${months} in-market month${months === 1 ? '' : 's'} (account-wide, all sources)`;
+    }
+  }
   // Roll-up / legacy fields: best current read per metric.
   m.spendIsActual = m.actual.spend != null; m.spend = m.spendIsActual ? m.actual.spend : m.target.spend; m.budget = m.target.spend;
   m.impsIsActual = m.actual.impressions != null; m.impressions = m.impsIsActual ? m.actual.impressions : m.target.impressions; m.plannedImps = m.target.impressions;
   m.websiteUsers = hasAnyActual && m.tracking.websiteUsers != null ? m.tracking.websiteUsers : m.target.websiteUsers;
-  m.leads = hasAnyActual && m.tracking.leads != null ? m.tracking.leads : m.target.leads;
-  m.registrations = hasAnyActual && m.tracking.registrations != null ? m.tracking.registrations : m.target.registrations;
+  m.leads = m.actual.leads != null ? m.actual.leads : (hasAnyActual && m.tracking.leads != null ? m.tracking.leads : m.target.leads);
+  m.registrations = m.actual.registrations != null ? m.actual.registrations : (hasAnyActual && m.tracking.registrations != null ? m.tracking.registrations : m.target.registrations);
   m.txnIsActual = m.actual.transactions != null;
   m.transactions = m.txnIsActual ? m.actual.transactions : (hasAnyActual && m.tracking.transactions != null ? m.tracking.transactions : m.target.transactions);
   m.grossRevenue = (m.transactions != null && m.grossRevenuePerBooking) ? m.transactions * m.grossRevenuePerBooking : null;
   m.txnNote = m.txnIsActual ? 'Logged actual conversions (Transactions KPI)' : m.txnRateSource;
+  // 2026-09-28 (round 4) — Executive Campaign Summary rows: Revenue, ROAS,
+  // CAC, and the campaign's own Objective (Primary KPI goal vs. logged
+  // result). Revenue target = target transactions × the baseline's gross
+  // revenue per booking; actual revenue = logged actualRevenue (Analysis
+  // inputs) — never derived and presented as an actual. ROAS = revenue ÷
+  // spend; CAC = spend ÷ transactions (cost per acquisition).
+  m.actual.revenue = num(campaign.actualRevenue);
+  m.target.revenue = m.target.grossRevenue;
+  m.tracking.revenue = (hasAnyActual && m.tracking.transactions != null && m.grossRevenuePerBooking) ? m.tracking.transactions * m.grossRevenuePerBooking : null;
+  const ratio = (a, b) => (a != null && b != null && b > 0) ? a / b : null;
+  m.target.roas = ratio(m.target.revenue, m.target.spend);
+  m.actual.roas = ratio(m.actual.revenue, m.actual.spend);
+  m.tracking.roas = ratio(m.tracking.revenue, m.actual.spend != null ? m.actual.spend : null);
+  m.target.cac = ratio(m.target.spend, m.target.transactions);
+  m.actual.cac = ratio(m.actual.spend, m.actual.transactions);
+  m.tracking.cac = ratio(m.actual.spend, m.tracking.transactions);
+  m.objective = { label: String(campaign.primaryKpi || '').trim() || null, target: num(campaign.kpiGoal), actual: num(campaign.actualConversions) };
   return m;
 }
 // Share-of-annual-target line for a tile: "4.2% of 2027 target (9,400,000)".
@@ -42916,39 +43055,75 @@ async function cmpRenderAnalysisSummary(campaign){
   };
   const dash = '<span class="hint">—</span>';
   const t = m.annualTarget;
-  // Each tile: headline = actual when logged (or tracking when the model
-  // has been re-run on logged actuals), else the target; the other one on
-  // the line below so target vs. actual is always visible together.
-  const tile = (key, label, opts) => {
-    const { target, actual, tracking, fmt, targetNote, shareField } = opts;
-    const headline = actual != null ? fmt(actual) : (tracking != null ? `~${fmt(tracking)}` : (target != null ? fmt(target) : dash));
-    const badge = actual != null ? '<span class="cmp-summary-badge actual">Actual</span>' : (tracking != null ? '<span class="cmp-summary-badge modeled">Tracking</span>' : (target != null ? '<span class="cmp-summary-badge target">Target</span>' : ''));
-    const secondLine = (actual != null || tracking != null) && target != null ? `<div class="cmp-summary-note"><b>Target:</b> ${fmt(target)}${actual != null && target > 0 ? ` · ${((actual / target) * 100).toFixed(0)}% of target` : ''}</div>` : '';
-    return `
-    <div class="cmp-summary-tile${kpiMatches(key) ? ' is-primary' : ''}">
-      <div class="cmp-wf-stat-label">${escapeHtml(label)}${kpiMatches(key) ? '<span class="cmp-summary-badge primary">Primary KPI</span>' : ''}</div>
-      <div class="cmp-wf-stat-value">${headline}${badge}</div>
-      ${secondLine}
-      ${targetNote ? `<div class="cmp-summary-note">${targetNote}</div>` : ''}
-      ${shareField ? cmpShareOfTargetNote(actual != null ? actual : (tracking != null ? tracking : target), t, shareField, fmt) : ''}
-    </div>`;
+  // 2026-09-28 (round 4), per direct redesign: "columns for forecast based
+  // on annual budget estimates leveraging the models, actual results,
+  // variances. Performance KPIs — Exec Campaign Summary columns Target,
+  // Actual, Variance: Spend, Revenue, ROAS, CAC, Impressions, Campaign
+  // Objective. Details: Website Users, High Value Leads, Registrations,
+  // Transactions — target, actual, variance." Two tables replace the
+  // seven tiles. Target = the annual model run from the Campaign Budget
+  // stage's approved plan; Actual = logged only; Variance = Actual −
+  // Target (and %), colored by whether over is good for that row (spend
+  // and CAC: under is good). Where nothing is logged yet, the Actual cell
+  // shows the model's tracking figure in muted text when one exists
+  // (logged spend/impressions re-run through the same chain), labeled —
+  // never presented as an actual.
+  const fmtRoas = v => `${Number(v).toFixed(2)}×`;
+  const fmtMin = v => `${Number(v).toFixed(2)} min`;
+  const row = (r) => {
+    const { key, label, target, actual, tracking, fmt, lowerIsBetter, note, shareField, isPrimary } = r;
+    const hasActual = actual != null;
+    let varianceHtml = dash;
+    if (hasActual && target != null){
+      const diff = actual - target;
+      const pct = target !== 0 ? (diff / Math.abs(target)) * 100 : null;
+      const good = lowerIsBetter ? diff <= 0 : diff >= 0;
+      const sign = diff >= 0 ? '+' : '−';
+      varianceHtml = `<span style="font-weight:700;color:${Math.abs(diff) < 1e-9 ? 'var(--muted)' : (good ? '#1F6B3A' : '#8C2F2F')};">${sign}${fmt(Math.abs(diff)).replace(/^\$-?/, '$')}${pct != null ? ` (${sign}${Math.abs(pct).toFixed(1)}%)` : ''}</span>`;
+    }
+    const actualHtml = hasActual
+      ? `<b>${fmt(actual)}</b><span class="cmp-summary-badge actual">Actual</span>`
+      : (tracking != null ? `<span class="hint">~${fmt(tracking)}</span><span class="cmp-summary-badge modeled">Tracking</span>` : dash);
+    return `<tr${isPrimary ? ' style="background:var(--cx-tint,#CFFAFE);"' : ''}>
+      <td><b>${escapeHtml(label)}</b>${isPrimary ? '<span class="cmp-summary-badge primary">Primary KPI</span>' : ''}${note ? `<div class="cmp-summary-note">${note}</div>` : ''}</td>
+      <td>${target != null ? `${fmt(target)}<span class="cmp-summary-badge target">Target</span>` : dash}${shareField ? cmpShareOfTargetNote(target, t, shareField, fmt) : ''}</td>
+      <td>${actualHtml}</td>
+      <td>${varianceHtml}</td>
+    </tr>`;
   };
   const tr = m.tracking || {};
-  el.innerHTML = `<div class="cmp-summary-strip">
-    ${tile('spend', 'Spend', { target: m.target.spend, actual: m.actual.spend, tracking: null, fmt: fmtMoney, shareField: 'workingMedia',
-      targetNote: m.target.spend != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.spend)}` : 'No channel plan or budget on file' })}
-    ${tile('impressions', 'Impressions', { target: m.target.impressions, actual: m.actual.impressions, tracking: null, fmt: fmtInt, shareField: 'impressions',
-      targetNote: m.target.impressions != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.impressions)}` : 'No planned or approved impressions' })}
-    ${tile('users', 'New Website Users', { target: m.target.websiteUsers, actual: null, tracking: tr.websiteUsers, fmt: fmtInt, shareField: 'websiteUsers',
-      targetNote: m.costPerUser > 0 ? `Spend ÷ $${m.costPerUser.toFixed(2)} per website user (${escapeHtml(m.costPerUserSource)})` : 'Needs an annual baseline or a Media Plan working budget + Website users by month for a year' })}
-    ${tile('engagement', 'Website Engagement', { target: null, actual: null, tracking: null, fmt: v => v, targetNote: 'Avg. time on site — available once GA4 is connected' })}
-    ${tile('leads', 'High-Value Leads', { target: m.target.leads, actual: null, tracking: tr.leads, fmt: fmtInt, shareField: 'valueLeads',
-      targetNote: `${(m.leadRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.leadRateSource)})` })}
-    ${tile('registrations', 'Registrations', { target: m.target.registrations, actual: null, tracking: tr.registrations, fmt: fmtInt, shareField: 'growthLeads',
-      targetNote: `${(m.registrationRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.registrationRateSource)})` })}
-    ${tile('transactions', 'Transactions', { target: m.target.transactions, actual: m.actual.transactions, tracking: tr.transactions, fmt: fmtInt, shareField: 'bookings',
-      targetNote: escapeHtml(m.txnRateSource || '') + (m.target.grossRevenue != null ? ` · target ~${fmtMoney(m.target.grossRevenue)} gross revenue at the baseline’s revenue per booking` : '') })}
-  </div>`;
+  const obj = m.objective || {};
+  const objFmt = /revenue|spend|budget/i.test(obj.label || '') ? fmtMoney : fmtInt;
+  const execRows = [
+    row({ key: 'spend', label: 'Spend', target: m.target.spend, actual: m.actual.spend, fmt: fmtMoney, lowerIsBetter: true, shareField: 'workingMedia',
+      note: m.target.spend != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.spend)}` : 'No channel plan or budget on file' }),
+    row({ key: 'revenue', label: 'Revenue', target: m.target.revenue, actual: m.actual.revenue, tracking: tr.revenue, fmt: fmtMoney, shareField: 'grossRevenue',
+      note: m.grossRevenuePerBooking ? `Transactions × $${Math.round(m.grossRevenuePerBooking).toLocaleString()} gross revenue per booking (${m.baseline ? m.baseline.year + ' annual baseline' : 'baseline'}); actual = logged under Analysis inputs` : 'Needs an annual baseline with gross revenue and bookings to model a revenue target; actual = logged under Analysis inputs' }),
+    row({ key: 'roas', label: 'ROAS', target: m.target.roas, actual: m.actual.roas, tracking: tr.roas, fmt: fmtRoas, note: 'Revenue ÷ spend' }),
+    row({ key: 'cac', label: 'CAC', target: m.target.cac, actual: m.actual.cac, tracking: tr.cac, fmt: fmtMoney, lowerIsBetter: true, note: 'Spend ÷ transactions (cost per acquisition)' }),
+    row({ key: 'impressions', label: 'Impressions', target: m.target.impressions, actual: m.actual.impressions, fmt: fmtInt, shareField: 'impressions',
+      note: m.target.impressions != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.impressions)}` : 'No planned or approved impressions' }),
+    row({ key: 'objective', label: obj.label ? `Campaign Objective — ${obj.label}` : 'Campaign Objective', target: obj.target, actual: obj.actual, fmt: objFmt, isPrimary: !!obj.label,
+      note: obj.label ? `Target KPI goal set at creation${obj.target == null ? ' (none entered)' : ''}; actual = logged conversions for this KPI` : 'No Primary KPI set on this campaign' })
+  ].join('');
+  const detailRows = [
+    row({ key: 'users', label: 'Website Users', target: m.target.websiteUsers, actual: null, tracking: tr.websiteUsers, fmt: fmtInt, shareField: 'websiteUsers',
+      note: m.costPerUser > 0 ? `Spend ÷ $${m.costPerUser.toFixed(2)} per website user (${escapeHtml(m.costPerUserSource)}); actual arrives with GA4` : 'Needs an annual baseline or a Media Plan working budget + Website users by month' }),
+    row({ key: 'engagement', label: 'Website Engagement', target: null, actual: m.engagement && m.engagement.avgEngagementTimeMin != null ? m.engagement.avgEngagementTimeMin : null, fmt: fmtMin,
+      note: m.engagement ? `Avg. engagement time per engaged session${m.engagement.engagementRate != null ? ` · ${(m.engagement.engagementRate * 100).toFixed(1)}% engagement rate` : ''} (${escapeHtml(m.engagement.source)}) — no modeled target` : 'Upload the GA4 engagement export under Media Plan &amp; Budget → Website engagement' }),
+    row({ key: 'leads', label: 'High-Value Leads', target: m.target.leads, actual: m.actual.leads, tracking: tr.leads, fmt: fmtInt, shareField: 'valueLeads',
+      note: `${(m.leadRate * 100).toFixed(2)}% of website users (${escapeHtml(m.leadRateSource)})${m.actual.leads != null ? ' · ' + escapeHtml(m.leadActualNote) : ''}` }),
+    row({ key: 'registrations', label: 'Registrations', target: m.target.registrations, actual: m.actual.registrations, tracking: tr.registrations, fmt: fmtInt, shareField: 'growthLeads',
+      note: `${(m.registrationRate * 100).toFixed(2)}% of website users (${escapeHtml(m.registrationRateSource)})${m.actual.registrations != null ? ' · ' + escapeHtml(m.leadActualNote) : ''}` }),
+    row({ key: 'transactions', label: 'Transactions', target: m.target.transactions, actual: m.actual.transactions, tracking: tr.transactions, fmt: fmtInt, shareField: 'bookings', isPrimary: m.isTxnKpi,
+      note: escapeHtml(m.txnRateSource || '') })
+  ].join('');
+  const head = `<thead><tr><th style="width:38%;">Metric</th><th>Target (annual model)</th><th>Actual</th><th>Variance</th></tr></thead>`;
+  el.innerHTML = `
+    <h3 style="margin:0 0 6px;font-size:0.9375rem;">Performance KPIs — Executive Campaign Summary</h3>
+    <div class="table-scroll"><table class="data-table cmp-summary-table" style="margin-bottom:16px;">${head}<tbody>${execRows}</tbody></table></div>
+    <h3 style="margin:0 0 6px;font-size:0.9375rem;">Details</h3>
+    <div class="table-scroll"><table class="data-table cmp-summary-table" style="margin-bottom:4px;">${head}<tbody>${detailRows}</tbody></table></div>`;
   const timingNote = cmpCampaignTimingNote(campaign, ctx);
   if (timingNote) el.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:10px 0 0;">${timingNote}</p>`);
   if (lede){
@@ -42956,7 +43131,7 @@ async function cmpRenderAnalysisSummary(campaign){
       ? `Shares are against the ${t.year} annual target${t.label ? ` (${escapeHtml(t.label)})` : ''}.`
       : (m.year ? `No ${m.year} annual target on file yet — enter one under Media Plan &amp; Budget → Annual plan to see each KPI as a share of the year.` : 'Set a Start Date to place this campaign in a plan year.');
     const baseNote = m.baseline ? `Rates follow the ${m.baseline.year} annual baseline.` : 'No annual baseline on file — rates fall back to budget-model history and stage seeds until one is entered.';
-    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''}. <b>Target</b> = the spend and impressions approved at the Campaign Budget stage, with every KPI following the annual model from there; <b>Actual</b> = logged on this campaign; <b>Tracking</b> = the same model re-run on logged actuals. ${baseNote} ${annualNote}`;
+    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''}. <b>Target</b> = the forecast from the annual budget model, run from the spend and impressions approved at the Campaign Budget stage; <b>Actual</b> = logged results only; <b>Variance</b> = Actual − Target. A muted <i>Tracking</i> figure is the model re-run on logged actuals where no actual exists yet. ${baseNote} ${annualNote}`;
   }
 }
 function cmpOpenAnalysisWorkspace(){
@@ -48630,15 +48805,17 @@ async function saveAnalysisInputs(){
   const c = findCampaign(currentCampaignId);
   if (!c) return;
   const convRaw = document.getElementById('anConversions').value;
+  const revRaw = document.getElementById('anRevenue') ? document.getElementById('anRevenue').value : '';
   const notes = document.getElementById('anNotes').value.trim();
   c.actualConversions = convRaw ? Number(convRaw) : null;
+  c.actualRevenue = revRaw ? Number(revRaw) : null;
   c.analysisNotes = notes;
   let persisted = false;
   if (dataSourceLabel === 'backend' && !c.localOnly){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actualConversions: c.actualConversions, analysisNotes: c.analysisNotes })
+        body: JSON.stringify({ actualConversions: c.actualConversions, actualRevenue: c.actualRevenue, analysisNotes: c.analysisNotes })
       });
       if (resp.ok) persisted = true;
     } catch (e){ console.warn('saveAnalysisInputs: backend write failed, saved locally only.', e); }
@@ -49568,7 +49745,8 @@ function renderCampaignDetail(focusCardId){
         </div>
         <div id="cmpMmmLineItemsSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-bottom:10px;"></div>
         <p id="cmpMmmTotals" style="font-size:0.8125rem;margin:0 0 14px;"></p>
-        <div class="field"><label>Actual conversions</label><input type="number" id="anConversions" min="0" step="1" value="${fmtMoney(c.actualConversions)}"></div>
+        <div class="field"><label>Actual conversions</label><input type="number" id="anConversions" min="0" step="1" value="${c.actualConversions != null ? c.actualConversions : ''}"></div>
+        <div class="field"><label>Actual revenue (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— booked/attributed revenue for this campaign, for the Revenue and ROAS rows</span></label><input type="number" id="anRevenue" min="0" step="1" value="${c.actualRevenue != null ? c.actualRevenue : ''}"></div>
         <div class="field"><label>Analysis notes</label><textarea id="anNotes" rows="3" placeholder="What worked, what didn't, what to change next time.">${c.analysisNotes || ''}</textarea></div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn-primary" onclick="saveAnalysisInputs()">Save analysis →</button>
@@ -66532,6 +66710,8 @@ function mbuLoadReachInputs(){
   mbuRenderCostPerWebsiteUser();
   mbuLoadAnnualPlan();
   mbuLoadDemandFulfillment();
+  mbuLoadEngagement();
+  mbuLoadLeadCounts();
 }
 async function mbuLoadWebsiteUsersMonthly(){
   const body = document.getElementById('mbuWebsiteUsersBody');
@@ -67041,6 +67221,333 @@ async function mbuRenderAnnualRollup(){
       ${line('Gross revenue', sums.grossRevenue, 'grossRevenue', fmtMoney, 'Modeled: transactions × baseline revenue per booking')}
     </tbody></table></div>
     ${target ? '' : `<p class="hint" style="margin:0;">No ${year} target entered yet — fill the Target column above to see coverage and gap.</p>`}`;
+}
+
+// 2026-09-28 — shared grid reader for the two manual-bridge uploads below
+// (GA4 engagement export, leads by type). Returns an array of rows (array
+// of strings), header detection left to the caller — GA4 exports carry a
+// title row and blank leading columns above the real header.
+async function mbuReadFileGrid(file){
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (ext === 'csv'){
+    const { headers, rows } = cfiParseCsvText(await file.text());
+    return [headers, ...rows];
+  }
+  if (ext === 'xlsx' || ext === 'xls'){
+    const XLSX = await cfiLoadSheetJs();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }).map(r => r.map(c => (c == null ? '' : String(c))));
+  }
+  throw new Error(`"${file.name}" isn't a .csv or .xlsx file.`);
+}
+// Finds the header row: the first row where every group of aliases is
+// matched by some cell. Returns { headerIndex, colIndex: {key: idx} }.
+function mbuFindHeaderRow(grid, spec){
+  for (let i = 0; i < Math.min(grid.length, 30); i++){
+    const cells = (grid[i] || []).map(c => String(c || '').trim().toLowerCase());
+    const colIndex = {};
+    let ok = true;
+    for (const [key, aliases, required] of spec){
+      const idx = cells.findIndex((c, ci) => c && aliases.some(a => c.includes(a)) && !Object.values(colIndex).includes(ci));
+      if (idx === -1){ if (required){ ok = false; break; } continue; }
+      colIndex[key] = idx;
+    }
+    if (ok && Object.keys(colIndex).length) return { headerIndex: i, colIndex };
+  }
+  return null;
+}
+const MBU_MONTH_NAMES_1 = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; // 1-indexed (0 = whole year); the 0-indexed MBU_MONTH_NAMES above is the website-users grid's
+function mbuSeedYearSelect(sel, defaultYear){
+  if (!sel || sel.options.length) return;
+  const base = new Date().getFullYear();
+  const years = []; for (let y = base + 1; y >= base - 4; y--) years.push(y);
+  sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = String(defaultYear || base);
+}
+const mbuNum = v => { const n = Number(String(v == null ? '' : v).replace(/[,%$\s]/g, '')); return Number.isFinite(n) ? n : null; };
+// Accepts "2.38" (minutes), "2m 23s", "0:02:23", "143s".
+function mbuParseEngagementMinutes(v){
+  const t = String(v == null ? '' : v).trim().toLowerCase();
+  if (!t) return null;
+  let m;
+  if ((m = t.match(/^(\d+):(\d+):(\d+)$/))) return Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 60;
+  if ((m = t.match(/^(\d+):(\d+)$/))) return Number(m[1]) + Number(m[2]) / 60;
+  if ((m = t.match(/(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)/)) && (m[1] || m[2])) return (Number(m[1] || 0)) + Number(m[2] || 0) / 60;
+  return mbuNum(t);
+}
+
+// ---------- Website engagement (GA4 export) ----------
+let mbuEngagementRows = [];
+async function mbuLoadEngagement(){
+  const body = document.getElementById('mbuEngagementBody');
+  const status = document.getElementById('mbuEngagementStatus');
+  const yearSel = document.getElementById('mbuEngagementYear');
+  const monthSel = document.getElementById('mbuEngagementMonth');
+  if (!body || !yearSel || !monthSel) return;
+  mbuSeedYearSelect(yearSel, new Date().getFullYear());
+  const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
+  mbuEngagementRows = [];
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-engagement?year=${year}`);
+      if (resp.ok){ const data = await resp.json(); mbuEngagementRows = (data.rows || []).filter(r => r.month === month); }
+    } catch (e){ console.warn('mbuLoadEngagement: fetch failed', e); }
+  }
+  mbuRenderEngagementRows();
+  if (status) status.textContent = '';
+}
+function mbuRenderEngagementRows(){
+  const body = document.getElementById('mbuEngagementBody');
+  const summary = document.getElementById('mbuEngagementSummary');
+  if (!body) return;
+  const rows = mbuEngagementRows;
+  body.innerHTML = rows.length ? rows.map((r, i) => `<tr>
+    <td><input type="text" class="tbl-input" style="width:180px;" value="${escapeHtml(r.channelGroup || '')}" data-i="${i}" data-key="channelGroup" onchange="mbuQueueEngagementSave()"></td>
+    <td><input type="number" min="0" step="1" class="tbl-input" style="width:110px;" value="${r.sessions == null ? '' : r.sessions}" data-i="${i}" data-key="sessions" onchange="mbuQueueEngagementSave()"></td>
+    <td><input type="number" min="0" step="1" class="tbl-input" style="width:110px;" value="${r.engagedSessions == null ? '' : r.engagedSessions}" data-i="${i}" data-key="engagedSessions" onchange="mbuQueueEngagementSave()"></td>
+    <td>${r.engagementRate != null ? (r.engagementRate * 100).toFixed(1) + '%' : (r.sessions > 0 && r.engagedSessions != null ? ((r.engagedSessions / r.sessions) * 100).toFixed(1) + '%' : '<span class="hint">—</span>')}</td>
+    <td><input type="number" min="0" step="0.01" class="tbl-input" style="width:100px;" value="${r.avgEngagementTimeMin == null ? '' : r.avgEngagementTimeMin}" data-i="${i}" data-key="avgEngagementTimeMin" onchange="mbuQueueEngagementSave()"></td>
+    <td><button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mbuDeleteEngagementRow(${i})">Remove</button></td>
+  </tr>`).join('') : '<tr><td colspan="6" class="hint">No rows for this period yet — upload the GA4 export or add channel groups.</td></tr>';
+  if (summary){
+    const sess = rows.reduce((t, r) => t + (Number(r.sessions) || 0), 0);
+    const eng = rows.reduce((t, r) => t + (Number(r.engagedSessions) || 0), 0);
+    let tw = 0, w = 0; rows.forEach(r => { if (r.avgEngagementTimeMin != null && r.engagedSessions > 0){ tw += r.avgEngagementTimeMin * r.engagedSessions; w += r.engagedSessions; } });
+    summary.innerHTML = rows.length ? `Total <b>${sess.toLocaleString()}</b> sessions · <b>${eng.toLocaleString()}</b> engaged (${sess > 0 ? ((eng / sess) * 100).toFixed(1) : '—'}% engagement rate) · session-weighted avg engagement time <b>${w > 0 ? (tw / w).toFixed(2) : '—'} min</b>. This is what the Website Engagement tile reads for campaigns in this year.` : '';
+  }
+}
+function mbuAddEngagementRow(){ mbuEngagementRows.push({ channelGroup: '', sessions: null, engagedSessions: null, engagementRate: null, avgEngagementTimeMin: null }); mbuRenderEngagementRows(); }
+async function mbuDeleteEngagementRow(i){
+  const r = mbuEngagementRows[i]; if (!r) return;
+  const yearSel = document.getElementById('mbuEngagementYear'), monthSel = document.getElementById('mbuEngagementMonth');
+  mbuEngagementRows.splice(i, 1); mbuRenderEngagementRows();
+  if (r.channelGroup && dataSourceLabel === 'backend'){
+    try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-engagement?year=${yearSel.value}&month=${monthSel.value}&channelGroup=${encodeURIComponent(r.channelGroup)}`, { method: 'DELETE' }); } catch (e){ console.warn('mbuDeleteEngagementRow failed', e); }
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  }
+}
+let mbuEngagementSaveTimer = null;
+function mbuQueueEngagementSave(){
+  const body = document.getElementById('mbuEngagementBody');
+  body.querySelectorAll('input[data-i][data-key]').forEach(inp => { const r = mbuEngagementRows[Number(inp.dataset.i)]; if (r) r[inp.dataset.key] = inp.dataset.key === 'channelGroup' ? inp.value : (inp.value === '' ? null : Number(inp.value)); });
+  const status = document.getElementById('mbuEngagementStatus'); if (status) status.textContent = 'Saving…';
+  if (mbuEngagementSaveTimer) clearTimeout(mbuEngagementSaveTimer);
+  mbuEngagementSaveTimer = setTimeout(() => mbuSaveEngagement(false), 600);
+}
+async function mbuSaveEngagement(replace){
+  const status = document.getElementById('mbuEngagementStatus');
+  const yearSel = document.getElementById('mbuEngagementYear'), monthSel = document.getElementById('mbuEngagementMonth');
+  const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
+  const rows = mbuEngagementRows.filter(r => (r.channelGroup || '').trim()).map(r => ({ year, month, channelGroup: r.channelGroup.trim(), sessions: r.sessions, engagedSessions: r.engagedSessions, engagementRate: r.engagementRate, avgEngagementTimeMin: r.avgEngagementTimeMin }));
+  if (!rows.length){ if (status) status.textContent = 'Nothing to save yet — give each row a channel group.'; return; }
+  let persisted = false, err = null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-engagement`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace: replace ? { year, month } : undefined })
+      });
+      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
+    } catch (e){ console.warn('mbuSaveEngagement failed', e); }
+  }
+  if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} channel group${rows.length === 1 ? '' : 's'} for ${MBU_MONTH_NAMES_1[month] || 'whole year'} ${year}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  if (persisted) mbuLoadEngagement();
+}
+async function mbuHandleEngagementFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mbuEngagementStatus');
+  const preview = document.getElementById('mbuEngagementPreview');
+  if (!file) return;
+  if (status) status.textContent = `Reading ${file.name}…`;
+  try {
+    const grid = await mbuReadFileGrid(file);
+    const found = mbuFindHeaderRow(grid, [
+      ['channelGroup', ['channel group', 'channel'], true],
+      ['sessions', ['sessions'], true],
+      ['engagedSessions', ['engaged session', 'engaged'], false],
+      ['engagementRate', ['engagement rate'], false],
+      ['avgTime', ['average engagement time', 'avg engagement time', 'engagement time'], false]
+    ]);
+    if (!found) throw new Error('Couldn\'t find a header row with "Channel group" and "Sessions" — export GA4\'s Traffic acquisition report by Session default channel group.');
+    const { headerIndex, colIndex } = found;
+    // GA4 exports repeat "Sessions" — take the first for sessions; if the
+    // engaged column wasn't matched separately, look for a second sessions
+    // column with "engaged" in its header.
+    const parsed = [];
+    for (let i = headerIndex + 1; i < grid.length; i++){
+      const r = grid[i] || [];
+      const cg = String(r[colIndex.channelGroup] || '').trim();
+      if (!cg) continue; // the export's total row has no channel label — skipped, the app re-totals
+      parsed.push({
+        channelGroup: cg,
+        sessions: mbuNum(r[colIndex.sessions]),
+        engagedSessions: colIndex.engagedSessions != null ? mbuNum(r[colIndex.engagedSessions]) : null,
+        engagementRate: colIndex.engagementRate != null ? (() => { const v = mbuNum(r[colIndex.engagementRate]); return v == null ? null : (v > 1 ? v / 100 : v); })() : null,
+        avgEngagementTimeMin: colIndex.avgTime != null ? mbuParseEngagementMinutes(r[colIndex.avgTime]) : null
+      });
+    }
+    if (!parsed.length) throw new Error('Header found but no channel-group rows under it.');
+    const yearSel = document.getElementById('mbuEngagementYear'), monthSel = document.getElementById('mbuEngagementMonth');
+    if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
+      <b>${parsed.length} channel group${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} for <b>${MBU_MONTH_NAMES_1[parseInt(monthSel.value, 10)] || 'whole year / YTD'} ${yearSel.value}</b> (change the Year / Period above if that's wrong): ${parsed.map(p => escapeHtml(p.channelGroup)).join(', ')}.
+      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmEngagementUpload()">Save — replace this period</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuEngagementPreview').innerHTML='';mbuPendingEngagement=null;">Cancel</button></div></div>`;
+    mbuPendingEngagement = parsed;
+    if (status) status.textContent = '';
+  } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
+  event.target.value = '';
+}
+let mbuPendingEngagement = null;
+async function mbuConfirmEngagementUpload(){
+  if (!mbuPendingEngagement) return;
+  mbuEngagementRows = mbuPendingEngagement; mbuPendingEngagement = null;
+  const preview = document.getElementById('mbuEngagementPreview'); if (preview) preview.innerHTML = '';
+  mbuRenderEngagementRows();
+  await mbuSaveEngagement(true);
+}
+
+// ---------- Leads by type, by month ----------
+let mbuLeadRows = [];
+let mbuLeadYearTotals = [];
+async function mbuLoadLeadCounts(){
+  const body = document.getElementById('mbuLeadBody');
+  const status = document.getElementById('mbuLeadStatus');
+  const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
+  if (!body || !yearSel || !monthSel) return;
+  if (!yearSel.options.length){ mbuSeedYearSelect(yearSel, new Date().getFullYear()); monthSel.value = String(new Date().getMonth() + 1); }
+  const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
+  mbuLeadRows = []; mbuLeadYearTotals = [];
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts?year=${year}`);
+      if (resp.ok){ const data = await resp.json(); mbuLeadRows = (data.rows || []).filter(r => r.month === month); mbuLeadYearTotals = data.totals || []; }
+    } catch (e){ console.warn('mbuLoadLeadCounts: fetch failed', e); }
+  }
+  mbuRenderLeadRows();
+  if (status) status.textContent = '';
+}
+function mbuRenderLeadRows(){
+  const body = document.getElementById('mbuLeadBody');
+  const summary = document.getElementById('mbuLeadSummary');
+  const yearTotalsEl = document.getElementById('mbuLeadYearTotals');
+  if (!body) return;
+  const rows = mbuLeadRows;
+  const typeSel = (i, v) => `<select class="tbl-select" data-i="${i}" data-key="leadType" onchange="mbuQueueLeadSave()"><option value="High Value"${v === 'High Value' ? ' selected' : ''}>High Value</option><option value="Registration"${v === 'Registration' ? ' selected' : ''}>Registration</option></select>`;
+  body.innerHTML = rows.length ? rows.map((r, i) => `<tr>
+    <td><input type="text" class="tbl-input" style="width:140px;" placeholder="website / Meta / coreg…" value="${escapeHtml(r.source || '')}" data-i="${i}" data-key="source" onchange="mbuQueueLeadSave()"></td>
+    <td>${typeSel(i, r.leadType || 'High Value')}</td>
+    <td><input type="text" class="tbl-input" style="width:200px;" placeholder="e.g. Request a Quote" value="${escapeHtml(r.formName || '')}" data-i="${i}" data-key="formName" onchange="mbuQueueLeadSave()"></td>
+    <td><input type="number" min="0" step="1" class="tbl-input" style="width:100px;" value="${r.count == null ? '' : r.count}" data-i="${i}" data-key="count" onchange="mbuQueueLeadSave()"></td>
+    <td><button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mbuDeleteLeadRow(${i})">Remove</button></td>
+  </tr>`).join('') : '<tr><td colspan="5" class="hint">No rows for this month yet — upload a file or add rows.</td></tr>';
+  if (summary){
+    const hv = rows.filter(r => r.leadType === 'High Value').reduce((t, r) => t + (Number(r.count) || 0), 0);
+    const reg = rows.filter(r => r.leadType === 'Registration').reduce((t, r) => t + (Number(r.count) || 0), 0);
+    summary.innerHTML = rows.length ? `This month: <b>${hv.toLocaleString()}</b> High Value · <b>${reg.toLocaleString()}</b> Registrations across ${rows.length} row${rows.length === 1 ? '' : 's'}.` : '';
+  }
+  if (yearTotalsEl){
+    const yearSel = document.getElementById('mbuLeadYear');
+    const byMonth = {};
+    mbuLeadYearTotals.forEach(t => { (byMonth[t.month] = byMonth[t.month] || {})[t.leadType] = t.count; });
+    const months = Object.keys(byMonth).map(Number).sort((a, b) => a - b);
+    let hvY = 0, regY = 0; months.forEach(mo => { hvY += byMonth[mo]['High Value'] || 0; regY += byMonth[mo]['Registration'] || 0; });
+    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${yearSel ? yearSel.value : ''} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>High Value</th><th>Registration</th></tr></thead><tbody>${months.map(mo => `<tr><td>${MBU_MONTH_NAMES_1[mo]}</td><td>${(byMonth[mo]['High Value'] || 0).toLocaleString()}</td><td>${(byMonth[mo]['Registration'] || 0).toLocaleString()}</td></tr>`).join('')}<tr><td><b>Year to date</b></td><td><b>${hvY.toLocaleString()}</b></td><td><b>${regY.toLocaleString()}</b></td></tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">These are the actuals behind the High-Value Leads and Registrations tiles for campaigns in market during these months.</p>` : '';
+  }
+}
+function mbuAddLeadRow(){ mbuLeadRows.push({ source: '', leadType: 'High Value', formName: '', count: null }); mbuRenderLeadRows(); }
+async function mbuDeleteLeadRow(i){
+  const r = mbuLeadRows[i]; if (!r) return;
+  const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
+  mbuLeadRows.splice(i, 1); mbuRenderLeadRows();
+  if (r.source && dataSourceLabel === 'backend'){
+    try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts?year=${yearSel.value}&month=${monthSel.value}&source=${encodeURIComponent(r.source)}&leadType=${encodeURIComponent(r.leadType || '')}&formName=${encodeURIComponent(r.formName || '')}`, { method: 'DELETE' }); } catch (e){ console.warn('mbuDeleteLeadRow failed', e); }
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+    mbuLoadLeadCounts();
+  }
+}
+let mbuLeadSaveTimer = null;
+function mbuQueueLeadSave(){
+  const body = document.getElementById('mbuLeadBody');
+  body.querySelectorAll('[data-i][data-key]').forEach(inp => { const r = mbuLeadRows[Number(inp.dataset.i)]; if (r) r[inp.dataset.key] = inp.dataset.key === 'count' ? (inp.value === '' ? null : Number(inp.value)) : inp.value; });
+  const status = document.getElementById('mbuLeadStatus'); if (status) status.textContent = 'Saving…';
+  if (mbuLeadSaveTimer) clearTimeout(mbuLeadSaveTimer);
+  mbuLeadSaveTimer = setTimeout(() => mbuSaveLeadCounts(null), 600);
+}
+async function mbuSaveLeadCounts(rowsOverride){
+  const status = document.getElementById('mbuLeadStatus');
+  const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
+  const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
+  const rows = rowsOverride || mbuLeadRows.filter(r => (r.source || '').trim()).map(r => ({ year, month, source: r.source.trim(), leadType: r.leadType, formName: (r.formName || '').trim(), count: r.count }));
+  if (!rows.length){ if (status) status.textContent = 'Nothing to save yet — give each row a source.'; return; }
+  let persisted = false, err = null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows })
+      });
+      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
+    } catch (e){ console.warn('mbuSaveLeadCounts failed', e); }
+  }
+  if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} row${rows.length === 1 ? '' : 's'}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  if (persisted) mbuLoadLeadCounts();
+}
+let mbuPendingLeads = null;
+async function mbuHandleLeadFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mbuLeadStatus');
+  const preview = document.getElementById('mbuLeadPreview');
+  if (!file) return;
+  if (status) status.textContent = `Reading ${file.name}…`;
+  try {
+    const grid = await mbuReadFileGrid(file);
+    const found = mbuFindHeaderRow(grid, [
+      ['source', ['source', 'channel'], true],
+      ['leadType', ['lead type', 'type', 'designation'], true],
+      ['formName', ['form'], false],
+      ['count', ['count', 'emails', 'leads', 'qty', 'quantity'], true],
+      ['year', ['year'], false],
+      ['month', ['month'], false],
+      ['date', ['date', 'period'], false]
+    ]);
+    if (!found) throw new Error('Couldn\'t find a header row with Source, Lead Type and Count columns.');
+    const { headerIndex, colIndex } = found;
+    const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
+    const defYear = parseInt(yearSel.value, 10), defMonth = parseInt(monthSel.value, 10);
+    const parsed = [], problems = [];
+    for (let i = headerIndex + 1; i < grid.length; i++){
+      const r = grid[i] || [];
+      const source = String(r[colIndex.source] || '').trim();
+      if (!source) continue;
+      let year = colIndex.year != null ? parseInt(r[colIndex.year], 10) : NaN;
+      let month = colIndex.month != null ? parseInt(r[colIndex.month], 10) : NaN;
+      if (colIndex.month != null && !Number.isFinite(month)){ const mi = MBU_MONTH_NAMES_1.findIndex(n => n && String(r[colIndex.month] || '').trim().toLowerCase().startsWith(n.toLowerCase())); if (mi > 0) month = mi; }
+      if (colIndex.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[colIndex.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
+      if (!Number.isFinite(year)) year = defYear;
+      if (!Number.isFinite(month)) month = defMonth;
+      const leadTypeRaw = String(r[colIndex.leadType] || '').trim();
+      const leadType = /high|value|hv/i.test(leadTypeRaw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(leadTypeRaw) ? 'Registration' : null);
+      if (!leadType){ problems.push(`row ${i + 1}: lead type "${leadTypeRaw}" isn't High Value or Registration`); continue; }
+      const count = mbuNum(r[colIndex.count]);
+      parsed.push({ year, month, source, leadType, formName: colIndex.formName != null ? String(r[colIndex.formName] || '').trim() : '', count });
+    }
+    if (!parsed.length) throw new Error(problems.length ? problems.join('; ') : 'Header found but no lead rows under it.');
+    const periods = [...new Set(parsed.map(p => `${MBU_MONTH_NAMES_1[p.month]} ${p.year}`))];
+    const hv = parsed.filter(p => p.leadType === 'High Value').reduce((t, p) => t + (p.count || 0), 0);
+    const reg = parsed.filter(p => p.leadType === 'Registration').reduce((t, p) => t + (p.count || 0), 0);
+    mbuPendingLeads = parsed;
+    if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
+      <b>${parsed.length} row${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} — ${periods.length === 1 ? `for <b>${escapeHtml(periods[0])}</b>${colIndex.year == null && colIndex.month == null && colIndex.date == null ? ' (no Year/Month columns in the file, so the Year / Month selected above is used — change them first if that\'s wrong)' : ''}` : `across ${periods.length} periods (${escapeHtml(periods.join(', '))})`}: <b>${hv.toLocaleString()}</b> High Value, <b>${reg.toLocaleString()}</b> Registration.${problems.length ? `<div style="color:var(--advocacy);margin-top:4px;">Skipped: ${escapeHtml(problems.slice(0, 5).join('; '))}${problems.length > 5 ? ` (+${problems.length - 5} more)` : ''}</div>` : ''}
+      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmLeadUpload()">Save rows</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuLeadPreview').innerHTML='';mbuPendingLeads=null;">Cancel</button></div></div>`;
+    if (status) status.textContent = '';
+  } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
+  event.target.value = '';
+}
+async function mbuConfirmLeadUpload(){
+  if (!mbuPendingLeads) return;
+  const rows = mbuPendingLeads; mbuPendingLeads = null;
+  const preview = document.getElementById('mbuLeadPreview'); if (preview) preview.innerHTML = '';
+  await mbuSaveLeadCounts(rows);
 }
 
 // 2026-09-28 — Demand fulfillment assumptions card (see
