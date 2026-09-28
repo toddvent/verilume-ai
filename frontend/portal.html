@@ -11890,7 +11890,7 @@
         <div class="hicon">📇</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Source (website, Meta, coreg, transaction…) × Lead Type (High Value or Registration) × Form Name, count of emails, per month. High Value = the annual model's value leads (talk to expert / quote / request info); Registration = growth leads (subscribe / brochure / popup / share / contact).</p>
+        <p class="hint" style="margin-top:0;">Source (website, Meta, coreg, transaction…) × Lead Type (High Value or Registration) × Form Name, count of emails, per month — plus, when you have them, Bookings and Avg Days to Convert per row (upload columns: Month, Source, Lead Type, Form Name, Total Leads, Bookings, Avg Days to Convert; Conversion Rate is derived, not stored). High Value = the annual model's value leads (talk to expert / quote / request info); Registration = growth leads (subscribe / brochure / popup / share / contact). Measured per-pool conversion and days-to-convert override the stage seeds in the campaign funnel, Transaction Window and timing.</p>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
           <label for="mbuLeadYear" style="margin:0;">Year</label>
           <select id="mbuLeadYear" class="tbl-select" onchange="mbuLoadLeadCounts()"></select>
@@ -11905,12 +11905,51 @@
         <div id="mbuLeadPreview"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" style="min-width:640px;">
-            <thead><tr><th>Source</th><th>Lead type</th><th>Form name</th><th>Count of email</th><th></th></tr></thead>
+            <thead><tr><th>Source</th><th>Lead type</th><th>Form name</th><th>Count of email</th><th>Bookings</th><th>Avg days to convert</th><th></th></tr></thead>
             <tbody id="mbuLeadBody"></tbody>
           </table>
         </div>
         <p class="hint" id="mbuLeadSummary" style="margin:8px 0 0;"></p>
         <div id="mbuLeadYearTotals" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- 2026-09-28 (round 5) — Unique transactions by month by Product
+         Group, per direct question "I have unique transactions by month
+         by product group also. Did we add them?" — we had not. Upload
+         (Month, Product Group, Transactions, Revenue; Year optional) or
+         manual rows. Feeds the Campaign Summary's Transactions actual for
+         a campaign's in-market months (narrowed to the campaign's Product
+         Groups when they match rows on file) and a per-year seasonality
+         index once all 12 months exist. See account_transactions_monthly. -->
+    <div class="sk-card" id="mbuTransactionsCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Manual bridge — until the booking / order integration</div><h3>Unique transactions by month, by Product Group</h3></div>
+        <div class="hicon">🧾</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Unique transactions (and revenue, if you have it) per month per Product Group — use the account's Marketing Calendar Product Groups so campaigns tagged with a Product Group read their own actuals; leave Product Group blank for an all-products row. Upload a file with a Month column to load a whole year at once.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+          <label for="mbuTxnYear" style="margin:0;">Year</label>
+          <select id="mbuTxnYear" class="tbl-select" onchange="mbuLoadTransactions()"></select>
+          <label for="mbuTxnMonth" style="margin:0;">Month</label>
+          <select id="mbuTxnMonth" class="tbl-select" onchange="mbuLoadTransactions()">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload transactions (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleTxnFile(event)"></label>
+          <button type="button" class="btn-ghost" onclick="mbuAddTxnRow()">+ Add row</button>
+          <span class="hint" id="mbuTxnStatus" style="margin:0;"></span>
+        </div>
+        <div id="mbuTxnPreview"></div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="min-width:560px;">
+            <thead><tr><th>Product Group</th><th>Unique transactions</th><th>Revenue (optional)</th><th></th></tr></thead>
+            <tbody id="mbuTxnBody"></tbody>
+          </table>
+        </div>
+        <datalist id="mbuTxnProductGroupList"></datalist>
+        <p class="hint" id="mbuTxnSummary" style="margin:8px 0 0;"></p>
+        <div id="mbuTxnYearTotals" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -12346,7 +12385,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-analysis-target-actual-variance-tables';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-lead-pool-economics-and-monthly-transactions';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26840,10 +26879,24 @@ function updateTransactionWindowDefault(){
   const baseDays = stage ? (TRANSACTION_WINDOW_DAYS_BY_STAGE[stage] || DEFAULT_TRANSACTION_WINDOW_DAYS) : DEFAULT_TRANSACTION_WINDOW_DAYS;
   const industryMult = industryCycleMultiplier();
   const wealthMult = wealthTierMultiplier();
-  const days = Math.max(TRANSACTION_WINDOW_MIN_DAYS, Math.min(TRANSACTION_WINDOW_MAX_DAYS, Math.round(baseDays * industryMult * wealthMult)));
+  // 2026-09-28 (round 5) — measured days-to-convert (Leads by type, by
+  // month; lead-weighted across High Value and Registration pools, mature
+  // months only) outranks the stage × industry × wealth heuristic when
+  // this account has it. Loaded lazily; re-runs once it arrives.
+  const pe = cmpLeadPoolEconomicsCache && cmpLeadPoolEconomicsCache.accountId === state.companyId ? cmpLeadPoolEconomicsCache.economics : null;
+  if (!pe && !cmpLeadPoolEconomicsLoading && dataSourceLabel === 'backend' && state.companyId){ cmpLoadLeadPoolEconomics().then(() => { if (cmpTransactionWindowAuto) updateTransactionWindowDefault(); }); }
+  const pools = pe && Array.isArray(pe.pools) ? pe.pools.filter(x => x.avgDaysToConvert != null && x.leads >= 50) : [];
+  const measuredDays = pools.length ? pools.reduce((a, x) => a + x.avgDaysToConvert * x.leads, 0) / pools.reduce((a, x) => a + x.leads, 0) : null;
+  const days = measuredDays != null
+    ? Math.max(TRANSACTION_WINDOW_MIN_DAYS, Math.min(TRANSACTION_WINDOW_MAX_DAYS, Math.round(measuredDays * 1.5))) // window = ~1.5× the average lag, so the bulk of the distribution's tail is inside it
+    : Math.max(TRANSACTION_WINDOW_MIN_DAYS, Math.min(TRANSACTION_WINDOW_MAX_DAYS, Math.round(baseDays * industryMult * wealthMult)));
   field.value = days;
   const hint = document.getElementById('cmpTransactionWindowHint');
   if (!hint) return;
+  if (measuredDays != null){
+    hint.textContent = `Defaulted to ${days} days — 1.5× this account's measured average lead → booking time (${pools.map(x => `${x.leadType} ${Math.round(x.avgDaysToConvert)}d`).join(', ')}, from Leads by type, by month), so most conversions land inside the window — edit anytime.`;
+    return;
+  }
   if (!stage){
     hint.textContent = `Defaulted to ${days} days — pick an Objective or Media Loop stage for a more specific default, or edit directly.`;
     return;
@@ -27158,9 +27211,34 @@ function cmpFunnelRatesForCampaign(c){
 // Purchase-stage Entertainment, which is already the highest stage rate
 // combined with the highest-clamped industry multiplier).
 function cmpClampRate(rate, min, max){ return Math.max(min, Math.min(max, rate)); }
+// 2026-09-28 (round 5) — measured lead-pool economics for this account
+// (GET .../lead-counts → poolEconomics, mature months only), loaded once
+// per account; when the High Value pool has a measured conversion it
+// replaces the stage × industry Leads → Bookings seed below, since a
+// qualified (High Value) lead is what that step models.
+let cmpLeadPoolEconomicsCache = null; // { accountId, economics }
+let cmpLeadPoolEconomicsLoading = false;
+async function cmpLoadLeadPoolEconomics(){
+  if (cmpLeadPoolEconomicsCache && cmpLeadPoolEconomicsCache.accountId === state.companyId) return cmpLeadPoolEconomicsCache.economics;
+  if (dataSourceLabel !== 'backend' || !state.companyId || cmpLeadPoolEconomicsLoading) return null;
+  cmpLeadPoolEconomicsLoading = true;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts`);
+    const data = resp.ok ? await resp.json() : {};
+    cmpLeadPoolEconomicsCache = { accountId: state.companyId, economics: data.poolEconomics || null };
+  } catch (e){ cmpLeadPoolEconomicsCache = { accountId: state.companyId, economics: null }; }
+  cmpLeadPoolEconomicsLoading = false;
+  return cmpLeadPoolEconomicsCache.economics;
+}
+function cmpMeasuredHighValueConversion(){
+  const pe = cmpLeadPoolEconomicsCache && cmpLeadPoolEconomicsCache.accountId === state.companyId ? cmpLeadPoolEconomicsCache.economics : null;
+  const hv = pe && Array.isArray(pe.pools) ? pe.pools.find(x => x.leadType === 'High Value') : null;
+  return hv && hv.conversionRate != null && hv.leads >= 50 ? hv : null; // ≥50 mature leads before it outranks the seed
+}
 function cmpStageIndustryFunnelSeed(stage){
   const base = (stage && FUNNEL_CONVERSION_BY_STAGE[stage]) || DEFAULT_FUNNEL_CONVERSION;
   const mult = getIndustryFunnelMultiplier();
+  const measuredHv = cmpMeasuredHighValueConversion();
   // Round 132ao (2026-08-12) follow-up — direct-purchase rate reuses the
   // same booking-stage table/multiplier shape as the Lead path's booking
   // rate (both represent "how good is this stage/industry at converting
@@ -27170,7 +27248,8 @@ function cmpStageIndustryFunnelSeed(stage){
   return {
     visitRate: cmpClampRate(base.visitRate * mult.visit, 0.0005, 0.06),
     leadRate: cmpClampRate(base.leadRate * mult.lead, 0.003, 0.20),
-    bookingRate: cmpClampRate(base.bookingRate * mult.booking, 0.05, 0.65),
+    bookingRate: measuredHv ? cmpClampRate(measuredHv.conversionRate, 0.005, 0.8) : cmpClampRate(base.bookingRate * mult.booking, 0.05, 0.65),
+    bookingRateSource: measuredHv ? `measured: ${Math.round(measuredHv.bookings).toLocaleString()} bookings from ${Math.round(measuredHv.leads).toLocaleString()} High Value leads over ${measuredHv.matureMonths} mature month${measuredHv.matureMonths === 1 ? '' : 's'}` : 'stage × industry seed',
     directPurchaseRate: cmpClampRate(directBase * mult.booking, 0.002, 0.08),
     // 2026-09-28 — see REGISTRATION_RATE_BY_STAGE.
     registrationRate: cmpClampRate(((stage && REGISTRATION_RATE_BY_STAGE[stage]) || DEFAULT_REGISTRATION_RATE) * mult.lead, 0.005, 0.25),
@@ -27184,6 +27263,11 @@ function cmpToggleFunnelFields(){
   const show = FUNNEL_KPIS.includes(kpi);
   wrap.style.display = show ? '' : 'none';
   if (!show) return;
+  // Measured pool economics load once; re-seed when they arrive so the
+  // booking-rate field starts from the account's own number.
+  if (!(cmpLeadPoolEconomicsCache && cmpLeadPoolEconomicsCache.accountId === state.companyId) && !cmpLeadPoolEconomicsLoading){
+    cmpLoadLeadPoolEconomics().then(() => { if (document.getElementById('cmpFunnelAssumptionsWrap')) cmpToggleFunnelFields(); });
+  }
   const stage = inferredFunnelStage();
   const seed = cmpStageIndustryFunnelSeed(stage);
   const seedField = (id, pct) => { const f = document.getElementById(id); if (f && !f.value) f.value = pct; };
@@ -27211,8 +27295,9 @@ function cmpToggleFunnelFields(){
   }
   const stageNote = document.getElementById('cmpFunnelAssumptionsStageNote');
   const hasIndustry = state.industry && INDUSTRY_FUNNEL_MULTIPLIER[state.industry];
+  const measuredNote = seed.bookingRateSource && seed.bookingRateSource.startsWith('measured') ? ` Leads → Bookings is ${seed.bookingRateSource} (Leads by type, by month) — not a seed.` : '';
   if (stageNote) stageNote.textContent = stage
-    ? `Seeded for the ${stage} stage${hasIndustry ? ` and this account's Industry (${state.industry})` : ''} — from published, cross-channel funnel-benchmark studies (not tied to any single media platform), mapped to the closest matching category (see the funnel-hierarchy doc for sourcing). Always yours to edit from your own research — saved with this campaign, so your numbers are exactly what's here the next time you open it.`
+    ? `Seeded for the ${stage} stage${hasIndustry ? ` and this account's Industry (${state.industry})` : ''} — from published, cross-channel funnel-benchmark studies (not tied to any single media platform), mapped to the closest matching category (see the funnel-hierarchy doc for sourcing).${measuredNote} Always yours to edit from your own research — saved with this campaign, so your numbers are exactly what's here the next time you open it.`
     : `No Media Loop stage inferred yet — seeded with generic mid-funnel defaults${hasIndustry ? `, adjusted for this account's Industry (${state.industry})` : ''}. Pick an Objective or stage tile for a stage-specific starting point.`;
   // Round 132[new] (2026-08-11) — Avg. order value used to surface only for
   // a Revenue goal (converting Revenue backward through Bookings). No KPI in
@@ -42698,17 +42783,21 @@ async function cmpLoadCampaignSummaryContext(){
   let demandFulfillment = null;
   let engagementSummaries = [];
   let leadTotals = [];
+  let leadPoolEconomics = null;
+  let transactionTotals = [], transactionRows = [], transactionSeasonality = {};
   if (dataSourceLabel === 'backend'){
     const acct = encodeURIComponent(state.companyId);
-    const [planResp, timingResp, dfResp, engResp, leadResp] = await Promise.all([
+    const [planResp, timingResp, dfResp, engResp, leadResp, txnResp] = await Promise.all([
       authedFetch(`${BACKEND_URL}/api/accounts/${acct}/annual-plan`).catch(() => null),
       authedFetch(`${BACKEND_URL}/api/accounts/${acct}/channel-timing`).catch(() => null),
       authedFetch(`${BACKEND_URL}/api/accounts/${acct}/demand-fulfillment`).catch(() => null),
       authedFetch(`${BACKEND_URL}/api/accounts/${acct}/website-engagement`).catch(() => null),
-      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/lead-counts`).catch(() => null)
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/lead-counts`).catch(() => null),
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/transactions-monthly`).catch(() => null)
     ]);
     try { if (engResp && engResp.ok){ const data = await engResp.json(); engagementSummaries = data.summaries || []; } } catch (e){ console.warn('cmpLoadCampaignSummaryContext: engagement parse failed', e); }
-    try { if (leadResp && leadResp.ok){ const data = await leadResp.json(); leadTotals = data.totals || []; } } catch (e){ console.warn('cmpLoadCampaignSummaryContext: lead counts parse failed', e); }
+    try { if (leadResp && leadResp.ok){ const data = await leadResp.json(); leadTotals = data.totals || []; leadPoolEconomics = data.poolEconomics || null; cmpLeadPoolEconomicsCache = { accountId: state.companyId, economics: leadPoolEconomics }; } } catch (e){ console.warn('cmpLoadCampaignSummaryContext: lead counts parse failed', e); }
+    try { if (txnResp && txnResp.ok){ const data = await txnResp.json(); transactionTotals = data.totals || []; transactionRows = data.rows || []; transactionSeasonality = data.seasonality || {}; } } catch (e){ console.warn('cmpLoadCampaignSummaryContext: transactions parse failed', e); }
     try {
       if (planResp && planResp.ok){
         const data = await planResp.json();
@@ -42725,7 +42814,7 @@ async function cmpLoadCampaignSummaryContext(){
       if (dfResp && dfResp.ok){ demandFulfillment = await dfResp.json(); }
     } catch (e){ console.warn('cmpLoadCampaignSummaryContext: demand fulfillment parse failed', e); }
   }
-  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear, timingByCategory, demandFulfillment, engagementSummaries, leadTotals };
+  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear, timingByCategory, demandFulfillment, engagementSummaries, leadTotals, leadPoolEconomics, transactionTotals, transactionRows, transactionSeasonality };
   return cmpSummaryCtxCache;
 }
 // 2026-09-28 — expected impact timing for one campaign off the resolved
@@ -42744,7 +42833,10 @@ function cmpCampaignTimingNote(campaign, ctx){
   const firstImpact = new Date(start.getTime() + (slowest.effective.lagWeeks || 0) * 7 * 86400000);
   const fmtD = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   const evidence = rows.some(r => r.override || r.mmm);
-  return `Expected timing: first outcome impact ~${slowest.effective.lagWeeks || 0} wk after start (${fmtD(firstImpact)}) on ${escapeHtml(slowest.category)}; carryover half-life up to ${longestTail.effective.carryoverHalfLifeWeeks || 0} wk (${escapeHtml(longestTail.category)}). ${evidence ? 'Includes this account\u2019s own MMM/test evidence.' : 'Generic priors' + (slowest.industryAdjusted && slowest.industryAdjusted.factor ? ' stretched for this Industry' : '') + ' — record a DMA test read or apply an MMM estimate under MMM → Analysis Readiness to replace them.'}`;
+  const pe = ctx.leadPoolEconomics;
+  const pools = pe && Array.isArray(pe.pools) ? pe.pools.filter(x => x.avgDaysToConvert != null) : [];
+  const leadLag = pools.length ? ` Measured lead → booking: ${pools.map(x => `${escapeHtml(x.leadType)} ~${Math.round(x.avgDaysToConvert)} days`).join(', ')} — don\u2019t read bookings before then.` : '';
+  return `Expected timing: first outcome impact ~${slowest.effective.lagWeeks || 0} wk after start (${fmtD(firstImpact)}) on ${escapeHtml(slowest.category)}; carryover half-life up to ${longestTail.effective.carryoverHalfLifeWeeks || 0} wk (${escapeHtml(longestTail.category)}).${leadLag} ${evidence ? 'Includes this account\u2019s own MMM/test evidence.' : 'Generic priors' + (slowest.industryAdjusted && slowest.industryAdjusted.factor ? ' stretched for this Industry' : '') + ' — record a DMA test read or apply an MMM estimate under MMM → Analysis Readiness to replace them.'}`;
 }
 // 2026-09-28 — Demand fulfillment forecast (see account_demand_fulfillment
 // on the backend): the four evergreen lines that scale with website
@@ -42978,6 +43070,31 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
       m.engagement = { avgEngagementTimeMin: w > 0 ? tw / w : null, engagementRate: sess > 0 ? eng / sess : null, sessions: sess, source: `${m.year} GA4 export, ${yr.length} month${yr.length === 1 ? '' : 's'}` };
     }
   }
+  // 2026-09-28 (round 5) — Transactions actual from Unique transactions by
+  // month (account_transactions_monthly) for the in-market months: rows
+  // matching this campaign's Product Groups when any do, else all rows.
+  // A logged actualConversions on a Transactions-KPI campaign still wins
+  // (it's campaign-attributed; this is account-wide).
+  m.transactionsActualNote = '';
+  if (m.actual.transactions == null && campaign.startDate && Array.isArray(ctx.transactionRows) && ctx.transactionRows.length){
+    const start = new Date(campaign.startDate);
+    const endRaw = campaign.endDate ? new Date(campaign.endDate) : new Date();
+    const end = endRaw > new Date() ? new Date() : endRaw;
+    const startMonth = new Date(start.getFullYear(), start.getMonth(), 1);
+    const inWin = r => { const d = new Date(r.year, r.month - 1, 1); const dEnd = new Date(r.year, r.month, 0); return dEnd >= startMonth && d <= end; };
+    const pgs = String(campaign.productGroups || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+    let rows = ctx.transactionRows.filter(inWin);
+    const pgRows = pgs.length ? rows.filter(r => pgs.includes(String(r.productGroup || '').trim().toLowerCase())) : [];
+    const narrowed = pgRows.length > 0;
+    if (narrowed) rows = pgRows; else rows = rows.filter(r => !String(r.productGroup || '').trim() || !pgs.length);
+    if (rows.length){
+      const months = [...new Set(rows.map(r => `${r.year}-${r.month}`))].length;
+      m.actual.transactions = rows.reduce((a, r) => a + (Number(r.transactions) || 0), 0);
+      const rev = rows.reduce((a, r) => a + (Number(r.revenue) || 0), 0);
+      if (m.actual.revenue == null && rows.some(r => r.revenue != null)) m.actual.revenue = rev;
+      m.transactionsActualNote = `Σ unique transactions across ${months} in-market month${months === 1 ? '' : 's'}${narrowed ? ` for ${escapeHtml(campaign.productGroups)}` : ' (all product groups)'}`;
+    }
+  }
   m.actual.leads = null; m.actual.registrations = null; m.leadActualNote = '';
   if (campaign.startDate && Array.isArray(ctx.leadTotals) && ctx.leadTotals.length){
     const start = new Date(campaign.startDate);
@@ -42993,6 +43110,25 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
       if (rows.some(t => t.leadType === 'Registration')) m.actual.registrations = reg;
       m.leadActualNote = `Σ logged leads across ${months} in-market month${months === 1 ? '' : 's'} (account-wide, all sources)`;
     }
+  }
+  // 2026-09-28 (round 5) — measured pool economics (mature months only —
+  // see computeLeadPoolEconomics, backend): lead-attributed transactions =
+  // target leads × High Value conversion + target registrations ×
+  // Registration conversion, shown under the Transactions target; and the
+  // lead-weighted days-to-convert, which becomes the campaign's expected
+  // lead → booking lag.
+  const pe = ctx.leadPoolEconomics;
+  const poolOf = t => pe && Array.isArray(pe.pools) ? pe.pools.find(x => x.leadType === t) : null;
+  const hv = poolOf('High Value'), reg = poolOf('Registration');
+  m.poolEconomics = (hv || reg) ? { hv, reg } : null;
+  m.target.leadAttributedTransactions = null;
+  if (m.poolEconomics){
+    let tot = 0, any = false;
+    if (hv && hv.conversionRate != null && m.target.leads != null){ tot += m.target.leads * hv.conversionRate; any = true; }
+    if (reg && reg.conversionRate != null && m.target.registrations != null){ tot += m.target.registrations * reg.conversionRate; any = true; }
+    if (any) m.target.leadAttributedTransactions = tot;
+    const dw = [hv, reg].filter(x => x && x.avgDaysToConvert != null && x.leads > 0);
+    m.measuredDaysToConvert = dw.length ? dw.reduce((a, x) => a + x.avgDaysToConvert * x.leads, 0) / dw.reduce((a, x) => a + x.leads, 0) : null;
   }
   // Roll-up / legacy fields: best current read per metric.
   m.spendIsActual = m.actual.spend != null; m.spend = m.spendIsActual ? m.actual.spend : m.target.spend; m.budget = m.target.spend;
@@ -43116,7 +43252,7 @@ async function cmpRenderAnalysisSummary(campaign){
     row({ key: 'registrations', label: 'Registrations', target: m.target.registrations, actual: m.actual.registrations, tracking: tr.registrations, fmt: fmtInt, shareField: 'growthLeads',
       note: `${(m.registrationRate * 100).toFixed(2)}% of website users (${escapeHtml(m.registrationRateSource)})${m.actual.registrations != null ? ' · ' + escapeHtml(m.leadActualNote) : ''}` }),
     row({ key: 'transactions', label: 'Transactions', target: m.target.transactions, actual: m.actual.transactions, tracking: tr.transactions, fmt: fmtInt, shareField: 'bookings', isPrimary: m.isTxnKpi,
-      note: escapeHtml(m.txnRateSource || '') })
+      note: escapeHtml(m.txnRateSource || '') + (m.target.leadAttributedTransactions != null ? ` · of which ~${fmtInt(m.target.leadAttributedTransactions)} lead-attributed at measured pool rates (High Value ${m.poolEconomics.hv && m.poolEconomics.hv.conversionRate != null ? (m.poolEconomics.hv.conversionRate * 100).toFixed(1) + '%' : '—'}, Registration ${m.poolEconomics.reg && m.poolEconomics.reg.conversionRate != null ? (m.poolEconomics.reg.conversionRate * 100).toFixed(2) + '%' : '—'})` : '') + (m.transactionsActualNote ? ' · actual = ' + m.transactionsActualNote : '') })
   ].join('');
   const head = `<thead><tr><th style="width:38%;">Metric</th><th>Target (annual model)</th><th>Actual</th><th>Variance</th></tr></thead>`;
   el.innerHTML = `
@@ -66712,6 +66848,7 @@ function mbuLoadReachInputs(){
   mbuLoadDemandFulfillment();
   mbuLoadEngagement();
   mbuLoadLeadCounts();
+  mbuLoadTransactions();
 }
 async function mbuLoadWebsiteUsersMonthly(){
   const body = document.getElementById('mbuWebsiteUsersBody');
@@ -67409,6 +67546,7 @@ async function mbuConfirmEngagementUpload(){
 // ---------- Leads by type, by month ----------
 let mbuLeadRows = [];
 let mbuLeadYearTotals = [];
+let mbuLeadPoolEconomics = null;
 async function mbuLoadLeadCounts(){
   const body = document.getElementById('mbuLeadBody');
   const status = document.getElementById('mbuLeadStatus');
@@ -67420,7 +67558,7 @@ async function mbuLoadLeadCounts(){
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts?year=${year}`);
-      if (resp.ok){ const data = await resp.json(); mbuLeadRows = (data.rows || []).filter(r => r.month === month); mbuLeadYearTotals = data.totals || []; }
+      if (resp.ok){ const data = await resp.json(); mbuLeadRows = (data.rows || []).filter(r => r.month === month); mbuLeadYearTotals = data.totals || []; mbuLeadPoolEconomics = data.poolEconomics || null; }
     } catch (e){ console.warn('mbuLoadLeadCounts: fetch failed', e); }
   }
   mbuRenderLeadRows();
@@ -67438,8 +67576,10 @@ function mbuRenderLeadRows(){
     <td>${typeSel(i, r.leadType || 'High Value')}</td>
     <td><input type="text" class="tbl-input" style="width:200px;" placeholder="e.g. Request a Quote" value="${escapeHtml(r.formName || '')}" data-i="${i}" data-key="formName" onchange="mbuQueueLeadSave()"></td>
     <td><input type="number" min="0" step="1" class="tbl-input" style="width:100px;" value="${r.count == null ? '' : r.count}" data-i="${i}" data-key="count" onchange="mbuQueueLeadSave()"></td>
+    <td><input type="number" min="0" step="1" class="tbl-input" style="width:90px;" value="${r.bookings == null ? '' : r.bookings}" data-i="${i}" data-key="bookings" onchange="mbuQueueLeadSave()">${r.bookings != null && r.count > 0 ? `<div class="hint">${((r.bookings / r.count) * 100).toFixed(2)}%</div>` : ''}</td>
+    <td><input type="number" min="0" step="0.1" class="tbl-input" style="width:90px;" value="${r.avgDaysToConvert == null ? '' : r.avgDaysToConvert}" data-i="${i}" data-key="avgDaysToConvert" onchange="mbuQueueLeadSave()"></td>
     <td><button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mbuDeleteLeadRow(${i})">Remove</button></td>
-  </tr>`).join('') : '<tr><td colspan="5" class="hint">No rows for this month yet — upload a file or add rows.</td></tr>';
+  </tr>`).join('') : '<tr><td colspan="7" class="hint">No rows for this month yet — upload a file or add rows.</td></tr>';
   if (summary){
     const hv = rows.filter(r => r.leadType === 'High Value').reduce((t, r) => t + (Number(r.count) || 0), 0);
     const reg = rows.filter(r => r.leadType === 'Registration').reduce((t, r) => t + (Number(r.count) || 0), 0);
@@ -67451,10 +67591,15 @@ function mbuRenderLeadRows(){
     mbuLeadYearTotals.forEach(t => { (byMonth[t.month] = byMonth[t.month] || {})[t.leadType] = t.count; });
     const months = Object.keys(byMonth).map(Number).sort((a, b) => a - b);
     let hvY = 0, regY = 0; months.forEach(mo => { hvY += byMonth[mo]['High Value'] || 0; regY += byMonth[mo]['Registration'] || 0; });
-    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${yearSel ? yearSel.value : ''} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>High Value</th><th>Registration</th></tr></thead><tbody>${months.map(mo => `<tr><td>${MBU_MONTH_NAMES_1[mo]}</td><td>${(byMonth[mo]['High Value'] || 0).toLocaleString()}</td><td>${(byMonth[mo]['Registration'] || 0).toLocaleString()}</td></tr>`).join('')}<tr><td><b>Year to date</b></td><td><b>${hvY.toLocaleString()}</b></td><td><b>${regY.toLocaleString()}</b></td></tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">These are the actuals behind the High-Value Leads and Registrations tiles for campaigns in market during these months.</p>` : '';
+    const bkByMonth = {};
+    mbuLeadYearTotals.forEach(t => { if (t.hasBookings) (bkByMonth[t.month] = bkByMonth[t.month] || {})[t.leadType] = t.bookings; });
+    const anyBk = Object.keys(bkByMonth).length > 0;
+    const pe = mbuLeadPoolEconomics || { pools: [], forms: [] };
+    const poolHtml = pe.pools.length ? `<div class="hint" style="margin:10px 0 4px;font-weight:700;">Measured pool economics (mature months only)</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Lead type</th><th>Leads</th><th>Bookings</th><th>Conversion</th><th>Avg days to convert</th><th>Mature months</th></tr></thead><tbody>${pe.pools.map(pl => `<tr><td><b>${escapeHtml(pl.leadType)}</b></td><td>${Math.round(pl.leads).toLocaleString()}</td><td>${Math.round(pl.bookings).toLocaleString()}</td><td><b>${pl.conversionRate != null ? (pl.conversionRate * 100).toFixed(2) + '%' : '—'}</b></td><td>${pl.avgDaysToConvert != null ? Math.round(pl.avgDaysToConvert) + ' days' : '—'}</td><td>${pl.matureMonths}${pl.immatureLeads ? `<div class="hint">${Math.round(pl.immatureLeads).toLocaleString()} leads in months still converting — excluded</div>` : ''}</td></tr>`).join('')}</tbody></table></div><p class="hint" style="margin:6px 0 0;">${escapeHtml(pe.maturityRule || '')} These rates now stand in for the Leads → Bookings seed on new campaigns, and the days-to-convert for the Transaction Window default. Top forms: ${pe.forms.slice(0, 5).map(f => `${escapeHtml(f.formName || f.source)} ${f.conversionRate != null ? (f.conversionRate * 100).toFixed(1) + '%' : '—'}`).join(' · ')}.</p>` : '';
+    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${yearSel ? yearSel.value : ''} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>High Value</th><th>Registration</th>${anyBk ? '<th>HV bookings</th><th>Reg bookings</th>' : ''}</tr></thead><tbody>${months.map(mo => `<tr><td>${MBU_MONTH_NAMES_1[mo]}</td><td>${(byMonth[mo]['High Value'] || 0).toLocaleString()}</td><td>${(byMonth[mo]['Registration'] || 0).toLocaleString()}</td>${anyBk ? `<td>${bkByMonth[mo] && bkByMonth[mo]['High Value'] != null ? Math.round(bkByMonth[mo]['High Value']).toLocaleString() : '—'}</td><td>${bkByMonth[mo] && bkByMonth[mo]['Registration'] != null ? Math.round(bkByMonth[mo]['Registration']).toLocaleString() : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Year to date</b></td><td><b>${hvY.toLocaleString()}</b></td><td><b>${regY.toLocaleString()}</b></td>${anyBk ? '<td></td><td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">These are the actuals behind the High-Value Leads and Registrations rows for campaigns in market during these months.</p>${poolHtml}` : poolHtml;
   }
 }
-function mbuAddLeadRow(){ mbuLeadRows.push({ source: '', leadType: 'High Value', formName: '', count: null }); mbuRenderLeadRows(); }
+function mbuAddLeadRow(){ mbuLeadRows.push({ source: '', leadType: 'High Value', formName: '', count: null, bookings: null, avgDaysToConvert: null }); mbuRenderLeadRows(); }
 async function mbuDeleteLeadRow(i){
   const r = mbuLeadRows[i]; if (!r) return;
   const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
@@ -67468,7 +67613,7 @@ async function mbuDeleteLeadRow(i){
 let mbuLeadSaveTimer = null;
 function mbuQueueLeadSave(){
   const body = document.getElementById('mbuLeadBody');
-  body.querySelectorAll('[data-i][data-key]').forEach(inp => { const r = mbuLeadRows[Number(inp.dataset.i)]; if (r) r[inp.dataset.key] = inp.dataset.key === 'count' ? (inp.value === '' ? null : Number(inp.value)) : inp.value; });
+  body.querySelectorAll('[data-i][data-key]').forEach(inp => { const r = mbuLeadRows[Number(inp.dataset.i)]; if (r) r[inp.dataset.key] = ['count', 'bookings', 'avgDaysToConvert'].includes(inp.dataset.key) ? (inp.value === '' ? null : Number(inp.value)) : inp.value; });
   const status = document.getElementById('mbuLeadStatus'); if (status) status.textContent = 'Saving…';
   if (mbuLeadSaveTimer) clearTimeout(mbuLeadSaveTimer);
   mbuLeadSaveTimer = setTimeout(() => mbuSaveLeadCounts(null), 600);
@@ -67477,7 +67622,7 @@ async function mbuSaveLeadCounts(rowsOverride){
   const status = document.getElementById('mbuLeadStatus');
   const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
-  const rows = rowsOverride || mbuLeadRows.filter(r => (r.source || '').trim()).map(r => ({ year, month, source: r.source.trim(), leadType: r.leadType, formName: (r.formName || '').trim(), count: r.count }));
+  const rows = rowsOverride || mbuLeadRows.filter(r => (r.source || '').trim()).map(r => ({ year, month, source: r.source.trim(), leadType: r.leadType, formName: (r.formName || '').trim(), count: r.count, bookings: r.bookings, avgDaysToConvert: r.avgDaysToConvert }));
   if (!rows.length){ if (status) status.textContent = 'Nothing to save yet — give each row a source.'; return; }
   let persisted = false, err = null;
   if (dataSourceLabel === 'backend'){
@@ -67505,7 +67650,9 @@ async function mbuHandleLeadFile(event){
       ['source', ['source', 'channel'], true],
       ['leadType', ['lead type', 'type', 'designation'], true],
       ['formName', ['form'], false],
-      ['count', ['count', 'emails', 'leads', 'qty', 'quantity'], true],
+      ['count', ['total leads', 'count', 'emails', 'leads', 'qty', 'quantity'], true],
+      ['bookings', ['booking', 'transactions', 'orders'], false],
+      ['days', ['days to convert', 'avg days', 'days'], false],
       ['year', ['year'], false],
       ['month', ['month'], false],
       ['date', ['date', 'period'], false]
@@ -67520,8 +67667,14 @@ async function mbuHandleLeadFile(event){
       const source = String(r[colIndex.source] || '').trim();
       if (!source) continue;
       let year = colIndex.year != null ? parseInt(r[colIndex.year], 10) : NaN;
-      let month = colIndex.month != null ? parseInt(r[colIndex.month], 10) : NaN;
-      if (colIndex.month != null && !Number.isFinite(month)){ const mi = MBU_MONTH_NAMES_1.findIndex(n => n && String(r[colIndex.month] || '').trim().toLowerCase().startsWith(n.toLowerCase())); if (mi > 0) month = mi; }
+      let month = (colIndex.month != null && /^\s*\d{1,2}\s*$/.test(String(r[colIndex.month] || ''))) ? parseInt(r[colIndex.month], 10) : NaN;
+      if (colIndex.month != null && !Number.isFinite(month)){
+        // "Jan", "January", "Jan-26", "26-Jan", "2026-01", "1/1/2026" …
+        const raw = String(r[colIndex.month] || '').trim();
+        const mi = MBU_MONTH_NAMES_1.findIndex(n => n && new RegExp(`(^|[^a-z])${n.toLowerCase()}`).test(raw.toLowerCase()));
+        if (mi > 0){ month = mi; const ym = raw.match(/(\d{2,4})/g); if (ym && !Number.isFinite(year)){ const yy = ym.map(Number).find(v => v >= 2000 || v < 100); if (yy != null) year = yy < 100 ? 2000 + yy : yy; } }
+        else { const d = new Date(raw); if (!isNaN(d)){ month = d.getMonth() + 1; if (!Number.isFinite(year)) year = d.getFullYear(); } }
+      }
       if (colIndex.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[colIndex.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
       if (!Number.isFinite(year)) year = defYear;
       if (!Number.isFinite(month)) month = defMonth;
@@ -67529,7 +67682,9 @@ async function mbuHandleLeadFile(event){
       const leadType = /high|value|hv/i.test(leadTypeRaw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(leadTypeRaw) ? 'Registration' : null);
       if (!leadType){ problems.push(`row ${i + 1}: lead type "${leadTypeRaw}" isn't High Value or Registration`); continue; }
       const count = mbuNum(r[colIndex.count]);
-      parsed.push({ year, month, source, leadType, formName: colIndex.formName != null ? String(r[colIndex.formName] || '').trim() : '', count });
+      parsed.push({ year, month, source, leadType, formName: colIndex.formName != null ? String(r[colIndex.formName] || '').trim() : '', count,
+        bookings: colIndex.bookings != null ? mbuNum(r[colIndex.bookings]) : null,
+        avgDaysToConvert: colIndex.days != null ? mbuNum(r[colIndex.days]) : null });
     }
     if (!parsed.length) throw new Error(problems.length ? problems.join('; ') : 'Header found but no lead rows under it.');
     const periods = [...new Set(parsed.map(p => `${MBU_MONTH_NAMES_1[p.month]} ${p.year}`))];
@@ -67548,6 +67703,150 @@ async function mbuConfirmLeadUpload(){
   const rows = mbuPendingLeads; mbuPendingLeads = null;
   const preview = document.getElementById('mbuLeadPreview'); if (preview) preview.innerHTML = '';
   await mbuSaveLeadCounts(rows);
+}
+
+// ---------- Unique transactions by month, by Product Group ----------
+let mbuTxnRows = [];
+let mbuTxnYearTotals = [];
+async function mbuLoadTransactions(){
+  const body = document.getElementById('mbuTxnBody');
+  const status = document.getElementById('mbuTxnStatus');
+  const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
+  if (!body || !yearSel || !monthSel) return;
+  if (!yearSel.options.length){ mbuSeedYearSelect(yearSel, new Date().getFullYear()); monthSel.value = String(new Date().getMonth() + 1); }
+  const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
+  mbuTxnRows = []; mbuTxnYearTotals = [];
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly?year=${year}`);
+      if (resp.ok){ const data = await resp.json(); mbuTxnRows = (data.rows || []).filter(r => r.month === month); mbuTxnYearTotals = (data.totals || []).filter(t => t.year === year); mbuTxnSeasonality = data.seasonality || {}; }
+    } catch (e){ console.warn('mbuLoadTransactions: fetch failed', e); }
+  }
+  const dl = document.getElementById('mbuTxnProductGroupList');
+  if (dl){ const vals = (typeof cmpTaxonomyValues === 'function' ? cmpTaxonomyValues('productGroup') : null) || []; dl.innerHTML = vals.map(v => `<option value="${escapeHtml(v)}"></option>`).join(''); }
+  mbuRenderTxnRows();
+  if (status) status.textContent = '';
+}
+let mbuTxnSeasonality = {};
+function mbuRenderTxnRows(){
+  const body = document.getElementById('mbuTxnBody');
+  const summary = document.getElementById('mbuTxnSummary');
+  const yearTotalsEl = document.getElementById('mbuTxnYearTotals');
+  if (!body) return;
+  const rows = mbuTxnRows;
+  body.innerHTML = rows.length ? rows.map((r, i) => `<tr>
+    <td><input type="text" class="tbl-input" list="mbuTxnProductGroupList" style="width:220px;" placeholder="(all products)" value="${escapeHtml(r.productGroup || '')}" data-i="${i}" data-key="productGroup" onchange="mbuQueueTxnSave()"></td>
+    <td><input type="number" min="0" step="1" class="tbl-input" style="width:120px;" value="${r.transactions == null ? '' : r.transactions}" data-i="${i}" data-key="transactions" onchange="mbuQueueTxnSave()"></td>
+    <td><input type="number" min="0" step="1" class="tbl-input" style="width:140px;" value="${r.revenue == null ? '' : r.revenue}" data-i="${i}" data-key="revenue" onchange="mbuQueueTxnSave()"></td>
+    <td><button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mbuDeleteTxnRow(${i})">Remove</button></td>
+  </tr>`).join('') : '<tr><td colspan="4" class="hint">No rows for this month yet — upload a file or add rows.</td></tr>';
+  if (summary){
+    const tx = rows.reduce((t, r) => t + (Number(r.transactions) || 0), 0);
+    const rev = rows.reduce((t, r) => t + (Number(r.revenue) || 0), 0);
+    summary.innerHTML = rows.length ? `This month: <b>${Math.round(tx).toLocaleString()}</b> transactions${rev > 0 ? ` · <b>${fmtMoney(rev)}</b> revenue` : ''} across ${rows.length} product group${rows.length === 1 ? '' : 's'}.` : '';
+  }
+  if (yearTotalsEl){
+    const yearSel = document.getElementById('mbuTxnYear');
+    const year = yearSel ? yearSel.value : '';
+    const months = mbuTxnYearTotals.slice().sort((a, b) => a.month - b.month);
+    const seas = mbuTxnSeasonality[year] || null;
+    const txY = months.reduce((t, m) => t + m.transactions, 0), revY = months.reduce((t, m) => t + m.revenue, 0);
+    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${year} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Transactions</th><th>Revenue</th>${seas ? '<th>Seasonality index</th>' : ''}</tr></thead><tbody>${months.map(m => `<tr><td>${MBU_MONTH_NAMES_1[m.month]}</td><td>${Math.round(m.transactions).toLocaleString()}</td><td>${m.hasRevenue ? fmtMoney(m.revenue) : '—'}</td>${seas ? `<td>${seas[m.month] != null ? seas[m.month].toFixed(2) : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Total</b></td><td><b>${Math.round(txY).toLocaleString()}</b></td><td><b>${revY > 0 ? fmtMoney(revY) : '—'}</b></td>${seas ? '<td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">${seas ? 'Seasonality index = this month’s share of the year × 12 (1.00 = an average month) — available because all 12 months are on file.' : `Seasonality index appears once all 12 months of ${year} are on file (${months.length} so far).`} These are the Transactions actuals for campaigns in market during these months, narrowed to a campaign’s own Product Groups when they match.</p>` : '';
+  }
+}
+function mbuAddTxnRow(){ mbuTxnRows.push({ productGroup: '', transactions: null, revenue: null }); mbuRenderTxnRows(); }
+async function mbuDeleteTxnRow(i){
+  const r = mbuTxnRows[i]; if (!r) return;
+  const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
+  mbuTxnRows.splice(i, 1); mbuRenderTxnRows();
+  if (dataSourceLabel === 'backend'){
+    try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly?year=${yearSel.value}&month=${monthSel.value}&productGroup=${encodeURIComponent(r.productGroup || '')}`, { method: 'DELETE' }); } catch (e){ console.warn('mbuDeleteTxnRow failed', e); }
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+    mbuLoadTransactions();
+  }
+}
+let mbuTxnSaveTimer = null;
+function mbuQueueTxnSave(){
+  const body = document.getElementById('mbuTxnBody');
+  body.querySelectorAll('[data-i][data-key]').forEach(inp => { const r = mbuTxnRows[Number(inp.dataset.i)]; if (r) r[inp.dataset.key] = inp.dataset.key === 'productGroup' ? inp.value : (inp.value === '' ? null : Number(inp.value)); });
+  const status = document.getElementById('mbuTxnStatus'); if (status) status.textContent = 'Saving…';
+  if (mbuTxnSaveTimer) clearTimeout(mbuTxnSaveTimer);
+  mbuTxnSaveTimer = setTimeout(() => mbuSaveTransactions(null), 600);
+}
+async function mbuSaveTransactions(rowsOverride){
+  const status = document.getElementById('mbuTxnStatus');
+  const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
+  const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
+  const rows = rowsOverride || mbuTxnRows.filter(r => r.transactions != null || r.revenue != null).map(r => ({ year, month, productGroup: (r.productGroup || '').trim(), transactions: r.transactions, revenue: r.revenue }));
+  if (!rows.length){ if (status) status.textContent = 'Nothing to save yet — enter a transactions count.'; return; }
+  let persisted = false, err = null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows })
+      });
+      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
+    } catch (e){ console.warn('mbuSaveTransactions failed', e); }
+  }
+  if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} row${rows.length === 1 ? '' : 's'}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  if (persisted) mbuLoadTransactions();
+}
+let mbuPendingTxns = null;
+async function mbuHandleTxnFile(event){
+  const file = event.target.files && event.target.files[0];
+  const status = document.getElementById('mbuTxnStatus');
+  const preview = document.getElementById('mbuTxnPreview');
+  if (!file) return;
+  if (status) status.textContent = `Reading ${file.name}…`;
+  try {
+    const grid = await mbuReadFileGrid(file);
+    const found = mbuFindHeaderRow(grid, [
+      ['transactions', ['unique transactions', 'transactions', 'bookings', 'orders', 'count'], true],
+      ['productGroup', ['product group', 'product', 'group', 'destination'], false],
+      ['revenue', ['revenue', 'sales', 'gross'], false],
+      ['year', ['year'], false],
+      ['month', ['month'], false],
+      ['date', ['date', 'period'], false]
+    ]);
+    if (!found) throw new Error('Couldn\'t find a header row with a Transactions column.');
+    const { headerIndex, colIndex } = found;
+    const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
+    const defYear = parseInt(yearSel.value, 10), defMonth = parseInt(monthSel.value, 10);
+    const parsed = [];
+    for (let i = headerIndex + 1; i < grid.length; i++){
+      const r = grid[i] || [];
+      const tx = mbuNum(r[colIndex.transactions]);
+      if (tx == null) continue;
+      let year = colIndex.year != null ? parseInt(r[colIndex.year], 10) : NaN;
+      let month = (colIndex.month != null && /^\s*\d{1,2}\s*$/.test(String(r[colIndex.month] || ''))) ? parseInt(r[colIndex.month], 10) : NaN;
+      if (colIndex.month != null && !Number.isFinite(month)){
+        const raw = String(r[colIndex.month] || '').trim();
+        const mi = MBU_MONTH_NAMES_1.findIndex(n => n && new RegExp(`(^|[^a-z])${n.toLowerCase()}`).test(raw.toLowerCase()));
+        if (mi > 0){ month = mi; const ym = raw.match(/(\d{2,4})/g); if (ym && !Number.isFinite(year)){ const yy = ym.map(Number).find(v => v >= 2000 || v < 100); if (yy != null) year = yy < 100 ? 2000 + yy : yy; } }
+        else { const d = new Date(raw); if (!isNaN(d)){ month = d.getMonth() + 1; if (!Number.isFinite(year)) year = d.getFullYear(); } }
+      }
+      if (colIndex.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[colIndex.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
+      if (!Number.isFinite(year)) year = defYear;
+      if (!Number.isFinite(month)) month = defMonth;
+      parsed.push({ year, month, productGroup: colIndex.productGroup != null ? String(r[colIndex.productGroup] || '').trim() : '', transactions: tx, revenue: colIndex.revenue != null ? mbuNum(r[colIndex.revenue]) : null });
+    }
+    if (!parsed.length) throw new Error('Header found but no transaction rows under it.');
+    const periods = [...new Set(parsed.map(p => `${MBU_MONTH_NAMES_1[p.month]} ${p.year}`))];
+    const total = parsed.reduce((t, p) => t + (p.transactions || 0), 0);
+    mbuPendingTxns = parsed;
+    if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
+      <b>${parsed.length} row${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} — ${periods.length === 1 ? `for <b>${escapeHtml(periods[0])}</b>${colIndex.year == null && colIndex.month == null && colIndex.date == null ? ' (no Year/Month columns, so the Year / Month selected above is used)' : ''}` : `across ${periods.length} periods (${escapeHtml(periods.join(', '))})`}: <b>${Math.round(total).toLocaleString()}</b> transactions, ${[...new Set(parsed.map(p => p.productGroup || '(all)'))].length} product group${[...new Set(parsed.map(p => p.productGroup))].length === 1 ? '' : 's'}.
+      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmTxnUpload()">Save rows</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuPendingTxns=null;">Cancel</button></div></div>`;
+    if (status) status.textContent = '';
+  } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
+  event.target.value = '';
+}
+async function mbuConfirmTxnUpload(){
+  if (!mbuPendingTxns) return;
+  const rows = mbuPendingTxns; mbuPendingTxns = null;
+  const preview = document.getElementById('mbuTxnPreview'); if (preview) preview.innerHTML = '';
+  await mbuSaveTransactions(rows);
 }
 
 // 2026-09-28 — Demand fulfillment assumptions card (see
