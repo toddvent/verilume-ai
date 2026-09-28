@@ -1530,7 +1530,75 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-09-28 (round 5) — per direct instruction on AOV's lead data
+// (Month, Source, Lead Type, Form Name, Total Leads, Bookings, Conversion
+// Rate, Avg Days to Convert): bookings and days-to-convert per row, so the
+// per-pool lead → booking conversion and lead → booking lag are MEASURED
+// per account and override the stage × industry seeds wherever those are
+// used (funnel bookingRate, Transaction Window default, campaign timing).
+// Conversion rate itself is never stored — derived as bookings ÷ leads so
+// it can't drift from its inputs. Recent months are censored (a lead
+// with a 90-day window logged last month hasn't finished converting), so
+// pool economics below only count MATURE months: the month's last day +
+// that pool's own average days-to-convert (fallback 90) is before today.
+ensureColumn('account_lead_counts', 'bookings', 'REAL');
+ensureColumn('account_lead_counts', 'avgDaysToConvert', 'REAL');
+// account_transactions_monthly — unique transactions (and optional
+// revenue) by month by Product Group, per direct question "I have unique
+// transactions by month by product group also. Did we add them?" (we had
+// not — warehouse_bookings is the row-level Snowflake landing table, not
+// a manual monthly bridge). Product Group is free text, suggested from
+// the account's Marketing Calendar taxonomy; '' = all / unspecified.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_transactions_monthly (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    productGroup TEXT NOT NULL DEFAULT '',
+    transactions REAL,
+    revenue REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, month, productGroup),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 const LEAD_TYPES = ['High Value', 'Registration'];
+// Pool economics off mature months — see the comment above.
+function computeLeadPoolEconomics(rows, today){
+  const now = today || new Date();
+  const byPool = {};
+  const poolDays = {};
+  rows.forEach(r => {
+    if (r.avgDaysToConvert != null && (Number(r.count) || 0) > 0){
+      const p = poolDays[r.leadType] = poolDays[r.leadType] || { w: 0, sum: 0 };
+      p.w += Number(r.count); p.sum += Number(r.avgDaysToConvert) * Number(r.count);
+    }
+  });
+  const daysFor = pool => poolDays[pool] && poolDays[pool].w > 0 ? poolDays[pool].sum / poolDays[pool].w : 90;
+  const isMature = (r) => { const end = new Date(r.year, r.month, 0); return (now - end) / 86400000 >= daysFor(r.leadType); };
+  const byForm = {};
+  rows.forEach(r => {
+    if (r.bookings == null) return;
+    const mature = isMature(r);
+    const pool = byPool[r.leadType] = byPool[r.leadType] || { leadType: r.leadType, leads: 0, bookings: 0, matureMonths: new Set(), allLeads: 0, allBookings: 0 };
+    pool.allLeads += Number(r.count) || 0; pool.allBookings += Number(r.bookings) || 0;
+    if (!mature) return;
+    pool.leads += Number(r.count) || 0; pool.bookings += Number(r.bookings) || 0; pool.matureMonths.add(`${r.year}-${r.month}`);
+    const fk = `${r.source}::${r.leadType}::${r.formName}`;
+    const f = byForm[fk] = byForm[fk] || { source: r.source, leadType: r.leadType, formName: r.formName, leads: 0, bookings: 0, daysW: 0, daysSum: 0 };
+    f.leads += Number(r.count) || 0; f.bookings += Number(r.bookings) || 0;
+    if (r.avgDaysToConvert != null){ f.daysW += Number(r.count) || 0; f.daysSum += (Number(r.avgDaysToConvert) || 0) * (Number(r.count) || 0); }
+  });
+  const pools = Object.values(byPool).map(p => ({
+    leadType: p.leadType, leads: p.leads, bookings: p.bookings, matureMonths: p.matureMonths.size,
+    conversionRate: p.leads > 0 ? p.bookings / p.leads : null,
+    avgDaysToConvert: poolDays[p.leadType] && poolDays[p.leadType].w > 0 ? poolDays[p.leadType].sum / poolDays[p.leadType].w : null,
+    immatureLeads: p.allLeads - p.leads, immatureBookings: p.allBookings - p.bookings
+  }));
+  const forms = Object.values(byForm).map(f => ({ ...f, conversionRate: f.leads > 0 ? f.bookings / f.leads : null, avgDaysToConvert: f.daysW > 0 ? f.daysSum / f.daysW : null, daysW: undefined, daysSum: undefined }))
+    .sort((a, b) => (b.leads || 0) - (a.leads || 0));
+  return { pools, forms, maturityRule: 'A month counts once its last day plus the pool\'s own average days-to-convert (90 if unknown) has passed.' };
+}
 function normalizeLeadType(v){
   const s = String(v || '').trim().toLowerCase();
   if (/high|value|hv/.test(s)) return 'High Value';
@@ -12999,6 +13067,15 @@ const LEGACY_CASING_COLUMNS = [
   ['account_lead_counts', 'leadType'],
   ['account_lead_counts', 'formName'],
   ['account_lead_counts', 'count'],
+  ['account_lead_counts', 'bookings'],
+  ['account_lead_counts', 'avgDaysToConvert'],
+  ['account_transactions_monthly', 'accountId'],
+  ['account_transactions_monthly', 'year'],
+  ['account_transactions_monthly', 'month'],
+  ['account_transactions_monthly', 'productGroup'],
+  ['account_transactions_monthly', 'transactions'],
+  ['account_transactions_monthly', 'revenue'],
+  ['account_transactions_monthly', 'updatedAt'],
   ['account_lead_counts', 'updatedAt'],
   ['account_annual_plan', 'accountId'],
   ['account_annual_plan', 'year'],
@@ -31893,10 +31970,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const totals = {};
       rows.forEach(r => {
         const key = `${r.year}-${r.month}-${r.leadType}`;
-        if (!totals[key]) totals[key] = { year: r.year, month: r.month, leadType: r.leadType, count: 0, rows: 0 };
+        if (!totals[key]) totals[key] = { year: r.year, month: r.month, leadType: r.leadType, count: 0, bookings: 0, hasBookings: false, rows: 0 };
         totals[key].count += Number(r.count) || 0; totals[key].rows += 1;
+        if (r.bookings != null){ totals[key].bookings += Number(r.bookings) || 0; totals[key].hasBookings = true; }
       });
-      return sendJson(res, 200, { accountId, rows, totals: Object.values(totals) });
+      const allRows = Number.isFinite(year) ? db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId) : rows;
+      return sendJson(res, 200, { accountId, rows, totals: Object.values(totals), poolEconomics: computeLeadPoolEconomics(allRows) });
     }
     // POST /api/accounts/:id/lead-counts — bulk upsert.
     // { rows: [{ year, month, source, leadType, formName?, count }],
@@ -31920,15 +31999,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (!leadType) return sendJson(res, 400, { error: `leadType must read as High Value or Registration: "${row.leadType}"` });
         const count = row.count === null || row.count === undefined || row.count === '' ? null : Number(String(row.count).replace(/,/g, ''));
         if (count != null && !(Number.isFinite(count) && count >= 0)) return sendJson(res, 400, { error: `${source} / ${leadType} / ${formName || '(no form)'}: count must be a non-negative number` });
-        clean.push({ year, month, source, leadType, formName, count });
+        const numOrNull = (v, name) => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/,/g, '')); if (!(Number.isFinite(n) && n >= 0)) throw new Error(`${source} / ${leadType} / ${formName || '(no form)'}: ${name} must be a non-negative number or blank`); return n; };
+        let bookings, days;
+        try { bookings = numOrNull(row.bookings, 'bookings'); days = numOrNull(row.avgDaysToConvert, 'avgDaysToConvert'); } catch (e){ return sendJson(res, 400, { error: e.message }); }
+        clean.push({ year, month, source, leadType, formName, count, bookings, days });
       }
       if (body.replace && body.replace.year != null && body.replace.month != null){
         db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?').run(accountId, parseInt(body.replace.year, 10), parseInt(body.replace.month, 10));
       }
-      const upsert = db.prepare(`INSERT INTO account_lead_counts (accountId, year, month, source, "leadType", "formName", count, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(accountId, year, month, source, "leadType", "formName") DO UPDATE SET count = excluded.count, updatedAt = excluded.updatedAt`);
-      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.source, r.leadType, r.formName, r.count, now));
+      const upsert = db.prepare(`INSERT INTO account_lead_counts (accountId, year, month, source, "leadType", "formName", count, bookings, "avgDaysToConvert", updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(accountId, year, month, source, "leadType", "formName") DO UPDATE SET count = excluded.count, bookings = excluded.bookings, "avgDaysToConvert" = excluded."avgDaysToConvert", updatedAt = excluded.updatedAt`);
+      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.source, r.leadType, r.formName, r.count, r.bookings, r.days, now));
       return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now });
     }
     // DELETE /api/accounts/:id/lead-counts?year=&month=[&source=&leadType=&formName=]
@@ -31942,6 +32024,79 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const info = source
         ? db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ? AND source = ? AND "leadType" = ? AND "formName" = ?').run(accountId, year, month, source, leadType, formName)
         : db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?').run(accountId, year, month);
+      return sendJson(res, 200, { accountId, deleted: info.changes });
+    }
+
+    // GET /api/accounts/:id/transactions-monthly[?year=] — unique
+    // transactions (+ revenue) by month by Product Group (see
+    // account_transactions_monthly), plus per-(year, month) totals and a
+    // seasonality index (each month's share of that year's transactions ×
+    // 12, so 1.0 = an average month) for years with all 12 months on file.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transactions-monthly'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const yearParam = reqUrl.searchParams.get('year');
+      const year = yearParam ? parseInt(yearParam, 10) : null;
+      const all = db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ? ORDER BY year DESC, month ASC, "productGroup" ASC').all(accountId);
+      const rows = Number.isFinite(year) ? all.filter(r => r.year === year) : all;
+      const totals = {};
+      all.forEach(r => {
+        const key = `${r.year}-${r.month}`;
+        if (!totals[key]) totals[key] = { year: r.year, month: r.month, transactions: 0, revenue: 0, hasRevenue: false, productGroups: 0 };
+        totals[key].transactions += Number(r.transactions) || 0; totals[key].productGroups += 1;
+        if (r.revenue != null){ totals[key].revenue += Number(r.revenue) || 0; totals[key].hasRevenue = true; }
+      });
+      const byYear = {};
+      Object.values(totals).forEach(t => { (byYear[t.year] = byYear[t.year] || []).push(t); });
+      const seasonality = {};
+      Object.keys(byYear).forEach(y => {
+        const months = byYear[y];
+        if (months.length !== 12) return;
+        const total = months.reduce((s, t) => s + t.transactions, 0);
+        if (!(total > 0)) return;
+        seasonality[y] = {};
+        months.forEach(t => { seasonality[y][t.month] = (t.transactions / total) * 12; });
+      });
+      return sendJson(res, 200, { accountId, rows, totals: Object.values(totals), seasonality });
+    }
+    // POST /api/accounts/:id/transactions-monthly — bulk upsert.
+    // { rows: [{ year, month, productGroup?, transactions, revenue? }] }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transactions-monthly'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      const clean = [];
+      for (const row of rowsIn){
+        const year = parseInt(row.year, 10), month = parseInt(row.month, 10);
+        if (!(year >= 2000 && year <= 2100)) return sendJson(res, 400, { error: `year must be a 4-digit year: ${row.year}` });
+        if (!(month >= 1 && month <= 12)) return sendJson(res, 400, { error: `month must be 1–12: ${row.month}` });
+        const productGroup = String(row.productGroup || '').trim();
+        const n = v => { if (v === null || v === undefined || v === '') return null; const x = Number(String(v).replace(/[,$]/g, '')); return Number.isFinite(x) && x >= 0 ? x : NaN; };
+        const transactions = n(row.transactions), revenue = n(row.revenue);
+        if (Number.isNaN(transactions) || Number.isNaN(revenue)) return sendJson(res, 400, { error: `${productGroup || '(all)'} ${year}-${month}: transactions / revenue must be non-negative numbers or blank` });
+        clean.push({ year, month, productGroup, transactions, revenue });
+      }
+      const upsert = db.prepare(`INSERT INTO account_transactions_monthly (accountId, year, month, "productGroup", transactions, revenue, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(accountId, year, month, "productGroup") DO UPDATE SET transactions = excluded.transactions, revenue = excluded.revenue, updatedAt = excluded.updatedAt`);
+      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.productGroup, r.transactions, r.revenue, now));
+      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now });
+    }
+    // DELETE /api/accounts/:id/transactions-monthly?year=&month=[&productGroup=]
+    if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transactions-monthly'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const year = parseInt(reqUrl.searchParams.get('year'), 10), month = parseInt(reqUrl.searchParams.get('month'), 10);
+      if (!Number.isFinite(year) || !Number.isFinite(month)) return sendJson(res, 400, { error: 'year and month are required' });
+      const pg = reqUrl.searchParams.get('productGroup');
+      const info = pg != null
+        ? db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ? AND "productGroup" = ?').run(accountId, year, month, pg)
+        : db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ?').run(accountId, year, month);
       return sendJson(res, 200, { accountId, deleted: info.changes });
     }
 
