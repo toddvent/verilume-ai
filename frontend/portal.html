@@ -11890,7 +11890,7 @@
         <div class="hicon">📇</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Source (website, Meta, coreg, transaction…) × Lead Type (High Value or Registration) × Form Name, count of emails, per month — plus, when you have them, Bookings and Avg Days to Convert per row (upload columns: Month, Source, Lead Type, Form Name, Total Leads, Bookings, Avg Days to Convert; Conversion Rate is derived, not stored). High Value = the annual model's value leads (talk to expert / quote / request info); Registration = growth leads (subscribe / brochure / popup / share / contact). Measured per-pool conversion and days-to-convert override the stage seeds in the campaign funnel, Transaction Window and timing.</p>
+        <p class="hint" style="margin-top:0;">Source (website, Meta, coreg, transaction…) × Lead Type (High Value, Growth or Prospect) × Form Name, count of emails, per month — plus, when you have them, Bookings and Avg Days to Convert per row (upload columns: Month, Source, Lead Type, Form Name, Total Leads, Bookings, Avg Days to Convert; Conversion Rate is derived, not stored). Three lead types: High Value = the annual model's value leads (talk to expert / quote / request info); Growth (stored as Registration) = subscribe / brochure / popup / share / contact; Prospect = Meta lead forms and co-registration. Measured per-pool conversion and days-to-convert override the stage seeds in the campaign funnel, Transaction Window and timing.</p>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
           <label for="mbuLeadYear" style="margin:0;">Year</label>
           <select id="mbuLeadYear" class="tbl-select" onchange="mbuLoadLeadCounts()"></select>
@@ -12385,7 +12385,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-lead-pool-economics-and-monthly-transactions';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-prospect-lead-type';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -43095,7 +43095,7 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
       m.transactionsActualNote = `Σ unique transactions across ${months} in-market month${months === 1 ? '' : 's'}${narrowed ? ` for ${escapeHtml(campaign.productGroups)}` : ' (all product groups)'}`;
     }
   }
-  m.actual.leads = null; m.actual.registrations = null; m.leadActualNote = '';
+  m.actual.leads = null; m.actual.registrations = null; m.actual.prospectLeads = null; m.leadActualNote = '';
   if (campaign.startDate && Array.isArray(ctx.leadTotals) && ctx.leadTotals.length){
     const start = new Date(campaign.startDate);
     const endRaw = campaign.endDate ? new Date(campaign.endDate) : new Date();
@@ -43106,8 +43106,10 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
       const hv = rows.filter(t => t.leadType === 'High Value').reduce((a, t) => a + (t.count || 0), 0);
       const reg = rows.filter(t => t.leadType === 'Registration').reduce((a, t) => a + (t.count || 0), 0);
       const months = [...new Set(rows.map(t => `${t.year}-${t.month}`))].length;
+      const pro = rows.filter(t => t.leadType === 'Prospect').reduce((a, t) => a + (t.count || 0), 0);
       if (rows.some(t => t.leadType === 'High Value')) m.actual.leads = hv;
       if (rows.some(t => t.leadType === 'Registration')) m.actual.registrations = reg;
+      if (rows.some(t => t.leadType === 'Prospect')) m.actual.prospectLeads = pro;
       m.leadActualNote = `Σ logged leads across ${months} in-market month${months === 1 ? '' : 's'} (account-wide, all sources)`;
     }
   }
@@ -43119,8 +43121,8 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
   // lead → booking lag.
   const pe = ctx.leadPoolEconomics;
   const poolOf = t => pe && Array.isArray(pe.pools) ? pe.pools.find(x => x.leadType === t) : null;
-  const hv = poolOf('High Value'), reg = poolOf('Registration');
-  m.poolEconomics = (hv || reg) ? { hv, reg } : null;
+  const hv = poolOf('High Value'), reg = poolOf('Registration'), pro = poolOf('Prospect');
+  m.poolEconomics = (hv || reg || pro) ? { hv, reg, pro } : null;
   m.target.leadAttributedTransactions = null;
   if (m.poolEconomics){
     let tot = 0, any = false;
@@ -43249,10 +43251,12 @@ async function cmpRenderAnalysisSummary(campaign){
       note: m.engagement ? `Avg. engagement time per engaged session${m.engagement.engagementRate != null ? ` · ${(m.engagement.engagementRate * 100).toFixed(1)}% engagement rate` : ''} (${escapeHtml(m.engagement.source)}) — no modeled target` : 'Upload the GA4 engagement export under Media Plan &amp; Budget → Website engagement' }),
     row({ key: 'leads', label: 'High-Value Leads', target: m.target.leads, actual: m.actual.leads, tracking: tr.leads, fmt: fmtInt, shareField: 'valueLeads',
       note: `${(m.leadRate * 100).toFixed(2)}% of website users (${escapeHtml(m.leadRateSource)})${m.actual.leads != null ? ' · ' + escapeHtml(m.leadActualNote) : ''}` }),
-    row({ key: 'registrations', label: 'Registrations', target: m.target.registrations, actual: m.actual.registrations, tracking: tr.registrations, fmt: fmtInt, shareField: 'growthLeads',
+    row({ key: 'registrations', label: 'Registrations (Growth)', target: m.target.registrations, actual: m.actual.registrations, tracking: tr.registrations, fmt: fmtInt, shareField: 'growthLeads',
       note: `${(m.registrationRate * 100).toFixed(2)}% of website users (${escapeHtml(m.registrationRateSource)})${m.actual.registrations != null ? ' · ' + escapeHtml(m.leadActualNote) : ''}` }),
+    row({ key: 'prospects', label: 'Prospect Leads', target: null, actual: m.actual.prospectLeads, fmt: fmtInt, shareField: 'prospectLeads',
+      note: `Meta lead forms / co-registration — driven by paid-social lead-gen spend, not website users, so no website-users target; ${m.poolEconomics && m.poolEconomics.pro && m.poolEconomics.pro.conversionRate != null ? `measured conversion ${(m.poolEconomics.pro.conversionRate * 100).toFixed(2)}% over ${m.poolEconomics.pro.matureMonths} mature month${m.poolEconomics.pro.matureMonths === 1 ? '' : 's'}` : 'no measured conversion yet'}${m.actual.prospectLeads != null ? ' · ' + escapeHtml(m.leadActualNote) : ''}` }),
     row({ key: 'transactions', label: 'Transactions', target: m.target.transactions, actual: m.actual.transactions, tracking: tr.transactions, fmt: fmtInt, shareField: 'bookings', isPrimary: m.isTxnKpi,
-      note: escapeHtml(m.txnRateSource || '') + (m.target.leadAttributedTransactions != null ? ` · of which ~${fmtInt(m.target.leadAttributedTransactions)} lead-attributed at measured pool rates (High Value ${m.poolEconomics.hv && m.poolEconomics.hv.conversionRate != null ? (m.poolEconomics.hv.conversionRate * 100).toFixed(1) + '%' : '—'}, Registration ${m.poolEconomics.reg && m.poolEconomics.reg.conversionRate != null ? (m.poolEconomics.reg.conversionRate * 100).toFixed(2) + '%' : '—'})` : '') + (m.transactionsActualNote ? ' · actual = ' + m.transactionsActualNote : '') })
+      note: escapeHtml(m.txnRateSource || '') + (m.target.leadAttributedTransactions != null ? ` · of which ~${fmtInt(m.target.leadAttributedTransactions)} lead-attributed at measured pool rates (High Value ${m.poolEconomics.hv && m.poolEconomics.hv.conversionRate != null ? (m.poolEconomics.hv.conversionRate * 100).toFixed(1) + '%' : '—'}, Growth ${m.poolEconomics.reg && m.poolEconomics.reg.conversionRate != null ? (m.poolEconomics.reg.conversionRate * 100).toFixed(2) + '%' : '—'})` : '') + (m.transactionsActualNote ? ' · actual = ' + m.transactionsActualNote : '') })
   ].join('');
   const head = `<thead><tr><th style="width:38%;">Metric</th><th>Target (annual model)</th><th>Actual</th><th>Variance</th></tr></thead>`;
   el.innerHTML = `
@@ -67570,7 +67574,7 @@ function mbuRenderLeadRows(){
   const yearTotalsEl = document.getElementById('mbuLeadYearTotals');
   if (!body) return;
   const rows = mbuLeadRows;
-  const typeSel = (i, v) => `<select class="tbl-select" data-i="${i}" data-key="leadType" onchange="mbuQueueLeadSave()"><option value="High Value"${v === 'High Value' ? ' selected' : ''}>High Value</option><option value="Registration"${v === 'Registration' ? ' selected' : ''}>Registration</option></select>`;
+  const typeSel = (i, v) => `<select class="tbl-select" data-i="${i}" data-key="leadType" onchange="mbuQueueLeadSave()"><option value="High Value"${v === 'High Value' ? ' selected' : ''}>High Value</option><option value="Registration"${v === 'Registration' ? ' selected' : ''}>Growth (Registration)</option><option value="Prospect"${v === 'Prospect' ? ' selected' : ''}>Prospect (Meta / co-reg)</option></select>`;
   body.innerHTML = rows.length ? rows.map((r, i) => `<tr>
     <td><input type="text" class="tbl-input" style="width:140px;" placeholder="website / Meta / coreg…" value="${escapeHtml(r.source || '')}" data-i="${i}" data-key="source" onchange="mbuQueueLeadSave()"></td>
     <td>${typeSel(i, r.leadType || 'High Value')}</td>
@@ -67583,20 +67587,21 @@ function mbuRenderLeadRows(){
   if (summary){
     const hv = rows.filter(r => r.leadType === 'High Value').reduce((t, r) => t + (Number(r.count) || 0), 0);
     const reg = rows.filter(r => r.leadType === 'Registration').reduce((t, r) => t + (Number(r.count) || 0), 0);
-    summary.innerHTML = rows.length ? `This month: <b>${hv.toLocaleString()}</b> High Value · <b>${reg.toLocaleString()}</b> Registrations across ${rows.length} row${rows.length === 1 ? '' : 's'}.` : '';
+    const pro = rows.filter(r => r.leadType === 'Prospect').reduce((t, r) => t + (Number(r.count) || 0), 0);
+    summary.innerHTML = rows.length ? `This month: <b>${hv.toLocaleString()}</b> High Value · <b>${reg.toLocaleString()}</b> Growth · <b>${pro.toLocaleString()}</b> Prospect across ${rows.length} row${rows.length === 1 ? '' : 's'}.` : '';
   }
   if (yearTotalsEl){
     const yearSel = document.getElementById('mbuLeadYear');
     const byMonth = {};
     mbuLeadYearTotals.forEach(t => { (byMonth[t.month] = byMonth[t.month] || {})[t.leadType] = t.count; });
     const months = Object.keys(byMonth).map(Number).sort((a, b) => a - b);
-    let hvY = 0, regY = 0; months.forEach(mo => { hvY += byMonth[mo]['High Value'] || 0; regY += byMonth[mo]['Registration'] || 0; });
+    let hvY = 0, regY = 0, proY = 0; months.forEach(mo => { hvY += byMonth[mo]['High Value'] || 0; regY += byMonth[mo]['Registration'] || 0; proY += byMonth[mo]['Prospect'] || 0; });
     const bkByMonth = {};
     mbuLeadYearTotals.forEach(t => { if (t.hasBookings) (bkByMonth[t.month] = bkByMonth[t.month] || {})[t.leadType] = t.bookings; });
     const anyBk = Object.keys(bkByMonth).length > 0;
     const pe = mbuLeadPoolEconomics || { pools: [], forms: [] };
     const poolHtml = pe.pools.length ? `<div class="hint" style="margin:10px 0 4px;font-weight:700;">Measured pool economics (mature months only)</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Lead type</th><th>Leads</th><th>Bookings</th><th>Conversion</th><th>Avg days to convert</th><th>Mature months</th></tr></thead><tbody>${pe.pools.map(pl => `<tr><td><b>${escapeHtml(pl.leadType)}</b></td><td>${Math.round(pl.leads).toLocaleString()}</td><td>${Math.round(pl.bookings).toLocaleString()}</td><td><b>${pl.conversionRate != null ? (pl.conversionRate * 100).toFixed(2) + '%' : '—'}</b></td><td>${pl.avgDaysToConvert != null ? Math.round(pl.avgDaysToConvert) + ' days' : '—'}</td><td>${pl.matureMonths}${pl.immatureLeads ? `<div class="hint">${Math.round(pl.immatureLeads).toLocaleString()} leads in months still converting — excluded</div>` : ''}</td></tr>`).join('')}</tbody></table></div><p class="hint" style="margin:6px 0 0;">${escapeHtml(pe.maturityRule || '')} These rates now stand in for the Leads → Bookings seed on new campaigns, and the days-to-convert for the Transaction Window default. Top forms: ${pe.forms.slice(0, 5).map(f => `${escapeHtml(f.formName || f.source)} ${f.conversionRate != null ? (f.conversionRate * 100).toFixed(1) + '%' : '—'}`).join(' · ')}.</p>` : '';
-    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${yearSel ? yearSel.value : ''} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>High Value</th><th>Registration</th>${anyBk ? '<th>HV bookings</th><th>Reg bookings</th>' : ''}</tr></thead><tbody>${months.map(mo => `<tr><td>${MBU_MONTH_NAMES_1[mo]}</td><td>${(byMonth[mo]['High Value'] || 0).toLocaleString()}</td><td>${(byMonth[mo]['Registration'] || 0).toLocaleString()}</td>${anyBk ? `<td>${bkByMonth[mo] && bkByMonth[mo]['High Value'] != null ? Math.round(bkByMonth[mo]['High Value']).toLocaleString() : '—'}</td><td>${bkByMonth[mo] && bkByMonth[mo]['Registration'] != null ? Math.round(bkByMonth[mo]['Registration']).toLocaleString() : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Year to date</b></td><td><b>${hvY.toLocaleString()}</b></td><td><b>${regY.toLocaleString()}</b></td>${anyBk ? '<td></td><td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">These are the actuals behind the High-Value Leads and Registrations rows for campaigns in market during these months.</p>${poolHtml}` : poolHtml;
+    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${yearSel ? yearSel.value : ''} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>High Value</th><th>Growth</th><th>Prospect</th>${anyBk ? '<th>HV bookings</th><th>Growth bookings</th><th>Prospect bookings</th>' : ''}</tr></thead><tbody>${months.map(mo => `<tr><td>${MBU_MONTH_NAMES_1[mo]}</td><td>${(byMonth[mo]['High Value'] || 0).toLocaleString()}</td><td>${(byMonth[mo]['Registration'] || 0).toLocaleString()}</td><td>${(byMonth[mo]['Prospect'] || 0).toLocaleString()}</td>${anyBk ? ['High Value', 'Registration', 'Prospect'].map(lt => `<td>${bkByMonth[mo] && bkByMonth[mo][lt] != null ? Math.round(bkByMonth[mo][lt]).toLocaleString() : '—'}</td>`).join('') : ''}</tr>`).join('')}<tr><td><b>Year to date</b></td><td><b>${hvY.toLocaleString()}</b></td><td><b>${regY.toLocaleString()}</b></td><td><b>${proY.toLocaleString()}</b></td>${anyBk ? '<td></td><td></td><td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">These are the actuals behind the High-Value Leads, Registrations (Growth) and Prospect Leads rows for campaigns in market during these months.</p>${poolHtml}` : poolHtml;
   }
 }
 function mbuAddLeadRow(){ mbuLeadRows.push({ source: '', leadType: 'High Value', formName: '', count: null, bookings: null, avgDaysToConvert: null }); mbuRenderLeadRows(); }
@@ -67679,8 +67684,8 @@ async function mbuHandleLeadFile(event){
       if (!Number.isFinite(year)) year = defYear;
       if (!Number.isFinite(month)) month = defMonth;
       const leadTypeRaw = String(r[colIndex.leadType] || '').trim();
-      const leadType = /high|value|hv/i.test(leadTypeRaw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(leadTypeRaw) ? 'Registration' : null);
-      if (!leadType){ problems.push(`row ${i + 1}: lead type "${leadTypeRaw}" isn't High Value or Registration`); continue; }
+      const leadType = /prospect|meta|co-?reg|facebook|paid social/i.test(leadTypeRaw) ? 'Prospect' : (/high|value|hv/i.test(leadTypeRaw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(leadTypeRaw) ? 'Registration' : null));
+      if (!leadType){ problems.push(`row ${i + 1}: lead type "${leadTypeRaw}" isn't High Value, Growth or Prospect`); continue; }
       const count = mbuNum(r[colIndex.count]);
       parsed.push({ year, month, source, leadType, formName: colIndex.formName != null ? String(r[colIndex.formName] || '').trim() : '', count,
         bookings: colIndex.bookings != null ? mbuNum(r[colIndex.bookings]) : null,
@@ -67690,9 +67695,10 @@ async function mbuHandleLeadFile(event){
     const periods = [...new Set(parsed.map(p => `${MBU_MONTH_NAMES_1[p.month]} ${p.year}`))];
     const hv = parsed.filter(p => p.leadType === 'High Value').reduce((t, p) => t + (p.count || 0), 0);
     const reg = parsed.filter(p => p.leadType === 'Registration').reduce((t, p) => t + (p.count || 0), 0);
+    const pro = parsed.filter(p => p.leadType === 'Prospect').reduce((t, p) => t + (p.count || 0), 0);
     mbuPendingLeads = parsed;
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
-      <b>${parsed.length} row${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} — ${periods.length === 1 ? `for <b>${escapeHtml(periods[0])}</b>${colIndex.year == null && colIndex.month == null && colIndex.date == null ? ' (no Year/Month columns in the file, so the Year / Month selected above is used — change them first if that\'s wrong)' : ''}` : `across ${periods.length} periods (${escapeHtml(periods.join(', '))})`}: <b>${hv.toLocaleString()}</b> High Value, <b>${reg.toLocaleString()}</b> Registration.${problems.length ? `<div style="color:var(--advocacy);margin-top:4px;">Skipped: ${escapeHtml(problems.slice(0, 5).join('; '))}${problems.length > 5 ? ` (+${problems.length - 5} more)` : ''}</div>` : ''}
+      <b>${parsed.length} row${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} — ${periods.length === 1 ? `for <b>${escapeHtml(periods[0])}</b>${colIndex.year == null && colIndex.month == null && colIndex.date == null ? ' (no Year/Month columns in the file, so the Year / Month selected above is used — change them first if that\'s wrong)' : ''}` : `across ${periods.length} periods (${escapeHtml(periods.join(', '))})`}: <b>${hv.toLocaleString()}</b> High Value, <b>${reg.toLocaleString()}</b> Growth, <b>${pro.toLocaleString()}</b> Prospect.${problems.length ? `<div style="color:var(--advocacy);margin-top:4px;">Skipped: ${escapeHtml(problems.slice(0, 5).join('; '))}${problems.length > 5 ? ` (+${problems.length - 5} more)` : ''}</div>` : ''}
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmLeadUpload()">Save rows</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuLeadPreview').innerHTML='';mbuPendingLeads=null;">Cancel</button></div></div>`;
     if (status) status.textContent = '';
   } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
