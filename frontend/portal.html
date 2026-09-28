@@ -12008,7 +12008,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-27-cta-field-typing-scroll-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-cmo-final-approval-review';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12928,6 +12928,31 @@ function creativeCollectionStatusForFunction(campaign, fn){
   const matching = requirements.filter(r => (CHANNEL_FUNCTION_MAP[r.channel] || []).includes(fn));
   if (!matching.length) return null;
   return matching.some(r => r.status === 'Approved') ? 'complete' : 'in-progress';
+}
+// 2026-09-27 addition, per direct question ("Creative in QA is 0 even with
+// approved copy... are we saving everything correctly?"): the save was
+// fine (approvedCreativeAssetsJson had real data) — the actual gap was that
+// approving copy in the Creative Asset Copy grid (cmpAssetCopyApprove(),
+// row.copyVersions[key].approved) was never connected to this function-
+// completion system at all; only a real Project record's own status,
+// created in the separate Marketing Functions workflow, could move it. Per
+// direct instruction, wired in — same fold-in pattern as
+// creativeCollectionStatusForFunction() just above, sourced from the
+// Creative Asset Copy grid's own real approval state instead. Reuses
+// FUNCTION_GROUP_CHANNELS (the same channel -> function ownership map the
+// Media Plan Pacing view already relies on) to know which approved-asset
+// rows are "this function's" work. 'complete' only once EVERY asset row
+// mapped to fn has at least one approved copy version — a single approved
+// asset out of several required ones is real, partial progress
+// ('in-progress'), not done. Returns null (no opinion) when this campaign
+// has no approved-creative-asset row mapped to fn at all, so it never
+// downgrades evidence a real Project record already established.
+function creativeAssetCopyStatusForFunction(campaign, fn){
+  const assets = (campaign.approvedCreativeAssets || []).filter(a => (FUNCTION_GROUP_CHANNELS[fn] || []).includes(a.channel));
+  if (!assets.length) return null;
+  const hasApprovedCopy = a => a.copyVersions && Object.values(a.copyVersions).some(v => v && v.approved);
+  if (assets.every(hasApprovedCopy)) return 'complete';
+  return assets.some(hasApprovedCopy) ? 'in-progress' : null;
 }
 
 // Round 55 — structured content components, per the round-49 audit's finding
@@ -47024,12 +47049,251 @@ async function cycleBrandStage(){
   }
 }
 
+// 2026-09-28 addition, per direct instruction: "We need to have a final
+// approval flow for the CMO to have a chance to review the collective
+// creative copy" — clarified further: "a way to approve the execution
+// associated with the briefs written for the copy associated with the
+// campaign objectives as the first step and then the analytics approach.
+// The CMO should not need to go through each asset individually."
+//
+// Replaces the old bare "Mark QA & Approval complete →" button (which gave
+// no visibility into what was actually being approved) with a real review
+// screen, opened via cmpOpenFinalApprovalReview(). Two sequential
+// sections, per the direct framing above:
+//   1. Creative & Messaging — a single COLLECTIVE list of every approved
+//      creative asset's copy across every channel, built from the real,
+//      already-persisted campaign.approvedCreativeAssets/copyVersions — no
+//      per-asset navigation — shown alongside the campaign's own
+//      Objective/Media Science Primary Focus/Recommended CTA so the CMO
+//      can judge fit at a glance.
+//   2. Analytics Approach — the campaign's measurement setup (Primary KPI
+//      + Target, Lifecycle-Loop Stage) plus the real, already-computed
+//      objective-alignment relevance breakdown
+//      (computeCampaignRelevanceScore — channel/budget/landing-page/brand
+//      fit). Gated open only once section 1 is approved, since reviewing
+//      the measurement plan for copy that hasn't been signed off yet is
+//      premature.
+// Each section is its own real gesture: Approve (persists
+// creativeMessagingCmoApproved/analyticsApproachCmoApproved + a timestamp)
+// or Request changes (persists a note, does not approve) — real backend
+// columns, same local-first/best-effort-backend save pattern as everything
+// else in this build. approveCampaignQa() below now also requires both
+// before the overall QA & Approval stage can be marked complete — the old
+// Functions+Creative gate and this new CMO review both have to clear.
+let cmpFinalApprovalOpen = false;
+
+// Flattens every APPROVED creative-asset copy version into one collective,
+// read-only list — exactly "the CMO should not need to go through each
+// asset individually." Only entries with v.approved === true are listed
+// (unapproved drafts are counted toward the coverage note but not shown —
+// this is a review of finished work, not a status board; the existing
+// per-asset Creative Asset Copy grid already covers that).
+function cmpCollectApprovedCopyForReview(c){
+  // Same lazy-hydrate safety net as the Creative Asset Selection stage's
+  // own opener (see its 2026-09-25 comment) — a CMO reaching this review
+  // straight from Campaign Detail, without ever opening that stage this
+  // session, would otherwise see an empty in-memory array even though the
+  // real approved copy is sitting right there in the backend column.
+  if (!(Array.isArray(c.approvedCreativeAssets) && c.approvedCreativeAssets.length) && c.approvedCreativeAssetsJson){
+    try { const parsed = JSON.parse(c.approvedCreativeAssetsJson); if (Array.isArray(parsed)) c.approvedCreativeAssets = parsed; } catch (e){ /* malformed — start empty */ }
+  }
+  const rows = [];
+  let totalVersions = 0, approvedVersions = 0;
+  (c.approvedCreativeAssets || []).forEach(a => {
+    const spec = cmpSpecForRowSize(a.channel, a.size);
+    const schema = spec ? cmpAssetCopySchema(a.channel, spec, a) : null;
+    Object.keys(a.copyVersions || {}).forEach(key => {
+      const v = a.copyVersions[key];
+      if (!v || !v.fields) return;
+      totalVersions++;
+      if (!v.approved) return;
+      approvedVersions++;
+      const wf = schema ? schema.toWireframe(v.fields) : null;
+      const display = (wf && typeof wf === 'object') ? [wf.headline, wf.body, wf.cta].filter(Boolean).join(' — ')
+        : (typeof wf === 'string' && wf) ? wf
+        : Object.values(v.fields).flat().filter(Boolean).join(' — ');
+      rows.push({
+        channel: a.channel, partner: a.partner, size: a.size,
+        audience: key === CMP_ASSET_COPY_ALL_KEY ? 'All audiences' : key,
+        display, approvedAt: v.approvedAt
+      });
+    });
+  });
+  return { rows, totalVersions, approvedVersions };
+}
+
+function cmpOpenFinalApprovalReview(){
+  cmpFinalApprovalOpen = true;
+  cmpRenderFinalApprovalReview();
+}
+function cmpCloseFinalApprovalReview(){
+  cmpFinalApprovalOpen = false;
+  const el = document.getElementById('cmpFinalApprovalOverlay');
+  if (el) el.remove();
+}
+function cmpRenderFinalApprovalReview(){
+  if (!cmpFinalApprovalOpen) return;
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  let overlay = document.getElementById('cmpFinalApprovalOverlay');
+  if (!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'cmpFinalApprovalOverlay';
+    overlay.className = 'copyver-review-backdrop';
+    document.body.appendChild(overlay);
+  }
+  const { rows, totalVersions, approvedVersions } = cmpCollectApprovedCopyForReview(c);
+  const angle = (typeof cmpRecommendedCtaAngle === 'function') ? cmpRecommendedCtaAngle(c.ctaOverride, c.businessInitiative, c.primaryKpi, c.stage) : null;
+  const creativeApproved = !!c.creativeMessagingCmoApproved;
+  const analyticsApproved = !!c.analyticsApproachCmoApproved;
+  const align = computeCampaignRelevanceScore(c);
+  const pct = v => (v === null || v === undefined) ? '—' : `${v}%`;
+
+  const creativeSection = `
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <h4 style="margin:0;">1. Creative &amp; Messaging</h4>
+        ${creativeApproved ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(c.creativeMessagingCmoApprovedAt).toLocaleString())}</span>` : `<span class="hint">Awaiting review</span>`}
+      </div>
+      <p class="hint" style="margin:4px 0 12px;">Objective: ${escapeHtml(c.objective || '—')}${c.businessInitiative ? ` · Media Science Primary Focus: ${escapeHtml((BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative] || {}).label || c.businessInitiative)}` : ''}${angle ? ` · Recommended CTA: "${escapeHtml(angle.ask)}"` : ''}</p>
+      <p class="hint" style="margin:0 0 12px;">${approvedVersions} of ${totalVersions} drafted copy version${totalVersions === 1 ? '' : 's'} approved${approvedVersions < totalVersions ? ' — the rest are still in progress on the Creative Asset Copy grid.' : '.'}</p>
+      ${rows.length ? `<div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
+        <thead><tr><th>Channel</th><th>Format</th><th>Audience</th><th>Approved copy</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td>${escapeHtml(r.channel)}${r.partner ? ` <span class="hint">(${escapeHtml(r.partner)})</span>` : ''}</td>
+          <td>${escapeHtml(r.size || '')}</td>
+          <td>${escapeHtml(r.audience)}</td>
+          <td style="max-width:420px;">${escapeHtml(r.display)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : `<p class="lede">No approved creative copy yet — approve at least one asset on the Creative Asset Copy grid before this can be reviewed.</p>`}
+      ${creativeApproved ? '' : `
+        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn-primary" ${rows.length ? '' : 'disabled'} onclick="cmpApproveCreativeMessagingCmo()">Approve creative &amp; messaging →</button>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Request changes (optional note)</label>
+          <textarea id="cmpCreativeCmoNote" rows="2" placeholder="What needs to change before this can be approved.">${escapeHtml(c.creativeMessagingCmoNote || '')}</textarea>
+        </div>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-ghost" onclick="cmpRequestCreativeMessagingChanges()">Save note / request changes</button>
+        </div>`}
+      ${(!creativeApproved && c.creativeMessagingCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last note: ${escapeHtml(c.creativeMessagingCmoNote)}</p>` : ''}
+    </div>`;
+
+  const analyticsSection = `
+    <div style="${creativeApproved ? '' : 'opacity:0.5;pointer-events:none;'}margin-top:20px;padding-top:20px;border-top:1px solid var(--line);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <h4 style="margin:0;">2. Analytics Approach</h4>
+        ${analyticsApproved ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(c.analyticsApproachCmoApprovedAt).toLocaleString())}</span>` : `<span class="hint">${creativeApproved ? 'Awaiting review' : 'Unlocks once Creative & Messaging is approved'}</span>`}
+      </div>
+      <p class="hint" style="margin:4px 0 12px;">Primary KPI: ${escapeHtml(c.primaryKpi || '—')}${c.kpiGoal ? ` (target ${escapeHtml(String(c.kpiGoal))})` : ''} · Lifecycle-Loop Stage: ${escapeHtml(c.stage || '—')}</p>
+      <div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
+        <thead><tr><th>Alignment component</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr><td>Channel mix vs. recommended</td><td>${pct(align.channelRelevancePct)}</td></tr>
+          <tr><td>Budget logic</td><td>${pct(align.budgetRelevancePct)}</td></tr>
+          <tr><td>Landing page relevance</td><td>${pct(align.landingPageRelevancePct)}</td></tr>
+          <tr><td>Landing page performance (CTA path)</td><td>${pct(align.landingPagePerformancePct)}</td></tr>
+          <tr><td>Brand foundation</td><td>${pct(align.brandFoundationPct)}</td></tr>
+          <tr><td><b>Overall alignment</b></td><td><b>${pct(align.overall)}</b></td></tr>
+        </tbody>
+      </table></div>
+      ${analyticsApproved ? '' : `
+        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn-primary" onclick="cmpApproveAnalyticsApproachCmo()">Approve analytics approach →</button>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Request changes (optional note)</label>
+          <textarea id="cmpAnalyticsCmoNote" rows="2" placeholder="What needs to change before this can be approved.">${escapeHtml(c.analyticsApproachCmoNote || '')}</textarea>
+        </div>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-ghost" onclick="cmpRequestAnalyticsApproachChanges()">Save note / request changes</button>
+        </div>`}
+      ${(!analyticsApproved && c.analyticsApproachCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last note: ${escapeHtml(c.analyticsApproachCmoNote)}</p>` : ''}
+    </div>`;
+
+  const bothApproved = creativeApproved && analyticsApproved;
+  overlay.innerHTML = `
+    <div class="copyver-review-header">
+      <div><h3>Final Approval — ${escapeHtml(c.name || c.id)}</h3><p class="hint" style="margin:2px 0 0;">Collective review of this campaign's approved copy and measurement approach — no need to open each asset individually.</p></div>
+      <button type="button" class="btn-ghost" onclick="cmpCloseFinalApprovalReview()">Close ✕</button>
+    </div>
+    <div class="copyver-review-body">
+      ${creativeSection}
+      ${analyticsSection}
+      <div class="btn-row" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line-strong);">
+        <button type="button" class="btn-primary" ${bothApproved ? '' : 'disabled'} onclick="approveCampaignQa()">Mark QA &amp; Approval complete →</button>
+        ${bothApproved ? '' : `<span class="hint">Both sections above must be approved first.</span>`}
+      </div>
+      <div id="cmpFinalApprovalSaveFlag" class="hint" style="margin-top:8px;"></div>
+    </div>`;
+}
+
+async function cmpPersistFinalApprovalField(c, fields, label){
+  let persisted = false;
+  if (dataSourceLabel === 'backend' && !c.localOnly){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields)
+      });
+      if (resp.ok) persisted = true;
+    } catch (e){ console.warn(`cmpPersistFinalApprovalField (${label}): backend write failed, saved locally only.`, e); }
+  }
+  const flag = document.getElementById('cmpFinalApprovalSaveFlag');
+  if (flag){
+    flag.textContent = persisted
+      ? `${label} saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+      : `${label} saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
+  }
+}
+async function cmpApproveCreativeMessagingCmo(){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const now = new Date().toISOString();
+  c.creativeMessagingCmoApproved = true;
+  c.creativeMessagingCmoApprovedAt = now;
+  c.creativeMessagingCmoNote = '';
+  await cmpPersistFinalApprovalField(c, { creativeMessagingCmoApproved: true, creativeMessagingCmoApprovedAt: now, creativeMessagingCmoNote: '' }, 'Creative & Messaging approval');
+  cmpRenderFinalApprovalReview();
+}
+async function cmpRequestCreativeMessagingChanges(){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const note = (document.getElementById('cmpCreativeCmoNote') || {}).value || '';
+  c.creativeMessagingCmoNote = note.trim();
+  await cmpPersistFinalApprovalField(c, { creativeMessagingCmoNote: c.creativeMessagingCmoNote }, 'Note');
+  cmpRenderFinalApprovalReview();
+}
+async function cmpApproveAnalyticsApproachCmo(){
+  const c = findCampaign(currentCampaignId);
+  if (!c || !c.creativeMessagingCmoApproved) return;
+  const now = new Date().toISOString();
+  c.analyticsApproachCmoApproved = true;
+  c.analyticsApproachCmoApprovedAt = now;
+  c.analyticsApproachCmoNote = '';
+  await cmpPersistFinalApprovalField(c, { analyticsApproachCmoApproved: true, analyticsApproachCmoApprovedAt: now, analyticsApproachCmoNote: '' }, 'Analytics approach approval');
+  cmpRenderFinalApprovalReview();
+}
+async function cmpRequestAnalyticsApproachChanges(){
+  const c = findCampaign(currentCampaignId);
+  if (!c) return;
+  const note = (document.getElementById('cmpAnalyticsCmoNote') || {}).value || '';
+  c.analyticsApproachCmoNote = note.trim();
+  await cmpPersistFinalApprovalField(c, { analyticsApproachCmoNote: c.analyticsApproachCmoNote }, 'Note');
+  cmpRenderFinalApprovalReview();
+}
+
 // Round 36 — the one new manual gesture for QA & Approval, per direct
 // instruction: "this status is based on the marketing function QA... and
 // being marked complete by the team member." Blocked with a plain alert()
 // (not a silent no-op) if Marketing Functions or Creative aren't both
 // Complete yet, since QA & Approval is meant to certify that upstream work
-// is actually done, not just claimed done.
+// is actually done, not just claimed done. 2026-09-28 — also now requires
+// the new CMO Final Approval review (creative & messaging + analytics
+// approach) above to be complete; the overlay's own "Mark QA & Approval
+// complete" button is disabled until both are true, but this function
+// checks again directly since approveCampaignQa() can still be reached
+// other ways (e.g. a stale render).
 async function approveCampaignQa(){
   const c = findCampaign(currentCampaignId);
   if (!c) return;
@@ -47038,6 +47302,10 @@ async function approveCampaignQa(){
   const creativeDone = stages.find(s => s.key === 'creative').status === 'complete';
   if (!functionsDone || !creativeDone){
     alert('Marketing Functions and Creative must both be Complete before QA & Approval can be marked complete.');
+    return;
+  }
+  if (!c.creativeMessagingCmoApproved || !c.analyticsApproachCmoApproved){
+    cmpOpenFinalApprovalReview();
     return;
   }
   const qaApproved = true;
@@ -47964,7 +48232,11 @@ function renderCampaignDetail(focusCardId){
     if (byKey('qa').status === 'complete'){
       qaControl = `<p class="hint" style="margin:8px 0 0;">QA & Approval marked complete.</p>`;
     } else {
-      qaControl = `<div class="btn-row" style="margin-top:8px;"><button class="btn-primary" onclick="approveCampaignQa()">Mark QA & Approval complete →</button></div>`;
+      // 2026-09-28 — opens the collective Final Approval review
+      // (cmpOpenFinalApprovalReview(), above approveCampaignQa() in this
+      // file) instead of firing the completion gesture blind. Approving
+      // both sections in there is what actually calls approveCampaignQa().
+      qaControl = `<div class="btn-row" style="margin-top:8px;"><button class="btn-primary" onclick="cmpOpenFinalApprovalReview()">Open Final Approval review →</button></div>`;
     }
 
     // 2026-09-16, per direct correction — "campaigns have start and end
@@ -51152,6 +51424,12 @@ function computeFunctionCompletion(campaign, { creativeOnly = null } = {}){
       const collectionStatus = creativeCollectionStatusForFunction(campaign, fn);
       if (collectionStatus === 'complete') status = 'complete';
       else if (collectionStatus === 'in-progress' && status === 'missing') status = 'in-progress';
+      // 2026-09-27 addition — same fold-in, now also from the Creative
+      // Asset Copy grid's own approved copy (see
+      // creativeAssetCopyStatusForFunction() above).
+      const assetCopyStatus = creativeAssetCopyStatusForFunction(campaign, fn);
+      if (assetCopyStatus === 'complete') status = 'complete';
+      else if (assetCopyStatus === 'in-progress' && status === 'missing') status = 'in-progress';
     }
     return { fn, label: functionLabel(fn), status };
   });
