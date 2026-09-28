@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-marketing-functions-from-approved-channels';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-final-approval-review-ungated-entry';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15482,8 +15482,13 @@ function renderCmpDownstreamStages(){
     <p class="lede" style="margin-bottom:12px;">Marketing Functions: <strong>${STAGE_STATUS_LABEL[fn.status]}</strong> · Creative: <strong>${STAGE_STATUS_LABEL[cr.status]}</strong> · QA &amp; Approval: <strong>${STAGE_STATUS_LABEL[qa.status]}</strong></p>
     ${c.qaApproved
       ? `<p class="cmp-stage-note" style="padding:0;">QA &amp; Approval is marked complete for this campaign.</p>`
-      : `<button type="button" class="btn-primary" onclick="cmpApproveQa('${c.id}')">Mark QA &amp; Approval complete →</button>
-         <p class="cmp-stage-note" style="padding:8px 0 0;">Requires Marketing Functions and Creative both Complete first — same check as the campaign's own detail page.</p>`}`;
+      // 2026-09-28 fix — same fix as cmpRenderTraffickingQa()'s own qaBody
+      // (see its comment): this used to be a gated "Mark QA & Approval
+      // complete →" button that just alert()ed and stopped if Functions/
+      // Creative weren't Complete yet, with no way to view the CMO copy
+      // review on its own. Always opens the real review now.
+      : `<button type="button" class="btn-primary" onclick="cmpOpenFinalApprovalReview()">Open Final Approval review →</button>
+         <p class="cmp-stage-note" style="padding:8px 0 0;">Review and approve Creative &amp; Messaging and the Analytics Approach there — QA &amp; Approval itself still requires Marketing Functions and Creative both Complete first.</p>`}`;
 
   // 7 — Trafficking: same tracking-link data as QR/UTM, framed for the trafficking task.
   const traffickingBody = `
@@ -41905,19 +41910,24 @@ function cmpRenderTraffickingQa(campaign){
     </div>
     ${campaign.qaApproved
       ? `<p class="cmp-stage-note" style="padding:0;">QA &amp; Approval is marked complete for this campaign.</p>`
-      : `<button type="button" class="btn-primary" onclick="cmpTraffickingApproveQa('${campaign.id}')">Mark QA &amp; Approval complete →</button>
-         <p class="cmp-stage-note" style="padding:8px 0 0;">Requires Marketing Functions and Creative both Complete first — same check as the campaign's own detail page.</p>`}`;
-}
-// Wraps the real cmpApproveQa() (server-gated on Functions+Creative both
-// Complete, same as the accordion's qaBody and the campaign detail page) so
-// this workspace's own QA card refreshes too.
-async function cmpTraffickingApproveQa(campaignId){
-  await cmpApproveQa(campaignId);
-  const campaign = cmpRailLoadedCampaign();
-  if (campaign){
-    cmpRenderTraffickingQa(campaign);
-    cmpRenderTraffickingWorkspaceStatusBadge(campaign);
-  }
+      // 2026-09-28 fix, per direct report: "You can only approve on this
+      // page. There is no access to view the campaign copy. Where is the
+      // CMO copy summary page that you built earlier this session?" This
+      // button used to be "Mark QA & Approval complete →" (cmpTraffickingApproveQa
+      // -> cmpApproveQa -> approveCampaignQa()), which checks Functions+
+      // Creative first and, if either isn't Complete, just shows a plain
+      // alert() and returns — never opening the Final Approval review at
+      // all. Even once both are Complete, that path only opens the review
+      // as a side effect of the approve gesture failing, with no way to
+      // just go look at the copy on its own. The legacy accordion's own qaBody
+      // (see its 2026-09-28 comment) already gets this right — one
+      // unconditional "Open Final Approval review →" button, no gate before
+      // opening it — so the modern Trafficking workspace now matches it:
+      // this always opens the real CMO review (cmpOpenFinalApprovalReview(),
+      // the collective read-only copy list + analytics approach, "Mark QA &
+      // Approval complete" lives inside it once both sections are approved).
+      : `<button type="button" class="btn-primary" onclick="cmpOpenFinalApprovalReview()">Open Final Approval review →</button>
+         <p class="cmp-stage-note" style="padding:8px 0 0;">Review and approve Creative &amp; Messaging and the Analytics Approach there — QA &amp; Approval itself still requires Marketing Functions and Creative both Complete first.</p>`}`;
 }
 function cmpRenderTraffickingWorkspaceStatusBadge(campaign){
   const el = document.getElementById('cmpTraffickingStatusBadge');
@@ -47391,6 +47401,22 @@ function cmpCloseFinalApprovalReview(){
   cmpFinalApprovalOpen = false;
   const el = document.getElementById('cmpFinalApprovalOverlay');
   if (el) el.remove();
+  // 2026-09-28 — this overlay can now be opened straight from the modern
+  // Trafficking workspace (cmpRenderTraffickingQa()'s "Open Final Approval
+  // review →" button), not just the legacy accordion page. Closing it after
+  // approving one or both sections in there used to leave that workspace's
+  // own QA card and status badge showing whatever they said before the
+  // overlay opened — these calls are no-ops (both early-return on a missing
+  // element) when the Trafficking workspace isn't the one open.
+  const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  if (campaign){
+    if (typeof cmpRenderTraffickingQa === 'function') cmpRenderTraffickingQa(campaign);
+    if (typeof cmpRenderTraffickingWorkspaceStatusBadge === 'function') cmpRenderTraffickingWorkspaceStatusBadge(campaign);
+  }
+  // Same staleness fix for the Workspace Hub's own downstream-stages
+  // accordion (renderCmpDownstreamStages()'s qaBody) — a no-op when that
+  // accordion isn't the one currently mounted.
+  if (typeof renderCmpDownstreamStages === 'function') renderCmpDownstreamStages();
 }
 function cmpRenderFinalApprovalReview(){
   if (!cmpFinalApprovalOpen) return;
@@ -47589,6 +47615,13 @@ async function approveCampaignQa(){
       ? `QA & Approval marked complete ${new Date().toLocaleTimeString()} — saved to the backend.`
       : `QA & Approval marked complete ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
   }
+  // 2026-09-28 — this function's own "Mark QA & Approval complete →" button
+  // lives INSIDE the Final Approval review overlay (only enabled once both
+  // sections are approved), so a successful call here means that overlay is
+  // still open showing itself as if nothing happened. Close it now — closing
+  // also refreshes the Trafficking workspace's QA card/status badge when
+  // that's where this was opened from (see cmpCloseFinalApprovalReview()).
+  if (cmpFinalApprovalOpen) cmpCloseFinalApprovalReview();
 }
 
 // Round 16, point 1 — save the manual Analysis-step inputs. There's no live
