@@ -1301,9 +1301,17 @@ ensureColumn('account_year_results', 'transactions', 'INTEGER');
 // integration, Snowflake, or a Google Sheet import. Two tables, same
 // composite-key + explicit upsert pattern as account_year_results above:
 // website users by month, split US/Canada/International (account_website_
-// users_monthly), and first-party DM/EM Marketable list sizes per audience
-// generation category (account_marketable_sizes, one row per GENERATIONS
-// key — see GENERATION_LABELS_FOR_COPY for the canonical 9-entry list).
+// users_monthly), and first-party DM/EM Marketable list sizes per real
+// campaign audience segment (account_marketable_sizes, one row per
+// MARKETABLE_SIZE_AUDIENCE_LABELS key — see that dict below). 2026-09-28
+// fix, per direct correction ("First party database counts are not the
+// generations... They should align with audiences selected for
+// campaigns"): this table's category set was originally the GENERATIONS
+// age-cohort taxonomy (wrong dimension entirely for a mailing-list count);
+// its "generationKey" column name is left as-is on purpose — a free-text
+// key column, so repurposing what it holds needs no migration — but its
+// valid values are now MARKETABLE_SIZE_AUDIENCE_LABELS, not
+// GENERATION_LABELS_FOR_COPY.
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_website_users_monthly (
     accountId TEXT NOT NULL,
@@ -15814,6 +15822,20 @@ const GENERATION_LABELS_FOR_COPY = {
 };
 const WEALTH_TIER_LABELS_FOR_COPY = {
   hnw: 'High Net-Worth', wealthy: 'Wealthy', middle: 'Mainstream / Value-Conscious'
+};
+// 2026-09-28, per direct correction — the first-party DM/EM Marketable
+// list-size categories (account_marketable_sizes, see its own 2026-09-22/
+// 2026-09-28 comments above) should be the real campaign audience segments
+// (frontend's ACCOUNT_SEGMENTS), not generations. Anonymous Website Traffic
+// is excluded — confirmed directly: "It's covered in the website traffic
+// by month section and not a database value" — since there's no name/
+// address/email to count for an anonymous visitor. Cancelled Orders is a
+// new segment added to ACCOUNT_SEGMENTS itself alongside this fix. Keys
+// mirror frontend's MARKETABLE_SIZE_AUDIENCES — hand-synced, same
+// disclosed-duplication convention as GENERATION_LABELS_FOR_COPY above.
+const MARKETABLE_SIZE_AUDIENCE_LABELS = {
+  pastCustomers: 'Past Customers', futureCustomers: 'Future Customers',
+  handRaisers: 'Hand-Raisers', prospects: 'Prospects', cancelledOrders: 'Cancelled Orders'
 };
 function humanizeAudienceKeys(commaJoined, labelMap){
   if (!commaJoined) return '';
@@ -31086,19 +31108,21 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     }
 
     // GET /api/accounts/:id/marketable-sizes — first-party DM/EM Marketable
-    // list sizes per audience generation category. 2026-09-22, per direct
+    // list sizes per real campaign audience segment. 2026-09-22, per direct
     // instruction (Todd) — same manual-bridge purpose as website-users-
-    // monthly above. Always returns one row per GENERATIONS category (see
-    // GENERATION_LABELS_FOR_COPY), null where nothing has been entered yet.
+    // monthly above. Always returns one row per
+    // MARKETABLE_SIZE_AUDIENCE_LABELS category (2026-09-28 — was GENERATIONS,
+    // the wrong dimension; see that dict's own comment), null where nothing
+    // has been entered yet.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketable-sizes'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const rows = db.prepare('SELECT "generationKey", "dmMarketable", "emMarketable", updatedAt FROM account_marketable_sizes WHERE accountId = ?').all(accountId);
       const byKey = {};
       rows.forEach(r => { byKey[r.generationKey] = r; });
-      const out = Object.keys(GENERATION_LABELS_FOR_COPY).map(key => {
+      const out = Object.keys(MARKETABLE_SIZE_AUDIENCE_LABELS).map(key => {
         const r = byKey[key];
-        return { generationKey: key, label: GENERATION_LABELS_FOR_COPY[key], dmMarketable: r ? r.dmMarketable : null, emMarketable: r ? r.emMarketable : null, updatedAt: r ? r.updatedAt : null };
+        return { generationKey: key, label: MARKETABLE_SIZE_AUDIENCE_LABELS[key], dmMarketable: r ? r.dmMarketable : null, emMarketable: r ? r.emMarketable : null, updatedAt: r ? r.updatedAt : null };
       });
       return sendJson(res, 200, { accountId, rows: out });
     }
@@ -31119,7 +31143,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       };
       for (const row of rowsIn){
         const generationKey = String(row.generationKey || '').trim();
-        if (!GENERATION_LABELS_FOR_COPY[generationKey]) return sendJson(res, 400, { error: `unknown generationKey: ${row.generationKey}` });
+        if (!MARKETABLE_SIZE_AUDIENCE_LABELS[generationKey]) return sendJson(res, 400, { error: `unknown generationKey: ${row.generationKey}` });
         let dm, em;
         try { dm = numOrNull(row.dmMarketable, 'dmMarketable'); em = numOrNull(row.emMarketable, 'emMarketable'); }
         catch (e){ return sendJson(res, 400, { error: e.message }); }
