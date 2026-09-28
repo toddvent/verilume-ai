@@ -11586,7 +11586,13 @@
         <p class="hint" style="margin-top:0;">A manual bridge for reach and performance estimation until we can pull this in via a partner integration, Snowflake, or a Google Sheet import. Enter monthly website users for US, Canada, and International — saves as you go.</p>
         <div class="btn-row" style="margin:0 0 10px;align-items:center;gap:10px;">
           <label class="hint" style="margin:0;" for="mbuWebsiteUsersYear">Year</label>
-          <select id="mbuWebsiteUsersYear" onchange="mbuLoadWebsiteUsersMonthly()"></select>
+          <!-- 2026-09-28 fix, per direct report ("Year is using the wrong
+               style") — same root cause as the table inputs just below
+               (see mbuLoadWebsiteUsersMonthly()'s 2026-09-28 comment): this
+               select had no styling class, so it rendered as a bare
+               browser-default dropdown. .tbl-select is this site's real
+               compact styled select (see .tbl-input,.tbl-select above). -->
+          <select id="mbuWebsiteUsersYear" class="tbl-select" style="width:auto;min-width:100px;" onchange="mbuLoadWebsiteUsersMonthly()"></select>
           <span class="hint" id="mbuWebsiteUsersStatus" style="margin:0;"></span>
         </div>
         <div style="overflow-x:auto;">
@@ -12040,7 +12046,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-manual-reach-input-field-styling';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-marketable-sizes-audience-segments-cancelled-orders';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15996,7 +16002,17 @@ const CAMPAIGN_OBJECTIVE_GOAL_TEXT = {
 //     retired Primary KPI still rendering via its original saved text
 //     instead of crashing. No new UI re-adds them; this is data
 //     preservation only.
-const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'Prospects', 'Future Customers', 'Anonymous Website Traffic'];
+// 2026-09-28 — added 'Cancelled Orders', per direct instruction: "First
+// party database counts... should include Past Customers, Future
+// Customers, Hand-Raisers, Prospects, Cancelled Orders. They should align
+// with audiences selected for campaigns." A win-back segment — people who
+// placed and then cancelled an order — that this account had no way to
+// select before. Same treatment as every other real segment here: its own
+// SEGMENT_CHANNEL_ELIGIBILITY and ACCOUNT_SEGMENT_ANGLE entries below, and
+// (per the same reasoning cmpSegmentDisabledSetForStage() already applies
+// to Past Customers — "already knows the brand, no genuine Awareness job
+// to do for them") disabled at the Awareness stage too.
+const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'Prospects', 'Future Customers', 'Cancelled Orders', 'Anonymous Website Traffic'];
 let selectedSegments = new Set();
 
 // 2026-09-20, per Todd's direct copy: shown once, as the first AI Brain
@@ -16047,6 +16063,10 @@ const SEGMENT_CHANNEL_ELIGIBILITY = {
   // framing of this segment. Leans on pixel-based, addressable-to-the-
   // anonymous-visitor channels rather than broad/rented-list ones.
   'Anonymous Website Traffic': ['Programmatic Display', 'Paid Social', 'Email — Remarketing', 'Remarketing'],
+  // 2026-09-28 — new. A win-back list (former customers who cancelled an
+  // order), so it leans on the same owned/addressable retention channels as
+  // Past Customers rather than broad acquisition ones.
+  'Cancelled Orders': ['Internal Email', 'Email — Remarketing', 'Direct Mail — Past Guests', 'Paid Social'],
   // Retired from ACCOUNT_SEGMENTS (no longer selectable) but kept as a
   // legacy fallback for any already-saved campaign/account record whose
   // segment still references it — see ACCOUNT_SEGMENTS' own comment.
@@ -27217,7 +27237,9 @@ function cmpSegmentDisabledSet(){
 // reasoning; unchanged here, just re-parameterized.
 function cmpSegmentDisabledSetForStage(stage){
   const disabled = new Set();
-  if (stage === 'Awareness') disabled.add('Past Customers');
+  // 2026-09-28 — Cancelled Orders added alongside Past Customers: both
+  // already know the brand, so neither has a genuine Awareness job to do.
+  if (stage === 'Awareness'){ disabled.add('Past Customers'); disabled.add('Cancelled Orders'); }
   if (stage === 'Loyalty'){
     ACCOUNT_SEGMENTS.forEach(s => { if (s !== 'Past Customers') disabled.add(s); });
   }
@@ -27309,6 +27331,7 @@ function renderSegmentRow(){
 }
 function cmpSegmentDisabledReason(s){
   if (selectedStage === 'Awareness' && s === 'Past Customers') return 'Past Customers already know this brand — there’s no Awareness job to do for them at this stage.';
+  if (selectedStage === 'Awareness' && s === 'Cancelled Orders') return 'Cancelled Orders already know this brand — there’s no Awareness job to do for them at this stage.';
   if (selectedStage === 'Loyalty' && s !== 'Past Customers') return 'Loyalty-stage campaigns are built around retention (Internal Email, Direct Mail — Past Guests, Partner Media) — only Past Customers is in scope here.';
   return '';
 }
@@ -56461,6 +56484,11 @@ const ACCOUNT_SEGMENT_ANGLE = {
   // 2026-09-20 \u2014 new. Known site visitors with no identity on file \u2014 a
   // retargeting audience, not a stranger: they've already engaged once.
   'Anonymous Website Traffic': 'people who already visited but didn\u2019t convert \u2014 they know the brand exists, so skip the introduction and give them the specific reason to finish what they started',
+  // 2026-09-28 \u2014 new. A win-back segment: already knows the brand and
+  // already bought once, unlike Past Customers this relationship ended on a
+  // cancellation, so the angle has to acknowledge that rather than pretend
+  // nothing happened.
+  'Cancelled Orders': 'people who booked and then cancelled \u2014 they already know this brand, so don\u2019t re-introduce it; address the cancellation honestly and give them a real, specific reason it\u2019s worth another look',
   // Retired from ACCOUNT_SEGMENTS (no longer selectable) but kept as a
   // legacy fallback for any already-saved campaign/account record whose
   // segment still references it \u2014 see ACCOUNT_SEGMENTS' own comment.
@@ -65779,24 +65807,49 @@ async function mbuSaveWebsiteUsersMonthly(){
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
 }
 let mbuMarketableSizesSaveTimer = null;
+// 2026-09-28 fix, per direct instruction: "First party database counts are
+// not the generations. They should include Past Customers, Future
+// Customers, Hand-Raisers, Prospects, Cancelled Orders. They should align
+// with audiences selected for campaigns." This table was built on
+// GENERATIONS (age-cohort categories) — the wrong taxonomy entirely; DM/EM
+// marketable list size is about WHO is on the list (the same real campaign
+// audience segments ACCOUNT_SEGMENTS defines), not their generation.
+// Anonymous Website Traffic is deliberately excluded — confirmed directly:
+// "It's covered in the website traffic by month section and not a
+// database value" (there's no name/address/email to count for an anonymous
+// visitor). Cancelled Orders is new — added to ACCOUNT_SEGMENTS itself
+// (see its 2026-09-28 comment) as a real, selectable campaign audience,
+// confirmed directly rather than left as a reach-table-only category.
+// The wire format (generationKey/data-genkey field names, and the
+// account_marketable_sizes.generationKey DB column) is left unchanged on
+// purpose — it's a free-text key column, so repurposing what it holds
+// needs no schema migration; renaming it end-to-end for a label change
+// alone would be real risk for no functional gain.
+const MARKETABLE_SIZE_AUDIENCES = [
+  { key: 'pastCustomers', label: 'Past Customers' },
+  { key: 'futureCustomers', label: 'Future Customers' },
+  { key: 'handRaisers', label: 'Hand-Raisers' },
+  { key: 'prospects', label: 'Prospects' },
+  { key: 'cancelledOrders', label: 'Cancelled Orders' }
+];
 async function mbuLoadMarketableSizes(){
   const body = document.getElementById('mbuMarketableSizesBody');
   const status = document.getElementById('mbuMarketableSizesStatus');
   if (!body) return;
-  let rows = GENERATIONS.map(g => ({ generationKey: g.key, label: g.label, dmMarketable: null, emMarketable: null }));
+  let rows = MARKETABLE_SIZE_AUDIENCES.map(a => ({ generationKey: a.key, label: a.label, dmMarketable: null, emMarketable: null }));
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketable-sizes`);
       if (resp.ok){ const data = await resp.json(); if (Array.isArray(data.rows) && data.rows.length) rows = data.rows; }
     } catch (e){ console.warn('mbuLoadMarketableSizes: fetch failed', e); }
   }
-  const genLabel = key => (GENERATIONS.find(g => g.key === key) || {}).label || key;
+  const audienceLabel = key => (MARKETABLE_SIZE_AUDIENCES.find(a => a.key === key) || {}).label || key;
   // 2026-09-28 fix — same root cause and fix as Website users by month just
   // above (missing .tbl-input class, no explicit step): these list-size
   // counts can also run well into six figures, so the field is widened and
   // styled to match every other in-table numeric input on this site.
   body.innerHTML = rows.map(r => `<tr>
-    <td>${r.label || genLabel(r.generationKey)}</td>
+    <td>${r.label || audienceLabel(r.generationKey)}</td>
     <td><input type="number" min="0" class="tbl-input" style="width:150px;" value="${r.dmMarketable == null ? '' : r.dmMarketable}" data-genkey="${r.generationKey}" data-field="dmMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
     <td><input type="number" min="0" class="tbl-input" style="width:150px;" value="${r.emMarketable == null ? '' : r.emMarketable}" data-genkey="${r.generationKey}" data-field="emMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
   </tr>`).join('');
