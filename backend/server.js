@@ -1387,6 +1387,52 @@ const DM_FORMAT_COST_DEFAULTS = {
   'Bifold Self-Mailer (6x9 folded)': { costPerPiece: 0.90, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "Newsletter / multi-page (4pp)" — matched on page count (half-fold = 4 pages).' },
   'Trifold Self-Mailer (6x10.5)': { costPerPiece: 0.925, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "6-panel self-mailer" — matched on panel count.' }
 };
+// 2026-09-28 — Annual plan: baseline & targets per year, per direct
+// instruction on the AOV_2027_Board_Case.xlsx workbook ("the Anthropic model
+// built for Atlas for an entire year. Extrapolating campaign level
+// analytical objectives that then drive to the final annual event should
+// be the structure that we put in place"). One row per (account, year,
+// kind): kind 'baseline' = the trailing-12-month actuals the annual model
+// is calibrated on (that workbook's Baseline tab — working media, new web
+// users, lead pools, bookings); kind 'target' = the board-approved
+// scenario for the year (its Summary/Model tab — e.g. "$10.2M optimized
+// '27"). The Campaign Summary strip (portal.html cmpRenderAnalysisSummary)
+// derives each campaign's modeled rates from the baseline row (cost per
+// website user, value-lead and registration rates off website users,
+// impressions → bookings) and shows every campaign metric as a share of
+// the target row, so campaign-level objectives roll up to the annual
+// number instead of floating free. Column names follow the workbook's
+// own vocabulary: valueLeads = "Value leads" (talk to expert / quote /
+// request info) = the app's High-Value Leads; growthLeads = "Growth leads"
+// (popup / subscribe / brochure / share / contact) = the app's
+// Registrations; bookings = Transactions. Manual entry on Company Profile
+// for now — nothing here is seeded from the workbook automatically, since
+// which account row is Atlas and which scenario the board approved are
+// both Todd's calls, not the code's.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_annual_plan (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    label TEXT,
+    workingMedia REAL,
+    impressions REAL,
+    websiteUsers REAL,
+    prospectLeads REAL,
+    growthLeads REAL,
+    valueLeads REAL,
+    directCalls REAL,
+    bookings REAL,
+    directBookings REAL,
+    grossRevenue REAL,
+    notes TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, kind),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const ANNUAL_PLAN_KINDS = ['baseline', 'target'];
+const ANNUAL_PLAN_NUMERIC_FIELDS = ['workingMedia', 'impressions', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'bookings', 'directBookings', 'grossRevenue'];
 // 2026-09-28 — Magazine equivalent, per direct instruction: magazine ad
 // rates are negotiated per publication (a Vogue full page and a
 // regional-title 1/3 page are not comparable), so unlike Direct Mail there
@@ -1612,6 +1658,25 @@ ensureColumn('campaigns', 'campaignTypeDetailModesJson', 'TEXT');
 // types). Default 'shared' preserves this campaign's existing single-contest
 // behavior for every campaign saved before this field existed.
 ensureColumn('campaigns', 'audienceSharedExperience', "TEXT DEFAULT 'shared'");
+
+// 2026-09-28 — per-campaign funnel assumptions, finally persisted. The
+// campaign form's Funnel assumptions fields (Impressions → Visits, Visits →
+// Leads, Leads → Bookings; whole-number percents, e.g. 2 for 2%) have been
+// sent by the frontend as funnelVisitRatePct/funnelLeadRatePct/
+// funnelBookingRatePct since round 132q, and the form's own copy has said
+// "saved with this campaign" — but neither the INSERT nor the merge-update
+// below ever accepted them, so a reload always fell back to the seeded
+// stage × industry defaults. Found while wiring the Campaign Summary strip
+// on the Analysis workspace (cmpRenderAnalysisSummary(), portal.html),
+// which needs a saved campaign's real rates to model New Website Users →
+// High-Value Leads / Registrations / Transactions. Also adds the new
+// funnelRegistrationRatePct (Website Users → Registrations), per direct
+// decision: a separate, stage-seeded, editable rate rather than reusing the
+// qualified-lead rate. Nullable — null means "use the seed".
+ensureColumn('campaigns', 'funnelVisitRatePct', 'REAL');
+ensureColumn('campaigns', 'funnelLeadRatePct', 'REAL');
+ensureColumn('campaigns', 'funnelBookingRatePct', 'REAL');
+ensureColumn('campaigns', 'funnelRegistrationRatePct', 'REAL');
 
 // audienceCopyJson — Step 1's real per-audience contest winners. Added
 // 2026-09-22, per direct instruction to build Step 1 (Select Winner &
@@ -12224,6 +12289,10 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'demandSignalRef'],
   ['campaigns', 'endDate'],
   ['campaigns', 'fundingSource'],
+  ['campaigns', 'funnelVisitRatePct'],
+  ['campaigns', 'funnelLeadRatePct'],
+  ['campaigns', 'funnelBookingRatePct'],
+  ['campaigns', 'funnelRegistrationRatePct'],
   ['campaigns', 'isAdHoc'],
   ['campaigns', 'keyMessage'],
   ['campaigns', 'kpiGoal'],
@@ -12636,6 +12705,22 @@ const LEGACY_CASING_COLUMNS = [
   ['account_dm_format_cost', 'formatName'],
   ['account_dm_format_cost', 'costPerPiece'],
   ['account_dm_format_cost', 'updatedAt'],
+  ['account_annual_plan', 'accountId'],
+  ['account_annual_plan', 'year'],
+  ['account_annual_plan', 'kind'],
+  ['account_annual_plan', 'label'],
+  ['account_annual_plan', 'workingMedia'],
+  ['account_annual_plan', 'impressions'],
+  ['account_annual_plan', 'websiteUsers'],
+  ['account_annual_plan', 'prospectLeads'],
+  ['account_annual_plan', 'growthLeads'],
+  ['account_annual_plan', 'valueLeads'],
+  ['account_annual_plan', 'directCalls'],
+  ['account_annual_plan', 'bookings'],
+  ['account_annual_plan', 'directBookings'],
+  ['account_annual_plan', 'grossRevenue'],
+  ['account_annual_plan', 'notes'],
+  ['account_annual_plan', 'updatedAt'],
   ['account_magazine_cost', 'accountId'],
   ['account_magazine_cost', 'publication'],
   ['account_magazine_cost', 'adFormat'],
@@ -23564,6 +23649,16 @@ Submit your response via the campaign_intake_turn tool.`;
       if (typeof body.createdByUser === 'string' && body.createdByUser.trim()){
         db.prepare('UPDATE campaigns SET createdByUser = ? WHERE id = ?').run(body.createdByUser.trim(), campaignId);
       }
+      // 2026-09-28 — funnel assumptions (see the ensureColumn() comment).
+      // Same follow-up-UPDATE convention as createdByUser just above rather
+      // than four more placeholders in the long INSERT.
+      {
+        const pct = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0) ? v : null;
+        const fv = pct(body.funnelVisitRatePct), fl = pct(body.funnelLeadRatePct), fb = pct(body.funnelBookingRatePct), fr = pct(body.funnelRegistrationRatePct);
+        if (fv != null || fl != null || fb != null || fr != null){
+          db.prepare('UPDATE campaigns SET funnelVisitRatePct = ?, funnelLeadRatePct = ?, funnelBookingRatePct = ?, funnelRegistrationRatePct = ? WHERE id = ?').run(fv, fl, fb, fr, campaignId);
+        }
+      }
       // Round 55 — insert one row per {allocationId, amount} draw when the
       // campaign spans multiple Media Plan allocations. body.allocationId
       // (single, legacy) stays on the campaign row above for any caller
@@ -23856,7 +23951,14 @@ Submit your response via the campaign_intake_turn tool.`;
         // kpiMismatchNote (channel_planning_details.detailsJson) already use.
         // Read back into the ai-brain-reply prompt so a "why isn't video in
         // the plan" question gets the real, precomputed answer.
-        channelGapNote: body.channelGapNote !== undefined ? body.channelGapNote : existing.channelGapNote
+        channelGapNote: body.channelGapNote !== undefined ? body.channelGapNote : existing.channelGapNote,
+        // 2026-09-28 — funnel assumptions, same merge-update convention.
+        // See the ensureColumn() comment. A non-number (blank field) saves
+        // as null = "use the stage × industry seed".
+        funnelVisitRatePct: body.funnelVisitRatePct !== undefined ? ((typeof body.funnelVisitRatePct === 'number' && body.funnelVisitRatePct >= 0) ? body.funnelVisitRatePct : null) : existing.funnelVisitRatePct,
+        funnelLeadRatePct: body.funnelLeadRatePct !== undefined ? ((typeof body.funnelLeadRatePct === 'number' && body.funnelLeadRatePct >= 0) ? body.funnelLeadRatePct : null) : existing.funnelLeadRatePct,
+        funnelBookingRatePct: body.funnelBookingRatePct !== undefined ? ((typeof body.funnelBookingRatePct === 'number' && body.funnelBookingRatePct >= 0) ? body.funnelBookingRatePct : null) : existing.funnelBookingRatePct,
+        funnelRegistrationRatePct: body.funnelRegistrationRatePct !== undefined ? ((typeof body.funnelRegistrationRatePct === 'number' && body.funnelRegistrationRatePct >= 0) ? body.funnelRegistrationRatePct : null) : existing.funnelRegistrationRatePct
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -23969,6 +24071,10 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('cmoCopywriterBriefUpstreamHash', body.cmoCopywriterBriefUpstreamHash !== undefined, merged.cmoCopywriterBriefUpstreamHash);
       addCol('cmoAnalyticsBriefUpstreamHash', body.cmoAnalyticsBriefUpstreamHash !== undefined, merged.cmoAnalyticsBriefUpstreamHash);
       addCol('channelGapNote', body.channelGapNote !== undefined, merged.channelGapNote);
+      addCol('funnelVisitRatePct', body.funnelVisitRatePct !== undefined, merged.funnelVisitRatePct);
+      addCol('funnelLeadRatePct', body.funnelLeadRatePct !== undefined, merged.funnelLeadRatePct);
+      addCol('funnelBookingRatePct', body.funnelBookingRatePct !== undefined, merged.funnelBookingRatePct);
+      addCol('funnelRegistrationRatePct', body.funnelRegistrationRatePct !== undefined, merged.funnelRegistrationRatePct);
       if (setCols.length){
         setVals.push(campaignId);
         db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
@@ -31389,6 +31495,79 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const existing = db.prepare('SELECT 1 FROM account_magazine_cost WHERE accountId = ? AND publication = ? AND "adFormat" = ?').get(accountId, publication, adFormat);
         if (existing) db.prepare('UPDATE account_magazine_cost SET "costPerInsertion" = ?, updatedAt = ? WHERE accountId = ? AND publication = ? AND "adFormat" = ?').run(cost, now, accountId, publication, adFormat);
         else db.prepare('INSERT INTO account_magazine_cost (accountId, publication, "adFormat", "costPerInsertion", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, publication, adFormat, cost, now);
+      }
+      return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/annual-plan[?year=YYYY] — annual baseline &
+    // target rows (see account_annual_plan's own comment). Without ?year,
+    // every row on file, newest year first. Each row also carries derived
+    // per-unit rates the Campaign Summary strip and the roll-up read, so
+    // the math lives in exactly one place: costPerWebsiteUser = working
+    // media ÷ website users; valueLeadRate / growthLeadRate = leads ÷
+    // website users; impressionsToBookingRate = bookings ÷ impressions;
+    // grossRevenuePerBooking = gross revenue ÷ bookings. Null wherever the
+    // denominator is missing — never a fabricated ratio.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'annual-plan'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const yearParam = reqUrl.searchParams.get('year');
+      const year = yearParam ? parseInt(yearParam, 10) : null;
+      const rows = (Number.isFinite(year)
+        ? db.prepare('SELECT * FROM account_annual_plan WHERE accountId = ? AND year = ?').all(accountId, year)
+        : db.prepare('SELECT * FROM account_annual_plan WHERE accountId = ? ORDER BY year DESC, kind ASC').all(accountId));
+      const ratio = (a, b) => (a != null && b != null && b > 0) ? a / b : null;
+      const out = rows.map(r => ({
+        ...r,
+        derived: {
+          costPerWebsiteUser: ratio(r.workingMedia, r.websiteUsers),
+          valueLeadRate: ratio(r.valueLeads, r.websiteUsers),
+          growthLeadRate: ratio(r.growthLeads, r.websiteUsers),
+          impressionsToBookingRate: ratio(r.bookings, r.impressions),
+          websiteUsersToBookingRate: ratio(r.bookings, r.websiteUsers),
+          grossRevenuePerBooking: ratio(r.grossRevenue, r.bookings),
+          costPerBooking: ratio(r.workingMedia, r.bookings),
+          roas: ratio(r.grossRevenue, r.workingMedia),
+          directShare: ratio(r.directBookings, r.bookings)
+        }
+      }));
+      return sendJson(res, 200, { accountId, rows: out });
+    }
+    // POST /api/accounts/:id/annual-plan — upsert one or more rows.
+    // { rows: [{ year, kind, label, workingMedia, ..., notes }, ...] }
+    // Numeric fields: a number ≥ 0 saves as-is, blank/null clears to null,
+    // anything else is a 400 — a typo should never silently become 0.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'annual-plan'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      for (const row of rowsIn){
+        const year = parseInt(row.year, 10);
+        const kind = String(row.kind || '').trim();
+        if (!(year >= 2000 && year <= 2100)) return sendJson(res, 400, { error: `year must be a 4-digit year: ${row.year}` });
+        if (!ANNUAL_PLAN_KINDS.includes(kind)) return sendJson(res, 400, { error: `kind must be one of ${ANNUAL_PLAN_KINDS.join('/')}: ${row.kind}` });
+        const vals = {};
+        for (const f of ANNUAL_PLAN_NUMERIC_FIELDS){
+          const v = row[f];
+          if (v === null || v === undefined || v === ''){ vals[f] = null; continue; }
+          const n = Number(v);
+          if (!(Number.isFinite(n) && n >= 0)) return sendJson(res, 400, { error: `${f} must be a non-negative number or blank` });
+          vals[f] = n;
+        }
+        const label = row.label != null ? String(row.label).slice(0, 200) : null;
+        const notes = row.notes != null ? String(row.notes).slice(0, 4000) : null;
+        const existing = db.prepare('SELECT 1 FROM account_annual_plan WHERE accountId = ? AND year = ? AND kind = ?').get(accountId, year, kind);
+        if (existing){
+          db.prepare(`UPDATE account_annual_plan SET label = ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}" = ?`).join(', ')}, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ? AND kind = ?`)
+            .run(label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, now, accountId, year, kind);
+        } else {
+          db.prepare(`INSERT INTO account_annual_plan (accountId, year, kind, label, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}"`).join(', ')}, notes, updatedAt) VALUES (?, ?, ?, ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(() => '?').join(', ')}, ?, ?)`)
+            .run(accountId, year, kind, label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, now);
+        }
       }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
