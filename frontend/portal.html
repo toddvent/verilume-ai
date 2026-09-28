@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-creative-asset-silent-save-failure-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-cta-live-counter-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -61653,7 +61653,19 @@ function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
     // Auto-flush after a pause skips the grid-wide rerender (true below) —
     // see cmpAssetCopyFlushCtaOverride()'s comment for why.
     cmpCtaOverrideDebounce = setTimeout(() => cmpAssetCopyFlushCtaOverride(true), 600);
-    return; // the cascade (debounced/flushed above) re-renders the whole grid + badges
+    // 2026-09-28 fix, per direct report ("CTA over character limit error
+    // does not change when edited") — this branch used to return here with
+    // no visual update at all for THIS field's own counter/badge/Approve
+    // button; those only refreshed on blur (or the debounced cascade 600ms
+    // later touching every OTHER asset). Typing a shorter CTA and clicking
+    // Approve copy before ever clicking away left the button showing the
+    // stale over-budget count and still genuinely disabled — the click did
+    // nothing because the button's disabled state really hadn't updated
+    // yet. cmpAssetCopyRefreshBadge() only touches this block's own chrome
+    // (badge/counter/button), not the inputs, so it's safe to call on every
+    // keystroke same as every other field already does just below.
+    cmpAssetCopyRefreshBadge(r);
+    return; // the cascade (debounced/flushed above) still re-renders every OTHER asset's badges
   }
   cmpAssetCopyRefreshBadge(r);
   if (cmpAssetWireframeOpen[r.kid]) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
