@@ -1353,6 +1353,59 @@ createTableIfNeeded(`
   );
 `);
 const ACCOUNT_DM_CHANNELS = ['Direct Mail — Past Guests', 'Direct Mail — Prospects', 'Direct Mail — Inquiries'];
+// 2026-09-28 — per direct instruction: "an updated cost per DM and Magazine
+// size selected during the creative process. We currently use a default
+// price for DM vs. asset level." account_dm_cost_per_piece above is one flat
+// number per DM channel; this table instead prices each real named format
+// from GLOBAL_DIRECT_MAIL_SPECS (the same catalog the Creative Asset
+// Selection Size picker already pulls from — see loadPublisherSizesForChannel
+// in portal.html) so the Direct Mail — Actual Budget calc can key its cost
+// off the specific piece actually selected for a campaign, not a channel-wide
+// average. Composite key adds formatName to channel/accountId.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_dm_format_cost (
+    accountId TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    formatName TEXT NOT NULL,
+    costPerPiece REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, channel, formatName),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+// Seed defaults, sourced from DIRECT_MAIL_PLANNING_REFERENCE.costByMailerFormat
+// (see that constant, above), for the GLOBAL_DIRECT_MAIL_SPECS formats that
+// genuinely correspond to one of its 12 named formats — matched on piece
+// type AND page/panel count, not guessed. Left out on purpose where no clean
+// match exists (Slim Jim 12p/20p, Super Jumbo Flat, Standard Catalog 36p) —
+// those start blank rather than being seeded from a mismatched reference
+// row; account_dm_format_cost simply has no default until Todd enters one.
+const DM_FORMAT_COST_DEFAULTS = {
+  'Standard Postcard (4x6)': { costPerPiece: 0.625, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "4×6 postcard" (all-in base estimate).' },
+  'Jumbo Postcard (6x9)': { costPerPiece: 0.825, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "6×9 postcard" (all-in base estimate).' },
+  'Oversized Postcard (6x11)': { costPerPiece: 1.075, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "6×11 postcard (jumbo/flat)" (all-in base estimate).' },
+  'Bifold Self-Mailer (6x9 folded)': { costPerPiece: 0.90, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "Newsletter / multi-page (4pp)" — matched on page count (half-fold = 4 pages).' },
+  'Trifold Self-Mailer (6x10.5)': { costPerPiece: 0.925, sourceNote: 'Seeded from DIRECT_MAIL_PLANNING_REFERENCE "6-panel self-mailer" — matched on panel count.' }
+};
+// 2026-09-28 — Magazine equivalent, per direct instruction: magazine ad
+// rates are negotiated per publication (a Vogue full page and a
+// regional-title 1/3 page are not comparable), so unlike Direct Mail there
+// is no external per-format benchmark to seed from — every row starts
+// blank until Todd enters a real negotiated cost-per-insertion for that
+// publication + ad format. Keyed off the same publication/adFormat pairs
+// GLOBAL_PRINT_SPECS (+ this account's own print_specs_custom rows) already
+// expose to the Creative Asset Selection Size picker.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_magazine_cost (
+    accountId TEXT NOT NULL,
+    publication TEXT NOT NULL,
+    adFormat TEXT NOT NULL,
+    costPerInsertion REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, publication, adFormat),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 // Canonical region set for the website-users-monthly grid, per Todd's own
 // wording ("US, CAN and international markets identified").
 const ACCOUNT_WEBSITE_USER_REGIONS = ['US', 'CAN', 'International'];
@@ -12578,6 +12631,16 @@ const LEGACY_CASING_COLUMNS = [
   ['account_data_access_log', 'recordCount'],
   ['account_data_access_log', 'requestPath'],
   ['account_dm_cost_per_piece', 'costPerPiece'],
+  ['account_dm_format_cost', 'accountId'],
+  ['account_dm_format_cost', 'channel'],
+  ['account_dm_format_cost', 'formatName'],
+  ['account_dm_format_cost', 'costPerPiece'],
+  ['account_dm_format_cost', 'updatedAt'],
+  ['account_magazine_cost', 'accountId'],
+  ['account_magazine_cost', 'publication'],
+  ['account_magazine_cost', 'adFormat'],
+  ['account_magazine_cost', 'costPerInsertion'],
+  ['account_magazine_cost', 'updatedAt'],
   ['account_marketable_sizes', 'dmMarketable'],
   ['account_marketable_sizes', 'emMarketable'],
   ['account_marketable_sizes', 'generationKey'],
@@ -31211,6 +31274,121 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const existing = db.prepare('SELECT 1 FROM account_dm_cost_per_piece WHERE accountId = ? AND channel = ?').get(accountId, channel);
         if (existing) db.prepare('UPDATE account_dm_cost_per_piece SET "costPerPiece" = ?, updatedAt = ? WHERE accountId = ? AND channel = ?').run(cost, now, accountId, channel);
         else db.prepare('INSERT INTO account_dm_cost_per_piece (accountId, channel, "costPerPiece", updatedAt) VALUES (?, ?, ?, ?)').run(accountId, channel, cost, now);
+      }
+      return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/dm-format-cost — Direct Mail cost-per-piece by
+    // real named format (2026-09-28, per direct instruction: "an updated
+    // cost per DM and Magazine size selected during the creative process.
+    // We currently use a default price for DM vs. asset level."). One row
+    // per (ACCOUNT_DM_CHANNELS × GLOBAL_DIRECT_MAIL_SPECS.formatName), so
+    // every real format in the Creative Asset Selection Size picker has a
+    // cost slot. Where nothing's been entered yet, falls back to
+    // DM_FORMAT_COST_DEFAULTS (isDefault:true) or null (isDefault:false) —
+    // the client shows the difference so a seeded value reads as "our
+    // estimate" rather than "your confirmed cost."
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'dm-format-cost'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT channel, "formatName", "costPerPiece", updatedAt FROM account_dm_format_cost WHERE accountId = ?').all(accountId);
+      const byKey = {};
+      rows.forEach(r => { byKey[`${r.channel}::${r.formatName}`] = r; });
+      const formatNames = GLOBAL_DIRECT_MAIL_SPECS.map(s => s.formatName);
+      const out = [];
+      ACCOUNT_DM_CHANNELS.forEach(channel => {
+        formatNames.forEach(formatName => {
+          const saved = byKey[`${channel}::${formatName}`];
+          if (saved && saved.costPerPiece != null){
+            out.push({ channel, formatName, costPerPiece: saved.costPerPiece, isDefault: false, updatedAt: saved.updatedAt });
+          } else {
+            const def = DM_FORMAT_COST_DEFAULTS[formatName];
+            out.push({ channel, formatName, costPerPiece: def ? def.costPerPiece : null, isDefault: !!def, sourceNote: def ? def.sourceNote : null, updatedAt: saved ? saved.updatedAt : null });
+          }
+        });
+      });
+      return sendJson(res, 200, { accountId, rows: out });
+    }
+    // POST /api/accounts/:id/dm-format-cost — batch upsert.
+    // { rows: [{ channel, formatName, costPerPiece }, ...] }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'dm-format-cost'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const validFormats = new Set(GLOBAL_DIRECT_MAIL_SPECS.map(s => s.formatName));
+      const now = new Date().toISOString();
+      for (const row of rowsIn){
+        const channel = String(row.channel || '').trim();
+        const formatName = String(row.formatName || '').trim();
+        if (!ACCOUNT_DM_CHANNELS.includes(channel)) return sendJson(res, 400, { error: `unknown channel: ${row.channel}` });
+        if (!validFormats.has(formatName)) return sendJson(res, 400, { error: `unknown formatName: ${row.formatName}` });
+        let cost = null;
+        if (row.costPerPiece !== null && row.costPerPiece !== undefined && row.costPerPiece !== ''){
+          const n = Number(row.costPerPiece);
+          if (!(Number.isFinite(n) && n >= 0)) return sendJson(res, 400, { error: 'costPerPiece must be a non-negative number or blank' });
+          cost = n;
+        }
+        const existing = db.prepare('SELECT 1 FROM account_dm_format_cost WHERE accountId = ? AND channel = ? AND "formatName" = ?').get(accountId, channel, formatName);
+        if (existing) db.prepare('UPDATE account_dm_format_cost SET "costPerPiece" = ?, updatedAt = ? WHERE accountId = ? AND channel = ? AND "formatName" = ?').run(cost, now, accountId, channel, formatName);
+        else db.prepare('INSERT INTO account_dm_format_cost (accountId, channel, "formatName", "costPerPiece", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, channel, formatName, cost, now);
+      }
+      return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/magazine-cost — cost-per-insertion by real
+    // publication + ad format (2026-09-28, same direct instruction as
+    // dm-format-cost above). Magazine rates are negotiated per publication
+    // (a Vogue full page and a regional title's 1/3 page aren't comparable),
+    // so unlike Direct Mail there's no external benchmark to seed from —
+    // every row starts null until entered. Covers every publication/format
+    // pair in GLOBAL_PRINT_SPECS plus this account's own print_specs_custom
+    // additions, magazine rows only (Newspapers isn't in scope here).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'magazine-cost'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const custom = db.prepare('SELECT * FROM print_specs_custom WHERE accountId = ? AND "mediumType" = ?').all(accountId, 'Magazine');
+      const pairs = [];
+      const seen = new Set();
+      [...GLOBAL_PRINT_SPECS, ...custom].forEach(s => {
+        if (String(s.mediumType || '').toLowerCase() !== 'magazine') return;
+        const key = `${s.publication}::${s.adFormat}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        pairs.push({ publication: s.publication, adFormat: s.adFormat });
+      });
+      const rows = db.prepare('SELECT publication, "adFormat", "costPerInsertion", updatedAt FROM account_magazine_cost WHERE accountId = ?').all(accountId);
+      const byKey = {};
+      rows.forEach(r => { byKey[`${r.publication}::${r.adFormat}`] = r; });
+      const out = pairs.map(p => {
+        const saved = byKey[`${p.publication}::${p.adFormat}`];
+        return { publication: p.publication, adFormat: p.adFormat, costPerInsertion: saved ? saved.costPerInsertion : null, updatedAt: saved ? saved.updatedAt : null };
+      });
+      return sendJson(res, 200, { accountId, rows: out });
+    }
+    // POST /api/accounts/:id/magazine-cost — batch upsert.
+    // { rows: [{ publication, adFormat, costPerInsertion }, ...] }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'magazine-cost'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      for (const row of rowsIn){
+        const publication = String(row.publication || '').trim();
+        const adFormat = String(row.adFormat || '').trim();
+        if (!publication || !adFormat) return sendJson(res, 400, { error: 'publication and adFormat are required' });
+        let cost = null;
+        if (row.costPerInsertion !== null && row.costPerInsertion !== undefined && row.costPerInsertion !== ''){
+          const n = Number(row.costPerInsertion);
+          if (!(Number.isFinite(n) && n >= 0)) return sendJson(res, 400, { error: 'costPerInsertion must be a non-negative number or blank' });
+          cost = n;
+        }
+        const existing = db.prepare('SELECT 1 FROM account_magazine_cost WHERE accountId = ? AND publication = ? AND "adFormat" = ?').get(accountId, publication, adFormat);
+        if (existing) db.prepare('UPDATE account_magazine_cost SET "costPerInsertion" = ?, updatedAt = ? WHERE accountId = ? AND publication = ? AND "adFormat" = ?').run(cost, now, accountId, publication, adFormat);
+        else db.prepare('INSERT INTO account_magazine_cost (accountId, publication, "adFormat", "costPerInsertion", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, publication, adFormat, cost, now);
       }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
