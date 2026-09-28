@@ -136,6 +136,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <div class="toc-group">
       <p class="toc-group-label">Product ops</p>
       <a href="#data-model">Data model reference</a>
+      <a href="#analysis-summary">Campaign Summary &amp; annual roll-up</a>
       <a href="#gaps" class="flag">Known gaps &amp; open items</a>
       <a href="#log">Decision log — this cycle</a>
       <a href="#roadmap">Suggested next steps</a>
@@ -293,6 +294,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td><code>campaigns.channels</code> / <code>channelGroups</code></td><td class="mono">dead</td><td>Same — no longer written; kept as a fallback only</td></tr>
             <tr><td><code>campaigns.objective</code></td><td class="mono">dead (narrative use) / removed (category use)</td><td>No longer the source for either of its two former uses — see <a href="#objective">&sect; 05</a></td></tr>
             <tr><td><code>campaigns.pmValidatedAt</code> / <code>pmAssetsApprovedAt</code></td><td>Real save timestamps</td><td>The honest signal that Performance Marketing's audience save / Channel Plan approval actually happened — used to catch the "looks saved but isn't" bug this cycle</td></tr>
+            <tr><td><code>campaigns.funnelVisitRatePct</code> / <code>funnelLeadRatePct</code> / <code>funnelBookingRatePct</code> / <code>funnelRegistrationRatePct</code></td><td>Per-campaign funnel assumptions (whole-number percents; null = use the stage &times; industry seed)</td><td>Sent by the form since round 132q but never accepted by the INSERT/merge-update until 2026-09-28 — "saved with this campaign" was not true before that. Registration rate is new the same day.</td></tr>
+            <tr><td><code>account_annual_plan</code></td><td>Annual baseline &amp; target per (account, year, kind)</td><td>Added 2026-09-28. <code>GET/POST /api/accounts/:id/annual-plan</code>; GET returns <code>derived</code> rates (cost per website user, value/growth-lead rates, impressions&rarr;bookings, ROAS, direct share). See <a href="#analysis-summary">&sect; 06a</a></td></tr>
+            <tr><td><code>account_dm_format_cost</code> / <code>account_magazine_cost</code></td><td>Cost per piece by real DM format; cost per insertion by publication + ad format</td><td>Added 2026-09-28, replacing the flat per-channel DM cost as the input to Direct Mail &mdash; Actual Budget (<code>cmpComputeDmActualBudget()</code>), keyed off the format the campaign's approved creative asset actually selected</td></tr>
             <tr><td><code>media_plans.goalBackwardSolveJson</code></td><td>Backward-solve goal state for the Media Plan Goal feature</td><td>Was live-folded to <code>goalbackwardsolvejson</code> in production (legacy-casing drift) — fixed 2026-09-23, see <a href="#log">§ 08</a></td></tr>
             <tr><td><code>creative_job_decisions.jobId</code></td><td>Links a creative decision back to its generation job</td><td>Was live-folded to <code>jobid</code> — fixed 2026-09-23</td></tr>
             <tr><td><code>campaign_recommendation_comments.authorName</code> / <code>authorRole</code> / <code>suggestionJson</code></td><td>Comment-thread metadata on a budget recommendation card</td><td>Were live-folded to <code>authorname</code> / <code>authorrole</code> / <code>suggestionjson</code> — fixed 2026-09-23</td></tr>
@@ -301,10 +305,33 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       </div>
     </section>
 
+    <section id="analysis-summary">
+      <h2><span>Campaign Summary &amp; annual roll-up (Analysis workspace)</span><span class="num">&sect; 06a — added 2026-09-28</span></h2>
+      <p>The Analysis workspace (Campaign Workspace Hub &rarr; Analysis) now opens with a <strong>Campaign Summary</strong> strip: seven tiles, left to right on desktop, stacking on narrow widths, with the campaign's Primary KPI tile highlighted. The structure is the annual board-case model's own funnel (working media &rarr; impressions &amp; pieces &rarr; website users &rarr; lead pools &rarr; bookings) run for one campaign, so campaign-level objectives are a slice of the year rather than a separate vocabulary. Each tile is labeled <em>Actual</em> (a logged campaign field) or <em>Modeled</em>, states its source, and shows the campaign's share of that year's annual target when one is on file.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tile</th><th>Formula (as specified)</th><th>Source precedence, most-real first</th></tr></thead>
+          <tbody>
+            <tr><td>Spend</td><td>Campaign spend</td><td><code>actualSpend</code> (&Sigma; MMM line items) &rarr; approved <code>budget</code></td></tr>
+            <tr><td>Impressions</td><td>&Sigma; campaign impressions</td><td><code>actualImpressions</code> &rarr; <code>plannedImpressions</code></td></tr>
+            <tr><td>New Website Users</td><td>Spend &divide; historical cost per website user during the campaign window</td><td>That year's annual baseline (working media &divide; website users) &rarr; that year's Website-users-by-month history &rarr; latest annual baseline &rarr; blended history</td></tr>
+            <tr><td>Website Engagement</td><td>Avg. time on site</td><td>Null until GA4 is integrated (<code>fetchGa4Report</code> doesn't pull session duration yet)</td></tr>
+            <tr><td>High-Value Leads</td><td>Website users &times; typical conversion %</td><td>This campaign's saved Visits&rarr;Leads rate (explicit edit) &rarr; annual baseline <em>value-lead</em> rate (value leads &divide; website users) &rarr; Loop Stage &times; Industry seed</td></tr>
+            <tr><td>Registrations</td><td>Website users &times; typical conversion %</td><td>This campaign's saved Visits&rarr;Registrations rate (new field, <code>REGISTRATION_RATE_BY_STAGE</code> seed) &rarr; annual baseline <em>growth-lead</em> rate &rarr; stage seed</td></tr>
+            <tr><td>Transactions</td><td>Impressions &times; historical impressions-to-transaction %</td><td>Own logged <code>actualConversions</code> (Transactions KPI) &rarr; &Sigma; this account's other logged campaigns &rarr; annual baseline bookings &divide; impressions &rarr; this campaign's funnel chain</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Annual plan (Company Profile &rarr; Annual plan — baseline &amp; targets).</strong> One row per (account, year, kind): <em>baseline</em> = the trailing-12-month actuals the annual model was calibrated on; <em>target</em> = the approved scenario for the year. Fields follow the board-case workbook's Baseline tab (working media, impressions &amp; pieces, new website users, the four lead pools, bookings, direct bookings, gross revenue). Derived rates are computed server-side in one place (<code>GET /api/accounts/:id/annual-plan</code>) and shown read-only under the inputs. A <strong>Campaign roll-up vs. target</strong> table sums every campaign starting in the plan year — the same <code>cmpCampaignSummaryModel()</code> the strip uses — against the target, with coverage % and gap, so what campaigns not yet created still have to deliver is visible.</p>
+      <p>Vocabulary mapping, workbook &rarr; app: Value leads (talk to expert / quote / request info) = High-Value Leads; Growth leads (subscribe / brochure / popup / share / contact) = Registrations; Bookings = Transactions.</p>
+    </section>
+
     <section id="gaps">
       <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 07 — for product awareness</span></h2>
       <ul>
         <li>A separate set of unrelated lowercase-duplicate columns (<code>campaigntype</code>, <code>rolestyle</code>, <code>mandatoryphrase</code>, and others) exist from an old migration and hold zero rows anywhere in the account. Flagged, out of scope — nothing reads them, so they cause no bugs, but they're dead weight in the schema.</li>
+        <li><strong>Annual plan is manual entry.</strong> The board-case workbook is not imported automatically; Todd transcribes the Baseline and chosen-scenario rows on Company Profile. No monthly phasing (the workbook's Timing tab: lag, carryover, ramp) is applied to campaigns yet &mdash; a campaign's modeled numbers are unphased annual-rate slices.</li>
+        <li><strong>Website Engagement is null by design</strong> until GA4 session duration is pulled; a Magazine &mdash; Actual Budget calc (cost per insertion &times; insertions) is not built &mdash; no structured insertion count exists on a campaign.</li>
         <li>This doc covers the campaign data model as it stood after the 2026-09-22 consolidation. Campaign Creation intake, the CMO Dashboard, and portal-wide analytics that also touch campaigns are not yet covered here — see the (not yet documented) CMO Dashboard &amp; Portal Navigation card on the home page.</li>
       </ul>
     </section>
@@ -323,6 +350,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td class="mono">2026-09-23</td><td>"Is this not the same issue and fix that was required to fix the toggle?" — Todd identified that the rail-based Campaign Workspace Hub never sets <code>currentCampaignId</code>, unlike the older flat detail page.</td><td>Confirmed same bug class, fixed one level upstream: <code>loadExistingCampaignIntoForm()</code> now sets <code>currentCampaignId</code> directly rather than patching the ~50 downstream call sites individually. See <a href="#creative">§ 04</a>.</td></tr>
             <tr><td class="mono">2026-09-23</td><td>Dashboard KPI stat cards — Active Campaigns, Creative in QA, Budget Pacing.</td><td>Active Campaigns and Creative in QA wired to live data. Budget Pacing remains a static placeholder pending Todd's definition of the pacing formula — not yet resolved.</td></tr>
             <tr><td class="mono">2026-09-23</td><td>"We have a real error this time" — a Campaign Copy Interview insert failed on <code>column "sourceKey" does not exist</code>.</td><td>Root-caused to the legacy-casing bug class and fixed via live migration. Prompted a full production audit (930 live columns vs. 421 known identifiers) that found 30 drifted columns across 12 tables, including three owned by this Product (<code>media_plans</code>, <code>creative_job_decisions</code>, <code>campaign_recommendation_comments</code> — see <a href="#data-model">§ 06</a>) and the shared <code>contest_rankings</code> ledger used by every contest type. All fixed via data-preserving <code>RENAME COLUMN</code> migrations (all affected tables empty — zero data risk) and registered in <code>LEGACY_CASING_COLUMNS</code>.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>"an updated cost per DM and Magazine size selected during the creative process. We currently use a default price for DM vs. asset level."</td><td>Todd's choices (asked): DM cost per real named format, seeded from <code>DIRECT_MAIL_PLANNING_REFERENCE</code> only where a format genuinely matches (postcards, bifold, trifold; the rest start blank); Magazine cost per publication + ad format, manual, no seed. Direct Mail &mdash; Actual Budget now prices off the approved creative asset's format.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>Campaign-level analysis view: "Campaign Summary from left to right or stacked on the left: Spend, Impressions, New Website Users, Website Engagement, High-Value Leads, Registrations, Transactions" with the formulas per metric.</td><td>Built as the Analysis workspace's leading card (<a href="#analysis-summary">&sect; 06a</a>). Asked and resolved: Registrations gets its own stage-seeded, editable rate (not the lead rate); Transactions uses the account's own logged campaign history first, funnel fallback. Found and fixed en route: funnel rates were never persisted server-side.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>AOV_2027_Board_Case.xlsx: "Extrapolating campaign level analytical objectives that then drive to the final annual event should be the structure that we put in place with the generative guidance provided to the team and analytical resources."</td><td>Adopted the workbook's funnel as the campaign model's structure and vocabulary; added <code>account_annual_plan</code> (baseline + target per year) so campaign metrics read as shares of the year and roll up against it. Baseline rates override stage seeds. Not done yet: importing the workbook automatically (which account row is Atlas and which scenario the board approved are Todd's calls), monthly phasing/lag from its Timing tab, and AI Brain guidance text keyed to the gap.</td></tr>
           </tbody>
         </table>
       </div>
@@ -344,7 +374,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       verified against the working tree and direct Supabase queries on
       2026-09-22 (dead-field consolidation), re-verified 2026-09-23 for the
       <code>currentCampaignId</code> upstream fix, Dashboard KPI wiring, and
-      the legacy-casing audit affecting this Product's tables. Update this
+      the legacy-casing audit affecting this Product's tables; extended 2026-09-28 for the Campaign Summary strip, annual plan roll-up, per-format DM / per-publication Magazine cost, and persisted funnel rates. Update this
       document as the Product changes — it's meant to be the living
       reference, not a point-in-time snapshot.
     </div>

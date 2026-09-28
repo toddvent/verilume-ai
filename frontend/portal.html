@@ -2245,6 +2245,20 @@
   .cmp-wf-stat{flex:1;min-width:120px;background:var(--paper-dim);border:1px solid var(--line-hairline);border-radius:12px;padding:14px 16px;}
   .cmp-wf-stat-label{font-size:0.6875rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.02em;}
   .cmp-wf-stat-value{font-size:1.25rem;font-weight:700;color:var(--ink);margin-top:4px;}
+  /* 2026-09-28 — Analysis workspace Campaign Summary strip: seven tiles,
+     left to right on desktop, wrapping to a stack on narrow widths. Reuses
+     .cmp-wf-stat's tile look; .is-primary is the campaign's own Primary
+     KPI tile, highlighted per "highlighting the primary campaign [metric]". */
+  .cmp-summary-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+  .cmp-summary-tile{background:var(--paper-dim);border:1px solid var(--line-hairline);border-radius:12px;padding:14px 16px;min-width:0;}
+  .cmp-summary-tile.is-primary{border-color:var(--cx);box-shadow:0 0 0 2px var(--cx-tint,rgba(31,107,58,0.12));}
+  .cmp-summary-tile .cmp-wf-stat-value{font-size:1.375rem;font-variant-numeric:tabular-nums;}
+  .cmp-summary-tile .cmp-summary-note{font-size:0.71875rem;color:var(--muted);margin-top:6px;line-height:1.35;}
+  .cmp-summary-tile .cmp-summary-badge{display:inline-block;font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:middle;}
+  .cmp-summary-badge.actual{background:#EAF7EF;color:#1F6B3A;}
+  .cmp-summary-badge.modeled{background:#FFF4E0;color:#8A5A0A;}
+  .cmp-summary-badge.primary{background:var(--cx);color:#fff;}
+  @media (max-width:640px){ .cmp-summary-strip{grid-template-columns:1fr 1fr;} }
   .cmp-wf-qa-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;}
   .cmp-wf-qa-item{display:flex;align-items:center;gap:8px;font-size:0.8125rem;color:var(--ink);}
   .cmp-pitch-right{overflow:hidden;display:flex;flex-direction:column;background:var(--paper-dim);}
@@ -3292,7 +3306,7 @@
      funnel-driven KPIs on Lifecycle Stage & Goals. Three compact %-suffixed
      inputs in a row rather than three full-width stacked fields, since each
      one is just a short percentage. */
-  .funnel-rate-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;}
+  .funnel-rate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px;}
   .funnel-rate-label{display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;}
   .funnel-rate-input{position:relative;}
   .funnel-rate-input input{width:100%;padding-right:26px;}
@@ -8947,6 +8961,23 @@
       <div class="cch-panel-mount" id="cmpAnalysisHeaderMount"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpAnalysisLeft">
+          <!-- 2026-09-28 — Campaign Summary strip, per direct instruction:
+               "showcases the different metrics associated with a campaign
+               highlighting the primary campaign. Campaign Summary from left
+               to right or stacked on the left: Spend, Impressions, New
+               Website Users, Website Engagement, High-Value Leads,
+               Registrations, Transactions." Seven tiles in one row on
+               desktop (.cmp-summary-strip wraps/stacks on narrow widths),
+               leading the left column. Rendered by cmpRenderAnalysisSummary()
+               — every tile's own comment there says which real field or
+               model it reads; nothing here is a placeholder number. -->
+          <div class="module cmp-stage open" id="cmpAnalysisSummaryCard" style="overflow:visible;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+              <h2 style="margin:0 0 4px;">Campaign Summary</h2>
+              <p class="lede" id="cmpAnalysisSummaryLede" style="margin:0 0 14px;"></p>
+              <div id="cmpAnalysisSummary"></div>
+            </div>
+          </div>
           <div class="module cmp-stage open" id="cmpAnalysisMarketCard" style="overflow:visible;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
               <div id="cmpAnalysisInMarket"></div>
@@ -9614,6 +9645,15 @@
                   <div class="funnel-rate-cell">
                     <label class="funnel-rate-label">Leads → Bookings</label>
                     <div class="funnel-rate-input"><input type="number" id="cmpFunnelBookingRate" min="1" step="1" placeholder="e.g. 25" oninput="cmpFunnelAssumptionsChanged();"><span>%</span></div>
+                  </div>
+                  <!-- 2026-09-28 — Website Users → Registrations, see
+                       REGISTRATION_RATE_BY_STAGE. Read by the Analysis
+                       workspace's Campaign Summary strip; not part of the
+                       Budget-from-goal chain (a registration isn't a
+                       countable Primary KPI in the results-only taxonomy). -->
+                  <div class="funnel-rate-cell">
+                    <label class="funnel-rate-label">Visits → Registrations</label>
+                    <div class="funnel-rate-input"><input type="number" id="cmpFunnelRegistrationRate" min="0.1" step="0.1" placeholder="e.g. 3.0" oninput="cmpFunnelAssumptionsChanged();"><span>%</span></div>
                   </div>
                 </div>
                 <div class="field" id="cmpFunnelAovRow" style="display:none;margin-top:8px;">
@@ -11707,6 +11747,42 @@
       </div>
     </div>
 
+    <!-- 2026-09-28 — Annual plan: baseline & targets, per direct
+         instruction on AOV_2027_Board_Case.xlsx ("Extrapolating campaign
+         level analytical objectives that then drive to the final annual
+         event should be the structure that we put in place"). Two columns
+         per year: Baseline = the trailing-12-month actuals the annual
+         model was calibrated on (the workbook's Baseline tab); Target =
+         the board-approved scenario for the year (its Summary/Model tab).
+         The roll-up below it sums every campaign starting in that year —
+         actuals where logged, the same campaign model the Analysis
+         workspace's Campaign Summary uses where not — against the target,
+         so the campaign-level objectives visibly drive to the annual
+         number. See account_annual_plan (backend) for the vocabulary. -->
+    <div class="sk-card" id="mbuAnnualPlanCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — annual plan</div><h3>Annual plan — baseline &amp; targets</h3></div>
+        <div class="hicon">🎯</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">The year's full-funnel numbers, in the annual model's own vocabulary: Baseline is the trailing-12-month actuals the plan was calibrated on; Target is the approved scenario for the year. Campaign Summaries model each campaign off the Baseline's rates (cost per website user, value-lead and growth-lead rates, impressions → bookings) and show every campaign metric as a share of the Target. Saves as you go.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+          <label for="mbuAnnualPlanYear" style="margin:0;">Plan year</label>
+          <select id="mbuAnnualPlanYear" class="tbl-select" onchange="mbuLoadAnnualPlan()"></select>
+          <span class="hint" id="mbuAnnualPlanStatus" style="margin:0;"></span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="mbuAnnualPlanTable" style="min-width:640px;">
+            <thead><tr><th>Metric</th><th>Baseline (trailing 12 mo.)</th><th>Target (approved scenario)</th></tr></thead>
+            <tbody id="mbuAnnualPlanBody"></tbody>
+          </table>
+        </div>
+        <h4 style="margin:18px 0 6px;">Campaign roll-up vs. target</h4>
+        <p class="hint" style="margin:0 0 8px;">Every campaign whose Start Date falls in the plan year, summed — logged actuals where they exist, otherwise the same per-campaign model the Analysis workspace shows. The gap is what campaigns not yet created still have to deliver.</p>
+        <div id="mbuAnnualRollupBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -12139,7 +12215,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-dm-magazine-cost-per-format-and-publication';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-campaign-summary-strip-and-annual-plan-rollup';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -18847,6 +18923,21 @@ const FUNNEL_CONVERSION_BY_STAGE = {
   Advocacy:      { visitRate: 0.010, leadRate: 0.030, bookingRate: 0.25 }
 };
 const DEFAULT_FUNNEL_CONVERSION = { visitRate: 0.010, leadRate: 0.020, bookingRate: 0.25 }; // no stage inferred yet
+// 2026-09-28 — Website Users → Registrations, per direct decision while
+// wiring the Analysis workspace's Campaign Summary strip ("Registrations =
+// based on typical conversion % of website traffic"): a SEPARATE, stage-
+// seeded, per-campaign-editable rate rather than reusing the qualified-lead
+// rate above — a registration (account/email sign-up) is a lighter
+// commitment than a qualified lead, so it converts higher. Seeds are
+// planning estimates shaped like the stage table above, anchored on
+// published website email/account sign-up benchmarks (site-wide sign-up
+// conversion typically ~2% of visitors on average, top-decile sites ~5%;
+// warm/returning audiences convert well above cold ones). Same industry
+// multiplier as leadRate (getIndustryFunnelMultiplier().lead) so the
+// registration and lead rates move together per account. Always disclosed
+// as modeled until GA4/CRM registration data replaces it.
+const REGISTRATION_RATE_BY_STAGE = { Awareness: 0.020, Consideration: 0.030, Purchase: 0.040, Loyalty: 0.060, Advocacy: 0.050 };
+const DEFAULT_REGISTRATION_RATE = 0.030;
 // KPIs whose Budget-from-goal math flows through the funnel hierarchy above
 // instead of a flat per-unit constant.
 // Round 132az (2026-08-12) — rekeyed onto the results-only KPI taxonomy:
@@ -26897,8 +26988,32 @@ function getFunnelRates(){
     leadRate: readPct('cmpFunnelLeadRate', seed.leadRate),
     bookingRate: readPct('cmpFunnelBookingRate', seed.bookingRate),
     directPurchaseRate: readPct('cmpFunnelDirectRate', seed.directPurchaseRate),
+    registrationRate: readPct('cmpFunnelRegistrationRate', seed.registrationRate),
     ecommerceMix,
     avgOrderValue: (aovRaw > 0) ? aovRaw : null
+  };
+}
+
+// 2026-09-28 — the same rate resolution as getFunnelRates(), but for a SAVED
+// campaign record instead of the live creation-form DOM: a per-campaign
+// value the person typed (funnel*RatePct, whole-number percents, persisted
+// since this round — see the backend ensureColumn() comment) wins per
+// field; otherwise the campaign's own saved Loop Stage × this account's
+// Industry seed. Used by the Analysis workspace's Campaign Summary strip,
+// which has no form fields to read.
+function cmpFunnelRatesForCampaign(c){
+  const stage = (c && c.stage) || null;
+  const seed = cmpStageIndustryFunnelSeed(stage);
+  const pick = (pct, seedVal) => (typeof pct === 'number' && pct > 0) ? pct / 100 : seedVal;
+  return {
+    stage,
+    visitRate: pick(c && c.funnelVisitRatePct, seed.visitRate),
+    leadRate: pick(c && c.funnelLeadRatePct, seed.leadRate),
+    bookingRate: pick(c && c.funnelBookingRatePct, seed.bookingRate),
+    registrationRate: pick(c && c.funnelRegistrationRatePct, seed.registrationRate),
+    directPurchaseRate: seed.directPurchaseRate,
+    ecommerceMix: seed.ecommerceMix,
+    usedSavedRates: !!(c && [c.funnelVisitRatePct, c.funnelLeadRatePct, c.funnelBookingRatePct, c.funnelRegistrationRatePct].some(v => typeof v === 'number' && v > 0))
   };
 }
 
@@ -26926,6 +27041,8 @@ function cmpStageIndustryFunnelSeed(stage){
     leadRate: cmpClampRate(base.leadRate * mult.lead, 0.003, 0.20),
     bookingRate: cmpClampRate(base.bookingRate * mult.booking, 0.05, 0.65),
     directPurchaseRate: cmpClampRate(directBase * mult.booking, 0.002, 0.08),
+    // 2026-09-28 — see REGISTRATION_RATE_BY_STAGE.
+    registrationRate: cmpClampRate(((stage && REGISTRATION_RATE_BY_STAGE[stage]) || DEFAULT_REGISTRATION_RATE) * mult.lead, 0.005, 0.25),
     ecommerceMix: getIndustryEcommerceMix()
   };
 }
@@ -26942,6 +27059,7 @@ function cmpToggleFunnelFields(){
   seedField('cmpFunnelVisitRate', (seed.visitRate * 100).toFixed(2));
   seedField('cmpFunnelLeadRate', (seed.leadRate * 100).toFixed(1));
   seedField('cmpFunnelBookingRate', (seed.bookingRate * 100).toFixed(0));
+  seedField('cmpFunnelRegistrationRate', (seed.registrationRate * 100).toFixed(1));
   // Round 132ao (2026-08-12) follow-up — the eCommerce blend only applies to
   // Transactions: Clicks has no booking step to blend, and Leads is a
   // lead-count goal by definition (blending "some of these skip the lead"
@@ -39302,10 +39420,12 @@ function cmpPopulateFormFields(c, opts){
   const funnelVisitField = document.getElementById('cmpFunnelVisitRate');
   const funnelLeadField = document.getElementById('cmpFunnelLeadRate');
   const funnelBookingField = document.getElementById('cmpFunnelBookingRate');
+  const funnelRegistrationField = document.getElementById('cmpFunnelRegistrationRate');
   const funnelAovField = document.getElementById('cmpFunnelAov');
   if (funnelVisitField) funnelVisitField.value = c.funnelVisitRatePct != null ? c.funnelVisitRatePct : '';
   if (funnelLeadField) funnelLeadField.value = c.funnelLeadRatePct != null ? c.funnelLeadRatePct : '';
   if (funnelBookingField) funnelBookingField.value = c.funnelBookingRatePct != null ? c.funnelBookingRatePct : '';
+  if (funnelRegistrationField) funnelRegistrationField.value = c.funnelRegistrationRatePct != null ? c.funnelRegistrationRatePct : '';
   if (funnelAovField) funnelAovField.value = c.funnelAvgOrderValue != null ? c.funnelAvgOrderValue : '';
   // Round 132ao (2026-08-12) follow-up — same restore-then-seed pattern for
   // the eCommerce/direct-purchase blend fields.
@@ -42273,6 +42393,257 @@ function cmpRenderAnalysisWorkspaceStatusBadge(campaign){
   el.className = `stage-status ${status}`;
   el.textContent = STAGE_STATUS_LABEL[status] || 'Analysis';
 }
+// ============================================================
+// 2026-09-28 — Campaign Summary strip (Analysis workspace), per direct
+// instruction, seven metrics left to right. Each tile is either ACTUAL
+// (a real logged campaign field) or MODELED (derived from this account's
+// own history + this campaign's funnel assumptions), and says which. The
+// campaign's Primary KPI tile is highlighted ("highlighting the primary
+// campaign [metric]"). The exact formulas, as given:
+//   1. Spend             = campaign spend: actualSpend (Σ MMM line items)
+//                          when logged, else the approved budget (planned).
+//   2. Impressions       = Σ campaign impressions: actualImpressions when
+//                          logged, else plannedImpressions (planned).
+//   3. New Website Users = Spend ÷ historical cost per website user
+//                          (computeCostPerWebsiteUserByYear(): campaign
+//                          budgets ÷ Website users by month, per year) —
+//                          "during campaign window" = the campaign's own
+//                          start year's rate when that year has data, else
+//                          the blended all-years rate.
+//   4. Website Engagement = Avg. time on site — null until GA4 is
+//                          integrated (fetchGa4Report doesn't pull session
+//                          duration yet, and no other source exists).
+//   5. High-Value Leads  = New Website Users × this campaign's Visits →
+//                          Leads rate (cmpFunnelRatesForCampaign()).
+//   6. Registrations     = New Website Users × Visits → Registrations rate
+//                          (REGISTRATION_RATE_BY_STAGE, per-campaign editable).
+//   7. Transactions      = Impressions × historical impressions-to-
+//                          transaction rate: Σ actualConversions ÷
+//                          Σ actualImpressions across this account's OTHER
+//                          campaigns with both logged and a Transactions-
+//                          type Primary KPI (cmpHistoricalImpressionsToTransactionRate());
+//                          when no such history exists yet, the campaign's
+//                          own funnel chain (visit × [direct-purchase blend
+//                          + lead × booking]) — labeled modeled either way,
+//                          and the note says which source it used. A
+//                          campaign whose own actualConversions are logged
+//                          under a Transactions KPI shows that actual
+//                          instead.
+// ============================================================
+function cmpHistoricalImpressionsToTransactionRate(excludeCampaignId){
+  const isTxnKpi = k => /transaction|booking|sale|purchase/i.test(String(k || ''));
+  let imps = 0, convs = 0, n = 0;
+  (state.campaigns || []).forEach(c => {
+    if (!c || c.id === excludeCampaignId || c.isAdHoc || c.cancelled) return;
+    if (!isTxnKpi(c.primaryKpi)) return;
+    const i = Number(c.actualImpressions), v = Number(c.actualConversions);
+    if (!(i > 0) || !Number.isFinite(v) || c.actualConversions == null || c.actualConversions === '') return;
+    imps += i; convs += v; n++;
+  });
+  return imps > 0 ? { rate: convs / imps, campaigns: n, impressions: imps, conversions: convs } : null;
+}
+function cmpFunnelImpressionsToTransactionRate(rates){
+  if (!rates || !rates.visitRate) return null;
+  const mix = Math.max(0, Math.min(1, rates.ecommerceMix || 0));
+  const viaDirect = mix * (rates.directPurchaseRate || 0);
+  const viaLead = (1 - mix) * (rates.leadRate || 0) * (rates.bookingRate || 0);
+  return rates.visitRate * (viaDirect + viaLead);
+}
+// 2026-09-28 (later the same day), per direct instruction on
+// AOV_2027_Board_Case.xlsx: "Extrapolating campaign level analytical
+// objectives that then drive to the final annual event should be the
+// structure that we put in place." The seven-tile campaign model below is
+// the workbook's own annual funnel (Working media → Impressions & pieces →
+// Website users → lead pools → Bookings) run for one campaign, and every
+// tile also reads as a share of that year's annual target. Account-level
+// context (annual plan rows + cost-per-website-user history) is fetched
+// once per account and shared by the Analysis strip and the Company
+// Profile roll-up. See account_annual_plan (backend) for the vocabulary
+// mapping: Value leads = High-Value Leads, Growth leads = Registrations,
+// Bookings = Transactions.
+let cmpSummaryCtxCache = null; // { accountId, cpu, annualByYear }
+function cmpInvalidateSummaryContext(){ cmpSummaryCtxCache = null; }
+async function cmpLoadCampaignSummaryContext(){
+  if (cmpSummaryCtxCache && cmpSummaryCtxCache.accountId === state.companyId) return cmpSummaryCtxCache;
+  let cpu = { rows: [], blended: null, yearsWithData: 0 };
+  try { cpu = await computeCostPerWebsiteUserByYear(); } catch (e){ console.warn('cmpLoadCampaignSummaryContext: cost per user failed', e); }
+  const annualByYear = {};
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan`);
+      if (resp.ok){
+        const data = await resp.json();
+        (data.rows || []).forEach(r => {
+          if (!annualByYear[r.year]) annualByYear[r.year] = {};
+          annualByYear[r.year][r.kind] = r;
+        });
+      }
+    } catch (e){ console.warn('cmpLoadCampaignSummaryContext: annual plan fetch failed', e); }
+  }
+  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear };
+  return cmpSummaryCtxCache;
+}
+// Latest baseline row on file at or before `year` (a 2027 campaign is
+// modeled off the 2026 TTM baseline until a 2027 baseline exists).
+function cmpAnnualBaselineFor(ctx, year){
+  const years = Object.keys(ctx.annualByYear || {}).map(Number).filter(y => ctx.annualByYear[y].baseline).sort((a, b) => b - a);
+  if (!years.length) return null;
+  const atOrBefore = years.find(y => !year || y <= year);
+  return ctx.annualByYear[atOrBefore != null ? atOrBefore : years[0]].baseline;
+}
+function cmpHistoricalImpressionsToTransactionRate(excludeCampaignId){
+  const isTxnKpi = k => /transaction|booking|sale|purchase/i.test(String(k || ''));
+  let imps = 0, convs = 0, n = 0;
+  (state.campaigns || []).forEach(c => {
+    if (!c || c.id === excludeCampaignId || c.isAdHoc || c.cancelled) return;
+    if (!isTxnKpi(c.primaryKpi)) return;
+    const i = Number(c.actualImpressions), v = Number(c.actualConversions);
+    if (!(i > 0) || !Number.isFinite(v) || c.actualConversions == null || c.actualConversions === '') return;
+    imps += i; convs += v; n++;
+  });
+  return imps > 0 ? { rate: convs / imps, campaigns: n, impressions: imps, conversions: convs } : null;
+}
+function cmpFunnelImpressionsToTransactionRate(rates){
+  if (!rates || !rates.visitRate) return null;
+  const mix = Math.max(0, Math.min(1, rates.ecommerceMix || 0));
+  const viaDirect = mix * (rates.directPurchaseRate || 0);
+  const viaLead = (1 - mix) * (rates.leadRate || 0) * (rates.bookingRate || 0);
+  return rates.visitRate * (viaDirect + viaLead);
+}
+// The campaign-level model. Source precedence, per metric, most-real first:
+//   Spend / Impressions: logged actuals → approved budget / planned.
+//   Cost per website user: that year's annual baseline → that year's
+//     Website users by month history → latest annual baseline → blended
+//     history. (Both "history" sources are real entered data; the annual
+//     baseline is preferred because it's the number the board plan was
+//     calibrated on.)
+//   Lead / registration rates: this campaign's own saved rate (an explicit
+//     edit) → annual baseline (value leads ÷ website users, growth leads ÷
+//     website users) → Loop Stage × Industry seed.
+//   Transactions: own logged actual (Transactions KPI) → Σ this account's
+//     other logged campaigns → annual baseline bookings ÷ impressions →
+//     this campaign's funnel chain.
+function cmpCampaignSummaryModel(campaign, ctx){
+  const num = v => (v === null || v === undefined || v === '') ? null : Number(v);
+  const m = { campaignId: campaign.id };
+  const actualSpend = num(campaign.actualSpend), budget = num(campaign.budget);
+  m.budget = budget; m.spendIsActual = actualSpend != null; m.spend = m.spendIsActual ? actualSpend : budget;
+  const actualImps = num(campaign.actualImpressions), plannedImps = num(campaign.plannedImpressions);
+  m.plannedImps = plannedImps; m.impsIsActual = actualImps != null; m.impressions = m.impsIsActual ? actualImps : plannedImps;
+  m.year = campaign.startDate ? new Date(campaign.startDate).getFullYear() : null;
+  const baseline = cmpAnnualBaselineFor(ctx, m.year);
+  m.baseline = baseline;
+  m.target = (m.year && ctx.annualByYear[m.year] && ctx.annualByYear[m.year].target) || null;
+
+  // Cost per website user
+  const cpu = ctx.cpu || { rows: [] };
+  const yearRow = m.year ? cpu.rows.find(r => r.year === m.year && r.costPerUser != null) : null;
+  const yearBaseline = (baseline && baseline.year === m.year && baseline.derived.costPerWebsiteUser) ? baseline : null;
+  if (yearBaseline){ m.costPerUser = yearBaseline.derived.costPerWebsiteUser; m.costPerUserSource = `${m.year} annual baseline`; }
+  else if (yearRow){ m.costPerUser = yearRow.costPerUser; m.costPerUserSource = `${m.year} website-users history`; }
+  else if (baseline && baseline.derived.costPerWebsiteUser){ m.costPerUser = baseline.derived.costPerWebsiteUser; m.costPerUserSource = `${baseline.year} annual baseline`; }
+  else if (cpu.blended != null){ m.costPerUser = cpu.blended; m.costPerUserSource = `blended ${cpu.yearsWithData}-yr history`; }
+  else { m.costPerUser = null; m.costPerUserSource = null; }
+  m.websiteUsers = (m.spend != null && m.costPerUser > 0) ? m.spend / m.costPerUser : null;
+
+  // Rates
+  const rates = cmpFunnelRatesForCampaign(campaign);
+  m.rates = rates;
+  const savedLead = typeof campaign.funnelLeadRatePct === 'number' && campaign.funnelLeadRatePct > 0;
+  const savedReg = typeof campaign.funnelRegistrationRatePct === 'number' && campaign.funnelRegistrationRatePct > 0;
+  if (savedLead){ m.leadRate = rates.leadRate; m.leadRateSource = 'this campaign’s rate'; }
+  else if (baseline && baseline.derived.valueLeadRate != null){ m.leadRate = baseline.derived.valueLeadRate; m.leadRateSource = `${baseline.year} baseline value-lead rate`; }
+  else { m.leadRate = rates.leadRate; m.leadRateSource = `${rates.stage || 'default'} stage seed`; }
+  if (savedReg){ m.registrationRate = rates.registrationRate; m.registrationRateSource = 'this campaign’s rate'; }
+  else if (baseline && baseline.derived.growthLeadRate != null){ m.registrationRate = baseline.derived.growthLeadRate; m.registrationRateSource = `${baseline.year} baseline growth-lead rate`; }
+  else { m.registrationRate = rates.registrationRate; m.registrationRateSource = `${rates.stage || 'default'} stage seed`; }
+  m.leads = m.websiteUsers != null ? m.websiteUsers * m.leadRate : null;
+  m.registrations = m.websiteUsers != null ? m.websiteUsers * m.registrationRate : null;
+
+  // Transactions
+  const isTxnKpi = /transaction|booking|sale|purchase/i.test(String(campaign.primaryKpi || ''));
+  m.isTxnKpi = isTxnKpi;
+  const ownActual = (isTxnKpi && num(campaign.actualConversions) != null) ? num(campaign.actualConversions) : null;
+  const hist = cmpHistoricalImpressionsToTransactionRate(campaign.id);
+  const funnelRate = cmpFunnelImpressionsToTransactionRate(rates);
+  m.transactions = null; m.txnIsActual = false; m.txnNote = '';
+  if (ownActual != null){ m.transactions = ownActual; m.txnIsActual = true; m.txnNote = 'Logged actual conversions (Transactions KPI)'; }
+  else if (m.impressions != null && hist){ m.transactions = m.impressions * hist.rate; m.txnNote = `${(hist.rate * 100).toFixed(3)}% impressions → transactions from ${hist.campaigns} logged campaign${hist.campaigns === 1 ? '' : 's'}`; }
+  else if (m.impressions != null && baseline && baseline.derived.impressionsToBookingRate != null){ m.transactions = m.impressions * baseline.derived.impressionsToBookingRate; m.txnNote = `${(baseline.derived.impressionsToBookingRate * 100).toFixed(4)}% impressions → bookings, ${baseline.year} annual baseline`; }
+  else if (m.websiteUsers != null && baseline && baseline.derived.websiteUsersToBookingRate != null){ m.transactions = m.websiteUsers * baseline.derived.websiteUsersToBookingRate; m.txnNote = `${(baseline.derived.websiteUsersToBookingRate * 100).toFixed(3)}% website users → bookings, ${baseline.year} annual baseline (no impressions on file)`; }
+  else if (m.impressions != null && funnelRate){ m.transactions = m.impressions * funnelRate; m.txnNote = `No logged history or annual baseline yet — modeled from this campaign's funnel rates (${(funnelRate * 100).toFixed(3)}% impressions → transactions)`; }
+  else { m.txnNote = m.impressions == null ? 'Needs impressions (planned or actual)' : 'No history, baseline or funnel rates to model from'; }
+  m.grossRevenue = (m.transactions != null && baseline && baseline.derived.grossRevenuePerBooking) ? m.transactions * baseline.derived.grossRevenuePerBooking : null;
+  return m;
+}
+// Share-of-annual-target line for a tile: "4.2% of 2027 target (9,400,000)".
+function cmpShareOfTargetNote(value, target, field, fmt){
+  if (value == null || !target || target[field] == null || !(target[field] > 0)) return '';
+  const pct = (value / target[field]) * 100;
+  return `<div class="cmp-summary-note" style="color:var(--cx);">${pct < 0.05 ? '<0.1' : pct.toFixed(1)}% of ${target.year} target (${fmt(target[field])})</div>`;
+}
+let cmpAnalysisSummaryToken = 0;
+async function cmpRenderAnalysisSummary(campaign){
+  const el = document.getElementById('cmpAnalysisSummary');
+  const lede = document.getElementById('cmpAnalysisSummaryLede');
+  if (!el || !campaign) return;
+  if (campaign.isAdHoc){
+    if (lede) lede.textContent = '';
+    el.innerHTML = `<p class="cmp-stage-note" style="padding:0;">Ad Hoc projects don't carry a campaign-level summary.</p>`;
+    return;
+  }
+  const token = ++cmpAnalysisSummaryToken;
+  el.innerHTML = `<p class="lede" style="margin:0;">Computing this campaign's summary…</p>`;
+  const ctx = await cmpLoadCampaignSummaryContext();
+  if (token !== cmpAnalysisSummaryToken) return; // a newer render superseded this one
+  const m = cmpCampaignSummaryModel(campaign, ctx);
+  const fmtInt = v => Math.round(v).toLocaleString();
+  const primaryKpi = String(campaign.primaryKpi || '');
+  const kpiMatches = key => {
+    if (key === 'impressions') return /impression|reach/i.test(primaryKpi);
+    if (key === 'users') return /click|visit|traffic/i.test(primaryKpi);
+    if (key === 'leads') return /lead/i.test(primaryKpi);
+    if (key === 'transactions') return m.isTxnKpi;
+    return false;
+  };
+  const badge = isActual => `<span class="cmp-summary-badge ${isActual ? 'actual' : 'modeled'}">${isActual ? 'Actual' : 'Modeled'}</span>`;
+  const tile = (key, label, valueHtml, note, isActual, hasValue, shareNote) => `
+    <div class="cmp-summary-tile${kpiMatches(key) ? ' is-primary' : ''}">
+      <div class="cmp-wf-stat-label">${escapeHtml(label)}${kpiMatches(key) ? '<span class="cmp-summary-badge primary">Primary KPI</span>' : ''}</div>
+      <div class="cmp-wf-stat-value">${valueHtml}${hasValue ? badge(isActual) : ''}</div>
+      ${note ? `<div class="cmp-summary-note">${note}</div>` : ''}${shareNote || ''}
+    </div>`;
+  const dash = '<span class="hint">—</span>';
+  const t = m.target;
+  el.innerHTML = `<div class="cmp-summary-strip">
+    ${tile('spend', 'Spend', m.spend != null ? fmtMoney(m.spend) : dash,
+      m.spendIsActual ? (m.budget != null ? `of ${fmtMoney(m.budget)} approved budget` : 'Σ logged MMM line items') : (m.spend != null ? 'Approved budget — no spend logged yet' : 'No budget or spend on file'),
+      m.spendIsActual, m.spend != null, cmpShareOfTargetNote(m.spend, t, 'workingMedia', fmtMoney))}
+    ${tile('impressions', 'Impressions', m.impressions != null ? fmtInt(m.impressions) : dash,
+      m.impsIsActual ? (m.plannedImps != null ? `vs. ${fmtInt(m.plannedImps)} planned` : 'Σ logged MMM line items') : (m.impressions != null ? 'Planned — none logged yet' : 'No planned or actual impressions'),
+      m.impsIsActual, m.impressions != null, cmpShareOfTargetNote(m.impressions, t, 'impressions', fmtInt))}
+    ${tile('users', 'New Website Users', m.websiteUsers != null ? `~${fmtInt(m.websiteUsers)}` : dash,
+      m.websiteUsers != null ? `${fmtMoney(m.spend)} ÷ $${m.costPerUser.toFixed(2)} per user (${escapeHtml(m.costPerUserSource)})` : (m.spend == null ? 'Needs spend or budget' : 'Needs an annual baseline or Website users by month for a year with campaigns (Company Profile)'),
+      false, m.websiteUsers != null, cmpShareOfTargetNote(m.websiteUsers, t, 'websiteUsers', fmtInt))}
+    ${tile('engagement', 'Website Engagement', dash, 'Avg. time on site — available once GA4 is connected', false, false, '')}
+    ${tile('leads', 'High-Value Leads', m.leads != null ? `~${fmtInt(m.leads)}` : dash,
+      m.leads != null ? `${(m.leadRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.leadRateSource)})` : 'Needs New Website Users',
+      false, m.leads != null, cmpShareOfTargetNote(m.leads, t, 'valueLeads', fmtInt))}
+    ${tile('registrations', 'Registrations', m.registrations != null ? `~${fmtInt(m.registrations)}` : dash,
+      m.registrations != null ? `${(m.registrationRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.registrationRateSource)})` : 'Needs New Website Users',
+      false, m.registrations != null, cmpShareOfTargetNote(m.registrations, t, 'growthLeads', fmtInt))}
+    ${tile('transactions', 'Transactions', m.transactions != null ? (m.txnIsActual ? fmtInt(m.transactions) : `~${fmtInt(m.transactions)}`) : dash,
+      escapeHtml(m.txnNote) + (m.grossRevenue != null ? ` · ~${fmtMoney(m.grossRevenue)} gross revenue at the baseline’s revenue per booking` : ''),
+      m.txnIsActual, m.transactions != null, cmpShareOfTargetNote(m.transactions, t, 'bookings', fmtInt))}
+  </div>`;
+  if (lede){
+    const modeledCount = [!m.spendIsActual && m.spend != null, !m.impsIsActual && m.impressions != null, m.websiteUsers != null, m.leads != null, m.registrations != null, m.transactions != null && !m.txnIsActual].filter(Boolean).length;
+    const annualNote = t
+      ? `Shares are against the ${t.year} annual target${t.label ? ` (${escapeHtml(t.label)})` : ''}.`
+      : (m.year ? `No ${m.year} annual target on file yet — enter one under Company Profile → Annual plan to see each metric as a share of the year.` : 'Set a Start Date to place this campaign in a plan year.');
+    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''}. Actual = logged on this campaign; Modeled = this account's annual baseline, its own history and this campaign's funnel assumptions${modeledCount ? ` (${modeledCount} modeled)` : ''}. ${annualNote}`;
+  }
+}
 function cmpOpenAnalysisWorkspace(){
   const campaign = cmpRailLoadedCampaign();
   const overlay = document.getElementById('cmpAnalysisOverlay');
@@ -42293,6 +42664,7 @@ function cmpOpenAnalysisWorkspace(){
     if (m) m.innerHTML = '';
   });
   cmpRenderCollabCenter(campaign);
+  cmpRenderAnalysisSummary(campaign);
   cmpRenderAnalysisInMarket(campaign);
   cmpRenderAnalysisActuals(campaign);
   cmpLoadAnalysisMix(campaign);
@@ -46742,6 +47114,7 @@ function cmpBuildFormPayload(){
   const funnelVisitRateRaw = document.getElementById('cmpFunnelVisitRate') ? document.getElementById('cmpFunnelVisitRate').value : '';
   const funnelLeadRateRaw = document.getElementById('cmpFunnelLeadRate') ? document.getElementById('cmpFunnelLeadRate').value : '';
   const funnelBookingRateRaw = document.getElementById('cmpFunnelBookingRate') ? document.getElementById('cmpFunnelBookingRate').value : '';
+  const funnelRegistrationRateRaw = document.getElementById('cmpFunnelRegistrationRate') ? document.getElementById('cmpFunnelRegistrationRate').value : '';
   const funnelAovRaw = document.getElementById('cmpFunnelAov') ? document.getElementById('cmpFunnelAov').value : '';
   // Round 132ao (2026-08-12) follow-up — eCommerce/direct-purchase blend fields.
   const funnelEcomMixRaw = document.getElementById('cmpFunnelEcommerceMix') ? document.getElementById('cmpFunnelEcommerceMix').value : '';
@@ -46802,6 +47175,7 @@ function cmpBuildFormPayload(){
     funnelVisitRatePct: funnelVisitRateRaw ? Number(funnelVisitRateRaw) : null,
     funnelLeadRatePct: funnelLeadRateRaw ? Number(funnelLeadRateRaw) : null,
     funnelBookingRatePct: funnelBookingRateRaw ? Number(funnelBookingRateRaw) : null,
+    funnelRegistrationRatePct: funnelRegistrationRateRaw ? Number(funnelRegistrationRateRaw) : null,
     funnelAvgOrderValue: funnelAovRaw ? Number(funnelAovRaw) : null,
     funnelEcommerceMixPct: funnelEcomMixRaw ? Number(funnelEcomMixRaw) : null,
     funnelDirectPurchaseRatePct: funnelDirectRateRaw ? Number(funnelDirectRateRaw) : null,
@@ -62932,6 +63306,7 @@ function cmpSaveLifecycleAndContinue(){
   const funnelVisitRateRaw = document.getElementById('cmpFunnelVisitRate') ? document.getElementById('cmpFunnelVisitRate').value : '';
   const funnelLeadRateRaw = document.getElementById('cmpFunnelLeadRate') ? document.getElementById('cmpFunnelLeadRate').value : '';
   const funnelBookingRateRaw = document.getElementById('cmpFunnelBookingRate') ? document.getElementById('cmpFunnelBookingRate').value : '';
+  const funnelRegistrationRateRaw = document.getElementById('cmpFunnelRegistrationRate') ? document.getElementById('cmpFunnelRegistrationRate').value : '';
   const funnelAovRaw = document.getElementById('cmpFunnelAov') ? document.getElementById('cmpFunnelAov').value : '';
   // Round 132ao (2026-08-12) follow-up — eCommerce/direct-purchase blend fields.
   const funnelEcomMixRaw = document.getElementById('cmpFunnelEcommerceMix') ? document.getElementById('cmpFunnelEcommerceMix').value : '';
@@ -62964,6 +63339,7 @@ function cmpSaveLifecycleAndContinue(){
     funnelVisitRatePct: funnelVisitRateRaw ? Number(funnelVisitRateRaw) : null,
     funnelLeadRatePct: funnelLeadRateRaw ? Number(funnelLeadRateRaw) : null,
     funnelBookingRatePct: funnelBookingRateRaw ? Number(funnelBookingRateRaw) : null,
+    funnelRegistrationRatePct: funnelRegistrationRateRaw ? Number(funnelRegistrationRateRaw) : null,
     funnelAvgOrderValue: funnelAovRaw ? Number(funnelAovRaw) : null,
     funnelEcommerceMixPct: funnelEcomMixRaw ? Number(funnelEcomMixRaw) : null,
     funnelDirectPurchaseRatePct: funnelDirectRateRaw ? Number(funnelDirectRateRaw) : null,
@@ -65838,6 +66214,7 @@ function mbuLoadReachInputs(){
   mbuLoadDmFormatCost();
   mbuLoadMagazineCost();
   mbuRenderCostPerWebsiteUser();
+  mbuLoadAnnualPlan();
 }
 async function mbuLoadWebsiteUsersMonthly(){
   const body = document.getElementById('mbuWebsiteUsersBody');
@@ -65913,6 +66290,8 @@ async function mbuSaveWebsiteUsersMonthly(){
   // this same data; refresh it live on every save instead of only on the
   // next full page load, so a just-entered year's Cost per User shows up
   // immediately.
+  if (typeof mbuInvalidateCostPerUserCache === 'function') mbuInvalidateCostPerUserCache();
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
   if (typeof mbuRenderCostPerWebsiteUser === 'function') mbuRenderCostPerWebsiteUser();
 }
 let mbuMarketableSizesSaveTimer = null;
@@ -66183,6 +66562,167 @@ async function mbuSaveMagazineCost(){
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
 }
 
+// 2026-09-28 — Annual plan: baseline & targets (see mbuAnnualPlanCard's
+// own comment and account_annual_plan on the backend). Field order and
+// labels follow the AOV board-case workbook's Baseline tab so a person can
+// transcribe a row straight across. Value/Growth/Prospect leads and
+// Direct calls are the workbook's four lead pools; the app's own tiles
+// map Value → High-Value Leads and Growth → Registrations.
+const ANNUAL_PLAN_FIELDS = [
+  { key: 'workingMedia', label: 'Working media (spend)', money: true },
+  { key: 'impressions', label: 'Impressions & pieces' },
+  { key: 'websiteUsers', label: 'New website users' },
+  { key: 'valueLeads', label: 'Value leads (talk to expert / quote / request info) — High-Value Leads' },
+  { key: 'growthLeads', label: 'Growth leads (subscribe / brochure / popup / share / contact) — Registrations' },
+  { key: 'prospectLeads', label: 'Prospect leads (Meta lead forms)' },
+  { key: 'directCalls', label: 'Direct calls' },
+  { key: 'bookings', label: 'Bookings — Transactions' },
+  { key: 'directBookings', label: 'Direct bookings' },
+  { key: 'grossRevenue', label: 'Marketing-attributed gross revenue', money: true }
+];
+let mbuAnnualPlanRows = {}; // { baseline: row|null, target: row|null } for the selected year
+async function mbuLoadAnnualPlan(){
+  const body = document.getElementById('mbuAnnualPlanBody');
+  const status = document.getElementById('mbuAnnualPlanStatus');
+  const yearSel = document.getElementById('mbuAnnualPlanYear');
+  if (!body || !yearSel) return;
+  if (!yearSel.options.length){
+    const base = new Date().getFullYear();
+    const years = [];
+    for (let y = base + 2; y >= base - 3; y--) years.push(y);
+    yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+    yearSel.value = String(base + 1); // the plan year most likely being built right now
+  }
+  const year = parseInt(yearSel.value, 10);
+  mbuAnnualPlanRows = { baseline: null, target: null };
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan?year=${year}`);
+      if (resp.ok){ const data = await resp.json(); (data.rows || []).forEach(r => { mbuAnnualPlanRows[r.kind] = r; }); }
+    } catch (e){ console.warn('mbuLoadAnnualPlan: fetch failed', e); }
+  }
+  const val = (kind, key) => { const r = mbuAnnualPlanRows[kind]; return (r && r[key] != null) ? r[key] : ''; };
+  const input = (kind, key, step) => `<input type="number" min="0" step="${step}" class="tbl-input" style="width:160px;" value="${val(kind, key)}" data-kind="${kind}" data-key="${key}" onchange="mbuQueueAnnualPlanSave()">`;
+  body.innerHTML = `
+    <tr><td>Label <span class="hint">(e.g. "TTM Sep-25–Aug-26" / "$10.2M optimized ’27")</span></td>
+      <td><input type="text" class="tbl-input" style="width:220px;" value="${escapeHtml(val('baseline', 'label'))}" data-kind="baseline" data-key="label" onchange="mbuQueueAnnualPlanSave()"></td>
+      <td><input type="text" class="tbl-input" style="width:220px;" value="${escapeHtml(val('target', 'label'))}" data-kind="target" data-key="label" onchange="mbuQueueAnnualPlanSave()"></td></tr>
+    ${ANNUAL_PLAN_FIELDS.map(f => `<tr><td>${escapeHtml(f.label)}</td><td>${input('baseline', f.key, f.money ? '1000' : '1')}</td><td>${input('target', f.key, f.money ? '1000' : '1')}</td></tr>`).join('')}
+    ${mbuAnnualPlanDerivedRowsHtml()}`;
+  if (status) status.textContent = '';
+  mbuRenderAnnualRollup();
+}
+// Read-only derived rates under the inputs — the exact ratios the Campaign
+// Summary model uses, shown so a person can sanity-check them against the
+// workbook (e.g. TTM cost per website user, value-lead rate, ROAS).
+function mbuAnnualPlanDerivedRowsHtml(){
+  const d = kind => (mbuAnnualPlanRows[kind] && mbuAnnualPlanRows[kind].derived) || {};
+  const money = v => v == null ? '—' : `$${v.toFixed(2)}`;
+  const pct = (v, dp) => v == null ? '—' : `${(v * 100).toFixed(dp)}%`;
+  const x = v => v == null ? '—' : `${v.toFixed(2)}×`;
+  const rows = [
+    ['Cost per website user', money(d('baseline').costPerWebsiteUser), money(d('target').costPerWebsiteUser)],
+    ['Value-lead rate (÷ website users)', pct(d('baseline').valueLeadRate, 2), pct(d('target').valueLeadRate, 2)],
+    ['Growth-lead / registration rate (÷ website users)', pct(d('baseline').growthLeadRate, 2), pct(d('target').growthLeadRate, 2)],
+    ['Impressions → bookings', pct(d('baseline').impressionsToBookingRate, 4), pct(d('target').impressionsToBookingRate, 4)],
+    ['Cost per booking', money(d('baseline').costPerBooking), money(d('target').costPerBooking)],
+    ['Gross revenue per booking', money(d('baseline').grossRevenuePerBooking), money(d('target').grossRevenuePerBooking)],
+    ['ROAS', x(d('baseline').roas), x(d('target').roas)],
+    ['Direct share of bookings', pct(d('baseline').directShare, 1), pct(d('target').directShare, 1)]
+  ];
+  return `<tr><td colspan="3" style="font-weight:700;padding-top:14px;">Derived rates (computed, not entered)</td></tr>` +
+    rows.map(r => `<tr><td class="hint">${r[0]}</td><td class="hint">${r[1]}</td><td class="hint">${r[2]}</td></tr>`).join('');
+}
+let mbuAnnualPlanSaveTimer = null;
+function mbuQueueAnnualPlanSave(){
+  const status = document.getElementById('mbuAnnualPlanStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuAnnualPlanSaveTimer) clearTimeout(mbuAnnualPlanSaveTimer);
+  mbuAnnualPlanSaveTimer = setTimeout(mbuSaveAnnualPlan, 600);
+}
+async function mbuSaveAnnualPlan(){
+  const status = document.getElementById('mbuAnnualPlanStatus');
+  const body = document.getElementById('mbuAnnualPlanBody');
+  const yearSel = document.getElementById('mbuAnnualPlanYear');
+  if (!body || !yearSel) return;
+  const year = parseInt(yearSel.value, 10);
+  const rows = { baseline: { year, kind: 'baseline' }, target: { year, kind: 'target' } };
+  body.querySelectorAll('input[data-kind][data-key]').forEach(inp => {
+    const v = inp.value;
+    rows[inp.dataset.kind][inp.dataset.key] = inp.dataset.key === 'label' ? v : (v === '' ? null : Number(v));
+  });
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [rows.baseline, rows.target] })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveAnnualPlan: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  // Re-read so the derived-rate rows and the roll-up reflect the save.
+  if (persisted) mbuLoadAnnualPlan();
+}
+// Σ campaigns starting in the plan year vs the target — same per-campaign
+// model as the Analysis workspace (cmpCampaignSummaryModel), so the two
+// views can never disagree on a campaign's number.
+async function mbuRenderAnnualRollup(){
+  const el = document.getElementById('mbuAnnualRollupBody');
+  const yearSel = document.getElementById('mbuAnnualPlanYear');
+  if (!el || !yearSel) return;
+  const year = parseInt(yearSel.value, 10);
+  el.innerHTML = '<p class="hint">Computing…</p>';
+  if (typeof cmpLoadCampaignSummaryContext !== 'function'){ el.innerHTML = ''; return; }
+  const ctx = await cmpLoadCampaignSummaryContext();
+  const campaigns = (state.campaigns || []).filter(c => c && c.startDate && !c.isAdHoc && !c.cancelled && new Date(c.startDate).getFullYear() === year);
+  const target = (ctx.annualByYear[year] && ctx.annualByYear[year].target) || null;
+  if (!campaigns.length){
+    el.innerHTML = `<p class="lede" style="margin:0;">No campaigns start in ${year} yet${target ? ` — the whole ${year} target is still unassigned to campaigns` : ''}.</p>`;
+    return;
+  }
+  const sums = { spend: 0, impressions: 0, websiteUsers: 0, leads: 0, registrations: 0, transactions: 0, grossRevenue: 0 };
+  const counts = { spendActual: 0, impsActual: 0, txnActual: 0 };
+  campaigns.forEach(c => {
+    const m = cmpCampaignSummaryModel(c, ctx);
+    if (m.spend != null) sums.spend += m.spend; if (m.spendIsActual) counts.spendActual++;
+    if (m.impressions != null) sums.impressions += m.impressions; if (m.impsIsActual) counts.impsActual++;
+    if (m.websiteUsers != null) sums.websiteUsers += m.websiteUsers;
+    if (m.leads != null) sums.leads += m.leads;
+    if (m.registrations != null) sums.registrations += m.registrations;
+    if (m.transactions != null) sums.transactions += m.transactions; if (m.txnIsActual) counts.txnActual++;
+    if (m.grossRevenue != null) sums.grossRevenue += m.grossRevenue;
+  });
+  const fmtInt = v => Math.round(v).toLocaleString();
+  const line = (label, value, targetKey, fmt, note) => {
+    const tv = target && target[targetKey] != null ? target[targetKey] : null;
+    const pct = (tv > 0) ? (value / tv) * 100 : null;
+    const gap = tv != null ? tv - value : null;
+    return `<tr><td>${escapeHtml(label)}${note ? `<div class="hint">${escapeHtml(note)}</div>` : ''}</td>
+      <td>${fmt(value)}</td>
+      <td>${tv != null ? fmt(tv) : '<span class="hint">—</span>'}</td>
+      <td>${pct != null ? `<b>${pct.toFixed(1)}%</b>` : '<span class="hint">—</span>'}</td>
+      <td>${gap != null ? (gap >= 0 ? fmt(gap) + ' to go' : `<span style="color:var(--cx);">${fmt(-gap)} over</span>`) : '<span class="hint">—</span>'}</td></tr>`;
+  };
+  const n = campaigns.length;
+  el.innerHTML = `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
+    <thead><tr><th>Metric</th><th>Σ ${n} campaign${n === 1 ? '' : 's'} (${year})</th><th>${year} target</th><th>Covered</th><th>Gap</th></tr></thead>
+    <tbody>
+      ${line('Spend', sums.spend, 'workingMedia', fmtMoney, `${counts.spendActual} of ${n} with logged spend; rest at approved budget`)}
+      ${line('Impressions', sums.impressions, 'impressions', fmtInt, `${counts.impsActual} of ${n} with logged impressions; rest planned`)}
+      ${line('New Website Users', sums.websiteUsers, 'websiteUsers', fmtInt, 'Modeled: spend ÷ cost per website user')}
+      ${line('High-Value Leads', sums.leads, 'valueLeads', fmtInt, 'Modeled: website users × value-lead rate')}
+      ${line('Registrations', sums.registrations, 'growthLeads', fmtInt, 'Modeled: website users × growth-lead rate')}
+      ${line('Transactions', sums.transactions, 'bookings', fmtInt, `${counts.txnActual} of ${n} with logged actuals; rest modeled`)}
+      ${line('Gross revenue', sums.grossRevenue, 'grossRevenue', fmtMoney, 'Modeled: transactions × baseline revenue per booking')}
+    </tbody></table></div>
+    ${target ? '' : `<p class="hint" style="margin:0;">No ${year} target entered yet — fill the Target column above to see coverage and gap.</p>`}`;
+}
+
 // 2026-09-28 addition, per direct instruction: "Average cost per website
 // user when looking at historical full year budgets and current campaign
 // trends." Computed, not entered — combines this account's own real
@@ -66194,16 +66734,20 @@ async function mbuSaveMagazineCost(){
 // entered yet show an honest "—", never a fabricated number — this feeds
 // direct mail expense and campaign productivity forecasting, so an
 // invented placeholder here would be worse than a visible gap.
-async function mbuRenderCostPerWebsiteUser(){
-  const el = document.getElementById('mbuCostPerUserBody');
-  if (!el) return;
-  el.innerHTML = '<p class="hint">Computing…</p>';
+// 2026-09-28 (later the same day) — the compute half split out of the
+// render below so the Analysis workspace's Campaign Summary strip
+// (cmpRenderAnalysisSummary()) can model New Website Users = campaign
+// spend ÷ this same historical cost per website user, without a second
+// copy of the math. Cached per account for the page session; the Website
+// users save path (mbuSaveWebsiteUsersMonthly) clears it so a fresh entry
+// recomputes. Returns { rows: [{year, budget, users, costPerUser}],
+// blended, totalBudget, totalUsers, yearsWithData }.
+let mbuCostPerUserCache = null; // { accountId, result }
+function mbuInvalidateCostPerUserCache(){ mbuCostPerUserCache = null; }
+async function computeCostPerWebsiteUserByYear(){
+  if (mbuCostPerUserCache && mbuCostPerUserCache.accountId === state.companyId) return mbuCostPerUserCache.result;
   const campaigns = (state.campaigns || []).filter(c => c.startDate && !c.isAdHoc);
   const years = [...new Set(campaigns.map(c => new Date(c.startDate).getFullYear()).filter(y => Number.isFinite(y)))].sort((a, b) => b - a);
-  if (!years.length){
-    el.innerHTML = '<p class="lede">No campaigns with a Start Date yet — this needs at least one real campaign budget to compute against.</p>';
-    return;
-  }
   const budgetByYear = {};
   campaigns.forEach(c => {
     const y = new Date(c.startDate).getFullYear();
@@ -66218,7 +66762,7 @@ async function mbuRenderCostPerWebsiteUser(){
           const data = await resp.json();
           usersByYear[y] = (data.rows || []).reduce((s, r) => s + (Number(r.users) || 0), 0);
         }
-      } catch (e){ console.warn('mbuRenderCostPerWebsiteUser: fetch failed for', y, e); }
+      } catch (e){ console.warn('computeCostPerWebsiteUserByYear: fetch failed for', y, e); }
     }
   }
   let totalBudget = 0, totalUsers = 0, yearsWithData = 0;
@@ -66230,6 +66774,19 @@ async function mbuRenderCostPerWebsiteUser(){
     return { year: y, budget, users, costPerUser };
   });
   const blended = totalUsers > 0 ? (totalBudget / totalUsers) : null;
+  const result = { rows, blended, totalBudget, totalUsers, yearsWithData };
+  mbuCostPerUserCache = { accountId: state.companyId, result };
+  return result;
+}
+async function mbuRenderCostPerWebsiteUser(){
+  const el = document.getElementById('mbuCostPerUserBody');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Computing…</p>';
+  const { rows, blended, totalBudget, totalUsers, yearsWithData } = await computeCostPerWebsiteUserByYear();
+  if (!rows.length){
+    el.innerHTML = '<p class="lede">No campaigns with a Start Date yet — this needs at least one real campaign budget to compute against.</p>';
+    return;
+  }
   el.innerHTML = `
     <div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
       <thead><tr><th>Year</th><th>Campaign Budget</th><th>Website Users</th><th>Cost per User</th></tr></thead>
