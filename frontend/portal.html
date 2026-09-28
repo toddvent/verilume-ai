@@ -4937,13 +4937,29 @@
           <div class="field-divider">Upload your file</div>
           <div class="field">
             <label>Channel Planning Detail + Campaign CSV</label>
-            <input type="file" id="bccFileInput" accept=".csv,text/csv" onchange="handleBulkCreateCampaignsFile(event)">
+            <!-- 2026-09-28 fix, per direct report ("Choose File should use our
+                 overall site style"): same established pattern as every other
+                 uploader on this site (Upload Customer File, Brand Writing
+                 Samples, Marketing Budget Upload, etc.) — the real
+                 <input type="file"> is hidden and a .btn-ghost label styled to
+                 match the rest of the app triggers it, with the chosen
+                 filename echoed in a span beside it. -->
+            <div class="btn-row">
+              <label class="btn-ghost" for="bccFileInput" style="cursor:pointer;">Choose file</label>
+              <span id="bccFileChosenName" class="hint"></span>
+            </div>
+            <input type="file" id="bccFileInput" accept=".csv,text/csv" style="display:none;" onchange="document.getElementById('bccFileChosenName').textContent = (this.files[0] || {}).name || ''; handleBulkCreateCampaignsFile(event)">
             <div class="hint" id="bccFileHint">Parsed entirely in your browser — nothing is sent until you click Upload below.</div>
           </div>
 
+          <!-- 2026-09-28 fix, per direct report ("Uploading As should be the
+               user login credentials. We don't need to ask") — same
+               convention as every other authored-by field in this app
+               (state.userName, the logged-in user's own name; see e.g.
+               Team Comments, Creative decision notes). No separate text
+               input asking the person to type their own name. -->
           <div class="field" id="bccActorWrap" style="display:none;">
-            <label>Uploading as</label>
-            <input type="text" id="bccActorName" placeholder="Your name" style="max-width:320px;" oninput="renderBulkCreateCampaignsPreview()">
+            <span class="hint">Uploading as <strong id="bccActorNameDisplay"></strong></span>
           </div>
 
           <div class="field-divider" id="bccPreviewDivider" style="display:none;">Review &amp; upload</div>
@@ -12008,7 +12024,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-cmo-final-approval-review';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-bulk-create-campaigns-upload-fixes';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -16803,8 +16819,8 @@ function resetBulkCreateCampaignsState(){
   bccRows = [];
   const fileInput = document.getElementById('bccFileInput');
   if (fileInput) fileInput.value = '';
-  const nameInput = document.getElementById('bccActorName');
-  if (nameInput) nameInput.value = '';
+  const chosenName = document.getElementById('bccFileChosenName');
+  if (chosenName) chosenName.textContent = '';
   const wrap1 = document.getElementById('bccActorWrap'); if (wrap1) wrap1.style.display = 'none';
   const div1 = document.getElementById('bccPreviewDivider'); if (div1) div1.style.display = 'none';
   const wrap2 = document.getElementById('bccPreviewWrap'); if (wrap2) wrap2.style.display = 'none';
@@ -16835,18 +16851,47 @@ function downloadBulkCreateCampaignsTemplate(){
   downloadCsvFile('verilume-create-campaigns-template.csv', lines.join('\n'));
 }
 
+// 2026-09-28 fix, per direct report ("Nothing happens after uploading file
+// and no submit button to activate import"): root cause was this function,
+// not the button — every row's channel/productGroup/creativeMarket/etc. was
+// checked with a case-SENSITIVE `.includes()` against this account's real
+// taxonomy (which is stored Title Case, e.g. "Polar", "Antarctica"), so a
+// perfectly valid CSV exported/typed in ALL CAPS (a very normal spreadsheet
+// convention — see the client's own MEDIA_PLANS file) failed every row with
+// a hard error, validCount hit 0, and the real "Upload valid rows →" button
+// correctly disabled itself and relabeled to "No valid rows to upload" —
+// easy to read as "there's no submit button" if the row-level errors aren't
+// spotted in the preview table below. Matching is now case/whitespace-
+// insensitive, and a case-insensitive match REWRITES the row to the
+// taxonomy's own canonical casing (not just relaxes the check) so what
+// actually gets saved matches the configured value exactly — otherwise a
+// campaign saved as "POLAR" wouldn't show up when someone filters the
+// Marketing Calendar by the configured "Polar" Product Group. A value that
+// isn't in the list under any casing (e.g. a genuine typo, or "TRAVELZOO"
+// vs. the account's configured "TRAVEL ZOO") is still a real, correctly
+// surfaced error — this only forgives case, not different values.
+function ciFindMatch(list, value){
+  const v = (value || '').trim().toLowerCase();
+  return (list || []).find(x => (x || '').trim().toLowerCase() === v);
+}
 function validateBccRow(raw){
   const errors = [], warnings = [];
   if (!raw.campaignName) errors.push('campaignName is required');
   if (!raw.channel) errors.push('channel is required');
-  else if (!MMM_CATEGORIES.includes(raw.channel)) errors.push(`channel "${raw.channel}" isn't one of this account's Channels (see MMM_CATEGORIES — e.g. "${MMM_CATEGORIES[0]}")`);
+  else {
+    const canonicalChannel = ciFindMatch(MMM_CATEGORIES, raw.channel);
+    if (!canonicalChannel) errors.push(`channel "${raw.channel}" isn't one of this account's Channels (see MMM_CATEGORIES — e.g. "${MMM_CATEGORIES[0]}")`);
+    else raw.channel = canonicalChannel;
+  }
 
   Object.entries(BULK_UPLOAD_TAXONOMY_FIELD_KEYS).forEach(([field, taxKey]) => {
     const v = raw[field];
     if (!v) return;
     const allowed = cmpTaxonomyValues(taxKey);
-    if (!allowed) warnings.push(`${field} "${v}" — no ${taxKey} taxonomy configured for this account yet, accepted as free text`);
-    else if (!allowed.includes(v)) errors.push(`${field} "${v}" isn't in this account's configured ${taxKey} list (${allowed.join(', ')})`);
+    if (!allowed) { warnings.push(`${field} "${v}" — no ${taxKey} taxonomy configured for this account yet, accepted as free text`); return; }
+    const canonical = ciFindMatch(allowed, v);
+    if (!canonical) errors.push(`${field} "${v}" isn't in this account's configured ${taxKey} list (${allowed.join(', ')})`);
+    else raw[field] = canonical;
   });
 
   BULK_UPLOAD_NUMERIC_FIELDS.forEach(f => {
@@ -16874,6 +16919,7 @@ function handleBulkCreateCampaignsFile(event){
       return { index, raw, errors, warnings };
     });
     document.getElementById('bccFileHint').textContent = `Parsed ${parsed.length} row${parsed.length === 1 ? '' : 's'} from ${file.name}.`;
+    document.getElementById('bccActorNameDisplay').textContent = (state.userName || '').trim() || 'You';
     document.getElementById('bccActorWrap').style.display = '';
     document.getElementById('bccPreviewDivider').style.display = '';
     document.getElementById('bccPreviewWrap').style.display = '';
@@ -16926,7 +16972,7 @@ function renderBulkCreateCampaignsPreview(){
 async function submitBulkCreateCampaigns(){
   const validRows = bccRows.filter(r => !r.errors.length);
   if (!validRows.length) return;
-  const actorName = document.getElementById('bccActorName').value.trim();
+  const actorName = (state.userName || '').trim();
   const dateRangeStart = document.getElementById('bccDateFrom').value || '';
   const dateRangeEnd = document.getElementById('bccDateTo').value || '';
   const fileHint = document.getElementById('bccFileHint').textContent || '';
