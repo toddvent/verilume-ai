@@ -653,6 +653,22 @@ ensureColumn('campaigns', 'budgetApprovedBy', 'TEXT');
 ensureColumn('campaigns', 'brandStage', "TEXT DEFAULT 'Not Started'");
 ensureColumn('campaigns', 'qaApproved', 'INTEGER DEFAULT 0');
 
+// 2026-09-28 — CMO Final Approval review, per direct instruction: "a final
+// approval flow for the CMO to have a chance to review the collective
+// creative copy... approve the execution associated with the briefs
+// written for the copy associated with the campaign objectives as the
+// first step and then the analytics approach." Two independent gestures,
+// each with its own approved flag, timestamp, and an optional "request
+// changes" note; see cmpOpenFinalApprovalReview()/approveCampaignQa() in
+// portal.html — qaApproved above can no longer be set until both of these
+// are true.
+ensureColumn('campaigns', 'creativeMessagingCmoApproved', 'INTEGER DEFAULT 0');
+ensureColumn('campaigns', 'creativeMessagingCmoApprovedAt', 'TEXT');
+ensureColumn('campaigns', 'creativeMessagingCmoNote', 'TEXT');
+ensureColumn('campaigns', 'analyticsApproachCmoApproved', 'INTEGER DEFAULT 0');
+ensureColumn('campaigns', 'analyticsApproachCmoApprovedAt', 'TEXT');
+ensureColumn('campaigns', 'analyticsApproachCmoNote', 'TEXT');
+
 // Added 2026-07-27 (round 65) — Brand card: campaign-level brand messaging,
 // distinct from the account-level Brand Voice/Style Assets/Competitive
 // Positioning screens (those already have their own columns on `accounts`,
@@ -23563,6 +23579,15 @@ Submit your response via the campaign_intake_turn tool.`;
         // Round 36 — the 7-stage progress bar's two manually-set fields.
         brandStage: body.brandStage !== undefined ? body.brandStage : existing.brandStage,
         qaApproved: body.qaApproved !== undefined ? (body.qaApproved ? 1 : 0) : existing.qaApproved,
+        // 2026-09-28 — CMO Final Approval review fields, same merge-update
+        // convention as every field here. See the ensureColumn() calls
+        // above for the full context.
+        creativeMessagingCmoApproved: body.creativeMessagingCmoApproved !== undefined ? (body.creativeMessagingCmoApproved ? 1 : 0) : existing.creativeMessagingCmoApproved,
+        creativeMessagingCmoApprovedAt: body.creativeMessagingCmoApprovedAt !== undefined ? body.creativeMessagingCmoApprovedAt : existing.creativeMessagingCmoApprovedAt,
+        creativeMessagingCmoNote: body.creativeMessagingCmoNote !== undefined ? body.creativeMessagingCmoNote : existing.creativeMessagingCmoNote,
+        analyticsApproachCmoApproved: body.analyticsApproachCmoApproved !== undefined ? (body.analyticsApproachCmoApproved ? 1 : 0) : existing.analyticsApproachCmoApproved,
+        analyticsApproachCmoApprovedAt: body.analyticsApproachCmoApprovedAt !== undefined ? body.analyticsApproachCmoApprovedAt : existing.analyticsApproachCmoApprovedAt,
+        analyticsApproachCmoNote: body.analyticsApproachCmoNote !== undefined ? body.analyticsApproachCmoNote : existing.analyticsApproachCmoNote,
         // Round 53 — Media Plan funding fields, same merge-update convention.
         channels: body.channels !== undefined ? body.channels : existing.channels,
         fundingSource: body.fundingSource !== undefined ? body.fundingSource : existing.fundingSource,
@@ -23782,6 +23807,12 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('conversionType', body.conversionType !== undefined, merged.conversionType);
       addCol('brandStage', body.brandStage !== undefined, merged.brandStage);
       addCol('qaApproved', body.qaApproved !== undefined, merged.qaApproved);
+      addCol('creativeMessagingCmoApproved', body.creativeMessagingCmoApproved !== undefined, merged.creativeMessagingCmoApproved);
+      addCol('creativeMessagingCmoApprovedAt', body.creativeMessagingCmoApprovedAt !== undefined, merged.creativeMessagingCmoApprovedAt);
+      addCol('creativeMessagingCmoNote', body.creativeMessagingCmoNote !== undefined, merged.creativeMessagingCmoNote);
+      addCol('analyticsApproachCmoApproved', body.analyticsApproachCmoApproved !== undefined, merged.analyticsApproachCmoApproved);
+      addCol('analyticsApproachCmoApprovedAt', body.analyticsApproachCmoApprovedAt !== undefined, merged.analyticsApproachCmoApprovedAt);
+      addCol('analyticsApproachCmoNote', body.analyticsApproachCmoNote !== undefined, merged.analyticsApproachCmoNote);
       addCol('channels', body.channels !== undefined, merged.channels);
       addCol('fundingSource', body.fundingSource !== undefined, merged.fundingSource);
       addCol('allocationId', body.allocationId !== undefined, merged.allocationId);
