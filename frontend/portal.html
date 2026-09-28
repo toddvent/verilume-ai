@@ -11663,6 +11663,50 @@
       </div>
     </div>
 
+    <!-- 2026-09-28 addition, per direct instruction: "an updated cost per DM
+         and Magazine size selected during the creative process. We
+         currently use a default price for DM vs. asset level." Replaces the
+         flat channel-only Direct Mail cost per piece card above as the real
+         input to Direct Mail — Actual Budget: one row per real named DM
+         format (same catalog the Creative Asset Selection Size picker
+         already pulls from — GLOBAL_DIRECT_MAIL_SPECS), grouped by channel.
+         Rows shown in italic with a "Seeded estimate" note are
+         DM_FORMAT_COST_DEFAULTS values from the app's own sourced cost
+         reference (see backend DIRECT_MAIL_PLANNING_REFERENCE) — edit any
+         of them to lock in your real negotiated cost; formats with no clean
+         reference match start blank. -->
+    <div class="sk-card" id="mbuDmFormatCostCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>Direct Mail cost per piece — by format</h3></div>
+        <div class="hicon">📮</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">All-in cost per piece (list + printing + postage), by the real named format selected during Creative Asset Selection — not one flat number per channel. Direct Mail — Actual Budget on each campaign now uses the format that campaign's approved creative asset actually selected. Italic rows are seeded estimates from our own cost reference; edit to enter your real negotiated cost. Saves as you go.</p>
+        <span class="hint" id="mbuDmFormatCostStatus" style="margin:0 0 8px;display:block;"></span>
+        <div id="mbuDmFormatCostBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
+    <!-- 2026-09-28 addition, same direct instruction as above — Magazine
+         equivalent. Per direct decision (asked, since magazine rates are
+         negotiated per publication and vary enormously): cost per
+         publication + ad format, manual entry, no seeded default since no
+         external benchmark exists for magazine insertion rates. Covers
+         every publication/format this account's Creative Asset Selection
+         Size picker can offer (GLOBAL_PRINT_SPECS + this account's own
+         custom print specs). -->
+    <div class="sk-card" id="mbuMagazineCostCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>Magazine cost per insertion</h3></div>
+        <div class="hicon">📖</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Cost per insertion, by publication and ad format — magazine rates are negotiated per title, so there's no benchmark to seed from; enter your real negotiated cost for each format you actually run. Saves as you go.</p>
+        <span class="hint" id="mbuMagazineCostStatus" style="margin:0 0 8px;display:block;"></span>
+        <div id="mbuMagazineCostBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -12095,7 +12139,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-cost-per-user-and-dm-actual-budget-math';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-dm-magazine-cost-per-format-and-publication';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -65791,6 +65835,8 @@ function mbuLoadReachInputs(){
   mbuLoadWebsiteUsersMonthly();
   mbuLoadMarketableSizes();
   mbuLoadDmCostPerPiece();
+  mbuLoadDmFormatCost();
+  mbuLoadMagazineCost();
   mbuRenderCostPerWebsiteUser();
 }
 async function mbuLoadWebsiteUsersMonthly(){
@@ -66007,6 +66053,136 @@ async function mbuSaveDmCostPerPiece(){
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
 }
 
+// 2026-09-28 — per format Direct Mail cost per piece (see
+// account_dm_format_cost / GET,POST .../dm-format-cost on the backend, and
+// mbuDmFormatCostCard's own comment above). One sub-table per DM channel,
+// one row per real named format from GLOBAL_DIRECT_MAIL_SPECS — this is
+// what cmpComputeDmActualBudget() now reads, keyed by the format the
+// campaign's approved creative asset actually selected.
+async function mbuLoadDmFormatCost(){
+  const wrap = document.getElementById('mbuDmFormatCostBody');
+  const status = document.getElementById('mbuDmFormatCostStatus');
+  if (!wrap) return;
+  let rows = [];
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-format-cost`);
+      if (resp.ok){ const data = await resp.json(); rows = data.rows || []; }
+    } catch (e){ console.warn('mbuLoadDmFormatCost: fetch failed', e); }
+  }
+  if (!rows.length){ wrap.innerHTML = '<p class="hint">No account selected yet.</p>'; return; }
+  const byChannel = {};
+  rows.forEach(r => { (byChannel[r.channel] = byChannel[r.channel] || []).push(r); });
+  wrap.innerHTML = ACCOUNT_DM_CHANNELS.map(channel => `
+    <div style="margin:0 0 16px;">
+      <div style="font-weight:700;margin:0 0 4px;">${escapeHtml(channel)}</div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="min-width:420px;">
+          <thead><tr><th>Format</th><th>Cost per Piece</th></tr></thead>
+          <tbody>${(byChannel[channel] || []).map(r => `<tr${r.isDefault ? ' style="font-style:italic;"' : ''}>
+            <td>${escapeHtml(r.formatName)}${r.isDefault ? '<div class="hint" style="font-style:normal;">Seeded estimate — edit to confirm</div>' : ''}</td>
+            <td><input type="number" min="0" step="0.01" class="tbl-input" style="width:120px;" value="${r.costPerPiece == null ? '' : r.costPerPiece}" data-channel="${escapeHtml(channel)}" data-format="${escapeHtml(r.formatName)}" onchange="mbuQueueDmFormatCostSave()"></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`).join('');
+  if (status) status.textContent = '';
+}
+let mbuDmFormatCostSaveTimer = null;
+function mbuQueueDmFormatCostSave(){
+  const status = document.getElementById('mbuDmFormatCostStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuDmFormatCostSaveTimer) clearTimeout(mbuDmFormatCostSaveTimer);
+  mbuDmFormatCostSaveTimer = setTimeout(mbuSaveDmFormatCost, 500);
+}
+async function mbuSaveDmFormatCost(){
+  const status = document.getElementById('mbuDmFormatCostStatus');
+  const wrap = document.getElementById('mbuDmFormatCostBody');
+  if (!wrap) return;
+  const rows = [...wrap.querySelectorAll('input[data-channel][data-format]')].map(inp => ({
+    channel: inp.dataset.channel, formatName: inp.dataset.format,
+    costPerPiece: inp.value === '' ? null : Number(inp.value)
+  }));
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-format-cost`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveDmFormatCost: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+  cmpDmActualBudgetInputs = null; // force refetch so the campaign-detail card picks up the new cost
+}
+
+// 2026-09-28 — Magazine cost per insertion (see account_magazine_cost /
+// GET,POST .../magazine-cost on the backend, and mbuMagazineCostCard's own
+// comment above). One sub-table per publication, one row per ad format —
+// no seeded defaults (no external per-publication rate benchmark exists),
+// every row starts blank.
+async function mbuLoadMagazineCost(){
+  const wrap = document.getElementById('mbuMagazineCostBody');
+  const status = document.getElementById('mbuMagazineCostStatus');
+  if (!wrap) return;
+  let rows = [];
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/magazine-cost`);
+      if (resp.ok){ const data = await resp.json(); rows = data.rows || []; }
+    } catch (e){ console.warn('mbuLoadMagazineCost: fetch failed', e); }
+  }
+  if (!rows.length){ wrap.innerHTML = '<p class="hint">No magazine ad formats on file yet.</p>'; return; }
+  const byPub = {};
+  rows.forEach(r => { (byPub[r.publication] = byPub[r.publication] || []).push(r); });
+  wrap.innerHTML = Object.keys(byPub).sort().map(pub => `
+    <div style="margin:0 0 16px;">
+      <div style="font-weight:700;margin:0 0 4px;">${escapeHtml(pub)}</div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="min-width:420px;">
+          <thead><tr><th>Ad format</th><th>Cost per Insertion</th></tr></thead>
+          <tbody>${byPub[pub].map(r => `<tr>
+            <td>${escapeHtml(r.adFormat)}</td>
+            <td><input type="number" min="0" step="0.01" class="tbl-input" style="width:120px;" value="${r.costPerInsertion == null ? '' : r.costPerInsertion}" data-publication="${escapeHtml(pub)}" data-format="${escapeHtml(r.adFormat)}" onchange="mbuQueueMagazineCostSave()"></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`).join('');
+  if (status) status.textContent = '';
+}
+let mbuMagazineCostSaveTimer = null;
+function mbuQueueMagazineCostSave(){
+  const status = document.getElementById('mbuMagazineCostStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuMagazineCostSaveTimer) clearTimeout(mbuMagazineCostSaveTimer);
+  mbuMagazineCostSaveTimer = setTimeout(mbuSaveMagazineCost, 500);
+}
+async function mbuSaveMagazineCost(){
+  const status = document.getElementById('mbuMagazineCostStatus');
+  const wrap = document.getElementById('mbuMagazineCostBody');
+  if (!wrap) return;
+  const rows = [...wrap.querySelectorAll('input[data-publication][data-format]')].map(inp => ({
+    publication: inp.dataset.publication, adFormat: inp.dataset.format,
+    costPerInsertion: inp.value === '' ? null : Number(inp.value)
+  }));
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/magazine-cost`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveMagazineCost: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+}
+
 // 2026-09-28 addition, per direct instruction: "Average cost per website
 // user when looking at historical full year budgets and current campaign
 // trends." Computed, not entered — combines this account's own real
@@ -66070,13 +66246,19 @@ async function mbuRenderCostPerWebsiteUser(){
 }
 
 // 2026-09-28 addition, per direct instruction: "DM Audience Size * Cost per
-// Piece to create actual budget." Independent fetch/cache of the two inputs
+// Piece to create actual budget." Independent fetch/cache of the inputs
 // this needs (First-party DM & EM marketable sizes, Direct Mail cost per
-// piece — both entered on Company Profile), keyed by accountId so a
-// switched account refetches. Not the same cache as mbu*'s own load
+// piece by format — both entered on Company Profile), keyed by accountId
+// so a switched account refetches. Not the same cache as mbu*'s own load
 // functions above — those render into that page's own table bodies, which
 // aren't mounted while viewing a Campaign Detail page.
-let cmpDmActualBudgetInputs = null; // { accountId, marketableByKey, costByChannel }
+// 2026-09-28 update, per direct instruction: "an updated cost per DM and
+// Magazine size selected during the creative process. We currently use a
+// default price for DM vs. asset level." Now fetches dm-format-cost (per
+// real named format) instead of the old flat dm-cost-per-piece, and keys
+// its lookup off the specific format the campaign's approved creative
+// asset actually selected (see cmpComputeDmActualBudget()'s own comment).
+let cmpDmActualBudgetInputs = null; // { accountId, marketableByKey, formatCostByChannel }
 let cmpDmActualBudgetInputsLoading = false;
 async function cmpLoadDmActualBudgetInputsIfNeeded(){
   if (dataSourceLabel !== 'backend') return;
@@ -66086,15 +66268,18 @@ async function cmpLoadDmActualBudgetInputsIfNeeded(){
   try {
     const [sizesResp, costResp] = await Promise.all([
       authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketable-sizes`),
-      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-cost-per-piece`)
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-format-cost`)
     ]);
     const sizesData = sizesResp.ok ? await sizesResp.json() : { rows: [] };
     const costData = costResp.ok ? await costResp.json() : { rows: [] };
     const marketableByKey = {};
     (sizesData.rows || []).forEach(r => { marketableByKey[r.generationKey] = r.dmMarketable; });
-    const costByChannel = {};
-    (costData.rows || []).forEach(r => { costByChannel[r.channel] = r.costPerPiece; });
-    cmpDmActualBudgetInputs = { accountId: state.companyId, marketableByKey, costByChannel };
+    const formatCostByChannel = {};
+    (costData.rows || []).forEach(r => {
+      if (!formatCostByChannel[r.channel]) formatCostByChannel[r.channel] = {};
+      formatCostByChannel[r.channel][r.formatName] = { costPerPiece: r.costPerPiece, isDefault: !!r.isDefault };
+    });
+    cmpDmActualBudgetInputs = { accountId: state.companyId, marketableByKey, formatCostByChannel };
   } catch (e){ console.warn('cmpLoadDmActualBudgetInputsIfNeeded: fetch failed', e); }
   cmpDmActualBudgetInputsLoading = false;
   const campaign = findCampaign(currentCampaignId);
@@ -66107,18 +66292,37 @@ async function cmpLoadDmActualBudgetInputsIfNeeded(){
 // SEGMENT_CHANNEL_ELIGIBILITY (the same eligibility mapping Campaign
 // Audiences itself is built on — e.g. Direct Mail — Past Guests only ever
 // counts Past Customers/Cancelled Orders, never Prospects). Actual budget
-// = that audience size × this channel's Cost per Piece. Overlapping
-// segments eligible for the same channel (e.g. a campaign targeting both
-// Past Customers and Cancelled Orders, both eligible for Direct Mail —
-// Past Guests) are summed as entered — there's no cross-segment de-dup in
-// this account's data, so a campaign spanning genuinely overlapping lists
-// will overstate audience size; disclosed in the card, not hidden.
+// = that audience size × the Cost per Piece of the specific format this
+// channel's approved creative asset actually selected (campaign.
+// approvedCreativeAssets, the Creative Asset Selection grid — see
+// cmpSyncCreativeAssetRequestsFromGrid()'s row shape: {channel, partner,
+// mediaType, size, ...}). size is built as "<formatName> — <bindingFold
+// Style>" by loadPublisherSizesForChannel() for a real Direct Mail format,
+// so the formatName is the part before " — ". 2026-09-28, per direct
+// instruction ("we currently use a default price for DM vs. asset level"):
+// this replaces the old flat per-channel cost with that asset-level cost.
+// A channel with no approved creative asset yet gets one row flagged
+// noAssetSelected so the gap reads honestly rather than guessing a format;
+// a channel with more than one distinct format selected gets one row per
+// format actually in use. Overlapping segments eligible for the same
+// channel are summed as entered — there's no cross-segment de-dup in this
+// account's data, so a campaign spanning genuinely overlapping lists will
+// overstate audience size; disclosed in the card, not hidden.
 function cmpComputeDmActualBudget(campaign){
   if (!campaign || !cmpDmActualBudgetInputs) return [];
   const segments = (campaign.segment || '').split(',').map(s => s.trim()).filter(Boolean);
   const channels = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : (campaign.channels || '')).split(',').map(s => s.trim()).filter(Boolean);
   const dmChannels = channels.filter(ch => ch.startsWith('Direct Mail'));
-  return dmChannels.map(channel => {
+  if (!(Array.isArray(campaign.approvedCreativeAssets) && campaign.approvedCreativeAssets.length) && campaign.approvedCreativeAssetsJson){
+    try { const parsed = JSON.parse(campaign.approvedCreativeAssetsJson); if (Array.isArray(parsed)) campaign.approvedCreativeAssets = parsed; } catch (e){ /* malformed — treat as no assets */ }
+  }
+  const assetsByChannel = {};
+  (campaign.approvedCreativeAssets || []).forEach(a => {
+    if (!a || !a.channel || !a.channel.startsWith('Direct Mail')) return;
+    (assetsByChannel[a.channel] = assetsByChannel[a.channel] || []).push(a);
+  });
+  const rows = [];
+  dmChannels.forEach(channel => {
     const eligibleSegments = segments.filter(s => (SEGMENT_CHANNEL_ELIGIBILITY[s] || []).includes(channel));
     let audienceSize = 0, missingSize = false;
     eligibleSegments.forEach(s => {
@@ -66126,10 +66330,20 @@ function cmpComputeDmActualBudget(campaign){
       const size = key ? cmpDmActualBudgetInputs.marketableByKey[key] : null;
       if (size == null) missingSize = true; else audienceSize += size;
     });
-    const costPerPiece = cmpDmActualBudgetInputs.costByChannel[channel];
-    const budget = (costPerPiece != null && !missingSize && eligibleSegments.length) ? audienceSize * costPerPiece : null;
-    return { channel, eligibleSegments, audienceSize, costPerPiece, missingSize, budget };
+    const formatNames = [...new Set((assetsByChannel[channel] || []).map(a => String(a.size || '').split(' — ')[0].trim()).filter(Boolean))];
+    if (!formatNames.length){
+      rows.push({ channel, formatName: null, eligibleSegments, audienceSize, costPerPiece: null, isDefaultCost: false, missingSize, budget: null, noAssetSelected: true });
+      return;
+    }
+    formatNames.forEach(formatName => {
+      const entry = (cmpDmActualBudgetInputs.formatCostByChannel[channel] || {})[formatName];
+      const costPerPiece = entry ? entry.costPerPiece : null;
+      const isDefaultCost = !!(entry && entry.isDefault);
+      const budget = (costPerPiece != null && !missingSize && eligibleSegments.length) ? audienceSize * costPerPiece : null;
+      rows.push({ channel, formatName, eligibleSegments, audienceSize, costPerPiece, isDefaultCost, missingSize, budget });
+    });
   });
+  return rows;
 }
 function cmpRenderDmActualBudgetCard(campaign){
   const el = document.getElementById('cmpDmActualBudgetCard');
@@ -66141,21 +66355,22 @@ function cmpRenderDmActualBudgetCard(campaign){
   el.innerHTML = `
     <div class="sk-card" style="margin:0 0 16px;">
       <div class="sk-card-head cx">
-        <div class="htext"><h3>Direct Mail — Actual Budget</h3><div class="kicker">Audience size × Cost per Piece</div></div>
+        <div class="htext"><h3>Direct Mail — Actual Budget</h3><div class="kicker">Audience size × Cost per Piece, by the format actually selected</div></div>
         <div class="hicon">📬</div>
       </div>
       <div class="sk-card-body">
         <div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
-          <thead><tr><th>Channel</th><th>Audience (segments)</th><th>DM Marketable</th><th>Cost/Piece</th><th>Actual Budget</th></tr></thead>
+          <thead><tr><th>Channel</th><th>Format</th><th>Audience (segments)</th><th>DM Marketable</th><th>Cost/Piece</th><th>Actual Budget</th></tr></thead>
           <tbody>${rows.map(r => `<tr>
             <td>${escapeHtml(r.channel)}</td>
+            <td>${r.noAssetSelected ? '<span class="hint">No creative asset selected yet</span>' : escapeHtml(r.formatName)}</td>
             <td>${r.eligibleSegments.length ? escapeHtml(r.eligibleSegments.join(', ')) : '<span class="hint">No eligible audience selected</span>'}</td>
             <td>${r.eligibleSegments.length ? (r.missingSize ? '<span class="hint">Missing data</span>' : r.audienceSize.toLocaleString()) : '—'}</td>
-            <td>${r.costPerPiece != null ? `$${r.costPerPiece.toFixed(2)}` : '<span class="hint">Not set</span>'}</td>
+            <td>${r.costPerPiece != null ? `$${r.costPerPiece.toFixed(2)}${r.isDefaultCost ? ' <span class="hint">(seeded est.)</span>' : ''}` : '<span class="hint">Not set</span>'}</td>
             <td>${r.budget != null ? `<b>${fmtMoney(r.budget)}</b>` : '<span class="hint">—</span>'}</td>
           </tr>`).join('')}</tbody>
         </table></div>
-        <p class="hint" style="margin:0;">${totalBudget > 0 ? `Total actual Direct Mail budget: <b>${fmtMoney(totalBudget)}</b>.` : ''} Missing audience size or Cost per Piece comes from Company Profile → First-party DM &amp; EM marketable sizes / Direct Mail cost per piece.</p>
+        <p class="hint" style="margin:0;">${totalBudget > 0 ? `Total actual Direct Mail budget: <b>${fmtMoney(totalBudget)}</b>.` : ''} Cost is priced per the real format selected in Creative Asset Selection — set/confirm costs at Company Profile → Direct Mail cost per piece — by format. Missing audience size comes from First-party DM &amp; EM marketable sizes.</p>
       </div>
     </div>`;
 }
