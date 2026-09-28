@@ -2257,6 +2257,7 @@
   .cmp-summary-tile .cmp-summary-badge{display:inline-block;font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:middle;}
   .cmp-summary-badge.actual{background:#EAF7EF;color:#1F6B3A;}
   .cmp-summary-badge.modeled{background:#FFF4E0;color:#8A5A0A;}
+  .cmp-summary-badge.target{background:#EAF1FB;color:#1E5FA8;}
   .cmp-summary-badge.primary{background:var(--cx);color:#fff;}
   @media (max-width:640px){ .cmp-summary-strip{grid-template-columns:1fr 1fr;} }
   .cmp-wf-qa-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;}
@@ -12261,7 +12262,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-channel-timing-and-demand-fulfillment';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-campaign-targets-from-approved-budget-stage';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -42684,19 +42685,20 @@ function computeDemandFulfillmentForecast(websiteUsers, df){
 }
 // Website users for a plan year, most-real first: Σ campaigns modeled
 // (cmpCampaignSummaryModel) → the year's annual target → nothing.
-function cmpForecastWebsiteUsersForYear(year, ctx){
+async function cmpForecastWebsiteUsersForYear(year, ctx){
   const campaigns = (state.campaigns || []).filter(c => c && c.startDate && !c.isAdHoc && !c.cancelled && new Date(c.startDate).getFullYear() === year);
+  const plans = await Promise.all(campaigns.map(c => cmpLoadApprovedPlanTotals(c)));
   let sum = 0, n = 0;
-  campaigns.forEach(c => { const m = cmpCampaignSummaryModel(c, ctx); if (m.websiteUsers != null){ sum += m.websiteUsers; n++; } });
+  campaigns.forEach((c, i) => { const m = cmpCampaignSummaryModel(c, ctx, plans[i]); if (m.websiteUsers != null){ sum += m.websiteUsers; n++; } });
   if (n) return { websiteUsers: sum, source: `Σ ${n} campaign${n === 1 ? '' : 's'} starting in ${year}` };
   const t = ctx.annualByYear[year] && ctx.annualByYear[year].target;
   if (t && t.websiteUsers != null) return { websiteUsers: t.websiteUsers, source: `${year} annual target` };
   return { websiteUsers: null, source: null };
 }
-function renderDemandFulfillmentForecastHtml(year, ctx, opts){
+async function renderDemandFulfillmentForecastHtml(year, ctx, opts){
   const df = ctx.demandFulfillment;
   if (!df) return '<p class="hint" style="margin:0;">Demand fulfillment assumptions not loaded.</p>';
-  const plan = cmpForecastWebsiteUsersForYear(year, ctx);
+  const plan = await cmpForecastWebsiteUsersForYear(year, ctx);
   const baseline = cmpAnnualBaselineFor(ctx, year);
   const baseUsers = baseline && baseline.websiteUsers != null ? baseline.websiteUsers : null;
   const fcPlan = computeDemandFulfillmentForecast(plan.websiteUsers, df);
@@ -42754,41 +42756,82 @@ function cmpFunnelImpressionsToTransactionRate(rates){
   const viaLead = (1 - mix) * (rates.leadRate || 0) * (rates.bookingRate || 0);
   return rates.visitRate * (viaDirect + viaLead);
 }
-// The campaign-level model. Source precedence, per metric, most-real first:
-//   Spend / Impressions: logged actuals → approved budget / planned.
+// 2026-09-28 (round 3), per direct correction on the first render: "We're
+// missing campaign specific targets with annual targets based on budget
+// models. The analysis view needs to focus on the KPIs based on the
+// $400,000 spend and the impressions that were approved during the
+// campaign budget stage... The KPIs should then follow the model."
+// So: the campaign's TARGETS start from what the Campaign Budget stage
+// approved (channel_planning_details Σ budget / Σ impressions — approved
+// lines when any are, else the draft plan), not from the creation-form's
+// budget/plannedImpressions, and every downstream KPI target follows the
+// annual model's rates from there. ACTUALS are what's logged. TRACKING is
+// the same model re-run on logged actual spend/impressions once they
+// exist, so an in-flight campaign reads "target vs. where actuals put it."
+let cmpApprovedPlanCache = {}; // campaignId -> { totalSpend, totalImpressions, approved, lineCount }
+async function cmpLoadApprovedPlanTotals(campaign){
+  if (!campaign || !campaign.id) return null;
+  if (cmpApprovedPlanCache[campaign.id]) return cmpApprovedPlanCache[campaign.id];
+  if (dataSourceLabel !== 'backend' || campaign.localOnly) return null;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/pitch-summary`);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const lines = data.lineItems || [];
+    const approvedLines = lines.filter(l => l.status === 'approved');
+    const use = approvedLines.length ? approvedLines : lines;
+    const plan = use.length ? {
+      totalSpend: use.reduce((t, l) => t + (Number(l.budget) || 0), 0),
+      totalImpressions: use.reduce((t, l) => t + (Number(l.impressions) || 0), 0),
+      approved: approvedLines.length > 0, lineCount: use.length,
+      budgetApprovedAt: data.budgetApprovedAt || null
+    } : null;
+    cmpApprovedPlanCache[campaign.id] = plan;
+    return plan;
+  } catch (e){ console.warn('cmpLoadApprovedPlanTotals failed', e); return null; }
+}
+function cmpInvalidateApprovedPlan(campaignId){ if (campaignId) delete cmpApprovedPlanCache[campaignId]; else cmpApprovedPlanCache = {}; }
+// The campaign-level model. Source precedence, per input, most-real first:
+//   Target spend / impressions: approved channel plan (Campaign Budget
+//     stage) → draft channel plan → creation-form budget / planned.
 //   Cost per website user: that year's annual baseline → that year's
-//     Website users by month history → latest annual baseline → blended
-//     history. (Both "history" sources are real entered data; the annual
-//     baseline is preferred because it's the number the board plan was
-//     calibrated on.)
+//     budget-model history (Media Plan working media ÷ Website users by
+//     month) → latest annual baseline → blended history.
 //   Lead / registration rates: this campaign's own saved rate (an explicit
 //     edit) → annual baseline (value leads ÷ website users, growth leads ÷
 //     website users) → Loop Stage × Industry seed.
-//   Transactions: own logged actual (Transactions KPI) → Σ this account's
-//     other logged campaigns → annual baseline bookings ÷ impressions →
-//     this campaign's funnel chain.
-function cmpCampaignSummaryModel(campaign, ctx){
+//   Transactions rate: Σ this account's other logged campaigns → annual
+//     baseline bookings ÷ impressions → this campaign's funnel chain.
+// `plan` is the approved-plan totals from cmpLoadApprovedPlanTotals().
+function cmpCampaignSummaryModel(campaign, ctx, plan){
   const num = v => (v === null || v === undefined || v === '') ? null : Number(v);
-  const m = { campaignId: campaign.id };
-  const actualSpend = num(campaign.actualSpend), budget = num(campaign.budget);
-  m.budget = budget; m.spendIsActual = actualSpend != null; m.spend = m.spendIsActual ? actualSpend : budget;
-  const actualImps = num(campaign.actualImpressions), plannedImps = num(campaign.plannedImpressions);
-  m.plannedImps = plannedImps; m.impsIsActual = actualImps != null; m.impressions = m.impsIsActual ? actualImps : plannedImps;
+  const m = { campaignId: campaign.id, target: {}, actual: {}, tracking: {}, source: {} };
   m.year = campaign.startDate ? new Date(campaign.startDate).getFullYear() : null;
   const baseline = cmpAnnualBaselineFor(ctx, m.year);
   m.baseline = baseline;
-  m.target = (m.year && ctx.annualByYear[m.year] && ctx.annualByYear[m.year].target) || null;
+  m.annualTarget = (m.year && ctx.annualByYear[m.year] && ctx.annualByYear[m.year].target) || null;
+
+  // Targets from the Campaign Budget stage
+  if (plan && plan.totalSpend > 0){ m.target.spend = plan.totalSpend; m.source.spend = `${plan.approved ? 'approved' : 'draft'} channel plan, ${plan.lineCount} line${plan.lineCount === 1 ? '' : 's'}`; }
+  else { m.target.spend = num(campaign.budget); m.source.spend = m.target.spend != null ? 'campaign budget (no channel plan yet)' : null; }
+  if (plan && plan.totalImpressions > 0){ m.target.impressions = plan.totalImpressions; m.source.impressions = `${plan.approved ? 'approved' : 'draft'} channel plan`; }
+  else { m.target.impressions = num(campaign.plannedImpressions); m.source.impressions = m.target.impressions != null ? 'planned at creation (no channel plan impressions yet)' : null; }
+  // Actuals
+  m.actual.spend = num(campaign.actualSpend);
+  m.actual.impressions = num(campaign.actualImpressions);
+  const isTxnKpi = /transaction|booking|sale|purchase/i.test(String(campaign.primaryKpi || ''));
+  m.isTxnKpi = isTxnKpi;
+  m.actual.transactions = (isTxnKpi && num(campaign.actualConversions) != null) ? num(campaign.actualConversions) : null;
 
   // Cost per website user
   const cpu = ctx.cpu || { rows: [] };
   const yearRow = m.year ? cpu.rows.find(r => r.year === m.year && r.costPerUser != null) : null;
   const yearBaseline = (baseline && baseline.year === m.year && baseline.derived.costPerWebsiteUser) ? baseline : null;
   if (yearBaseline){ m.costPerUser = yearBaseline.derived.costPerWebsiteUser; m.costPerUserSource = `${m.year} annual baseline`; }
-  else if (yearRow){ m.costPerUser = yearRow.costPerUser; m.costPerUserSource = `${m.year} website-users history`; }
+  else if (yearRow){ m.costPerUser = yearRow.costPerUser; m.costPerUserSource = `${m.year} ${yearRow.budgetSource || 'history'}`; }
   else if (baseline && baseline.derived.costPerWebsiteUser){ m.costPerUser = baseline.derived.costPerWebsiteUser; m.costPerUserSource = `${baseline.year} annual baseline`; }
   else if (cpu.blended != null){ m.costPerUser = cpu.blended; m.costPerUserSource = `blended ${cpu.yearsWithData}-yr history`; }
   else { m.costPerUser = null; m.costPerUserSource = null; }
-  m.websiteUsers = (m.spend != null && m.costPerUser > 0) ? m.spend / m.costPerUser : null;
 
   // Rates
   const rates = cmpFunnelRatesForCampaign(campaign);
@@ -42801,30 +42844,51 @@ function cmpCampaignSummaryModel(campaign, ctx){
   if (savedReg){ m.registrationRate = rates.registrationRate; m.registrationRateSource = 'this campaign’s rate'; }
   else if (baseline && baseline.derived.growthLeadRate != null){ m.registrationRate = baseline.derived.growthLeadRate; m.registrationRateSource = `${baseline.year} baseline growth-lead rate`; }
   else { m.registrationRate = rates.registrationRate; m.registrationRateSource = `${rates.stage || 'default'} stage seed`; }
-  m.leads = m.websiteUsers != null ? m.websiteUsers * m.leadRate : null;
-  m.registrations = m.websiteUsers != null ? m.websiteUsers * m.registrationRate : null;
-
-  // Transactions
-  const isTxnKpi = /transaction|booking|sale|purchase/i.test(String(campaign.primaryKpi || ''));
-  m.isTxnKpi = isTxnKpi;
-  const ownActual = (isTxnKpi && num(campaign.actualConversions) != null) ? num(campaign.actualConversions) : null;
   const hist = cmpHistoricalImpressionsToTransactionRate(campaign.id);
   const funnelRate = cmpFunnelImpressionsToTransactionRate(rates);
-  m.transactions = null; m.txnIsActual = false; m.txnNote = '';
-  if (ownActual != null){ m.transactions = ownActual; m.txnIsActual = true; m.txnNote = 'Logged actual conversions (Transactions KPI)'; }
-  else if (m.impressions != null && hist){ m.transactions = m.impressions * hist.rate; m.txnNote = `${(hist.rate * 100).toFixed(3)}% impressions → transactions from ${hist.campaigns} logged campaign${hist.campaigns === 1 ? '' : 's'}`; }
-  else if (m.impressions != null && baseline && baseline.derived.impressionsToBookingRate != null){ m.transactions = m.impressions * baseline.derived.impressionsToBookingRate; m.txnNote = `${(baseline.derived.impressionsToBookingRate * 100).toFixed(4)}% impressions → bookings, ${baseline.year} annual baseline`; }
-  else if (m.websiteUsers != null && baseline && baseline.derived.websiteUsersToBookingRate != null){ m.transactions = m.websiteUsers * baseline.derived.websiteUsersToBookingRate; m.txnNote = `${(baseline.derived.websiteUsersToBookingRate * 100).toFixed(3)}% website users → bookings, ${baseline.year} annual baseline (no impressions on file)`; }
-  else if (m.impressions != null && funnelRate){ m.transactions = m.impressions * funnelRate; m.txnNote = `No logged history or annual baseline yet — modeled from this campaign's funnel rates (${(funnelRate * 100).toFixed(3)}% impressions → transactions)`; }
-  else { m.txnNote = m.impressions == null ? 'Needs impressions (planned or actual)' : 'No history, baseline or funnel rates to model from'; }
-  m.grossRevenue = (m.transactions != null && baseline && baseline.derived.grossRevenuePerBooking) ? m.transactions * baseline.derived.grossRevenuePerBooking : null;
+  if (hist){ m.txnRate = hist.rate; m.txnBasis = 'impressions'; m.txnRateSource = `${(hist.rate * 100).toFixed(3)}% impressions → transactions from ${hist.campaigns} logged campaign${hist.campaigns === 1 ? '' : 's'}`; }
+  else if (baseline && baseline.derived.impressionsToBookingRate != null){ m.txnRate = baseline.derived.impressionsToBookingRate; m.txnBasis = 'impressions'; m.txnRateSource = `${(baseline.derived.impressionsToBookingRate * 100).toFixed(4)}% impressions → bookings, ${baseline.year} annual baseline`; }
+  else if (baseline && baseline.derived.websiteUsersToBookingRate != null){ m.txnRate = baseline.derived.websiteUsersToBookingRate; m.txnBasis = 'websiteUsers'; m.txnRateSource = `${(baseline.derived.websiteUsersToBookingRate * 100).toFixed(3)}% website users → bookings, ${baseline.year} annual baseline`; }
+  else if (funnelRate){ m.txnRate = funnelRate; m.txnBasis = 'impressions'; m.txnRateSource = `no logged history or annual baseline yet — this campaign's funnel rates (${(funnelRate * 100).toFixed(3)}% impressions → transactions)`; }
+  else { m.txnRate = null; m.txnBasis = null; m.txnRateSource = 'no history, baseline or funnel rates to model from'; }
+  m.grossRevenuePerBooking = baseline && baseline.derived.grossRevenuePerBooking ? baseline.derived.grossRevenuePerBooking : null;
+
+  // "The KPIs should then follow the model" — one chain, run for targets
+  // and (once logged) for actuals.
+  const chain = (spend, impressions) => {
+    const users = (spend != null && m.costPerUser > 0) ? spend / m.costPerUser : null;
+    const basisVal = m.txnBasis === 'websiteUsers' ? users : impressions;
+    const txns = (basisVal != null && m.txnRate != null) ? basisVal * m.txnRate : null;
+    return {
+      websiteUsers: users,
+      leads: users != null ? users * m.leadRate : null,
+      registrations: users != null ? users * m.registrationRate : null,
+      transactions: txns,
+      grossRevenue: (txns != null && m.grossRevenuePerBooking) ? txns * m.grossRevenuePerBooking : null
+    };
+  };
+  Object.assign(m.target, chain(m.target.spend, m.target.impressions));
+  const hasAnyActual = m.actual.spend != null || m.actual.impressions != null;
+  m.tracking = hasAnyActual ? chain(m.actual.spend != null ? m.actual.spend : m.target.spend, m.actual.impressions != null ? m.actual.impressions : m.target.impressions) : {};
+  if (m.actual.transactions != null) m.tracking.transactions = m.actual.transactions;
+
+  // Roll-up / legacy fields: best current read per metric.
+  m.spendIsActual = m.actual.spend != null; m.spend = m.spendIsActual ? m.actual.spend : m.target.spend; m.budget = m.target.spend;
+  m.impsIsActual = m.actual.impressions != null; m.impressions = m.impsIsActual ? m.actual.impressions : m.target.impressions; m.plannedImps = m.target.impressions;
+  m.websiteUsers = hasAnyActual && m.tracking.websiteUsers != null ? m.tracking.websiteUsers : m.target.websiteUsers;
+  m.leads = hasAnyActual && m.tracking.leads != null ? m.tracking.leads : m.target.leads;
+  m.registrations = hasAnyActual && m.tracking.registrations != null ? m.tracking.registrations : m.target.registrations;
+  m.txnIsActual = m.actual.transactions != null;
+  m.transactions = m.txnIsActual ? m.actual.transactions : (hasAnyActual && m.tracking.transactions != null ? m.tracking.transactions : m.target.transactions);
+  m.grossRevenue = (m.transactions != null && m.grossRevenuePerBooking) ? m.transactions * m.grossRevenuePerBooking : null;
+  m.txnNote = m.txnIsActual ? 'Logged actual conversions (Transactions KPI)' : m.txnRateSource;
   return m;
 }
 // Share-of-annual-target line for a tile: "4.2% of 2027 target (9,400,000)".
 function cmpShareOfTargetNote(value, target, field, fmt){
   if (value == null || !target || target[field] == null || !(target[field] > 0)) return '';
   const pct = (value / target[field]) * 100;
-  return `<div class="cmp-summary-note" style="color:var(--cx);">${pct < 0.05 ? '<0.1' : pct.toFixed(1)}% of ${target.year} target (${fmt(target[field])})</div>`;
+  return `<div class="cmp-summary-note" style="color:var(--cx);">${pct < 0.05 ? '<0.1' : pct.toFixed(1)}% of ${target.year} annual target (${fmt(target[field])})</div>`;
 }
 let cmpAnalysisSummaryToken = 0;
 async function cmpRenderAnalysisSummary(campaign){
@@ -42837,10 +42901,10 @@ async function cmpRenderAnalysisSummary(campaign){
     return;
   }
   const token = ++cmpAnalysisSummaryToken;
-  el.innerHTML = `<p class="lede" style="margin:0;">Computing this campaign's summary…</p>`;
-  const ctx = await cmpLoadCampaignSummaryContext();
+  el.innerHTML = `<p class="lede" style="margin:0;">Computing this campaign's targets…</p>`;
+  const [ctx, plan] = await Promise.all([cmpLoadCampaignSummaryContext(), cmpLoadApprovedPlanTotals(campaign)]);
   if (token !== cmpAnalysisSummaryToken) return; // a newer render superseded this one
-  const m = cmpCampaignSummaryModel(campaign, ctx);
+  const m = cmpCampaignSummaryModel(campaign, ctx, plan);
   const fmtInt = v => Math.round(v).toLocaleString();
   const primaryKpi = String(campaign.primaryKpi || '');
   const kpiMatches = key => {
@@ -42850,44 +42914,49 @@ async function cmpRenderAnalysisSummary(campaign){
     if (key === 'transactions') return m.isTxnKpi;
     return false;
   };
-  const badge = isActual => `<span class="cmp-summary-badge ${isActual ? 'actual' : 'modeled'}">${isActual ? 'Actual' : 'Modeled'}</span>`;
-  const tile = (key, label, valueHtml, note, isActual, hasValue, shareNote) => `
+  const dash = '<span class="hint">—</span>';
+  const t = m.annualTarget;
+  // Each tile: headline = actual when logged (or tracking when the model
+  // has been re-run on logged actuals), else the target; the other one on
+  // the line below so target vs. actual is always visible together.
+  const tile = (key, label, opts) => {
+    const { target, actual, tracking, fmt, targetNote, shareField } = opts;
+    const headline = actual != null ? fmt(actual) : (tracking != null ? `~${fmt(tracking)}` : (target != null ? fmt(target) : dash));
+    const badge = actual != null ? '<span class="cmp-summary-badge actual">Actual</span>' : (tracking != null ? '<span class="cmp-summary-badge modeled">Tracking</span>' : (target != null ? '<span class="cmp-summary-badge target">Target</span>' : ''));
+    const secondLine = (actual != null || tracking != null) && target != null ? `<div class="cmp-summary-note"><b>Target:</b> ${fmt(target)}${actual != null && target > 0 ? ` · ${((actual / target) * 100).toFixed(0)}% of target` : ''}</div>` : '';
+    return `
     <div class="cmp-summary-tile${kpiMatches(key) ? ' is-primary' : ''}">
       <div class="cmp-wf-stat-label">${escapeHtml(label)}${kpiMatches(key) ? '<span class="cmp-summary-badge primary">Primary KPI</span>' : ''}</div>
-      <div class="cmp-wf-stat-value">${valueHtml}${hasValue ? badge(isActual) : ''}</div>
-      ${note ? `<div class="cmp-summary-note">${note}</div>` : ''}${shareNote || ''}
+      <div class="cmp-wf-stat-value">${headline}${badge}</div>
+      ${secondLine}
+      ${targetNote ? `<div class="cmp-summary-note">${targetNote}</div>` : ''}
+      ${shareField ? cmpShareOfTargetNote(actual != null ? actual : (tracking != null ? tracking : target), t, shareField, fmt) : ''}
     </div>`;
-  const dash = '<span class="hint">—</span>';
-  const t = m.target;
+  };
+  const tr = m.tracking || {};
   el.innerHTML = `<div class="cmp-summary-strip">
-    ${tile('spend', 'Spend', m.spend != null ? fmtMoney(m.spend) : dash,
-      m.spendIsActual ? (m.budget != null ? `of ${fmtMoney(m.budget)} approved budget` : 'Σ logged MMM line items') : (m.spend != null ? 'Approved budget — no spend logged yet' : 'No budget or spend on file'),
-      m.spendIsActual, m.spend != null, cmpShareOfTargetNote(m.spend, t, 'workingMedia', fmtMoney))}
-    ${tile('impressions', 'Impressions', m.impressions != null ? fmtInt(m.impressions) : dash,
-      m.impsIsActual ? (m.plannedImps != null ? `vs. ${fmtInt(m.plannedImps)} planned` : 'Σ logged MMM line items') : (m.impressions != null ? 'Planned — none logged yet' : 'No planned or actual impressions'),
-      m.impsIsActual, m.impressions != null, cmpShareOfTargetNote(m.impressions, t, 'impressions', fmtInt))}
-    ${tile('users', 'New Website Users', m.websiteUsers != null ? `~${fmtInt(m.websiteUsers)}` : dash,
-      m.websiteUsers != null ? `${fmtMoney(m.spend)} ÷ $${m.costPerUser.toFixed(2)} per user (${escapeHtml(m.costPerUserSource)})` : (m.spend == null ? 'Needs spend or budget' : 'Needs an annual baseline or Website users by month for a year with campaigns (Company Profile)'),
-      false, m.websiteUsers != null, cmpShareOfTargetNote(m.websiteUsers, t, 'websiteUsers', fmtInt))}
-    ${tile('engagement', 'Website Engagement', dash, 'Avg. time on site — available once GA4 is connected', false, false, '')}
-    ${tile('leads', 'High-Value Leads', m.leads != null ? `~${fmtInt(m.leads)}` : dash,
-      m.leads != null ? `${(m.leadRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.leadRateSource)})` : 'Needs New Website Users',
-      false, m.leads != null, cmpShareOfTargetNote(m.leads, t, 'valueLeads', fmtInt))}
-    ${tile('registrations', 'Registrations', m.registrations != null ? `~${fmtInt(m.registrations)}` : dash,
-      m.registrations != null ? `${(m.registrationRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.registrationRateSource)})` : 'Needs New Website Users',
-      false, m.registrations != null, cmpShareOfTargetNote(m.registrations, t, 'growthLeads', fmtInt))}
-    ${tile('transactions', 'Transactions', m.transactions != null ? (m.txnIsActual ? fmtInt(m.transactions) : `~${fmtInt(m.transactions)}`) : dash,
-      escapeHtml(m.txnNote) + (m.grossRevenue != null ? ` · ~${fmtMoney(m.grossRevenue)} gross revenue at the baseline’s revenue per booking` : ''),
-      m.txnIsActual, m.transactions != null, cmpShareOfTargetNote(m.transactions, t, 'bookings', fmtInt))}
+    ${tile('spend', 'Spend', { target: m.target.spend, actual: m.actual.spend, tracking: null, fmt: fmtMoney, shareField: 'workingMedia',
+      targetNote: m.target.spend != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.spend)}` : 'No channel plan or budget on file' })}
+    ${tile('impressions', 'Impressions', { target: m.target.impressions, actual: m.actual.impressions, tracking: null, fmt: fmtInt, shareField: 'impressions',
+      targetNote: m.target.impressions != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.impressions)}` : 'No planned or approved impressions' })}
+    ${tile('users', 'New Website Users', { target: m.target.websiteUsers, actual: null, tracking: tr.websiteUsers, fmt: fmtInt, shareField: 'websiteUsers',
+      targetNote: m.costPerUser > 0 ? `Spend ÷ $${m.costPerUser.toFixed(2)} per website user (${escapeHtml(m.costPerUserSource)})` : 'Needs an annual baseline or a Media Plan working budget + Website users by month for a year' })}
+    ${tile('engagement', 'Website Engagement', { target: null, actual: null, tracking: null, fmt: v => v, targetNote: 'Avg. time on site — available once GA4 is connected' })}
+    ${tile('leads', 'High-Value Leads', { target: m.target.leads, actual: null, tracking: tr.leads, fmt: fmtInt, shareField: 'valueLeads',
+      targetNote: `${(m.leadRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.leadRateSource)})` })}
+    ${tile('registrations', 'Registrations', { target: m.target.registrations, actual: null, tracking: tr.registrations, fmt: fmtInt, shareField: 'growthLeads',
+      targetNote: `${(m.registrationRate * 100).toFixed(2)}% of new website users (${escapeHtml(m.registrationRateSource)})` })}
+    ${tile('transactions', 'Transactions', { target: m.target.transactions, actual: m.actual.transactions, tracking: tr.transactions, fmt: fmtInt, shareField: 'bookings',
+      targetNote: escapeHtml(m.txnRateSource || '') + (m.target.grossRevenue != null ? ` · target ~${fmtMoney(m.target.grossRevenue)} gross revenue at the baseline’s revenue per booking` : '') })}
   </div>`;
   const timingNote = cmpCampaignTimingNote(campaign, ctx);
   if (timingNote) el.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:10px 0 0;">${timingNote}</p>`);
   if (lede){
-    const modeledCount = [!m.spendIsActual && m.spend != null, !m.impsIsActual && m.impressions != null, m.websiteUsers != null, m.leads != null, m.registrations != null, m.transactions != null && !m.txnIsActual].filter(Boolean).length;
     const annualNote = t
       ? `Shares are against the ${t.year} annual target${t.label ? ` (${escapeHtml(t.label)})` : ''}.`
-      : (m.year ? `No ${m.year} annual target on file yet — enter one under Company Profile → Annual plan to see each metric as a share of the year.` : 'Set a Start Date to place this campaign in a plan year.');
-    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''}. Actual = logged on this campaign; Modeled = this account's annual baseline, its own history and this campaign's funnel assumptions${modeledCount ? ` (${modeledCount} modeled)` : ''}. ${annualNote}`;
+      : (m.year ? `No ${m.year} annual target on file yet — enter one under Media Plan &amp; Budget → Annual plan to see each KPI as a share of the year.` : 'Set a Start Date to place this campaign in a plan year.');
+    const baseNote = m.baseline ? `Rates follow the ${m.baseline.year} annual baseline.` : 'No annual baseline on file — rates fall back to budget-model history and stage seeds until one is entered.';
+    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''}. <b>Target</b> = the spend and impressions approved at the Campaign Budget stage, with every KPI following the annual model from there; <b>Actual</b> = logged on this campaign; <b>Tracking</b> = the same model re-run on logged actuals. ${baseNote} ${annualNote}`;
   }
 }
 function cmpOpenAnalysisWorkspace(){
@@ -42910,6 +42979,7 @@ function cmpOpenAnalysisWorkspace(){
     if (m) m.innerHTML = '';
   });
   cmpRenderCollabCenter(campaign);
+  cmpInvalidateApprovedPlan(campaign.id); // always re-read the approved channel plan on open
   cmpRenderAnalysisSummary(campaign);
   cmpRenderAnalysisInMarket(campaign);
   cmpRenderAnalysisActuals(campaign);
@@ -66842,6 +66912,7 @@ async function mbuLoadAnnualPlan(){
   }
   const year = parseInt(yearSel.value, 10);
   mbuAnnualPlanRows = { baseline: null, target: null };
+  if (typeof cmpInvalidateApprovedPlan === 'function') cmpInvalidateApprovedPlan();
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan?year=${year}`);
@@ -66935,8 +67006,9 @@ async function mbuRenderAnnualRollup(){
   }
   const sums = { spend: 0, impressions: 0, websiteUsers: 0, leads: 0, registrations: 0, transactions: 0, grossRevenue: 0 };
   const counts = { spendActual: 0, impsActual: 0, txnActual: 0 };
-  campaigns.forEach(c => {
-    const m = cmpCampaignSummaryModel(c, ctx);
+  const plans = await Promise.all(campaigns.map(c => cmpLoadApprovedPlanTotals(c)));
+  campaigns.forEach((c, i) => {
+    const m = cmpCampaignSummaryModel(c, ctx, plans[i]);
     if (m.spend != null) sums.spend += m.spend; if (m.spendIsActual) counts.spendActual++;
     if (m.impressions != null) sums.impressions += m.impressions; if (m.impsIsActual) counts.impsActual++;
     if (m.websiteUsers != null) sums.websiteUsers += m.websiteUsers;
@@ -66960,7 +67032,7 @@ async function mbuRenderAnnualRollup(){
   el.innerHTML = `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
     <thead><tr><th>Metric</th><th>Σ ${n} campaign${n === 1 ? '' : 's'} (${year})</th><th>${year} target</th><th>Covered</th><th>Gap</th></tr></thead>
     <tbody>
-      ${line('Spend', sums.spend, 'workingMedia', fmtMoney, `${counts.spendActual} of ${n} with logged spend; rest at approved budget`)}
+      ${line('Spend', sums.spend, 'workingMedia', fmtMoney, `${counts.spendActual} of ${n} with logged spend; rest at the Campaign Budget stage's approved plan`)}
       ${line('Impressions', sums.impressions, 'impressions', fmtInt, `${counts.impsActual} of ${n} with logged impressions; rest planned`)}
       ${line('New Website Users', sums.websiteUsers, 'websiteUsers', fmtInt, 'Modeled: spend ÷ cost per website user')}
       ${line('High-Value Leads', sums.leads, 'valueLeads', fmtInt, 'Modeled: website users × value-lead rate')}
@@ -67032,7 +67104,7 @@ async function mbuRenderDemandFulfillmentForecast(){
   if (yearLabel) yearLabel.textContent = `(${year}, from the Annual plan card's year)`;
   if (typeof cmpLoadCampaignSummaryContext !== 'function'){ el.innerHTML = ''; return; }
   const ctx = await cmpLoadCampaignSummaryContext();
-  el.innerHTML = renderDemandFulfillmentForecastHtml(year, ctx, { assumptionsHere: true });
+  el.innerHTML = await renderDemandFulfillmentForecastHtml(year, ctx, { assumptionsHere: true });
 }
 // Media Plan page's copy of the forecast, keyed to its own selected year.
 async function mpRenderDemandFulfillmentCard(){
@@ -67045,7 +67117,7 @@ async function mpRenderDemandFulfillmentCard(){
   el.innerHTML = '<p class="hint" style="margin:0;">Computing…</p>';
   try {
     const ctx = await cmpLoadCampaignSummaryContext();
-    el.innerHTML = renderDemandFulfillmentForecastHtml(year, ctx, { assumptionsHere: false });
+    el.innerHTML = await renderDemandFulfillmentForecastHtml(year, ctx, { assumptionsHere: false });
   } catch (e){ el.innerHTML = '<p class="hint" style="margin:0;">Couldn\'t compute the forecast right now.</p>'; }
 }
 
@@ -67073,11 +67145,31 @@ function mbuInvalidateCostPerUserCache(){ mbuCostPerUserCache = null; }
 async function computeCostPerWebsiteUserByYear(){
   if (mbuCostPerUserCache && mbuCostPerUserCache.accountId === state.companyId) return mbuCostPerUserCache.result;
   const campaigns = (state.campaigns || []).filter(c => c.startDate && !c.isAdHoc);
-  const years = [...new Set(campaigns.map(c => new Date(c.startDate).getFullYear()).filter(y => Number.isFinite(y)))].sort((a, b) => b - a);
-  const budgetByYear = {};
+  // 2026-09-28 (round 3), per direct correction ("annual targets based on
+  // budget models"): the year's WORKING MEDIA comes from the budget model
+  // — the saved Media Plan's working budget for that year — not from the
+  // handful of campaigns created in the app so far. Σ campaigns is only
+  // the fallback for a year with no Media Plan; each row says which.
+  // (Before this, one $400K campaign against a full year of website users
+  // produced a $0.32-per-user rate — the denominator was right, the
+  // numerator was a fraction of the real spend.)
+  const planBudgetByYear = {};
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-plan/history`);
+      if (resp.ok){ const data = await resp.json(); (data.years || []).forEach(y => { if (y.totalBudget > 0) planBudgetByYear[y.year] = y.totalBudget; }); }
+    } catch (e){ console.warn('computeCostPerWebsiteUserByYear: media plan history failed', e); }
+  }
+  const years = [...new Set([...campaigns.map(c => new Date(c.startDate).getFullYear()), ...Object.keys(planBudgetByYear).map(Number)].filter(y => Number.isFinite(y)))].sort((a, b) => b - a);
+  const campaignBudgetByYear = {};
   campaigns.forEach(c => {
     const y = new Date(c.startDate).getFullYear();
-    budgetByYear[y] = (budgetByYear[y] || 0) + (Number(c.budget) || 0);
+    campaignBudgetByYear[y] = (campaignBudgetByYear[y] || 0) + (Number(c.budget) || 0);
+  });
+  const budgetByYear = {}, budgetSourceByYear = {};
+  years.forEach(y => {
+    if (planBudgetByYear[y] > 0){ budgetByYear[y] = planBudgetByYear[y]; budgetSourceByYear[y] = 'Media Plan working budget'; }
+    else { budgetByYear[y] = campaignBudgetByYear[y] || 0; budgetSourceByYear[y] = `Σ campaign budgets (no ${y} Media Plan)`; }
   });
   const usersByYear = {};
   if (dataSourceLabel === 'backend'){
@@ -67097,7 +67189,7 @@ async function computeCostPerWebsiteUserByYear(){
     const users = usersByYear[y] || 0;
     if (users > 0){ totalBudget += budget; totalUsers += users; yearsWithData++; }
     const costPerUser = users > 0 ? (budget / users) : null;
-    return { year: y, budget, users, costPerUser };
+    return { year: y, budget, budgetSource: budgetSourceByYear[y], users, costPerUser };
   });
   const blended = totalUsers > 0 ? (totalBudget / totalUsers) : null;
   const result = { rows, blended, totalBudget, totalUsers, yearsWithData };
@@ -67115,17 +67207,17 @@ async function mbuRenderCostPerWebsiteUser(){
   }
   el.innerHTML = `
     <div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
-      <thead><tr><th>Year</th><th>Campaign Budget</th><th>Website Users</th><th>Cost per User</th></tr></thead>
+      <thead><tr><th>Year</th><th>Working media (budget model)</th><th>Website Users</th><th>Cost per User</th></tr></thead>
       <tbody>${rows.map(r => `<tr>
         <td>${r.year}</td>
-        <td>${fmtMoney(r.budget)}</td>
+        <td>${fmtMoney(r.budget)}<div class="hint">${escapeHtml(r.budgetSource || '')}</div></td>
         <td>${r.users ? r.users.toLocaleString() : '<span class="hint">No data entered yet</span>'}</td>
         <td>${r.costPerUser != null ? `$${r.costPerUser.toFixed(2)}` : '<span class="hint">—</span>'}</td>
       </tr>`).join('')}</tbody>
     </table></div>
     <p class="hint" style="margin:0;">${blended != null
-      ? `Blended average across ${yearsWithData} year${yearsWithData === 1 ? '' : 's'} with Website users data: <b>$${blended.toFixed(2)} per website user</b> (${fmtMoney(totalBudget)} total campaign budget ÷ ${totalUsers.toLocaleString()} total users).`
-      : 'No years have both a campaign budget and Website users by month data yet — enter Website users above for at least one year with a real campaign to compute this.'}</p>`;
+      ? `Blended average across ${yearsWithData} year${yearsWithData === 1 ? '' : 's'} with Website users data: <b>$${blended.toFixed(2)} per website user</b> (${fmtMoney(totalBudget)} total working media ÷ ${totalUsers.toLocaleString()} total users).`
+      : 'No years have both a working budget and Website users by month data yet — save a Media Plan (or create a campaign) and enter Website users above for the same year to compute this.'}</p>`;
 }
 
 // 2026-09-28 addition, per direct instruction: "DM Audience Size * Cost per
