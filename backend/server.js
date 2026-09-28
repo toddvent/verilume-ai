@@ -299,7 +299,16 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   matchmarketsuggestionjson: 'matchMarketSuggestionJson',
   messagetype: 'messageType',
   recommendationdataconfidencenote: 'recommendationDataConfidenceNote',
-  rolestyle: 'roleStyle'
+  rolestyle: 'roleStyle',
+  // 2026-09-28 — added via ensureColumn() the same day, deliberately kept
+  // OUT of schema-identifiers.json (their UPDATE call sites write them
+  // unquoted, which folds to match the stored lowercase column on
+  // Postgres and the camelCase one on SQLite); reads come through here.
+  funnelvisitratepct: 'funnelVisitRatePct',
+  funnelleadratepct: 'funnelLeadRatePct',
+  funnelbookingratepct: 'funnelBookingRatePct',
+  funnelregistrationratepct: 'funnelRegistrationRatePct',
+  actualrevenue: 'actualRevenue'
   // campaignType/campaigntype deliberately NOT included: a real, currently-
   // correct "campaignType" column already exists (confirmed live — this is
   // the field rendering fine today as "Campaign Experience Focus") sitting
@@ -446,6 +455,44 @@ function createTableIfNeeded(sql){
   if (match && existing && existing.has(match[1])) return; // confirmed present — no round trip spent
   db.exec(sql);
   if (match && existing) existing.add(match[1]);
+}
+
+// 2026-09-28 fix, per Todd's "Not saved — server error" on the Leads by
+// type upload. Root cause: every table added today (DM format cost,
+// Magazine cost, annual plan, channel timing overrides, demand
+// fulfillment, website engagement, lead counts, transactions monthly) and
+// this morning's account_dm_cost_per_piece was created with camelCase
+// columns that were NOT yet in schema-identifiers.json — so sql-translate
+// left them unquoted, Postgres folded them to lowercase ("leadtype"), and
+// every read/write that then named the column as "leadType" failed with
+// "column does not exist". (sql-translate also double-quoted identifiers a
+// call site had already quoted — fixed there the same day.) The
+// identifiers are now in the list, so a fresh CREATE is correct; this
+// repairs a table that already exists with folded columns by renaming
+// each one in place — RENAME COLUMN keeps data and updates constraints —
+// using the exact stored name from information_schema, so it's a no-op
+// wherever the column is already camelCase and safe on a table that's
+// still empty. Skipped entirely on SQLite (no information_schema).
+function repairFoldedColumns(specs){
+  let cols;
+  try {
+    cols = db.prepare(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`).all();
+  } catch (e){ return; } // SQLite / no information_schema — case is preserved natively
+  const byTable = {};
+  cols.forEach(c => { (byTable[c.table_name] = byTable[c.table_name] || new Set()).add(c.column_name); });
+  specs.forEach(([table, camelCols]) => {
+    const have = byTable[table];
+    if (!have) return;
+    camelCols.forEach(camel => {
+      const lower = camel.toLowerCase();
+      if (have.has(camel) || !have.has(lower) || lower === camel) return;
+      try {
+        db.exec(`ALTER TABLE ${table} RENAME COLUMN ${lower} TO "${camel}"`);
+        have.delete(lower); have.add(camel);
+        console.log(`[repairFoldedColumns] ${table}.${lower} -> "${camel}"`);
+      } catch (e){ console.error(`[repairFoldedColumns] ${table}.${lower} -> ${camel} failed:`, (e && e.message) || e); }
+    });
+  });
 }
 
 createTableIfNeeded(`
@@ -1525,6 +1572,8 @@ createTableIfNeeded(`
     leadType TEXT NOT NULL,
     formName TEXT NOT NULL DEFAULT '',
     count REAL,
+    bookings REAL,
+    avgDaysToConvert REAL,
     updatedAt TEXT NOT NULL,
     PRIMARY KEY (accountId, year, month, source, leadType, formName),
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
@@ -6566,6 +6615,19 @@ createTableIfNeeded(`
   );
 `);
 const CHANNEL_TIMING_OVERRIDE_SOURCES = ['dma_test', 'manual'];
+// See repairFoldedColumns() near createTableIfNeeded() — one bulk check
+// covering every table added 2026-09-28 (all created above this point).
+repairFoldedColumns([
+  ['account_dm_cost_per_piece', ['accountId', 'costPerPiece', 'updatedAt']],
+  ['account_dm_format_cost', ['accountId', 'formatName', 'costPerPiece', 'updatedAt']],
+  ['account_magazine_cost', ['accountId', 'adFormat', 'costPerInsertion', 'updatedAt']],
+  ['account_annual_plan', ['accountId', 'workingMedia', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'directBookings', 'grossRevenue', 'updatedAt']],
+  ['account_channel_timing_overrides', ['accountId', 'lagWeeks', 'carryoverHalfLifeWeeks', 'monthsToFullEffect', 'decidedBy', 'updatedAt']],
+  ['account_demand_fulfillment', ['accountId', 'usShareOfTraffic', 'idResMatchRate', 'postcardDropsPerMatchedVisitor', 'idResPostcardCostPerPiece', 'idResEmailsPerVisitor', 'idResEmailCost', 'remarketingPoolRate', 'remarketingImpressionsPerMember', 'remarketingCpm', 'brandSearchClicksPerVisitor', 'brandSearchCpc', 'updatedAt']],
+  ['account_website_engagement', ['accountId', 'channelGroup', 'engagedSessions', 'engagementRate', 'avgEngagementTimeMin', 'updatedAt']],
+  ['account_lead_counts', ['accountId', 'leadType', 'formName', 'avgDaysToConvert', 'updatedAt']],
+  ['account_transactions_monthly', ['accountId', 'productGroup', 'updatedAt']]
+]);
 const WEEKS_PER_MONTH = 52 / 12;
 function resolveChannelTiming(accountId){
   const account = db.prepare('SELECT industry, mmmIncludedCategoriesJson FROM accounts WHERE accountId = ?').get(accountId) || {};

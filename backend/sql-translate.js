@@ -92,8 +92,14 @@ function translateSqliteTypesInSegment(text) {
   return text.replace(/\bINTEGER PRIMARY KEY AUTOINCREMENT\b/gi, 'INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY');
 }
 
+// 2026-09-28 fix — an identifier the call site ALREADY wrapped in double
+// quotes (e.g. `SELECT "generationKey" …`, written that way at several
+// newer call sites) used to get wrapped again, producing `""generationKey""`
+// — a syntax error in Postgres. The lookbehind/lookahead leave a word
+// that already sits between double quotes untouched, so quoting is
+// idempotent regardless of how the call site spelled it.
 function quoteIdentifiersInSegment(text) {
-  return text.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (word) => {
+  return text.replace(/(?<!")\b[A-Za-z_][A-Za-z0-9_]*\b(?!")/g, (word) => {
     if (NEVER_QUOTE.has(word.toUpperCase())) return word;
     if (KNOWN_IDENTIFIERS.has(word)) return `"${word}"`;
     return word;
