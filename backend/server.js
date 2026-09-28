@@ -1562,7 +1562,13 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-const LEAD_TYPES = ['High Value', 'Registration'];
+// 2026-09-28 (round 6), per direct correction: "We define Meta and Co-Reg
+// type leads as Prospect. We have 3 types. High-Value, Growth, Prospect."
+// Stored values: 'High Value', 'Registration' (= Growth; kept as the
+// stored value so rows already saved don't need a migration — the app
+// labels it "Growth (Registration)"), 'Prospect' (= the annual model's
+// prospect leads: Meta lead forms, co-registration).
+const LEAD_TYPES = ['High Value', 'Registration', 'Prospect'];
 // Pool economics off mature months — see the comment above.
 function computeLeadPoolEconomics(rows, today){
   const now = today || new Date();
@@ -1601,6 +1607,7 @@ function computeLeadPoolEconomics(rows, today){
 }
 function normalizeLeadType(v){
   const s = String(v || '').trim().toLowerCase();
+  if (/prospect|meta|co-?reg|facebook|paid social/.test(s)) return 'Prospect';
   if (/high|value|hv/.test(s)) return 'High Value';
   if (/reg|sign|subscri|growth/.test(s)) return 'Registration';
   return null;
@@ -31996,7 +32003,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (!(year >= 2000 && year <= 2100)) return sendJson(res, 400, { error: `year must be a 4-digit year: ${row.year}` });
         if (!(month >= 1 && month <= 12)) return sendJson(res, 400, { error: `month must be 1–12: ${row.month}` });
         if (!source) return sendJson(res, 400, { error: 'source is required on every row (e.g. website, Meta, coreg, transaction)' });
-        if (!leadType) return sendJson(res, 400, { error: `leadType must read as High Value or Registration: "${row.leadType}"` });
+        if (!leadType) return sendJson(res, 400, { error: `leadType must read as High Value, Growth (Registration) or Prospect: "${row.leadType}"` });
         const count = row.count === null || row.count === undefined || row.count === '' ? null : Number(String(row.count).replace(/,/g, ''));
         if (count != null && !(Number.isFinite(count) && count >= 0)) return sendJson(res, 400, { error: `${source} / ${leadType} / ${formName || '(no form)'}: count must be a non-negative number` });
         const numOrNull = (v, name) => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/,/g, '')); if (!(Number.isFinite(n) && n >= 0)) throw new Error(`${source} / ${leadType} / ${formName || '(no form)'}: ${name} must be a non-negative number or blank`); return n; };
