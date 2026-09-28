@@ -1313,6 +1313,12 @@
   .cmp-collab-expand-backdrop{position:fixed;inset:0;background:rgba(20,20,20,0.45);z-index:900;}
   .cmp-collab.expanded{position:fixed;top:5vh;left:50%;transform:translateX(-50%);width:min(720px,92vw);height:90vh;z-index:901;display:flex;flex-direction:column;}
   .cmp-collab.expanded .cmp-collab-body{flex:1;max-height:none;}
+  /* 2026-09-28 — Final Approval review's "Ask AI Brain" popup (point c):
+     floats the same real Collaboration Center component above the review
+     overlay (z-index 300), rather than embedding it as a permanent sidebar
+     (point b keeps the working area full width). */
+  .cmp-final-approval-ai-popup{position:fixed;top:88px;right:24px;width:360px;max-width:92vw;max-height:calc(100vh - 110px);z-index:320;}
+  .cmp-final-approval-ai-popup .cmp-collab-body{max-height:calc(100vh - 260px);}
   /* 2026-09-23 fix — the expand backdrop/panel above render into
      #cmpCollabExpandedPortal (a direct <body> child, created on demand by
      cmpCollabExpandedPortalEl()) rather than staying nested inside whichever
@@ -12034,7 +12040,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-final-approval-review-ungated-entry';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-final-approval-review-simplified-redesign';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15548,7 +15554,14 @@ let cmpUtmLinkTest = { campaignId: null, running: false, results: null };
 async function cmpRunUtmLinkTest(){
   const c = cmpRailLoadedCampaign();
   if (!c) return;
-  const urls = (c.projects || []).map(p => p.trackingUrl).filter(Boolean);
+  // 2026-09-28 fix, per direct question ("What is supposed to populate in
+  // the last test run") — same root-cause bug as the tracking-link builder
+  // itself (see cmpRenderTraffickingQrUtm()'s 2026-09-28 comment): this read
+  // c.projects (Marketing Functions Project records, always empty) instead
+  // of the real creative jobs (creativeJobsCache, loaded by
+  // loadCreativeJobs()). urls was always [], so this silently no-op'd on
+  // its own guard below and "Last test run" never had anything to show.
+  const urls = ((typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || []).map(p => p.trackingUrl).filter(Boolean);
   if (!urls.length) return;
   cmpUtmLinkTest = { campaignId: c.id, running: true, results: null };
   renderCmpDownstreamStages();
@@ -47353,6 +47366,46 @@ async function cycleBrandStage(){
 // Functions+Creative gate and this new CMO review both have to clear.
 let cmpFinalApprovalOpen = false;
 
+// 2026-09-28 redesign, per direct feedback on the first cut ("This is not
+// a good CMO review. We need to simplify.") with a full spec, disambiguated
+// via a clarifying question (AskUserQuestion) before this was written:
+//   a) Section order swaps: Analytics Approach reviews first, Creative &
+//      Messaging is now the final step immediately before sign-off
+//      ("Swap section order" — the recommended, chosen answer).
+//   b) Header unchanged; still no embedded Collaboration Center sidebar
+//      (there never was one — the body was already full width); confirmed
+//      no change needed there.
+//   c) A link in the header opens the AI Brain (Collaboration Center) as a
+//      popup, reusing the existing mount-swap pattern
+//      (cmpCollabMountId/cmpRenderCollabCenter — see cmpOpenObjectivesIntake()
+//      for the established precedent). Per the clarifying answer ("Just the
+//      AI Brain link"), Request changes stays exactly where it already is —
+//      it is NOT being moved into the Team tab this pass.
+//   d) Creative & Messaging is rebuilt around a real "Campaign Execution"
+//      recap strip (Budget / Media Mix / Actual vs. Target KPI / a
+//      representative Headline+CTA) above a row-per-approved-asset table:
+//      Job ID (real creative_jobs record, matched by channel — see
+//      cmpFinalApprovalLoadJobs()) · Creative Asset · Format · Audience ·
+//      a "View approved copy" toggle that expands a full-row-width panel
+//      (colspan across the table) showing the copy plus its wireframe
+//      preview. A single comments box stays below the table — per the
+//      clarifying answer, this is NOT split per-row or moved into Team
+//      Collaboration this pass; it's the same save-a-note mechanism as
+//      before, relabeled. Status vocabulary is now exactly the two states
+//      Todd asked for: "Requested Changes" and "Approved" (the old
+//      three-way "Awaiting review" language is dropped).
+let cmpFinalApprovalExpandedRowIdx = null;
+let cmpFinalApprovalAiBrainOpen = false;
+// Rows built by the most recent cmpCollectApprovedCopyForReview() call, kept
+// here so cmpToggleFinalApprovalRow() can look one up by index without
+// recomputing the whole approved-copy list on every click.
+let cmpFinalApprovalRows = [];
+// Real creative_jobs records for the loaded campaign, fetched independently
+// of the shared creativeJobsCache (see cmpFinalApprovalLoadJobs() below) —
+// this review can be opened without ever visiting the Trafficking workspace
+// that normally populates that cache, so it can't depend on it.
+let cmpFinalApprovalJobsCache = [];
+
 // Flattens every APPROVED creative-asset copy version into one collective,
 // read-only list — exactly "the CMO should not need to go through each
 // asset individually." Only entries with v.approved === true are listed
@@ -47383,7 +47436,10 @@ function cmpCollectApprovedCopyForReview(c){
       const display = (wf && typeof wf === 'object') ? [wf.headline, wf.body, wf.cta].filter(Boolean).join(' — ')
         : (typeof wf === 'string' && wf) ? wf
         : Object.values(v.fields).flat().filter(Boolean).join(' — ');
+      const job = (cmpFinalApprovalJobsCache || []).find(j => j.channel === a.channel);
       rows.push({
+        asset: a, versionFields: v.fields, wf,
+        jobId: job ? job.id : null,
         channel: a.channel, partner: a.partner, size: a.size,
         audience: key === CMP_ASSET_COPY_ALL_KEY ? 'All audiences' : key,
         display, approvedAt: v.approvedAt
@@ -47393,14 +47449,35 @@ function cmpCollectApprovedCopyForReview(c){
   return { rows, totalVersions, approvedVersions };
 }
 
+// Independent fetch of this campaign's real creative jobs (not the shared
+// creativeJobsCache — see this block's header comment for why). Fire-and-
+// forget from cmpOpenFinalApprovalReview(): the review renders immediately
+// with Job ID blank, then re-renders once this resolves.
+async function cmpFinalApprovalLoadJobs(c){
+  if (!c || c.isAdHoc || c.localOnly || dataSourceLabel !== 'backend'){ cmpFinalApprovalJobsCache = []; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/creative-jobs`);
+    cmpFinalApprovalJobsCache = resp.ok ? ((await resp.json()).jobs || []) : [];
+  } catch (e){ cmpFinalApprovalJobsCache = []; }
+  if (cmpFinalApprovalOpen) cmpRenderFinalApprovalReview();
+}
+
 function cmpOpenFinalApprovalReview(){
   cmpFinalApprovalOpen = true;
+  cmpFinalApprovalExpandedRowIdx = null;
   cmpRenderFinalApprovalReview();
+  cmpFinalApprovalLoadJobs(findCampaign(currentCampaignId));
 }
 function cmpCloseFinalApprovalReview(){
   cmpFinalApprovalOpen = false;
   const el = document.getElementById('cmpFinalApprovalOverlay');
   if (el) el.remove();
+  // Hand the Collaboration Center back to the Workspace Hub if the AI Brain
+  // popup (point c) was left open when this closed.
+  if (cmpFinalApprovalAiBrainOpen){
+    cmpFinalApprovalAiBrainOpen = false;
+    cmpCollabMountId = 'cmpWorkspaceCollab';
+  }
   // 2026-09-28 — this overlay can now be opened straight from the modern
   // Trafficking workspace (cmpRenderTraffickingQa()'s "Open Final Approval
   // review →" button), not just the legacy accordion page. Closing it after
@@ -47412,12 +47489,74 @@ function cmpCloseFinalApprovalReview(){
   if (campaign){
     if (typeof cmpRenderTraffickingQa === 'function') cmpRenderTraffickingQa(campaign);
     if (typeof cmpRenderTraffickingWorkspaceStatusBadge === 'function') cmpRenderTraffickingWorkspaceStatusBadge(campaign);
+    if (typeof cmpRenderCollabCenter === 'function') cmpRenderCollabCenter(campaign);
   }
   // Same staleness fix for the Workspace Hub's own downstream-stages
   // accordion (renderCmpDownstreamStages()'s qaBody) — a no-op when that
   // accordion isn't the one currently mounted.
   if (typeof renderCmpDownstreamStages === 'function') renderCmpDownstreamStages();
 }
+
+// Point (c) — toggles the AI Brain (Collaboration Center) open as a small
+// floating popup inside this overlay, reusing the same mount-swap pattern
+// as every other popup-style opening of this component in this file
+// (cmpCollabMountId points at whichever DOM id should render it; see
+// cmpOpenObjectivesIntake()/cmpCloseObjectivesIntake() for the established
+// precedent this follows).
+function cmpToggleFinalApprovalAiBrain(){
+  cmpFinalApprovalAiBrainOpen = !cmpFinalApprovalAiBrainOpen;
+  cmpRenderFinalApprovalReview();
+  cmpCollabMountId = cmpFinalApprovalAiBrainOpen ? 'cmpFinalApprovalCollabMount' : 'cmpWorkspaceCollab';
+  const campaign = findCampaign(currentCampaignId);
+  if (campaign) cmpRenderCollabCenter(campaign);
+}
+
+// Point (d)(1) — expands/collapses one approved-asset row's full-row-width
+// copy + wireframe panel. Only one row open at a time, matching the
+// existing Creative Asset Copy grid's own single-open-panel convention.
+function cmpToggleFinalApprovalRow(idx){
+  cmpFinalApprovalExpandedRowIdx = (cmpFinalApprovalExpandedRowIdx === idx) ? null : idx;
+  cmpRenderFinalApprovalReview();
+  if (cmpFinalApprovalExpandedRowIdx === idx){
+    const row = cmpFinalApprovalRows[idx];
+    if (row) cmpFinalApprovalDrawWireframe(row.asset, row.versionFields, `cmpFaWf_${idx}`);
+  }
+}
+
+// Read-only wireframe render for one expanded review row. Deliberately NOT
+// cmpAssetCopyDrawWireframe()'s wrapper — that one depends on
+// cmpCreativeAssetGridRows[channel] (a live-editing-session structure only
+// populated while the Creative Asset Copy grid itself is open, which this
+// review is reached without) purely to drive its Horizontal/Vertical rotate
+// toggle. This calls the same underlying cmpDrawWireframeBox(<dom element>,
+// spec, copyData, channel, idPrefix, align) directly with the format's
+// default orientation and disables every input it draws afterward, same as
+// that wrapper's own last line — a review is read-only by definition.
+function cmpFinalApprovalDrawWireframe(a, fields, wrapId){
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  const spec = cmpSpecForRowSize(a.channel, a.size);
+  if (!spec || !fields){ wrap.innerHTML = '<p class="hint">No wireframe available for this format.</p>'; return; }
+  const schema = cmpAssetCopySchema(a.channel, spec, a);
+  const postcard = (typeof cmpAssetWireframeIsPostcard === 'function') && cmpAssetWireframeIsPostcard(a.channel, spec);
+  if (postcard){
+    const f = fields || {};
+    wrap.innerHTML = `<div class="cmp-wf-sides">
+      <div class="cmp-wf-side"><div class="cmp-wf-side-label">Front</div><div id="${wrapId}_wf" class="wireframe"></div></div>
+      <div class="cmp-wf-side"><div class="cmp-wf-side-label">Back</div><div id="${wrapId}_wf2" class="wireframe"></div></div>
+    </div>`;
+    const front = { label: `${spec.label} — front`, ratio: spec.ratio, hasImage: true, stacked: true, print: true, front: true };
+    const back = { label: `${spec.label} — back`, ratio: spec.ratio, hasImage: false, stacked: true, print: true };
+    cmpDrawWireframeBox(document.getElementById(`${wrapId}_wf`), front, { headline: f.headline || '', body: f.subhead || '', cta: '' }, a.channel, `${wrapId}_wfx`, 'bottom');
+    cmpDrawWireframeBox(document.getElementById(`${wrapId}_wf2`), back, { headline: '', body: [f.body, f.offer].filter(Boolean).join('\n\n'), cta: f.cta || '' }, a.channel, `${wrapId}_wfx2`, 'bottom');
+  } else {
+    wrap.innerHTML = `<div id="${wrapId}_wf" class="wireframe"></div>`;
+    cmpDrawWireframeBox(document.getElementById(`${wrapId}_wf`), spec, cmpAssetCopyFieldsToWireframe(schema, fields), a.channel, `${wrapId}_wfx`, 'bottom');
+  }
+  wrap.querySelectorAll('textarea, input').forEach(t => { t.readOnly = true; t.tabIndex = -1; });
+  wrap.querySelectorAll('.wireframe-enterprise-lock, .wireframe-motion-controls .btn-ghost:not(:first-child)').forEach(n => { n.style.display = 'none'; });
+}
+
 function cmpRenderFinalApprovalReview(){
   if (!cmpFinalApprovalOpen) return;
   const c = findCampaign(currentCampaignId);
@@ -47430,50 +47569,27 @@ function cmpRenderFinalApprovalReview(){
     document.body.appendChild(overlay);
   }
   const { rows, totalVersions, approvedVersions } = cmpCollectApprovedCopyForReview(c);
+  cmpFinalApprovalRows = rows;
   const angle = (typeof cmpRecommendedCtaAngle === 'function') ? cmpRecommendedCtaAngle(c.ctaOverride, c.businessInitiative, c.primaryKpi, c.stage) : null;
   const creativeApproved = !!c.creativeMessagingCmoApproved;
   const analyticsApproved = !!c.analyticsApproachCmoApproved;
   const align = computeCampaignRelevanceScore(c);
   const pct = v => (v === null || v === undefined) ? '—' : `${v}%`;
+  // Two-state vocabulary, per direct instruction ("Campaign Statues:
+  // Requested Changes and Approved") — replaces the old three-way
+  // Awaiting review / Approved language.
+  const statusBadge = approved => approved
+    ? `<span class="wf-badge-ok">✓ Approved</span>`
+    : `<span class="wf-badge-warn">Requested Changes</span>`;
 
-  const creativeSection = `
+  // Point (a) — Analytics Approach now reviews FIRST.
+  const analyticsSection = `
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <h4 style="margin:0;">1. Creative &amp; Messaging</h4>
-        ${creativeApproved ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(c.creativeMessagingCmoApprovedAt).toLocaleString())}</span>` : `<span class="hint">Awaiting review</span>`}
+        <h4 style="margin:0;">1. Analytics Approach</h4>
+        ${statusBadge(analyticsApproved)}
       </div>
-      <p class="hint" style="margin:4px 0 12px;">Objective: ${escapeHtml(c.objective || '—')}${c.businessInitiative ? ` · Media Science Primary Focus: ${escapeHtml((BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative] || {}).label || c.businessInitiative)}` : ''}${angle ? ` · Recommended CTA: "${escapeHtml(angle.ask)}"` : ''}</p>
-      <p class="hint" style="margin:0 0 12px;">${approvedVersions} of ${totalVersions} drafted copy version${totalVersions === 1 ? '' : 's'} approved${approvedVersions < totalVersions ? ' — the rest are still in progress on the Creative Asset Copy grid.' : '.'}</p>
-      ${rows.length ? `<div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
-        <thead><tr><th>Channel</th><th>Format</th><th>Audience</th><th>Approved copy</th></tr></thead>
-        <tbody>${rows.map(r => `<tr>
-          <td>${escapeHtml(r.channel)}${r.partner ? ` <span class="hint">(${escapeHtml(r.partner)})</span>` : ''}</td>
-          <td>${escapeHtml(r.size || '')}</td>
-          <td>${escapeHtml(r.audience)}</td>
-          <td style="max-width:420px;">${escapeHtml(r.display)}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>` : `<p class="lede">No approved creative copy yet — approve at least one asset on the Creative Asset Copy grid before this can be reviewed.</p>`}
-      ${creativeApproved ? '' : `
-        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn-primary" ${rows.length ? '' : 'disabled'} onclick="cmpApproveCreativeMessagingCmo()">Approve creative &amp; messaging →</button>
-        </div>
-        <div class="field" style="margin-top:10px;">
-          <label>Request changes (optional note)</label>
-          <textarea id="cmpCreativeCmoNote" rows="2" placeholder="What needs to change before this can be approved.">${escapeHtml(c.creativeMessagingCmoNote || '')}</textarea>
-        </div>
-        <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-ghost" onclick="cmpRequestCreativeMessagingChanges()">Save note / request changes</button>
-        </div>`}
-      ${(!creativeApproved && c.creativeMessagingCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last note: ${escapeHtml(c.creativeMessagingCmoNote)}</p>` : ''}
-    </div>`;
-
-  const analyticsSection = `
-    <div style="${creativeApproved ? '' : 'opacity:0.5;pointer-events:none;'}margin-top:20px;padding-top:20px;border-top:1px solid var(--line);">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <h4 style="margin:0;">2. Analytics Approach</h4>
-        ${analyticsApproved ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(c.analyticsApproachCmoApprovedAt).toLocaleString())}</span>` : `<span class="hint">${creativeApproved ? 'Awaiting review' : 'Unlocks once Creative & Messaging is approved'}</span>`}
-      </div>
-      <p class="hint" style="margin:4px 0 12px;">Primary KPI: ${escapeHtml(c.primaryKpi || '—')}${c.kpiGoal ? ` (target ${escapeHtml(String(c.kpiGoal))})` : ''} · Lifecycle-Loop Stage: ${escapeHtml(c.stage || '—')}</p>
+      <p class="hint" style="margin:4px 0 12px;">Primary KPI: ${escapeHtml(c.primaryKpi || '—')}${c.kpiGoal ? ` (target ${escapeHtml(String(c.kpiGoal))})` : ''} · Lifecycle-Loop Stage: ${escapeHtml(c.stage || '—')}${analyticsApproved && c.analyticsApproachCmoApprovedAt ? ` · Approved ${escapeHtml(new Date(c.analyticsApproachCmoApprovedAt).toLocaleString())}` : ''}</p>
       <div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
         <thead><tr><th>Alignment component</th><th>Score</th></tr></thead>
         <tbody>
@@ -47499,21 +47615,88 @@ function cmpRenderFinalApprovalReview(){
       ${(!analyticsApproved && c.analyticsApproachCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last note: ${escapeHtml(c.analyticsApproachCmoNote)}</p>` : ''}
     </div>`;
 
+  // Point (d) — Creative & Messaging is now the FINAL section, gated open
+  // only once Analytics Approach is approved (the mirror image of the old
+  // gate, which locked Analytics behind Creative). Its own "Top" recap strip
+  // is the Campaign Execution summary the spec calls for: Budget, Media Mix,
+  // Actual vs. Target KPI (Actual comes from the Analysis step's manual
+  // input, same c.actualConversions the Analysis stage itself saves — see
+  // saveAnalysisInputs() — so it's genuinely blank until that step is
+  // filled in, exactly as "filled in later after addressing analytics"
+  // describes), and a representative Headline/CTA — there's no single
+  // campaign-level headline field, so this shows the first approved row's
+  // actual headline (honest placeholder text if none exists yet) alongside
+  // the same recommended-CTA angle the old recap line showed.
+  const mediaMix = (typeof cmpCreativeChannelsText === 'function') ? cmpCreativeChannelsText(c) : (c.channels || []).join(', ');
+  const repHeadline = (rows.find(r => r.wf && typeof r.wf === 'object' && r.wf.headline) || {}).wf;
+  const creativeSection = `
+    <div style="${analyticsApproved ? '' : 'opacity:0.5;pointer-events:none;'}margin-top:20px;padding-top:20px;border-top:1px solid var(--line);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <h4 style="margin:0;">2. Creative &amp; Messaging</h4>
+        ${analyticsApproved ? statusBadge(creativeApproved) : `<span class="hint">Unlocks once Analytics Approach is approved</span>`}
+      </div>
+      <div class="table-scroll" style="margin:10px 0 14px;">
+        <table class="data-table" style="margin-bottom:0;">
+          <thead><tr><th>Budget</th><th>Media Mix</th><th>Actual / Target KPI</th><th>Headline</th><th>Call-to-action</th></tr></thead>
+          <tbody><tr>
+            <td>${fmtMoney(c.budget)}</td>
+            <td>${escapeHtml(mediaMix || '—')}</td>
+            <td>${escapeHtml(c.primaryKpi || 'KPI')}: ${c.actualConversions != null ? Number(c.actualConversions).toLocaleString() : '—'} / ${c.kpiGoal ? escapeHtml(String(c.kpiGoal)) : '—'}</td>
+            <td>${repHeadline ? escapeHtml(repHeadline.headline) : '<span class="hint">—</span>'}</td>
+            <td>${angle ? `"${escapeHtml(angle.ask)}"` : '—'}</td>
+          </tr></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin:0 0 12px;">${approvedVersions} of ${totalVersions} drafted copy version${totalVersions === 1 ? '' : 's'} approved${approvedVersions < totalVersions ? ' — the rest are still in progress on the Creative Asset Copy grid.' : '.'}</p>
+      ${rows.length ? `<div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
+        <thead><tr><th>Job ID</th><th>Creative Asset</th><th>Format</th><th>Audience</th><th></th></tr></thead>
+        <tbody>${rows.map((r, idx) => `<tr>
+          <td>${r.jobId ? escapeHtml(r.jobId) : '<span class="hint">—</span>'}</td>
+          <td>${escapeHtml(r.channel)}${r.partner ? ` <span class="hint">(${escapeHtml(r.partner)})</span>` : ''}</td>
+          <td>${escapeHtml(r.size || '')}</td>
+          <td>${escapeHtml(r.audience)}</td>
+          <td><button type="button" class="btn-ghost" onclick="cmpToggleFinalApprovalRow(${idx})">${cmpFinalApprovalExpandedRowIdx === idx ? 'Hide copy ▲' : 'View approved copy ▼'}</button></td>
+        </tr>${cmpFinalApprovalExpandedRowIdx === idx ? `<tr><td colspan="5" style="padding:0;">
+          <div style="padding:16px;background:var(--paper-dim);border-top:1px solid var(--line);">
+            <p style="margin:0 0 10px;">${escapeHtml(r.display)}</p>
+            <div id="cmpFaWf_${idx}"></div>
+          </div>
+        </td></tr>` : ''}`).join('')}</tbody>
+      </table></div>` : `<p class="lede">No approved creative copy yet — approve at least one asset on the Creative Asset Copy grid before this can be reviewed.</p>`}
+      ${creativeApproved ? '' : `
+        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn-primary" ${(rows.length && analyticsApproved) ? '' : 'disabled'} onclick="cmpApproveCreativeMessagingCmo()">Approve creative &amp; messaging →</button>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Comments</label>
+          <textarea id="cmpCreativeCmoNote" rows="2" placeholder="Comments, or what needs to change before this can be approved.">${escapeHtml(c.creativeMessagingCmoNote || '')}</textarea>
+        </div>
+        <div class="btn-row" style="margin-top:0;">
+          <button type="button" class="btn-ghost" onclick="cmpRequestCreativeMessagingChanges()">Save comment</button>
+        </div>`}
+      ${(!creativeApproved && c.creativeMessagingCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last comment: ${escapeHtml(c.creativeMessagingCmoNote)}</p>` : ''}
+      ${creativeApproved && c.creativeMessagingCmoApprovedAt ? `<p class="hint" style="margin-top:8px;">Approved ${escapeHtml(new Date(c.creativeMessagingCmoApprovedAt).toLocaleString())}</p>` : ''}
+    </div>`;
+
   const bothApproved = creativeApproved && analyticsApproved;
   overlay.innerHTML = `
     <div class="copyver-review-header">
-      <div><h3>Final Approval — ${escapeHtml(c.name || c.id)}</h3><p class="hint" style="margin:2px 0 0;">Collective review of this campaign's approved copy and measurement approach — no need to open each asset individually.</p></div>
-      <button type="button" class="btn-ghost" onclick="cmpCloseFinalApprovalReview()">Close ✕</button>
+      <div><h3>Final Approval — ${escapeHtml(c.name || c.id)}</h3><p class="hint" style="margin:2px 0 0;">Collective review of this campaign's measurement approach and approved copy — no need to open each asset individually.</p></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button type="button" class="btn-ghost" onclick="cmpToggleFinalApprovalAiBrain()">${cmpFinalApprovalAiBrainOpen ? '✕ Close AI Brain' : '💬 Ask AI Brain'}</button>
+        <button type="button" class="btn-ghost" onclick="cmpCloseFinalApprovalReview()">Close ✕</button>
+      </div>
     </div>
     <div class="copyver-review-body">
-      ${creativeSection}
       ${analyticsSection}
+      ${creativeSection}
       <div class="btn-row" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line-strong);">
         <button type="button" class="btn-primary" ${bothApproved ? '' : 'disabled'} onclick="approveCampaignQa()">Mark QA &amp; Approval complete →</button>
         ${bothApproved ? '' : `<span class="hint">Both sections above must be approved first.</span>`}
       </div>
       <div id="cmpFinalApprovalSaveFlag" class="hint" style="margin-top:8px;"></div>
-    </div>`;
+    </div>
+    ${cmpFinalApprovalAiBrainOpen ? `<div class="cmp-final-approval-ai-popup"><div id="cmpFinalApprovalCollabMount"></div></div>` : ''}`;
 }
 
 async function cmpPersistFinalApprovalField(c, fields, label){
@@ -47535,7 +47718,9 @@ async function cmpPersistFinalApprovalField(c, fields, label){
 }
 async function cmpApproveCreativeMessagingCmo(){
   const c = findCampaign(currentCampaignId);
-  if (!c) return;
+  // 2026-09-28 — Creative & Messaging is now the FINAL section (point a),
+  // gated behind Analytics Approach instead of the other way around.
+  if (!c || !c.analyticsApproachCmoApproved) return;
   const now = new Date().toISOString();
   c.creativeMessagingCmoApproved = true;
   c.creativeMessagingCmoApprovedAt = now;
@@ -47553,7 +47738,10 @@ async function cmpRequestCreativeMessagingChanges(){
 }
 async function cmpApproveAnalyticsApproachCmo(){
   const c = findCampaign(currentCampaignId);
-  if (!c || !c.creativeMessagingCmoApproved) return;
+  // 2026-09-28 — Analytics Approach is now the FIRST section (point a), no
+  // longer gated behind Creative & Messaging (that gate now runs the other
+  // way — see cmpApproveCreativeMessagingCmo()).
+  if (!c) return;
   const now = new Date().toISOString();
   c.analyticsApproachCmoApproved = true;
   c.analyticsApproachCmoApprovedAt = now;
@@ -61444,10 +61632,20 @@ function cmpAssetCopySchema(channel, spec, row){
     };
   }
   if (channel === 'Email — Remarketing' || channel === 'Internal Email'){
+    // 2026-09-28 fix, per direct instruction: "We currently have a single
+    // standard. Reality is that internal email is not limited beyond what
+    // it looks like. I would expand to include 10 extra characters." Both
+    // channels shared one 25-character button-label budget. Email —
+    // Remarketing keeps 25 (a real send platform, same inbox-button
+    // rendering constraint as any other email send); Internal Email is
+    // in-house/owned (no third-party platform imposing a hard limit — the
+    // number was always a visual guideline, not a real constraint), so its
+    // budget is 10 characters looser.
+    const ctaMax = channel === 'Internal Email' ? 35 : 25;
     return {
       id: 'email', kind: 'stacked',
       note: `${label}: subject lines are cut around 50 characters on phones; the preheader (≈ 90) is the second line the inbox shows. Inside: one headline, 60–120 words in short paragraphs, one button. One message per email.`,
-      fields: [ F('subject', 'Subject line', 50), F('preheader', 'Preheader', 90), F('headline', 'Headline', 60), F('body', 'Body (60–120 words)', 760, { rows: 6 }), F('cta', 'Button label', 25) ],
+      fields: [ F('subject', 'Subject line', 50), F('preheader', 'Preheader', 90), F('headline', 'Headline', 60), F('body', 'Body (60–120 words)', 760, { rows: 6 }), F('cta', 'Button label', ctaMax) ],
       toWireframe: f => ({ headline: f.headline || f.subject || '', body: f.body || '', cta: f.cta || '' })
     };
   }
